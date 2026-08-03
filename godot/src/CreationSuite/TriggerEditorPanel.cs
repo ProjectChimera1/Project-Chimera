@@ -1309,68 +1309,22 @@ namespace ProjectChimera.CreationSuite
         private void OnEventAddPressed()
         {
             if (_scenario == null) return;
-            string name = _evtName.Text.Trim();
-            if (string.IsNullOrEmpty(name)) { _evtStatus.Text = "✘ An event needs a name."; return; }
 
             // Fail-closed at authoring time (the pre-tick gate re-checks everything): dup names, built-in
-            // shadowing, malformed param/raiser text — refuse with feedback, never a partial persist.
-            if (_scenario.CustomEvents != null)
-                foreach (var existing in _scenario.CustomEvents)
-                    if (existing.Name == name) { _evtStatus.Text = $"✘ '{name}' is already declared."; return; }
-            if (Array.IndexOf(EventKinds, name) >= 0)
-            { _evtStatus.Text = $"✘ '{name}' shadows a built-in event kind."; return; }
-
-            var paramList = new List<ScenarioEventParam>();
-            string paramsText = _evtParams.Text.Trim();
-            if (paramsText.Length > 0)
+            // shadowing, malformed param/raiser text — refuse with feedback, never a partial persist. All of those
+            // rules (and the raiser-slot ceiling, which must equal the load-time gate's FactionRegistry.PLAYER_COUNT
+            // — DW-384: this used to hardcode (int)Faction.Player4 and refuse slots 4–7 the engine accepts) live in
+            // the Godot-free, Tier-1-tested CustomEventAuthoringGate; the panel only reads text and reports.
+            if (!CustomEventAuthoringGate.TryDeclare(
+                    _scenario.CustomEvents, _evtName.Text, _evtParams.Text, _evtRaisers.Text,
+                    out ScenarioCustomEvent[]? candidate, out string? err))
             {
-                foreach (string chunk in paramsText.Split(','))
-                {
-                    string[] halves = chunk.Split(':');
-                    string pn = halves[0].Trim();
-                    string pt = halves.Length > 1 ? halves[1].Trim() : "";
-                    if (halves.Length != 2 || pn.Length == 0
-                        || (pt != "Int" && pt != "Fixed" && pt != "Bool"))
-                    {
-                        _evtStatus.Text = $"✘ '{chunk.Trim()}' is not a 'name:Type' pair (types: Int / Fixed / Bool).";
-                        return;
-                    }
-                    paramList.Add(new ScenarioEventParam { Name = pn, Type = Enum.Parse<DslValueType>(pt) });
-                }
+                _evtStatus.Text = $"✘ {err}";
+                return;
             }
 
-            var raiserList = new List<int>();
-            string raisersText = _evtRaisers.Text.Trim();
-            if (raisersText.Length > 0)
-            {
-                foreach (string chunk in raisersText.Split(','))
-                {
-                    if (!int.TryParse(chunk.Trim(), System.Globalization.NumberStyles.Integer,
-                            System.Globalization.CultureInfo.InvariantCulture, out int slot))
-                    {
-                        _evtStatus.Text = $"✘ '{chunk.Trim()}' is not a faction slot number.";
-                        return;
-                    }
-                    raiserList.Add(slot);
-                }
-            }
-
-            // Run the SAME closed-registry rules the pre-tick gate applies (caps, identifier params, raiser
-            // range/dups) over the WOULD-BE registry, so a bad declaration is refused here with the gate's own
-            // message instead of failing the whole scenario later.
-            var candidate = new List<ScenarioCustomEvent>(_scenario.CustomEvents ?? Array.Empty<ScenarioCustomEvent>())
-            {
-                new ScenarioCustomEvent
-                {
-                    Name = name,
-                    Params = paramList.Count > 0 ? paramList.ToArray() : null,
-                    AllowedRaisers = raiserList.Count > 0 ? raiserList.ToArray() : null,
-                },
-            };
-            string? err = EventDispatchPlan.ValidateRegistry(candidate, (int)Faction.Player4);
-            if (err != null) { _evtStatus.Text = $"✘ {err}"; return; }
-
-            _scenario.CustomEvents = candidate.ToArray();
+            _scenario.CustomEvents = candidate;
+            string name = _evtName.Text.Trim();
             _evtName.Text = "";
             _evtStatus.Text = $"✔ Declared '{name}'.";
             RefreshEventsList();

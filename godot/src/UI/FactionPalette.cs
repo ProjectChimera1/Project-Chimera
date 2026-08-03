@@ -38,6 +38,11 @@ namespace ProjectChimera.UI
 
             /// <summary>The color packed big-endian as 0xRRGGBBAA.</summary>
             public uint Rgba => (uint)((R << 24) | (G << 16) | (B << 8) | A);
+
+            /// <summary>The opaque RGB channels as a <c>#rrggbb</c> hex string — the form BBCode
+            /// (<c>[color=#rrggbb]</c>) and CSS take. Alpha is deliberately omitted: the text surfaces that need
+            /// this (chat, rich-text labels) have no per-glyph alpha channel.</summary>
+            public string HexRgb => $"#{R:x2}{G:x2}{B:x2}";
         }
 
         // Index by (int)Faction: 0 = Neutral, 1..8 = Player1..Player8. Player colors are the Okabe-Ito set

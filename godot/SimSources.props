@@ -72,6 +72,10 @@
     <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\LobbyReadyModel.cs"              LinkBase="Sim\Multiplayer" />
     <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\Party\PartyState.cs"             LinkBase="Sim\Multiplayer\Party" />
     <Compile Include="$(MSBuildThisFileDirectory)src\UI\FactionPalette.cs"                        LinkBase="Sim\UI" />
+    <!-- DW-385: the Godot-free chat line formatter (speaker name/color from FactionPalette + BBCode sanitization)
+         behind MatchChatOverlay. Single-file include (the FactionPalette precedent) so the 8-player speaker
+         mapping is Tier-1 asserted while the overlay itself stays Godot-coupled and un-globbed. -->
+    <Compile Include="$(MSBuildThisFileDirectory)src\UI\MatchChatFormat.cs"                       LinkBase="Sim\UI" />
 
     <!-- Story 6.2: the linear editor undo/redo stack (src/CreationSuite/EditorHistory.cs) is pure C# (Action
          delegate pairs over two Stacks, no Godot types) — included as a single file so its shared-LIFO contract,
