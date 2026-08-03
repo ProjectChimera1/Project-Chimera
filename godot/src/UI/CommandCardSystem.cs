@@ -355,10 +355,10 @@ namespace ProjectChimera.UI
             _constructionLabel.Visible = false;
 
             bool isCC = bType == BuildingType.CommandCenter;
-            bool canProduce = bType == BuildingType.Barracks
-                           || bType == BuildingType.ArcheryRange
-                           || bType == BuildingType.SiegeWorkshop
-                           || bType == BuildingType.Aviary;
+            // The single active producer surface (this story): the sim resolves ONE of Train/Research/Shop/Revive/None
+            // (authored command_card_producer authoritative, else derived) so exactly one grid renders and the others
+            // hide — no overlap (DW-90), and a dual-capability building gets its author-chosen affordance (DW-31).
+            CommandCardSurface surface = _buildSys.ResolveCommandCardSurface(bId);
 
             _supplyLabel.Visible = isCC;
 
@@ -369,11 +369,12 @@ namespace ProjectChimera.UI
                 _supplyLabel.Text = $"Supply: {used} / {cap}";
             }
 
-            if (canProduce)
+            if (surface == CommandCardSurface.Train)
             {
                 // One button per unit of THIS building's category, for its ACTUAL faction (not the P1 default) — so a
-                // selected P2 producer shows P2's roster. Order follows the faction Units JSON.
-                var options = _buildSys.GetProductionUnits(bType, faction);
+                // selected P2 producer shows P2's roster. Order follows the faction Units JSON. Pass the placed slot's
+                // DefinitionId so a Custom producer lists its authored produces_category roster, not Melee (DW-168).
+                var options = _buildSys.GetProductionUnits(bType, faction, _buildings.DefinitionId[bId]);
                 // Story 2.8 review (creator-content guard): the picker renders a fixed MAX_TRAIN_OPTIONS-slot grid, so
                 // a category defining more units than that silently loses the extras. Warn once per (faction, building
                 // type) so a creator is told rather than losing a unit invisibly. Presentation-only, no sim impact.
@@ -442,24 +443,25 @@ namespace ProjectChimera.UI
                 HideQueueStrip();
             }
 
-            // ── Hero revival (Story 3.14): a revives_heroes building offers one revive button per awaiting hero of its
-            //    faction. Overlays the (hidden-for-a-non-producer) train grid. Inert until SetReviveDeps is wired. ──
-            if (!canProduce && _buildings.RevivesHeroes[bId] && _heroes != null && _revival != null)
+            // ── Hero revival (Story 3.14): the revive grid renders ONLY when the resolved surface is Revive and the
+            //    building actually revives + deps are wired (DW-31: an author can select this on a dual-capability
+            //    building via command_card_producer:"revive"). Single-grid: any other surface hides it. ──
+            if (surface == CommandCardSurface.Revive && _buildings.RevivesHeroes[bId] && _heroes != null && _revival != null)
                 RefreshReviveButtons(bId, faction);
             else
                 HideReviveButtons();
 
-            // ── Item shop (Story 3.16): a sells_items building offers one Buy button per stock item for an owned hero in
-            //    range. Overlays the (hidden-for-a-non-producer) train grid, beside the revive grid. Inert until wired. ──
-            if (!canProduce && _buildings.SellsItems[bId] && _items != null && _itemSys != null)
+            // ── Item shop (Story 3.16): the Buy grid renders ONLY when the resolved surface is Shop and the building
+            //    sells + deps are wired. Single-grid: any other surface hides it. ──
+            if (surface == CommandCardSurface.Shop && _buildings.SellsItems[bId] && _items != null && _itemSys != null)
                 RefreshShopButtons(bId, faction);
             else
                 HideShopButtons();
 
-            // ── Research (Story 4.11): a building whose BuildingDefinition.AvailableResearch is non-empty offers one
-            //    research button per entry. Overlays the (hidden-for-a-non-producer) train grid, beside the revive/shop
-            //    grids — mirrors their `!canProduce` gating exactly. Inert until SetResearchDeps is wired. ──
-            if (!canProduce && _research != null && _researchStore != null)
+            // ── Research (Story 4.11): the research grid renders ONLY when the resolved surface is Research and the
+            //    deps are wired. Single-grid: any other surface hides it (RefreshResearchButtons still self-hides when
+            //    the building's AvailableResearch is empty). ──
+            if (surface == CommandCardSurface.Research && _research != null && _researchStore != null)
                 RefreshResearchButtons(bId, faction);
             else
                 HideResearchButtons();
@@ -796,7 +798,9 @@ namespace ProjectChimera.UI
         /// category roster; a fallback-sentinel slot shows a generic label.</summary>
         private void RefreshQueueStrip(int bId, Faction faction)
         {
-            var options = _buildSys.GetProductionUnits(_buildings.Type[bId], faction); // (Units index, def) of this category
+            // Pass the placed slot's DefinitionId so a Custom producer's queued chips resolve their authored-category
+            // roster names, not Melee (DW-168) — matching the train grid above.
+            var options = _buildSys.GetProductionUnits(_buildings.Type[bId], faction, _buildings.DefinitionId[bId]); // (Units index, def) of this category
             int head = _buildings.HeadIndex(bId);
             for (int k = 0; k < _queueBtns.Length; k++)
             {

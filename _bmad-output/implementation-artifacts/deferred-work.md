@@ -300,7 +300,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-3.14 (
 source_spec: `_bmad-output/implementation-artifacts/spec-3-14-hero-death-revival.md`
 location: CommandCardSystem.cs
 reason: summary: The command-card revive buttons render only in the `!canProduce` branch (`CommandCardSystem.RefreshCard`), so a building that BOTH produces units AND is flagged `revives_heroes` exposes no revive button in-UI — AC2's canonical "eligible production building" has no affordance for a dual-capability building (the sim + a dedicated non-producing revive building both work). evidence: `CommandCardSystem.cs` gates `RefreshReviveButtons` on `!canProduce && RevivesHeroes[bId]`; the revive grid reuses the (hidden) train grid, so surfacing both requires UI-layout work. The sim path (`ReviveHeroCommand`/`OrderApplier`) is production-agnostic and fully general; only the presentation of dual producer+reviver buildings is narrowed. Presentation-only, headless-unverifiable in this environment. Flagged by the Intent-Alignment + Blind Hunter review layers.
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-command-card-producer-surfaces
 
 ### DW-32: AC3's "manifest-persisted attributes still finalize per FR-7a" for a fallen (disabled-revival or awaiting) hero has no Tier-1 end-to-end coverage — the harvest lives in the Godot-coupled `MainScene.ResetToAuthoredStart`/`HeroPickerOverlay`, outside the Godot-free test project. Only the sim precondition (the row stays `HeroStore.Alive` so it remains harvestable) is asserted.
 origin: migrated from legacy ledger ("Deferred from: code review of story-3.14 (2026-07-08)"), 2026-07-08
@@ -789,7 +790,8 @@ decision: 2026-07-16 Cross-namespace check + fix resolution — Add a cross-name
 source_spec: `_bmad-output/implementation-artifacts/spec-4-11-research-authoring-command-card-buttons-upgrade-display.md`
 location: godot/src/UI/CommandCardSystem.cs (RefreshResearchButtons and its Shop/Revive/Train sibling Refresh* methods, all positioning at the same base offset e.g. `10f + i*102f, 74f`)
 reason: summary: this is a pre-existing architectural pattern — Shop and Revive/Train grids already coexist with the same single-condition-gating, same-coordinate-sharing shape with no cross-grid exclusivity check anywhere in this file, predating this story. Story 4.11's Research grid follows the SAME established (already-accepted) convention rather than introducing a new gap. evidence: flagged by the Blind Hunter review layer; verified the Shop/Revive/Train grids share the identical structural shape (independent boolean gate, no shared "which grid is active" state) before this story touched the file. Whether a real building would ever author both `AvailableResearch` and `ShopStock` is a content-authoring/game-design question outside this story's or this review's scope. Closure: if a building ever legitimately needs both, either the categories need a shared mutual-exclusivity gate (e.g. a building declares ONE "produces" category) or the button grids need distinct screen regions — a design decision, not a code defect, and applies equally to the pre-existing Shop/Revive/Train combinations this story didn't create.
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-command-card-producer-surfaces
 decision: 2026-07-27 One active producer category per building — Add a 'produces' category to BuildingDefinition and gate all producer grids on the single declared category so only one grid renders.
 decision: 2026-07-20 One producer-category gate — Have a building declare one active 'produces' category and gate the grids on it.
 decision: 2026-07-16 One producer-category gate — Have a building declare one active 'produces' category and gate the grids on it.
@@ -1460,7 +1462,8 @@ origin: code review of spec-6-8-custom-building-placement-thread-an-authored-bui
 location: godot/src/UI/CommandCardSystem.cs (RefreshBuildingCard canProduce ~:322-325 matches only Barracks|ArcheryRange|SiegeWorkshop|Aviary) + godot/src/Economy/BuildingSystem.cs (GetProductionUnit/GetProductionUnits :305/:319 resolve category via enum-only CategoryForBuilding whose default is "Melee")
 severity: high
 reason: The sim TrainUnit path IS def-aware and tested (CustomProducer_RoutesProduction...), but a custom producer's authored produces_category is unreachable from the UI — "placeable, not operable." Out of 6-8's placement intent (the spec explicitly deferred the sibling worker-build-card). Fix: widen canProduce for a Custom producer with non-empty ProducesCategory AND make GetProductionUnit(s) def-aware via the slot's DefinitionId — both must land together or the card lists the wrong (Melee) roster; verify in-engine. Split from DW-68's closure (epic-6 retro, 2026-07-15).
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-command-card-producer-surfaces
 
 ### DW-169: Every Custom building gets the fixed 5×3×5 CUSTOM_FOOTPRINT regardless of authored mesh size
 
@@ -1485,7 +1488,8 @@ origin: code review of spec-6-8 (custom placement; Blind + Edge + Verification-G
 location: godot/src/UI/BuildingBridge.cs (Initialize builds _bucketOf from p1Def/p2Def + the 5 built-in ids; TryBucket returns false → skip, no draw, no diagnostic)
 severity: medium
 reason: A validated scenario-apply always has its ids in buckets, but the live "author a new building in the 4.5 editor → place it" loop and >2-faction cases miss — guarded against a throw but silent. Fix: re-discover/append a bucket when an unknown DefinitionId appears (or route unknowns to a shared CUSTOM_FALLBACK bucket) so a placed building always renders; verify in-engine.
-status: open
+status: done 2026-08-03
+resolution: resolved by sweep bundle dw-command-card-producer-surfaces
 
 ### DW-172: def→BuildingStore.Create stat-threading is hand-copied in PlaceBuildingDirectById and CreateEditorBuilding — the "never hand-copied in a spawn path" class
 

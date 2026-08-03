@@ -40,6 +40,16 @@ namespace ProjectChimera.UI
         private System.Collections.Generic.Dictionary<string, int> _bucketOf = null!;
         private int _bucketCount;
 
+        // DW-171 — a PERMANENT shared fallback render bucket (appended last, index below). A placed building whose
+        // DefinitionId had no bucket at Initialize (an id authored/loaded after discovery, or a def-less placement)
+        // renders here as a CUSTOM_FALLBACK grey box instead of silently vanishing. Its index is stored so TryBucket
+        // can route an unknown id to it. NOTE: this only guarantees an ALREADY-RENDERED faction (P1/P2) draws — a
+        // Player3+ building is still skipped by FactionIndex (a separate, larger limitation, out of scope here).
+        private int _fallbackBucket;
+        // One-time-per-unseen-id diagnostic guard, so an unknown id logs ONCE, not every frame (presentation-only).
+        private readonly System.Collections.Generic.HashSet<string> _unknownIdsSeen =
+            new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
+
         // One MeshInstance3D progress bar per building slot (pre-allocated, hidden when idle).
         private MeshInstance3D[] _bars = null!;
         private static readonly Color BAR_COLOR = new Color(0.15f, 0.9f, 0.2f); // green
@@ -99,14 +109,17 @@ namespace ProjectChimera.UI
                 if (d != null)
                     foreach (var b in d.Buildings)
                         AddBucket(b.Id, ids);
-            _bucketCount = ids.Count;
+            // DW-171: append ONE permanent shared fallback bucket after the discovered buckets. Its index is the old
+            // count; the total bucket count (and every parallel array) grows by one to include it.
+            _fallbackBucket = ids.Count;
+            _bucketCount    = ids.Count + 1;
 
             _mmi        = new MultiMeshInstance3D[_bucketCount, 2];
             _typeSize   = new Vector3[_bucketCount, 2];
             _scale      = new float[_bucketCount, 2];
             _groundMinY = new float[_bucketCount, 2];
 
-            for (int t = 0; t < _bucketCount; t++)
+            for (int t = 0; t < ids.Count; t++)
             {
                 string id = ids[t];
                 // Fallback box: a built-in id maps to its TYPE_FALLBACK slot (byte-identical); a custom id uses the
@@ -130,6 +143,20 @@ namespace ProjectChimera.UI
                     _mmi[t, fi] = CreateMmi(mesh, mats[fi]);
                     AddChild(_mmi[t, fi]);
                 }
+            }
+
+            // DW-171: build the permanent shared fallback bucket (a CUSTOM_FALLBACK grey box, scale 1) for each
+            // faction column, so an unknown-id building routed here by TryBucket actually has a MultiMesh to draw into.
+            for (int fi = 0; fi < 2; fi++)
+            {
+                Mesh mesh = MeshLoader.LoadFromGlb("", CUSTOM_FALLBACK,
+                                                   fi == 0 ? p1Color : p2Color, registry);
+                Aabb aabb = mesh.GetAabb();
+                _scale[_fallbackBucket, fi]      = 1f;
+                _typeSize[_fallbackBucket, fi]   = aabb.Size;      // scale 1 → no multiply
+                _groundMinY[_fallbackBucket, fi] = aabb.Position.Y; // scale 1
+                _mmi[_fallbackBucket, fi] = CreateMmi(mesh, mats[fi]);
+                AddChild(_mmi[_fallbackBucket, fi]);
             }
 
             // Pre-allocate one progress bar MeshInstance3D per building slot.
@@ -379,11 +406,22 @@ namespace ProjectChimera.UI
             ids.Add(id);
         }
 
-        /// <summary>Story 6.8 — resolve building slot <paramref name="i"/>'s render bucket from its DefinitionId.
-        /// Returns false (skip, never throw) for an id with no bucket — an unknown building or one authored after
-        /// Initialize discovered the buckets.</summary>
-        private bool TryBucket(int i, out int bucket) =>
-            _bucketOf.TryGetValue(_buildings.DefinitionId[i] ?? "", out bucket);
+        /// <summary>Story 6.8 / DW-171 — resolve building slot <paramref name="i"/>'s render bucket from its
+        /// DefinitionId. A known id maps to its own bucket; an UNKNOWN id (a building authored/placed after Initialize
+        /// discovered the buckets, or a def-less placement) routes to the permanent shared fallback bucket and emits a
+        /// one-time diagnostic — never a silent skip, never a throw. Always returns true so the caller renders the
+        /// building. (A Player3+ faction is still excluded earlier by <see cref="FactionIndex"/> — out of scope.)</summary>
+        private bool TryBucket(int i, out int bucket)
+        {
+            string id = _buildings.DefinitionId[i] ?? "";
+            if (_bucketOf.TryGetValue(id, out bucket)) return true;
+            bucket = _fallbackBucket;
+            if (_unknownIdsSeen.Add(id))
+                GD.PrintErr($"[BuildingBridge] building DefinitionId '{id}' had no render bucket at Initialize; " +
+                            "rendering it through the shared fallback bucket (grey box). " +
+                            "(If this is a Player3+ building it is still skipped by FactionIndex — out of scope.)");
+            return true;
+        }
 
         private static MultiMeshInstance3D CreateMmi(Mesh mesh, StandardMaterial3D teamMat)
         {

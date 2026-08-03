@@ -96,6 +96,14 @@ namespace ProjectChimera.Core.Definitions
                 errors.Add(("produces_category", Located(id, "produces_category",
                     "is required but missing (author the unit category this building produces, or \"None\" for a non-producer).")));
 
+            // Command-card producer surface (this story): OPTIONAL — an omitted/empty value derives the surface. When
+            // authored it must name one of the five known surfaces (case-insensitive); any other value is a located
+            // import-time error so BuildingSystem.ResolveCommandCardSurface never has to silently ignore a typo.
+            if (!string.IsNullOrEmpty(def.CommandCardProducer)
+                && !IsKnownCommandCardProducer(def.CommandCardProducer))
+                errors.Add(("command_card_producer", Located(id, "command_card_producer",
+                    "must be one of train, research, shop, revive, none (or omit to derive).")));
+
             // Story 4.5: reuse UnitDefinitionValidator's id/dup-id/enum/cost-range gate over this same def, kinded
             // "building" so every message reads "building '<id>'…" instead of "unit '<id>'…". IReadOnlyList<T>'s
             // covariance lets `siblings` (IReadOnlyList<BuildingDefinition>?) pass directly as the expected
@@ -108,6 +116,16 @@ namespace ProjectChimera.Core.Definitions
 
             return new BuildingValidationResult(errors);
         }
+
+        /// <summary>Case-insensitive membership check for an authored <c>command_card_producer</c> value against the
+        /// five known surfaces. The single source of truth the validator + <see cref="BuildingValidationResult"/>
+        /// share so a typo can never map to a rendered surface.</summary>
+        private static bool IsKnownCommandCardProducer(string value) =>
+            value.Equals("train", System.StringComparison.OrdinalIgnoreCase)
+            || value.Equals("research", System.StringComparison.OrdinalIgnoreCase)
+            || value.Equals("shop", System.StringComparison.OrdinalIgnoreCase)
+            || value.Equals("revive", System.StringComparison.OrdinalIgnoreCase)
+            || value.Equals("none", System.StringComparison.OrdinalIgnoreCase);
 
         /// <summary>The located error idiom — names the building id + field path + reason, mirroring
         /// <see cref="UnitDefinitionValidator"/>'s <c>Located</c>.</summary>

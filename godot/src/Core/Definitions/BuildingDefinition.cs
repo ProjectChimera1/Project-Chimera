@@ -64,6 +64,19 @@ namespace ProjectChimera.Core.Definitions
         public string? ProducesCategory { get; set; }
 
         /// <summary>
+        /// OPTIONAL (unlike <see cref="ProducesCategory"/>, which is required) authored override selecting WHICH single
+        /// command-card producer surface this building renders — one of <c>train</c>/<c>research</c>/<c>shop</c>/
+        /// <c>revive</c>/<c>none</c> (case-insensitive), validated at import by <see cref="BuildingDefinitionValidator"/>.
+        /// Null (the default, and the only value shipped content carries) means "derive the surface" — the
+        /// <see cref="ProjectChimera.Economy.BuildingSystem.ResolveCommandCardSurface"/> priority derivation preserves
+        /// today's single-capability behaviour. When authored, it maps DIRECTLY to the rendered surface, letting a
+        /// dual-capability building (e.g. a producer that also <c>revives_heroes</c>) opt into a single chosen surface
+        /// (DW-31); downstream per-grid capability guards still apply.
+        /// </summary>
+        [JsonPropertyName("command_card_producer")]
+        public string? CommandCardProducer { get; set; }
+
+        /// <summary>
         /// Research ids (Story 4.8) this building makes available for the owning faction to start — the
         /// building-side authoring half of the research content model, mirroring
         /// <see cref="UnitDefinition.Prerequisites"/>'s declaration exactly (a snake_case JSON string array,

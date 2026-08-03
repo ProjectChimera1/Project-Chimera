@@ -104,7 +104,11 @@ namespace ProjectChimera.Sim.Tests.Validation
         public void BuildingDefinition_EveryFieldClassified()
             => AssertClassified(typeof(BuildingDefinition),
                 UnitFolded.Concat(new[] { "construction_time", "supply_bonus", "produces_category", "available_research" }).ToArray(),
-                UnitExcluded, UnitAllowlist);
+                // command_card_producer is presentation-only: it selects which command-card UI surface renders, never
+                // deterministic sim state (see spec-command-card-producer-surfaces — not folded into SimChecksum, no
+                // goldens move), so it is EXCLUDED like display_name/combat_feedback, not folded into ContentHash.
+                UnitExcluded.Concat(new[] { "command_card_producer" }).ToArray(),
+                UnitAllowlist);
 
         [Fact]
         public void FactionDefinition_EveryFieldClassified()

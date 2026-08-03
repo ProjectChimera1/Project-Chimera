@@ -24,6 +24,15 @@ namespace ProjectChimera.Economy
     ///
     /// Run BEFORE SupplySystem so SupplyCap is up-to-date when supply is checked.
     /// </summary>
+
+    /// <summary>
+    /// The single active command-card producer surface a building renders (this story). Every building resolves to
+    /// exactly ONE of these via <see cref="BuildingSystem.ResolveCommandCardSurface"/>, so the command card renders
+    /// that one grid and hides the rest — no two producer grids can overlap (DW-90). <see cref="None"/> = no producer
+    /// grid (a CommandCenter or an explicit <c>command_card_producer:"none"</c>).
+    /// </summary>
+    public enum CommandCardSurface { None, Train, Research, Shop, Revive }
+
     public class BuildingSystem : ISimSystem
     {
         // Fallback stats used when no FactionDefinition is available
@@ -327,18 +336,97 @@ namespace ProjectChimera.Economy
             return string.IsNullOrEmpty(pc) ? "Melee" : pc;
         }
 
+        /// <summary>The four built-in enum building types that produce trainable combat/economy units (a CommandCenter
+        /// is deliberately excluded — it surfaces supply only, never a train grid). The train-surface eligibility test
+        /// this story shares between the derivation and the Custom-producer widening.</summary>
+        private static bool IsBuiltInProducer(BuildingType type) =>
+            type == BuildingType.Barracks
+            || type == BuildingType.ArcheryRange
+            || type == BuildingType.SiegeWorkshop
+            || type == BuildingType.Aviary;
+
+        // ── Command-card producer surface (this story) ──────────────────────────
+
+        /// <summary>
+        /// Resolve the SINGLE active command-card producer surface for a placed building — the central authority the
+        /// command card renders exactly one grid from (DW-90: no two producer grids overlap; DW-31: a dual-capability
+        /// building gets an author-chosen surface). The authored <see cref="BuildingDefinition.CommandCardProducer"/>
+        /// is honored (case-insensitively) ONLY when the building is actually ELIGIBLE for that surface; an ineligible
+        /// or unrecognized declaration falls through to the priority derivation instead, so a mis-authored declaration
+        /// never blanks the card (<c>"none"</c> is the one always-honored value — an explicit opt-out). Absent a valid
+        /// declaration, the deterministic priority derivation (Train → Research → Shop → Revive → None) preserves
+        /// today's single-capability behaviour byte-for-byte.
+        /// Train eligibility widens to a <see cref="BuildingType.Custom"/> producer whose authored
+        /// <c>produces_category</c> is non-empty and not "None" (DW-168), reading the placed slot's
+        /// <see cref="BuildingStore.DefinitionId"/>. Bounds/alive-guarded → <see cref="CommandCardSurface.None"/>.
+        /// Pure read-only (no store/def mutation) → no goldens move. Godot-free / unit-testable without the engine.
+        /// </summary>
+        public CommandCardSurface ResolveCommandCardSurface(int buildingId)
+        {
+            if (buildingId < 0 || buildingId >= _buildings.Count) return CommandCardSurface.None;
+            if (!_buildings.Alive[buildingId]) return CommandCardSurface.None;
+
+            BuildingType type = _buildings.Type[buildingId];
+            Faction faction   = _buildings.FactionOf[buildingId];
+            BuildingDefinition? bdef = GetFactionDef(faction)?.GetBuilding(_buildings.DefinitionId[buildingId] ?? "");
+
+            string? pc = bdef?.ProducesCategory;
+            bool trainEligible = IsBuiltInProducer(type)
+                || (type == BuildingType.Custom && !string.IsNullOrEmpty(pc)
+                    && !"None".Equals(pc, System.StringComparison.OrdinalIgnoreCase));
+            bool researchEligible = (bdef?.AvailableResearch?.Length ?? 0) > 0;
+            bool shopEligible     = _buildings.SellsItems[buildingId];
+            bool reviveEligible   = _buildings.RevivesHeroes[buildingId];
+
+            // Authored declaration is honored ONLY when the building is actually ELIGIBLE for that surface. Declaring
+            // a surface the building can't fulfill (e.g. "revive" on a non-reviver, "shop" on a non-seller, "train" on
+            // a produces_category:"None" custom building) would otherwise blank the card entirely — the per-grid
+            // capability guard hides the declared grid AND every other grid is gated on surface== — a silent dead
+            // building the syntactic validator can't catch. An ineligible OR unrecognized declaration therefore falls
+            // through to the priority derivation instead. "none" is the one always-honored value (an explicit opt-out).
+            string? declared = bdef?.CommandCardProducer;
+            if (!string.IsNullOrEmpty(declared))
+            {
+                if ("none".Equals(declared, System.StringComparison.OrdinalIgnoreCase))
+                    return CommandCardSurface.None;
+                if (trainEligible && "train".Equals(declared, System.StringComparison.OrdinalIgnoreCase))
+                    return CommandCardSurface.Train;
+                if (researchEligible && "research".Equals(declared, System.StringComparison.OrdinalIgnoreCase))
+                    return CommandCardSurface.Research;
+                if (shopEligible && "shop".Equals(declared, System.StringComparison.OrdinalIgnoreCase))
+                    return CommandCardSurface.Shop;
+                if (reviveEligible && "revive".Equals(declared, System.StringComparison.OrdinalIgnoreCase))
+                    return CommandCardSurface.Revive;
+                // ineligible or unrecognized declaration → fall through to derivation (never blanks the card)
+            }
+
+            return trainEligible    ? CommandCardSurface.Train
+                 : researchEligible ? CommandCardSurface.Research
+                 : shopEligible     ? CommandCardSurface.Shop
+                 : reviveEligible   ? CommandCardSurface.Revive
+                 : CommandCardSurface.None;
+        }
+
         // ── Public API ────────────────────────────────────────────────────────
 
         /// <summary>
         /// Returns the UnitDefinition that the given building type will produce for the
         /// specified faction, or null if there is no matching unit in that faction's definition.
         /// Defaults to Player1 when called from UI systems that don't have faction context.
+        ///
+        /// When <paramref name="definitionId"/> is non-null the category is resolved def-aware (via the placed slot's
+        /// authored <c>produces_category</c> for a <see cref="BuildingType.Custom"/> producer — DW-168); null keeps the
+        /// byte-identical enum-only resolution so every existing 2-arg call is unchanged.
         /// </summary>
         public UnitDefinition? GetProductionUnit(BuildingType type,
-                                                  Faction faction = Faction.Player1)
+                                                  Faction faction = Faction.Player1,
+                                                  string? definitionId = null)
         {
             if (type == BuildingType.CommandCenter) return null;
-            return GetFactionDef(faction)?.GetUnitByCategory(CategoryForBuilding(type));
+            string category = definitionId != null
+                ? CategoryForBuilding(type, faction, definitionId)
+                : CategoryForBuilding(type);
+            return GetFactionDef(faction)?.GetUnitByCategory(category);
         }
 
         /// <summary>
@@ -349,14 +437,20 @@ namespace ProjectChimera.Economy
         /// The pair index is the <see cref="FactionDefinition.IndexOfUnit"/> coordinate — the value TrainUnit stores.
         /// </summary>
         public List<(int Index, UnitDefinition Def)> GetProductionUnits(BuildingType type,
-                                                                        Faction faction = Faction.Player1)
+                                                                        Faction faction = Faction.Player1,
+                                                                        string? definitionId = null)
         {
             if (type == BuildingType.CommandCenter)
                 return new List<(int, UnitDefinition)>();
             var fdef = GetFactionDef(faction);
             if (fdef == null)
                 return new List<(int, UnitDefinition)>();
-            return fdef.GetUnitsByCategory(CategoryForBuilding(type));
+            // Def-aware when definitionId is supplied (a Custom producer's authored produces_category — DW-168);
+            // null keeps the byte-identical enum-only resolution for every existing 2-arg call.
+            string category = definitionId != null
+                ? CategoryForBuilding(type, faction, definitionId)
+                : CategoryForBuilding(type);
+            return fdef.GetUnitsByCategory(category);
         }
 
         /// <summary>
@@ -996,7 +1090,9 @@ namespace ProjectChimera.Economy
         {
             if (buildingId < 0 || buildingId >= _buildings.Count) return null;
             Faction faction = _buildings.FactionOf[buildingId];
-            var def = GetProductionUnit(_buildings.Type[buildingId], faction);
+            // Thread the placed slot's DefinitionId so a Custom producer resolves its OWN authored category's unit
+            // (DW-168) instead of the enum-only Melee default.
+            var def = GetProductionUnit(_buildings.Type[buildingId], faction, _buildings.DefinitionId[buildingId]);
             if (def == null) return null;
             string? missing = TechTreeChecker.FirstMissing(_buildings, faction, def.Prerequisites);
             return ResolveMissingDisplayName(GetFactionDef(faction), missing);
