@@ -106,6 +106,15 @@ function Resolve-SpecFile($task) {
       for 11-3 and 11-4 show the same empty field, so this is the normal case, not an edge one.
 
       Fall back to the convention every spec in the folder follows: spec-<story_key>.md.
+
+      SWEEP BUNDLES DO NOT FOLLOW THAT CONVENTION. A sweep task's story_key is `dw-<bundle-name>`,
+      but bmad-loop writes the spec under the bundle name alone (`spec-<bundle-name>.md`) or with
+      the DW ids spliced in (`spec-dw-25-projectile-ttl-snap-clamp.md`) - neither of which is
+      `spec-dw-<bundle-name>.md`. Run 20260801-021537-04d9 lost one whole dev attempt on BOTH of
+      its Godot-coupled bundles to exactly this: the artifact did not exist yet on attempt 1, the
+      gate could not name the file to write it to, and only attempt 2 - by which time spec_file
+      was populated - could pass. So after the exact convention, try the `dw-` prefix stripped,
+      then a suffix glob that catches the id-spliced shape.
     #>
     if ($task.PSObject.Properties.Name.Contains('spec_file')) {
         $declared = $task.spec_file
@@ -116,13 +125,33 @@ function Resolve-SpecFile($task) {
     $key = $task.story_key
     if (-not $key) { return $null }
 
+    # `dw-editor-placement-bounds-height-and-sync` -> `editor-placement-bounds-height-and-sync`
+    $bundleSlug = $key -replace '^dw-', ''
+
     $folders = @()
     if ($script:ActiveSpecFolder) { $folders += $script:ActiveSpecFolder }
     $folders += $DefaultSpecFolder
     foreach ($f in $folders) {
         $dir = if ([System.IO.Path]::IsPathRooted($f)) { $f } else { Join-Path $RepoRoot $f }
-        $candidate = Join-Path $dir "spec-$key.md"
-        if (Test-Path $candidate) { return (Resolve-Path $candidate).Path }
+        if (-not (Test-Path $dir)) { continue }
+
+        foreach ($name in @("spec-$key.md", "spec-$bundleSlug.md")) {
+            $candidate = Join-Path $dir $name
+            if (Test-Path $candidate) { return (Resolve-Path $candidate).Path }
+        }
+
+        # Id-spliced shape: spec-dw-<ids>-<bundle-slug>.md. Anchored on the slug as a SUFFIX so a
+        # bundle name cannot match a longer, different bundle that merely starts the same way.
+        if ($bundleSlug) {
+            $globbed = @(Get-ChildItem -Path $dir -Filter "spec-*$bundleSlug.md" -File -ErrorAction SilentlyContinue |
+                         Sort-Object LastWriteTime -Descending)
+            if ($globbed.Count -ge 1) {
+                if ($globbed.Count -gt 1) {
+                    Write-Section "note: $($globbed.Count) specs match 'spec-*$bundleSlug.md'; using the most recently written ($($globbed[0].Name))."
+                }
+                return $globbed[0].FullName
+            }
+        }
     }
     return $null
 }
