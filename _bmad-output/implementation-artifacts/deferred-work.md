@@ -1553,7 +1553,8 @@ origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-14-7-remediation-dw-164-map-export-new-map-write-path-hard-validate-before-persist.md`
 location: ProjectChimera.Sim.Tests.cs
 reason: Story 14.7's map Export/New-Map hard-validate gate is verified by code-read only — no automated test drives the actual write path, so a regression that deletes the abort or reorders the gate below `SaveTerrainBesideScenario` (the first disk write) would reintroduce the DW-164 unloadable-export defect while every Tier-1 test stays green. — Evidence: All three primary reviewers (intent-alignment, verification-gap, blind-hunter) independently flagged that the 5 `MapWriteGateTests` exercise only `MapWriteGate.Check` (the Godot-free decision), never `WinConditionPhase.ExportMapPackage`/`CreateNewMap`. `WinConditionPhase` is a Godot-`Node`-bound `ISetupPhase` (`using Godot;`, `Label`, `ProjectSettings`, async minimap render) the Godot-free Tier-1 assembly cannot instantiate, and `ProjectChimera.Sim.Tests.csproj` has no ProjectReference to `godot.csproj`. The "nothing partial on disk on rejection" property (no terrain region files, no `scenario.json` overwrite, no `.chimera.zip`) is asserted by no test. Closure: a Tier-2 GdUnit4 test that drives the phase against a known-invalid scenario and asserts no artifacts are written, or extract the ordered gate→terrain-save→scenario-save→pack sequence behind Godot-free injectable write-delegate seams a Tier-1 test can drive (assert no delegate fires on a gate-rejecting scenario).
-status: open
+status: done 2026-08-03
+resolution: closed by workflow burn-down bundle `mapwritegate-and-scenario-test-coverage` - took this entry’s Godot-free closure option: new Godot-free MapWritePipeline (src/Core/Definitions) holds the ordered gate -> terrain-save -> scenario-save -> pack sequence behind injectable write delegates, and WinConditionPhase.ExportMapPackage/CreateNewMap were rewired through it behavior-preservingly; 6 Tier-1 MapWritePipelineTests pin no-delegate-fires-on-a-gate-rejecting-scenario (both paths) plus the write order, with red teeth proven by temporary sabotage.
 
 ### DW-330: The Story 14.7 export gate forwards `_ctx.SlotFactionDefs` (declared `= null!` on SceneContext, possibly null or…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -1756,7 +1757,8 @@ resolution: workflow burn-down bundle godot-free-seam-test-extraction — new Re
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-7-7-authoritative-server-side-load-time-validator-gate-no-escape-hatch.md`
 reason: Story 7.7 moved `ScenarioApplier.Apply`'s `RevivalRuntime.Configure`/`Resources.ConfigureSupply` calls below the null-model guard (so consuming a failed/default `Validated<ScenarioData>` token is now a pure no-op instead of resetting revival/supply config), but no test pins this documented behavior change. — Evidence: `Apply_MalformedRegions_…` asserts the failed-token apply does not throw and fires no region trigger, but never establishes a non-default revival/supply baseline to observe that a subsequent failed-token apply leaves it unchanged; moving the two `Configure` calls back above the guard (reintroducing the clobber) keeps every test green. Low consequence (the failed-token path is defense-in-depth behind the type-enforced fail-closed guarantee). Surfaced by the Verification Gap review layer on Story 7.7. Closure = a Tier-1 test that configures non-default revival/supply, consumes a `default` token, and asserts both survive.
-status: open
+status: done 2026-08-03
+resolution: closed by workflow burn-down bundle `mapwritegate-and-scenario-test-coverage` - new ScenarioApplierFailedTokenTests establish a fully non-default revival (8 fields) + supply (3 fields) baseline through a real validated Apply, then consume default(Validated<ScenarioData>) and assert every value survives; reintroducing the pre-7.7 Configure-above-guard clobber turns the test red.
 
 ### DW-362: The Story 7.8 `CustomUiBuilderPanel` authoring surface is built but unreachable — never instantiated by any…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -2523,7 +2525,8 @@ origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `{implementation_artifacts}/spec-9-14-teams-alliances-lobby-teams-wired-into-the-sim-alliance-model.md`
 location: godot/src/Core/FogOfWarSystem.cs
 reason: `FogOfWarSystem.SharedTeamVision` has no user-facing control — it defaults true and is set nowhere in production, so every teamed match is forced into shared allied vision with no way to disable it, and the AC's "toggle" is a code property only. — Evidence: `godot/src/Core/FogOfWarSystem.cs` exposes `bool SharedTeamVision` (default true); grep finds only test setters, no lobby/settings wiring. Behavior is present and correct (default-on satisfies "when enabled"), so this is a presentation follow-up, not a correctness gap. Closure = wire `SharedTeamVision` to a lobby/settings toggle passed through `MatchLifecycleController`/`MainScene`.
-status: open
+status: done 2026-08-03
+resolution: closed by workflow burn-down bundle `fog-shared-team-vision-toggle` (commit 80d8a73) - persisted SettingsData.shared_team_vision (default ON = the prior hardwired behavior) applied to ctx.Fog at boot in MatchLifecycleController.Run, pushed live via MainScene.ApplySettingsToSystems, exposed as SettingsPanel Gameplay > Team Play > Shared team vision; 6 new Godot-free tests, zero goldens moved.
 
 ### DW-442: Scenario team authoring has no validation — a scenario putting all active slots on one team (combat then excludes…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -3805,7 +3808,8 @@ origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-11-3-sp-save-load-full-world-serializer-slots-autosave-format-stability.md`
 location: godot/CLAUDE.md
 reason: Move full-world save serialization + disk I/O off the game thread (background write of an already-captured buffer) to avoid an autosave frame hitch. — Evidence: SaveGameState.CaptureFrom allocates ~70 arrays and SaveGameFile.Write does blocking File.WriteAllBytes + File.Replace, all synchronously in IssueSave / the _Process autosave branch; at the 500-2000 entity target (godot/CLAUDE.md) this will produce a visible hitch on every 120 s autosave.
-status: open
+status: done 2026-08-03
+resolution: closed by workflow burn-down bundle `save-io-off-thread` (commit b20cfee) - CaptureFrom stays on the game thread, new Godot-free BackgroundSaveWriter serializes + disk-writes the captured buffer on a FIFO background chain; result queue drained in _Process for the toast, IssueLoad and the new _ExitTree flush pending writes; 5 new BackgroundSaveWriterTests; zero goldens moved.
 
 ### DW-468: The in-match minimap panel renders off-screen at 1920×1080 (root Control anchored bottom-right with zero offsets…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -3933,7 +3937,8 @@ source_spec: `_bmad-output/planning-artifacts/map-size-brainstorm-brief.md` (V2 
 location: godot/src/Navigation/FlowFieldSystem.cs (`_cache`, Dictionary<int, FlowField> keyed by goal cell)
 severity: medium
 reason: `FlowFieldSystem._cache` has no eviction limit — a field is computed on demand per unique goal cell and lives until `RebuildObstacles` / `SetBuildingObstacle` / `SetStaticBlocked` / `InvalidateCache` clears the whole dictionary, so ~100 distinct move orders between building events holds ~20 MB. — Evidence: read during the 2026-07-30 map-size verdict work; the cache is cleared only on obstacle/terrain change, never bounded by size or age, and nothing evicts a stale goal cell. Not a determinism risk (the cache is a pure function of the grid and is rebuilt identically on every peer) and not a per-tick cost — this is a retained-memory issue. Worth fixing on its own merits, and a HARD PREREQUISITE for map-size Route B (`GRID_SIZE` 128→256), which would multiply each entry to ~800 KB / ~80 MB at the same order count. Fix: an LRU or size cap on the dictionary. Filed as a numbered entry so a sweep can actually pick it up — the retro action item A8-E11 had no ledger entry and was therefore invisible to triage.
-status: open
+status: done 2026-08-03
+resolution: closed by workflow burn-down bundle `flowfield-cache-bound` (commit 71b585d) - FlowFieldSystem._cache bounded at MAX_CACHED_FIELDS = 32 with deterministic monotonic-stamp LRU eviction routed through one ClearCache helper; evicted fields are never pooled so in-flight FlowFieldBridge references stay valid and an evicted field recomputes byte-identical; 6 new Godot-free tests, zero goldens moved.
 
 ### DW-486: Slot-faction re-resolution (Resolve composition, step-0 veto-rollback, DW-10 panel same-ref guard) has no executable assertion — only a happy-path in-engine gate + inspection
 origin: deferred by review of `_bmad-output/implementation-artifacts/spec-scenario-reapply-slot-factiondef-refresh.md`, 2026-07-31
@@ -4509,4 +4514,40 @@ status: open
 origin: workflow burn-down run, 2026-08-03
 location: godot/src/CreationSuite/AbilityEditorPanel.cs:696-701 (and godot/src/Core/Definitions/AbilityValidator.cs, which checks only that the id is non-empty)
 reason: Exactly the DW-454 class, in the one editor DW-454's resolution did not reach: the ability editor sanitizes at the sink, but SanitizeId("con") == "con", so an ability id of con/nul/aux/com1 writes res://resources/data/abilities/con.json and Win32 throws an opaque error with no field badge and no way to save the ability. DW-454 wired UnitDefinitionValidator.IsReservedDeviceName into the item, unit and building gates and filed DW-528 for the faction wizard, but never covered abilities, and AbilityValidator's id check is only a non-empty test so there is no charset gate to hang it off either. Out of the item-editor-id-and-clamp bundle's scope (that bundle is the ITEM editor). Closure = add the shared IsReservedDeviceName reject (and ideally the shared SanitizeId charset fixed-point check) to AbilityValidator's id gate and to the editor's ValidateFields, matching the item/unit/building surfaces.
+status: open
+
+### DW-563: IssueSave recomputes the launch-invariant CanonicalModelHash + ContentHash on the game thread on every save
+origin: workflow burn-down run, 2026-08-03
+location: godot/src/Core/MainScene.cs - IssueSave
+reason: Both hashes are launch-invariant for the whole match (the authored scenario and the content set are fixed at launch) yet are recomputed per save on the game thread, and the model hash walks the entire authored scenario. Out of DW-467’s recorded scope, which names serialization + disk I/O only (both of which are now off-thread). Closure = cache both hashes per match (invalidated on scenario/content reload) so the remaining per-save game-thread CPU cost disappears; worth doing only if profiling shows the residual cost matters.
+status: open
+
+### DW-564: MainScene.cs save-writer wiring was landed by a Godot-free-track bundle - in-engine observation still owed
+origin: workflow burn-down run, 2026-08-03
+location: godot/src/Core/MainScene.cs (BackgroundSaveWriter wiring, the _Process result-queue drain, the new _ExitTree flush)
+reason: godot/CLAUDE.md places MainScene.cs under the in-engine observation gate (a change there is not done until observed running), but the DW-467 burn-down bundle shipped on the Godot-free track whose gate is build + Tier-1 only. The Godot-free contract is fully tested; the live toast and exit-flush behaviour have not been observed. Closure = one in-engine pass: observe the completion toast after a manual save, a save-then-immediate-load round trip, and an app exit during a pending autosave in [PLAY]. Fold into the Epic 10 live-verification batch per the A5-E9 deferred-live-verification decision.
+status: open
+
+### DW-565: Slot-picker metadata can be milliseconds stale relative to an in-flight background save write
+origin: workflow burn-down run, 2026-08-03
+location: godot/src/UI/InMatchMenuOverlay.cs - OpenSlotPicker
+reason: The picker reads slot header metadata straight from disk when opened, so a picker opened within the few ms a DW-467 background write is still in flight shows the slot’s previous state (e.g. “empty” for a first save). Human timescales make this nearly unhittable and the load path itself is protected by WaitForIdle, so it was recorded as accepted micro-staleness rather than patched - wiring the writer into the overlay would have grown the DW-467 bundle’s surface. Closure = either have OpenSlotPicker consult the writer (await idle or read its pending-write set), or document the staleness as accepted and close.
+status: open
+
+### DW-566: FlowFieldBridge’s arrival check uses the shared field’s pinned GoalWorld, not the unit’s own exact goal
+origin: workflow burn-down run, 2026-08-03
+location: godot/src/UI/FlowFieldBridge.cs:154 (field.HasArrived) vs _goals[i]; godot/src/Navigation/FlowField.cs GoalWorld
+reason: FlowField.GoalWorld is set by whichever request first computed the field, so a second unit ordered to a different exact position inside the same 2u goal cell runs its 1.5u arrival check against the FIRST requester’s exact goal - its own _goals[i] is only used for direct-steer. Deterministic and bounded at a couple of world units of stop-position skew, so not a correctness break today, but it will matter if precise arrival ever does (tight waypoint chaining, formation offsets). Pre-existing and out of the flowfield-cache-bound bundle’s scope (that bundle was the memory bound, not steering). Closure = test arrival against the unit’s own _goals[i], or key fields on the exact goal where precision is required.
+status: open
+
+### DW-567: The new Team Play shared-team-vision toggle and its boot-time push need an in-engine observation pass
+origin: workflow burn-down run, 2026-08-03
+location: godot/src/UI/SettingsPanel.cs (Gameplay tab, Team Play section) + godot/src/Core/Bootstrap/Phases/MatchLifecycleController.cs
+reason: The DW-441 bundle touches src/UI/**, src/Core/Bootstrap/** and MainScene.cs, all of which godot/CLAUDE.md places under the in-engine observation gate, but the burn-down track’s gate is build + Tier-1 only (no engine is available to parallel agents). The Godot-free contract (settings field -> fog property) is fully tested; the switch rendering/toggling in the live SettingsPanel and the boot-time push onto ctx.Fog have not been observed running. Closure = fold into the Epic 10 live-verification batch per the A5-E9 deferred-live-verification decision - not fixable inside the bundle’s scope.
+status: open
+
+### DW-568: MapGeneratorPanel’s AI-generated-map save consults MapWriteGate inline instead of routing through MapWritePipeline
+origin: workflow burn-down run, 2026-08-03
+location: godot/src/CreationSuite/MapGeneratorPanel.cs:301
+reason: The panel’s gate-before-write order is correct today, but it is an unpinned call-site convention: the new Tier-1 MapWritePipelineTests only pin the Export/New-Map sequences, so a future edit that reorders the gate below the write here would reintroduce the DW-164 unloadable-artifact class with every test still green. Out of DW-329’s named scope (Export/New-Map only) and a Godot-coupled call site. Closure = route the panel through MapWritePipeline.RunNewMap so the existing ordering tests cover it too - a trivial follow-up.
 status: open
