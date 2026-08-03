@@ -1,5 +1,8 @@
 #nullable enable
+using System.Collections.Generic;
+using System.Linq;
 using ProjectChimera.Core;
+using ProjectChimera.Effects; // StatusFlags (DW-221 — the real matter_infusion apply_modifier path)
 using Xunit;
 
 namespace ProjectChimera.Sim.Tests.Effects
@@ -118,6 +121,157 @@ namespace ProjectChimera.Sim.Tests.Effects
             Assert.Equal(UnitCommand.Build, h.World.CommandState[w]);
             Assert.Equal(3, h.World.BuildTarget[w]);
             Assert.Equal(Fixed.FromInt(90).Raw, h.Resources.Crystal[P1].Raw); // the cast still fired
+        }
+
+        // ═══ DW-221 — the REAL matter_infusion path: apply_modifier / move_speed_delta on a MID-GATHER worker ═══
+        //
+        // Everything above casts a HealEffect that merely BORROWS matter_infusion's costs, so the shipped worker
+        // signature ability's actual payload — an apply_modifier that buffs EffectiveMoveSpeed for 90 ticks — had no
+        // worker-cast coverage: nothing proved a move-speed buff installs on a gatherer, expires back to base, leaves
+        // the gather loop bit-for-bit alone across its whole lifetime, or hashes deterministically.
+        //
+        // Move speed is a GATHERER'S core loop variable (the node↔base round trip), which is exactly why the untested
+        // combination mattered: the buff mutates EffectiveMoveSpeed (folded into SimChecksum) while GatherState /
+        // GatherTarget / CarryAmount must not move at all (they are NOT folded today — see DW-78 — so only a direct
+        // field assertion can catch a regression there; this test never claims the checksum covers them).
+
+        private const int MatterInfusionModId   = 1002; // must match resources/data/abilities/matter_infusion.json
+        private const int MatterInfusionDuration = 90;  // ticks
+        private const int InfusionScheduleTicks  = 100; // > duration, so the expiry lands inside the window
+
+        private static readonly Fixed WorkerBaseSpeed    = Fixed.FromInt(3); // CastHarness.Caster's Create speed
+        private static readonly Fixed WorkerBuffedSpeed  = Fixed.FromInt(4); // + move_speed_delta 1
+
+        /// <summary>A mid-gather worker carrying a real load, wired with the SHIPPED matter_infusion ability.</summary>
+        private static CastHarness InfusionWorker(out int worker, GatherState gather = GatherState.Gathering)
+        {
+            var h = new CastHarness(AbilityTestAbilities.MatterInfusion());
+            worker = h.Caster("matter_infusion", energy: 50);
+            h.World.GatherState[worker]    = gather; // <-- makes this a gatherer, not a combat unit
+            h.World.GatherTarget[worker]   = 4;      // mid-trip: assigned to a node...
+            h.World.CarryAmount[worker]    = Fixed.FromInt(6); // ...with a partial load aboard
+            h.World.CarryCapacity[worker]  = Fixed.FromInt(10);
+            h.Resources.AddOre(Faction.Player1, Fixed.FromInt(100));
+            h.Resources.AddCrystal(Faction.Player1, Fixed.FromInt(100));
+            return h;
+        }
+
+        [Fact]
+        public void Worker_MatterInfusion_InstallsMoveSpeedBuff_AndDebitsAllThreeCosts()
+        {
+            var h = InfusionWorker(out int w);
+            Assert.Equal(WorkerBaseSpeed.Raw, h.World.EffectiveMoveSpeed[w].Raw); // pre-cast baseline
+
+            h.IssueAndTick(w, -1);
+
+            // The apply_modifier leaf ran: EffectiveMoveSpeed is buffed EAGERLY on the cast tick (ModifierStore
+            // recomputes on apply), while BaseMoveSpeed — authored, unfolded, in-tick-immutable — never moves.
+            Assert.Equal(WorkerBuffedSpeed.Raw, h.World.EffectiveMoveSpeed[w].Raw);
+            Assert.Equal(WorkerBaseSpeed.Raw,   h.World.BaseMoveSpeed[w].Raw);
+
+            // ...as one live instance with the authored identity/duration/stack count (the folded slot state).
+            Assert.Equal(1, h.Modifiers.CountAt(w));
+            Assert.Equal(MatterInfusionModId,    h.Modifiers.ModifierIdAt(w, 0));
+            Assert.Equal(MatterInfusionDuration, h.Modifiers.RemainingTicksAt(w, 0));
+            Assert.Equal(1, h.Modifiers.StackCountAt(w, 0));
+            Assert.Equal(StatusFlags.None, h.World.StatusFlagsOf[w]); // matter_infusion imposes no status
+
+            // All three shipped costs were debited (15 energy / 15 ore / 10 crystal) and the 20s cooldown started.
+            Assert.Equal(Fixed.FromInt(35).Raw, h.World.Energy[w].Raw);
+            Assert.Equal(Fixed.FromInt(85).Raw, h.Resources.Ore[P1].Raw);
+            Assert.Equal(Fixed.FromInt(90).Raw, h.Resources.Crystal[P1].Raw);
+            Assert.Equal(600, h.Cooldown(w));
+        }
+
+        [Fact]
+        public void Worker_MatterInfusion_ExpiresExactlyAtDuration_BackToBaseSpeed()
+        {
+            var h = InfusionWorker(out int w);
+            h.IssueAndTick(w, -1);
+
+            // One tick short of the duration the buff is STILL live (an off-by-one in the countdown fails here)...
+            for (int t = 0; t < MatterInfusionDuration - 1; t++) h.ModSys.Tick(h.World, SimulationLoop.FixedDt);
+            Assert.Equal(1, h.Modifiers.CountAt(w));
+            Assert.Equal(1, h.Modifiers.RemainingTicksAt(w, 0));
+            Assert.Equal(WorkerBuffedSpeed.Raw, h.World.EffectiveMoveSpeed[w].Raw);
+
+            // ...and on the duration tick it expires and the speed returns EXACTLY to base (no residual drift).
+            h.ModSys.Tick(h.World, SimulationLoop.FixedDt);
+            Assert.Equal(0, h.Modifiers.CountAt(w));
+            Assert.Equal(WorkerBaseSpeed.Raw, h.World.EffectiveMoveSpeed[w].Raw);
+        }
+
+        [Fact]
+        public void Worker_MidGather_MatterInfusion_LeavesGatherLoopBitForBit_AcrossTheWholeBuffLifetime()
+        {
+            var h = InfusionWorker(out int w);
+
+            GatherState gsBefore = h.World.GatherState[w];
+            int         gtBefore = h.World.GatherTarget[w];
+            long        caBefore = h.World.CarryAmount[w].Raw;
+            long        ccBefore = h.World.CarryCapacity[w].Raw;
+            UnitCommand csBefore = h.World.CommandState[w];
+
+            h.IssueAndTick(w, -1);
+            AssertGatherLoopUnchanged(h, w, gsBefore, gtBefore, caBefore, ccBefore, csBefore);
+            Assert.Equal(WorkerBuffedSpeed.Raw, h.World.EffectiveMoveSpeed[w].Raw); // sanity: the buff really is live
+
+            // Hold it across the ENTIRE lifetime including the expiry tick — a move-speed buff landing on (or leaving)
+            // a gatherer must never nudge the gather state machine, in either direction.
+            for (int t = 0; t < MatterInfusionDuration; t++) h.ModSys.Tick(h.World, SimulationLoop.FixedDt);
+            Assert.Equal(0, h.Modifiers.CountAt(w));                                // the buff expired...
+            AssertGatherLoopUnchanged(h, w, gsBefore, gtBefore, caBefore, ccBefore, csBefore); // ...loop still pristine
+        }
+
+        private static void AssertGatherLoopUnchanged(CastHarness h, int w, GatherState gs, int gt,
+                                                      long carry, long capacity, UnitCommand cs)
+        {
+            Assert.Equal(gs, h.World.GatherState[w]);
+            Assert.Equal(gt, h.World.GatherTarget[w]);
+            Assert.Equal(carry, h.World.CarryAmount[w].Raw);
+            Assert.Equal(capacity, h.World.CarryCapacity[w].Raw);
+            Assert.Equal(cs, h.World.CommandState[w]);
+        }
+
+        /// <summary>
+        /// Drive a fixed worker + matter_infusion schedule for <see cref="InfusionScheduleTicks"/> ticks, capturing the
+        /// per-tick <see cref="SimChecksum"/>. The cast lands on tick 1 so the install, the countdown, the cooldown
+        /// drain and the expiry all fall inside the window. <paramref name="cast"/> == false is the identical schedule
+        /// with the cast omitted (the negative control).
+        /// </summary>
+        private static List<uint> RunInfusionSchedule(bool cast)
+        {
+            var h = InfusionWorker(out int w);
+            var buildings = new BuildingStore();
+            var registry  = new FactionRegistry(2);
+
+            var hashes = new List<uint>(InfusionScheduleTicks);
+            for (int t = 0; t < InfusionScheduleTicks; t++)
+            {
+                if (t == 1 && cast) h.IssueAndTick(w, -1); // issue AND resolve on tick 1
+                else                h.TickCast(1);         // same number of cast-system ticks either way
+                h.ModSys.Tick(h.World, SimulationLoop.FixedDt);
+                hashes.Add(SimChecksum.Compute(h.World, buildings, h.Resources, registry, h.Modifiers));
+            }
+            return hashes;
+        }
+
+        [Fact]
+        public void Worker_MatterInfusion_ChecksumSequence_IsDeterministic_AndTheCastMovesIt()
+        {
+            List<uint> a = RunInfusionSchedule(cast: true);
+            List<uint> b = RunInfusionSchedule(cast: true);
+
+            Assert.Equal(InfusionScheduleTicks, a.Count);
+            Assert.True(a.SequenceEqual(b),
+                "Two identical worker matter_infusion schedules diverged — nondeterminism in the worker cast path.");
+            Assert.True(a.Distinct().Count() > 1,
+                "Checksum sequence is constant — the schedule is not exercising the buff/cooldown state (vacuous).");
+
+            // Negative control: without the cast the same schedule hashes DIFFERENTLY, so the sequence above is
+            // genuinely driven by the move-speed buff + energy/ore/crystal debit + cooldown, not by the fixture alone.
+            Assert.False(a.SequenceEqual(RunInfusionSchedule(cast: false)),
+                "The cast left no trace in SimChecksum — a worker move-speed buff must be hashed sim truth.");
         }
     }
 }

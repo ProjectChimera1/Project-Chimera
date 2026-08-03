@@ -609,6 +609,186 @@ namespace ProjectChimera.Sim.Tests.Golden
             }
         }
 
+        // ══════════ DW-224 — recorded ORDERS replayed through a system that DRAWS from world.Rng ══════════
+        //
+        // Every replay round-trip above is one of two shapes: it either records REAL ORDERS but replays them through a
+        // bare EntityWorld with no system at all (the order-application tests), or it drives an Rng-drawing system but
+        // records ZERO orders (V4RoundTrip_ReproducesChecksums opens the recorder and closes it without a RecordTick).
+        // Neither shape can catch the interaction: a replay whose order stream lands on a different tick than the
+        // recording, or in a different order, perturbs how many draws the sim takes from the SHARED SimRng — and the
+        // RNG state is folded into SimChecksum, so the divergence is real and silent. That is the live-vs-replay desync
+        // class this pair closes.
+        //
+        // The coupling is deliberate and is the whole point: a Move order folds NOTHING into SimChecksum by itself
+        // (Flags/MoveTarget are not hashed), so <see cref="OrderGatedRngSystem"/> makes the DRAW COUNT a function of
+        // which units the order stream has commanded. Order timing therefore reaches the checksum only through the RNG
+        // stream + the Health it drives — exactly the path a "records zero orders" test leaves unguarded.
+
+        private const int OrderTicks = 40;
+
+        /// <summary>Move orders as (tick, unit): three units commanded on three DIFFERENT ticks, so each has a
+        /// different number of drawing ticks — the draw count encodes the order stream's timing.</summary>
+        private static readonly (uint Tick, int Unit)[] OrderScript = { (1u, 0), (4u, 2), (9u, 1) };
+
+        /// <summary>
+        /// Draws from the SHARED <c>world.Rng</c> once per commanded unit per tick — ascending entity id (the
+        /// deterministic iteration contract, AR-15). A unit only draws once an order has set <see cref="EntityFlags.Moving"/>
+        /// on it, so both the draw COUNT and the per-unit Health it accumulates depend on the applied order stream.
+        /// </summary>
+        private sealed class OrderGatedRngSystem : ISimSystem
+        {
+            public void Tick(EntityWorld world, Fixed dt)
+            {
+                int cap = world.HighWaterMark;
+                for (int i = 0; i < cap; i++)
+                {
+                    if (!world.IsAlive(i)) continue;
+                    if ((world.Flags[i] & EntityFlags.Moving) == 0) continue; // uncommanded units never draw
+                    world.Health[i] = world.Health[i] + Fixed.FromInt(world.Rng.NextInt(5) + 1); // 1..5, integer-only
+                }
+            }
+        }
+
+        private static (EntityWorld World, SimulationLoop Loop) BuildOrderGatedLoop(ulong seed)
+        {
+            var world = new EntityWorld();
+            for (int k = 0; k < 3; k++)
+                world.Create(new FixedVec3(Fixed.FromInt(k * 2), Fixed.Zero, Fixed.Zero),
+                             Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            world.Rng.Seed(seed);
+
+            var loop = new SimulationLoop(world, new OrderGatedRngSystem());
+            loop.EnableChecksums(new BuildingStore(), new ResourceStore(Fixed.Zero), new FactionRegistry(2));
+            loop.ChecksumInterval = 1;
+            return (world, loop);
+        }
+
+        private static UnitOrder MoveOrder(int unit)
+            => new UnitOrder(unit, UnitCommand.Move, Fixed.FromInt(20 + unit), Fixed.FromInt(30 + unit));
+
+        /// <summary>
+        /// Drive the live run: apply each scripted order through the SHARED <see cref="OrderApplier"/> (the same entry
+        /// the replay path uses) and record it, then step. <paramref name="tickShift"/> delays every RECORDED order by
+        /// n ticks without moving the live application (an order stream that replays late); <paramref name="recordOrders"/>
+        /// false writes an ORDERLESS file (the zero-order shape DW-224 flags) while the live run still issues them.
+        /// </summary>
+        private static (List<uint> Hashes, EntityWorld World) RecordLiveOrderRun(
+            string path, ulong seed, uint tickShift = 0u, bool recordOrders = true)
+        {
+            var (world, loop) = BuildOrderGatedLoop(seed);
+            var hashes = new List<uint>(OrderTicks);
+            loop.OnChecksum = (_, hash) => hashes.Add(hash);
+
+            using (var rec = NewRecorder(path, seed: seed))
+            {
+                for (uint t = 0; t < OrderTicks; t++)
+                {
+                    for (int k = 0; k < OrderScript.Length; k++)
+                    {
+                        if (OrderScript[k].Tick != t) continue;
+                        UnitOrder order = MoveOrder(OrderScript[k].Unit);
+                        OrderApplier.Apply(world, order, Faction.Player1);
+                        if (recordOrders)
+                            rec.RecordTick(t + tickShift, Faction.Player1, new[] { order }, 0, 1);
+                    }
+                    loop.StepOnce();
+                }
+                rec.Close(winnerFaction: 0, completed: true);
+            }
+            return (hashes, world);
+        }
+
+        /// <summary>Replay <paramref name="path"/> from a DELIBERATELY WRONG seed (the header restore must fix it).</summary>
+        private static (List<uint> Hashes, EntityWorld World, ReplayPlayer Player) ReplayOrderRun(string path)
+        {
+            var (world, loop) = BuildOrderGatedLoop(0x0123456789ABCDEFUL); // wrong on purpose
+            var player = new ReplayPlayer(path, world);                    // ctor reseeds world.Rng to the recorded seed
+
+            var hashes = new List<uint>(OrderTicks);
+            loop.OnChecksum = (_, hash) => hashes.Add(hash);
+            for (int i = 0; i < OrderTicks; i++)
+            {
+                player.Flush(loop.CurrentTick);
+                loop.StepOnce();
+            }
+            return (hashes, world, player);
+        }
+
+        /// <summary>
+        /// DW-224 — the missing round-trip: REAL recorded orders replayed through a system that draws from
+        /// <c>world.Rng</c> reproduce the live per-tick checksum sequence byte-for-byte, AND land the same world state.
+        /// </summary>
+        [Fact]
+        public void V4RecordedOrders_ThroughAnRngDrawingSystem_ReplayIdentically()
+        {
+            const ulong seed = 0x51E3D0A7B1C24E96UL;
+            string path = Path.Combine(Path.GetTempPath(), $"chimera_rngorders_{Guid.NewGuid():N}.chmr");
+            try
+            {
+                var (live, liveWorld) = RecordLiveOrderRun(path, seed);
+                var (replay, replayWorld, player) = ReplayOrderRun(path);
+
+                // The recording genuinely carries the order stream (the defect was a test that recorded NONE).
+                Assert.Equal(OrderScript.Length, player.TotalTicks);
+                Assert.Equal(seed, player.Seed);
+                Assert.Equal(OrderTicks, live.Count);
+
+                // The RNG was actually consumed, and the sequence is not a constant (a vacuous pass guard).
+                Assert.NotEqual(seed, liveWorld.Rng.State);
+                Assert.True(live.Distinct().Count() > 1, "Checksum sequence is constant — no RNG-driven state moved.");
+
+                // The headline: byte-identical per-tick checksums across record→replay.
+                Assert.Equal(live, replay);
+
+                // ...and identical WORLD state, not merely an identical hash: the shared stream position plus every
+                // unit's accumulated Health match, and each unit drew on exactly the ticks its order gated.
+                Assert.Equal(liveWorld.Rng.State, replayWorld.Rng.State);
+                for (int k = 0; k < OrderScript.Length; k++)
+                {
+                    int unit = OrderScript[k].Unit;
+                    int drawingTicks = OrderTicks - (int)OrderScript[k].Tick; // ordered on Tick → draws Tick..OrderTicks-1
+                    Assert.Equal(liveWorld.Health[unit].Raw, replayWorld.Health[unit].Raw);
+                    // Each draw adds 1..5, so the accumulated Health pins the per-unit draw COUNT within tight bounds.
+                    Assert.InRange(liveWorld.Health[unit].Raw,
+                                   Fixed.FromInt(100 + drawingTicks).Raw,
+                                   Fixed.FromInt(100 + 5 * drawingTicks).Raw);
+                }
+            }
+            finally { if (File.Exists(path)) File.Delete(path); }
+        }
+
+        /// <summary>
+        /// DW-224 (negative controls) — the two ways the guard above could have been vacuous. (a) An ORDERLESS
+        /// recording of the same match does NOT reproduce the live sequence: that is the exact shape the pre-existing
+        /// round-trip test had, and it must be provably insufficient. (b) The SAME orders recorded one tick LATE do not
+        /// reproduce it either: the recorded tick number is load-bearing, because it decides on which tick the RNG
+        /// draw count changes.
+        /// </summary>
+        [Fact]
+        public void V4RecordedOrders_OmittedOrShifted_DivergeFromTheLiveRun()
+        {
+            const ulong seed = 0x51E3D0A7B1C24E96UL;
+            string orderless = Path.Combine(Path.GetTempPath(), $"chimera_noorders_{Guid.NewGuid():N}.chmr");
+            string shifted   = Path.Combine(Path.GetTempPath(), $"chimera_shifted_{Guid.NewGuid():N}.chmr");
+            try
+            {
+                var (live, _) = RecordLiveOrderRun(orderless, seed, recordOrders: false);
+                var (replayNoOrders, _, orderlessPlayer) = ReplayOrderRun(orderless);
+                Assert.Equal(0, orderlessPlayer.TotalTicks); // nothing was recorded...
+                Assert.NotEqual(live, replayNoOrders);       // ...so the replay cannot match the live run
+
+                var (liveShift, _) = RecordLiveOrderRun(shifted, seed, tickShift: 1u);
+                var (replayShifted, _, shiftedPlayer) = ReplayOrderRun(shifted);
+                Assert.Equal(OrderScript.Length, shiftedPlayer.TotalTicks); // recorded, but one tick late
+                Assert.NotEqual(liveShift, replayShifted);
+            }
+            finally
+            {
+                if (File.Exists(orderless)) File.Delete(orderless);
+                if (File.Exists(shifted)) File.Delete(shifted);
+            }
+        }
+
         /// <summary>Story 9.11 (follow-up) — the header reader's FULL-SCAN trailer decode (used when the fixed-tail
         /// fast path's signature does not match, e.g. a stray byte after EOF) reconstructs the same winner/finalTick as
         /// the fast path. Without a trailing byte the fast path handles a completed file, so this branch is otherwise
