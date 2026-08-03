@@ -1,4 +1,5 @@
 #nullable enable
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
@@ -111,6 +112,15 @@ namespace ProjectChimera.Combat
             Converters = { new JsonStringEnumConverter(), new FixedJsonConverter() },
         };
 
+        // Raw-document options for the DW-227 duplicate-key pass — must accept exactly the same JSON
+        // dialect as _opts (comments skipped, trailing commas allowed) so the pass can re-walk any
+        // text the serializer accepted.
+        private static readonly JsonDocumentOptions _docOpts = new()
+        {
+            CommentHandling = JsonCommentHandling.Skip,
+            AllowTrailingCommas = true,
+        };
+
         /// <summary>Read a damage table from a JSON file on disk. Pass an absolute OS path
         /// (resolve res:// with <c>ProjectSettings.GlobalizePath</c> in the presentation layer).</summary>
         public static DamageTable Load(string absolutePath) => FromJson(File.ReadAllText(absolutePath));
@@ -118,8 +128,9 @@ namespace ProjectChimera.Combat
         /// <summary>
         /// Deserialize + validate + bake a damage table from JSON text. Fails CLOSED with a located error
         /// (never a silent default): NaN/±Inf/over-range surface as a located <see cref="JsonException"/>
-        /// from the <see cref="FixedJsonConverter"/>; a missing/extra row, wrong dimensions, or unknown enum
-        /// key surface as a located <see cref="InvalidDataException"/> / <see cref="JsonException"/>.
+        /// from the <see cref="FixedJsonConverter"/>; a missing/extra row, wrong dimensions, unknown enum
+        /// key, or DUPLICATE row/cell key surface as a located <see cref="InvalidDataException"/> /
+        /// <see cref="JsonException"/> (DW-227 — duplicates previously overwrote earlier values silently).
         /// </summary>
         public static DamageTable FromJson(string json)
         {
@@ -127,6 +138,11 @@ namespace ProjectChimera.Combat
             Dto? dto = JsonSerializer.Deserialize<Dto>(json, _opts);
             if (dto?.Multipliers is null)
                 throw new InvalidDataException("damage_table: missing required 'multipliers' object.");
+
+            // DW-227: System.Text.Json Dictionary binding is silently LAST-WINS on duplicate keys, and
+            // the Count checks below cannot see a collision (seven raw cells with one repeated key still
+            // bake to six distinct entries). Re-walk the RAW document and fail closed on any duplicate.
+            RejectDuplicateKeys(json);
 
             var cells = new Fixed[(int)DamageType.COUNT, (int)ArmorType.COUNT];
             // Iterate by ENUM VALUE (deterministic, no Dictionary enumeration ever) — AC4 half #2.
@@ -148,6 +164,64 @@ namespace ProjectChimera.Combat
                 throw new InvalidDataException(
                     $"damage_table: {dto.Multipliers.Count} rows, expected {(int)DamageType.COUNT} (unknown damage type?).");
             return new DamageTable(cells);
+        }
+
+        /// <summary>
+        /// DW-227 duplicate-key pass. Rejects any object whose properties collide under System.Text.Json's
+        /// own enum-key semantics — member name in ANY case or the stable integer form ("Light", "light"
+        /// and "1" all bind the same Light column), which is why a raw exact-string comparison would not
+        /// be enough. Runs AFTER <see cref="JsonSerializer.Deserialize{T}(string, JsonSerializerOptions)"/>
+        /// so every key seen here is one the serializer accepted; <see cref="Enum.TryParse{T}(string, bool, out T)"/>
+        /// (case-insensitive) was probed to agree with the serializer on that whole domain, and a key the
+        /// mirror cannot parse throws too — fail closed, never skip. Load-time only, never in-tick.
+        /// </summary>
+        private static void RejectDuplicateKeys(string json)
+        {
+            using JsonDocument doc = JsonDocument.Parse(json, _docOpts);
+            JsonElement root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+                return; // non-object roots were already rejected by Deserialize / the null-Multipliers check
+
+            // Root level: the Dto binds the exact name "multipliers" (case-sensitive POCO binding), so a
+            // repeated "multipliers" object silently replaces the whole earlier table.
+            JsonElement multipliers = default;
+            bool seenMultipliers = false;
+            foreach (JsonProperty prop in root.EnumerateObject())
+            {
+                if (!prop.NameEquals("multipliers"))
+                    continue; // other root names never bind to the Dto — not this pass's concern
+                if (seenMultipliers)
+                    throw new InvalidDataException(
+                        "damage_table: duplicate 'multipliers' object — the earlier table would be silently discarded.");
+                seenMultipliers = true;
+                multipliers = prop.Value;
+            }
+            if (!seenMultipliers || multipliers.ValueKind != JsonValueKind.Object)
+                return; // absence/wrong shape already surfaced by the null-Multipliers check / Deserialize
+
+            var seenRows = new HashSet<DamageType>();
+            foreach (JsonProperty row in multipliers.EnumerateObject())
+            {
+                if (!Enum.TryParse(row.Name, ignoreCase: true, out DamageType rowKey))
+                    throw new InvalidDataException(
+                        $"damage_table: unrecognized row key '{row.Name}'."); // unreachable unless the mirror drifts from STJ
+                if (!seenRows.Add(rowKey))
+                    throw new InvalidDataException(
+                        $"damage_table: duplicate row '{row.Name}' — the earlier row would be silently discarded.");
+                if (row.Value.ValueKind != JsonValueKind.Object)
+                    continue; // wrong-typed row values were already rejected by Deserialize
+
+                var seenCells = new HashSet<ArmorType>();
+                foreach (JsonProperty cell in row.Value.EnumerateObject())
+                {
+                    if (!Enum.TryParse(cell.Name, ignoreCase: true, out ArmorType cellKey))
+                        throw new InvalidDataException(
+                            $"damage_table: unrecognized cell key '{cell.Name}' in row '{row.Name}'."); // unreachable unless the mirror drifts
+                    if (!seenCells.Add(cellKey))
+                        throw new InvalidDataException(
+                            $"damage_table: duplicate cell '{cell.Name}' in row '{row.Name}' — the earlier value would be silently discarded.");
+                }
+            }
         }
     }
 }
