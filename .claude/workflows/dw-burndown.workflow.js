@@ -82,6 +82,14 @@ You are implementing ONE deferred-work bundle for Project Chimera. You are in yo
 
 BUNDLE: ${name}
 
+0. FIRST, before anything else: the harness may have cut your worktree from a STALE cached
+   snapshot (days old — a subject line like "chore(snapshot): …" is the tell). Run:
+     git log --oneline -1
+     git reset --hard ${BASE || 'master'}
+   Unconditionally. Your worktree shares the main repo's refs, so the run-base commit is always
+   available. Skipping this silently rebuilds days-old code, reports a wrong test baseline, and
+   poisons your merge with divergence every later agent pays for.
+
 1. Read ${WORKLIST}. Find the object in \`waves[].bundles[]\` whose \`name\` is exactly "${name}".
    That gives you its \`dw_ids\`, its \`intent\` (the cohesive goal), and the \`files\` its entries name.
 2. Read D:/Projects/Project_Chimera/_bmad-output/implementation-artifacts/deferred-work.md and find
