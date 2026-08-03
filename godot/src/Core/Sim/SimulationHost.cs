@@ -218,7 +218,7 @@ namespace ProjectChimera.Core.Sim
             TriggerEnabled   = new TriggerEnabledStore(); // Story 7.13 — per-exec trigger-enabled mask; folded into SimChecksum (v21); STABLE reference
             TriggerFireLog   = new TriggerFireLog();       // Story 7.15 — trigger-debug observation buffer (fire counts + tick-stamped ring); STABLE reference; NEVER folded
             DslSimEvents     = new DslSimEventFeed();      // Story 7.13 — transient sim-event feed (unit_damaged/unit_trained/ability_cast/hero_level); NOT folded
-            WinCon           = new WinConditionSystem(WinState, Buildings, checksumFactions, Alliances); // Story 7.11/7.12 — team-aware sim-layer win evaluator
+            WinCon           = new WinConditionSystem(WinState, World, Buildings, checksumFactions, Alliances); // Story 7.11/7.12 — team-aware sim-layer win evaluator (DW-184: World for generation-stamped leader refs)
             ScenarioDirector = new ScenarioDirector(Buildings, Resources, Vars, LoopState, DslEvents, TriggerEnabled, DslSimEvents, TriggerFireLog, checksumFactions); // Story 9.2 — active-count drives the threshold poll span
             ScenarioDirector.SetReadback(Readback);   // Story 7.8 — the director publishes into it once per tick at the tick boundary
 
