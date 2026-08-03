@@ -1,5 +1,6 @@
 #nullable enable
 using Godot;
+using ProjectChimera.Core.Definitions;   // MeshPathId — the shared mesh_path convention + miss diagnostic (DW-427)
 
 namespace ProjectChimera.UI
 {
@@ -26,16 +27,33 @@ namespace ProjectChimera.UI
         /// is a non-<c>res://</c> logical id (e.g. "assets/heavy_tank.glb") that the registry holds, return the
         /// pre-ingested custom mesh; otherwise fall through to the existing <c>res://</c> load (and box fallback). A
         /// null registry reproduces today's behavior exactly, so existing world-spawn callers are unaffected.
+        ///
+        /// <para><b>DW-427 — diagnose the miss.</b> An unresolved id used to fall through to the grey box with no log
+        /// at all, leaving a content author nothing to debug. Now every miss against a supplied registry logs
+        /// <see cref="MeshPathId.DescribeRegistryMiss"/>: the authored value, the normalized key that was looked up,
+        /// the ids that ARE registered, a filename-level "did you mean", and the two-form <c>mesh_path</c> convention.
+        /// A <c>res://</c> path that does not resolve gets the same diagnostic WHEN custom assets are registered — the
+        /// "authored the res:// form instead of the package's logical id" near-miss. Resolution itself is unchanged
+        /// apart from the case/whitespace normalization <see cref="AssetRegistry"/> now applies.</para>
         /// </summary>
         public static Mesh LoadFromGlb(string resPath, Vector3 fallbackSize, Color fallbackColor,
                                        AssetRegistry? registry)
         {
-            if (registry != null && !string.IsNullOrEmpty(resPath) &&
-                !resPath.StartsWith("res://", System.StringComparison.Ordinal) &&
-                registry.TryGet(resPath, out var registered))
+            if (registry != null && MeshPathId.IsPackageAssetId(resPath))
             {
-                return registered;
+                if (registry.TryGet(resPath, out var registered))
+                    return registered;
+
+                GD.PrintErr($"[MeshLoader] {MeshPathId.DescribeRegistryMiss(resPath, registry.RegisteredIds)}");
             }
+            else if (registry != null && registry.Count > 0 && MeshPathId.IsProjectResourcePath(resPath)
+                     && !ResourceLoader.Exists(resPath))
+            {
+                // A res:// path that does not exist, in a session that HAS ingested custom assets: the most likely
+                // authoring mistake is the res:// form of a package logical id, so name the registered ids too.
+                GD.PrintErr($"[MeshLoader] {MeshPathId.DescribeRegistryMiss(resPath, registry.RegisteredIds)}");
+            }
+
             return LoadFromGlb(resPath, fallbackSize, fallbackColor, out _);
         }
 

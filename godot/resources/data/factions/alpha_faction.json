@@ -310,7 +310,7 @@
       "id": "aviary",
       "display_name": "Bonded Aerie",
       "category": "Structure",
-      "mesh_path": "res://assets/models/factions/alpha/bonded_aerie.glb",
+      "mesh_path": "res://assets/models/factions/alpha/sigil_foundry.glb",
       "hp": 350,
       "speed": 0,
       "attack_damage": 0,
