@@ -36,15 +36,9 @@ namespace ProjectChimera.UI
         private const int   MARGIN_LEFT         = 12;
         private const int   MARGIN_BOTTOM       = 12;
 
-        // Faction display colors (BBCode hex)
-        private static readonly string[] FACTION_COLORS =
-        {
-            "#aaaaaa",   // Neutral
-            "#4fc3f7",   // Player1 — light blue
-            "#ef5350",   // Player2 — red
-            "#66bb6a",   // Player3 — green
-            "#ffa726",   // Player4 — orange
-        };
+        // Speaker names + BBCode colors come from MatchChatFormat / FactionPalette — the canonical 8-player table.
+        // (DW-385: a local 5-entry color list + a Player1–Player4-only name switch rendered every Player5–Player8
+        // speaker as an indistinguishable gray "??" in a 5–8 faction match.)
 
         // ── State ─────────────────────────────────────────────────────────────────
 
@@ -137,13 +131,8 @@ namespace ProjectChimera.UI
 
         private void HandleChatReceived(Faction faction, string message)
         {
-            // Sanitize: strip BBCode tags from user input to prevent injection.
-            string safe = message.Replace("[", "（").Replace("]", "）");
-            string name = FactionName(faction);
-            string color = FactionColor(faction);
-
-            string line = $"[color={color}]{name}:[/color] {safe}";
-            AddMessage(line);
+            // Name/color lookup + BBCode-injection sanitization live in the Godot-free MatchChatFormat.
+            AddMessage(MatchChatFormat.ChatLine(faction, message));
         }
 
         /// <summary>
@@ -152,7 +141,7 @@ namespace ProjectChimera.UI
         /// </summary>
         public void AddSystemMessage(string text)
         {
-            AddMessage($"[color=#888888]* {text}[/color]");
+            AddMessage(MatchChatFormat.SystemLine(text));
         }
 
         // ── Send ──────────────────────────────────────────────────────────────────
@@ -167,11 +156,9 @@ namespace ProjectChimera.UI
 
             // Optimistically echo own message (we won't receive our own packet back
             // in P2P mode — dedicated server broadcasts back to sender too, but
-            // showing it immediately feels better).
-            string safe  = msg.Replace("[", "（").Replace("]", "）");
-            string name  = FactionName(_localFaction);
-            string color = FactionColor(_localFaction);
-            AddMessage($"[color={color}]{name}:[/color] {safe}");
+            // showing it immediately feels better). Same formatter as the receive path,
+            // so the local echo can never disagree with how a peer renders us.
+            AddMessage(MatchChatFormat.ChatLine(_localFaction, msg));
 
             _lockstep.SendChat(msg);
         }
@@ -293,23 +280,6 @@ namespace ProjectChimera.UI
             hint.OffsetRight  =  MARGIN_LEFT + 80;
             hint.OffsetTop    = -(MARGIN_BOTTOM + PANEL_HEIGHT + 16);
             AddChild(hint);
-        }
-
-        // ── Static helpers ────────────────────────────────────────────────────────
-
-        private static string FactionName(Faction f) => f switch
-        {
-            Faction.Player1 => "P1",
-            Faction.Player2 => "P2",
-            Faction.Player3 => "P3",
-            Faction.Player4 => "P4",
-            _               => "??",
-        };
-
-        private static string FactionColor(Faction f)
-        {
-            int idx = (int)f;
-            return idx >= 0 && idx < FACTION_COLORS.Length ? FACTION_COLORS[idx] : "#aaaaaa";
         }
     }
 }
