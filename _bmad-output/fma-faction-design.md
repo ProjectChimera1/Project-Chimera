@@ -9,6 +9,58 @@ status: design complete — asset manifest derived; engine epics feed GDS planni
 > Role skeleton (8 units + 4 buildings + role ids) kept → zero structural code change.
 > Themed asset prompts: `_bmad-output/asset-generation-manifest.md`.
 
+---
+
+## ⚠ STATUS ADDENDUM — 2026-08-03 (DW-105 / DW-324 doc-debt sweep)
+
+**Read this before anything below it.** Everything after this section is a snapshot of the engine as it stood on
+**2026-06-21**. Several "not yet built" claims have since SHIPPED, so the design body now UNDER-states what the engine
+can do. The design intent below is still canonical; the *engine-reality* framing is not. Each item below was verified
+against the source on 2026-08-03 and names the code + the Tier-1 test that pins it.
+
+### Resolved open decisions
+
+| # | Decision | Resolution |
+|---|---|---|
+| **1** | AIR THIS MILESTONE? | **YES — shipped in Story 2.8.** A real `BuildingType.Aviary` exists (`BuildingStore.cs`), maps to the `"Air"` production category (`BuildingSystem.CategoryForBuilding`), is worker-buildable (`CommandCardSystem`'s build-type list), parses from scenario JSON (`ScenarioApplier`), resolves through `TechTreeChecker` as id `"aviary"`, and is declared as a cost/prereq-gated building in **both** `alpha_faction.json` and `beta_faction.json`. Pinned by `ProductionSelectionTests` (`Aviary` → Air, both the chosen-index and default-of-category arms) and `FactionValidatorTests`. |
+| **2** | MULTI-UNIT BARRACKS/RANGE | **Option (a) shipped in Story 2.8** — per-unit production selection is real: `BuildingSystem.GetProductionUnits(type, faction)` returns every unit of the building's category and `TrainUnit` takes a bounds-/category-guarded `chosenUnitIndex`; `CommandCardSystem` consumes it as the sub-menu. The casters and immortal anchors ARE reachable in normal play. |
+| **3** | SEQUENCING (D1/D2 before balance?) | **Superseded — D1 and the D2 on-death seam both shipped.** `godot/src/Effects/` now holds the full leaf set (`DirectHpDeltaEffect`/`HealEffect`/`DamageEffect`/`ApplyModifierEffect`/`SequenceEffect`/`SearchAreaEffect`/`PersistentEffect`/`TargetFilter`/`TargetMatcher`) plus `Modifier`/`ModifierStore`/`ModifierSystem`, and `unit_dies` is a live trigger event source with killer attribution (`DamageResolver`/`TriggerDefinition`). The Court is no longer "a pure stat sheet"; the interim-(b) balance ledger below is therefore a historical tuning note, not the current model. |
+| **6** | STAT LANDING | **Landed.** Both faction JSONs carry the FMA display names (`"The Crucible Covenant"` / `"The Sanguine Court"`) and the themed unit names (Acolyte, Covenant Transmuter, Cinderhand Thrall, Maul-Fused Wretch, …). |
+
+Decisions **4** (Fortified for units), **5** (crystal cosmetic vs real gate), **7** (Vermillion Core objective) and
+**8** (griffin name) are **still open** as written.
+
+### "Needs-new-code epics" rows that have since SHIPPED
+
+- **Air production building + Air category mapping** → Story 2.8 (see Decision #1).
+- **Per-unit production selection UI** → Story 2.8 (see Decision #2).
+- **D1 Modifier system + ModifierSystem** and **D1 effect-graph executor + leaf set** → `godot/src/Effects/` exists in
+  full, with the structural caps named in `EffectCaps` and folded into `RulesetHash` (Story 9.4).
+- **Anti-air / ground-only targeting (TargetFilter honored)** → Story 2.9a: `TargetMatcher` evaluates the
+  `Air`/`Ground`/`Structure` domain bits off the shared `DomainClassifier`, and they are author-selectable in the
+  ability editor (`DraftVocabulary.Filters`, pinned by `FlagCombinationVocabularyTests`).
+- **Anti-building combat** → Story 2.9a: `UnitCommand.AttackBuilding` + `CombatSystem.TickAttackBuildingCombat`.
+- **Worker-cast ability trigger surface** → Story 2.9b: casting is category-agnostic — a worker (live `GatherState`)
+  runs the identical cast pipeline, pinned by `WorkerCastTests`. The Acolyte's active *Mend Matter* is reachable.
+- **Crystal-spend wiring (multi-resource costs)** → `ResourceStore.SpendCrystal` is called by `BuildingSystem`
+  (train + worker-build) and by `AbilityCastSystem`, so `cost_crystal` is a REAL cost, not cosmetic. This makes the
+  body's repeated "cost_crystal is cosmetic / TrainUnit never spends it" claim wrong, and re-opens open decision **5**
+  as a *balance* question (should elites be crystal-gated?) rather than an engine one.
+- **Data-driven DamageMatrix (load from JSON)** → `DamageTable.FromJson`/`DamageTable.Load`.
+
+### Consequently stale phrasing in the body below (do NOT re-litigate these)
+
+- The **"CRITICAL ENGINE REALITY"** block ("training only the **first** unit of each category… Air has no producer at
+  all") — both halves are fixed.
+- Every **"DESIGNED, NOT YET BUILDABLE"** row whose stated blocker is *"Per-unit production UI"* or *"No Air
+  producer"*. Those units are buildable today; the tables are kept verbatim as the design record.
+- The griffin/wyvern rows' `productionBuilding = "(none — Air unbuildable)"` note.
+
+**Still genuinely open** (unchanged by the above): the Vermillion Core map objective, crystal-spend wiring, the
+data-driven `DamageMatrix`, the buffered-next-attack primitive, and the worker-cast activation surface.
+
+---
+
 # THE LAW OF EQUAL EXCHANGE
 ### World Bible — Project Chimera RTS Showcase
 *Tone: the spirit of Fullmetal Alchemist. Original universe. No trademarked nouns.*

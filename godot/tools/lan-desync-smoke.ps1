@@ -21,6 +21,14 @@
 #  "MATCH HALTED" overlay. For a clean PASS run, just play 300+ ticks and read
 #  the server console's "[Determinism] … window #N" lines + the MATCH SUMMARY.
 #
+#  ** REQUIRES A SOURCE / DEBUG BUILD (DW-324). ** The F9 desync drill lives
+#  behind `#if DEBUG` in MainScene._UnhandledInput. In a RELEASE/exported build
+#  that code is not compiled in, so F9 does NOTHING and NOTHING IS LOGGED —
+#  which reads exactly like "the drill ran and no desync was detected", i.e. a
+#  FALSE PASS. Run this against the Godot editor / a Debug export only. The
+#  clean-PASS half (play 300+ ticks, read the [Determinism] lines) does not
+#  depend on DEBUG; only the F9 drill does.
+#
 #  Edit $Godot / $Proj below if your paths differ.
 # ============================================================================
 
@@ -75,6 +83,7 @@ else {
     Write-Host "  CLIENT auto-joining ${ServerIp}:$Port and auto-readying." -ForegroundColor Green
     Write-Host '  When both clients are in the match, click this window and play 300+ ticks.' -ForegroundColor Green
     Write-Host '  Press  F9  to induce a desync drill (both clients should show MATCH HALTED).' -ForegroundColor Yellow
+    Write-Host '  NOTE: F9 is #if DEBUG only — in a RELEASE build it silently does nothing (false PASS).' -ForegroundColor Yellow
     Write-Host '  The HUD top line shows  Hash 0x........  ONLINE  — both machines must match.' -ForegroundColor Green
     Write-Host '============================================================================' -ForegroundColor Green
 }

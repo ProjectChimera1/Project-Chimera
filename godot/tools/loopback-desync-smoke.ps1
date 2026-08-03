@@ -6,6 +6,12 @@
 #  Expected: the server finds no majority (N=2) and BOTH clients show a red
 #  "MATCH HALTED" overlay.
 #
+#  ** REQUIRES A SOURCE / DEBUG BUILD (DW-324). ** The F9 desync drill lives
+#  behind `#if DEBUG` in MainScene._UnhandledInput, so in a RELEASE/exported
+#  build F9 does NOTHING and logs NOTHING — indistinguishable from "the drill
+#  ran and found no desync", i.e. a FALSE PASS. Editor / Debug export only.
+#  (Same caveat as the sibling lan-desync-smoke.ps1.)
+#
 #  Safe to run repeatedly — it kills leftover loopback instances first (matched
 #  by their command-line flags, so your Godot EDITOR is never touched).
 #  Edit $Godot / $Proj below if your paths differ.
@@ -44,6 +50,7 @@ Write-Host '====================================================================
 Write-Host '  3 windows open: 1 dedicated SERVER + 2 CLIENTS (auto-join + start match).' -ForegroundColor Green
 Write-Host ''
 Write-Host '  ==> Click EITHER client window and press  F9  to induce a desync.' -ForegroundColor Yellow
+Write-Host '      (F9 is #if DEBUG only — in a RELEASE build it silently does nothing.)' -ForegroundColor Yellow
 Write-Host ''
 Write-Host '  Expected: BOTH clients show a red "MATCH HALTED" overlay.' -ForegroundColor Green
 Write-Host '  Close all 3 windows when done (re-running this auto-cleans leftovers).' -ForegroundColor DarkGray

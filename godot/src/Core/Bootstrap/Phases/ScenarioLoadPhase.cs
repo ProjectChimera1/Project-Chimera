@@ -407,7 +407,12 @@ namespace ProjectChimera.Core.Bootstrap
             }
             else
             {
-                // Fallback positions matching ScenarioApplier.BuildFallbackMirror
+                // Fallback marker positions — these DUPLICATE ScenarioApplier.BuildFallbackMirror()'s slot-0/slot-1
+                // BaseX/BaseZ. They are duplicated rather than read from the mirror because this branch runs precisely
+                // when there is no _ctx.Scenario to read, and the markers are presentation-only (no sim/checksum
+                // effect). The duplication is no longer comment-coupled (DW-324): the mirror's values are pinned by
+                // FallbackMirrorParityTests.FallbackMirror_StartPositions_MatchTheScenarioLoadPhaseMarkerFallback,
+                // which names these two literals — so moving the mirror's bases without moving these turns Tier-1 RED.
                 positions[0] = (-45f, 0f);
                 positions[1] = (+45f, 0f);
             }

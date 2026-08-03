@@ -277,8 +277,10 @@ namespace ProjectChimera.CreationSuite
 
                 case DraftKind.SearchArea:
                     AddSpinRow(card, "Radius", 0, FixedSpinMax, 0.5, FixedToDouble(node.Radius), v => node.Radius = ToFixed(v));
-                    // Story 2.6 (Task 8) — Filter is a [Flags] set: author COMBINATIONS via checkboxes (Ally + Alive …),
-                    // closed to allegiance + Alive (NEVER the reserved Air/Ground/Structure bits — AC5).
+                    // Story 2.6 (Task 8) — Filter is a [Flags] set: author COMBINATIONS via checkboxes (Ally + Alive …).
+                    // The offered set is whatever DraftVocabulary.Filters declares — closed, but NOT "allegiance + Alive
+                    // only": Story 2.9a ADDED the Air/Ground/Structure domain bits (TargetMatcher evaluates them off the
+                    // shared DomainClassifier), so they are author-selectable here. Pinned by FlagCombinationVocabularyTests.
                     AddFlagChecks(card, "Filter", DraftVocabulary.Filters, () => node.Filter, v => node.Filter = v);
                     RenderChildSlot(card, "Child effect", ctx, () => node.Child, n => node.Child = n);
                     break;
@@ -465,9 +467,10 @@ namespace ProjectChimera.CreationSuite
         /// Story 2.6 (Task 8) — a CLOSED multi-select for a <c>[Flags]</c> enum: one checkbox per real bit in
         /// <paramref name="bits"/>, so the creator authors COMBINATIONS (e.g. <c>Ally + Alive</c>, <c>Stunned + Silenced</c>)
         /// directly. The zero/None value is intentionally NOT a checkbox — it is the state of no boxes checked. Because
-        /// the offered bits come from <see cref="DraftVocabulary"/> (which excludes the reserved Air/Ground/Structure
-        /// filter bits), the composer can only ever build a value inside the closed AC5 set — the load-bearing
-        /// closed-vocabulary guarantee, now for combinations too. Supersedes the 2.5b single-select dropdown + the
+        /// the offered bits come from <see cref="DraftVocabulary"/>, the composer can only ever build a value inside the
+        /// closed AC5 set — the load-bearing closed-vocabulary guarantee, now for combinations too. (The vocabulary is
+        /// the single source of truth for WHICH bits are offered; since Story 2.9a it INCLUDES the Air/Ground/Structure
+        /// domain bits, which are no longer reserved.) Supersedes the 2.5b single-select dropdown + the
         /// loaded-combo (IncludingCurrent) workaround: checkboxes display + round-trip any combination natively.
         /// </summary>
         private void AddFlagChecks<TEnum>(Control card, string label, TEnum[] bits, Func<TEnum> get, Action<TEnum> set)

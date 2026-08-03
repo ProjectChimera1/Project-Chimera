@@ -508,6 +508,65 @@ namespace ProjectChimera.Sim.Tests.Combat
             Assert.Equal(UnitCommand.Idle, h.World.CommandState[e]);                   // order completed, not denied
         }
 
+        // ── DW-46: the ANTI-CHEAT dispatch-ORDER pin. UseItem/DropItem name the HERO ENTITY (not a building), so
+        //    OrderApplier must dispatch them AFTER the IsAlive/FactionOf ownership guard — the deliberate 3.15 fix.
+        //    The enum doc-comments claimed "BEFORE the entity guard" for months; these two tests make the corrected
+        //    comment executable. A future edit that hoists the UseItem/DropItem arms above the guard (the latent trap
+        //    the stale comment invited) lets a peer force an ENEMY hero to burn/discard its items — and turns these RED.
+
+        [Fact]
+        public void UseItem_FromAForeignFaction_IsRejectedByTheOwnershipGuard()
+        {
+            var h = Build();
+            var (e, slot) = MintHero(h, 100, 0, 0);   // hero belongs to Player1
+            h.World.Health[e] = Fixed.FromInt(20);    // damaged so a heal would be unmistakable
+            int itemRef = h.Items.Create(PotionDefId, 3, new FixedVec3(Fixed.Zero, Fixed.Zero, Fixed.Zero));
+            h.Items.Held[FirstSlot(h, itemRef)] = true;
+            h.Heroes.Inventory[slot * HeroStore.INVENTORY_SLOTS + 0] = itemRef;
+
+            // Player2's command stream orders Player1's hero to drink its potion.
+            OrderApplier.Apply(h.World, new UnitOrder(e, UnitCommand.UseItem, Fixed.FromRaw(0), Fixed.Zero),
+                               Faction.Player2, items: h.Sys);
+
+            Assert.True(h.Items.TryResolveRef(itemRef, out int isl));
+            Assert.Equal(3, h.Items.Charges[isl]);                                            // NOT consumed
+            Assert.True(h.Items.Held[isl]);                                                   // still carried
+            Assert.Equal(itemRef, h.Heroes.Inventory[slot * HeroStore.INVENTORY_SLOTS + 0]);  // slot untouched
+            Assert.Equal(Fixed.FromInt(20), h.World.Health[e]);                               // no heal ran
+
+            // Control arm (so the rejection is not vacuous): the OWNER's identical order does consume a charge.
+            OrderApplier.Apply(h.World, new UnitOrder(e, UnitCommand.UseItem, Fixed.FromRaw(0), Fixed.Zero),
+                               Faction.Player1, items: h.Sys);
+            Assert.Equal(2, h.Items.Charges[FirstSlot(h, itemRef)]);
+            Assert.Equal(Fixed.FromInt(95), h.World.Health[e]);                               // 20 + 75 heal
+        }
+
+        [Fact]
+        public void DropItem_FromAForeignFaction_IsRejectedByTheOwnershipGuard()
+        {
+            var h = Build();
+            var (e, slot) = MintHero(h, 100, 5, 5);   // hero belongs to Player1
+            int itemRef = h.Items.Create(RingDefId, 0, new FixedVec3(Fixed.FromInt(5), Fixed.Zero, Fixed.FromInt(5)));
+            OrderApplier.Apply(h.World, Pickup(e, itemRef), Faction.Player1, items: h.Sys);
+            h.Sys.Tick(h.World, SimulationLoop.FixedDt);
+            Assert.Equal(Fixed.FromInt(150), h.World.EffectiveMaxHealth[e]); // carried (100 base + 50 ring)
+
+            // Player2's command stream orders Player1's hero to throw the ring away.
+            OrderApplier.Apply(h.World, new UnitOrder(e, UnitCommand.DropItem, Fixed.FromRaw(0), Fixed.Zero),
+                               Faction.Player2, items: h.Sys);
+
+            Assert.True(h.Items.TryResolveRef(itemRef, out int isl));
+            Assert.True(h.Items.Held[isl]);                                                   // still carried
+            Assert.Equal(itemRef, h.Heroes.Inventory[slot * HeroStore.INVENTORY_SLOTS + 0]);  // slot untouched
+            Assert.Equal(Fixed.FromInt(150), h.World.EffectiveMaxHealth[e]);                  // modifier retained
+
+            // Control arm: the OWNER's identical order does drop it.
+            OrderApplier.Apply(h.World, new UnitOrder(e, UnitCommand.DropItem, Fixed.FromRaw(0), Fixed.Zero),
+                               Faction.Player1, items: h.Sys);
+            Assert.False(h.Items.Held[FirstSlot(h, itemRef)]);
+            Assert.Equal(Fixed.FromInt(100), h.World.EffectiveMaxHealth[e]);
+        }
+
         private static int FirstSlot(Harness h, int itemRef)
         {
             Assert.True(h.Items.TryResolveRef(itemRef, out int isl));
