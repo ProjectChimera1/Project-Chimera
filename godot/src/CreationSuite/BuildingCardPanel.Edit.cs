@@ -55,13 +55,15 @@ namespace ProjectChimera.CreationSuite
             if (@event is not InputEventKey key || !key.Pressed || key.Echo) return;
 
             // Ctrl+Z/Y here are _Input bindings that SetInputAsHandled, so while a field has focus they
-            // would steal the keystroke and undo the CARD instead of the text the user is editing.
-            if (ProjectChimera.UI.TextFocusGuard.IsTyping(this)) return;
+            // would steal the keystroke and undo the CARD instead of the text the user is editing. Scoped to those
+            // two bindings ONLY — a top-of-method return also skipped the Edit→Play gate below, because F5 is not a
+            // text-editing key and no focused field consumes it (see UnitCardPanel.Edit.cs for the full note).
+            bool typing = ProjectChimera.UI.TextFocusGuard.IsTyping(this);
 
             // Ctrl+Z / Ctrl+Y route through THIS history; SetInputAsHandled so another open editor's Ctrl+Z (also
             // _Input) doesn't also fire (mirrors UnitCardPanel.Edit.cs's guard).
-            if (key.CtrlPressed && key.Keycode == Key.Z) { _history.Undo(); GetViewport().SetInputAsHandled(); return; }
-            if (key.CtrlPressed && key.Keycode == Key.Y) { _history.Redo(); GetViewport().SetInputAsHandled(); return; }
+            if (!typing && key.CtrlPressed && key.Keycode == Key.Z) { _history.Undo(); GetViewport().SetInputAsHandled(); return; }
+            if (!typing && key.CtrlPressed && key.Keycode == Key.Y) { _history.Redo(); GetViewport().SetInputAsHandled(); return; }
 
             // Edit→Play gate: F5 toggles the mode in GameState._UnhandledInput (which runs AFTER _Input). Block it
             // ONLY when the current building is invalid; a clean/valid card lets F5 through.

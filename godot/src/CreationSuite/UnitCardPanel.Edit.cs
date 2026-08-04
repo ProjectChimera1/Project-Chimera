@@ -51,12 +51,21 @@ namespace ProjectChimera.CreationSuite
 
             // Ctrl+Z/Y here are _Input bindings that SetInputAsHandled, so while a field has focus they
             // would steal the keystroke and undo the CARD instead of the text the user is editing.
-            if (ProjectChimera.UI.TextFocusGuard.IsTyping(this)) return;
+            //
+            // Scoped to THOSE TWO BINDINGS ONLY — never a top-of-method return. F5 is not a text-editing key: no
+            // LineEdit/TextEdit (and so no SpinBox) consumes it, so bailing early here skipped the D-11 Edit→Play
+            // gate below in exactly the state the user is in while editing (leaving focus in a field is the normal
+            // state right after typing a value). The F5 then reached GameState._UnhandledInput, which toggles
+            // unconditionally, and Play mode started on an INVALID definition with no error shown — a fail-closed
+            // gate turned fail-open. There is no second net: the Edit→Play FactionLaunchGate runs
+            // BuildingDefinitionValidator per building but never UnitDefinitionValidator per unit, and never touches
+            // ItemDefinition at all. (Post-merge review of the DW-69 TextFocusGuard change.)
+            bool typing = ProjectChimera.UI.TextFocusGuard.IsTyping(this);
 
             // Ctrl+Z / Ctrl+Y route through THIS history; SetInputAsHandled so EntityPlacer's Ctrl+Z (also _Input)
             // doesn't also fire. The panel is the last-added scene node (phase 24), so its _Input runs first (D-6).
-            if (key.CtrlPressed && key.Keycode == Key.Z) { _history.Undo(); GetViewport().SetInputAsHandled(); return; }
-            if (key.CtrlPressed && key.Keycode == Key.Y) { _history.Redo(); GetViewport().SetInputAsHandled(); return; }
+            if (!typing && key.CtrlPressed && key.Keycode == Key.Z) { _history.Undo(); GetViewport().SetInputAsHandled(); return; }
+            if (!typing && key.CtrlPressed && key.Keycode == Key.Y) { _history.Redo(); GetViewport().SetInputAsHandled(); return; }
 
             // D-11 Edit→Play gate: F5 toggles the mode in GameState._UnhandledInput (which runs AFTER _Input). Block
             // it ONLY when the current unit is invalid; a clean/valid card lets F5 through (and OnModeChanged closes it).

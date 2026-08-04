@@ -337,11 +337,13 @@ namespace ProjectChimera.CreationSuite
             if (@event is not InputEventKey key || !key.Pressed || key.Echo) return;
 
             // Ctrl+Z/Y here are _Input bindings that SetInputAsHandled, so while a field has focus they
-            // would steal the keystroke and undo the CARD instead of the text the user is editing.
-            if (ProjectChimera.UI.TextFocusGuard.IsTyping(this)) return;
+            // would steal the keystroke and undo the CARD instead of the text the user is editing. Scoped to those
+            // two bindings ONLY — a top-of-method return also skipped the F5 fail-closed gate below, because F5 is
+            // not a text-editing key and no focused field consumes it (see UnitCardPanel.Edit.cs for the full note).
+            bool typing = ProjectChimera.UI.TextFocusGuard.IsTyping(this);
 
-            if (key.CtrlPressed && key.Keycode == Key.Z) { _history.Undo(); GetViewport().SetInputAsHandled(); return; }
-            if (key.CtrlPressed && key.Keycode == Key.Y) { _history.Redo(); GetViewport().SetInputAsHandled(); return; }
+            if (!typing && key.CtrlPressed && key.Keycode == Key.Z) { _history.Undo(); GetViewport().SetInputAsHandled(); return; }
+            if (!typing && key.CtrlPressed && key.Keycode == Key.Y) { _history.Redo(); GetViewport().SetInputAsHandled(); return; }
 
             if (key.Keycode == Key.F5 && _current != null && !Revalidate())
             {
