@@ -215,6 +215,121 @@ namespace ProjectChimera.Sim.Tests.Effects
             Assert.Equal(w.Health[control].Raw, w.Health[restored].Raw); // exactly one install (no double, no drop)
         }
 
+        // ── DW-300 — the spawn install is IDEMPOTENT against a live re-ApplyUnitDefinition ────────────────────
+
+        /// <summary>Build the def for a while-alive passive unit and resolve its passive index against the registry.</summary>
+        private static UnitDefinition PassiveDef(AbilityRegistry reg, string id, string abilityId)
+        {
+            var def = new UnitDefinition { Id = id, DisplayName = id, Category = "Melee",
+                                           Hp = 100f, Speed = 0f, Abilities = new[] { abilityId } };
+            def.ResolveAbilities(reg); // partition the while_alive ability → SelfPassiveAbilityIndex
+            return def;
+        }
+
+        [Fact]
+        public void SelfPassive_PersistentInstalledExactlyOnce_WhenTheMapperReFiresOnALiveUnit()
+        {
+            // DW-300: ApplyUnitDefinition fires OnUnitDefinitionApplied → InstallSelfPassive. "Once per spawn" used to
+            // rest ENTIRELY on the precondition that every mapper caller runs on a fresh Create slot. An in-place
+            // re-apply on a LIVE unit (upgrade/morph/tech re-map) re-fires the seam, and InstallPersistent has no
+            // same-id dedup — so each re-fire landed ANOTHER concurrent HoT until the 8-slot ring saturated.
+            var (host, reg) = NewHost(PassiveTestAbilities.FurnaceTrickle());
+            EntityWorld w = host.World;
+            UnitDefinition def = PassiveDef(reg, "regen_unit", "furnace_trickle");
+
+            int unit = w.Create(V(0, 0, 0), Faction.Player1, Fixed.FromInt(100), Fixed.Zero);
+            w.ApplyUnitDefinition(unit, def);                      // the genuine spawn install
+            Assert.Equal(1, host.Modifiers.CountAt(unit));
+
+            for (int i = 0; i < 10; i++) w.ApplyUnitDefinition(unit, def); // live re-apply, ×10
+            // Pre-fix this was 8 (EffectCaps.MaxModifiersPerEntity — the ring saturated and would evict real buffs).
+            Assert.Equal(1, host.Modifiers.CountAt(unit));
+
+            // Behavioral teeth: a control spawned once must regenerate at EXACTLY the same rate as the re-applied unit.
+            int control = w.Create(V(10, 0, 0), Faction.Player1, Fixed.FromInt(100), Fixed.Zero);
+            w.ApplyUnitDefinition(control, def);
+            w.Health[unit]    = Fixed.FromInt(50);
+            w.Health[control] = Fixed.FromInt(50);
+            for (int i = 0; i < 30; i++) host.StepOnce();
+
+            Assert.True(w.Health[unit] > Fixed.FromInt(50),
+                $"The re-applied unit lost its self-passive entirely: {w.Health[unit].Raw}");
+            Assert.Equal(w.Health[control].Raw, w.Health[unit].Raw); // pre-fix: ~8× the control's heal rate
+        }
+
+        [Fact]
+        public void SelfPassive_PermanentModifierNotReStacked_WhenTheMapperReFiresOnALiveUnit()
+        {
+            // The ApplyModifier half of the validated while_alive root shapes. ModifierStore.Apply DOES dedup by
+            // Modifier.Id — but a StackRule.Stack modifier's dedup path ADDS A STACK, so a re-fired seam multiplied
+            // the passive's stat bonus. DW-300 skips the whole re-run instead.
+            var (host, reg) = NewHost(PassiveTestAbilities.IronSkin());
+            EntityWorld w = host.World;
+            UnitDefinition def = PassiveDef(reg, "ironclad", "iron_skin");
+            Fixed oneStack = Fixed.FromInt(PassiveTestAbilities.IronSkinArmorPerStack);
+
+            int unit = w.Create(V(0, 0, 0), Faction.Player1, Fixed.FromInt(100), Fixed.Zero);
+            w.ApplyUnitDefinition(unit, def);
+            host.StepOnce(); // ModifierSystem[4] recomputes EffectiveArmor from BaseArmor + the modifier bonus
+            Assert.Equal(oneStack.Raw, w.EffectiveArmor[unit].Raw);
+
+            for (int i = 0; i < 3; i++) w.ApplyUnitDefinition(unit, def); // live re-apply, ×3
+            host.StepOnce();
+
+            Assert.Equal(1, host.Modifiers.CountAt(unit));
+            Assert.Equal(1, host.Modifiers.StackCountAt(unit, 0));      // pre-fix: 4 (MaxStacks) — and _stackCount IS folded
+            // The mapper re-mirrored BaseArmor(0) → EffectiveArmor on every re-apply; the skipped install re-derives it
+            // from the untouched accumulator, so the passive is still worth EXACTLY one stack (pre-fix: 4 × +4 = +16).
+            Assert.Equal(oneStack.Raw, w.EffectiveArmor[unit].Raw);
+        }
+
+        [Fact]
+        public void SelfPassive_ReInstalls_AfterTheInstalledInstanceIsGone()
+        {
+            // The guard must be a live-instance probe, NOT a one-shot latch: once the installed instance is gone
+            // (death/recycle → ClearEntity, or an explicit removal), a re-apply must install it AGAIN.
+            var (host, reg) = NewHost(PassiveTestAbilities.IronSkin());
+            EntityWorld w = host.World;
+            UnitDefinition def = PassiveDef(reg, "ironclad", "iron_skin");
+
+            int unit = w.Create(V(0, 0, 0), Faction.Player1, Fixed.FromInt(100), Fixed.Zero);
+            w.ApplyUnitDefinition(unit, def);
+            Assert.Equal(1, host.Modifiers.CountAt(unit));
+
+            host.Modifiers.RemoveByModifierId(unit, PassiveTestAbilities.IronSkinModifierId); // the instance is gone
+            Assert.Equal(0, host.Modifiers.CountAt(unit));
+
+            w.ApplyUnitDefinition(unit, def); // nothing to duplicate → the install must run
+            Assert.Equal(1, host.Modifiers.CountAt(unit));
+            host.StepOnce();
+            Assert.Equal(Fixed.FromInt(PassiveTestAbilities.IronSkinArmorPerStack).Raw, w.EffectiveArmor[unit].Raw);
+        }
+
+        [Fact]
+        public void HostsInstanceFrom_IsFalse_ForAnUnrelatedPassiveOnTheSameHost()
+        {
+            // Identity teeth: the probe matches the SPECIFIC root (Persistent by descriptor reference, ApplyModifier by
+            // Modifier.Id) — it must never suppress a DIFFERENT passive just because the host already carries one.
+            var (host, reg) = NewHost(PassiveTestAbilities.FurnaceTrickle(), PassiveTestAbilities.IronSkin());
+            EntityWorld w = host.World;
+
+            int unit = w.Create(V(0, 0, 0), Faction.Player1, Fixed.FromInt(100), Fixed.Zero);
+            w.ApplyUnitDefinition(unit, PassiveDef(reg, "regen_unit", "furnace_trickle")); // Persistent installed
+            Assert.Equal(1, host.Modifiers.CountAt(unit));
+
+            // A morph to a def whose while-alive passive is a DIFFERENT ability → not a duplicate → it installs.
+            w.ApplyUnitDefinition(unit, PassiveDef(reg, "ironclad", "iron_skin"));
+            Assert.Equal(2, host.Modifiers.CountAt(unit));
+
+            Assert.True(host.Modifiers.HostsInstanceFrom(unit, reg.Get(reg.IndexOf("furnace_trickle")).EffectGraph));
+            Assert.True(host.Modifiers.HostsInstanceFrom(unit, reg.Get(reg.IndexOf("iron_skin")).EffectGraph));
+            Assert.False(host.Modifiers.HostsInstanceFrom(unit, null));           // null root → never a duplicate
+            Assert.False(host.Modifiers.HostsInstanceFrom(9999, null));           // out-of-range id → no throw
+            // A root shape the probe does not recognize (here a bare Damage leaf) fails OPEN — the caller installs
+            // exactly as it did before the probe existed.
+            Assert.False(host.Modifiers.HostsInstanceFrom(unit, PassiveTestAbilities.OnHitSearing().EffectGraph));
+        }
+
         // ── Decision #6 — the armor term (DamageResolver) ────────────────────────────────────────────────────
 
         [Fact]

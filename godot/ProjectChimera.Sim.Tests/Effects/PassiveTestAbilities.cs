@@ -56,5 +56,27 @@ namespace ProjectChimera.Sim.Tests.Effects
             Id = "furnace_trickle", DisplayName = "Furnace Trickle", Targeting = "Self", Activation = "while_alive",
             EffectGraph = new PersistentEffect(null, new HealEffect(Fixed.FromInt(2)), null, 5, 256),
         };
+
+        /// <summary>The modifier id <see cref="IronSkin"/> installs (no collision with <see cref="AuraModifierId"/>).</summary>
+        public const int IronSkinModifierId = 2002;
+
+        /// <summary>The flat armor bonus <see cref="IronSkin"/> grants per installed stack.</summary>
+        public const int IronSkinArmorPerStack = 4;
+
+        /// <summary>
+        /// iron_skin (DW-300): activation WhileAlive, Self targeting, a PERMANENT <c>ApplyModifier</c>
+        /// (duration_ticks −1) carrying +4 armor — the OTHER validated while_alive root shape (the validator allows
+        /// exactly "a permanent ApplyModifier OR a Persistent"; <see cref="FurnaceTrickle"/> covers the Persistent
+        /// half). Deliberately <see cref="StackRule.Stack"/> (MaxStacks 4) so a DUPLICATED install is visible as a
+        /// multiplied <c>EffectiveArmor</c> rather than a silent duration refresh. Used only by the DW-300
+        /// re-apply-idempotence tests — it is NOT in any golden scenario.
+        /// </summary>
+        public static AbilityDefinition IronSkin() => new AbilityDefinition
+        {
+            Id = "iron_skin", DisplayName = "Iron Skin", Targeting = "Self", Activation = "while_alive",
+            EffectGraph = new ApplyModifierEffect(new Modifier(
+                IronSkinModifierId, -1, StackRule.Stack, 4, Fixed.Zero, Fixed.Zero, Fixed.Zero,
+                StatusFlags.None, null, 0, Fixed.FromInt(IronSkinArmorPerStack))),
+        };
     }
 }

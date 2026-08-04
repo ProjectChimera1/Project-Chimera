@@ -228,6 +228,18 @@ namespace ProjectChimera.Effects
         /// (the seam fires once per <see cref="EntityWorld.ApplyUnitDefinition"/>); reverted by
         /// <c>ModifierStore.ClearEntity</c> on death (the OnDestroy subscriber). No spatial needed — a while_alive root
         /// is an <c>ApplyModifier</c>/<c>Persistent</c>, never a <c>SearchArea</c> (the validator guarantees it).
+        ///
+        /// <para><b>DW-300 — idempotent against a LIVE re-apply.</b> "Once per spawn" used to rest entirely on the
+        /// precondition that every <see cref="EntityWorld.ApplyUnitDefinition"/> caller runs on a FRESH
+        /// <c>Create</c>/<c>RestoreUnit</c> slot (whose modifiers <c>ClearEntity</c> already wiped). A future in-place
+        /// re-apply on a living unit — an upgrade/morph/tech re-map — re-fires this seam, and neither install path
+        /// self-dedups: a <c>Persistent</c> root lands a SECOND concurrent DoT/HoT in a new slot (8 re-applies exhaust
+        /// the per-entity ring and evict real buffs), and a <c>StackRule.Stack</c> <c>ApplyModifier</c> root re-adds
+        /// its stat deltas. So the install is now GUARDED: if this entity already hosts what this passive's root would
+        /// install (<see cref="ModifierStore.HostsInstanceFrom"/>), the re-run is skipped outright — a true no-op that
+        /// touches no folded field, never a "refresh" (re-arming the pulse schedule on every re-apply could stall the
+        /// cadence indefinitely). A genuine spawn is unaffected: a fresh slot hosts nothing, so the probe is false and
+        /// the install runs exactly as before — no golden moves.</para>
         /// </summary>
         public void InstallSelfPassive(EntityWorld world, int id)
         {
@@ -244,6 +256,16 @@ namespace ProjectChimera.Effects
             }
             if (idx < 0) return;
             AbilityDefinition passive = _registry.Get(idx);
+            // DW-300 install-once guard — see the <para> above. Fails OPEN on any unrecognized root shape. The skip
+            // re-derives Effective* first: ApplyUnitDefinition just re-mirrored Base*→Effective* (discarding every
+            // installed modifier's contribution), and ModifierSystem.Tick only recomputes entities something DIRTIED —
+            // which, before this guard, only the duplicate install itself happened to do. Unreachable on a genuine
+            // spawn (a fresh slot hosts nothing), so no live tick and no golden observes it.
+            if (_modifiers.HostsInstanceFrom(id, passive.EffectGraph))
+            {
+                _modifiers.RecomputeEffectiveStats(id);
+                return;
+            }
             var ctx = new EffectContext(world, casterId: id, primaryTargetId: id, casterFaction: world.FactionOf[id],
                                         _damageTable, spatial: null, _events, _stats, modifierStore: _modifiers, deaths: _deaths,
                                         alliances: _alliances); // Story 9.14: team-aware self-passive Ally/Enemy filter
