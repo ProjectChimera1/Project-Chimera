@@ -410,7 +410,10 @@ namespace ProjectChimera.UI
                 if (string.Equals(p.Id, s.LlmProvider, StringComparison.Ordinal)) selectedProvider = i;
             }
             _providerSelect.Select(selectedProvider);
-            _providerSelect.ItemSelected += _ => { RefreshModelList(); UpdateAiStatusLine(); };
+            // DW-368: keys are stored per provider, so switching provider also refreshes the key field — the
+            // placeholder must reflect whether THAT provider has a stored key, and a typed-but-unsaved key belonged
+            // to the previously-shown provider and must not be carried over to be saved under the new one.
+            _providerSelect.ItemSelected += _ => { RefreshModelList(); RefreshApiKeyField(); UpdateAiStatusLine(); };
             v.AddChild(_providerSelect);
 
             // Model picker (curated) + free-text override.
@@ -433,7 +436,7 @@ namespace ProjectChimera.UI
             var keyRow = new HBoxContainer();
             keyRow.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
             _apiKeyInput = ChimeraComponents.Input(
-                (_secretStore?.Has(SecretIds.Llm) ?? false) ? "•••••••• (key stored — type to replace)" : "paste your API key");
+                (_secretStore?.Has(SelectedProviderSecretId()) ?? false) ? "•••••••• (key stored — type to replace)" : "paste your API key");
             _apiKeyInput.Secret = true;
             _apiKeyInput.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             keyRow.AddChild(_apiKeyInput);
@@ -541,13 +544,41 @@ namespace ProjectChimera.UI
             return _settings.Current.LlmModel;
         }
 
+        /// <summary>DW-368: the PER-PROVIDER secret id for the provider currently shown in the picker (falling back
+        /// to the persisted provider when the picker isn't built/selected yet). Every read/write of the API key in
+        /// this panel routes through this id — never the legacy shared <c>llm</c> id — so a key entered while one
+        /// provider is selected can never be stored for, or sent to, another provider.</summary>
+        private string SelectedProviderSecretId()
+        {
+            string providerId = _settings.Current.LlmProvider;
+            if (_providerSelect != null)
+            {
+                int idx = Math.Max(0, _providerSelect.Selected);
+                if (idx < LlmProviderCatalog.Providers.Count)
+                    providerId = LlmProviderCatalog.Providers[idx].Id;
+            }
+            return SecretIds.ForLlmProvider(providerId);
+        }
+
+        /// <summary>DW-368: re-sync the key field with the provider now selected — blank any typed-but-unsaved key
+        /// (it belonged to the previously-shown provider) and show whether THIS provider has a stored key.</summary>
+        private void RefreshApiKeyField()
+        {
+            if (_apiKeyInput == null) return;
+            _apiKeyInput.Text = "";
+            _apiKeyInput.PlaceholderText = (_secretStore?.Has(SelectedProviderSecretId()) ?? false)
+                ? "•••••••• (key stored — type to replace)"
+                : "paste your API key";
+        }
+
         private void OnClearKeyPressed()
         {
-            _secretStore?.Clear(SecretIds.Llm);
+            string secretId = SelectedProviderSecretId();
+            _secretStore?.Clear(secretId);
             _apiKeyInput.Text = "";
             _apiKeyInput.PlaceholderText = "paste your API key";
             UpdateAiStatusLine();
-            GD.Print("[Settings] Cleared stored LLM key.");
+            GD.Print($"[Settings] Cleared stored LLM key '{secretId}'.");
         }
 
         private void OnTestConnectionPressed()
@@ -560,10 +591,14 @@ namespace ProjectChimera.UI
             // the field populated so the creator can fix a typo. Both the Test AND the Clear-key buttons are disabled
             // below for the duration, so no concurrent secret-store mutation (a Clear on the main thread while the
             // background probe reads/restores the key) can race or undo the restore.
+            // DW-368: the key lives under the PER-PROVIDER id of the provider being probed. The id is captured ONCE
+            // here and passed through to CompleteTest, so the async restore targets the same id even if the creator
+            // switches provider while the probe is in flight (the provider picker is not disabled during the test).
+            string secretId   = SelectedProviderSecretId();
             string typedKey   = _apiKeyInput.Text.Trim();
             bool   keyEntered = typedKey.Length > 0;
-            string priorKey   = _secretStore.Get(SecretIds.Llm);
-            if (keyEntered) _secretStore.Set(SecretIds.Llm, typedKey);
+            string priorKey   = _secretStore.Get(secretId);
+            if (keyEntered) _secretStore.Set(secretId, typedKey);
 
             SettingsData snapshot = BuildAiSettingsSnapshot();
             _testBtn.Disabled     = true;
@@ -584,20 +619,21 @@ namespace ProjectChimera.UI
                 catch (OperationCanceledException) { return; }
                 catch (Exception) { state = AiAvailability.Unreachable; }
                 // Marshal the UI update back onto the Godot main thread.
-                Callable.From(() => CompleteTest(state, keyEntered, typedKey, priorKey)).CallDeferred();
+                Callable.From(() => CompleteTest(state, secretId, keyEntered, typedKey, priorKey)).CallDeferred();
             });
         }
 
-        private void CompleteTest(AiAvailability state, bool keyEntered, string typedKey, string priorKey)
+        private void CompleteTest(AiAvailability state, string secretId, bool keyEntered, string typedKey, string priorKey)
         {
             // The secret-store restore touches no UI, so it must run even if the panel was freed mid-test: a FAILED
             // test must never leave the unverified probe key persisted in place of a previously-valid one, regardless
-            // of whether the panel is still around to update its field.
+            // of whether the panel is still around to update its field. DW-368: the restore targets the SAME
+            // per-provider id the probe wrote (captured at press time), never a re-resolved one.
             bool verified = keyEntered && state == AiAvailability.Healthy;
             if (keyEntered && !verified)
             {
-                if (priorKey.Length > 0) _secretStore?.Set(SecretIds.Llm, priorKey);
-                else                     _secretStore?.Clear(SecretIds.Llm);
+                if (priorKey.Length > 0) _secretStore?.Set(secretId, priorKey);
+                else                     _secretStore?.Clear(secretId);
             }
 
             if (!IsInstanceValid(this)) return;
@@ -621,13 +657,14 @@ namespace ProjectChimera.UI
         }
 
         /// <summary>Write the API key to the secret store IFF the creator typed one (a blank field keeps the stored
-        /// key untouched). Never persists the key to settings.json.</summary>
+        /// key untouched). Never persists the key to settings.json. DW-368: the key is stored under the id of the
+        /// provider currently selected in the picker — the provider it was typed for.</summary>
         private void PersistApiKeyIfEntered()
         {
             if (_secretStore == null) return;
             string typed = _apiKeyInput.Text.Trim();
             if (typed.Length == 0) return;
-            _secretStore.Set(SecretIds.Llm, typed);
+            _secretStore.Set(SelectedProviderSecretId(), typed);
             _apiKeyInput.Text = "";
             _apiKeyInput.PlaceholderText = "•••••••• (key stored — type to replace)";
         }

@@ -8,8 +8,10 @@ namespace ProjectChimera.AI.Providers
     /// <summary>
     /// Story 8.2 — the single construction site for an <see cref="ILLMProvider"/>. Resolves the provider from the
     /// catalog, the base URL (settings override else the catalog default), the model, and the key
-    /// (<see cref="ISecretStore.Get"/> with <see cref="SecretIds.Llm"/> — never an <c>[Export]</c> field or
-    /// <see cref="SettingsData"/>), and enforces the pinned host allowlist BEFORE any adapter is built. Emits the two
+    /// (<see cref="ISecretStore.Get"/> with the PER-PROVIDER id <see cref="SecretIds.ForLlmProvider"/> — never an
+    /// <c>[Export]</c> field or <see cref="SettingsData"/>, and never the legacy shared <see cref="SecretIds.Llm"/>
+    /// id, so a key stored for one provider is never sent to another's endpoint — DW-368), and enforces the pinned
+    /// host allowlist BEFORE any adapter is built. Emits the two
     /// synchronous unavailable states (<see cref="AiAvailability.NoProvider"/>/<see cref="AiAvailability.NoKey"/>)
     /// rather than throwing. Godot-free / unit-testable.
     /// </summary>
@@ -43,10 +45,13 @@ namespace ProjectChimera.AI.Providers
             string providerId = info!.Id;
 
             // 2. Key: cloud providers require one from the secret store; ollama (local) needs none.
+            //    DW-368: the key is read under the PER-PROVIDER id (llm_anthropic / llm_openrouter / …), never the
+            //    legacy shared "llm" id — a key stored for provider A must never reach provider B's endpoint. A
+            //    provider whose per-provider key is absent is NoKey even if another provider has a stored key.
             string key = "";
             if (RequiresKey(providerId))
             {
-                key = secretStore?.Get(SecretIds.Llm) ?? "";
+                key = secretStore?.Get(SecretIds.ForLlmProvider(providerId)) ?? "";
                 if (string.IsNullOrEmpty(key))
                 {
                     failure = AiAvailability.NoKey;
@@ -94,5 +99,46 @@ namespace ProjectChimera.AI.Providers
         /// provider requires a key iff it is not the local (loopback) ollama.</summary>
         public static bool RequiresKey(string providerId)
             => !string.Equals(providerId, "ollama", StringComparison.Ordinal);
+
+        /// <summary>
+        /// DW-368 — one-time MOVE of the legacy shared <see cref="SecretIds.Llm"/> secret onto the per-provider id
+        /// it belongs to. The shared key was stored for the provider the creator had selected when they saved it
+        /// (Test-connection verified it against that provider), so it migrates to
+        /// <paramref name="selectedProviderId"/>'s id when that provider requires a key; when the selected provider
+        /// needs no key (ollama) or is unknown, it falls back to <see cref="LlmProviderCatalog.DefaultProviderId"/>
+        /// (Anthropic — the id's documented historical owner). The legacy id is ALWAYS cleared on migration — leaving
+        /// it would let a later boot under a different selected provider re-migrate the same key there, re-creating
+        /// the exact cross-provider key reuse this closes. An already-set per-provider key is never overwritten (the
+        /// stale shared duplicate is discarded).
+        ///
+        /// <para>Returns <c>true</c> iff a legacy shared key existed and was consumed. Fail-soft (mirrors
+        /// <see cref="SecretMigration.MigrateLegacyKey"/>): this runs during bootstrap, so a store failure must never
+        /// throw out of here and abort scene load. Idempotent — the first call clears the legacy id, so a second call
+        /// returns <c>false</c>.</para>
+        /// </summary>
+        public static bool MigrateLegacySharedKey(ISecretStore? store, string? selectedProviderId)
+        {
+            if (store == null) return false;
+            try
+            {
+                string legacy = store.Get(SecretIds.Llm);
+                if (string.IsNullOrEmpty(legacy)) return false;   // nothing to migrate
+
+                string owner = selectedProviderId != null
+                               && LlmProviderCatalog.TryGet(selectedProviderId, out _)
+                               && RequiresKey(selectedProviderId)
+                    ? selectedProviderId
+                    : LlmProviderCatalog.DefaultProviderId;
+
+                string target = SecretIds.ForLlmProvider(owner);
+                if (!store.Has(target)) store.Set(target, legacy);
+                store.Clear(SecretIds.Llm);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
     }
 }

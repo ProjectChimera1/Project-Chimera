@@ -102,7 +102,13 @@ namespace ProjectChimera.Sim.Tests.AI
 
         public FakeSecretStore(string? llmKey = null)
         {
-            if (!string.IsNullOrEmpty(llmKey)) _map[SecretIds.Llm] = llmKey!;
+            // DW-368: LLM keys are stored PER PROVIDER (SecretIds.ForLlmProvider). The convenience ctor seeds the
+            // given key under EVERY catalog provider's id so fixtures that only mean "a key exists for whichever
+            // provider the test selects" keep that meaning. Tests exercising the per-provider ROUTING itself build
+            // their store state explicitly via Set(SecretIds.ForLlmProvider(...), ...) instead.
+            if (!string.IsNullOrEmpty(llmKey))
+                foreach (var p in LlmProviderCatalog.Providers)
+                    _map[SecretIds.ForLlmProvider(p.Id)] = llmKey!;
         }
 
         public string Get(string id) => _map.TryGetValue(id, out string? v) ? v : "";

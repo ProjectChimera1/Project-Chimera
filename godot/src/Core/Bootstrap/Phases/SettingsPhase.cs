@@ -25,9 +25,12 @@ namespace ProjectChimera.Core.Bootstrap
             // itself is Godot-free. Migrate any legacy plaintext key on first run — both legacy values are "" in this
             // repo (the [Export] AnthropicApiKey/ModIoApiKey fields were removed), so these are forward-compatible
             // seams, no-ops today. Both keys get a migration call so the seam is symmetric with SecretMigration's
-            // contract (which names both fields), not just the LLM key.
+            // contract (which names both fields), not just the LLM key. DW-368: the LLM seam targets the ANTHROPIC
+            // per-provider id — the legacy [Export] field was literally AnthropicApiKey, and LLM keys are now stored
+            // per provider (llm_<providerId>), never under one shared id.
             var secretStore = new FileSecretStore(ProjectSettings.GlobalizePath("user://secrets"));
-            SecretMigration.MigrateLegacyKey(secretStore, SecretIds.Llm, "");
+            SecretMigration.MigrateLegacyKey(
+                secretStore, SecretIds.ForLlmProvider(LlmProviderCatalog.DefaultProviderId), "");
             SecretMigration.MigrateLegacyKey(secretStore, SecretIds.ModIo, "");
             _ctx.SecretStore = secretStore;
 
@@ -48,6 +51,12 @@ namespace ProjectChimera.Core.Bootstrap
             var settingsMgr = new UI.SettingsManager();
             _ctx.Scene.AddChild(settingsMgr);
             _ctx.SettingsMgr = settingsMgr;
+
+            // DW-368: one-time MOVE of a legacy shared "llm" secret onto the per-provider id of the provider the
+            // creator had selected when it was stored. Needs the persisted provider choice, so it runs right after
+            // SettingsManager._Ready loaded settings.json (AddChild above fires _Ready synchronously) and BEFORE the
+            // SettingsPanel below builds its per-provider key placeholder. No-op when no shared key exists.
+            AI.Providers.LlmProviderFactory.MigrateLegacySharedKey(secretStore, settingsMgr.Current.LlmProvider);
 
             // SettingsPanel: layer 15, toggled via Escape key.
             var settingsPanel = new UI.SettingsPanel();
