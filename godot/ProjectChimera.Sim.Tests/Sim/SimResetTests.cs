@@ -186,10 +186,11 @@ namespace ProjectChimera.Sim.Tests.Sim
         }
 
         // ── DW-193: ClearForReset + re-apply re-seeds the folded TriggerEnabledStore NON-ADDITIVELY ─────────────
-        // TriggerEnabledStore.Clear() only zeroes Count — the _enabled buffer keeps its stale flags. Non-additivity
-        // comes entirely from the re-apply's LoadScenario → Reset(count) all-true re-seed, which SetInitial then
-        // overwrites with the authored per-trigger state. The disable must actually have taken effect BEFORE the
-        // reset or the assertion has no teeth.
+        // Non-additivity comes from the re-apply's LoadScenario → Reset(count) all-true re-seed, which SetInitial
+        // then overwrites with the authored per-trigger state. (Since DW-197, Clear() also wipes the _enabled
+        // buffer and Reset() wipes any stale tail — the shrink-path coverage lives in
+        // TriggerEnabledStoreBoundsTests; this test pins the same-count round-trip.) The disable must actually
+        // have taken effect BEFORE the reset or the assertion has no teeth.
 
         [Fact]
         public void ClearForReset_ThenReapplyTriggerCarryingScenario_ReseedsEnabledMaskNonAdditively()
