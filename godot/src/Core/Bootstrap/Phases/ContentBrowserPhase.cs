@@ -61,7 +61,10 @@ namespace ProjectChimera.Core.Bootstrap
             string extractDir = ProjectSettings.GlobalizePath($"user://imported_maps/{manifest.Id}/");
             try
             {
-                var result = ContentPackager.Unpack(zipPath, extractDir);
+                // DW-426: clean the import dir first so a stale/orphan asset from a prior same-Id import (or a
+                // failed extraction) can never survive into — and be ingested alongside — this package's verified
+                // materialization (FactionVisualsPhase ingests only the manifest.json Unpack seals into this dir).
+                var result = ContentPackager.Unpack(zipPath, extractDir, cleanExtractDir: true);
 
                 // Copy scenario into the project's scenarios resource directory.
                 string destScenario = ProjectSettings.GlobalizePath(
