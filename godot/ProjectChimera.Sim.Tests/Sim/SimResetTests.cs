@@ -105,37 +105,7 @@ namespace ProjectChimera.Sim.Tests.Sim
 
             // ── TEETH: the fight preconditions must actually have held, or the reproduction below is vacuous. ──
             Assert.Equal(N, run1.Count); // an unfired checksum sink yields an EMPTY sequence, which compares as "same"
-
-            int inFlight = CombatResetScenario.LiveProjectiles(host);
-            Assert.True(inFlight > 0,
-                "Precondition failed: no projectile is in flight at reset time — the fixture went hitscan (check " +
-                "Delivery = AttackDelivery.Projectile) or the shots already landed, so this test proves nothing.");
-            // …and one must actually have LANDED. ProjectileStore is unfolded, so projectiles reach the checksum ONLY
-            // via the damage they deal. If every shot is still airborne when sampling stops, the projectile half of
-            // this guard contributes nothing to the sequence comparison. The P2 targets take damage exclusively from
-            // the P1 projectile attackers, so a dented target IS a folded impact. BOTH halves must hold.
-            Assert.True(host.World.Health[CombatResetScenario.Target1] <
-                        host.World.EffectiveMaxHealth[CombatResetScenario.Target1],
-                "Precondition failed: no projectile has LANDED on Target1 within the sampled window — projectiles are " +
-                "not folded into SimChecksum directly, so with no impact the projectile path pins nothing. Raise " +
-                "CombatResetScenario's ProjectileSpeed or lengthen N.");
-            Assert.True(host.World.AbilityCooldownTicks[CombatResetScenario.CasterAbilitySlot0] > 0,
-                "Precondition failed: the caster's ability cooldown is not ticking — the cast never went through.");
-            Assert.True(host.World.EffectiveAttackDamage[CombatResetScenario.Caster] >
-                        host.World.BaseAttackDamage[CombatResetScenario.Caster],
-                "Precondition failed: battle_fury's modifier is not installed on the caster at reset time.");
-            Assert.True(host.World.Health[CombatResetScenario.Attacker1] < host.World.EffectiveMaxHealth[CombatResetScenario.Attacker1],
-                "Precondition failed: no damage was landed — CombatSystem never engaged.");
-            // The SECOND attacker/target pair too: the fixture creates four combatants, and asserting only pair 1
-            // would let pair 2 sit inert (out of range, never acquiring) while this guard still passed — half the
-            // fixture silently contributing nothing to the run it claims to reproduce.
-            Assert.True(host.World.Health[CombatResetScenario.Target2] <
-                        host.World.EffectiveMaxHealth[CombatResetScenario.Target2],
-                "Precondition failed: Target2 is undamaged — the second attacker/target pair never engaged, so only " +
-                "half the fighting fixture is actually exercised.");
-            Assert.True(host.World.Health[CombatResetScenario.Attacker2] <
-                        host.World.EffectiveMaxHealth[CombatResetScenario.Attacker2],
-                "Precondition failed: Attacker2 is undamaged — Target2 never returned fire.");
+            AssertFightPreconditionsHeld(host, "run1 (the pre-reset host)");
 
             host.ClearForReset();
 
@@ -160,9 +130,59 @@ namespace ProjectChimera.Sim.Tests.Sim
             Assert.Equal(N, run2.Count);
             Assert.Equal(N, run0.Count);
 
+            // ── DW-198: the SAME fight preconditions must hold on BOTH remaining hosts. Asserting them against
+            //    run1 alone leaves a hole: a fixture change that goes inert exclusively on the re-apply path
+            //    (Populate on a just-cleared host) or the fresh-boot path would leave run2/run0 quietly empty
+            //    fights whose checksum sequences still "agree" with each other — three sequences proving nothing
+            //    about the reset. Each host must have genuinely FOUGHT for the comparisons below to have teeth. ──
+            AssertFightPreconditionsHeld(host,  "run2 (the post-reset re-populated host)");
+            AssertFightPreconditionsHeld(host0, "run0 (the independent fresh boot)");
+
             AssertSameSequence(run0, run1, "two fresh fighting boots disagree (the fixture is nondeterministic)");
             AssertSameSequence(run1, run2, "clear + re-apply did NOT reproduce the fighting run");
             AssertSameSequence(run0, run2, "the post-reset fighting run diverges from a fresh boot");
+        }
+
+        /// <summary>
+        /// DW-198 — the DW-20 fight preconditions, extracted so they run against EVERY host the fighting-reset
+        /// keystone compares (pre-reset run1, post-reset run2, fresh-boot run0), not the pre-reset host alone.
+        /// Call AFTER the host has run its sampled window. Verifies the fixture actually fought on <paramref name="host"/>:
+        /// a projectile in flight AND one landed, the cast committed (cooldown ticking + battle_fury installed),
+        /// and BOTH attacker/target pairs exchanging damage. <paramref name="run"/> names the failing host.
+        /// </summary>
+        private static void AssertFightPreconditionsHeld(SimulationHost host, string run)
+        {
+            int inFlight = CombatResetScenario.LiveProjectiles(host);
+            Assert.True(inFlight > 0,
+                $"Precondition failed on {run}: no projectile is in flight at sampling end — the fixture went " +
+                "hitscan (check Delivery = AttackDelivery.Projectile) or the shots already landed, so this test " +
+                "proves nothing.");
+            // …and one must actually have LANDED. ProjectileStore is unfolded, so projectiles reach the checksum ONLY
+            // via the damage they deal. If every shot is still airborne when sampling stops, the projectile half of
+            // this guard contributes nothing to the sequence comparison. The P2 targets take damage exclusively from
+            // the P1 projectile attackers, so a dented target IS a folded impact. BOTH halves must hold.
+            Assert.True(host.World.Health[CombatResetScenario.Target1] <
+                        host.World.EffectiveMaxHealth[CombatResetScenario.Target1],
+                $"Precondition failed on {run}: no projectile has LANDED on Target1 within the sampled window — " +
+                "projectiles are not folded into SimChecksum directly, so with no impact the projectile path pins " +
+                "nothing. Raise CombatResetScenario's ProjectileSpeed or lengthen N.");
+            Assert.True(host.World.AbilityCooldownTicks[CombatResetScenario.CasterAbilitySlot0] > 0,
+                $"Precondition failed on {run}: the caster's ability cooldown is not ticking — the cast never went through.");
+            Assert.True(host.World.EffectiveAttackDamage[CombatResetScenario.Caster] >
+                        host.World.BaseAttackDamage[CombatResetScenario.Caster],
+                $"Precondition failed on {run}: battle_fury's modifier is not installed on the caster.");
+            Assert.True(host.World.Health[CombatResetScenario.Attacker1] < host.World.EffectiveMaxHealth[CombatResetScenario.Attacker1],
+                $"Precondition failed on {run}: no damage was landed — CombatSystem never engaged.");
+            // The SECOND attacker/target pair too: the fixture creates four combatants, and asserting only pair 1
+            // would let pair 2 sit inert (out of range, never acquiring) while this guard still passed — half the
+            // fixture silently contributing nothing to the run it claims to reproduce.
+            Assert.True(host.World.Health[CombatResetScenario.Target2] <
+                        host.World.EffectiveMaxHealth[CombatResetScenario.Target2],
+                $"Precondition failed on {run}: Target2 is undamaged — the second attacker/target pair never engaged, " +
+                "so only half the fighting fixture is actually exercised.");
+            Assert.True(host.World.Health[CombatResetScenario.Attacker2] <
+                        host.World.EffectiveMaxHealth[CombatResetScenario.Attacker2],
+                $"Precondition failed on {run}: Attacker2 is undamaged — Target2 never returned fire.");
         }
 
         // ── DW-193: ClearForReset + re-apply re-seeds the folded TriggerEnabledStore NON-ADDITIVELY ─────────────
