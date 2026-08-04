@@ -116,6 +116,34 @@ namespace ProjectChimera.Multiplayer
             return null; // equal nonzero — playback allowed
         }
 
+        /// <summary>
+        /// DW-430 — the fail-closed RULESET re-gate companion to <see cref="ScenarioGateBlockReason"/>: block if
+        /// the embedded ruleset (Effect-Graph caps) hash is 0, the current build's is 0, or they differ. A replay
+        /// recorded under different ruleset caps re-executes a different effect graph and silently desyncs at the
+        /// first ruleset-sensitive effect — the exact drift class the live MP <c>MatchAgreementHash</c> rejects at
+        /// the lobby (it mixes BOTH the scenario and ruleset hashes; playback must gate on both too).
+        /// <c>RulesetHash.Compute()</c> never returns 0 (sentinel-guarded), so a 0 on either side means a
+        /// corrupt/hand-built header — fail closed. Returns <c>null</c> to ALLOW, or the human-readable BLOCK
+        /// reason to surface. Pure — no side effects — so the policy is Tier-1 unit-testable and shared by
+        /// <c>MatchLifecycleController.TryLoadReplay</c>.
+        /// </summary>
+        public static string? RulesetGateBlockReason(ulong embeddedHash, ulong currentHash)
+        {
+            if (embeddedHash == 0UL || currentHash == 0UL)
+                return "CANNOT PLAY — ruleset hash not computed!\n" +
+                       $"Replay:  0x{embeddedHash:X16}\n" +
+                       $"Build:   0x{currentHash:X16}\n" +
+                       "A hash of 0 means no valid ruleset fingerprint.";
+
+            if (embeddedHash != currentHash)
+                return "RULESET MISMATCH — cannot play this replay!\n" +
+                       $"Replay:  0x{embeddedHash:X16}\n" +
+                       $"Build:   0x{currentHash:X16}\n" +
+                       "This replay was recorded on a build with different Effect-Graph ruleset caps.";
+
+            return null; // equal nonzero — playback allowed
+        }
+
         // ── Construction ──────────────────────────────────────────────────────────
 
         /// <summary>

@@ -309,6 +309,25 @@ namespace ProjectChimera.Core.Bootstrap
                     return;
                 }
 
+                // ── DW-430: fail-closed RULESET re-gate (companion to the scenario gate above) ──
+                // The v4 header has always embedded rulesetHash, but it was read and never compared — a replay
+                // recorded under different Effect-Graph caps passed the scenario gate and silently desynced at the
+                // first ruleset-sensitive effect. Mirror the live MP MatchAgreementHash, which mixes BOTH the
+                // scenario and ruleset hashes: recompute this build's RulesetHash and refuse on any drift.
+                string? rulesetReason = ReplayPlayer.RulesetGateBlockReason(player.RulesetHash, RulesetHash.Compute());
+                if (rulesetReason != null)
+                {
+                    GD.PrintErr($"[Replay] Refused to play '{filePath}':\n{rulesetReason}");
+                    if (_ctx.ReplayStatusLabel != null)
+                    {
+                        _ctx.ReplayStatusLabel.Text    = "REPLAY REFUSED (ruleset mismatch)";
+                        _ctx.ReplayStatusLabel.Visible = true;
+                    }
+                    _ctx.Scene.ShowReplayLoadError(rulesetReason); // P6 — surface the reason, never silently inert
+                    _ctx.ReplayPlayer = null; // do not enter Play — zero ticks stepped
+                    return;
+                }
+
                 _ctx.ReplayPlayer = player;
                 _ctx.ReplayPlayer.OnRequestPath       = (id, x, z) => _ctx.FlowFieldBridge.RequestPath(id, new Vector3(x, 0f, z));
                 _ctx.ReplayPlayer.OnRequestAttackMove = (id, x, z) => _ctx.FlowFieldBridge.RequestAttackMove(id, new Vector3(x, 0f, z));

@@ -157,6 +157,28 @@ namespace ProjectChimera.Sim.Tests.Golden
             Assert.NotNull(ReplayPlayer.ScenarioGateBlockReason(0UL, 0UL));              // both 0 → block
         }
 
+        /// <summary>DW-430 — the fail-closed RULESET re-gate companion (the v4 header's rulesetHash was read but
+        /// never compared): equal nonzero allows; a mismatch or either-hash-0 blocks with a surfaced reason —
+        /// mirroring MatchAgreementHash, which folds BOTH the scenario and ruleset hashes into the live MP gate.</summary>
+        [Fact]
+        public void RulesetReGate_MismatchIsRejected()
+        {
+            Assert.Null(ReplayPlayer.RulesetGateBlockReason(0x1234UL, 0x1234UL));        // equal nonzero → allow
+            Assert.NotNull(ReplayPlayer.RulesetGateBlockReason(0x1234UL, 0x5678UL));     // mismatch → block
+            Assert.NotNull(ReplayPlayer.RulesetGateBlockReason(0UL, 0x5678UL));          // embedded 0 → block
+            Assert.NotNull(ReplayPlayer.RulesetGateBlockReason(0x1234UL, 0UL));          // current 0 → block
+            Assert.NotNull(ReplayPlayer.RulesetGateBlockReason(0UL, 0UL));               // both 0 → block
+
+            // The block reason names the drift class (a ruleset problem, not a scenario one).
+            Assert.Contains("RULESET", ReplayPlayer.RulesetGateBlockReason(0x1234UL, 0x5678UL)!);
+
+            // The REAL build fingerprint self-gates: a replay recorded on THIS build's ruleset plays on this build
+            // (RulesetHash.Compute is sentinel-guarded nonzero, pinned by RulesetHashTests), and a drifted one blocks.
+            ulong current = RulesetHash.Compute();
+            Assert.Null(ReplayPlayer.RulesetGateBlockReason(current, current));
+            Assert.NotNull(ReplayPlayer.RulesetGateBlockReason(current ^ 0x1UL, current));
+        }
+
         /// <summary>Story 9.11 — a v1/v2/v3 file (no embedded scenario hash) is HARD-REJECTED with a descriptive
         /// "older replay format" error and never partially played.</summary>
         [Theory]

@@ -149,7 +149,10 @@ namespace ProjectChimera.Core
         private bool _replayPaused;
         private int  _replaySpeed = 1;   // sim ticks stepped per frame (1/2/4/8)
         private int  _replaySeekTo = -1; // >=0 → fast render-free re-sim to this tick, then clear
-        private int  _replayPerspective = -1; // -1 = reveal-all; 0..N-1 = roster[i] fog viewer
+        /// <summary>DW-431: the pure view-perspective state machine (-1 = reveal-all; 0..N-1 = roster[i] fog
+        /// viewer) — extracted so the begin/cycle/end-of-session transitions are Tier-1 testable; MainScene keeps
+        /// only the Fog/FogBridge side effects.</summary>
+        private readonly ReplayPerspectiveState _replayView = new();
 
         /// <summary>Max sim ticks the seek-forward advances per frame (P4): a bounded batch so a long seek advances
         /// over several frames instead of freezing the window on the main thread. 240 ticks = 8 s of sim/frame.</summary>
@@ -1278,10 +1281,10 @@ namespace ProjectChimera.Core
         /// after a successful <c>TryLoadReplay</c>): playing at 1x, reveal-all perspective, no pending seek.</summary>
         public void BeginReplayPlaybackSession()
         {
-            _replayPaused      = false;
-            _replaySpeed       = 1;
-            _replaySeekTo      = -1;
-            _replayPerspective = -1;
+            _replayPaused = false;
+            _replaySpeed  = 1;
+            _replaySeekTo = -1;
+            _replayView.BeginSession();
             if (_ctx.FogBridge != null) _ctx.FogBridge.RevealAll = true;
         }
 
@@ -1308,19 +1311,16 @@ namespace ProjectChimera.Core
         public void ReplayCyclePerspective()
         {
             var rp = _ctx.ReplayPlayer;
-            int n = rp?.Roster.Length ?? 0;
-            int next = _replayPerspective + 1;
-            if (next >= n) next = -1; // wrap back to reveal-all
-            _replayPerspective = next;
+            int perspective = _replayView.Cycle(rp?.Roster.Length ?? 0); // DW-431: pure decision, side effects below
 
-            if (_replayPerspective < 0)
+            if (perspective < 0)
             {
                 if (_ctx.FogBridge != null) _ctx.FogBridge.RevealAll = true;
             }
             else
             {
                 if (_ctx.FogBridge != null) _ctx.FogBridge.RevealAll = false;
-                _ctx.Fog.SetViewer(rp!.Roster[_replayPerspective]);
+                _ctx.Fog.SetViewer(rp!.Roster[perspective]);
             }
         }
 
@@ -1328,9 +1328,9 @@ namespace ProjectChimera.Core
         private string CurrentPerspectiveLabel()
         {
             var rp = _ctx.ReplayPlayer;
-            if (_replayPerspective < 0 || rp == null || _replayPerspective >= rp.Roster.Length)
+            if (_replayView.Perspective < 0 || rp == null || _replayView.Perspective >= rp.Roster.Length)
                 return "Reveal All";
-            return rp.Roster[_replayPerspective].ToString();
+            return rp.Roster[_replayView.Perspective].ToString();
         }
 
         public override void _Process(double delta)
@@ -1397,6 +1397,15 @@ namespace ProjectChimera.Core
                         _ctx.ReplayPlayer = null;
                         if (_ctx.ReplayStatusLabel != null) _ctx.ReplayStatusLabel.Visible = false;
                         _ctx.ReplayControls?.SetActive(false);
+                        // DW-431: a viewer who cycled to a single-player perspective must not be left with that
+                        // player's fog-of-war baked onto the frozen final frame until F5 / return-to-Edit — reset
+                        // the perspective and restore the reveal-all end-of-replay view (the session default the
+                        // spectator/elimination paths also use), and retarget the fog viewer to the offline
+                        // Player1 default so no stale roster faction lingers. View-only — Fog/FogBridge are never
+                        // folded into SimChecksum; the return-to-Edit seam still restores the non-replay fog.
+                        _replayView.EndSession();
+                        if (_ctx.FogBridge != null) _ctx.FogBridge.RevealAll = true;
+                        _ctx.Fog.SetViewer(Faction.Player1);
                     }
                     else
                     {
@@ -2731,9 +2740,10 @@ namespace ProjectChimera.Core
             _ctx.ReplayPlayer = null;
             if (_ctx.ReplayStatusLabel != null) _ctx.ReplayStatusLabel.Visible = false;
 
-            // Story 9.11: tear down the replay playback overlay + reset its control state.
+            // Story 9.11: tear down the replay playback overlay + reset its control state (DW-431: the perspective
+            // reset now goes through the pure state machine — same -1/reveal-all value as before).
             _ctx.ReplayControls?.SetActive(false);
-            _replayPaused = false; _replaySpeed = 1; _replaySeekTo = -1; _replayPerspective = -1;
+            _replayPaused = false; _replaySpeed = 1; _replaySeekTo = -1; _replayView.EndSession();
 
             // Reset spectator fog reveal + the Story 7.12 per-player defeat banner.
             if (_ctx.FogBridge != null) _ctx.FogBridge.RevealAll = false;
