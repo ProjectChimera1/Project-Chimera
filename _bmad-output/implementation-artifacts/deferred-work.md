@@ -1942,7 +1942,8 @@ origin: 7-12-review-defer
 source_spec: `spec-7-12-n-faction-victory-resolution-and-per-player-elimination.md`
 severity: medium
 reason: `WinConditionSystem.SymmetricLoss` returns false for `WinPresetKind.KingOfTheHill` and `ResolveTick` `return`s after the KotH positive-hold-win check WITHOUT falling through to `ApplyLastTeamStanding` (godot/src/Core/WinConditionSystem.cs, step (2) KotH branch). This is deliberate 7.11 hold-race parity (KotH concludes ONLY by a team reaching `hold_ticks`), and the 7.12 spec kept it (KotH is not listed in the loss pass). But now that every OTHER preset resolves a wiped-out board by elimination + last-team-standing, KotH is the lone exception: if every hill-capable unit on every team is destroyed (no team can ever hold the zone), the match hangs unresolved forever with no verdict. Extreme edge — a KotH match normally resolves by hold-time long before total mutual annihilation — and no correctness bug in the intended flow. Surfaced by the Blind Hunter and Edge Case Hunter layers (Edge Case discarded it as by-design parity). Closure = a deliberate KotH elimination/last-team-standing fallback (make fully-wiped factions eligible for total-wipeout elimination in KotH so `ApplyLastTeamStanding` can resolve a mutual-annihilation match), decided as its own change rather than perturbing the KotH hold-race semantics under review time pressure.
-status: open
+status: done 2026-08-03
+resolution: workflow burn-down bundle koth-elimination-fallback (commit 32b426f) - the KotH case of `WinConditionSystem.SymmetricLoss` now latches LOST, grace-gated like every other loss-by-absence branch, once no verdict-NONE member of the faction's TEAM has any live asset (units AND buildings), via a new `TeamFightingAlive` helper; `ApplyLastTeamStanding` then resolves the latches (sole-survivor win, or the 7.11 double-elim highest-slot tie-break, deterministic ascending-order latching). The guard is team-scoped rather than per-faction precisely to honor the decision's 'without perturbing the hold-race win path' clause (the team hold accumulator lives on the lowest-slot rep and `KothWinningTeam` only reads a verdict-NONE rep, so per-faction latching of a wiped rep with a live holding ally would orphan the counter) - the win-path code itself is untouched. 7 existing tests that modeled a live opponent as an asset-less faction now spawn a real unit outside the region; 5 new `KothEliminationFallbackTests` proven red on 4ea67a4 code. No golden, shipped scenario, or model-hash input uses KotH resolution; suite 4116/0/1 with zero golden movement. Follow-on finding filed as DW-590 (allied-KotH CONCEDE by the rep).
 decision: 2026-07-19 Add a guarded KotH last-team-standing fallback — Make fully-wiped factions eligible for total-wipeout elimination in KotH so ApplyLastTeamStanding resolves a mutual-annihilation match, without perturbing the hold-race win path.
 
 ### DW-189: ScenarioDirector.OnVictory DSL escape hatch still computes the winner as `1 - a.Faction` (2-faction-only) — a >2-faction authored victory yields a nonsensical winner slot
@@ -2142,7 +2143,8 @@ status: open
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-8-5-ai-balance-analysis-of-a-faction-scenario-with-editable-suggestions.md`
 reason: The balance-analysis tunable-field vocabulary (`BalanceSuggestionApplier.TunableFields`) omits movement `speed` (arguably the highest-leverage balance stat) and `xp_bounty`, while including cosmetic `mesh_scale`; the prompt hard-restricts the model to the set and `ValidateBalanceReport` rejects anything outside it, so a Commander cannot get a speed suggestion at all. — Evidence: `speed` was excluded because it quantizes at the `EntityWorld.Create` ctor, outside this story's `ApplyUnitDefinition`-reuse quantize contract; `xp_bounty` is nullable/derived. Closure = a product decision on whether to add `speed`/`xp_bounty` (handling `speed`'s distinct quantize path and `xp_bounty`'s derived-when-null semantics) and whether to drop `mesh_scale`. (Blind Hunter, Story 8.5 review.)
-status: open
+status: done 2026-08-03
+resolution: workflow burn-down bundle balance-tunable-vocabulary (commit 71dcf08) - implemented the recorded 2026-07-30 decision 'add speed only, drop mesh_scale', which overrides the worklist's '(and xp_bounty)': xp_bounty deliberately stays out. `BalanceSuggestionApplier.TunableFields` plus the `SetField` writer and `TryReadField` reader switches gained `speed` and lost `mesh_scale`, and the quantize-contract doc was corrected: speed quantizes at the existing `EntityWorld.Create` ctor arg, the same single load-time float-to-Fixed boundary every spawn site uses, so an applied speed hashes identically to a hand-authored one. The prompt builder and `ValidateBalanceReport` enumerate the shared set so they picked the change up with no edit. 9 red-without-fix regression tests (vocabulary pin, apply-on-clone, out-of-range reject, mesh_scale now not-tunable, reader parity, quantize parity at the Create boundary, validator accept/reject, prompt contents); suite 4120/0/1, no sim arrays, SimChecksum inputs, goldens, or hashes touched.
 decision: 2026-07-30 Add speed only, drop mesh_scale — Focus on real balance levers, cut cosmetic
 
 ### DW-383: ScenarioDirector `defeat` action resolves the winner as `OnVictory(1 - a.Faction)`, a 1v1-only "other faction…
@@ -2217,7 +2219,8 @@ resolution: Bundle merged-tick-applier-pooling (workflow burn-down 2026-08-03) -
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-9-3-server-authoritative-merged-tick-rewrite-build-client-gate-spectator-chat-n-2-fr-39-golden-gate.md`
 reason: The server's hard-reject arm for a client-sent `PacketType.TickCommandsMerged` logs via `GD.PrintErr` on every occurrence with no rate-limit or disconnect-on-repeat, so a malicious/buggy client can spam merged-shaped packets and flood the server log (a soft log-write DoS) while the work is also doubled by the builder re-rejecting the same packet. — Evidence: DedicatedServer.HandlePacket merged-reject case (unthrottled GD.PrintErr per packet). Low severity on a reliable/authenticated ENet channel, but a server-authoritative posture should bound attacker-triggerable log writes. Closure = rate-limit the log and/or disconnect a peer after N protocol violations (a general per-peer misbehavior counter that also covers the faction-spoof and over-count drop paths).
-status: open
+status: done 2026-08-03
+resolution: workflow burn-down bundle dedicated-server-log-and-rate-limit - added the Godot-free `Server.ProtocolViolationTracker` (per-peer counter, logs the 1st then every 128th violation, reset on slot recycle) and routed every misbehavior arm through it: the `TickCommandsMerged` merged-spoof reject, undecodable `Chat`/`LobbyChat`/`MapPing` (MapPing was fully silent before), and the previously-silent `MergedTickBuilder.Submit` fan-in drops (the faction-spoof/over-count paths this entry names, which also makes the DW-393 stalled-merge freeze diagnosable server-side). Auto-disconnect-after-N was deliberately NOT added - the ledger's 'and/or' alternative; the bundle intent names only the counter plus bounded logs. Same commit as DW-434.
 
 ### DW-393: A client-triggered drop of an intermediate tick's bundle (faction spoof / over-count / malformed →…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -2236,25 +2239,29 @@ resolution: workflow burn-down bundle godot-free-seam-test-extraction — new Se
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-9-4-server-dictated-adaptive-input-delay-start-state-agreement-protocol-version-rulesethash-gates.md`
 reason: The dedicated server's Pong handler folds any Pong into the per-slot RTT EWMA without checking the ping seq, unlike the client's seq-guarded HandlePong. — Evidence: A stale/duplicate Pong within the 10s sanity window is accepted as a fresh sample = serverNow - oldSenderMs, inflating the per-slot RTT and over-dictating delay (bounded by the [2,12] clamp); asymmetric with the client's LockstepManager.HandlePong seq check.
-status: open
+status: done 2026-08-03
+resolution: workflow burn-down bundle dedicated-server-rtt-and-delay-frontier (commit ad75754) - the RTT probe now lives in the Godot-free `DelayController`: `NextPingSeq` + `RecordPong` fold only the seq-matched echo of the outstanding probe, once per slot per probe, with a pre-first-ping forgery guard - client-symmetric with `LockstepManager.HandlePong`. Pinned by stale/duplicate/forged-pong regression tests. Known bound recorded as DW-593: a player whose RTT exceeds the 1 s ping interval contributes no samples (identical envelope to the pre-existing client-side guard).
 
 ### DW-396: Server RTT clock-width mismatch (uint ping timestamp vs ulong subtraction) silently freezes delay adaptation after…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-9-4-server-dictated-adaptive-input-delay-start-state-agreement-protocol-version-rulesethash-gates.md`
 reason: Server RTT clock-width mismatch (uint ping timestamp vs ulong subtraction) silently freezes delay adaptation after ~49.7-day server uptime. — Evidence: Ping stamps (uint)Time.GetTicksMsec() (wraps at 2^32 ms) but the Pong RTT subtracts against the full-width ulong clock; past ~49.7 days every sample reads ~4.3e6 ms and is rejected by the >10000ms filter, so the server-dictated delay stays frozen at INPUT_DELAY with no error.
-status: open
+status: done 2026-08-03
+resolution: workflow burn-down bundle dedicated-server-rtt-and-delay-frontier (commit ad75754) - the RTT delta is now wrap-safe uint arithmetic, so adaptation no longer freezes after ~49.7 days of server uptime; the same-class client mirror in `LockstepManager` was fixed too. Pinned by a 2^32 clock-wrap test.
 
 ### DW-397: The start-state agreement gate and DelayController ACK/RTT indexing assume ready players occupy dense slots…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-9-4-server-dictated-adaptive-input-delay-start-state-agreement-protocol-version-rulesethash-gates.md`
 reason: The start-state agreement gate and DelayController ACK/RTT indexing assume ready players occupy dense slots [0,expected); a non-contiguous layout false-HALTs or wedges delay-commit. — Evidence: ServerLobbyPolicy.CheckStartStateAgreement reads perSlotHash[0..expected) and DelayController indexes by slot<Expected; a ready player at slot>=expected reads a default-0 hash (false StartStateDisagreement) and drops its ACK (AllAcked never true). Only reachable once MAX_PLAYERS>2 (Story 9.7/9.15), which the 9.4 Never-list excludes — flagged as latent for that work.
-status: open
+status: done 2026-08-03
+resolution: workflow burn-down bundle dedicated-server-rtt-and-delay-frontier (commit ad75754) - RTT/ACK state is now indexed by transport slot over an explicit active-slot mask via a new `DelayController` slot-map ctor, and `ServerLobbyPolicy` gained a `CheckStartStateAgreement` overload over the actual ready-player slot list (fail-closed on empty/out-of-range slots); `DedicatedServer` hoists one `arrivalSlots` list and feeds the gate, the roster freeze, and the delay authority from it. Covered by sparse-slot-map and sparse-gate-vs-dense-false-HALT-contrast regression tests. NOTE: the rest of the match pipeline (`AssignedRoster.TryFreeze`, `MergedTickBuilder`, `DropController`, `FrozenSlotInjector`/SLOT_FACTION) is still dense-slot-indexed and fails closed on a sparse layout - filed as DW-592 for the Story 9.15 work. The evidence clause above also names the wrong false-HALT reason (it surfaces as ProtocolMismatch, not StartStateDisagreement) - filed as DW-594.
 
 ### DW-398: DedicatedServer does not reset _readyHash/_readyVersion on the start-state agreement-fail branch, leaving stale…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-9-4-server-dictated-adaptive-input-delay-start-state-agreement-protocol-version-rulesethash-gates.md`
 reason: DedicatedServer does not reset _readyHash/_readyVersion on the start-state agreement-fail branch, leaving stale per-slot agreement data across a subsequent Ready. — Evidence: On agreement failure the server broadcasts HALT and sets _state=BothReady without clearing the per-slot hash/version; benign today (HALT is terminal for clients, no retry path) but a latent trap once reconnect/re-ready (9.6) exists.
-status: open
+status: done 2026-08-03
+resolution: workflow burn-down bundle dedicated-server-rtt-and-delay-frontier (commit ad75754) - both start-gate fail branches now wipe the per-slot hash/version/ready state via a new `ResetAgreement`, so no stale agreement data survives into a subsequent Ready; pinned by an agreement-wipe regression test.
 
 ### DW-399: No end-to-end integration test drives a server DelayDirective through the client CommitDelayChange gap-seed and…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -2266,13 +2273,15 @@ status: open
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-9-4-server-dictated-adaptive-input-delay-start-state-agreement-protocol-version-rulesethash-gates.md`
 reason: The DelayController directive/all-N-ACK state machine has no ACK timeout or recovery; a lost ACK or a player dropping while a directive is pending leaves _pending stuck forever, silently disabling adaptive delay for the rest of the match. — Evidence: _pending only clears via Commit, which needs AllAcked over the fixed Expected slot set. Reliable transport means a lost ACK only occurs on disconnect (Story 9.6 domain, excluded by the 9.4 Never-list), but the fail-silent stall — no re-send, no timeout, no Expected re-count — is worth an explicit recovery pass when 9.6 lands.
-status: open
+status: done 2026-08-03
+resolution: workflow burn-down bundle dedicated-server-rtt-and-delay-frontier (commit ad75754) - `DeactivateSlot` excuses a dropped-and-frozen slot from both the ACK quorum and the RTT dictate (wired into the DropAck freeze-commit), `TryFinalizePending` commits a directive completed by survivor ACKs, and `CheckAckTimeout` (300 frontier ticks) force-commits a directive wedged by a still-connected non-ACKer - safe because the reliable transport guarantees delivery, and the maturity gate is still withheld. Covered by drop-excuse-finalize and timeout-bounds tests.
 
 ### DW-401: DedicatedServer's delay-frontier fields (_latestSeenTick, _sincePing, _pingSeq) are not reset when…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-9-4-server-dictated-adaptive-input-delay-start-state-agreement-protocol-version-rulesethash-gates.md`
 reason: DedicatedServer's delay-frontier fields (_latestSeenTick, _sincePing, _pingSeq) are not reset when _delayController is rebuilt at match start, so a second match in one process computes applyAtTick from a stale (large) frontier and the first adaptive-delay directive schedules at an unreachable tick. — Evidence: _delayController is reconstructed on entry to InGame but the sibling instance fields are never zeroed alongside it. No live path today (a match is one-shot per server process), so latent — but it silently breaks adaptive delay the moment match-restart/reconnect (9.6) is added. Reset them where _delayController is constructed, or pin the one-shot assumption.
-status: open
+status: done 2026-08-03
+resolution: workflow burn-down bundle dedicated-server-rtt-and-delay-frontier (commit ad75754) - `_latestSeenTick`/`_sincePing` are now reset beside the controller rebuild at match start, and the probe seq resets implicitly because it moved into the rebuilt `DelayController` (DW-395). Pinned by a rebuilt-controller probe-reset test.
 
 ### DW-402: The client-side PROTOCOL_VERSION gates (LobbyUi inbound-Hello block and the peer-Ready version block) have no…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -2491,7 +2500,8 @@ seen-again: 2026-08-03 (workflow burn-down bundle dw-minority-halt-quorum-rebase
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `{implementation_artifacts}/spec-9-13-per-client-command-rate-throttle-anti-spam-on-the-dedicated-server.md`
 reason: Only inbound `TickCommands` packets are rate-limited; the other client-sendable dispatch cases on the dedicated server (`Chat`, `LobbyChat`, `Ping`, `DelayAck`, `DropAck`, `Checksum`, and unknown/malformed types) have no per-client throttle, and `Chat`/`LobbyChat` each `BroadcastReliable` to every peer — an amplifying flood vector the command-rate throttle does not cover. — Evidence: `DedicatedServer.HandlePacket`'s `switch (type)` gates only the `TickCommands` arm through `CommandRateLimiter`; every sibling case is unthrottled (pre-existing — none had a limiter before 9.13). Out of scope for 9.13 (a "command-rate throttle" scoped to the command stream, anti-spam not anti-cheat, trusted-friends EA), but a genuine server-wide anti-DoS gap. Closure = a shared per-slot receive-edge limiter applied across the client-sendable packet types (Chat/LobbyChat first, given their broadcast amplification).
-status: open
+status: done 2026-08-03
+resolution: workflow burn-down bundle dedicated-server-log-and-rate-limit - `CommandRateLimiter` was parameterized with a cap/window ctor (command-stream defaults byte-identical; all 10 pre-existing limiter tests pass unchanged) and a shared `MAX_RECEIVE_PER_WINDOW = 120` instance now gates the TOP of `DedicatedServer.HandlePacket`: one per-slot budget across all client-sendable types including the Chat/LobbyChat/MapPing broadcast amplifiers and unknown/malformed bytes, alive from the lobby phase (the match-scoped 9.13 limiter only starts at InGame), reset on connect, silent-drop with a `RATE_LIMIT_LOG_EVERY`-bounded diagnostic. Cap derivation is documented and test-pinned: 2x the command cap, >=2.7x margin over production (~42 pkt/s) and the loopback self-test (~41 pkt/s). Nothing enters the sim/builder/SimChecksum; zero goldens moved. Gate: godot.csproj builds (pre-existing warnings only), suite 4125/0/1 = baseline 4111 + exactly the 14 new tests (8 ProtocolViolationTrackerTests + 6 new CommandRateLimiterTests), single run, no flake; ProjectChimera.Sim.Analysis clean on the new/edited files. NOTE: limiter-dropped commands are themselves a DW-393-class freeze trigger - filed as DW-591.
 decision: 2026-07-28 correct-course — scheduled follow-up review rides Story 15.5
 
 ### DW-200: Host-side (ENet DedicatedServer) StartGame identity enforcement + deterministic in-match deployment of the attested online hero
@@ -4718,4 +4728,44 @@ origin: workflow burn-down run, 2026-08-03
 location: godot/src/AI/Providers/LlmProviderFactory.cs (allowlist rejection, step 4)
 severity: low
 reason: The same honest-UX defect class DW-370 fixed for ollama, but on the cloud arm: anthropic/openrouter with a base-URL override pointing at a non-allowlisted host (e.g. https://evil.example.com) returns NoProvider, whose microcopy claims no provider is configured rather than naming the pinned-host allowlist rejection - so a typo'd or tampered base URL reads as 'unconfigured' and the creator edits the wrong field. Deliberately not fixed in the `ollama-host-restriction-messaging` bundle: the recorded 2026-07-30 decision covers only the ollama loopback restriction, and the existing test BaseUrlOverride_ToNonAllowlistedHost_ReturnsNoProvider pins today's cloud classification. Closure = voice it with HostRestricted-style copy naming the pinned host (the security policy itself must not widen), which means re-pinning that test.
+status: open
+
+### DW-590: Allied-KotH concede by the team REP orphans the rep-keyed hold accumulator
+
+origin: workflow burn-down run, 2026-08-03
+location: godot/src/Core/WinConditionSystem.cs - UpdateKothCounters/TeamRep + KothWinningTeam
+severity: medium
+reason: Pre-existing Story 11.2 x 7.12 interaction, NOT introduced or worsened by the DW-188 bundle: if the lowest-slot (rep) faction of an allied team latches LOST via CONCEDE while a live ally keeps sole-holding the zone, `UpdateKothCounters` keeps accruing hold ticks on the LOST rep (`TeamRep` ignores verdicts) but `KothWinningTeam` only reads verdict-NONE factions, so the ally's hold can never reach the win and the match hangs. Fixing it means touching the hold-race WIN path (e.g. re-repping to the lowest verdict-NONE member, which moves folded `KothHoldTicks` values) - exactly what the DW-188 decision said not to perturb - and concede-with-teams semantics deserve their own decision. The DW-188 wipeout fallback deliberately avoids this class via its team-scoped guard. Closure = a design decision on allied-KotH concede semantics, then a hold-race-path change with an explicit golden/checksum review.
+status: open
+
+### DW-591: Rate-limiter drops of a live player's TickCommands are a DW-393-class freeze trigger not named by DW-393
+
+origin: workflow burn-down run, 2026-08-03
+location: godot/src/Multiplayer/DedicatedServer.cs (HandlePacket receive-edge gate + TickCommands arm), godot/src/Multiplayer/Server/MergedTickBuilder.cs
+severity: low
+reason: A command packet dropped by either limiter - the Story 9.13 command cap or the new DW-434 receive-edge cap - is never resupplied by the client, so that tick's fan-in stays incomplete forever: the same permanent no-HALT merge stall DW-393 tracks for `Submit`-false drops, but reached through a door DW-393 does not name. Pre-existing shipped envelope since Story 9.13 (both caps sit far above legitimate rates, trusted-friends EA), so there is no live exposure today. Closure = DW-393's Story-9.6 freeze-policy fold (force-emit the missing slot, or a terminal HALT) must cover the limiter-drop trigger as well, not just the builder-reject trigger; explicitly out of scope for the dedicated-server-log-and-rate-limit bundle.
+status: open
+
+### DW-592: Rest of the match pipeline is still dense-slot-indexed; AssignedRoster.TryFreeze hard-rejects sparse maps
+
+origin: workflow burn-down run, 2026-08-03
+location: godot/src/Multiplayer/Server/AssignedRoster.cs:66 (also MergedTickBuilder, DropController, FrozenSlotInjector/SLOT_FACTION)
+severity: medium
+reason: DW-397 named only the ACK/RTT indexing and the start-state agreement gate, and the burn-down bundle fixed exactly those. `AssignedRoster.TryFreeze` still requires arrival slots to cover exactly 0..playerCount-1, so a genuinely sparse layout (Story 9.15 open-slot lobbies) fails closed at roster freeze today - nothing can silently misbehave, which is why this is latent rather than a live bug - but 9.15 will need the same slot-map treatment across the `MergedTickBuilder` sub-bundles, the `DropController` survivor sets, and the `FrozenSlotInjector` SLOT_FACTION stamping. Story-sized change, out of scope for the dedicated-server-rtt-and-delay-frontier bundle.
+status: open
+
+### DW-593: Seq-guarded server probe never folds RTT for a player whose RTT exceeds the 1 s ping interval
+
+origin: workflow burn-down run, 2026-08-03
+location: godot/src/Multiplayer/Server/DelayController.cs - RecordPong seq guard
+severity: low
+reason: Matching the client's `LockstepManager.HandlePong` semantics (the DW-395 ask) means an echo that arrives after the next probe was issued is always superseded, so a player with a sustained RTT above the 1000 ms ping interval contributes no samples at all and the server keeps the last committed delay for them. Identical envelope to the pre-existing client-side guard, and far beyond MAX_DELAY's ~400 ms usable range, so this is a recorded known bound rather than a defect - filed so a future ping-interval or multi-outstanding-probe change re-examines it. Closure = either accept and document on the protocol, or track more than one outstanding probe per slot.
+status: open
+
+### DW-594: DW-397's ledger evidence line names the wrong false-HALT reason (ProtocolMismatch, not StartStateDisagreement)
+
+origin: workflow burn-down run, 2026-08-03
+location: _bmad-output/implementation-artifacts/deferred-work.md - DW-397 evidence clause
+severity: low
+reason: The dense agreement gate's false HALT on an unoccupied slot actually surfaced as `ProtocolMismatch` - the slot's default version 0 trips the version-first check - not `StartStateDisagreement` as DW-397's evidence stated (its 0 hash would equally disagree one check later). The behavior is fixed either way by the dedicated-server-rtt-and-delay-frontier bundle, so this is documentation accuracy only, and it matters because the wrong reason string would send a future reader hunting the wrong check. The dev bundle could not correct it because the dev phase must not edit the ledger. Closure = correct that one evidence clause in DW-397.
 status: open
