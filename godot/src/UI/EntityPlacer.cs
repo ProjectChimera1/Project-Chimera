@@ -423,7 +423,16 @@ namespace ProjectChimera.UI
 
             // Story 6.6: R rotates the armed placement's yaw by a step (visual-only; excluded from every checksum) and
             // re-rotates the props in the current selection. The tooltip states rotation is visual-only.
-            if (editMode && key.Keycode == Key.R && !key.CtrlPressed)
+            // Only claim R when there is actually something to rotate. R is DOUBLE-BOUND: MainScene binds it to the
+            // Visual Tech Tree Editor (Story 4.6) on the strength of a comment claiming "verified unused — no other
+            // Key.R check anywhere in src/", which is false — this handler is the other one. Because _Input runs
+            // before MainScene's _UnhandledInput and this branch called SetInputAsHandled unconditionally, R was
+            // swallowed here every time and the Tech Tree Editor was UNREACHABLE by its documented hotkey (confirmed
+            // in-engine 2026-08-04: pressing R in Edit mode opened nothing). Rotating with no ghost and no prop
+            // selection was a no-op anyway, so falling through in that case costs nothing and gives the key back.
+            // NB _placementActive, not `_ghost != null`: CancelPlacement only HIDES the ghost (it stays allocated for
+            // re-arming), so a null-check reads "armed" forever and would keep swallowing R after a cancel.
+            if (editMode && key.Keycode == Key.R && !key.CtrlPressed && (_placementActive || HasPropSelection()))
             {
                 _placementRot = Mathf.Wrap(_placementRot + ROT_STEP, 0f, Mathf.Tau);
                 if (_ghost != null) _ghost.RotateY(ROT_STEP); // spin the ghost preview
@@ -2083,6 +2092,16 @@ namespace ProjectChimera.UI
         }
 
         // ── R-key rotation of selected props (one history pair; visual-only) ───
+
+        /// <summary>True when the current selection holds at least one prop — i.e. R has something to rotate. Mirrors
+        /// <see cref="RotateSelectedProps"/>'s own filter so the two can never disagree about whether R is meaningful.</summary>
+        private bool HasPropSelection()
+        {
+            PruneSelection();
+            foreach (var s in _selection)
+                if (s.Category == Selected.Kind.Prop && s.PropHandle is ScenarioProp) return true;
+            return false;
+        }
 
         private void RotateSelectedProps(float step)
         {
