@@ -13,7 +13,12 @@ namespace ProjectChimera.UI
     ///        UNEXPLORED → opaque black  (alpha 210)
     ///        EXPLORED   → dim overlay   (alpha 110)
     ///        VISIBLE    → transparent   (alpha 0)
+    ///        Per-cell alpha decided by MinimapFogPolicy.FogAlpha — DW-406: honors the spectator RevealAll flag
+    ///        (mirrored from FogOfWarBridge via SetRevealAll), so a fully-revealed 3D view never sits over a
+    ///        fogged minimap.
     ///   3. DotOverlay (Control) — crisp faction-colored dots for live units and buildings.
+    ///        Gated by MinimapFogPolicy.ShouldDrawDot — DW-408: enemy dots draw only where the local fog is
+    ///        currently VISIBLE (own dots always), so the minimap leaks nothing the main view hides.
     ///   4. Border drawn by MinimapBridge._Draw().
     ///
     /// Click-to-pan: LMB on the minimap instantly pans the RTS camera pivot to the
@@ -57,10 +62,8 @@ namespace ProjectChimera.UI
         /// click-to-pan branches for the rest of the gesture so a ping never doubles as a camera jump.</summary>
         private bool _pingGesture;
 
-        // Fog alpha values (R=G=B=0, only alpha varies)
-        private const byte FOG_UNEXPLORED = 210;
-        private const byte FOG_EXPLORED   = 110;
-        private const byte FOG_VISIBLE    = 0;
+        // Fog alpha values live in MinimapFogPolicy (DW-406/DW-408) — the Godot-free policy core shared with Tier-1
+        // tests, so the texture mapping, the dot gate, and their regression net cannot drift apart.
 
         // ── Sim + presentation references ─────────────────────────────────────
 
@@ -77,6 +80,17 @@ namespace ProjectChimera.UI
 
         /// <summary>Story 9.5: inject the live local-faction getter (see <see cref="MinimapPhase"/>).</summary>
         public void SetLocalFaction(System.Func<Faction> getter) => _localFaction = getter;
+
+        // DW-406: whether the local view is fully revealed (match-start spectator, or the local player eliminated and
+        // spectating out the match). Late-bound to FogOfWarBridge.RevealAll by MinimapPhase so EVERY site that flips
+        // the 3D overlay's reveal — spectator match start, local-elimination spectate, and the reset back to false —
+        // automatically drives the minimap fog AND the dot gate too. Defaults to false (normal fogged play), keeping
+        // any un-wired instance byte-identical to the pre-DW-406 fogged read.
+        private System.Func<bool> _revealAll = () => false;
+
+        /// <summary>DW-406: inject the reveal-all getter (mirrors <c>FogOfWarBridge.RevealAll</c>; wired by
+        /// <see cref="MinimapPhase"/>).</summary>
+        public void SetRevealAll(System.Func<bool> getter) => _revealAll = getter;
 
         // ── Godot nodes ───────────────────────────────────────────────────────
 
@@ -293,15 +307,11 @@ namespace ProjectChimera.UI
             int    gridSize = FogOfWarSystem.GRID_SIZE;
             byte[] grid     = _fog.Grid;
             int    cells    = gridSize * gridSize;
+            bool   revealAll = _revealAll(); // DW-406: hoisted — invariant across this frame's texture fill
 
             for (int i = 0; i < cells; i++)
             {
-                byte alpha = grid[i] switch
-                {
-                    FogOfWarSystem.VISIBLE  => FOG_VISIBLE,
-                    FogOfWarSystem.EXPLORED => FOG_EXPLORED,
-                    _                       => FOG_UNEXPLORED, // UNEXPLORED or unknown
-                };
+                byte alpha   = MinimapFogPolicy.FogAlpha(grid[i], revealAll);
                 int px       = i * 4;
                 _fogData[px]     = 0;     // R
                 _fogData[px + 1] = 0;     // G
@@ -323,25 +333,33 @@ namespace ProjectChimera.UI
 
         internal void DrawDots(Control canvas)
         {
-            Faction me = _localFaction(); // hoist out of the per-entity loops (invariant across this draw)
+            Faction me       = _localFaction(); // hoist out of the per-entity loops (invariant across this draw)
+            bool matchRevealed = _revealAll();  // DW-406/DW-408: ditto — one read per draw
             int cap = _world.HighWaterMark;
             for (int i = 0; i < cap; i++)
             {
                 if (!_world.IsAlive(i)) continue;
-                Vector2 px = WorldToMinimap(
-                    _world.Position[i].X.ToFloat(),
-                    _world.Position[i].Z.ToFloat());
-                Color col = _world.FactionOf[i] == me ? P1_COLOR : P2_COLOR;
+                float wx = _world.Position[i].X.ToFloat();
+                float wz = _world.Position[i].Z.ToFloat();
+                bool  own = _world.FactionOf[i] == me;
+                // DW-408: enemy dots draw only where the local fog currently SEES (own dots always; spectator
+                // reveal-all and a fog-free minimap draw everything) — the minimap respects the main view's vision.
+                if (!MinimapFogPolicy.ShouldDrawDot(own, matchRevealed, _fog, wx, wz)) continue;
+                Vector2 px = WorldToMinimap(wx, wz);
+                Color col = own ? P1_COLOR : P2_COLOR;
                 canvas.DrawCircle(px, UNIT_RADIUS, col);
             }
 
             for (int i = 0; i < _buildings.Count; i++)
             {
                 if (!_buildings.Alive[i]) continue;
-                Vector2 px = WorldToMinimap(
-                    _buildings.Position[i].X.ToFloat(),
-                    _buildings.Position[i].Z.ToFloat());
-                Color col = _buildings.FactionOf[i] == me ? P1_COLOR : P2_COLOR;
+                float wx = _buildings.Position[i].X.ToFloat();
+                float wz = _buildings.Position[i].Z.ToFloat();
+                bool  own = _buildings.FactionOf[i] == me;
+                // DW-408: same gate for buildings — an unscouted enemy base must not pre-print on the minimap.
+                if (!MinimapFogPolicy.ShouldDrawDot(own, matchRevealed, _fog, wx, wz)) continue;
+                Vector2 px = WorldToMinimap(wx, wz);
+                Color col = own ? P1_COLOR : P2_COLOR;
                 canvas.DrawRect(
                     new Rect2(px - Vector2.One * BLDG_RADIUS, Vector2.One * BLDG_RADIUS * 2f),
                     col);
