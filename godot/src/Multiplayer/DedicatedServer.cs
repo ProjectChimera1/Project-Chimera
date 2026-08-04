@@ -113,9 +113,30 @@ namespace ProjectChimera.Multiplayer
         /// slot on connect so a recycled slot never inherits the prior occupant's count.</summary>
         private Server.CommandRateLimiter? _rateLimiter;
 
-        /// <summary>Story 9.13: rate-limit at which the throttled-drop diagnostic is printed — one line per this many
-        /// dropped packets per slot, never one line per drop (keeps a flood from spamming the server console).</summary>
+        /// <summary>Story 9.13: rate-limit at which a throttled-drop diagnostic is printed — one line per this many
+        /// dropped packets per slot, never one line per drop (keeps a flood from spamming the server console).
+        /// Shared by the command-throttle (9.13) and receive-edge-throttle (DW-434) diagnostics.</summary>
         private const long RATE_LIMIT_LOG_EVERY = 128;
+
+        /// <summary>DW-434: the SHARED per-slot receive-edge throttle across ALL client-sendable packet types (the
+        /// Story-9.13 <see cref="_rateLimiter"/> gates only the TickCommands arm; Chat/LobbyChat/MapPing each
+        /// <c>BroadcastReliable</c> to every peer — an amplifying flood the command throttle never saw). Gates the
+        /// TOP of <see cref="HandlePacket"/>, so pings/acks/checksums and unknown/malformed types are bounded too.
+        /// Alive from construction (unlike the match-scoped <see cref="_rateLimiter"/>) because LobbyChat/Ready
+        /// amplification is lobby-phase; per-slot state resets on connect (recycle discipline). Anti-spam only —
+        /// its accept/drop never enters the sim, the builder, or any checksum.</summary>
+        private readonly Server.CommandRateLimiter _receiveLimiter = new Server.CommandRateLimiter(
+            ServerTransport.MAX_SLOTS, Server.CommandRateLimiter.MAX_RECEIVE_PER_WINDOW,
+            Server.CommandRateLimiter.WINDOW_MS);
+
+        /// <summary>DW-392: per-peer protocol-violation counter — bounds attacker-triggerable log writes. Every
+        /// misbehavior arm (a client-sent <c>TickCommandsMerged</c> spoof, an undecodable Chat/LobbyChat/MapPing,
+        /// a merged fan-in <c>Submit</c> drop: faction spoof / over-count / malformed / replayed tick) records here
+        /// and logs only when <see cref="Server.ProtocolViolationTracker.Record"/> says so (the 1st, then every
+        /// <see cref="Server.ProtocolViolationTracker.LOG_EVERY"/>-th) — a flood can no longer write one log line
+        /// per packet. Reset per slot on connect so a recycled slot never inherits the prior occupant's tally.</summary>
+        private readonly Server.ProtocolViolationTracker _violations =
+            new Server.ProtocolViolationTracker(ServerTransport.MAX_SLOTS);
 
         /// <summary>Story 9.6: scratch buffer for an injected empty single-faction packet (0 orders → HEADER_BYTES).
         /// Reused across pumps — the frozen-slot drain never allocates per tick.</summary>
@@ -252,6 +273,11 @@ namespace ProjectChimera.Multiplayer
             // admission count (SoA-recycle-trap discipline). Null-safe: no-op until a match's limiter exists.
             _rateLimiter?.Reset(slot);
 
+            // DW-392/DW-434: the same recycle discipline for the connection-lifetime receive-edge throttle window
+            // and the per-peer protocol-violation tally — a fresh occupant starts clean on both.
+            _receiveLimiter.Reset(slot);
+            _violations.Reset(slot);
+
             // Story 9.7 (SD-9): the player/spectator split is the DYNAMIC SlotAllocation.Classify over the per-match
             // ExpectedPlayers boundary (not the fixed MAX_PLAYERS 1v1 partition). A slot at/above the player count is
             // a spectator for THIS match.
@@ -364,6 +390,20 @@ namespace ProjectChimera.Multiplayer
 
         private void HandlePacket(int slot, byte[] data, int len, int channel)
         {
+            // DW-434: the SHARED per-slot receive-edge throttle — applied to EVERY inbound client packet BEFORE
+            // type dispatch, so all client-sendable types are bounded (the Chat/LobbyChat/MapPing broadcast
+            // amplifiers, Ping/Pong/acks, checksums, and unknown/malformed bytes), not just the TickCommands arm
+            // (whose Story-9.13 _rateLimiter still applies its tighter cap inside that arm). A non-admit is a
+            // SILENT drop (mirrors the 9.13 contract — no server→client packet, no state change) with a BOUNDED
+            // diagnostic. The clock is injected wall-clock ms, never a client-influenceable value.
+            if (!_receiveLimiter.TryAdmit(slot, (ulong)Time.GetTicksMsec()))
+            {
+                long rxDropped = _receiveLimiter.DroppedCount(slot);
+                if (rxDropped == 1 || (rxDropped > 0 && rxDropped % RATE_LIMIT_LOG_EVERY == 0))
+                    GD.Print($"[Server] Receive-edge throttle active on slot {slot} ({rxDropped} packets dropped).");
+                return;
+            }
+
             if (len < 1) return;
             var type = (PacketType)data[0];
 
@@ -460,8 +500,12 @@ namespace ProjectChimera.Multiplayer
                 case PacketType.TickCommandsMerged:
                     // Story 9.3: the merged tick is server-authored (server → client ONLY). A client that sends
                     // one is spoofing the authoritative stream — hard-reject, no state change. (The builder also
-                    // rejects it in Submit; this is the explicit dispatch-level guard.)
-                    GD.PrintErr($"[Server] Rejected merged-shaped packet from slot {slot} — TickCommandsMerged is server→client only.");
+                    // rejects it in Submit; this is the explicit dispatch-level guard.) DW-392: the reject log is
+                    // BOUNDED via the per-peer violation counter — it was one PrintErr per packet, a soft
+                    // log-write DoS a client could drive at wire rate.
+                    if (_violations.Record(slot))
+                        GD.PrintErr($"[Server] Rejected merged-shaped packet from slot {slot} — TickCommandsMerged is " +
+                                    $"server→client only ({_violations.Count(slot)} protocol violations this connection).");
                     break;
 
                 case PacketType.Checksum:
@@ -490,11 +534,13 @@ namespace ProjectChimera.Multiplayer
                             slot, SLOT_FACTION, ExpectedPlayers);
                         _transport.BroadcastReliable(TickCommandPacket.MakeChat(stamped, chatMsg));
                     }
-                    else
+                    else if (_violations.Record(slot))
                     {
                         // Story 9.3: the old relay rebroadcast raw bytes unconditionally; the re-stamp path can only
-                        // rebroadcast a chat it can decode. Log the drop so a malformed chat is observable, not silent.
-                        GD.PrintErr($"[DedicatedServer] Dropped undecodable Chat from slot {slot} ({len} bytes).");
+                        // rebroadcast a chat it can decode. Log the drop so a malformed chat is observable, not
+                        // silent. DW-392: bounded via the per-peer violation counter (was one PrintErr per packet).
+                        GD.PrintErr($"[DedicatedServer] Dropped undecodable Chat from slot {slot} ({len} bytes; " +
+                                    $"{_violations.Count(slot)} protocol violations this connection).");
                     }
                     break;
 
@@ -507,6 +553,13 @@ namespace ProjectChimera.Multiplayer
                         Faction stampedPing = Server.ServerLobbyPolicy.StampChatFaction(
                             slot, SLOT_FACTION, ExpectedPlayers);
                         _transport.BroadcastReliable(TickCommandPacket.MakeMapPing(stampedPing, pingX, pingZ));
+                    }
+                    else if (_violations.Record(slot))
+                    {
+                        // DW-392: an undecodable MapPing was previously a fully SILENT drop — count it as a protocol
+                        // violation and log BOUNDED so malformed-packet spam is observable without a per-packet write.
+                        GD.PrintErr($"[DedicatedServer] Dropped undecodable MapPing from slot {slot} ({len} bytes; " +
+                                    $"{_violations.Count(slot)} protocol violations this connection).");
                     }
                     break;
 
@@ -521,9 +574,11 @@ namespace ProjectChimera.Multiplayer
                             slot, SLOT_FACTION, ExpectedPlayers);
                         _transport.BroadcastReliable(TickCommandPacket.MakeLobbyChat(stampedLobby, lobbyMsg));
                     }
-                    else
+                    else if (_violations.Record(slot))
                     {
-                        GD.PrintErr($"[DedicatedServer] Dropped undecodable LobbyChat from slot {slot} ({len} bytes).");
+                        // DW-392: bounded via the per-peer violation counter (was one PrintErr per packet).
+                        GD.PrintErr($"[DedicatedServer] Dropped undecodable LobbyChat from slot {slot} ({len} bytes; " +
+                                    $"{_violations.Count(slot)} protocol violations this connection).");
                     }
                     break;
             }
@@ -650,6 +705,18 @@ namespace ProjectChimera.Multiplayer
                 if (tick > _latestSeenTick) _latestSeenTick = tick;
                 if (_builder.TryBuild(tick, out byte[] merged, out int mergedLen))
                     _transport.BroadcastCommands(merged, mergedLen);
+            }
+            else if (_violations.Record(fromSlot))
+            {
+                // DW-392: a fan-in drop (faction spoof / over-count / malformed / replayed-or-aliased tick /
+                // duplicate resubmit / spectator submit — MergedTickBuilder.Submit's false arms) is misbehavior a
+                // correct lockstep client never produces, and it was previously swallowed with NO log — a
+                // server-invisible grief vector (the DW-393 stalled-merge freeze would be undiagnosable). Count it
+                // per-peer and log BOUNDED (the 1st, then every LOG_EVERY-th) so it is observable without opening
+                // a log-write DoS. Only CLIENT packets route here — FrozenSlotInjector's expected idempotent
+                // Submit-false empties go straight to the builder, never through this adapter.
+                GD.PrintErr($"[Server] Dropped invalid TickCommands from slot {fromSlot} " +
+                            $"({_violations.Count(fromSlot)} protocol violations this connection).");
             }
 
             // Story 9.6: a survivor's submit just advanced the frontier — inject empties for any frozen slot so the

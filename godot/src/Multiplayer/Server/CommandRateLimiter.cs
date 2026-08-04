@@ -19,6 +19,13 @@ namespace ProjectChimera.Multiplayer.Server
     /// Everything is integer-only (no <c>float</c>/<c>double</c>, <c>System.Random</c>, <c>DateTime</c>, or
     /// <c>Dictionary</c> enumeration) and allocation-free on the hot path: per-slot parallel arrays keyed off the
     /// transport-authoritative slot, never a packet byte.
+    ///
+    /// <para>DW-434: the cap/window are now PER-INSTANCE (ctor-parameterized) so this same tested window mechanism
+    /// also serves as the dedicated server's SHARED receive-edge throttle — one
+    /// <see cref="MAX_RECEIVE_PER_WINDOW"/>-capped instance gating EVERY inbound client packet before type dispatch
+    /// (the Chat/LobbyChat/MapPing broadcast amplifiers, pings/acks/checksums, and unknown/malformed types), while
+    /// the original <see cref="MAX_COMMANDS_PER_WINDOW"/>-capped instance keeps its tighter per-arm gate on the
+    /// TickCommands command stream. The <c>(slots)</c>-only ctor is unchanged Story-9.13 behavior.</para>
     /// </summary>
     public sealed class CommandRateLimiter
     {
@@ -41,18 +48,53 @@ namespace ProjectChimera.Multiplayer.Server
         /// </summary>
         public const int MAX_COMMANDS_PER_WINDOW = 60;
 
+        /// <summary>
+        /// DW-434: cap for the SHARED receive-edge instance that gates ALL client-sendable packet types per slot at
+        /// the top of the dedicated server's dispatch (the <see cref="MAX_COMMANDS_PER_WINDOW"/> command-stream gate
+        /// still applies inside the TickCommands arm). Derivation — must sit above the worst-case COMBINED
+        /// legitimate per-slot receive rate: the command stream contributes at most its own 2×-headroom cap
+        /// (60/window); every other client-sendable type combined stays well under an equal 60 budget even at its
+        /// worst (the in-process loopback self-test's per-pump Checksums ≈20/sec — production sends one per
+        /// <c>ChecksumInterval</c>=60 ticks ≈0.5/sec — plus ~1/sec Pong echoes of the server's 1s RTT probes,
+        /// event-gated Ready/DelayAck/DropAck, and human-rate Chat/LobbyChat/MapPing ≈10/sec even mashing).
+        /// 2 × 60 = 120 keeps ≥2.7× margin over every real profile (~42/sec production, ~41/sec loopback) while
+        /// still bounding a flood (hundreds-to-thousands/sec) to 120 dispatched packets/slot/sec. A fixed window's
+        /// ≤2× boundary burst is fine for anti-spam.
+        /// </summary>
+        public const int MAX_RECEIVE_PER_WINDOW = 2 * MAX_COMMANDS_PER_WINDOW;
+
         private readonly int _slots;
+        private readonly int _maxPerWindow;      // admission cap for THIS instance (DW-434 parameterization)
+        private readonly int _windowMs;          // window length for THIS instance (DW-434 parameterization)
         private readonly long[]  _count;         // admissions in the current window, per slot
         private readonly ulong[] _windowStartMs; // ms at which the current window opened, per slot
         private readonly long[]  _dropped;       // lifetime dropped tally, per slot (diagnostic only)
 
         /// <param name="slots">Number of transport slots to track (sized to <c>ServerTransport.MAX_SLOTS</c>).</param>
         public CommandRateLimiter(int slots)
+            : this(slots, MAX_COMMANDS_PER_WINDOW, WINDOW_MS)
+        {
+        }
+
+        /// <summary>
+        /// DW-434: cap/window-parameterized ctor so the shared receive-edge instance reuses this tested mechanism
+        /// with a different budget. The <c>(slots)</c>-only ctor keeps the Story-9.13 command-stream defaults.
+        /// </summary>
+        /// <param name="slots">Number of transport slots to track (sized to <c>ServerTransport.MAX_SLOTS</c>).</param>
+        /// <param name="maxPerWindow">Max packets admitted per slot per window (≥ 1).</param>
+        /// <param name="windowMs">Fixed-window length in milliseconds (≥ 1).</param>
+        public CommandRateLimiter(int slots, int maxPerWindow, int windowMs)
         {
             if (slots < 1)
                 throw new System.ArgumentOutOfRangeException(nameof(slots), slots, "slots must be >= 1.");
+            if (maxPerWindow < 1)
+                throw new System.ArgumentOutOfRangeException(nameof(maxPerWindow), maxPerWindow, "maxPerWindow must be >= 1.");
+            if (windowMs < 1)
+                throw new System.ArgumentOutOfRangeException(nameof(windowMs), windowMs, "windowMs must be >= 1.");
 
             _slots         = slots;
+            _maxPerWindow  = maxPerWindow;
+            _windowMs      = windowMs;
             _count         = new long[slots];
             _windowStartMs = new ulong[slots];
             _dropped       = new long[slots];
@@ -61,10 +103,16 @@ namespace ProjectChimera.Multiplayer.Server
         /// <summary>Number of slots this limiter tracks.</summary>
         public int Slots => _slots;
 
+        /// <summary>Max packets admitted per slot per window for THIS instance (DW-434 parameterization).</summary>
+        public int MaxPerWindow => _maxPerWindow;
+
+        /// <summary>Fixed-window length in milliseconds for THIS instance (DW-434 parameterization).</summary>
+        public int WindowMs => _windowMs;
+
         /// <summary>
-        /// Decide whether a <c>TickCommands</c> packet from <paramref name="slot"/> at wall-clock
+        /// Decide whether a packet from <paramref name="slot"/> at wall-clock
         /// <paramref name="nowMs"/> is admitted. Returns <c>true</c> to admit (fan in), <c>false</c> to DROP
-        /// silently. An out-of-range slot always returns <c>false</c>. When at least <see cref="WINDOW_MS"/> has
+        /// silently. An out-of-range slot always returns <c>false</c>. When at least <see cref="WindowMs"/> has
         /// elapsed since the slot's window opened, the window resets (fresh count from this packet). Per-slot state
         /// is fully independent — one slot at its cap never affects another slot's admissions.
         /// </summary>
@@ -72,16 +120,16 @@ namespace ProjectChimera.Multiplayer.Server
         {
             if ((uint)slot >= (uint)_slots) return false;
 
-            // Fixed-window roll-over: the window opened at _windowStartMs[slot]; once WINDOW_MS has elapsed, start a
+            // Fixed-window roll-over: the window opened at _windowStartMs[slot]; once _windowMs has elapsed, start a
             // fresh window anchored at this packet's arrival. (Unsigned subtraction is safe: nowMs is monotonically
             // non-decreasing across a match — it is Time.GetTicksMsec() from the adapter.)
-            if (nowMs - _windowStartMs[slot] >= (ulong)WINDOW_MS)
+            if (nowMs - _windowStartMs[slot] >= (ulong)_windowMs)
             {
                 _windowStartMs[slot] = nowMs;
                 _count[slot]         = 0;
             }
 
-            if (_count[slot] < MAX_COMMANDS_PER_WINDOW)
+            if (_count[slot] < _maxPerWindow)
             {
                 _count[slot]++;
                 return true;
