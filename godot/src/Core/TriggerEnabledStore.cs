@@ -35,12 +35,15 @@ namespace ProjectChimera.Core
 
         /// <summary>Resize (grow/reuse) the buffer to <paramref name="count"/> entries and seed EVERY entry enabled.
         /// Called once per <c>LoadScenario</c> after the exec list is built; the director then seeds the authored
-        /// initial state per exec via <see cref="SetInitial"/>.</summary>
+        /// initial state per exec via <see cref="SetInitial"/>. Any reused-buffer TAIL past <paramref name="count"/>
+        /// is wiped (DW-197): a shrinking re-apply (the author deleted a trigger and re-played) must leave no stale
+        /// enabled bit behind the smaller <see cref="Count"/> for any future bound-bypassing read to observe.</summary>
         public void Reset(int count)
         {
             if (count < 0) count = 0;
             if (_enabled.Length < count) _enabled = new bool[count];
             for (int i = 0; i < count; i++) _enabled[i] = true;
+            if (_enabled.Length > count) Array.Clear(_enabled, count, _enabled.Length - count); // DW-197 — stale-tail wipe
             Count = count;
         }
 
@@ -58,14 +61,23 @@ namespace ProjectChimera.Core
             if ((uint)execIdx < (uint)Count) _enabled[execIdx] = enabled;
         }
 
-        /// <summary>True when exec <paramref name="execIdx"/> is runtime-enabled. An out-of-range index returns true
-        /// (defensive: the reset-window between <see cref="Clear"/> and the next <see cref="Reset"/> must never
-        /// wrongly SUPPRESS a trigger — the sweep already checks <c>TriggerNode.Enabled</c> too).</summary>
-        public bool IsEnabled(int execIdx) => (uint)execIdx < (uint)Count ? _enabled[execIdx] : true;
+        /// <summary>True when exec <paramref name="execIdx"/> is runtime-enabled. An out-of-range index returns
+        /// <b>false</b> (DW-197): <see cref="Count"/> is the live bound. The old defensive-true convention predates
+        /// Story 7.13 dropping the redundant authored-<c>TriggerNode.Enabled</c> check at the sweep gates — the mask
+        /// SUBSUMES the authored flag now, so in the reset-window between <see cref="Clear"/> and the next
+        /// <c>LoadScenario</c> (where the director's stale exec list still sweeps, all reads out-of-range) returning
+        /// true would FIRE stale triggers — even authored-disabled ones — into the cleared world. Quiesce instead:
+        /// the window must be inert, exactly like the Story 7.6 batch-row reset-window guard (review P8).</summary>
+        public bool IsEnabled(int execIdx) => (uint)execIdx < (uint)Count && _enabled[execIdx];
 
         /// <summary>Story 3.10-style Edit↔Play reset: empty the store (<see cref="Count"/> → 0) so a re-apply's
-        /// <see cref="Reset"/> re-seeds it non-additively. A cleared store folds NOTHING (byte-identical to a null
-        /// store) until the next <c>LoadScenario</c>.</summary>
-        public void Clear() => Count = 0;
+        /// <see cref="Reset"/> re-seeds it non-additively, and wipe the whole buffer (DW-197) so no stale enabled
+        /// bit survives for any bound-bypassing read to observe. A cleared store folds NOTHING (byte-identical to a
+        /// null store) until the next <c>LoadScenario</c>.</summary>
+        public void Clear()
+        {
+            Array.Clear(_enabled, 0, _enabled.Length); // DW-197 — stale-bit wipe, not just the count
+            Count = 0;
+        }
     }
 }
