@@ -1,5 +1,6 @@
-#nullable enable
+﻿#nullable enable
 using Godot;
+using ProjectChimera.Core.Definitions;   // EditorHotkeys — the dock is generated from the binding table
 
 namespace ProjectChimera.Core.Bootstrap
 {
@@ -74,6 +75,27 @@ namespace ProjectChimera.Core.Bootstrap
             controlsLabel.AddThemeFontSizeOverride("font_size", 12);
             uiCanvas.AddChild(controlsLabel);
             _ctx.ControlsLabel = controlsLabel;
+
+            // ── Editor dock: a VISIBLE button per creation-suite editor ──────────────────────────────────
+            // The structural half of the 2026-08-04 keymap policy. Two editors (Tech Tree, Ability) were
+            // unreachable for months because a hotkey was their ONLY entry point and a tool toggle silently ate it.
+            // Buttons are generated from EditorHotkeys.All, so a new row gets a button for free and the dock can
+            // never disagree with the keymap; each tooltip shows the chord, which is also how the bindings become
+            // discoverable at all. Edit-mode only, and it drives the SAME MainScene.ToggleEditorPanel the hotkeys do.
+            var editorDock = new HBoxContainer { Visible = false };
+            editorDock.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.CenterTop);
+            editorDock.OffsetTop = 6f;
+            editorDock.AddThemeConstantOverride("separation", 4);
+            foreach (EditorHotkey hk in EditorHotkeys.All)
+            {
+                var b = new Button { Text = hk.Label, TooltipText = $"{hk.Label} editor  ({hk.Chord})" };
+                b.AddThemeFontSizeOverride("font_size", 11);
+                EditorPanelId id = hk.Panel;                       // capture per-iteration, not the loop variable
+                b.Pressed += () => _ctx.Scene.ToggleEditorPanel(id);
+                editorDock.AddChild(b);
+            }
+            uiCanvas.AddChild(editorDock);
+            _ctx.EditorDock = editorDock;
 
             // ── Stall banner: centered at top, hidden until peer is slow ─────
             var stallBanner = new PanelContainer { Visible = false };

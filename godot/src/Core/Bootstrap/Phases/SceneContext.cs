@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using Godot;
 using ProjectChimera.AI;
 using ProjectChimera.Combat;
@@ -110,6 +110,9 @@ namespace ProjectChimera.Core.Bootstrap
         public Label          HudLabel      = null!;
         public Label          ResourceLabel = null!;
         public Label          ControlsLabel = null!;
+        /// <summary>Edit-mode dock of one button per creation-suite editor (built from EditorHotkeys.All),
+        /// so no editor is ever reachable by hotkey alone. Shown/hidden with the mode.</summary>
+        public HBoxContainer  EditorDock = null!;
         public PanelContainer StallBanner   = null!;
         public UI.CustomUiBridge CustomHud  = null!;     // CustomHudOverlay (Story 7.8 — the custom-UI read rail)
         public UI.ObjectiveLogOverlay ObjectiveLog = null!; // ObjectiveOverlay (Story 7.14 — in-match quest log, read rail)

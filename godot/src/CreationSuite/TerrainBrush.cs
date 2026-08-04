@@ -184,7 +184,7 @@ namespace ProjectChimera.CreationSuite
             if (_terrain == null || _editor == null || _gameState == null) return;
             if (_gameState.Mode != GameMode.Edit) return;
 
-            if (@event is InputEventKey key && key.Pressed && !key.Echo
+            if (@event is InputEventKey key && key.Pressed && !key.Echo && !key.CtrlPressed  // Ctrl+T = Tech Tree editor
                 && key.Keycode == Key.T)
             {
                 _brushActive = !_brushActive;
@@ -213,6 +213,8 @@ namespace ProjectChimera.CreationSuite
 
             // ── Key shortcuts ─────────────────────────────────────────────────
             if (@event is InputEventKey && ProjectChimera.UI.TextFocusGuard.IsTyping(this)) return; // hotkeys must not fire while typing
+            if (@event is InputEventKey ck && ck.Pressed && ck.CtrlPressed
+                && ck.Keycode >= Key.A && ck.Keycode <= Key.Z) return;   // Ctrl+<letter> = editor tier
             if (@event is InputEventKey key && key.Pressed && !key.Echo)
             {
                 switch (key.Keycode)

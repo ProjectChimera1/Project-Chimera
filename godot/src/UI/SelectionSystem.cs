@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using System.Collections.Generic;
 using Godot;
 using ProjectChimera.Core;
@@ -506,6 +506,9 @@ namespace ProjectChimera.UI
             }
 
             // ── Keyboard commands ─────────────────────────────────────────────────
+            // Ctrl+<LETTER> is the editor tier; Ctrl+<digit> (control-group assign) stays with selection.
+            if (@event is InputEventKey ck && ck.Pressed && ck.CtrlPressed
+                && ck.Keycode >= Key.A && ck.Keycode <= Key.Z) return;
             if (@event is InputEventKey key && key.Pressed && !key.Echo)
             {
                 int groupIndex = KeyToGroupIndex(key.Keycode);

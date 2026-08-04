@@ -124,6 +124,8 @@ namespace ProjectChimera.CreationSuite
         public override void _UnhandledInput(InputEvent @event)
         {
             if (_gameState == null || _gameState.Mode != GameMode.Edit) return;
+            if (@event is InputEventKey ck && ck.Pressed && ck.CtrlPressed
+                && ck.Keycode >= Key.A && ck.Keycode <= Key.Z) return;   // Ctrl+<letter> = editor tier
             if (@event is not InputEventKey key || !key.Pressed || key.Echo) return;
 
             if (key.Keycode == Key.K && !key.CtrlPressed) // Ctrl+K belongs to the Ability Editor

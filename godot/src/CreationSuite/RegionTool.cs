@@ -122,7 +122,7 @@ namespace ProjectChimera.CreationSuite
         {
             if (_gameState == null || _gameState.Mode != GameMode.Edit) return;
 
-            if (@event is InputEventKey key && key.Pressed && !key.Echo && key.Keycode == Key.I)
+            if (@event is InputEventKey key && key.Pressed && !key.Echo && key.Keycode == Key.I && !key.CtrlPressed) // Ctrl+I = Item editor
             {
                 _toolActive = !_dragging && !_toolActive; // never toggle mid-drag
                 if (!_toolActive) CancelDrag();
@@ -142,6 +142,8 @@ namespace ProjectChimera.CreationSuite
             if (!_toolActive || _gameState == null || _gameState.Mode != GameMode.Edit) return;
 
             if (@event is InputEventKey && ProjectChimera.UI.TextFocusGuard.IsTyping(this)) return; // hotkeys must not fire while typing
+            if (@event is InputEventKey ck && ck.Pressed && ck.CtrlPressed
+                && ck.Keycode >= Key.A && ck.Keycode <= Key.Z) return;   // Ctrl+<letter> = editor tier
             if (@event is InputEventKey key && key.Pressed && !key.Echo && key.Keycode == Key.G)
             {
                 // Review patch P9(b): ignore the grid-snap toggle mid-drag so an in-progress drag keeps a

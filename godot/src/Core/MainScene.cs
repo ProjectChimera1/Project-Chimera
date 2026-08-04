@@ -1208,87 +1208,43 @@ namespace ProjectChimera.Core
             // Story 9.7: the dev-only Edit-mode `N` lobby toggle is REMOVED — the multiplayer lobby is now reached
             // from the real MainMenu "Multiplayer" destination (MainMenuPhase.OnMultiplayer → LobbyUi.Show), not a
             // hidden keybind. `N` is now free.
-            if (key.Keycode == Key.O)
+            // ── Editor hotkeys: one dispatch, driven by the EditorHotkeys table ──────────────────────────
+            // Was twelve hand-written branches, each asserting in a comment that its key was free. Three of those
+            // assertions were false and the features died silently (Tech Tree, Ability; Research was never wired at
+            // all). The table is now the single source of truth for key + label, a Tier-1 test fails on a duplicate
+            // chord, and the editor dock builds its buttons from the same rows — so no editor can be hotkey-only.
+            EditorHotkey? bound = key.Keycode >= Key.A && key.Keycode <= Key.Z
+                ? EditorHotkeys.Find((char)key.Keycode, key.CtrlPressed)
+                : null;
+            if (bound is EditorHotkey hk)
             {
-                _ctx.ContentBrowser.ToggleVisible();
+                ToggleEditorPanel(hk.Panel);
                 GetViewport().SetInputAsHandled();
             }
-            else if (key.Keycode == Key.N && key.CtrlPressed)
+        }
+
+        /// <summary>
+        /// Open/close one creation-suite editor by id — the single place a panel handle is mapped, shared by the
+        /// hotkey dispatch and the editor dock's buttons so the two can never diverge (a dock button that opens
+        /// nothing is the same silent-death class this whole policy exists to end). A null handle means its phase
+        /// did not publish it; the call is a safe no-op rather than a crash.
+        /// </summary>
+        public void ToggleEditorPanel(EditorPanelId id)
+        {
+            switch (id)
             {
-                // Ctrl+N, not N: plain N is WaterTool's tool toggle, which consumes it first — this shortcut was
-                // dead (the browser stayed reachable only via the main menu's Replays button). WaterTool now
-                // ignores Ctrl+N to match.
-                _ctx.ReplayBrowser.ToggleVisible();
-                GetViewport().SetInputAsHandled();
-            }
-            else if (key.Keycode == Key.L)
-            {
-                _ctx.TriggerPanel.Toggle();
-                GetViewport().SetInputAsHandled();
-            }
-            else if (key.Keycode == Key.M)
-            {
-                _ctx.MapGenPanel.Toggle();
-                GetViewport().SetInputAsHandled();
-            }
-            else if (key.Keycode == Key.K && key.CtrlPressed)
-            {
-                // Ctrl+K, not K: plain K is PathabilityTool's paint-tool toggle, which runs earlier and consumes
-                // the event, so this branch NEVER fired and the Ability Editor — whose only entry point is right
-                // here — was 100% unreachable (confirmed in-engine 2026-08-04: K opened nothing, while calling
-                // Toggle() directly rendered 89 controls). Every letter A-Z is already bound somewhere in Edit
-                // mode, so a modifier is the only free space left; PathabilityTool now ignores Ctrl+K to match.
-                _ctx.AbilityEditorPanel.Toggle();
-                GetViewport().SetInputAsHandled();
-            }
-            else if (key.Keycode == Key.J)
-            {
-                _ctx.UnitCardPanel.Toggle();
-                GetViewport().SetInputAsHandled();
-            }
-            else if (key.Keycode == Key.G)
-            {
-                // Story 3.16: G opens the Item Card Editor (I is reserved for in-match Inventory, K for the Ability editor).
-                _ctx.ItemCardPanel.Toggle();
-                GetViewport().SetInputAsHandled();
-            }
-            else if (key.Keycode == Key.C)
-            {
-                // Story 4.5: C opens the Building Card Editor (verified unused — no other Key.C check anywhere in
-                // src/ and no InputMap action binds physical key C in project.godot; B is taken by EntityPlacer's
-                // building-placement-mode toggle).
-                _ctx.BuildingCardPanel.Toggle();
-                GetViewport().SetInputAsHandled();
-            }
-            else if (key.Keycode == Key.V)
-            {
-                // V (not P — P is the Patrol command in SelectionSystem, active whenever units are selected in Edit mode).
-                _ctx.PersistenceManifestPanel.Toggle();
-                GetViewport().SetInputAsHandled();
-            }
-            else if (key.Keycode == Key.R)
-            {
-                // Story 4.6: R opens the Visual Tech Tree Editor (verified unused — no other Key.R check anywhere in
-                // src/ and no InputMap action binds physical key R in project.godot; T is already claimed by
-                // TerrainBrush/SelectionSystem).
-                _ctx.TechTreePanel.Toggle();
-                GetViewport().SetInputAsHandled();
-            }
-            else if (key.Keycode == Key.X)
-            {
-                // Story 5.5: X opens the Faction Definer guided wizard (verified unused — no other Key.X check
-                // anywhere in src/ and no InputMap action binds physical key X in project.godot).
-                _ctx.FactionDefinerPanel.Toggle();
-                GetViewport().SetInputAsHandled();
-            }
-            else if (key.Keycode == Key.Y && !key.CtrlPressed)
-            {
-                // Story 7.10: Y opens the T3 node-graph editor. The spec's example key (G) is taken (EntityPlacer
-                // grid-snap + ItemCard editor), so Y is used — plain Y is unbound (every other Key.Y usage is
-                // Ctrl+Y = redo, handled by the focused card panel's _Input before this _UnhandledInput ever runs;
-                // the !CtrlPressed guard keeps redo out of this toggle even when no card is focused).
-                _ctx.DslGraphEditorPanel.Toggle();
-                GetViewport().SetInputAsHandled();
+                case EditorPanelId.BuildingCard:        _ctx.BuildingCardPanel?.Toggle(); break;
+                case EditorPanelId.UnitCard:            _ctx.UnitCardPanel?.Toggle(); break;
+                case EditorPanelId.ItemCard:            _ctx.ItemCardPanel?.Toggle(); break;
+                case EditorPanelId.TechTree:            _ctx.TechTreePanel?.Toggle(); break;
+                case EditorPanelId.FactionDefiner:      _ctx.FactionDefinerPanel?.Toggle(); break;
+                case EditorPanelId.DslGraph:            _ctx.DslGraphEditorPanel?.Toggle(); break;
+                case EditorPanelId.Trigger:             _ctx.TriggerPanel?.Toggle(); break;
+                case EditorPanelId.MapGenerator:        _ctx.MapGenPanel?.Toggle(); break;
+                case EditorPanelId.Ability:             _ctx.AbilityEditorPanel?.Toggle(); break;
+                case EditorPanelId.ContentBrowser:      _ctx.ContentBrowser?.ToggleVisible(); break;
+                case EditorPanelId.ReplayBrowser:       _ctx.ReplayBrowser?.ToggleVisible(); break;
+                case EditorPanelId.PersistenceManifest: _ctx.PersistenceManifestPanel?.Toggle(); break;
             }
         }
 
@@ -2022,6 +1978,7 @@ namespace ProjectChimera.Core
             }
             else if (isEdit)
             {
+                if (_ctx.EditorDock != null) _ctx.EditorDock.Visible = true;   // authoring: editors reachable by click
                 string snap = _ctx.Placer.GridSnapEnabled ? "ON" : "OFF";
                 string edge = _ctx.Cam.EdgeScrollEnabled ? "ON" : "OFF";
                 // K/P were bound since Story 6.5 but advertised nowhere, so the WC3-style pathing view read as
@@ -2032,13 +1989,14 @@ namespace ProjectChimera.Core
                     $"F5=Play   N=Lobby   O=Maps   Esc=Settings   T=Terrain   G=Snap({snap})   E=Edge({edge})" +
                     $"   K=PaintPaths   P=Paths({paths})" +
                     $"   Tab=Mode   U=Unit   B=Building   Del=Delete   Ctrl+Z=Undo\n" +
-                    // Editors, none of which were advertised anywhere. Ctrl+K/Ctrl+N are the rebinds forced by a
-                    // saturated keymap (every letter A-Z is bound): plain K/N belong to the paint and water tools.
-                    $"Editors:   C=Building   J=Unit   G=Item   R=TechTree   X=Faction   Y=DslGraph   L=Trigger" +
-                    $"   M=MapGen   Ctrl+K=Ability   O=Maps   Ctrl+N=Replays";
+                    // Rendered FROM EditorHotkeys.All, so the strip, the dock tooltips and the real bindings
+                    // are one source of truth and cannot drift apart.
+                    "Editors:   " + string.Join("   ", System.Linq.Enumerable.Select(
+                        ProjectChimera.Core.Definitions.EditorHotkeys.All, h => $"{h.Chord}={h.Label}"));
             }
             else
             {
+                if (_ctx.EditorDock != null) _ctx.EditorDock.Visible = false;   // play: authoring UI out of the way
                 _ctx.ControlsLabel.Text =
                     "F5=Edit   R-Click=Move   Q+Click=AttackMove   S=Stop   H=Hold   1-9=Groups   Esc=Deselect";
             }
