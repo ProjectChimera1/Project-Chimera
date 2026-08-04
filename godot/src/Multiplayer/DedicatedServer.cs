@@ -258,16 +258,21 @@ namespace ProjectChimera.Multiplayer
             if (Server.SlotAllocation.Classify(slot, ExpectedPlayers, ServerTransport.MAX_SLOTS)
                 != Server.SlotRole.Player)
             {
-                // Spectator slot — send Neutral faction assignment, no state-machine effect.
+                // Spectator slot — send Neutral faction assignment, no state-machine effect. DW-420: the Hello
+                // carries the DEDICATED+SPECTATOR role flags so the client renders a spectator view instead of
+                // misreading the Neutral faction as a P2P "Host confirmed — click Ready" 2-slot confirmation.
                 GD.Print($"[Server] Spectator connected → slot {slot}.");
-                _transport.SendReliableTo(slot, TickCommandPacket.MakeHello(Faction.Neutral));
+                _transport.SendReliableTo(slot, TickCommandPacket.MakeHello(Faction.Neutral,
+                    (byte)(TickCommandPacket.HELLO_FLAG_DEDICATED | TickCommandPacket.HELLO_FLAG_SPECTATOR)));
                 BroadcastLobbyRoster(); // so the new spectator sees the current lobby state
                 return;
             }
 
             Faction f = SLOT_FACTION[slot];
             GD.Print($"[Server] Slot {slot} connected → assigned {f}.");
-            _transport.SendReliableTo(slot, TickCommandPacket.MakeHello(f));
+            // DW-419: the DEDICATED flag tells the client this lobby's LobbyChat is server-rebroadcast to the
+            // sender too, so it suppresses its optimistic local echo (the double-render fix).
+            _transport.SendReliableTo(slot, TickCommandPacket.MakeHello(f, TickCommandPacket.HELLO_FLAG_DEDICATED));
 
             _state = State.Lobby;
             GD.Print($"[Server] State → {_state} ({CountConnectedPlayers()}/{ExpectedPlayers} players connected).");
