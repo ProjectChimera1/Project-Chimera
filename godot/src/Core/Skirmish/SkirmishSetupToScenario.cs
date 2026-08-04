@@ -164,17 +164,48 @@ namespace ProjectChimera.Core.Skirmish
                     if (kv.Key != kv.Value) { identityRemap = false; break; }
             if (!identityRemap)
             {
+                HashSet<string> perPlayerVars = PerPlayerVariableNames(baseMap.Variables);
                 built.Triggers = ReconcileTriggers(
-                    baseMap.Triggers ?? System.Array.Empty<TriggerDefinition>(), origSlotToNew,
-                    PerPlayerVariableNames(baseMap.Variables));
+                    baseMap.Triggers ?? System.Array.Empty<TriggerDefinition>(), origSlotToNew, perPlayerVars);
                 built.WinConditionSpec = ReconcileWinSpec(
                     baseMap.WinConditionSpec, origSlotToNew, unitIndexMap, buildingIndexMap);
                 built.ResourceNodes = ReconcileResourceNodes(
                     baseMap.ResourceNodes ?? System.Array.Empty<ScenarioResourceNode>(), origSlotToNew);
+                // DW-609: the remaining two per-slot channels the DW-458 pass did not reach. Both rode the
+                // ShallowClone verbatim, so on a NON-CONTIGUOUS authored map (the editor's first-class {0,2,5}
+                // state) a surviving ordinal that got renumbered left these refs pointing at a LIVE DIFFERENT
+                // player — wrong-player dispatch and silent authorization transfer, not mere staleness.
+                built.CustomEvents = ReconcileCustomEvents(baseMap.CustomEvents, origSlotToNew);
+                built.TriggerGraphJson = ReconcileTriggerGraphJson(
+                    baseMap.TriggerGraphJson, origSlotToNew, VacantSeat(origSlotToNew), perPlayerVars);
             }
 
             return built;
         }
+
+        /// <summary>
+        /// DW-609 — the ordinal a reference to a DROPPED slot is redirected to: the first index past the active
+        /// span, i.e. <c>origSlotToNew.Count</c> (the built slots are contiguous 0..k−1, so k is unoccupied).
+        ///
+        /// <para>This is the WC3/modern-RTS player model expressed in our contiguous scheme: an absent player still
+        /// occupies an ordinal, and every reference to them is INERT — it matches no unit, satisfies no condition,
+        /// authorizes no raise. The flat channel can afford true deletion (strip event / drop trigger) because a
+        /// trigger list has no structure to break; a GRAPH does — pruning a node means severing exec/data edges and
+        /// cascading to orphans, so neutralizing the reference achieves the identical observable behaviour with
+        /// none of the structural risk.</para>
+        ///
+        /// <para>Scope, precisely: this redirect is NORMALIZATION, not the defect fix. Because the pairing takes the
+        /// k LOWEST base ordinals, a dropped ordinal always exceeds every paired one (d ≥ k), so a dropped reference
+        /// was already outside the live span and already inert. Collapsing them all to k buys one checkable
+        /// representation of "absent" instead of a scatter of authored values. The actual corruption this entry
+        /// exists for is the RENUMBERED SURVIVOR — an authored ordinal that maps to a different LIVE player — and
+        /// that is fixed by the slotMap lookup in <see cref="Redirect"/>, not by this fallback.</para>
+        ///
+        /// <para>Always a legal slot: a drop can only exist when some base slot went unpaired, i.e.
+        /// <c>k &lt; baseSlots.Length ≤ 8</c> (the engine faction-slot ceiling the validator enforces), so k is
+        /// inside the ceiling AND unoccupied. When nothing was dropped this value is never consulted.</para>
+        /// </summary>
+        private static int VacantSeat(Dictionary<int, int> slotMap) => slotMap.Count;
 
         /// <summary>
         /// DW-460 — the single source of truth for the ACTIVE-slot launch order: Human first, then by ascending
@@ -425,5 +456,156 @@ namespace ProjectChimera.Core.Skirmish
             RequiresStructure = n.RequiresStructure, RequiresStructureRadius = n.RequiresStructureRadius,
             OwnerSlot = ownerSlot, IncomePeriodTicks = n.IncomePeriodTicks, Rot = n.Rot,
         };
+
+        // ── DW-609 reconcile helpers ─────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Rewrite each declared custom event's <c>allowed_raisers</c> for the renumbered launch. A surviving slot
+        /// is REMAPPED to its new ordinal; a dropped slot's authorization is REMOVED (deletion is exact here — the
+        /// field is a membership set, so removing an absent player can never re-point an authorization the way the
+        /// verbatim copy did). An event left with no raisers keeps an EMPTY array, which the director treats
+        /// identically to the authored <c>null</c>: system-raise (−1) only. Order-preserving and deduped, so the
+        /// result is deterministic. Fresh instances — the base map's event objects are never mutated.
+        ///
+        /// <para>Returns the input REFERENCE unchanged when no raiser moved, so an untouched registry stays
+        /// reference-identical (and serializes byte-identically) exactly like the DW-458 channels.</para>
+        /// </summary>
+        private static ScenarioCustomEvent[]? ReconcileCustomEvents(
+            ScenarioCustomEvent[]? events, Dictionary<int, int> slotMap)
+        {
+            if (events == null || events.Length == 0) return events;
+
+            var rebuilt = new ScenarioCustomEvent[events.Length];
+            bool changed = false;
+            for (int i = 0; i < events.Length; i++)
+            {
+                ScenarioCustomEvent? e = events[i];
+                if (e == null) { rebuilt[i] = e!; continue; }
+
+                int[]? raisers = e.AllowedRaisers;
+                if (raisers == null || raisers.Length == 0) { rebuilt[i] = e; continue; }
+
+                var mapped = new List<int>(raisers.Length);
+                bool rowChanged = false;
+                foreach (int r in raisers)
+                {
+                    // An authored −1 (system raise) is always legal and is not a slot reference — pass it through.
+                    if (r < 0) { if (!mapped.Contains(r)) mapped.Add(r); continue; }
+                    if (!slotMap.TryGetValue(r, out int newSlot)) { rowChanged = true; continue; } // absent player
+                    if (newSlot != r) rowChanged = true;
+                    if (!mapped.Contains(newSlot)) mapped.Add(newSlot);
+                }
+                if (mapped.Count != raisers.Length) rowChanged = true;
+                if (!rowChanged) { rebuilt[i] = e; continue; }
+
+                changed = true;
+                rebuilt[i] = new ScenarioCustomEvent { Name = e.Name, Params = e.Params, AllowedRaisers = mapped.ToArray() };
+            }
+            return changed ? rebuilt : events;
+        }
+
+        /// <summary>
+        /// DW-609 — the graph-IR node types carrying a player-slot reference in a <c>Faction</c> field. Kept
+        /// EXPLICIT (rather than inferred at runtime) so the reconcile is auditable, and pinned by
+        /// <c>SkirmishGraphReconcileTests.EveryNodeTypeWithAFactionField_IsCoveredByTheReconcile</c>: adding a new
+        /// node kind with a <c>Faction</c> property fails that test until it is handled here. That guard is the
+        /// real fix for this defect CLASS — the original DW-458 pass was correct for the channels it knew about and
+        /// silently wrong for the ones it did not, and nothing failed.
+        /// </summary>
+        internal static readonly System.Type[] SlotCarryingGraphNodeTypes =
+        {
+            typeof(ProjectChimera.Dsl.EventNode), typeof(ProjectChimera.Dsl.ConditionNode),
+            typeof(ProjectChimera.Dsl.ActionNode), typeof(ProjectChimera.Dsl.ExprVarNode),
+            typeof(ProjectChimera.Dsl.ForEachNode), typeof(ProjectChimera.Dsl.ForEachBatchedNode),
+            typeof(ProjectChimera.Dsl.OrderUnitsNode),
+        };
+
+        /// <summary>
+        /// Rewrite the graph-IR channel's player-slot references for the renumbered launch (DW-609). Parses the
+        /// canonical JSON into typed nodes, remaps every slot-keyed <c>Faction</c> field, and re-emits canonical
+        /// JSON. Surviving slots are remapped through <paramref name="slotMap"/>; references to a dropped slot are
+        /// redirected to <paramref name="vacantSeat"/> (see <see cref="VacantSeat"/>) so they can never designate a
+        /// live player. Graph STRUCTURE is untouched — no node or edge is added or removed.
+        ///
+        /// <para>Which fields are slot references follows the SAME rulebook as the flat channel, deliberately: the
+        /// kind-keyed lists for event/condition/action nodes, plus <c>variable_comparison</c>/<c>set_variable</c>
+        /// only when they name a PerPlayer-declared variable. The four expression/iteration nodes
+        /// (<c>ExprVar</c>, <c>ForEach</c>, <c>ForEachBatched</c>, <c>OrderUnits</c>) document
+        /// <c>Faction = −1</c> as "bare / any faction", so for those any value ≥ 0 IS a slot reference.</para>
+        ///
+        /// <para>Fail-soft: unparseable graph JSON is returned VERBATIM rather than throwing. This transform runs
+        /// on the launch path where the caller has no recovery, and the load gate
+        /// (<c>TriggerGraph.FromJson</c> → <c>GraphStructureGate</c>) is the designated place for that rejection —
+        /// it reports a located error where a throw here would surface as an opaque launch failure.</para>
+        /// </summary>
+        private static string? ReconcileTriggerGraphJson(
+            string? graphJson, Dictionary<int, int> slotMap, int vacantSeat, HashSet<string> perPlayerVars)
+        {
+            if (string.IsNullOrWhiteSpace(graphJson)) return graphJson;
+
+            ProjectChimera.Dsl.TriggerGraph graph;
+            try { graph = ProjectChimera.Dsl.TriggerGraph.FromJson(graphJson!); }
+            catch (System.Text.Json.JsonException) { return graphJson; } // malformed → the load gate reports it
+
+            bool changed = false;
+            foreach (ProjectChimera.Dsl.NodeBase n in graph.Nodes)
+            {
+                switch (n)
+                {
+                    case ProjectChimera.Dsl.EventNode e when IsIn(FactionKeyedEventKinds, e.Kind):
+                        if (Redirect(e.Faction, slotMap, vacantSeat, out int me)) { e.Faction = me; changed = true; }
+                        break;
+
+                    case ProjectChimera.Dsl.ConditionNode c
+                        when IsIn(FactionKeyedConditionKinds, c.Kind) || IsPerPlayerVarRef(c.Kind, c.Variable, perPlayerVars):
+                        if (Redirect(c.Faction, slotMap, vacantSeat, out int mc)) { c.Faction = mc; changed = true; }
+                        break;
+
+                    case ProjectChimera.Dsl.ActionNode a
+                        when IsIn(FactionKeyedActionKinds, a.Kind) || IsPerPlayerVarRef(a.Kind, a.Variable, perPlayerVars):
+                        if (Redirect(a.Faction, slotMap, vacantSeat, out int ma)) { a.Faction = ma; changed = true; }
+                        break;
+
+                    // −1 = bare/any on all four; any value ≥ 0 is a slot reference regardless of kind.
+                    case ProjectChimera.Dsl.ExprVarNode v:
+                        if (Redirect(v.Faction, slotMap, vacantSeat, out int mv)) { v.Faction = mv; changed = true; }
+                        break;
+                    case ProjectChimera.Dsl.ForEachNode f:
+                        if (Redirect(f.Faction, slotMap, vacantSeat, out int mf)) { f.Faction = mf; changed = true; }
+                        break;
+                    case ProjectChimera.Dsl.ForEachBatchedNode fb:
+                        if (Redirect(fb.Faction, slotMap, vacantSeat, out int mb)) { fb.Faction = mb; changed = true; }
+                        break;
+                    case ProjectChimera.Dsl.OrderUnitsNode o:
+                        if (Redirect(o.Faction, slotMap, vacantSeat, out int mo)) { o.Faction = mo; changed = true; }
+                        break;
+                }
+            }
+
+            // Unchanged graphs return the ORIGINAL string, not a re-serialization: ToCanonicalJson would reorder
+            // an authored-but-uncanonical graph and move scenario bytes for a launch that changed nothing.
+            return changed ? graph.ToCanonicalJson() : graphJson;
+        }
+
+        /// <summary>A <c>variable_comparison</c>/<c>set_variable</c> node is slot-keyed only when it names a
+        /// PerPlayer-declared variable — the flat channel's rule, applied identically to the graph channel.</summary>
+        private static bool IsPerPlayerVarRef(string? kind, string? variable, HashSet<string> perPlayerVars) =>
+            (string.Equals(kind, "variable_comparison", System.StringComparison.Ordinal) ||
+             string.Equals(kind, "set_variable", System.StringComparison.Ordinal))
+            && !string.IsNullOrEmpty(variable) && perPlayerVars.Contains(variable!);
+
+        /// <summary>Map one slot reference: survivor → its new ordinal, dropped → the vacant seat. A negative value
+        /// is "bare / system / any faction" on every node kind — never a slot, never touched. Returns true (with the
+        /// new value in <paramref name="mapped"/>) only when the value actually moves, so an unchanged graph is
+        /// re-emitted verbatim.</summary>
+        private static bool Redirect(int faction, Dictionary<int, int> slotMap, int vacantSeat, out int mapped)
+        {
+            mapped = faction;
+            if (faction < 0) return false;
+            int target = slotMap.TryGetValue(faction, out int newSlot) ? newSlot : vacantSeat;
+            if (target == faction) return false;
+            mapped = target;
+            return true;
+        }
     }
 }
