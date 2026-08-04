@@ -1,11 +1,16 @@
 #nullable enable
+using System;
+using System.Collections.Generic;   // DW-86: research level cost / ladder authoring
 using System.IO;
+using System.Runtime.CompilerServices; // DW-86: [CallerFilePath] for the Godot-coupled LockstepManager source pin
+using System.Text.RegularExpressions;  // DW-86: source pin over LockstepManager's forwarding call sites
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions; // ItemRegistry / ItemDefinition (Story 3.15: item-command replay parity)
 using ProjectChimera.Combat;    // ItemSystem / ItemStore / ModifierStore (Story 3.15)
 using ProjectChimera.Economy;   // BuildingSystem (Story 2.12: SetRally replay round-trip)
 using ProjectChimera.Effects;   // HealEffect / ModifierSystem (Story 3.15 consumable graph)
 using ProjectChimera.Multiplayer;
+using ProjectChimera.Multiplayer.Server; // DW-86: MergedTickBuilder / MergedTickApplier (the ONLINE exec-tick apply core)
 using Xunit;
 
 namespace ProjectChimera.Sim.Tests.Multiplayer
@@ -553,6 +558,315 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
             {
                 File.Delete(path);
             }
+        }
+
+        // ── DW-86 (Story 4.9) — StartResearch / CancelResearch replay-vs-live round-trip ──────────────────────
+        //
+        // Story 4.9 threaded a `research:` handle into BOTH apply sites, but every test that drove
+        // StartResearch/CancelResearch through OrderApplier.Apply injected `research:` BY HAND — none went through
+        // ReplayPlayer or the online merged-tick apply core. Deleting the `Research` forwarding argument at either
+        // site therefore left the whole suite green while making recorded replays (and online matches) silently
+        // stop applying research: the exact AR-17 replay-vs-live divergence class this file exists to prevent.
+        // The three arms below are the three REAL production apply paths for a research command:
+        //   • offline / F5      → OrderApplier.Apply(..., research:)                (CommandCardSystem's direct apply)
+        //   • online exec-tick  → MergedTickApplier.Apply(..., research:)           (LockstepManager.ApplyMerged's core)
+        //   • replay playback   → ReplayPlayer { Research = ... }.Flush(tick)       (ReplayPlayer.ApplyOrders)
+        // All three must land byte-identical ResearchStore/ResourceStore/effective-stat state.
+
+        // Research-list indices within ParityResearchFaction (declaration order below).
+        private const int ParityArmorUpIdx  = 0; // armor_up:  100 ore, 6 ticks, +2 armor, 50% cancel refund
+        private const int ParityDamageUpIdx = 1; // damage_up: 150 ore, 3 ticks, +5 attack damage — a NONZERO index,
+                                                 // so a mis-sourced/zeroed raw TargetX decode cannot pass vacuously.
+        private const int ParityDamageUpTicks = 3;
+
+        /// <summary>DW-86 — a world wired with a <see cref="ResearchSystem"/>, one OPERATIONAL Player1 lab that offers
+        /// both researches, an ore balance and one living Player1 unit (so a completion's cumulative modifier is
+        /// observable). Built identically for the live, online-merged and replay arms.</summary>
+        private sealed class ResearchParityWorld
+        {
+            public EntityWorld   World = null!;
+            public BuildingStore Buildings = null!;
+            public ResourceStore Resources = null!;
+            public ResearchStore Research = null!;
+            public ResearchSystem Sys = null!;
+            public int LabId, Unit;
+        }
+
+        /// <summary>The authored faction both arms share (mirrors production's shared-faction-json setup).</summary>
+        private static FactionDefinition ParityResearchFaction() => new FactionDefinition
+        {
+            Id = "parity_research",
+            Buildings = new List<BuildingDefinition>
+            {
+                new BuildingDefinition { Id = "lab", AvailableResearch = new[] { "armor_up", "damage_up" } },
+            },
+            Research = new List<ResearchDefinition>
+            {
+                new ResearchDefinition
+                {
+                    Id = "armor_up",
+                    CancelRefundFraction = 0.5f,
+                    Prerequisites = Array.Empty<string>(),
+                    Levels = new List<ResearchLevel>
+                    {
+                        new ResearchLevel { Cost = new Dictionary<string, int> { { "ore", 100 } }, TimeTicks = 6,
+                                            ModifierDelta = new ResearchModifierDelta { ArmorDelta = 2f } },
+                    },
+                },
+                new ResearchDefinition
+                {
+                    Id = "damage_up",
+                    CancelRefundFraction = 0.5f,
+                    Prerequisites = Array.Empty<string>(),
+                    Levels = new List<ResearchLevel>
+                    {
+                        new ResearchLevel { Cost = new Dictionary<string, int> { { "ore", 150 } }, TimeTicks = ParityDamageUpTicks,
+                                            ModifierDelta = new ResearchModifierDelta { AttackDamageDelta = 5f } },
+                    },
+                },
+            },
+        };
+
+        private static ResearchParityWorld BuildResearchParityWorld(int startingOre = 1000)
+        {
+            var w = new ResearchParityWorld
+            {
+                World     = new EntityWorld(),
+                Buildings = new BuildingStore(),
+                Resources = new ResourceStore(Fixed.Zero),
+                Research  = new ResearchStore(),
+            };
+            var modSys = new ModifierSystem();
+            var modifiers = new ModifierStore(w.World, modSys);
+            modSys.AttachStore(modifiers);
+
+            w.Sys = new ResearchSystem(w.Buildings, w.Resources, w.Research, modifiers,
+                                       events: null, p1Faction: ParityResearchFaction(), p2Faction: null);
+
+            w.LabId = w.Buildings.Create(FixedVec3.Zero, Faction.Player1, BuildingType.Custom, buildingId: "lab");
+            w.Buildings.ConstructionTimer[w.LabId] = Fixed.Zero; // pre-built / operational (a constructing lab silent-rejects)
+            w.Resources.AddOre(Faction.Player1, Fixed.FromInt(startingOre));
+
+            // One living Player1 unit with a real attack stat, so a completed damage_up is observable on the world too.
+            w.Unit = w.World.Create(V(0, 0, 0), Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            w.World.ApplyUnitDefinition(w.Unit, ParityResearchUnitDef);
+            return w;
+        }
+
+        private static readonly UnitDefinition ParityResearchUnitDef = new UnitDefinition
+        {
+            Id = "grunt", Category = "Melee",
+            Hp = 100, Speed = 3, AttackDamage = 20, AttackRange = 5, AttackSpeed = 1, Armor = 0,
+        };
+
+        private static int Ore(ResearchParityWorld w) => w.Resources.Ore[(int)Faction.Player1].ToInt();
+        private static int InProgress(ResearchParityWorld w) => w.Research.InProgressIndex[(int)Faction.Player1];
+
+        /// <summary>Record <paramref name="orders"/> as Player1's tick-1 bundle, replay them into a fresh parity world
+        /// with ONLY <c>Research</c> wired (exactly what MatchLifecycleController wires for playback), and return it.</summary>
+        private static ResearchParityWorld ReplayResearchOrders(string label, params UnitOrder[] orders)
+        {
+            string path = Path.GetTempFileName();
+            try
+            {
+                using (var rec = new ReplayRecorder(path, label, EntityWorld.DEFAULT_RNG_SEED, 0x11UL, 0x22UL,
+                                                    CanonicalModelHash.AlgoVersion, new[] { Faction.Player1, Faction.Player2 }))
+                {
+                    rec.RecordTick(1, Faction.Player1, orders, 0, orders.Length);
+                }
+
+                var rep = BuildResearchParityWorld();
+                var player = new ReplayPlayer(path, rep.World) { Research = rep.Sys };
+                player.Flush(1); // ReplayPlayer.ApplyOrders → OrderApplier.Apply(..., research: Research)
+                return rep;
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        /// <summary>Fan <paramref name="orders"/> through the REAL server merge, then apply the merged packet through
+        /// <see cref="MergedTickApplier"/> with <c>research:</c> wired — the exact core LockstepManager.ApplyMerged
+        /// calls for an online exec-tick — into a fresh parity world.</summary>
+        private static ResearchParityWorld ApplyMergedResearchOrders(params UnitOrder[] orders)
+        {
+            var buf = new byte[TickCommandPacket.HEADER_BYTES + TickCommandPacket.MAX_ORDERS * UnitOrder.SIZE];
+            int len = TickCommandPacket.Write(buf, 1u, Faction.Player1, orders, orders.Length);
+
+            var builder = new MergedTickBuilder(1, new[] { Faction.Player1 });
+            Assert.True(builder.Submit(0, buf, len, out _));
+            Assert.True(builder.TryBuild(1u, out byte[] merged, out int mergedLen));
+
+            var online = BuildResearchParityWorld();
+            MergedTickApplier.Apply(merged, mergedLen, online.World, research: online.Sys);
+            return online;
+        }
+
+        [Fact]
+        public void ReplayVsLive_StartResearch_ApplyIdentically_ThroughSharedApplier()
+        {
+            // DW-86: a NONZERO research index rides TargetX as a RAW int (never via .ToFloat()) — index 0 would pass
+            // vacuously against a dropped/zeroed decode.
+            var start = new UnitOrder(0, UnitCommand.StartResearch, Fixed.FromRaw(ParityDamageUpIdx), Fixed.Zero);
+
+            // LIVE (offline / F5): the exact OrderApplier line CommandCardSystem.IssueResearchCommand calls.
+            var live = BuildResearchParityWorld();
+            Assert.Equal(0, live.LabId); // the order's UnitId names building 0
+            OrderApplier.Apply(live.World, start, Faction.Player1, research: live.Sys);
+
+            // Non-vacuity: the live arm genuinely started + spent, so the equality assertions below have teeth.
+            Assert.Equal(ParityDamageUpIdx, InProgress(live));
+            Assert.Equal(1000 - 150, Ore(live));
+
+            // REPLAY: the same recorded order through ReplayPlayer with Research wired.
+            var rep = ReplayResearchOrders("test://start-research", start);
+
+            Assert.Equal(InProgress(live), InProgress(rep));
+            Assert.Equal(live.Research.RemainingTicks[(int)Faction.Player1], rep.Research.RemainingTicks[(int)Faction.Player1]);
+            Assert.Equal(live.Resources.Ore[(int)Faction.Player1].Raw, rep.Resources.Ore[(int)Faction.Player1].Raw);
+
+            // …and the whole downstream chain (countdown → completion → cumulative modifier on every living unit)
+            // lands identically, so a dropped forwarding arg cannot hide behind an unobserved store field.
+            for (int i = 0; i < ParityDamageUpTicks; i++)
+            {
+                live.Sys.Tick(live.World, Fixed.Zero);
+                rep.Sys.Tick(rep.World, Fixed.Zero);
+            }
+            Assert.Equal(1, live.Research.CompletedLevels[(int)Faction.Player1][ParityDamageUpIdx]); // non-vacuity
+            Assert.Equal(Fixed.FromInt(25), live.World.EffectiveAttackDamage[live.Unit]);            // 20 base + 5
+            Assert.Equal(live.Research.CompletedLevels[(int)Faction.Player1][ParityDamageUpIdx],
+                         rep.Research.CompletedLevels[(int)Faction.Player1][ParityDamageUpIdx]);
+            Assert.Equal(live.World.EffectiveAttackDamage[live.Unit].Raw, rep.World.EffectiveAttackDamage[rep.Unit].Raw);
+        }
+
+        [Fact]
+        public void ReplayVsLive_CancelResearch_ApplyIdentically_ThroughSharedApplier()
+        {
+            // CancelResearch's TargetX is unused/reserved; the refund is 50% of the IN-PROGRESS level's cost.
+            var cancel = new UnitOrder(0, UnitCommand.CancelResearch, Fixed.Zero, Fixed.Zero);
+
+            // LIVE: seed an in-progress armor_up (directly, not the thing under test), then cancel via the applier.
+            var live = BuildResearchParityWorld();
+            Assert.True(live.Sys.StartResearchCommand(live.LabId, Faction.Player1, ParityArmorUpIdx));
+            int liveOreAfterStart = Ore(live);
+            OrderApplier.Apply(live.World, cancel, Faction.Player1, research: live.Sys);
+
+            // Non-vacuity: the live arm genuinely refunded and went idle.
+            Assert.Equal(-1, InProgress(live));
+            Assert.Equal(liveOreAfterStart + 50, Ore(live)); // 0.5 × 100
+
+            // REPLAY: an identically seeded world, cancelled by the RECORDED order through ReplayPlayer.
+            string path = Path.GetTempFileName();
+            try
+            {
+                using (var rec = new ReplayRecorder(path, "test://cancel-research", EntityWorld.DEFAULT_RNG_SEED, 0x11UL, 0x22UL,
+                                                    CanonicalModelHash.AlgoVersion, new[] { Faction.Player1, Faction.Player2 }))
+                {
+                    var orders = new[] { cancel };
+                    rec.RecordTick(1, Faction.Player1, orders, 0, orders.Length);
+                }
+
+                var rep = BuildResearchParityWorld();
+                Assert.True(rep.Sys.StartResearchCommand(rep.LabId, Faction.Player1, ParityArmorUpIdx));
+                var player = new ReplayPlayer(path, rep.World) { Research = rep.Sys };
+                player.Flush(1);
+
+                Assert.Equal(InProgress(live), InProgress(rep));
+                Assert.Equal(live.Research.RemainingTicks[(int)Faction.Player1], rep.Research.RemainingTicks[(int)Faction.Player1]);
+                Assert.Equal(live.Resources.Ore[(int)Faction.Player1].Raw, rep.Resources.Ore[(int)Faction.Player1].Raw);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void OnlineMergedVsReplayVsLive_ResearchCommands_ApplyIdentically()
+        {
+            // The ONLINE arm: LockstepManager.ApplyMerged's sole command source is MergedTickApplier, which forwards
+            // its own `research` handle down to the same OrderApplier switch. A dropped forwarding arg THERE desyncs
+            // every online peer from the offline/replay result while the rest of the suite stays green.
+            var start = new UnitOrder(0, UnitCommand.StartResearch, Fixed.FromRaw(ParityDamageUpIdx), Fixed.Zero);
+
+            var live   = BuildResearchParityWorld();
+            OrderApplier.Apply(live.World, start, Faction.Player1, research: live.Sys);
+            var online = ApplyMergedResearchOrders(start);
+            var rep    = ReplayResearchOrders("test://merged-research", start);
+
+            Assert.Equal(ParityDamageUpIdx, InProgress(live)); // non-vacuity
+            Assert.Equal(InProgress(live), InProgress(online));
+            Assert.Equal(InProgress(live), InProgress(rep));
+            Assert.Equal(live.Resources.Ore[(int)Faction.Player1].Raw, online.Resources.Ore[(int)Faction.Player1].Raw);
+            Assert.Equal(live.Resources.Ore[(int)Faction.Player1].Raw, rep.Resources.Ore[(int)Faction.Player1].Raw);
+            Assert.Equal(live.Research.RemainingTicks[(int)Faction.Player1], online.Research.RemainingTicks[(int)Faction.Player1]);
+            Assert.Equal(live.Research.RemainingTicks[(int)Faction.Player1], rep.Research.RemainingTicks[(int)Faction.Player1]);
+        }
+
+        /// <summary>
+        /// DW-86 (the Godot-coupled half) — <c>LockstepManager</c> is outside the Godot-free compile set, so its own
+        /// forwarding cannot be executed here; pin it at source level instead (the <c>LocalFactionSingleSourceTests</c>
+        /// / <c>FallbackMirrorParityTests</c> precedent). EVERY apply call it makes — the two offline
+        /// <c>OrderApplier.Apply</c> sites (EnqueueDslEvent/EnqueueConcede) and the online <c>MergedTickApplier.Apply</c>
+        /// in <c>ApplyMerged</c> — must pass its <c>Research</c> handle, or a research command issued on that path
+        /// becomes a silent deterministic no-op that diverges from replay.
+        /// </summary>
+        [Fact]
+        public void LockstepManager_ForwardsResearch_AtEveryApplySite()
+        {
+            string blob = StripCommentsAndNormalize(File.ReadAllText(LockstepManagerFile()));
+
+            // The handle must still be declared (vacuous-pass guard: a rename would make the scan meaningless).
+            Assert.Matches(@"public ProjectChimera\.Economy\.ResearchSystem\?? Research;", blob);
+
+            var sites = Regex.Matches(blob, @"\b(?:OrderApplier|MergedTickApplier)\.Apply\(");
+            Assert.True(sites.Count >= 3,
+                $"Expected LockstepManager to keep at least 3 order-apply call sites (2 offline + ApplyMerged); found {sites.Count}. " +
+                "If the shape changed, re-point this DW-86 pin at the new forwarding sites.");
+
+            foreach (Match site in sites)
+            {
+                string args = ArgumentList(blob, site.Index + site.Length - 1);
+                Assert.True(Regex.IsMatch(args, @"\bResearch\b"),
+                    "A LockstepManager order-apply call site does NOT forward its Research handle — a StartResearch/" +
+                    "CancelResearch command applied there becomes a silent no-op while replay still applies it (DW-86). " +
+                    "Call site args: " + args);
+            }
+        }
+
+        /// <summary>Return the balanced parenthesised argument list that STARTS at <paramref name="openParen"/>
+        /// (which must index the '(' itself), exclusive of the outer parentheses.</summary>
+        private static string ArgumentList(string blob, int openParen)
+        {
+            int depth = 0;
+            for (int i = openParen; i < blob.Length; i++)
+            {
+                if (blob[i] == '(') depth++;
+                else if (blob[i] == ')')
+                {
+                    depth--;
+                    if (depth == 0) return blob.Substring(openParen + 1, i - openParen - 1);
+                }
+            }
+            throw new InvalidOperationException("Unbalanced parentheses while scanning a LockstepManager apply call site.");
+        }
+
+        /// <summary>Strip block/line comments then collapse whitespace, so comment prose can never satisfy (or hide)
+        /// the pin above. Mirrors <c>LocalFactionSingleSourceTests.StripCommentsAndNormalize</c>.</summary>
+        private static string StripCommentsAndNormalize(string text)
+        {
+            text = Regex.Replace(text, @"/\*.*?\*/", " ", RegexOptions.Singleline);
+            text = Regex.Replace(text, @"//[^\n]*", " ");
+            return Regex.Replace(text, @"\s+", " ");
+        }
+
+        // This file lives in godot/ProjectChimera.Sim.Tests/Multiplayer/ → ../../src/Multiplayer/LockstepManager.cs.
+        private static string LockstepManagerFile([CallerFilePath] string thisFilePath = "")
+        {
+            string dir = Path.GetDirectoryName(thisFilePath)
+                         ?? throw new InvalidOperationException("Could not resolve this test's source dir via [CallerFilePath].");
+            return Path.GetFullPath(Path.Combine(dir, "..", "..", "src", "Multiplayer", "LockstepManager.cs"));
         }
     }
 }
