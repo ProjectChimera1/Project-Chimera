@@ -120,6 +120,31 @@ namespace ProjectChimera.CreationSuite
             if (_panel.Visible) RefreshAvailability();
         }
 
+        /// <summary>Hide the panel. The ✕ button and Esc route here; the title screen observes
+        /// <see cref="PanelRoot"/>'s visibility to re-show itself when this was opened from the menu.</summary>
+        public void Close() => _panel.Visible = false;
+
+        /// <summary>The panel root, so a caller can observe open/close via <c>Control.VisibilityChanged</c>
+        /// (this class is a plain <see cref="Node"/>, so it has no visibility signal of its own).</summary>
+        public Control PanelRoot => _panel;
+
+        /// <summary>
+        /// Esc closes the panel — and when the brief field has focus, the FIRST press just releases that focus
+        /// (stop typing), the second closes. That two-step is what every OS dialog does, and it is what makes
+        /// "click into the field, then leave" possible without reaching for the mouse. Lives in
+        /// <c>_UnhandledInput</c> so a focused control always gets first refusal on the key.
+        /// </summary>
+        public override void _UnhandledInput(InputEvent @event)
+        {
+            if (_panel == null || !_panel.Visible) return;
+            if (@event is not InputEventKey key || !key.Pressed || key.Echo) return;
+            if (key.Keycode != Key.Escape) return;
+
+            if (_briefInput != null && _briefInput.HasFocus()) _briefInput.ReleaseFocus();
+            else Close();
+            GetViewport().SetInputAsHandled();
+        }
+
         // ── _Ready ────────────────────────────────────────────────────────────
 
         public override void _Ready()
@@ -146,12 +171,22 @@ namespace ProjectChimera.CreationSuite
             _panel.AddChild(root);
 
             // ── Header ────────────────────────────────────────────────────────
-            var header = new Label
+            // A real close affordance, not just the M hint. M is an _UnhandledInput hotkey, so once the brief
+            // field below has focus it correctly types "m" instead of toggling (TextFocusGuard's rule) — which
+            // left this panel with NO reachable exit and its own header telling the player a lie. Reported by
+            // Alec 2026-08-04: "I click inside the map generator text field, I can't click out of it and close
+            // it and it stays in the way."
+            var headerRow = new HBoxContainer();
+            headerRow.AddChild(new Label
             {
-                Text = "Map Generator  (M to close)",
-                HorizontalAlignment = HorizontalAlignment.Center
-            };
-            root.AddChild(header);
+                Text = "Map Generator",
+                HorizontalAlignment = HorizontalAlignment.Center,
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            });
+            var closeBtn = new Button { Text = "✕", TooltipText = "Close (Esc)" };
+            closeBtn.Pressed += Close;
+            headerRow.AddChild(closeBtn);
+            root.AddChild(headerRow);
 
             // Story 8.2 — AI-availability status line (four-state); hidden until Initialize wires the evaluator.
             _aiAvailLabel = new Label

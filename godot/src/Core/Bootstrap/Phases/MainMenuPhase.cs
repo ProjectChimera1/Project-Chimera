@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using Godot;
 using ProjectChimera.UI;
 
@@ -45,7 +45,7 @@ namespace ProjectChimera.Core.Bootstrap
 
             // Story 9.7: the Multiplayer destination — un-defers the honesty-gated slot. Opens the rebuilt N-slot
             // lobby (Direct LAN/IP + Nakama matchmaking). Replaces the dev-only Edit-mode `N` keybind as the entry.
-            _ctx.MainMenu.OnMultiplayer += () => OpenFromMenu(_ctx.LobbyUi, needsEditMode: false, () => _ctx.LobbyUi.Show());
+            _ctx.MainMenu.OnMultiplayer += () => OpenFromMenu(_ctx.LobbyUi, () => _ctx.LobbyUi.Visible, needsEditMode: false, () => _ctx.LobbyUi.Show());
 
             _ctx.MainMenu.OnCreate += () =>
             {
@@ -56,23 +56,20 @@ namespace ProjectChimera.Core.Bootstrap
 
             _ctx.MainMenu.OnBrowse += () =>
                 // Edit mode so the browser opens correctly — restored on close by OpenFromMenu.
-                OpenFromMenu(_ctx.ContentBrowser, needsEditMode: true, () => _ctx.ContentBrowser.ToggleVisible());
+                OpenFromMenu(_ctx.ContentBrowser, () => _ctx.ContentBrowser.Visible, needsEditMode: true, () => _ctx.ContentBrowser.ToggleVisible());
 
             // Story 9.11: the Replays destination — opens the replay browser (also reachable via the Edit-mode N
             // hotkey). ReplayBrowserPhase runs before MainMenuPhase, so ctx.ReplayBrowser already exists here.
             _ctx.MainMenu.OnReplays += () =>
-                OpenFromMenu(_ctx.ReplayBrowser, needsEditMode: true, () => _ctx.ReplayBrowser.ToggleVisible());
+                OpenFromMenu(_ctx.ReplayBrowser, () => _ctx.ReplayBrowser.Visible, needsEditMode: true, () => _ctx.ReplayBrowser.ToggleVisible());
 
             _ctx.MainMenu.OnGenerateMap += () =>
-            {
-                // Switch to Edit mode and open the map generator panel.
-                if (_ctx.GameState.Mode != GameMode.Edit)
-                    _ctx.GameState.Toggle();
-                _ctx.MapGenPanel.Toggle();
-            };
+                // Rooted on a Control, not a CanvasLayer — OpenFromMenu connects visibility_changed by name.
+                OpenFromMenu(_ctx.MapGenPanel?.PanelRoot, () => _ctx.MapGenPanel!.PanelRoot.Visible,
+                             needsEditMode: true, () => _ctx.MapGenPanel.Toggle());
 
             _ctx.MainMenu.OnSettings += () =>
-                OpenFromMenu(_ctx.SettingsPanel, needsEditMode: false, () => _ctx.SettingsPanel.ToggleVisible());
+                OpenFromMenu(_ctx.SettingsPanel, () => _ctx.SettingsPanel.Visible, needsEditMode: false, () => _ctx.SettingsPanel.ToggleVisible());
 
             _ctx.MainMenu.OnQuit += () => _ctx.Scene.GetTree().Quit();
 
@@ -96,8 +93,8 @@ namespace ProjectChimera.Core.Bootstrap
         //
         // Mirrors the SkirmishSetupOverlay `onBack` convention already used above.
 
-        private readonly System.Collections.Generic.HashSet<CanvasLayer> _returnArmed = new();
-        private readonly System.Collections.Generic.HashSet<CanvasLayer> _awaitingReturn = new();
+        private readonly System.Collections.Generic.HashSet<Node> _returnArmed = new();
+        private readonly System.Collections.Generic.HashSet<Node> _awaitingReturn = new();
         private GameMode? _modeBeforeDestination;
 
         /// <summary>
@@ -106,12 +103,17 @@ namespace ProjectChimera.Core.Bootstrap
         /// destination still opens, it just does not return. Arming is lazy so ordering between phases cannot
         /// leave a panel unwired.
         /// </summary>
-        private void OpenFromMenu(CanvasLayer? panel, bool needsEditMode, System.Action open)
+        /// <param name="panel">A <see cref="CanvasLayer"/> or a <see cref="Control"/> root — both emit
+        /// <c>visibility_changed</c>, so it is connected by NAME rather than through a shared base type (they
+        /// have none that declares it).</param>
+        /// <param name="isVisible">Reads that panel's current visibility.</param>
+        private void OpenFromMenu(Node? panel, System.Func<bool>? isVisible, bool needsEditMode, System.Action open)
         {
-            if (panel != null)
+            if (panel != null && isVisible != null)
             {
                 if (_returnArmed.Add(panel))
-                    panel.VisibilityChanged += () => OnDestinationVisibilityChanged(panel);
+                    panel.Connect("visibility_changed",
+                        Callable.From(() => OnDestinationVisibilityChanged(panel, isVisible)));
                 _awaitingReturn.Add(panel);
             }
 
@@ -124,9 +126,9 @@ namespace ProjectChimera.Core.Bootstrap
 
         /// <summary>Re-show the title screen when a menu-opened destination hides. Ignores the show half of the
         /// signal, and any hide the menu did not open.</summary>
-        private void OnDestinationVisibilityChanged(CanvasLayer panel)
+        private void OnDestinationVisibilityChanged(Node panel, System.Func<bool> isVisible)
         {
-            if (panel.Visible) return;
+            if (isVisible()) return;
             if (!_awaitingReturn.Remove(panel)) return;
 
             // GameMode is binary (Edit/Play), so Toggle() is the restore.
