@@ -125,6 +125,7 @@ namespace ProjectChimera.Multiplayer
         private Button  _readyBtn    = null!;
         private Button  _startBtn    = null!;
         private Button  _cancelBtn   = null!;
+        private Button  _backBtn     = null!;   // leave the lobby entirely (Cancel only drops the connection)
         private VBoxContainer _slotGrid = null!;
         private RichTextLabel _chatLog  = null!;
         private LineEdit      _chatInput = null!;
@@ -482,6 +483,18 @@ namespace ProjectChimera.Multiplayer
             FactionDefinition?[] defs = SlotFactionDefsProvider?.Invoke() ?? Array.Empty<FactionDefinition?>();
             int idx = (int)_assignedFaction; // SlotFactionDefs is indexed by (int)Faction (Player1 == 1)
             return idx >= 0 && idx < defs.Length ? defs[idx] : null;
+        }
+
+        /// <summary>
+        /// Leave the lobby. Runs the SAME teardown as Cancel — so leaving never strands a live transport or a
+        /// half-disabled button row for the next visit — then hides the panel. Hiding is all that is needed to get
+        /// home: the title screen re-shows itself off <c>CanvasLayer.visibility_changed</c>
+        /// (<c>MainMenuPhase.OpenFromMenu</c>), so this stays correct for any other entry point too.
+        /// </summary>
+        private void OnBackPressed()
+        {
+            OnCancelPressed();
+            Close();
         }
 
         private void OnCancelPressed()
@@ -1018,9 +1031,16 @@ namespace ProjectChimera.Multiplayer
             _readyBtn.Visible = false;
             _startBtn.Visible = false;
             _startBtn.Disabled = true;
+            // "Back" leaves the lobby; "Cancel" only drops the CONNECTION and deliberately keeps the lobby open so
+            // the player can retry. Until this existed the lobby had no exit at all — reported by Alec 2026-08-04,
+            // "I see the game in the background and it won't let me go back". Always visible (unlike Ready/Start,
+            // which are connection-state gated), because the way out must never itself be conditional.
+            _backBtn = ChimeraComponents.Button("←  Back", ChimeraComponents.ButtonVariant.Secondary);
             _readyBtn.Pressed  += OnReadyPressed;
             _startBtn.Pressed  += OnStartPressed;
             _cancelBtn.Pressed += OnCancelPressed;
+            _backBtn.Pressed   += OnBackPressed;
+            bottomRow.AddChild(_backBtn);
             bottomRow.AddChild(_readyBtn);
             bottomRow.AddChild(_startBtn);
             bottomRow.AddChild(_cancelBtn);

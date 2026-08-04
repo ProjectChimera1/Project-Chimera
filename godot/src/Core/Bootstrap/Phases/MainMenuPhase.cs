@@ -45,7 +45,7 @@ namespace ProjectChimera.Core.Bootstrap
 
             // Story 9.7: the Multiplayer destination — un-defers the honesty-gated slot. Opens the rebuilt N-slot
             // lobby (Direct LAN/IP + Nakama matchmaking). Replaces the dev-only Edit-mode `N` keybind as the entry.
-            _ctx.MainMenu.OnMultiplayer += () => _ctx.LobbyUi.Show();
+            _ctx.MainMenu.OnMultiplayer += () => OpenFromMenu(_ctx.LobbyUi, needsEditMode: false, () => _ctx.LobbyUi.Show());
 
             _ctx.MainMenu.OnCreate += () =>
             {
@@ -55,21 +55,13 @@ namespace ProjectChimera.Core.Bootstrap
             };
 
             _ctx.MainMenu.OnBrowse += () =>
-            {
-                // Ensure Edit mode so the browser opens correctly.
-                if (_ctx.GameState.Mode != GameMode.Edit)
-                    _ctx.GameState.Toggle();
-                _ctx.ContentBrowser.ToggleVisible();
-            };
+                // Edit mode so the browser opens correctly — restored on close by OpenFromMenu.
+                OpenFromMenu(_ctx.ContentBrowser, needsEditMode: true, () => _ctx.ContentBrowser.ToggleVisible());
 
             // Story 9.11: the Replays destination — opens the replay browser (also reachable via the Edit-mode N
             // hotkey). ReplayBrowserPhase runs before MainMenuPhase, so ctx.ReplayBrowser already exists here.
             _ctx.MainMenu.OnReplays += () =>
-            {
-                if (_ctx.GameState.Mode != GameMode.Edit)
-                    _ctx.GameState.Toggle();
-                _ctx.ReplayBrowser.ToggleVisible();
-            };
+                OpenFromMenu(_ctx.ReplayBrowser, needsEditMode: true, () => _ctx.ReplayBrowser.ToggleVisible());
 
             _ctx.MainMenu.OnGenerateMap += () =>
             {
@@ -79,11 +71,70 @@ namespace ProjectChimera.Core.Bootstrap
                 _ctx.MapGenPanel.Toggle();
             };
 
-            _ctx.MainMenu.OnSettings += () => _ctx.SettingsPanel.ToggleVisible();
+            _ctx.MainMenu.OnSettings += () =>
+                OpenFromMenu(_ctx.SettingsPanel, needsEditMode: false, () => _ctx.SettingsPanel.ToggleVisible());
 
             _ctx.MainMenu.OnQuit += () => _ctx.Scene.GetTree().Quit();
 
             GD.Print("[MainMenu] Initialized — showing title screen.");
+        }
+
+        // ── Return-to-menu contract (reported by Alec, 2026-08-04) ───────────────────────────────────────────
+        //
+        // The overlay hides itself the moment a destination button is clicked, and every destination panel's
+        // close was a bare `Visible = false`. Nothing re-showed the menu, so exiting Browse / Multiplayer /
+        // Replays dropped the player into the live scene with no way back — "if I select Browse, then exit, it
+        // plays the game". Browse/Replays additionally toggle into Edit mode to open, which is why the map
+        // editor was what showed through.
+        //
+        // Two deliberate choices. (1) Hook `visibility_changed` instead of each panel's close BUTTON: these
+        // panels hide from several paths (close button, Escape, load-and-close at ContentBrowserPanel.cs:397)
+        // and a path added later is covered for free — instrumenting buttons would silently miss them, which is
+        // the same "correct for what it knew about" failure that produced DW-609. (2) Scope it with a flag so
+        // only a MENU-opened visit returns: the Edit-mode hotkey entries into the replay browser and lobby must
+        // still close silently rather than summoning a title screen mid-session.
+        //
+        // Mirrors the SkirmishSetupOverlay `onBack` convention already used above.
+
+        private readonly System.Collections.Generic.HashSet<CanvasLayer> _returnArmed = new();
+        private readonly System.Collections.Generic.HashSet<CanvasLayer> _awaitingReturn = new();
+        private GameMode? _modeBeforeDestination;
+
+        /// <summary>
+        /// Open a title-screen destination so that closing it comes BACK to the title screen, restoring the game
+        /// mode this opened. <paramref name="panel"/> may be null (a phase that did not publish it yet) — the
+        /// destination still opens, it just does not return. Arming is lazy so ordering between phases cannot
+        /// leave a panel unwired.
+        /// </summary>
+        private void OpenFromMenu(CanvasLayer? panel, bool needsEditMode, System.Action open)
+        {
+            if (panel != null)
+            {
+                if (_returnArmed.Add(panel))
+                    panel.VisibilityChanged += () => OnDestinationVisibilityChanged(panel);
+                _awaitingReturn.Add(panel);
+            }
+
+            _modeBeforeDestination = _ctx.GameState?.Mode;
+            if (needsEditMode && _ctx.GameState != null && _ctx.GameState.Mode != GameMode.Edit)
+                _ctx.GameState.Toggle();
+
+            open();
+        }
+
+        /// <summary>Re-show the title screen when a menu-opened destination hides. Ignores the show half of the
+        /// signal, and any hide the menu did not open.</summary>
+        private void OnDestinationVisibilityChanged(CanvasLayer panel)
+        {
+            if (panel.Visible) return;
+            if (!_awaitingReturn.Remove(panel)) return;
+
+            // GameMode is binary (Edit/Play), so Toggle() is the restore.
+            if (_modeBeforeDestination is GameMode prior && _ctx.GameState != null && _ctx.GameState.Mode != prior)
+                _ctx.GameState.Toggle();
+            _modeBeforeDestination = null;
+
+            if (_ctx.MainMenu != null) _ctx.MainMenu.Visible = true;
         }
     }
 }
