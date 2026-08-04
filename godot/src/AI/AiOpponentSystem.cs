@@ -261,7 +261,7 @@ namespace ProjectChimera.AI
             snap.HasSecondBarracks = barracksComplete >= 2;
             snap.HasCCExpansion    = _cmdCenterExpId >= 0 && _buildings.TryResolveRef(_cmdCenterExpId, out _); // Story 2.13: packed ref
 
-            // Count P2 combat units (non-workers) available for a wave.
+            // Count P2 COMBAT units (non-workers, damage-bearing) available for a wave.
             // Freshly trained units hold position (Stop) at the spawn point;
             // veterans whose AttackMove completed sit at Idle wherever the
             // wave ended. Both are conscriptable into the next wave.
@@ -279,10 +279,7 @@ namespace ProjectChimera.AI
                         snap.EnemyThreatRemains = true;
                     continue;
                 }
-                if (world.GatherState[i] != GatherState.Inactive) continue;
-                if (world.CommandState[i] == UnitCommand.Idle ||
-                    world.CommandState[i] == UnitCommand.Stop)
-                    snap.AvailableCombatUnits++;
+                if (IsConscriptable(world, i)) snap.AvailableCombatUnits++;
             }
 
             snap.CanAffordCC       = _resources.CanAffordOre(AI_FACTION, COST_CC);
@@ -292,6 +289,28 @@ namespace ProjectChimera.AI
 
             return snap;
         }
+
+        /// <summary>
+        /// Story 15.4 (DW-202) — the SINGLE "can this unit be conscripted into a wave?" test, shared by
+        /// <see cref="BuildSnapshot"/>'s availability count and BOTH wave dispatchers
+        /// (<see cref="DoLaunchAttack"/> / <see cref="DoRazeBuildings"/>), so the count that gates a wave and the
+        /// units that wave actually orders can never disagree.
+        ///
+        /// The damage-bearing term is the fix: a zero-damage unit is not a combat unit. CombatSystem excludes it
+        /// from every engagement path, so conscripting one adds nothing to the assault while inflating the count
+        /// that gates <see cref="ScoreLaunchAttack"/>/<see cref="ScoreRazeBuildings"/> into launching an
+        /// under-strength wave. Worse, before Story 15.4 flipping one to AttackMove LEAKED it permanently: a
+        /// non-combatant received no combat tick at all, so nothing ever moved it back to Idle/Stop and it was
+        /// never counted again. Reachable via a trigger <c>spawn_unit</c> of a zero-damage authored unit into the
+        /// AI slot. Same <c>&gt; Fixed.Zero</c> test the enemy-defender branch of <see cref="BuildSnapshot"/> uses
+        /// (ModifierSystem clamps EffectiveAttackDamage at zero, so the two are exact complements).
+        /// </summary>
+        private static bool IsConscriptable(EntityWorld world, int i) =>
+            world.IsAlive(i)
+            && world.FactionOf[i]   == AI_FACTION
+            && world.GatherState[i] == GatherState.Inactive
+            && world.EffectiveAttackDamage[i] > Fixed.Zero   // DW-202 — a non-combatant is not a wave unit
+            && (world.CommandState[i] == UnitCommand.Idle || world.CommandState[i] == UnitCommand.Stop);
 
         // ── Scoring ───────────────────────────────────────────────────────────
         //
@@ -473,11 +492,7 @@ namespace ProjectChimera.AI
             int hwm = world.HighWaterMark;
             for (int i = 0; i < hwm; i++)
             {
-                if (!world.IsAlive(i))                              continue;
-                if (world.FactionOf[i]   != AI_FACTION)            continue;
-                if (world.GatherState[i] != GatherState.Inactive)  continue;
-                if (world.CommandState[i] != UnitCommand.Idle &&
-                    world.CommandState[i] != UnitCommand.Stop)     continue;
+                if (!IsConscriptable(world, i)) continue; // DW-202 — same bar BuildSnapshot counted
                 world.CommandState[i] = UnitCommand.AttackMove;
                 world.CommandGoal[i]  = P1_BASE;
                 world.MoveTarget[i]   = P1_BASE;
@@ -498,11 +513,7 @@ namespace ProjectChimera.AI
             int hwm = world.HighWaterMark;
             for (int i = 0; i < hwm; i++)
             {
-                if (!world.IsAlive(i))                              continue;
-                if (world.FactionOf[i]   != AI_FACTION)            continue;
-                if (world.GatherState[i] != GatherState.Inactive)  continue;
-                if (world.CommandState[i] != UnitCommand.Idle &&
-                    world.CommandState[i] != UnitCommand.Stop)     continue;
+                if (!IsConscriptable(world, i)) continue; // DW-202 — same bar BuildSnapshot counted
                 // Prefer Structure-capable units; one that cannot hit structures would just self-revert via the
                 // AttackBuilding guard, so skip it and leave it available (default AttackDomain is All).
                 if ((world.AttackDomainOf[i] & AttackDomain.Structure) == AttackDomain.None) continue;
