@@ -182,3 +182,43 @@ jobs:
           name: analyzer-test-results
           path: '**/analyzer-tests.trx'
           if-no-files-found: warn
+
+  # DW-437 (Story 9.12) — the OTHER half of the C#<->TS hero-profile validator parity guarantee.
+  # The shared oracle (docs/server-deploy/nakama-modules/test/fixtures/validation-cases.json) is exercised by
+  # BOTH validators: the C# side (HeroProfileValidatorTests) already runs in the Tier-1 jobs above via the
+  # embedded copy, but the TS side (vitest: validation.test.ts / handlers.test.ts) previously ran only via the
+  # README's manual `npm test` — so a validation.ts regression that diverged from the shared oracle shipped with
+  # CI green. This SIBLING job closes that gap: a TS validator regression now fails the build.
+  #
+  # ubuntu-latest deliberately: 1x billing, and it matches the Linux host the Nakama module actually deploys to.
+  # Node/npm live ONLY in this job — the Godot-free .NET lanes above stay exactly as they were (no npm there).
+  # `npm ci` (NEVER `npm install`) is the npm equivalent of the .NET jobs' --locked-mode: an exact, reproducible
+  # tree from the committed package-lock.json that fails loudly on lock-file drift instead of silently floating.
+  # `tsc --noEmit` runs too because vitest TRANSPILES without typechecking (and the esbuild deploy bundle also
+  # skips typechecking) — this step is the only type gate the TS validator has anywhere.
+  # Wiring is guarded Tier-1-side by NakamaTsValidatorCiGateGuardTests (the 1.10a convention: structure asserted
+  # as tests on every `dotnet test`, so deleting this job — or de-vitesting `npm test` — goes red locally too).
+  nakama-ts-validator-gate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docs/server-deploy/nakama-modules
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20 (package.json engines >=18; 20 matches the committed @types/node ^20)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: docs/server-deploy/nakama-modules/package-lock.json
+
+      - name: Locked install (npm ci — exact tree from the committed package-lock.json)
+        run: npm ci
+
+      - name: TS validator typecheck (tsc --noEmit — the only type gate; vitest/esbuild never typecheck)
+        run: npm run typecheck
+
+      - name: TS validator vitest suite (shared-oracle parity — fails the build on any validation.ts/main.ts regression)
+        run: npm test
