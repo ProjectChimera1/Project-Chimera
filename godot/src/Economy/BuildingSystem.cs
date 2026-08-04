@@ -216,21 +216,38 @@ namespace ProjectChimera.Economy
                 if (!_buildings.Alive[i]) continue;
                 if (_buildings.IsUnderConstruction(i)) continue; // can't produce yet
                 if (_buildings.ProductionQueue[_buildings.HeadIndex(i)] == 0) continue; // idle (head empty)
-                if (_buildings.ProductionTimer[i] <= Fixed.Zero) continue;
 
-                _buildings.ProductionTimer[i] = _buildings.ProductionTimer[i] - dt;
-
-                if (_buildings.ProductionTimer[i] <= Fixed.Zero)
+                // A head with a RUNNING timer accrues progress and completes only when the timer crosses zero.
+                // A head whose timer is ALREADY expired falls straight through to the spawn attempt below — that is
+                // the DW-479 blocked-spawn retry state (an earlier tick's spawn was refused by a full EntityWorld).
+                // The old `timer <= 0 -> continue` guard skipped such a head FOREVER, freezing the whole queue
+                // behind it (DW-481's symptom for a 0-TrainTime head, which content validation now rejects at the
+                // authoring gate — UnitDefinitionValidator's strictly-positive train_time rule).
+                if (_buildings.ProductionTimer[i] > Fixed.Zero)
                 {
-                    // Head training complete — spawn the head unit, then pop-and-advance: shift slots 1..4 down and
-                    // start the promoted head's timer from its full TrainTime (Story 11.6). An empty next head goes idle.
-                    SpawnTrainedUnit(world, i);
-                    AdvanceQueue(i);
+                    _buildings.ProductionTimer[i] = _buildings.ProductionTimer[i] - dt;
+                    if (_buildings.ProductionTimer[i] > Fixed.Zero) continue; // still training
                 }
+
+                // Head training complete — spawn the head unit, then pop-and-advance: shift slots 1..4 down and
+                // start the promoted head's timer from its full TrainTime (Story 11.6). An empty next head goes idle.
+                // DW-479: advance ONLY on a SUCCESSFUL spawn. SpawnTrainedUnit no-ops at the EntityWorld entity cap;
+                // the old unconditional AdvanceQueue then DISCARDED the paid-for head with no refund — and with the
+                // depth-5 queue it burned one more paid slot on every subsequent tick the world stayed full. Leaving
+                // the head in place with an expired timer parks the order until a slot frees, then it spawns.
+                if (SpawnTrainedUnit(world, i))
+                    AdvanceQueue(i);
             }
         }
 
-        private void SpawnTrainedUnit(EntityWorld world, int buildingId)
+        /// <summary>
+        /// Spawn the building's HEAD production order near the building. Returns <c>true</c> when an entity was
+        /// actually created (the caller may then pop the queue), <c>false</c> when <see cref="EntityWorld.Create"/>
+        /// refused because the world is at its entity cap — in which case NOTHING was consumed: no spawn cue, no
+        /// unit_trained event, no MatchStats credit, and no <see cref="BuildingStore.TrainedCount"/> increment, so
+        /// the retry next tick reproduces this call exactly (DW-479).
+        /// </summary>
+        private bool SpawnTrainedUnit(EntityWorld world, int buildingId)
         {
             Faction faction = _buildings.FactionOf[buildingId];
 
@@ -262,7 +279,10 @@ namespace ProjectChimera.Economy
             // The Z offset cycles per trained unit: units that hold position (Stop)
             // would otherwise spawn on the exact same fixed-point coordinate, and
             // MovementSystem separation skips exactly-overlapping pairs.
-            int trained = _buildings.TrainedCount[buildingId]++;
+            // DW-479: READ the spawn-offset cursor here but COMMIT the increment only after a successful Create
+            // below. A blocked spawn must not burn a lateral-offset slot, or a retried order would land on a
+            // different tile than the one this attempt computed.
+            int trained = _buildings.TrainedCount[buildingId];
             Fixed offsetX = faction == Faction.Player1 ? SPAWN_OFFSET : -SPAWN_OFFSET;
             Fixed offsetZ = SPAWN_SPREAD * Fixed.FromInt((trained % 5) - 2);
             FixedVec3 spawnPos = new FixedVec3(
@@ -273,7 +293,9 @@ namespace ProjectChimera.Economy
             int id = world.Create(spawnPos, faction,
                 Fixed.FromFloat(hp), Fixed.FromFloat(speed));
 
-            if (id < 0) return; // EntityWorld full
+            if (id < 0) return false; // EntityWorld full — DW-479: the caller must KEEP the paid-for head and retry
+
+            _buildings.TrainedCount[buildingId] = trained + 1; // committed only now (see the read above)
 
             // Story 11.4 (FR-74) — production-completion cue: push TrainingComplete at the training building's position,
             // carrying its faction, so MatchAlertBridge plays the cue ONLY for the local player. Presentation-only (the
@@ -354,6 +376,7 @@ namespace ProjectChimera.Economy
                 // chasing the nearest enemy across the map (global chase).
                 world.CommandState[id] = UnitCommand.Stop;
             }
+            return true;
         }
 
         // ── Category mapping ──────────────────────────────────────────────────
@@ -560,9 +583,14 @@ namespace ProjectChimera.Economy
                 return false;
             }
 
-            // Supply cap: don't queue if the faction is already at cap
+            // Supply cap (DW-478, decision 2026-07-30 "reserve supply at enqueue — WC3-strict"): gate on the
+            // PROJECTED supply, i.e. the live SupplyUsed PLUS the supply already committed by every queued-but-
+            // unspawned order of this faction PLUS this order's own cost. Supply is still CONSUMED at spawn — the
+            // reservation is a gate-time projection, never a write (see QueuedSupply). Without the queued term all
+            // QUEUE_DEPTH enqueues saw the same unchanged live headroom, so a depth-5 queue could overshoot the cap
+            // by up to 4 units (at depth 1 only one order was ever in flight, so the hole was unreachable).
             byte supply = (byte)(def?.Supply ?? 1);
-            if (!resources.HasSupply(faction, supply))
+            if (!resources.HasSupply(faction, supply + QueuedSupply(faction)))
             {
                 events?.PushDenied(buildingPos, faction, DenialReason.SupplyCapped); // Story 11.4: guard-sourced reason
                 return false;
@@ -644,8 +672,10 @@ namespace ProjectChimera.Economy
         /// replay) — via <see cref="ResourceStore.Add"/>, then removes the slot and shifts slots <c>slot+1..4</c> down one.
         /// Cancelling the HEAD (slot 0) discards its in-progress timer (WC3: progress lost) and starts the promoted new
         /// head's timer from its full <c>TrainTime</c>; cancelling a waiting slot leaves the head timer untouched.
-        /// Supply is NEVER refunded (it is only gated at enqueue and consumed at spawn, exactly as today). Returns true
-        /// iff a slot was cancelled.
+        /// Supply is never REFUNDED as a resource — it is consumed at spawn, not at enqueue — but removing the slot
+        /// does release the enqueue-time RESERVATION that slot held, automatically: <see cref="QueuedSupply"/> is
+        /// re-derived from the queue on every gate call, so a cancelled order frees its headroom with no bookkeeping
+        /// (DW-478). Returns true iff a slot was cancelled.
         /// </summary>
         public bool CancelTrainCommand(int buildingId, Faction expectedFaction, int slot,
                                        CombatEventQueue? events = null)
@@ -703,6 +733,43 @@ namespace ProjectChimera.Economy
             _buildings.ProductionTimer[buildingId] = newHead != 0
                 ? Fixed.FromFloat(TrainTimeForQueued(_buildings.FactionOf[buildingId], newHead))
                 : Fixed.Zero;
+        }
+
+        /// <summary>
+        /// DW-478 — the supply already COMMITTED by <paramref name="faction"/>'s queued-but-not-yet-spawned
+        /// production orders: the sum, over every ALIVE building of that faction (ascending building id, then
+        /// ascending queue slot), of each occupied slot's authored <see cref="UnitDefinition.Supply"/>. A slot is
+        /// re-resolved from its stored encoded index exactly the way <see cref="SpawnTrainedUnit"/> resolves it; an
+        /// empty-category fallback sentinel / stale index contributes 1, matching the <c>def?.Supply ?? 1</c> that
+        /// <see cref="TrainUnit"/> charged when it queued that slot. Never negative, never throws.
+        ///
+        /// <para><b>Why a projection and not a write.</b> The reservation deliberately does NOT live in
+        /// <see cref="ResourceStore.SupplyUsed"/>: <see cref="SupplySystem"/> rebuilds that array from the ALIVE
+        /// entities every single tick, so a value written there is erased one tick later — and it is a
+        /// <see cref="SimChecksum"/> input, so writing to it would move every recorded golden. Re-deriving the
+        /// reservation from the (already folded) production queue at the gate keeps the checksum untouched and can
+        /// never drift out of sync with the queue: cancelling or completing an order releases its reservation for
+        /// free. Pure integer arithmetic in a fixed ascending order ⇒ identical on every peer and in replay.</para>
+        ///
+        /// <para>Public so a production-affordance UI can grey the train button on the SAME projection the enqueue
+        /// gate uses instead of on the live-supply-only <see cref="ResourceStore.HasSupply"/>.</para>
+        /// </summary>
+        public int QueuedSupply(Faction faction)
+        {
+            int total = 0;
+            for (int b = 0; b < _buildings.Count; b++)   // ascending building id — deterministic
+            {
+                if (!_buildings.Alive[b]) continue;
+                if (_buildings.FactionOf[b] != faction) continue;
+                int head = _buildings.HeadIndex(b);
+                for (int k = 0; k < BuildingStore.QUEUE_DEPTH; k++)
+                {
+                    byte q = _buildings.ProductionQueue[head + k];
+                    if (q == 0) continue;               // empty slot contributes nothing
+                    total += ResolveQueuedDef(faction, q)?.Supply ?? 1;
+                }
+            }
+            return total;
         }
 
         /// <summary>Story 11.6: the sparse resolved cost map for a queued slot's encoded value <paramref name="q"/>,
