@@ -163,31 +163,18 @@ namespace ProjectChimera.Core
         internal static string? PendingReplayPath;
         internal static string? PendingReplayScenarioPath;
 
-        /// <summary>Story 11.1: cross-reload handoff for a skirmish launch from the setup screen. <see cref="LaunchSkirmish"/>
-        /// stashes the built <c>ScenarioData</c> on <c>ScenarioLoadPhase.PendingGeneratedScenario</c> (the existing
-        /// AI-map-generator path) and sets these, then reloads the scene; the fresh <c>_Ready</c> consumes them BEFORE
-        /// the sim host is built so it can override <see cref="AiLevel"/>, show the loading screen, auto-enter Play on
-        /// success, and fail-safe back to the setup screen on a boot exception. Static so they survive
-        /// <c>ReloadCurrentScene</c>. Consumed exactly once (read-then-clear).</summary>
-        internal static bool PendingSkirmishStart;
-        internal static AiDifficulty? PendingSkirmishAiLevel;
-        /// <summary>The retained setup config — kept across the launch reload so a boot failure can re-open the setup
-        /// screen pre-filled. Cleared on a successful start or after the fail-safe re-open consumes it.</summary>
-        internal static SkirmishSetup? PendingSkirmishConfig;
-        /// <summary>Set when a skirmish boot threw: the located error surfaced by the fail-safe re-open on the next boot
-        /// (paired with <see cref="PendingSkirmishConfig"/>). Null on a normal boot.</summary>
-        internal static string? PendingSkirmishError;
-
-        /// <summary>Story 11.3 (FR-67): cross-reload handoff for an SP LOAD. <see cref="IssueLoad"/> reads + validates the
-        /// save (fail-closed), stashes the parsed state + header here, and re-launches via <see cref="LaunchSkirmish"/>;
-        /// the fresh <c>_Ready</c> re-applies the scenario through the setup-phase spine, then — in the post-phase tail —
-        /// overlays the saved mutable state via <c>SaveGameState.RestoreInto</c> (the hero post-phase-apply precedent).
-        /// Static so they survive <c>ReloadCurrentScene</c>; consumed once (read-then-clear).</summary>
-        internal static SaveGameState? PendingLoadedSave;
-        internal static SaveGameHeaderData? PendingLoadedSaveHeader;
+        /// <summary>Story 11.1 / Story 11.3 / DW-459: the ONE cross-reload boot handoff — the skirmish-launch statics
+        /// (start flag, AI override, retained config, located error, pending built scenario) and the SP pending-load
+        /// pair now live on a single Godot-free <see cref="Skirmish.SkirmishBootHandoff"/> whose transitions
+        /// (<see cref="Skirmish.SkirmishBootFlow"/>: Arm / ConsumeStart / FailBoot / CommitSuccess / TakeReopen /
+        /// ArmLoad / TakeLoad / DisarmLoad) are Tier-1 pinned. Static so it survives <c>ReloadCurrentScene</c>;
+        /// <c>ScenarioLoadPhase.PendingGeneratedScenario</c> delegates to its <c>PendingScenario</c> slot (the AI
+        /// map-generator path arms the same slot without the start flag, exactly as before).</summary>
+        internal static readonly Skirmish.SkirmishBootHandoff SkirmishBoot = new();
 
         /// <summary>Story 11.3: the launch record of the CURRENT match, retained across the successful boot (where
-        /// <see cref="PendingSkirmishConfig"/> is cleared) so a mid-match Save can stamp the save header's SkirmishSetup.</summary>
+        /// the handoff's <c>Config</c> is consumed by <c>CommitSuccess</c>) so a mid-match Save can stamp the save
+        /// header's SkirmishSetup.</summary>
         private SkirmishSetup? _currentSkirmishSetup;
 
         /// <summary>Story 11.3: wall-clock seconds accumulated toward the next autosave (offline SP only). Reset on
@@ -441,25 +428,22 @@ namespace ProjectChimera.Core
                 PendingReplayScenarioPath = null;
             }
 
-            // Story 11.1: consume a pending skirmish launch (survives ReloadCurrentScene, the PendingGeneratedScenario
-            // precedent). The built ScenarioData already lives on ScenarioLoadPhase.PendingGeneratedScenario; here we
-            // only read-and-clear the start flag + AI level so AiLevel is overridden BEFORE the sim host is built below.
-            // PendingSkirmishConfig / PendingSkirmishError are left intact so a boot exception can re-open the setup
+            // Story 11.1 / DW-459: consume a pending skirmish launch (survives ReloadCurrentScene) via the pure,
+            // Tier-1-pinned boot flow — read-then-clear of the start flag + AI level so AiLevel is overridden BEFORE
+            // the sim host is built below. Config/Error are left intact so a boot exception can re-open the setup
             // screen pre-filled; they are cleared on a successful start or by the fail-safe re-open on the next boot.
-            bool skirmishStart = PendingSkirmishStart;
-            PendingSkirmishStart = false;
-            if (skirmishStart && PendingSkirmishAiLevel.HasValue)
-                AiLevel = PendingSkirmishAiLevel.Value;
-            PendingSkirmishAiLevel = null;
+            Skirmish.SkirmishBootFlow.BootStart boot = Skirmish.SkirmishBootFlow.ConsumeStart(SkirmishBoot);
+            bool skirmishStart = boot.SkirmishStart;
+            if (boot.AiOverride.HasValue)
+                AiLevel = boot.AiOverride.Value;
 
-            // Story 11.1 (review PATCH 1): on a skirmish launch, N must come from the IN-MEMORY built scenario
-            // (ScenarioLoadPhase.PendingGeneratedScenario, set by LaunchSkirmish and consumed later in the phase run),
-            // NOT from the stale on-disk default map at ScenarioPath. PeekScenarioPlayerSlots(ScenarioPath) would size
-            // the FactionRegistry to the default map's slot count, mis-spanning the active set for any non-2-slot
-            // skirmish. Both paths route through ClampActivePlayers so the 2-slot floor/clamp is identical.
-            int rawSlots = skirmishStart
-                ? (ScenarioLoadPhase.PendingGeneratedScenario?.PlayerSlots?.Length ?? 0)
-                : PeekScenarioPlayerSlots(ScenarioPath);
+            // Story 11.1 (review PATCH 1) / DW-459: on a skirmish launch, N must come from the IN-MEMORY built
+            // scenario (SkirmishBoot.PendingScenario, set by LaunchSkirmish and consumed later in the phase run),
+            // NOT from the stale on-disk default map at ScenarioPath — RawRegistrySlots NEVER invokes the disk peek
+            // on a skirmish start (the pinned regression). Both paths route through ClampActivePlayers so the
+            // 2-slot floor/clamp is identical.
+            int rawSlots = Skirmish.SkirmishBootFlow.RawRegistrySlots(
+                skirmishStart, SkirmishBoot.PendingScenario, () => PeekScenarioPlayerSlots(ScenarioPath));
             int activePlayers = ClampActivePlayers(rawSlots);
             var factions = new FactionRegistry(activePlayers);
 
@@ -602,8 +586,8 @@ namespace ProjectChimera.Core
             {
                 loading = new LoadingScreenOverlay();
                 AddChild(loading);
-                loading.Initialize(ScenarioLoadPhase.PendingGeneratedScenario?.DisplayName
-                                   ?? PendingSkirmishConfig?.MapId ?? "Skirmish");
+                loading.Initialize(SkirmishBoot.PendingScenario?.DisplayName
+                                   ?? SkirmishBoot.Config?.MapId ?? "Skirmish");
                 // PATCH 3: yield exactly one rendered frame so the overlay actually paints before the (fast, synchronous)
                 // phase run below — otherwise it is AddChild'd and QueueFree'd within the same synchronous _Ready and no
                 // frame is ever shown. Strictly gated to skirmishStart; the normal/editor boot never awaits. A late abort
@@ -620,9 +604,9 @@ namespace ProjectChimera.Core
             void FailSafeSkirmishBoot(Exception ex)
             {
                 GD.PrintErr($"[MainScene] Skirmish boot failed — returning to setup screen: {ex.Message}");
-                ScenarioLoadPhase.PendingGeneratedScenario = null;
-                PendingSkirmishError = ex.Message;
-                // PendingSkirmishConfig is already retained across the reload.
+                // DW-459: the pure transition (drop the pending scenario, record the error, retain the config, and
+                // disarm any pending SP load so a failed boot can never leave a stale save armed for a later launch).
+                Skirmish.SkirmishBootFlow.FailBoot(SkirmishBoot, ex.Message);
                 _bootAborted = true;
                 loading?.QueueFree();
                 GetTree().ReloadCurrentScene();
@@ -752,21 +736,16 @@ namespace ProjectChimera.Core
             // no fail-safe re-open).
             if (skirmishStart)
             {
-                _currentSkirmishSetup = PendingSkirmishConfig; // Story 11.3 — retain the launch record for save headers
-                PendingSkirmishConfig = null;
-                PendingSkirmishError  = null;
+                // Story 11.3 / DW-459 — retain the launch record for save headers (the pure success commit).
+                _currentSkirmishSetup = Skirmish.SkirmishBootFlow.CommitSuccess(SkirmishBoot);
                 if (_ctx.MainMenu != null) _ctx.MainMenu.Visible = false;
                 _ctx.HeroPicker?.RequestSkirmishLaunch();
                 loading?.QueueFree();
             }
             // Story 11.1: fail-safe re-open — a previous skirmish boot threw, reloaded to this clean scene, and left the
             // retained setup + located error. Re-open the setup screen pre-filled with the error surfaced (consumed once).
-            else if (PendingSkirmishConfig != null && !string.IsNullOrEmpty(PendingSkirmishError))
+            else if (Skirmish.SkirmishBootFlow.TakeReopen(SkirmishBoot) is (SkirmishSetup reopen, string reopenError))
             {
-                SkirmishSetup reopen = PendingSkirmishConfig;
-                string reopenError = PendingSkirmishError;
-                PendingSkirmishConfig = null;
-                PendingSkirmishError  = null;
                 if (_ctx.MainMenu != null) _ctx.MainMenu.Visible = false;
                 _ctx.SkirmishSetup?.Open(reopen, reopenError);
             }
@@ -798,11 +777,7 @@ namespace ProjectChimera.Core
         /// </summary>
         public void LaunchSkirmish(ScenarioData built, AiDifficulty ai, SkirmishSetup retained)
         {
-            Bootstrap.ScenarioLoadPhase.PendingGeneratedScenario = built;
-            PendingSkirmishStart   = true;
-            PendingSkirmishAiLevel = ai;
-            PendingSkirmishConfig  = retained;
-            PendingSkirmishError   = null;
+            Skirmish.SkirmishBootFlow.Arm(SkirmishBoot, built, ai, retained); // DW-459: the pure stash half
             GD.Print($"[Skirmish] Launching \"{built.DisplayName}\" (AI {ai}) — reloading scene.");
             GetTree().ReloadCurrentScene();
         }
@@ -960,10 +935,74 @@ namespace ProjectChimera.Core
 
             // Stash the parsed state, dismiss the menu, and reload through the existing skirmish spine. The post-phase
             // tail (guarded by FailSafeSkirmishBoot) applies SaveGameState.RestoreInto after the scenario re-apply.
-            PendingLoadedSave       = state;
-            PendingLoadedSaveHeader = header;
+            Skirmish.SkirmishBootFlow.ArmLoad(SkirmishBoot, state, header);
             _ctx.InMatchMenu?.Close();
             LaunchSkirmish(scenario, AiLevel, _currentSkirmishSetup ?? header.ToSkirmishSetup());
+        }
+
+        /// <summary>
+        /// DW-465 — COLD-BOOT load from the main menu (FR-67's missing half): rebuild the saved match's scenario from
+        /// the save header's persisted SkirmishSetup launch record via <c>SkirmishSetupToScenario.Build</c>, without any
+        /// running match to borrow it from. The pure planning (parse fail-closed → resolve MapId against the shipped
+        /// catalog → rebuild → CanonicalModelHash gate → AI level) lives in the Godot-free
+        /// <see cref="Skirmish.SaveGameColdBoot"/>; this layer resolves paths, runs the CONTENT-hash gate over the
+        /// rebuilt scenario's resolved faction defs (the <c>ThrowIfContentMismatch</c> half that needs content), arms
+        /// the pending-load handoff, and relaunches through the existing <see cref="LaunchSkirmish"/> spine — the
+        /// post-reload Play-entry reset overlays <c>SaveGameState.RestoreInto</c> exactly like a mid-match load.
+        /// Every reject stays on the menu with a located toast; nothing is reloaded on failure.
+        /// </summary>
+        internal void LoadSaveFromMenu(string slot)
+        {
+            if (_ctx.SaveStore == null) return;
+            byte[]? bytes = _ctx.SaveStore.Read(slot);
+            if (bytes == null)
+            {
+                GD.PrintErr($"[Load] Slot '{slot}' is empty or unreadable.");
+                ShowSaveLoadNotice($"No save in {SlotLabel(slot)}.");
+                return;
+            }
+
+            // The shipped catalogs, scanned exactly as the setup screen scans them (same dirs, same res:// prefixes).
+            var maps = Skirmish.SkirmishCatalog.ScanMaps(
+                ProjectSettings.GlobalizePath("res://resources/data/scenarios"), "res://resources/data/scenarios");
+            var factions = Skirmish.SkirmishCatalog.ScanFactions(
+                ProjectSettings.GlobalizePath("res://resources/data/factions"), "res://resources/data/factions");
+
+            string? err = Skirmish.SaveGameColdBoot.TryPlan(
+                bytes, slot, maps, factions,
+                resPath => ScenarioSerializer.LoadFromFile(ProjectSettings.GlobalizePath(resPath)),
+                out Skirmish.ColdBootPlan? plan);
+            if (err != null || plan == null)
+            {
+                GD.PrintErr($"[Load] {err}");
+                ShowSaveLoadNotice($"Load failed: {err}");
+                return;
+            }
+
+            // Fail-closed CONTENT gate (the half TryPlan cannot run): resolve the REBUILT scenario's faction defs into
+            // a TEMP array (never the live one — this boot may still be rejected) through the one shared resolver, then
+            // compare the save's ContentHash against the content that would actually load. Mirrors IssueLoad's gate.
+            try
+            {
+                var tempDefs = (FactionDefinition?[])_seededSlotFactionDefs.Clone();
+                Bootstrap.SlotFactionResolver.Resolve(plan.Built, tempDefs, _seededSlotFactionDefs, _abilityRegistry);
+                var loadedDefs = new System.Collections.Generic.List<FactionDefinition>();
+                foreach (FactionDefinition? fd in tempDefs)
+                    if (fd != null) loadedDefs.Add(fd);
+                ulong curModel   = CanonicalModelHash.Compute(plan.Built); // TryPlan already gated this equal — recomputed honestly
+                ulong curContent = ContentHash.Compute(loadedDefs, _abilityRegistry, _host.ItemRegistry, _ctx.DamageTable);
+                plan.Header.ThrowIfContentMismatch(curModel, curContent, slot);
+            }
+            catch (Exception ex) // InvalidDataException (drift) or a resolver IO/parse throw — fail closed, stay on menu
+            {
+                GD.PrintErr($"[Load] {ex.Message}");
+                ShowSaveLoadNotice($"Load failed: {ex.Message}");
+                return;
+            }
+
+            GD.Print($"[Load] Cold-booting save '{slot}' — map '{plan.Header.MapId}', tick {plan.Header.Tick}.");
+            Skirmish.SkirmishBootFlow.ArmLoad(SkirmishBoot, plan.State, plan.Header);
+            LaunchSkirmish(plan.Built, plan.AiLevel, plan.Setup);
         }
 
         /// <summary>Quit-to-Menu from either overlay: end the match (Play→Edit reset, ModeChanged-wired), restore the
@@ -2345,12 +2384,8 @@ namespace ProjectChimera.Core
             }
             finally
             {
-                if (!completed && PendingLoadedSave != null)
-                {
-                    PendingLoadedSave = null;
-                    PendingLoadedSaveHeader = null;
+                if (!completed && Skirmish.SkirmishBootFlow.DisarmLoad(SkirmishBoot))
                     ShowSaveLoadNotice("Load discarded — the scenario could not enter Play.");
-                }
             }
         }
 
@@ -2629,10 +2664,8 @@ namespace ProjectChimera.Core
             //    resumed match (not the tick-0 authored start). Survives the scene reload as a static; consumed once.
             //    The fail-closed content gate already ran in IssueLoad before the reload; a residual restore failure
             //    (e.g. a descriptor index gone out of range) is surfaced and falls back to the authored board, never a crash.
-            if (PendingLoadedSave != null)
+            if (Skirmish.SkirmishBootFlow.TakeLoad(SkirmishBoot) is SaveGameState loaded)
             {
-                SaveGameState loaded = PendingLoadedSave;
-                PendingLoadedSave = null; PendingLoadedSaveHeader = null;
                 try
                 {
                     var loadTable = CanonicalEffectDescriptorTable.Build(_host.AbilityRegistry, _host.ItemRegistry);

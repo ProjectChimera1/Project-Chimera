@@ -37,6 +37,12 @@ namespace ProjectChimera.Core.Bootstrap
                 _ctx.SkirmishSetup.Open();
             };
 
+            // DW-465: cold-boot Load Game — pick a save slot (lenient header rows), then run the fail-closed
+            // cold-boot plan (parse → rebuild scenario from the header's launch record → hash gates → relaunch).
+            // A reject stays on this menu with a located toast. GameOverOverlayPhase built ctx.SaveStore earlier.
+            _ctx.MainMenu.OnLoadGame += () =>
+                _ctx.MainMenu!.OpenLoadPicker(_ctx.SaveStore, slot => _ctx.Scene.LoadSaveFromMenu(slot));
+
             // Story 9.7: the Multiplayer destination — un-defers the honesty-gated slot. Opens the rebuilt N-slot
             // lobby (Direct LAN/IP + Nakama matchmaking). Replaces the dev-only Edit-mode `N` keybind as the entry.
             _ctx.MainMenu.OnMultiplayer += () => _ctx.LobbyUi.Show();

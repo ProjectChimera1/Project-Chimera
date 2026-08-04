@@ -8,11 +8,15 @@ namespace ProjectChimera.Core.Skirmish
     /// <summary>
     /// Story 11.1 — the pure transform at the heart of the setup flow: turn a <see cref="SkirmishSetup"/> + the chosen
     /// base <see cref="ScenarioData"/> into an in-memory <see cref="ScenarioData"/> ready to hand to the existing
-    /// <c>PendingGeneratedScenario</c> handoff. It only rebuilds the <c>PlayerSlots</c> — terrain, entities, resource
-    /// nodes, triggers, and the win condition are left byte-identical to the base map. Faction choices are committed as
-    /// <c>FactionJson</c> <c>res://</c> paths (never in-memory defs), so the existing <c>ResolveSlotFactionDefs</c> runs
-    /// its ability resolution + tag-drop at load (DW-121 closed by construction). Deterministic: same input → identical
-    /// output. Godot-free.
+    /// <c>PendingGeneratedScenario</c> handoff. It rebuilds the <c>PlayerSlots</c>, re-keys the pre-placed
+    /// entities to the surviving contiguous slots, and (DW-458) prunes/reconciles every other per-slot reference —
+    /// trigger events/conditions/actions, the win-condition preset spec, and Income resource-node owners — so a
+    /// map launched with fewer active players than it authors start positions never boots with dangling slot
+    /// references. When every base slot survives with its original ordinal (the common 1v1-on-a-2-start-map path)
+    /// the reconcile is skipped entirely and terrain/triggers/win-condition stay reference-identical to the base
+    /// map (byte-identical on serialize). Faction choices are committed as <c>FactionJson</c> <c>res://</c> paths
+    /// (never in-memory defs), so the existing <c>ResolveSlotFactionDefs</c> runs its ability resolution + tag-drop
+    /// at load (DW-121 closed by construction). Deterministic: same input → identical output. Godot-free.
     /// </summary>
     public static class SkirmishSetupToScenario
     {
@@ -104,13 +108,23 @@ namespace ProjectChimera.Core.Skirmish
             // a paired base slot, RE-KEYED to the new contiguous owner index; drop the rest. New arrays + copied
             // elements so the caller's baseMap (whose arrays ShallowClone shares by reference) is never mutated.
             // A 2-start map launched 1v1 keeps every entity with an identity remap → byte-identical to the base map.
-            built.Buildings = (baseMap.Buildings ?? System.Array.Empty<ScenarioBuilding>())
-                .Where(b => origSlotToNew.ContainsKey(b.Slot))
-                .Select(b => new ScenarioBuilding
+            // (DW-458) buildingIndexMap: authored buildings-array index → index in the rebuilt array, for surviving
+            // entries only. The LandmarkDestruction preset references a building by PLACEMENT-LIST INDEX, so the
+            // filter below shifts every index after a dropped entry — the win-spec reconcile reads this map.
+            var buildingIndexMap = new Dictionary<int, int>();
+            ScenarioBuilding[] baseBuildings = baseMap.Buildings ?? System.Array.Empty<ScenarioBuilding>();
+            var mappedBuildings = new List<ScenarioBuilding>(baseBuildings.Length);
+            for (int bi = 0; bi < baseBuildings.Length; bi++)
+            {
+                ScenarioBuilding b = baseBuildings[bi];
+                if (b == null || !origSlotToNew.TryGetValue(b.Slot, out int newOwner)) continue;
+                buildingIndexMap[bi] = mappedBuildings.Count;
+                mappedBuildings.Add(new ScenarioBuilding
                 {
-                    Type = b.Type, Slot = origSlotToNew[b.Slot], X = b.X, Z = b.Z, PreBuilt = b.PreBuilt, Rot = b.Rot,
-                })
-                .ToArray();
+                    Type = b.Type, Slot = newOwner, X = b.X, Z = b.Z, PreBuilt = b.PreBuilt, Rot = b.Rot,
+                });
+            }
+            built.Buildings = mappedBuildings.ToArray();
             // Pre-placed UNITS additionally need their faction-specific id translated. The base map authored them
             // against the base slot's own faction (alpha_map_01 places alpha's "worker" for both slots), but this slot
             // may have CHOSEN a different faction whose roster is disjoint — beta has "forgehand", not "worker". An
@@ -119,9 +133,14 @@ namespace ProjectChimera.Core.Skirmish
             // SkirmishRosterMap re-keys by role — (Category, ordinal-within-category) — so alpha's mage becomes beta's
             // rune_caster. A same-faction launch takes the identity path, so it stays byte-identical to the base map.
             // Buildings need no equivalent: ScenarioBuilding.Type is a shared BuildingType token, not a faction id.
-            var mappedUnits = new List<ScenarioUnit>();
-            foreach (ScenarioUnit u in baseMap.Units ?? System.Array.Empty<ScenarioUnit>())
+            // (DW-458) unitIndexMap: authored units-array index → index in the rebuilt array, for surviving entries
+            // only — the Assassination preset references its leader by PLACEMENT-LIST INDEX (see buildingIndexMap).
+            var unitIndexMap = new Dictionary<int, int>();
+            ScenarioUnit[] baseUnits = baseMap.Units ?? System.Array.Empty<ScenarioUnit>();
+            var mappedUnits = new List<ScenarioUnit>(baseUnits.Length);
+            for (int ui = 0; ui < baseUnits.Length; ui++)
             {
+                ScenarioUnit u = baseUnits[ui];
                 if (u == null) continue;
                 if (!origSlotToNew.TryGetValue(u.Slot, out int newSlot)) continue; // orphaned slot → dropped (above)
 
@@ -133,6 +152,7 @@ namespace ProjectChimera.Core.Skirmish
                 // cannot resolve. SkirmishSetupValidator blocks this config before Launch, so the UI never gets here.
                 if (string.IsNullOrEmpty(mappedId)) continue;
 
+                unitIndexMap[ui] = mappedUnits.Count;
                 mappedUnits.Add(new ScenarioUnit
                 {
                     UnitId = mappedId!, Slot = newSlot, X = u.X, Z = u.Z, Rot = u.Rot,
@@ -140,7 +160,243 @@ namespace ProjectChimera.Core.Skirmish
             }
             built.Units = mappedUnits.ToArray();
 
+            // ── DW-458 (decision 2026-07-30: prune-and-reconcile). Strip/rewrite every remaining per-slot reference
+            // the ShallowClone still shares with the base map: trigger events/conditions/actions, the win-condition
+            // preset spec, and Income resource-node owners. Skipped entirely when the remap is the COMPLETE IDENTITY
+            // (every base slot paired to its own ordinal — e.g. any 2-start map launched 1v1), so the common path
+            // keeps the base map's references untouched and serializes byte-identically. ──
+            bool identityRemap = origSlotToNew.Count == baseSlots.Length;
+            if (identityRemap)
+                foreach (KeyValuePair<int, int> kv in origSlotToNew)
+                    if (kv.Key != kv.Value) { identityRemap = false; break; }
+            if (!identityRemap)
+            {
+                built.Triggers = ReconcileTriggers(
+                    baseMap.Triggers ?? System.Array.Empty<TriggerDefinition>(), origSlotToNew,
+                    PerPlayerVariableNames(baseMap.Variables));
+                built.WinConditionSpec = ReconcileWinSpec(
+                    baseMap.WinConditionSpec, origSlotToNew, unitIndexMap, buildingIndexMap);
+                built.ResourceNodes = ReconcileResourceNodes(
+                    baseMap.ResourceNodes ?? System.Array.Empty<ScenarioResourceNode>(), origSlotToNew);
+            }
+
             return built;
         }
+
+        // ── DW-458 reconcile helpers ─────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>The trigger EVENT kinds whose <c>faction</c> field is a player-slot reference the director
+        /// dispatches on (<c>ScenarioDirector.EventMatches</c> compares <c>f.Slot == def.Faction</c> for exactly
+        /// these). <c>match_start</c>/<c>timer_expires</c>/<c>custom_event</c> are system-keyed — never touched.</summary>
+        private static readonly string[] FactionKeyedEventKinds =
+        {
+            "unit_dies", "building_completed", "resource_threshold", "unit_count_threshold",
+            "unit_damaged", "unit_trained", "ability_cast", "hero_level", "player_chat",
+        };
+
+        /// <summary>The CONDITION kinds whose <c>faction</c> field always selects a player slot
+        /// (<c>ScenarioDirector.EvalCondition</c> does <c>(Faction)(c.Faction + 1)</c> for these).
+        /// <c>variable_comparison</c> is slot-keyed only for a PerPlayer-declared variable — handled separately.</summary>
+        private static readonly string[] FactionKeyedConditionKinds =
+        {
+            "building_exists", "resource_comparison", "unit_count", "unit_in_region",
+        };
+
+        /// <summary>The ACTION kinds whose <c>faction</c> field always targets a player slot
+        /// (<c>ScenarioDirector.ExecuteLeaf</c>: spawn owner / verdict faction / ore credit target).
+        /// <c>set_variable</c> is slot-keyed only for a PerPlayer-declared variable — handled separately.</summary>
+        private static readonly string[] FactionKeyedActionKinds =
+        {
+            "spawn_unit", "victory", "defeat", "add_resources",
+        };
+
+        private static bool IsIn(string[] set, string? kind)
+        {
+            for (int i = 0; i < set.Length; i++)
+                if (string.Equals(set[i], kind, System.StringComparison.Ordinal)) return true;
+            return false;
+        }
+
+        /// <summary>The names of the base map's PerPlayer-declared DSL variables — a
+        /// <c>variable_comparison</c>/<c>set_variable</c> naming one of these uses its <c>faction</c> field as the
+        /// player-slot selector (<c>DslVarTable.GetInt(name, faction)</c>), so it participates in the reconcile.</summary>
+        private static HashSet<string> PerPlayerVariableNames(ScenarioVariable[]? variables)
+        {
+            var names = new HashSet<string>(System.StringComparer.Ordinal);
+            foreach (ScenarioVariable v in variables ?? System.Array.Empty<ScenarioVariable>())
+                if (v != null && v.Scope == ProjectChimera.Dsl.VarScope.PerPlayer && !string.IsNullOrEmpty(v.Name))
+                    names.Add(v.Name);
+            return names;
+        }
+
+        /// <summary>
+        /// Prune/rewrite the flat trigger list for the dropped-slot launch (DW-458):
+        /// <list type="bullet">
+        /// <item>an EVENT referencing a dropped slot is STRIPPED (it can never occur); a trigger whose authored
+        /// events are all stripped is DROPPED (nothing can ever fire it);</item>
+        /// <item>a CONDITION referencing a dropped slot DROPS the whole trigger — the author gated it on a player
+        /// who is not in this match, and stripping the guard instead would let the trigger fire when it must not;</item>
+        /// <item>an ACTION referencing a dropped slot is STRIPPED (no player to act on); a trigger with no actions
+        /// left is DROPPED (it can no longer do anything);</item>
+        /// <item>every KEPT slot reference is REWRITTEN to the new contiguous ordinal via <paramref name="slotMap"/>.</item>
+        /// </list>
+        /// Fresh instances throughout — the base map's trigger objects are never mutated.
+        /// </summary>
+        private static TriggerDefinition[] ReconcileTriggers(
+            TriggerDefinition[] triggers, Dictionary<int, int> slotMap, HashSet<string> perPlayerVars)
+        {
+            var kept = new List<TriggerDefinition>(triggers.Length);
+            foreach (TriggerDefinition t in triggers)
+            {
+                if (t == null) continue;
+
+                TriggerEvent[] events = t.Events ?? System.Array.Empty<TriggerEvent>();
+                var newEvents = new List<TriggerEvent>(events.Length);
+                foreach (TriggerEvent e in events)
+                {
+                    if (e == null) continue;
+                    bool slotKeyed = IsIn(FactionKeyedEventKinds, e.Type) && e.Faction >= 0;
+                    if (slotKeyed && !slotMap.ContainsKey(e.Faction)) continue; // dropped slot → strip the event
+                    newEvents.Add(new TriggerEvent
+                    {
+                        Type = e.Type, Faction = slotKeyed ? slotMap[e.Faction] : e.Faction,
+                        BuildingType = e.BuildingType, TimerName = e.TimerName,
+                        Amount = e.Amount, Count = e.Count, Operator = e.Operator,
+                    });
+                }
+                if (events.Length > 0 && newEvents.Count == 0) continue; // no way left to fire → drop the trigger
+
+                TriggerCondition[] conditions = t.Conditions ?? System.Array.Empty<TriggerCondition>();
+                var newConditions = new List<TriggerCondition>(conditions.Length);
+                bool deadGuard = false;
+                foreach (TriggerCondition c in conditions)
+                {
+                    if (c == null) continue;
+                    bool slotKeyed = (IsIn(FactionKeyedConditionKinds, c.Type)
+                                      || (string.Equals(c.Type, "variable_comparison", System.StringComparison.Ordinal)
+                                          && c.Variable != null && perPlayerVars.Contains(c.Variable)))
+                                     && c.Faction >= 0;
+                    if (slotKeyed && !slotMap.ContainsKey(c.Faction)) { deadGuard = true; break; }
+                    newConditions.Add(new TriggerCondition
+                    {
+                        Type = c.Type, Faction = slotKeyed ? slotMap[c.Faction] : c.Faction,
+                        BuildingType = c.BuildingType, Amount = c.Amount, Count = c.Count,
+                        Variable = c.Variable, RegionId = c.RegionId, Value = c.Value, Operator = c.Operator,
+                    });
+                }
+                if (deadGuard) continue; // gated on a player who is not in the match → drop the trigger
+
+                TriggerAction[] actions = t.Actions ?? System.Array.Empty<TriggerAction>();
+                var newActions = new List<TriggerAction>(actions.Length);
+                foreach (TriggerAction a in actions)
+                {
+                    if (a == null) continue;
+                    bool slotKeyed = (IsIn(FactionKeyedActionKinds, a.Type)
+                                      || (string.Equals(a.Type, "set_variable", System.StringComparison.Ordinal)
+                                          && a.Variable != null && perPlayerVars.Contains(a.Variable)))
+                                     && a.Faction >= 0;
+                    if (slotKeyed && !slotMap.ContainsKey(a.Faction)) continue; // dropped slot → strip the action
+                    newActions.Add(new TriggerAction
+                    {
+                        Type = a.Type, UnitId = a.UnitId, Faction = slotKeyed ? slotMap[a.Faction] : a.Faction,
+                        X = a.X, Z = a.Z, Count = a.Count, Text = a.Text, Duration = a.Duration,
+                        TimerName = a.TimerName, TimerSeconds = a.TimerSeconds, Amount = a.Amount,
+                        Variable = a.Variable, Value = a.Value, SoundId = a.SoundId,
+                    });
+                }
+                if (actions.Length > 0 && newActions.Count == 0) continue; // nothing left to do → drop the trigger
+
+                kept.Add(new TriggerDefinition
+                {
+                    Name = t.Name, Enabled = t.Enabled, RunOnce = t.RunOnce,
+                    CooldownSeconds = t.CooldownSeconds, Priority = t.Priority,
+                    Events = newEvents.ToArray(), Conditions = newConditions.ToArray(), Actions = newActions.ToArray(),
+                });
+            }
+            return kept.ToArray();
+        }
+
+        /// <summary>
+        /// Reconcile the win-condition preset spec for the dropped-slot launch (DW-458). A preset whose designated
+        /// slot/placement survived is REWRITTEN to the new ordinal/index; one whose target was dropped is PRUNED to
+        /// null, falling back to the base map's built-in <see cref="ScenarioData.WinCondition"/> enum — the honest
+        /// degradation (the authored goal referenced a player who is not in this match). KingOfTheHill is
+        /// region-keyed (regions are never dropped) and passes through untouched; fresh instances when rewritten.
+        /// </summary>
+        private static WinConditionSpec? ReconcileWinSpec(
+            WinConditionSpec? spec, Dictionary<int, int> slotMap,
+            Dictionary<int, int> unitIndexMap, Dictionary<int, int> buildingIndexMap)
+        {
+            if (spec == null || spec.Preset == WinPresetKind.None || spec.Preset == WinPresetKind.KingOfTheHill)
+                return spec;
+
+            switch (spec.Preset)
+            {
+                case WinPresetKind.TimedSurvival:
+                    if (!slotMap.TryGetValue(spec.FactionSlot, out int newSlot)) return null; // designated player dropped
+                    return new WinConditionSpec
+                    {
+                        Preset = WinPresetKind.TimedSurvival, FactionSlot = newSlot, SurviveTicks = spec.SurviveTicks,
+                    };
+
+                case WinPresetKind.Assassination:
+                    if (!unitIndexMap.TryGetValue(spec.LeaderUnitIndex, out int newUnitIndex)) return null; // leader dropped
+                    return new WinConditionSpec
+                    {
+                        Preset = WinPresetKind.Assassination, LeaderUnitIndex = newUnitIndex,
+                    };
+
+                case WinPresetKind.LandmarkDestruction:
+                    if (!buildingIndexMap.TryGetValue(spec.StructureIndex, out int newBuildingIndex)) return null; // landmark dropped
+                    return new WinConditionSpec
+                    {
+                        Preset = WinPresetKind.LandmarkDestruction, StructureIndex = newBuildingIndex,
+                    };
+
+                default:
+                    return spec; // unknown preset — leave for the validator's fail-closed default arm
+            }
+        }
+
+        /// <summary>
+        /// Reconcile resource-node owners for the dropped-slot launch (DW-458). An Income node owned by a dropped
+        /// slot is DROPPED (there is no player to credit — and the validator fail-closes on an undeclared Income
+        /// <c>owner_slot</c>, which would otherwise reject the whole built scenario at boot). A kept owner is
+        /// REWRITTEN to the new ordinal. A non-Income node's <c>owner_slot</c> is inert; one referencing a dropped
+        /// slot is normalized to -1 (unset) so no dangling ordinal survives. Untouched nodes keep their original
+        /// references (never mutated).
+        /// </summary>
+        private static ScenarioResourceNode[] ReconcileResourceNodes(
+            ScenarioResourceNode[] nodes, Dictionary<int, int> slotMap)
+        {
+            var kept = new List<ScenarioResourceNode>(nodes.Length);
+            foreach (ScenarioResourceNode n in nodes)
+            {
+                if (n == null) continue;
+                if (n.OwnerSlot < 0 || slotMap.TryGetValue(n.OwnerSlot, out _))
+                {
+                    // Owner survives (or none declared): rewrite only when the ordinal actually changes.
+                    if (n.OwnerSlot >= 0 && slotMap[n.OwnerSlot] != n.OwnerSlot)
+                        kept.Add(CloneNodeWithOwner(n, slotMap[n.OwnerSlot]));
+                    else
+                        kept.Add(n);
+                    continue;
+                }
+                bool income = string.Equals(n.CollectionModel, "Income", System.StringComparison.Ordinal);
+                if (income) continue;                    // Income node owned by a dropped player → drop the node
+                kept.Add(CloneNodeWithOwner(n, -1));     // inert owner on a dropped slot → normalize to unset
+            }
+            return kept.ToArray();
+        }
+
+        /// <summary>A field-complete copy of a resource node with a different <see cref="ScenarioResourceNode.OwnerSlot"/>
+        /// (the base map's node object is never mutated).</summary>
+        private static ScenarioResourceNode CloneNodeWithOwner(ScenarioResourceNode n, int ownerSlot) => new()
+        {
+            X = n.X, Z = n.Z, Supply = n.Supply, Rate = n.Rate, MaxGatherers = n.MaxGatherers,
+            CollectionModel = n.CollectionModel, ResourceType = n.ResourceType,
+            RequiresStructure = n.RequiresStructure, RequiresStructureRadius = n.RequiresStructureRadius,
+            OwnerSlot = ownerSlot, IncomePeriodTicks = n.IncomePeriodTicks, Rot = n.Rot,
+        };
     }
 }
