@@ -77,6 +77,13 @@ namespace ProjectChimera.Multiplayer.Server
             if (playerCount < 1) throw new ArgumentOutOfRangeException(nameof(playerCount));
             if (slotFaction == null || slotFaction.Length < playerCount)
                 throw new ArgumentException("slotFaction must cover every player slot.", nameof(slotFaction));
+            // DW-412 — FAIL CLOSED on a table FactionToSlot cannot invert. Its first-match scan is a true inverse
+            // only while the player prefix is INJECTIVE and player-faction-only; a duplicate faction would resolve a
+            // survivor's DropAck to the WRONG slot, DropController.RecordAck would then drop it as a mismatch
+            // (droppedSlot != _pendingDroppedSlot) with no log, and the freeze would never commit — the merged
+            // fan-in stalls on the departed peer forever. Injective by construction today (ToFaction(i) == i+1);
+            // this is the pin, so a future roster-sourced/hand-built table cannot silently reopen the stall.
+            SlotFactionTable.AssertValid(slotFaction, playerCount, nameof(slotFaction));
             _playerCount           = playerCount;
             _slotFaction           = slotFaction;
             _emittedThrough        = emittedThrough        ?? throw new ArgumentNullException(nameof(emittedThrough));
@@ -96,6 +103,11 @@ namespace ProjectChimera.Multiplayer.Server
         /// Map a DropAck's (transport-untrusted) faction byte back to a player slot via the authoritative
         /// slot→faction table — never trusting it as a slot index. −1 if no player slot matches.
         /// (Extracted verbatim from <c>DedicatedServer.FactionToSlot</c>.)
+        ///
+        /// <para>DW-412 — this first-match scan is a TRUE INVERSE because the constructor rejects any table whose
+        /// player prefix is not injective / not player-faction-only (<see cref="SlotFactionTable.AssertValid"/>).
+        /// Without that guard a duplicate entry would silently resolve an ACK to the wrong slot (stall) and a
+        /// Neutral entry would resolve an unknown byte to a real slot instead of −1.</para>
         /// </summary>
         public int FactionToSlot(Faction faction)
         {

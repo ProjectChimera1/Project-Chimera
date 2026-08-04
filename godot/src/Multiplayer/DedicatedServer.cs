@@ -59,12 +59,16 @@ namespace ProjectChimera.Multiplayer
 
         private static readonly Faction[] SLOT_FACTION = BuildSlotFactions();
 
+        /// <summary>
+        /// DW-412: the table is now built AND validated by the Godot-free <see cref="Server.SlotFactionTable"/> —
+        /// it fails closed unless the mapping is INJECTIVE and player-faction-only. That property is what makes
+        /// <c>DropCoordinator.FactionToSlot</c>'s first-match scan a true inverse; a duplicate entry would resolve a
+        /// survivor's <c>DropAck</c> to the wrong slot, <c>DropController.RecordAck</c> would silently discard it,
+        /// and the freeze would never commit (merged fan-in stalled forever, no error logged anywhere). Injective by
+        /// construction today — the guard is what PINS it, and it is Tier-1 tested there rather than in this node.
+        /// </summary>
         private static Faction[] BuildSlotFactions()
-        {
-            var a = new Faction[ServerTransport.MAX_PLAYERS];
-            for (int i = 0; i < a.Length; i++) a[i] = FactionRegistry.ToFaction(i);
-            return a;
-        }
+            => Server.SlotFactionTable.Build(ServerTransport.MAX_PLAYERS);
 
         /// <summary>The player count this match expects before it may start (and the merged fan-in width) — the
         /// scenario-derived <see cref="ExpectedPlayerCount"/>, clamped into [1, <see cref="ServerTransport.MAX_PLAYERS"/>].
