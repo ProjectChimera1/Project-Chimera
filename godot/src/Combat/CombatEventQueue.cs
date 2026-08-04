@@ -117,13 +117,44 @@ namespace ProjectChimera.Combat
     /// Sim-layer event buffer for combat feedback.
     ///
     /// Written by CombatSystem / ProjectileSystem / DamageResolver / AbilityCastSystem each simulation tick.
-    /// Drained once per frame by CombatFeedbackBridge (which owns the single Clear()) and read again by AudioManager.
+    /// Drained once per frame by CombatFeedbackBridge (which owns the single Clear()) and read again by AudioManager
+    /// and MatchAlertBridge.
     ///
-    /// Pure C# — no Godot dependency. Never folded into SimChecksum (it is not a Compute input).
+    /// <para><b>DW-469 — two-lane admission.</b> The buffer used to be a flat 256 slots that ANY push could fill and
+    /// that silently dropped everything past the cap. Once Story 11.4 routed <see cref="CombatEventType.OrderDenied"/>
+    /// / <see cref="CombatEventType.TrainingComplete"/> / <see cref="CombatEventType.ResearchComplete"/> onto the same
+    /// queue, a single large battle tick (&gt;256 hit pushes) could starve those cues entirely — the player is simply
+    /// never told their order was refused or their unit finished. The buffer is now split into two lanes by
+    /// <see cref="IsAmbient"/>: the high-volume BATTLE cues may fill at most <see cref="MAX_AMBIENT_EVENTS"/> slots
+    /// (unchanged from the old flat cap, so battle-cue admission is behaviourally identical to before), while the
+    /// low-volume NOTIFICATION cues may additionally use the <see cref="PRIORITY_RESERVE"/> slots beyond it. Because an
+    /// ambient push can never raise the count past <see cref="MAX_AMBIENT_EVENTS"/>, at least
+    /// <see cref="PRIORITY_RESERVE"/> slots are ALWAYS free for notification cues no matter how big the fight.</para>
+    ///
+    /// <para>Pure C# — no Godot dependency. Never folded into SimChecksum (it is not a Compute input), and no sim
+    /// system reads <see cref="Count"/>/<see cref="Get"/> — only the three presentation bridges do — so changing what
+    /// this queue admits cannot move a checksum, a golden, or a replay.</para>
     /// </summary>
     public class CombatEventQueue
     {
-        private const int MAX_EVENTS = 256;
+        /// <summary>
+        /// DW-469 — slots the high-volume BATTLE cues (<see cref="IsAmbient"/>) may fill. Deliberately the old flat
+        /// capacity: ambient admission is unchanged by the two-lane split, so no battle visual/audio regressed.
+        /// </summary>
+        public const int MAX_AMBIENT_EVENTS = 256;
+
+        /// <summary>
+        /// DW-469 — slots reserved BEYOND <see cref="MAX_AMBIENT_EVENTS"/> that only NOTIFICATION cues (denials,
+        /// production/research completions, hero fall/revive, item pickup/use/drop) can occupy. Sized for the
+        /// player-driven event rate, which is bounded by clicks and production timers rather than by army size: a
+        /// frame carrying more than 64 of these does not occur in play, whereas hit pushes routinely exceed 256.
+        /// The extra slots are near-free on the drain side — the two heavy per-frame consumers (CombatFeedbackBridge's
+        /// flash pool, AudioManager's voice pool) have no case for any notification type and skip them.
+        /// </summary>
+        public const int PRIORITY_RESERVE = 64;
+
+        /// <summary>DW-469 — total ring capacity: the ambient ceiling plus the notification reserve.</summary>
+        public const int MAX_EVENTS = MAX_AMBIENT_EVENTS + PRIORITY_RESERVE;
 
         private readonly CombatEvent[] _buf = new CombatEvent[MAX_EVENTS];
         private int _count;
@@ -133,14 +164,46 @@ namespace ProjectChimera.Combat
         /// <summary>Returns the event at index <paramref name="i"/>. No bounds checking.</summary>
         public CombatEvent Get(int i) => _buf[i];
 
-        /// <summary>Appends an event with no feedback override (today's default look). Silently drops if full.</summary>
+        /// <summary>
+        /// DW-469 — true for the BATTLE-VOLUME cue types: the per-swing / per-impact / per-death / per-cast events a
+        /// large fight emits by the hundreds in a single tick, and whose individual loss is imperceptible (the drain
+        /// side pools only 48 flashes and a handful of audio voices per frame anyway). These are the only types the
+        /// <see cref="MAX_AMBIENT_EVENTS"/> ceiling applies to; every other type is a low-volume NOTIFICATION cue that
+        /// may also use <see cref="PRIORITY_RESERVE"/>.
+        ///
+        /// <para>Deliberately a closed list of the SPAMMY types with a fail-safe default: a newly appended
+        /// <see cref="CombatEventType"/> that nobody classifies here is treated as a notification, so forgetting this
+        /// switch over-protects a cue instead of silently starving it (the safe direction of the
+        /// closed-enum-touch-site hazard).</para>
+        /// </summary>
+        public static bool IsAmbient(CombatEventType type) => type switch
+        {
+            CombatEventType.MeleeHit          => true,
+            CombatEventType.RangedHit         => true,
+            CombatEventType.SplashHit         => true,
+            CombatEventType.UnitKilled        => true,
+            CombatEventType.BuildingDestroyed => true,
+            CombatEventType.AbilityCast       => true,
+            _                                 => false
+        };
+
+        /// <summary>
+        /// DW-469 — the single admission gate both push paths route through: an ambient cue is admitted only while the
+        /// buffer is below <see cref="MAX_AMBIENT_EVENTS"/>, a notification cue while it is below
+        /// <see cref="MAX_EVENTS"/>. One rule, so the reserve cannot be honoured on one push overload and lost on
+        /// another.
+        /// </summary>
+        private bool HasRoomFor(CombatEventType type)
+            => _count < (IsAmbient(type) ? MAX_AMBIENT_EVENTS : MAX_EVENTS);
+
+        /// <summary>Appends an event with no feedback override (today's default look). Drops if its lane is full.</summary>
         public void Push(CombatEventType type, FixedVec3 position)
             => Push(type, position, Faction.Neutral, null);
 
         /// <summary>
         /// Appends an event carrying an optional presentation-only feedback override (Story 2.7). Resolve
         /// <paramref name="feedback"/> at the push site while the source is still alive — the bridge cannot recover
-        /// source identity at drain time. Silently drops if the buffer is full (non-critical visual).
+        /// source identity at drain time. Drops if its lane is full (non-critical visual).
         /// </summary>
         public void Push(CombatEventType type, FixedVec3 position, CombatFeedbackProfile? feedback)
             => Push(type, position, Faction.Neutral, feedback);
@@ -148,11 +211,13 @@ namespace ProjectChimera.Combat
         /// <summary>
         /// Story 11.4 (FR-74) — appends an event stamping the RELEVANT <paramref name="faction"/> (victim for a hit/
         /// kill/razed; actor for a completion), optionally carrying the presentation-only feedback override. Called by
-        /// the hit/kill/razed/completion push sites, which already read that faction. Silently drops if full.
+        /// the hit/kill/razed/completion push sites, which already read that faction. Drops if the event's lane is
+        /// full (DW-469): an ambient battle cue past <see cref="MAX_AMBIENT_EVENTS"/>, a notification cue only past
+        /// the whole <see cref="MAX_EVENTS"/> ring.
         /// </summary>
         public void Push(CombatEventType type, FixedVec3 position, Faction faction, CombatFeedbackProfile? feedback = null)
         {
-            if (_count < MAX_EVENTS)
+            if (HasRoomFor(type))
                 _buf[_count++] = new CombatEvent
                 {
                     Type = type, Position = position, Faction = faction, Reason = DenialReason.None, Feedback = feedback
@@ -163,11 +228,12 @@ namespace ProjectChimera.Combat
         /// Story 11.4 (FR-74) — appends a guard-sourced <see cref="CombatEventType.OrderDenied"/> event carrying the
         /// specific <paramref name="reason"/> the rejecting guard computed plus the acting <paramref name="faction"/>.
         /// This is the ONLY place the denial reason is authored (single-truth); the reactive UI renders it and never
-        /// re-derives it. Silently drops if the buffer is full (non-critical visual).
+        /// re-derives it. A denial is a NOTIFICATION cue (DW-469), so it draws on <see cref="PRIORITY_RESERVE"/> and
+        /// survives a battle tick that saturates the ambient lane; it drops only once the whole ring is full.
         /// </summary>
         public void PushDenied(FixedVec3 position, Faction faction, DenialReason reason)
         {
-            if (_count < MAX_EVENTS)
+            if (HasRoomFor(CombatEventType.OrderDenied))
                 _buf[_count++] = new CombatEvent
                 {
                     Type = CombatEventType.OrderDenied, Position = position, Faction = faction, Reason = reason, Feedback = null
