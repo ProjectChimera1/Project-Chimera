@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using ProjectChimera.Combat;
 using ProjectChimera.Core.Definitions; // UnitDefinition (definition→SoA copy in ApplyUnitDefinition)
@@ -312,7 +313,7 @@ namespace ProjectChimera.Core
         /// scenario apply, so <see cref="Create"/> samples it for every spawn path uniformly. Null ⇒ elevation is
         /// <see cref="Fixed.Zero"/> everywhere (no behaviour change vs pre-feature).
         /// </summary>
-        private ElevationGrid _elevationGrid;
+        private ElevationGrid? _elevationGrid;
 
         /// <summary>
         /// Story 6.5: the injected pathability grid (painted ∪ slope-derived blocked cells), or null for a
@@ -470,10 +471,11 @@ namespace ProjectChimera.Core
         /// per-entity SoA array: a recycled slot MUST be null-reset in <see cref="Create"/> so it can never inherit a
         /// prior occupant's profile (the 1.12/1.13/2.6 SoA-recycle trap). Elements are null when the unit authored no
         /// override (⇒ the tuned event-type defaults play). Written via the single <see cref="ApplyUnitDefinition"/>
-        /// mapper (A2). The type is non-nullable-annotated because EntityWorld opts out of the nullable context; null
-        /// elements are the natural reference default and every read site null-guards.
+        /// mapper (A2). DW-213: the element type is nullable-ANNOTATED (<c>CombatFeedbackProfile?[]</c>) now that this
+        /// file is inside the <c>#nullable enable</c> context — null elements are the natural reference default and
+        /// every read site null-guards, so the annotation documents the contract the code already honours.
         /// </summary>
-        public readonly CombatFeedbackProfile[] FeedbackProfile;
+        public readonly CombatFeedbackProfile?[] FeedbackProfile;
 
         /// <summary>
         /// Per-unit reference to the <see cref="Core.Definitions.UnitDefinition"/> this entity was spawned from
@@ -486,11 +488,11 @@ namespace ProjectChimera.Core
         /// def — the SoA-recycle trap) and bulk-cleared in <see cref="Clear"/>. A NON-FOLDED reference SoA — EXCLUDED
         /// from <see cref="SimChecksum"/> / <c>CanonicalModelHash</c>
         /// exactly like <see cref="FeedbackProfile"/> (editor-only state flow; the def is spawn-constant and
-        /// peer-identical, and every gameplay-affecting field it derives is already folded on its own). Non-nullable-
-        /// annotated because <see cref="EntityWorld"/> opts out of the nullable context; null elements are the natural
-        /// reference default and every read site null-guards.
+        /// peer-identical, and every gameplay-affecting field it derives is already folded on its own). DW-213:
+        /// nullable-ANNOTATED (<c>UnitDefinition?[]</c>) now that this file is inside the <c>#nullable enable</c>
+        /// context; null elements are the natural reference default and every read site null-guards.
         /// </summary>
-        public readonly UnitDefinition[] SourceDefinition;
+        public readonly UnitDefinition?[] SourceDefinition;
 
         // --- Command state ---
         /// <summary>Active order governing autonomous combat behaviour (set by player commands).</summary>
@@ -669,11 +671,11 @@ namespace ProjectChimera.Core
         /// external store cannot close via <see cref="Create"/> alone). Deliberately an <c>Action&lt;int&gt;</c>, NOT a
         /// typed store ref: <c>EntityWorld</c> (Core) stays free of any dependency on the modifier store — clean
         /// layering (Effects depends on Core, never the reverse). Fires in the same deterministic order
-        /// <see cref="Destroy"/> is called on every peer; zero-alloc once bound. (Declared without a nullable
-        /// annotation because <see cref="EntityWorld"/> opts out of the nullable context; a delegate field is null
-        /// until bound regardless, and the <c>?.Invoke</c> call site guards it.)
+        /// <see cref="Destroy"/> is called on every peer; zero-alloc once bound. (DW-213: nullable-ANNOTATED now that
+        /// this file is inside the <c>#nullable enable</c> context — a delegate field is null until bound, and the
+        /// <c>?.Invoke</c> call site guards it.)
         /// </summary>
-        public Action<int> OnDestroy;
+        public Action<int>? OnDestroy;
 
         /// <summary>
         /// Per-id lifecycle callback fired synchronously at the END of <see cref="ApplyUnitDefinition"/> — AFTER every
@@ -687,7 +689,7 @@ namespace ProjectChimera.Core
         /// carve-off that skipped restore is closed). <see cref="Destroy"/> cleared the entity's modifiers on delete,
         /// so there is no double-install.
         /// </summary>
-        public Action<int> OnUnitDefinitionApplied;
+        public Action<int>? OnUnitDefinitionApplied;
 
         // ── Generation counter (DW-184 — the BuildingStore/HeroStore Story 2.13 D-3 pattern, applied to entities) ──
         // Per-slot recycle generation, bumped each time Create() reuses a freed slot. Entity ids previously had NO
@@ -964,7 +966,7 @@ namespace ProjectChimera.Core
         /// heightmap (one <see cref="Fixed.FromFloat"/> per cell) and calls this via <c>ScenarioApplier</c>. Never
         /// reassigned per-tick — a load-time seam only. Null ⇒ every spawn's <see cref="Elevation"/> is <see cref="Fixed.Zero"/>.
         /// </summary>
-        public void SetElevationGrid(ElevationGrid grid) => _elevationGrid = grid;
+        public void SetElevationGrid(ElevationGrid? grid) => _elevationGrid = grid;
 
         /// <summary>
         /// DW-153 — deterministic READ of the injected <see cref="ElevationGrid"/> terrain height at a world XZ (the

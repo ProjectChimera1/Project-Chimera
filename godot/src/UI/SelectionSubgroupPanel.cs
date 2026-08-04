@@ -489,7 +489,7 @@ namespace ProjectChimera.UI
         /// <summary>An entity's type label — its <see cref="UnitDefinition.DisplayName"/> if present, else its category.</summary>
         private string TypeLabelOf(int id)
         {
-            UnitDefinition def = _world.SourceDefinition[id];
+            UnitDefinition? def = _world.SourceDefinition[id];   // DW-213: SourceDefinition is UnitDefinition?[] — a def-less spawn reads null.
             if (def != null && !string.IsNullOrEmpty(def.DisplayName)) return def.DisplayName;
             return _world.CategoryOf[id].ToString();
         }

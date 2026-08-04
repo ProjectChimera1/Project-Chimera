@@ -1240,7 +1240,7 @@ namespace ProjectChimera.UI
         private long SubgroupKeyOf(int id)
         {
             if (!_world.IsAlive(id)) return long.MinValue;
-            UnitDefinition def = _world.SourceDefinition[id];
+            UnitDefinition? def = _world.SourceDefinition[id];   // DW-213: SourceDefinition is UnitDefinition?[] — a def-less spawn reads null.
             if (def != null)
             {
                 if (!_defSubgroupKeys.TryGetValue(def, out long k))
