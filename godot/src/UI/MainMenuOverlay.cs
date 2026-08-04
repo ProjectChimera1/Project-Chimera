@@ -1,7 +1,8 @@
 #nullable enable
 using Godot;
 using System;
-using ProjectChimera.UI.Components; // ChimeraComponents, ChimeraMark, ChimeraTooltip
+using ProjectChimera.Core.Persistence; // ISaveStore, SaveGameHeader, LocalSaveStore (DW-465 load picker metadata)
+using ProjectChimera.UI.Components; // ChimeraComponents, ChimeraMark, ChimeraTooltip, ChimeraDialog
 using ProjectChimera.UI.Theme;       // ThemeTokens, ThemeBuilder, AccentController
 using GodotTheme = Godot.Theme;       // the ProjectChimera.UI.Theme namespace shadows the bare Theme type
 
@@ -35,6 +36,7 @@ namespace ProjectChimera.UI
         // ── Events (public contract — preserved verbatim from the pre-restyle overlay) ──────────
 
         public event Action? OnPlaySkirmish;
+        public event Action? OnLoadGame; // DW-465 — open the cold-boot load-save picker
         public event Action? OnMultiplayer; // Story 9.7 — open the multiplayer lobby
         public event Action? OnCreate;
         public event Action? OnBrowse;
@@ -111,6 +113,11 @@ namespace ProjectChimera.UI
                 "Load the current map and start an offline match against the AI (1–4 players).",
                 () => { Visible = false; OnPlaySkirmish?.Invoke(); });
 
+            AddNavButton(nav, "Load Game", ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Lg,
+                "Load Game",
+                "Resume a saved single-player match from any save slot.",
+                () => OnLoadGame?.Invoke()); // does NOT close the menu — the picker overlays it; a reject stays here
+
             AddNavButton(nav, "Multiplayer", ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Lg,
                 "Multiplayer",
                 "Play against other people — Direct LAN/IP or online matchmaking (up to 4 players).",
@@ -166,6 +173,62 @@ namespace ProjectChimera.UI
             _versionLabel.HorizontalAlignment = HorizontalAlignment.Right;
             _versionLabel.MouseFilter = Control.MouseFilterEnum.Ignore;
             root.AddChild(_versionLabel);
+        }
+
+        // ── DW-465: the cold-boot load-save picker ─────────────────────────────
+
+        /// <summary>A live load picker dialog — one at a time (mirrors InMatchMenuOverlay's _activeDialog guard).</summary>
+        private ChimeraDialog? _activeLoadDialog;
+
+        /// <summary>
+        /// DW-465 — the main-menu Load Game slot picker (mirrors <c>InMatchMenuOverlay.OpenSlotPicker</c>'s load
+        /// mode): lists the manual slots + the autosave slot with lenient <see cref="SaveGameHeader"/>
+        /// metadata rows; only readable slots are choosable. Choosing one fires <paramref name="onPick"/> with the
+        /// slot name — the scene then runs the fail-closed cold-boot plan (a reject stays on this menu with a toast).
+        /// </summary>
+        public void OpenLoadPicker(ISaveStore? saveStore, Action<string> onPick)
+        {
+            if (_activeLoadDialog != null) return; // one dialog at a time
+
+            var body = new VBoxContainer();
+            body.AddThemeConstantOverride("separation", ChimeraComponents.Const(ThemeTokens.S2));
+
+            string[] slots = { "0", "1", "2", LocalSaveStore.AutosaveSlot };
+
+            ChimeraDialog? dlg = null;
+            bool any = false;
+            foreach (string slot in slots)
+            {
+                SaveGameHeader hdr = saveStore != null
+                    ? SaveGameHeader.Read(saveStore.PathFor(slot))
+                    : SaveGameHeader.Unreadable();
+                string label = slot == LocalSaveStore.AutosaveSlot ? "Autosave" : $"Slot {slot}";
+                string meta  = hdr.IsReadable ? $"{label}  —  {hdr.MapId}  ·  tick {hdr.Tick}" : $"{label}  —  no save";
+                var b = ChimeraComponents.Button(meta, ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Block);
+                b.Disabled = !hdr.IsReadable; // only choosable when a save exists
+                any |= hdr.IsReadable;
+                string captured = slot;
+                b.Pressed += () =>
+                {
+                    _activeLoadDialog = null;
+                    if (dlg != null && GodotObject.IsInstanceValid(dlg)) dlg.QueueFree();
+                    onPick(captured);
+                };
+                body.AddChild(b);
+            }
+
+            if (!any)
+            {
+                var none = ChimeraComponents.Body("No saved games yet — save from the in-match menu during a skirmish.",
+                                                  ThemeTokens.TextMid);
+                body.AddChild(none);
+            }
+
+            dlg = ChimeraDialog.CreateCustom("Load Game", body);
+            dlg.AddCancel("Cancel");
+            dlg.Dismissed += () => { _activeLoadDialog = null; };
+            _activeLoadDialog = dlg;
+            dlg.Open(this);
         }
 
         // ── Helpers ────────────────────────────────────────────────────────────

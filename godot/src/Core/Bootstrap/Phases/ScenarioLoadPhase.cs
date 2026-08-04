@@ -32,10 +32,17 @@ namespace ProjectChimera.Core.Bootstrap
         private ElevationGrid? _lastElevationGrid;
 
         /// <summary>
-        /// Pending AI-generated scenario: written by the MapGenerator before the scene reload, consumed here.
-        /// Static so it survives the Godot scene reload cycle (the new scene's ScenarioLoadPhase reads it).
+        /// Pending AI-generated OR skirmish-built scenario: written by the MapGenerator / <c>LaunchSkirmish</c>
+        /// before the scene reload, consumed here. DW-459: now DELEGATES to the one Godot-free boot handoff
+        /// (<see cref="MainScene.SkirmishBoot"/>) so the fail-safe transition (<c>SkirmishBootFlow.FailBoot</c>)
+        /// provably clears the same slot this phase consumes — the property keeps every existing write site
+        /// compiling unchanged. Static-backed, so it still survives the Godot scene reload cycle.
         /// </summary>
-        internal static ScenarioData? PendingGeneratedScenario;
+        internal static ScenarioData? PendingGeneratedScenario
+        {
+            get => MainScene.SkirmishBoot.PendingScenario;
+            set => MainScene.SkirmishBoot.PendingScenario = value;
+        }
 
         public void Run() => LoadAndApplyScenario();
 
