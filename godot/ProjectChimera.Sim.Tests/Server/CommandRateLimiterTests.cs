@@ -165,5 +165,93 @@ namespace ProjectChimera.Sim.Tests.Server
             Assert.Throws<System.ArgumentOutOfRangeException>(() => new CommandRateLimiter(0));
             Assert.Throws<System.ArgumentOutOfRangeException>(() => new CommandRateLimiter(-1));
         }
+
+        // ── DW-434: cap/window parameterization + the SHARED receive-edge budget ──────────────────────────────
+        // The dedicated server now runs a SECOND instance of this limiter at the top of its packet dispatch — one
+        // shared per-slot budget across ALL client-sendable packet types (Chat/LobbyChat/MapPing broadcast
+        // amplifiers, pings/acks/checksums, unknown/malformed bytes), not just the TickCommands arm.
+
+        [Fact]
+        public void ParameterizedCtor_HonorsCustomCapAndWindow()
+        {
+            var lim = new CommandRateLimiter(2, maxPerWindow: 3, windowMs: 100);
+            Assert.Equal(3, lim.MaxPerWindow);
+            Assert.Equal(100, lim.WindowMs);
+
+            ulong now = 50_000;
+            Assert.True(lim.TryAdmit(0, now));
+            Assert.True(lim.TryAdmit(0, now));
+            Assert.True(lim.TryAdmit(0, now));
+            Assert.False(lim.TryAdmit(0, now));      // 4th in the same window → dropped (custom cap, not 60)
+            Assert.False(lim.TryAdmit(0, now + 99)); // custom 100ms window not yet elapsed
+            Assert.True(lim.TryAdmit(0, now + 100)); // custom window rolled over → admits again
+        }
+
+        [Fact]
+        public void DefaultCtor_KeepsTheStory913CommandStreamContract()
+        {
+            var lim = new CommandRateLimiter(4);
+            Assert.Equal(CommandRateLimiter.MAX_COMMANDS_PER_WINDOW, lim.MaxPerWindow);
+            Assert.Equal(CommandRateLimiter.WINDOW_MS, lim.WindowMs);
+        }
+
+        [Fact]
+        public void ReceiveEdge_CombinedLegitTraffic_OneSecond_AllAdmitted()
+        {
+            // The shared receive-edge instance must admit the worst-case COMBINED legitimate per-slot mix inside
+            // one window: 30 TickCommands (30 tps) + 20 Checksums (the loopback self-test's per-pump cadence —
+            // production is one per ChecksumInterval=60 ticks ≈ 0.5/sec) + 1 Pong + 2 acks + 10 human
+            // chat/map-pings = 63 packets. A receive-edge drop of any of these is a protocol-liveness hazard, so
+            // the budget must clear the mix with margin.
+            var lim = new CommandRateLimiter(
+                8, CommandRateLimiter.MAX_RECEIVE_PER_WINDOW, CommandRateLimiter.WINDOW_MS);
+
+            ulong now = 250_000;
+            int admitted = 0;
+            for (int i = 0; i < 63; i++)
+                if (lim.TryAdmit(3, now + (ulong)(i * 15))) admitted++; // spread across ~945ms — one window
+
+            Assert.Equal(63, admitted);
+            Assert.Equal(0L, lim.DroppedCount(3));
+        }
+
+        [Fact]
+        public void ReceiveEdge_Flood_BoundedToTheReceiveCap()
+        {
+            // A wire-rate flood (all 2000 packets in the same ms) is bounded to MAX_RECEIVE_PER_WINDOW dispatched
+            // packets; the rest drop silently at the receive edge before any type dispatch.
+            var lim = new CommandRateLimiter(
+                8, CommandRateLimiter.MAX_RECEIVE_PER_WINDOW, CommandRateLimiter.WINDOW_MS);
+
+            const ulong now = 90_000;
+            int admitted = 0;
+            for (int i = 0; i < 2_000; i++)
+                if (lim.TryAdmit(0, now)) admitted++;
+
+            Assert.Equal(CommandRateLimiter.MAX_RECEIVE_PER_WINDOW, admitted);
+            Assert.Equal(2_000L - CommandRateLimiter.MAX_RECEIVE_PER_WINDOW, lim.DroppedCount(0));
+        }
+
+        [Fact]
+        public void ReceiveEdgeCap_SitsAboveCombinedLegitFloor_AndBelowFloodScale()
+        {
+            // Documents the DW-434 derivation: the shared cap must clear the command stream's own 2×-headroom cap
+            // (60) PLUS the summed worst case of every other client-sendable type (loopback per-pump checksums
+            // ~20/sec + pong ~1/sec + event-gated acks + human chat ~10/sec ≈ 33/sec) — yet stay far under real
+            // flood rates (hundreds-to-thousands/sec) so it still stops one.
+            Assert.True(CommandRateLimiter.MAX_RECEIVE_PER_WINDOW >=
+                        CommandRateLimiter.MAX_COMMANDS_PER_WINDOW + 33 + 20);
+            Assert.True(CommandRateLimiter.MAX_RECEIVE_PER_WINDOW <= 300);
+        }
+
+        [Fact]
+        public void ParameterizedCtor_RejectsNonPositiveCapOrWindow()
+        {
+            Assert.Throws<System.ArgumentOutOfRangeException>(() => new CommandRateLimiter(4, 0, 1000));
+            Assert.Throws<System.ArgumentOutOfRangeException>(() => new CommandRateLimiter(4, -5, 1000));
+            Assert.Throws<System.ArgumentOutOfRangeException>(() => new CommandRateLimiter(4, 60, 0));
+            Assert.Throws<System.ArgumentOutOfRangeException>(() => new CommandRateLimiter(4, 60, -1));
+            Assert.Throws<System.ArgumentOutOfRangeException>(() => new CommandRateLimiter(0, 60, 1000));
+        }
     }
 }
