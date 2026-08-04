@@ -22,7 +22,10 @@ namespace ProjectChimera.Core
     /// (1) <b>loss pass</b>: for each active <see cref="WinStateStore.VERDICT_NONE"/> faction, if its preset loss
     /// predicate holds (built-in: no alive assets of the relevant kind; survival: designated faction eliminated;
     /// assassination/landmark: target dead or unresolved — each latching the target faction's whole TEAM; plus, for
-    /// the non-designated factions of asymmetric presets, total wipeout) latch <see cref="WinStateStore.VERDICT_LOST"/>
+    /// the non-designated factions of asymmetric presets, total wipeout; plus, for KotH, the DW-188 guarded
+    /// elimination fallback — a faction latches only once its team's unresolved members are ALL totally wiped, so a
+    /// mutual-annihilation match resolves while a live ally keeps the whole team unresolved and the hold-race
+    /// winnable) latch <see cref="WinStateStore.VERDICT_LOST"/>
     /// per the 7.11 grace rules (loss-by-absence grace-gated; a resolved-target death ungated), while the match
     /// CONTINUES for every unresolved faction; (2) <b>positive-objective win</b>: a KotH team reaching
     /// <c>hold_ticks</c> or a Survival team reaching its deadline alive latches <see cref="WinStateStore.VERDICT_WON"/>
@@ -265,12 +268,14 @@ namespace ProjectChimera.Core
             {
                 int team = KothWinningTeam();
                 if (team >= 0) { WinTeam(team); return; }
-                // KotH normally concludes ONLY by the hold-win (7.11 parity — no elimination fallback). Story 11.2:
-                // a CONCEDE (the only way a KotH faction latches VERDICT_LOST short of the hold-win) must still
+                // KotH normally concludes ONLY by the hold-win (7.11 parity). Story 11.2: a CONCEDE must still
                 // resolve, so fall through to last-team-standing instead of the old bare return that dead-ended the
-                // match. ApplyLastTeamStanding no-ops unless AnyLost() AND exactly one live team remains (or the
-                // double-elim tie) — and under KotH nobody latches LOST except via concede or the hold-win's WinTeam
-                // above — so a normal (no-concede) KotH match still concludes ONLY by the hold-win.
+                // match. DW-188 (decision 2026-07-19): a TOTALLY WIPED team (see the KotH case of SymmetricLoss)
+                // now also latches LOST, so this same fall-through resolves a mutual-annihilation match instead of
+                // hanging it forever. ApplyLastTeamStanding still no-ops unless AnyLost() AND exactly one live team
+                // remains (or the double-elim tie) — and under KotH nobody latches LOST except via concede,
+                // whole-team total wipeout, or the hold-win's WinTeam above — so a normal KotH match between live
+                // opponents still concludes ONLY by the hold-win.
                 ApplyLastTeamStanding(liveTeamsBefore, highestEliminatedThisTick);
                 return;
             }
@@ -303,7 +308,11 @@ namespace ProjectChimera.Core
         /// total wipeout for the NON-designated factions — but ONLY in a ≥3-faction match. In a 2-faction asymmetric
         /// match the single opponent IS the last team standing (the 7.11 <c>OtherFaction</c> parity: it wins when the
         /// designated target dies, and is never itself wiped-eliminated); total-wipeout only DISCRIMINATES among ≥3
-        /// factions. KotH has no symmetric loss (it concludes only by the hold-win). Neutral is never active.</summary>
+        /// factions. KotH has no asset-KIND loss — it concludes by the hold-race — but carries the DW-188 guarded
+        /// elimination fallback: a faction whose team's unresolved members are ALL totally wiped (no units AND no
+        /// buildings anywhere — the team can never field or train a holder again) latches LOST so
+        /// <see cref="ApplyLastTeamStanding"/> resolves a mutual-annihilation match instead of hanging it forever.
+        /// Neutral is never active.</summary>
         private bool SymmetricLoss(EntityWorld world, Faction f)
         {
             switch (_preset)
@@ -315,7 +324,17 @@ namespace ProjectChimera.Core
                         : !HasAliveUnits(world, f);
 
                 case WinPresetKind.KingOfTheHill:
-                    return false; // KotH resolves only by the positive hold-win
+                    // DW-188 (decision 2026-07-19): guarded elimination fallback. The guard is TEAM-scoped (not the
+                    // asymmetric presets' per-faction wipeout) to protect the hold-race win path: the team hold
+                    // accumulator lives on the lowest-slot REP (see UpdateKothCounters) and KothWinningTeam only
+                    // reads a verdict-NONE rep — latching a wiped rep LOST while a live ally still holds would
+                    // orphan the counter and make the ally's hold unwinnable. So a faction latches only once NO
+                    // unresolved member of its team has any live asset; the whole dead team then latches on the
+                    // SAME tick (ascending order, order-independent → deterministic). No ActiveCount guard: the
+                    // 2-faction mutual annihilation is exactly the match this fallback must resolve. Grace-gated
+                    // like every loss-by-absence branch (a match_start spawn lands after this system's tick 1).
+                    if (_store.MatchTicks < GRACE_TICKS) return false;
+                    return !TeamFightingAlive(world, f);
 
                 default: // TimedSurvival / Assassination / LandmarkDestruction — non-designated total wipeout
                     if (_factions.ActiveCount < 3) return false; // 2-faction: 7.11 OtherFaction parity (no wipeout)
@@ -521,6 +540,25 @@ namespace ProjectChimera.Core
         {
             foreach (Faction f in _factions.ActiveFactions)
                 if (_store.Verdict[(int)f] == WinStateStore.VERDICT_LOST) return true;
+            return false;
+        }
+
+        /// <summary>DW-188 (KotH elimination fallback): true while ANY verdict-<see cref="WinStateStore.VERDICT_NONE"/>
+        /// member of <paramref name="f"/>'s team still has a live asset (unit or building) — the team can still fight
+        /// for (or eventually train a holder for) the hill. TEAM granularity, not per-faction: a wiped faction whose
+        /// ally fights on stays unresolved, protecting the rep-keyed hold accumulator (see the KotH case of
+        /// <see cref="SymmetricLoss"/>); already-latched members (e.g. a concede that left its units on the field)
+        /// never count — a conceded army cannot keep a match alive. Once false it stays false for every remaining
+        /// unresolved member this tick, so a dead team latches together regardless of iteration order.</summary>
+        private bool TeamFightingAlive(EntityWorld world, Faction f)
+        {
+            int team = _alliances.TeamOf(f);
+            foreach (Faction m in _factions.ActiveFactions)
+            {
+                if (_alliances.TeamOf(m) != team) continue;
+                if (_store.Verdict[(int)m] != WinStateStore.VERDICT_NONE) continue;
+                if (FactionAlive(world, m)) return true;
+            }
             return false;
         }
 

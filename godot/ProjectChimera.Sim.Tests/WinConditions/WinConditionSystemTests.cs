@@ -121,6 +121,9 @@ namespace ProjectChimera.Sim.Tests.WinConditions
         {
             var h = BuildHost();
             h.World.Create(At(0, 0), Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3)); // P1 unit inside zone
+            // DW-188: the opponent must EXIST (outside the zone) — an asset-less faction now latches LOST via the
+            // KotH elimination fallback, which would resolve the match before the hold completes.
+            h.World.Create(At(20, 20), Faction.Player2, Fixed.FromInt(10), Fixed.FromInt(3));
             var regions = OneRegion("zone", -5, 5);
             h.WinCon.Configure(new ScenarioData
             {
@@ -162,6 +165,8 @@ namespace ProjectChimera.Sim.Tests.WinConditions
         {
             var h = BuildHost();
             int p1 = h.World.Create(At(0, 0), Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+            // DW-188: keep P2 alive (outside the zone) so the wipeout fallback cannot resolve the match early.
+            h.World.Create(At(20, 20), Faction.Player2, Fixed.FromInt(10), Fixed.FromInt(3));
             var regions = OneRegion("zone", -5, 5);
             h.WinCon.Configure(new ScenarioData
             {
@@ -316,8 +321,10 @@ namespace ProjectChimera.Sim.Tests.WinConditions
         public void Verdict_IsFinal_WinnerDoesNotFlip_WhenStateChangesAfterResolve()
         {
             var h = BuildHost();
-            // P1 sole-holds the zone and wins.
+            // P1 sole-holds the zone and wins. DW-188: P2 must be alive (outside the zone) so the resolution is the
+            // HOLD-win this test pins, not the wipeout fallback.
             int p1 = h.World.Create(At(0, 0), Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+            h.World.Create(At(20, 20), Faction.Player2, Fixed.FromInt(10), Fixed.FromInt(3));
             var regions = OneRegion("zone", -5, 5);
             h.WinCon.Configure(new ScenarioData
             {
@@ -375,6 +382,8 @@ namespace ProjectChimera.Sim.Tests.WinConditions
                 case "KingOfTheHill":
                 {
                     h.World.Create(At(0, 0), Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+                    // DW-188: live P2 outside the zone keeps this the HOLD-win determinism case (no wipeout latch).
+                    h.World.Create(At(20, 20), Faction.Player2, Fixed.FromInt(10), Fixed.FromInt(3));
                     var regions = OneRegion("zone", -5, 5);
                     h.WinCon.Configure(new ScenarioData
                     {
@@ -574,6 +583,9 @@ namespace ProjectChimera.Sim.Tests.WinConditions
             var h = BuildHost();
             h.World.Create(At(0, 0), Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3)); // P1 in zone
             h.World.Create(At(1, 1), Faction.Neutral, Fixed.FromInt(10), Fixed.FromInt(3)); // Neutral bystander in zone
+            // DW-188: live P2 outside the zone — otherwise the wipeout fallback resolves at tick 1 and the test
+            // could no longer discriminate whether the Neutral unit contested the hold.
+            h.World.Create(At(20, 20), Faction.Player2, Fixed.FromInt(10), Fixed.FromInt(3));
             var regions = OneRegion("zone", -5, 5);
             h.WinCon.Configure(new ScenarioData
             {
