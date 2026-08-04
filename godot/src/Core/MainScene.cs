@@ -1956,9 +1956,16 @@ namespace ProjectChimera.Core
             if (focusId >= 0 && _world.IsAlive(focusId) && _world.MaxEnergy[focusId] > Fixed.Zero)
                 energyLine = $"\nEnergy: {_world.Energy[focusId].ToInt()} / {_world.MaxEnergy[focusId].ToInt()}";
 
+            // Opt-in side-by-side economy (settings: "Show opponent resources"). The P2 row has always printed ore
+            // and supply only — p2Crystal was never computed — so the two economies could not be compared at a
+            // glance. Off by default: a dev/balance aid, not normal match information. Reads state the client
+            // already holds; no sim array is touched, so this can never move SimChecksum.
+            string p2CrystalCol = SettingsManager.Instance?.Current?.ShowOpponentResources == true
+                ? $"   {(int)_resources.Crystal[(int)Faction.Player2].ToFloat(),4} crystal"
+                : "";
             _ctx.ResourceLabel.Text =
                 $"P1  {p1Ore,5} ore   {p1Crystal,4} crystal   {p1Sup}/{p1SupCap} supply\n" +
-                $"P2  {p2Ore,5} ore   {p2Sup}/{p2SupCap} supply\n" +
+                $"P2  {p2Ore,5} ore{p2CrystalCol}   {p2Sup}/{p2SupCap} supply\n" +
                 $"Nodes: {nodes}   Buildings: {bldgs}" +
                 energyLine;
 

@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using Godot;
 using System;
 using System.Collections.Generic;
@@ -61,6 +61,7 @@ namespace ProjectChimera.UI
         private ChimeraSwitch _minimapBtn        = null!;
         private ChimeraSwitch _fpsBtn            = null!;
         private ChimeraSwitch _sharedVisionBtn   = null!; // DW-441 — shared team vision (Gameplay tab)
+        private ChimeraSwitch _showOppResBtn     = null!; // opponent economy readout (Gameplay tab), opt-in
         private ChimeraSwitch _colorblindBtn     = null!;
 
         // ── Story 11.7 — Graphics tab (live video settings) ────────────────────
@@ -249,6 +250,13 @@ namespace ProjectChimera.UI
             _sharedVisionBtn = AddToggleRow(v, "Shared team vision",
                 "Reveal what your allies can see in team matches. Affects only your own view — allies always keep their own vision.",
                 _settings.Current.SharedTeamVision);
+
+            // Opt-in opponent economy readout. Off by default — a side-by-side economy is a dev/balance aid, not
+            // normal match information. Presentation-only, so it can never affect the sim.
+            _showOppResBtn = AddToggleRow(v, "Show opponent resources",
+                "Show the opponent's crystal alongside their ore and supply, so both economies read side by side. " +
+                "Useful when balancing or reviewing a match; off for normal play.",
+                _settings.Current.ShowOpponentResources);
 
             AddSectionHeader(v, "Onboarding");
             var replayBtn = ChimeraComponents.Button("Replay \"Your First Scenario\" Onboarding",
@@ -814,6 +822,7 @@ namespace ProjectChimera.UI
             s.ShowMinimap        = _minimapBtn.On;
             s.ShowFps            = _fpsBtn.On;
             s.SharedTeamVision   = _sharedVisionBtn.On; // DW-441 — applied live via MainScene.ApplySettingsToSystems
+            s.ShowOpponentResources = _showOppResBtn.On;   // HUD-only; read straight by MainScene.UpdateHud
             s.ColorblindMode     = _colorblindBtn.On;
 
             // Story 11.7: the five live video settings.
@@ -974,6 +983,7 @@ namespace ProjectChimera.UI
             _minimapBtn.SetOn(_settings.Current.ShowMinimap, animate: false);
             _fpsBtn.SetOn(_settings.Current.ShowFps, animate: false);
             _sharedVisionBtn.SetOn(_settings.Current.SharedTeamVision, animate: false); // DW-441
+            _showOppResBtn.SetOn(_settings.Current.ShowOpponentResources, animate: false);
             _colorblindBtn.SetOn(_settings.Current.ColorblindMode, animate: false);
 
             // Story 11.7: re-sync the Graphics widgets to the reset defaults.

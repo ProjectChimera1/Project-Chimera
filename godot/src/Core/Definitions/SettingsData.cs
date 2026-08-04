@@ -140,6 +140,20 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("shared_team_vision")]
         public bool SharedTeamVision { get; set; } = true;
 
+        /// <summary>
+        /// Show the opponent's FULL resource line (crystal alongside ore and supply) in the HUD strip, so the two
+        /// players' economies read side by side. OFF by default: the P2 row has always shown ore and supply only —
+        /// <c>p2Crystal</c> was never even computed — and a side-by-side economy readout is a development and
+        /// balance-analysis aid, not something a normal match should surface. Requested 2026-08-04 as an opt-in
+        /// rather than a default.
+        ///
+        /// <para>Presentation-only and per-client, exactly like <see cref="SharedTeamVision"/>: it changes what YOUR
+        /// HUD prints from state the client already holds, reads nothing new, and touches no sim array — so it can
+        /// never move <c>SimChecksum</c> or desync a match.</para>
+        /// </summary>
+        [JsonPropertyName("show_opponent_resources")]
+        public bool ShowOpponentResources { get; set; } = false;
+
         // ── Accessibility ─────────────────────────────────────────────────────
 
         /// <summary>
