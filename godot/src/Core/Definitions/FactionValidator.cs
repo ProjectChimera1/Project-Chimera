@@ -236,9 +236,12 @@ namespace ProjectChimera.Core.Definitions
         /// method is called, so in practice the located <c>hero_unit_id</c> error surfaces only at the non-wizard
         /// sites (discovery/match-load) — the wizard silently repairs it instead (Story 5.6, unchanged). The signature check needs the
         /// registry to resolve an ability id, so it fires ONLY when a registry is supplied — a null registry
-        /// deliberately SKIPS it (resolution is impossible without one) rather than failing closed; the wizard
-        /// save-gate is the site that threads a real registry today (the launch-gate wiring that would guarantee one
-        /// everywhere is Story 14.4). Both checks fire only for a non-empty field: a null/empty/whitespace
+        /// deliberately SKIPS it (resolution is impossible without one) rather than failing closed. Every REAL client
+        /// site now threads one: the wizard save-gate (14.3), the Edit→Play launch gate (14.4), and — since DW-327 —
+        /// the boot discovery scan (<see cref="FactionDefinition.LoadSelectableFromDirectory"/>) plus the boot
+        /// match-load shadow (<c>SlotFactionResolver</c>), so "selectable" and "launchable" cannot disagree on a
+        /// dangling signature id; a null registry now means a caller that genuinely has none (a test, or a
+        /// pre-registry ordering). Both checks fire only for a non-empty field: a null/empty/whitespace
         /// <c>hero_unit_id</c>/<c>signature_mechanic_effect_id</c> is a legitimate unauthored-descriptor state (these
         /// fields default <c>null</c>) and passes.</para>
         ///

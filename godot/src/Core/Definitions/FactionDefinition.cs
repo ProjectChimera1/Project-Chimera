@@ -281,14 +281,32 @@ namespace ProjectChimera.Core.Definitions
         /// <paramref name="onExcluded"/> as a duplicate and dropped (first-file-wins) — two factions can never
         /// alias the same selectable id.
         ///
+        /// <para><b>Registry threading (DW-327): selectable == launchable.</b> Story 14.3 shipped
+        /// <see cref="FactionValidator.ValidateComplete"/> with an OPTIONAL <see cref="AbilityRegistry"/> and 14.4
+        /// threaded a real one at the Edit→Play launch gate (<see cref="FactionLaunchGate"/>) only — leaving THIS
+        /// discovery scan registry-less, so the <c>signature_mechanic_effect_id</c> resolution check was dormant
+        /// here. A faction with a typo'd signature id therefore listed as SELECTABLE at boot and was then
+        /// hard-vetoed at Play with an error the boot console never showed. Pass the same loaded registry the
+        /// launch gate gets (<paramref name="abilityRegistry"/>) and the two agree by construction: such a faction
+        /// is dropped here, WITH its located reason surfaced through <paramref name="onExcluded"/>, so the creator
+        /// sees the problem at the moment of discovery instead of at launch. The parameter stays optional and
+        /// defaults to <c>null</c> (existing <see cref="FactionValidator.ValidateComplete"/> semantics: a null
+        /// registry skips ONLY the signature check; roster/mesh/hero still enforce), so a caller with no registry
+        /// — a test, or any pre-registry boot ordering — behaves exactly as before.</para>
+        ///
         /// The returned list is ordinal-sorted by <see cref="Id"/> (mirrors <see cref="AbilityRegistry"/>'s stable
         /// index convention) — THIS sort is what makes the showcase factions (alpha/beta) and any wizard-authored
         /// ones enumerate deterministically alongside each other regardless of on-disk filename order.
         ///
         /// A missing/absent <paramref name="absDir"/> returns an empty list. Never throws.
         /// </summary>
+        /// <param name="absDir">Absolute OS directory scanned for <c>*_faction.json</c>.</param>
+        /// <param name="onExcluded">Called with (file name, reason) for every scanned file that is dropped.</param>
+        /// <param name="abilityRegistry">The loaded ability registry used to resolve each candidate's
+        /// <c>signature_mechanic_effect_id</c> (DW-327). <c>null</c> skips only that check.</param>
         public static IReadOnlyList<FactionDefinition> LoadSelectableFromDirectory(
-            string absDir, System.Action<string, string>? onExcluded = null)
+            string absDir, System.Action<string, string>? onExcluded = null,
+            AbilityRegistry? abilityRegistry = null)
         {
             if (string.IsNullOrEmpty(absDir) || !Directory.Exists(absDir))
                 return System.Array.Empty<FactionDefinition>();
@@ -326,7 +344,10 @@ namespace ProjectChimera.Core.Definitions
                     continue;
                 }
 
-                FactionValidationResult result = FactionValidator.ValidateComplete(def);
+                // DW-327: the SAME ValidateComplete the launch gate runs, with the SAME registry — a dangling
+                // signature_mechanic_effect_id is excluded here (with its located reason) instead of listing as
+                // selectable and being hard-vetoed later at Edit→Play.
+                FactionValidationResult result = FactionValidator.ValidateComplete(def, abilityRegistry);
                 if (!result.Ok)
                 {
                     string reason = result.Errors.Count > 0 ? result.Errors[0].Message : "failed ValidateComplete";
