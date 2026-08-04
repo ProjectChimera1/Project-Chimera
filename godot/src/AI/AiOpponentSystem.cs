@@ -41,6 +41,25 @@ namespace ProjectChimera.AI
         private const int SUPPLY_TIGHT    = 2;
         private const int SUPPLY_LOW      = 4;
 
+        /// <summary>
+        /// DW-63 — the flat, headroom-INDEPENDENT expansion score used when the scenario disables supply gating
+        /// (<see cref="ResourceStore.SupplyGatingEnabled"/> is <c>false</c>).
+        ///
+        /// With gating off nothing ever blocks training, so <c>SupplyUsed</c> climbs unboundedly past
+        /// <c>SupplyCap</c> and <c>SupplyHeadroom</c> saturates to a deeply-negative magnitude that carries no
+        /// information — the ladder below would then report a permanent "critical" 0.95 and pin the AI's single
+        /// highest priority on expanding a cap nobody enforces, starving Barracks/tech/attack/raze for as long as
+        /// it can afford a CommandCenter.
+        ///
+        /// Deliberately DEPRIORITIZED rather than skipped outright: the expansion CommandCenter is also the gate
+        /// <see cref="ScoreBuildSecondBarracks"/> reads, so returning a hard 0 would permanently cost an
+        /// ungated-scenario AI its second production building. This value is strictly below every other action's
+        /// lowest positive score (the weakest is Easy's <c>0.60 * 0.50 = 0.30</c> siege) and strictly above
+        /// <see cref="ExecuteBestAction"/>'s 0.01 do-nothing floor, so the one-shot expansion still gets committed
+        /// once nothing more useful is available, and never before.
+        /// </summary>
+        private const float EXPAND_SUPPLY_UNGATED = 0.25f;
+
         // Placement positions for AI-built structures (clustered near the P2 base).
         private static readonly FixedVec3 POS_BARRACKS_1   = new(Fixed.FromFloat( 36f), Fixed.Zero, Fixed.FromFloat(  6f));
         private static readonly FixedVec3 POS_BARRACKS_2   = new(Fixed.FromFloat( 36f), Fixed.Zero, Fixed.FromFloat( -6f));
@@ -200,6 +219,10 @@ namespace ProjectChimera.AI
         private struct AiSnapshot
         {
             public int  SupplyHeadroom;
+            /// <summary>DW-63 — mirrors <see cref="ResourceStore.SupplyGatingEnabled"/> for this tick. When false the
+            /// supply gate never blocks training, so <see cref="SupplyHeadroom"/> is an unbounded, uninformative
+            /// number and <see cref="ScoreExpandSupply"/> must not read its magnitude.</summary>
+            public bool SupplyGatingEnabled;
             public int  AvailableCombatUnits; // Idle or Stop — not under orders, conscriptable into a wave
             public bool EnemyThreatRemains;   // Story 2.13 — any alive enemy (non-Neutral) combat unit still defends
             public bool EnemyBuildingExists;  // Story 2.13 — any alive enemy (non-Neutral) building left to raze
@@ -226,6 +249,10 @@ namespace ProjectChimera.AI
 
             int fIdx = (int)AI_FACTION;
             snap.SupplyHeadroom = _resources.SupplyCap[fIdx] - _resources.SupplyUsed[fIdx];
+            // DW-63: carry the per-scenario supply-gate state alongside the headroom so the scorer can tell an
+            // informative headroom from an unenforced (and therefore meaningless) one. Story 4.4 resolves this once
+            // per scenario-apply — never inside a tick — so reading it here is a plain instance-state read.
+            snap.SupplyGatingEnabled = _resources.SupplyGatingEnabled;
 
             // Scan buildings for tech coverage (and, Story 2.13, whether any enemy base remains to raze).
             int barracksComplete = 0;
@@ -299,10 +326,20 @@ namespace ProjectChimera.AI
         // Gate conditions that make the action impossible return 0.
         // The highest-scoring action is executed once per tick.
 
+        /// <summary>
+        /// Score the one-shot supply-expansion CommandCenter.
+        ///
+        /// DW-63: the headroom ladder below is only meaningful while the supply gate is actually ENFORCED. When a
+        /// scenario authors <c>supply.enabled:false</c> the gate never blocks training, <c>SupplyUsed</c> runs away
+        /// past <c>SupplyCap</c>, and the headroom saturates deeply negative — permanently pinning the ladder's
+        /// worst tier (0.95) on an action whose payoff (a bigger cap) nobody enforces. So the ungated case bypasses
+        /// the ladder entirely for a single flat <see cref="EXPAND_SUPPLY_UNGATED"/> score.
+        /// </summary>
         private float ScoreExpandSupply(in AiSnapshot s)
         {
             if (_cmdCenterExpId >= 0) return 0f; // already committed (building or built)
             if (!s.CanAffordCC) return 0f;
+            if (!s.SupplyGatingEnabled) return EXPAND_SUPPLY_UNGATED; // DW-63 — headroom carries no information here
             if (s.SupplyHeadroom <= SUPPLY_CRITICAL) return 0.95f;
             if (s.SupplyHeadroom <= SUPPLY_TIGHT)    return 0.80f;
             if (s.SupplyHeadroom <= SUPPLY_LOW)      return 0.55f;
