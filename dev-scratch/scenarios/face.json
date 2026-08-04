@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "checksum_algo_version": 14,
+  "id": "face",
+  "display_name": "Face",
+  "terrain_ref": "",
+  "map_bounds": 128,
+  "author": "Me",
+  "description": "Fast last",
+  "suggested_players": 2,
+  "win_condition": "DestroyAllBuildings",
+  "player_slots": [
+    {
+      "slot": 0,
+      "faction_json": "res://resources/data/factions/alpha_faction.json",
+      "start_ore": 200,
+      "base_x": -76.8,
+      "base_z": -76.8
+    },
+    {
+      "slot": 1,
+      "faction_json": "res://resources/data/factions/alpha_faction.json",
+      "start_ore": 200,
+      "base_x": 76.8,
+      "base_z": 76.8
+    }
+  ],
+  "resource_nodes": [],
+  "buildings": [],
+  "units": [],
+  "triggers": []
+}
