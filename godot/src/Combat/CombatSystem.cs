@@ -26,9 +26,20 @@ namespace ProjectChimera.Combat
     ///
     /// Gatherers (GatherState != Inactive) are skipped entirely regardless of their
     /// attack damage — auto-combat would hijack the gather loop's MoveTarget.
+    ///
+    /// Status (DW-266): a <see cref="StatusFlags.Stunned"/> unit takes NO combat action at all; a
+    /// <see cref="StatusFlags.Disarmed"/> unit still acquires and chases but can never land a hit.
     /// </summary>
     public class CombatSystem : ISimSystem
     {
+        /// <summary>
+        /// DW-266 — the statuses that FORBID landing an attack. <see cref="StatusFlags.Disarmed"/> is exactly this
+        /// ("cannot attack", the meaning <c>ModifierSystem</c> has always documented); <see cref="StatusFlags.Stunned"/>
+        /// subsumes it and is included so the damage choke point is fail-closed even if a future caller reaches it
+        /// past the whole-unit stun gate in <see cref="Tick"/>.
+        /// </summary>
+        private const StatusFlags ATTACK_BLOCKING = StatusFlags.Disarmed | StatusFlags.Stunned;
+
         private readonly SpatialHash      _spatialHash = new SpatialHash();
         private readonly ProjectileStore  _projectiles;
         private readonly CombatEventQueue? _events;
@@ -99,6 +110,19 @@ namespace ProjectChimera.Combat
             for (int i = 0; i < count; i++)
             {
                 if ((world.Flags[i] & EntityFlags.Alive) == 0) continue;
+                // DW-266 — STUN GATE. A stunned unit is fully incapacitated: no cooldown tick, no acquisition, no
+                // chase, no attack, no on-hit rider (all of which live below this line). Sits ABOVE the gatherer and
+                // zero-damage guards so it covers EVERY alive entity, worker included. It drops the attack target and
+                // clears the Attacking flag (presentation must stop the swing) but deliberately leaves CommandState /
+                // MoveTarget / the Moving flag alone — MovementSystem's matching anchor holds the unit in place, and
+                // the untouched order resumes by itself when the stun expires. StatusFlagsOf is None for every entity
+                // in every recorded golden, so this branch is never entered there and no checksum moves.
+                if ((world.StatusFlagsOf[i] & StatusFlags.Stunned) != 0)
+                {
+                    world.AttackTarget[i] = -1;
+                    world.Flags[i]       &= ~EntityFlags.Attacking;
+                    continue;
+                }
                 // Gatherers are exempt from auto-combat even when their unit data
                 // carries attack damage — idle-chase would overwrite their MoveTarget
                 // every tick and halt all gathering (see GatheringSystem). Combat
@@ -610,6 +634,16 @@ namespace ProjectChimera.Combat
         /// </summary>
         private void TryDealDamage(EntityWorld world, int attacker, int target)
         {
+            // DW-266 — DISARM GATE. Checked BEFORE the cooldown is consumed, so a disarm neither burns the attack
+            // timer, nor spawns a projectile, nor runs the Story 2.6 on-hit rider (all downstream of this line). The
+            // unit keeps its target and its chase — it simply cannot land a blow — so it strikes on the first tick
+            // after the debuff drops. Clearing Attacking stops the presentation swing.
+            if ((world.StatusFlagsOf[attacker] & ATTACK_BLOCKING) != 0)
+            {
+                world.Flags[attacker] &= ~EntityFlags.Attacking;
+                return;
+            }
+
             if (world.AttackCooldown[attacker] > Fixed.Zero) return;
 
             world.AttackCooldown[attacker] = world.AttackSpeed[attacker];
@@ -664,6 +698,14 @@ namespace ProjectChimera.Combat
         /// </summary>
         private void TryDealBuildingDamage(EntityWorld world, int attacker, int b)
         {
+            // DW-266 — the same DISARM GATE as the unit path (a disarmed siege unit cannot raze either), before the
+            // cooldown is consumed so the refusal is free of side effects.
+            if ((world.StatusFlagsOf[attacker] & ATTACK_BLOCKING) != 0)
+            {
+                world.Flags[attacker] &= ~EntityFlags.Attacking;
+                return;
+            }
+
             if (world.AttackCooldown[attacker] > Fixed.Zero) return;
 
             world.AttackCooldown[attacker] = world.AttackSpeed[attacker];

@@ -1,4 +1,5 @@
 using ProjectChimera.Core;
+using ProjectChimera.Effects;   // StatusFlags (modifier-imposed per-entity status; a value enum, same sim layer)
 
 namespace ProjectChimera.Navigation
 {
@@ -11,9 +12,18 @@ namespace ProjectChimera.Navigation
     /// Separation: Push away from contacting neighbours — per-pair contact = summed per-unit radii, biased so a
     ///             moving unit yields less than an idle one, and a Push unit is not displaced by a Yield neighbour
     ///             (Story 1.13, DG-2 / FR-54). Every alive unit separates (so units spread even while attacking).
+    /// Status:     A <see cref="StatusFlags.Stunned"/> or <see cref="StatusFlags.Rooted"/> unit is ANCHORED — it is
+    ///             exempted from seek AND separation, so nothing may change its position (DW-266).
     /// </summary>
     public class MovementSystem : ISimSystem
     {
+        /// <summary>
+        /// DW-266 — the statuses that FORBID a position change. <see cref="StatusFlags.Rooted"/> is exactly this
+        /// (held in place, still able to act); <see cref="StatusFlags.Stunned"/> subsumes it (also barred from
+        /// combat by <c>CombatSystem</c> and from casting by <c>AbilityCastSystem</c>).
+        /// </summary>
+        private const StatusFlags MOVE_BLOCKING = StatusFlags.Stunned | StatusFlags.Rooted;
+
         // Arrive: stop when squared distance to target is below this. Story 2.13 (AC2) DELIBERATELY keeps this at
         // 0.5u — the LOW-LEVEL physical stop for any moving unit, including a combat chaser. Widening it to the 2u
         // goal-arrive radius (ArrivalTuning) would halt every melee unit (attack_range 1.5 < 2) OUTSIDE its strike
@@ -54,6 +64,19 @@ namespace ProjectChimera.Navigation
             for (int i = 0; i < count; i++)
             {
                 if ((world.Flags[i] & EntityFlags.Alive) == 0) continue;
+
+                // DW-266 — STATUS ANCHOR (stun / root). A unit carrying either status may not change position this
+                // tick: it is exempted from seek AND separation, exactly like the Hold anchor below, so neither its
+                // own order nor a neighbour's shove can displace it. It stays in the spatial hash, so neighbours
+                // still steer AROUND it. CommandState / MoveTarget / the Moving flag are deliberately left ALONE —
+                // a stun or root must not CANCEL a queued order, it must PAUSE it, so the unit resumes on its own
+                // the tick the modifier expires. Every recorded golden leaves StatusFlagsOf at None for every
+                // entity, so this branch is never entered there and no checksum moves.
+                if ((world.StatusFlagsOf[i] & MOVE_BLOCKING) != 0)
+                {
+                    world.Velocity[i] = FixedVec3.Zero;
+                    continue;
+                }
 
                 // Story 1.12 (AC5b) — Hold Position anchor: a HoldPosition unit is NEVER displaced from its
                 // tile by separation/collision steering. This is the REAL distinction from Stop (which still

@@ -76,7 +76,12 @@ namespace ProjectChimera.Combat
         // Story 11.4 review (P5): a resource shortage that is neither specifically ore nor crystal (a sparse/custom
         // cost key, or an unregistered fail-closed key) — surfaced as a generic "not enough resources" rather than
         // fabricating an ore shortage.
-        InsufficientResources
+        InsufficientResources,
+        // DW-266: the caster carries StatusFlags.Silenced — active casting is barred while the debuff is live
+        // (auras and while-alive self-passives keep running; silence stops ACTIVE casts only).
+        Silenced,
+        // DW-266: the caster carries StatusFlags.Stunned — fully incapacitated (no cast, no attack, no movement).
+        Stunned
     }
 
     /// <summary>Lightweight event written by sim systems each tick.</summary>

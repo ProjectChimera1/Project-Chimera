@@ -75,6 +75,14 @@ namespace ProjectChimera.Effects
         private const int TicksPerSecond = SimulationLoop.TICKS_PER_SECOND;
 
         /// <summary>
+        /// DW-266 — the statuses that FORBID an active cast. <see cref="StatusFlags.Silenced"/> is exactly this
+        /// ("this unit cannot cast abilities", the meaning the HUD status icon has always shown);
+        /// <see cref="StatusFlags.Stunned"/> subsumes it (a stunned unit can do nothing at all). AURAS and
+        /// while-alive SELF-PASSIVES are deliberately NOT gated by this — silence stops ACTIVE casting only.
+        /// </summary>
+        private const StatusFlags CAST_BLOCKING = StatusFlags.Silenced | StatusFlags.Stunned;
+
+        /// <summary>
         /// Convert an ability cooldown in Fixed SECONDS to integer ticks (Fixed multiply then <see cref="Fixed.ToInt"/>
         /// truncation — deterministic + drift-free; never <c>ToFloat</c>). At 30 tps: 3s→90, 6s→180, 12s→360.
         /// </summary>
@@ -181,6 +189,19 @@ namespace ProjectChimera.Effects
             int regIdx = world.AbilityId[abBase + slot];
             if (regIdx < 0 || regIdx >= _registry.Count) return;    // empty / out-of-range slot
             AbilityDefinition ab = _registry.Get(regIdx);
+
+            // DW-266 — SILENCE / STUN GATE. Refused FIRST, so a silenced caster is told it is silenced rather than
+            // being handed a less relevant cooldown/resource reason. Atomic like every other refusal (AC6): nothing
+            // debited, no cooldown started, no effect graph run. The pending intent is still consumed by the caller
+            // (one-shot), so a queued cast is DROPPED by the debuff rather than deferred — pressing again after it
+            // expires re-issues it. StatusFlagsOf is None throughout every recorded golden ⇒ no checksum moves.
+            StatusFlags status = world.StatusFlagsOf[id];
+            if ((status & CAST_BLOCKING) != 0)
+            {
+                _events?.PushDenied(world.Position[id], world.FactionOf[id],
+                    (status & StatusFlags.Silenced) != 0 ? DenialReason.Silenced : DenialReason.Stunned);
+                return;
+            }
 
             // Gate cooldown (the command card greys the button on the identical predicate — AC1 parity). Story 11.4
             // (FR-74): a rejected cast surfaces a guard-sourced OrderDenied cue at the caster (previously SILENT). The

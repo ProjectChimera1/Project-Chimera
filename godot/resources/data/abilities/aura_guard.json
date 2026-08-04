@@ -22,7 +22,7 @@
         "attack_damage_delta": 0,
         "move_speed_delta": 0,
         "armor_delta": 5,
-        "status": "Stunned",
+        "status": "None",
         "period_ticks": 0
       }
     }

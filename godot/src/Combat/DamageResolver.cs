@@ -1,5 +1,6 @@
 #nullable enable
 using ProjectChimera.Core;
+using ProjectChimera.Effects;   // StatusFlags (DW-266 invulnerability gate; a value enum, same sim layer)
 
 namespace ProjectChimera.Combat
 {
@@ -78,6 +79,14 @@ namespace ProjectChimera.Combat
             // FUTURE caller (ability, DoT, second same-tick hit) can't produce a phantom UnitKilled
             // event or an inflated RecordKill by hitting an already-dead target.
             if (!world.IsAlive(t)) return false;
+            // DW-266 — INVULNERABILITY GATE. Placed at the SINGLE entity-damage path so it covers every source at
+            // once: melee hitscan, projectile primary + splash impacts, and every DamageEffect leaf (ability casts,
+            // on-hit riders, modifier DoT periods). Refused BEFORE Health is touched, so an invulnerable target takes
+            // no damage, raises no unit_damaged DSL occurrence, and can never be killed by this call. Returns false
+            // (= "did not die"), so the attacker keeps its target and keeps swinging. Deliberately NOT applied to
+            // direct_hp_delta / cost_health self-costs — those are not damage. Every recorded golden leaves
+            // StatusFlagsOf at None, so this branch is never entered there and no checksum moves.
+            if ((world.StatusFlagsOf[t] & StatusFlags.Invulnerable) != 0) return false;
             // Story 2.6 (Decision #6): flat post-matrix armor subtraction, floored at 0 so a hit never heals. With the
             // default BaseArmor=0 (and no armor modifier) EffectiveArmor=0 → the term is −0, leaving every pre-2.6
             // combat outcome unchanged; the goldens move ONLY from the EffectiveArmor checksum fold (v8), not the math.
