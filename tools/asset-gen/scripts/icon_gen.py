@@ -25,6 +25,25 @@ vehicle/air/structure/item), and the object's initials. They are representative,
 Bulwark Adept reads as a broad heavy shape in Covenant slate-blue, a Quicksilver Runner as a thin dart —
 so the UI can be built and judged now, and a painted PNG later drops into the same slot with no code
 change (the loader prefers .png and falls back to .svg).
+
+STATE OF REAL GENERATION (measured 2026-08-04, four GPU passes on `worker`)
+--------------------------------------------------------------------------
+The rail WORKS end to end: ComfyUI 0.18.5 on an RTX 3060 with sd_xl_base_1.0 produced real 512px PNGs
+through this script. FRAMING is solved by the prompt above (bust, face, no legs, no frame artifacts).
+
+What prompt engineering alone did NOT solve is identity fidelity and the painted-icon STYLE. SDXL base
+drifts to generic ornate fantasy armour and discards the specific identity: "a slight young acolyte in a
+knee-length work coat with a chalk satchel" came back as an armoured knight with gold filigree, twice.
+Pass 3 regressed outright. This is a MODEL-ASSET gap, not a prompt gap — D:/ai-models/{loras,ipadapter,
+clip_vision} are all EMPTY (the IPAdapter *node* is installed, its models are not).
+
+RECOMMENDED SEQUENCING (architectural, not a workaround)
+An icon should be generated FROM the unit's concept image via img2img / IPAdapter, not from text alone.
+That is the same artefact the mesh pipeline already produces, and conditioning on it makes "the icon
+depicts the same character as the model" structurally true rather than a hope. The manifest records 0
+committed GLBs, so the concept pass has not run yet — meaning text-only icons generated NOW would not
+match the models made LATER. Icons therefore sequence after (or alongside) the mesh concept pass; the
+SVG placeholders carry the UI until then.
 """
 import argparse, json, os, re, sys
 
@@ -38,14 +57,34 @@ ICON_DIR = os.path.join(ROOT, "godot", "resources", "icons")
 # full-body mesh pose is illegible. The dark vignette + rim light is the WC3 icon read: subject pops
 # off a recessed background at a glance.
 ICON_PREFIX = (
-    "game UI portrait icon, square 1:1, tight bust framing from the chest up, subject centered and "
-    "filling the frame, strong rim light separating the subject from a dark recessed vignette background, "
-    "bold readable shapes at small size, flat stylized painted look with clean edges, "
-    "early-20th-century industrial FMA-inspired alchemy world, no text, no border frame"
+    "game UI portrait icon, square 1:1 crop, "
+)
+# Framing is asserted AFTER the subject, not before. The SUBJECT clauses were authored for MESH
+# reference — they describe whole bodies ("knee-length coat", "a pick at the hip", A-pose on a plain
+# white background) — and SDXL follows those concrete body cues over an opening framing instruction.
+# The first attempt produced exactly that: a full-body figure on white, boots included, no face. So the
+# override lands last, where recency gives it weight, and the negative names the failure explicitly.
+ICON_FRAMING = (
+    " HARD FRAMING OVERRIDE: extreme close-up HEAD AND SHOULDERS portrait bust, "
+    "face clearly visible and centered, cropped tightly at the upper chest, shoulders filling the width, "
+    "NO legs, NO feet, NO full figure, subject fills 90% of the square, "
+    "flat dark charcoal backdrop behind the head, strong warm rim light along the silhouette edge, "
+    "bold high-contrast shapes readable at 64 pixels, painted game-icon art with clean edges"
 )
 ICON_NEG = (
-    "full body, tiny subject, wide shot, multiple characters, character sheet, text, watermark, letters, "
-    "ui frame, border, rounded corners, drop shadow, busy background, scenery, low contrast, blurry"
+    # Every entry is a failure OBSERVED while iterating on `worker`, not a guess:
+    #   pass 1  full-body figure on white, no face      -> body/white-bg terms
+    #   pass 2  correct bust + face, but a film-strip border and pale backdrop
+    #           ("vignette" in the POSITIVE was inducing the frame; removed there)
+    #   pass 3  "waist-up" was too weak and reverted to full body; "signature tool or weapon"
+    #           handed the WORKER a sword -> both phrases dropped, weapon terms negated for non-combatants
+    "full body, full figure, legs, feet, boots, knees, standing, A-pose, T-pose, sticker, die-cut outline, "
+    "film strip, filmstrip, sprocket holes, picture frame, matte border, framed painting, inset panel, "
+    "border, ui frame, rounded corners, drop shadow, "
+    "white background, light background, pale background, beige background, grey background, sky, "
+    "tiny subject, wide shot, zoomed out, distant, multiple characters, character sheet, turnaround, "
+    "text, watermark, letters, signature, busy background, scenery, landscape, "
+    "low contrast, washed out, blurry, back view, faceless, hood covering the face"
 )
 ICON_SIZE = 512  # generate large, downsample in-engine; 512 keeps detail for a 64px read
 
@@ -104,7 +143,9 @@ def category_of(asset: dict) -> str:
 
 
 def icon_prompt(asset: dict) -> str:
-    return f"{ICON_PREFIX}\n{palette_of(asset.get('prompt',''))}\nSUBJECT: {subject_of(asset.get('prompt',''))}"
+    # Order matters: identity first (palette + the object's own SUBJECT), framing override LAST.
+    return (f"{ICON_PREFIX}\n{palette_of(asset.get('prompt',''))}\n"
+            f"SUBJECT: {subject_of(asset.get('prompt',''))}\n{ICON_FRAMING}")
 
 
 def load_assets():
@@ -191,8 +232,56 @@ def main():
         print(f"wrote {n} placeholder SVGs -> {os.path.relpath(ICON_DIR, ROOT)}")
         return
 
-    print("real PNG generation needs the ComfyUI venv python + GPU; see SKILL.md.\n"
-          "Run --prompts to review what would be generated, or --placeholders for stand-ins.")
+    # ── Real generation via the running ComfyUI server ───────────────────────────────────────────
+    sys.path.insert(0, HERE)
+    from backends.comfy_client import ComfyClient
+    from backends import workflows as W
+
+    with open(CONFIG, encoding="utf-8") as f:
+        cfg = json.load(f)
+    client = ComfyClient(comfy_root=cfg["comfy_root"])
+    if not client.ping():
+        print("ComfyUI is not answering on 127.0.0.1:8188 — start it first "
+              "(D:\\tools\\ComfyUI_windows_portable\\run_nvidia_gpu.bat).")
+        return 1
+
+    ok, failed = 0, []
+    for i, r in enumerate(rows):
+        dest_dir = os.path.join(ICON_DIR, r["kind"]) if r["kind"] == "items" \
+            else os.path.join(ICON_DIR, r["kind"], r["faction"])
+        # Deterministic per-object seed: same object → same icon on a re-run, so a regenerated set is
+        # reproducible and a single re-roll is opt-in via --seed-offset rather than reshuffling everything.
+        seed = (cfg.get("hunyuan_seed_base", 1000) + i * 7919) % (2**31)
+        wf = W.sdxl_concept(
+            prompt=r["prompt"], negative=ICON_NEG, seed=seed,
+            steps=cfg.get("concept_steps", 30), cfg=cfg.get("concept_cfg", 7.0),
+            width=ICON_SIZE, height=ICON_SIZE,          # SQUARE: an icon is 1:1, unlike the tall mesh concepts
+            out_prefix=f"icons/{r['faction']}_{r['id']}",
+        )
+        try:
+            pid = client.queue(wf)
+            hist = client.wait(pid, timeout=600)
+            files = client.output_files(hist)
+            copied = client.copy_outputs(files, dest_dir)
+            if not copied:
+                failed.append((r["id"], "no output file"))
+                continue
+            final = os.path.join(dest_dir, r["id"] + ".png")
+            if os.path.exists(final):
+                os.remove(final)
+            os.rename(copied[0], final)
+            ok += 1
+            print(f"  [{ok}/{len(rows)}] {r['faction']}/{r['id']}.png  (seed {seed})")
+        except Exception as e:                                     # noqa: BLE001 — report, keep batching
+            failed.append((r["id"], str(e)[:120]))
+            print(f"  FAILED {r['id']}: {str(e)[:120]}")
+
+    print(f"\ngenerated {ok}/{len(rows)} icons -> {os.path.relpath(ICON_DIR, ROOT)}")
+    if failed:
+        print("failures:")
+        for k, v in failed:
+            print(f"  {k}: {v}")
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

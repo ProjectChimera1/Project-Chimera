@@ -7,7 +7,7 @@ sys.path.insert(0, HERE)
 from backends.comfy_client import ComfyClient
 from backends import workflows as W
 
-COMFY_ROOT = r"C:\Vid-Pic Gen Dump from C Drive\AI Video Generation\ComfyUI_windows_portable_nvidia\ComfyUI_windows_portable\ComfyUI"
+COMFY_ROOT = r"D:\tools\ComfyUI_windows_portable\ComfyUI"
 WORK = r"D:\tools\asset-gen-work"
 os.makedirs(WORK, exist_ok=True)
 
