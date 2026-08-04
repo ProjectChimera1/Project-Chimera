@@ -381,6 +381,19 @@ namespace ProjectChimera.Core.Definitions
                 // Story 6.5: a pre-placed unit on a PAINTED blocked cell fails closed (same cell domain as the sim).
                 string? ube = CheckNotBlocked($"scenario.units[{i}]", "unit position", u.X, u.Z, painted);
                 if (ube != null) return ValidationResult.Fail(ube);
+
+                // DW-240: the pre-placed unit's unit_id must RESOLVE in its OWNER faction's roster. The applier does
+                // exactly `_slotFactionDefs[(int)faction]?.GetUnit(u.UnitId)` and, on null, logs a warning and
+                // `continue`s — the unit silently vanishes from the match. That is how a cross-faction launch shipped
+                // an AI opponent with zero workers (Story 11.1's in-engine gate, 2026-07-28): fail-closed at LOAD is
+                // what turns "silently missing army" into a located rejection the editor can surface. The predicate
+                // here is the applier's predicate, so a PASS provably means every authored unit spawns.
+                // Same owner-def amnesty as the Story 6.8 building-type gate: when no faction defs are threaded (the
+                // default — every legacy caller/test) or the owner slot resolves to no def, there is nothing to
+                // resolve against and the check is a no-op, byte-identical to the pre-DW-240 gate.
+                if (!IsKnownUnitId(u.UnitId, OwnerFactionDef(slotFactionDefs, u.Slot)))
+                    return ValidationResult.Fail(UnknownUnitIdError($"scenario.units[{i}].unit_id", u.UnitId,
+                        OwnerFactionDef(slotFactionDefs, u.Slot), u.Slot));
             }
 
             // ── Regions (Story 6.4) — fail-closed well-formedness so a malformed/cheat region can never reach the
@@ -808,6 +821,14 @@ namespace ProjectChimera.Core.Definitions
                         // closed (same cell domain as the sim) — a spawned unit could never legally occupy it.
                         string? sbe = CheckNotBlocked(ap, "spawn_unit position", a.X, a.Z, painted);
                         if (sbe != null) return ValidationResult.Fail(sbe);
+                        // DW-240: the spawned unit_id must RESOLVE in the SPAWNING faction's roster — the exact
+                        // predicate ScenarioDelegateBinder.OnSpawnUnit applies (`SlotFactionDefs[slot+1]?.GetUnit(id)`,
+                        // warn + return on null). Pre-DW-240 an unknown id was a trigger that fired forever and spawned
+                        // nothing, diagnosable only from the runtime log. Owner-def amnesty as above: no threaded def
+                        // for this faction slot ⇒ nothing to resolve against ⇒ no-op.
+                        if (!IsKnownUnitId(a.UnitId, OwnerFactionDef(slotFactionDefs, a.Faction)))
+                            return ValidationResult.Fail(UnknownUnitIdError($"{ap}.unit_id", a.UnitId,
+                                OwnerFactionDef(slotFactionDefs, a.Faction), a.Faction));
                     }
                 }
             }
@@ -904,6 +925,12 @@ namespace ProjectChimera.Core.Definitions
                             if (ga.Kind == "spawn_unit" && (ga.Count < 1 || ga.Count > EffectCaps.MaxSpawnCount))
                                 return ValidationResult.Fail(
                                     $"{gp}.count={ga.Count} is out of range 1..EffectCaps.MaxSpawnCount={EffectCaps.MaxSpawnCount}.");
+                            // DW-240 — the graph channel gets the SAME unknown-unit_id gate as the flat pass (both
+                            // channels merge into one execution walk and hit the identical OnSpawnUnit resolution).
+                            if (ga.Kind == "spawn_unit"
+                                && !IsKnownUnitId(ga.UnitId, OwnerFactionDef(slotFactionDefs, ga.Faction)))
+                                return ValidationResult.Fail(UnknownUnitIdError($"{gp}.unit_id", ga.UnitId,
+                                    OwnerFactionDef(slotFactionDefs, ga.Faction), ga.Faction));
                             // Story 7.4 widening: the Int-only rule now governs only the LITERAL path — an action
                             // fed by a value-in expression edge may target Int/Fixed/Bool (its type equality is
                             // enforced by the expression compile pass below).
@@ -1498,9 +1525,37 @@ namespace ProjectChimera.Core.Definitions
             return ownerDef?.GetBuilding(type) != null;
         }
 
+        /// <summary>
+        /// DW-240 — a known unit id is one that RESOLVES in <paramref name="ownerDef"/>'s roster, i.e. exactly what
+        /// <c>FactionDefinition.GetUnit</c> (the applier's and the spawn delegate's own lookup) returns non-null for.
+        /// There is no enum/legacy fallback the way <see cref="IsKnownBuildingType"/> has one — a unit identity is
+        /// ALWAYS a faction-authored id.
+        ///
+        /// <para>A null <paramref name="ownerDef"/> (no per-slot faction defs threaded — the default for every legacy
+        /// caller and test — or a slot that resolves to no def) means there is nothing to resolve against, so the
+        /// check accepts: byte-identical to the pre-DW-240 gate. Mirrors the Story 6.8 building-type amnesty.</para>
+        /// </summary>
+        private static bool IsKnownUnitId(string? unitId, FactionDefinition? ownerDef)
+        {
+            if (ownerDef is null) return true;               // nothing threaded to resolve against ⇒ no-op (6.8 precedent)
+            if (string.IsNullOrEmpty(unitId)) return false;  // a blank id can never resolve — the applier would drop it
+            return ownerDef.GetUnit(unitId) != null;
+        }
+
+        /// <summary>DW-240 — the shared located message for an unresolvable unit id. Names the field path, the
+        /// offending id, the owning faction (so the author knows WHICH roster was searched), and the slot. Kept in one
+        /// place so the pre-placed and both spawn_unit channels report identically.</summary>
+        private static string UnknownUnitIdError(string path, string? unitId, FactionDefinition? ownerDef, int slot)
+        {
+            string faction = string.IsNullOrEmpty(ownerDef?.Id) ? "(unnamed)" : ownerDef!.Id;
+            return $"{path}='{unitId}' names no unit in the roster of the faction that owns slot {slot} " +
+                   $"('{faction}') — it would resolve to no UnitDefinition and be silently dropped at spawn.";
+        }
+
         /// <summary>Story 6.8 — resolve a pre-placed building's owner <see cref="FactionDefinition"/> from the
         /// per-slot defs (indexed by <c>(int)Faction</c> = slot+1). Null when no defs are threaded or the slot is out
-        /// of range — the caller then falls back to enum-name-only building-type acceptance.</summary>
+        /// of range — the caller then falls back to enum-name-only building-type acceptance. DW-240 reuses it for the
+        /// pre-placed / spawn_unit unit-id resolution domain (the same per-slot roster the applier reads).</summary>
         private static FactionDefinition? OwnerFactionDef(IReadOnlyList<FactionDefinition?>? slotFactionDefs, int slot)
         {
             if (slotFactionDefs is null) return null;
