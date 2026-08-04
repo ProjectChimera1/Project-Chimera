@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using Godot;
 using ProjectChimera.Core.Definitions;
 using ProjectChimera.Navigation;
@@ -149,6 +149,7 @@ namespace ProjectChimera.CreationSuite
         {
             if (!_toolActive || _gameState == null || _gameState.Mode != GameMode.Edit) return;
 
+            if (@event is InputEventKey && ProjectChimera.UI.TextFocusGuard.IsTyping(this)) return; // hotkeys must not fire while typing
             if (@event is InputEventKey key && key.Pressed && !key.Echo)
             {
                 if (key.Keycode == Key.Bracketleft)  { _brushRadius = Mathf.Max(0, _brushRadius - 1); UpdateStatus(); GetViewport().SetInputAsHandled(); return; }

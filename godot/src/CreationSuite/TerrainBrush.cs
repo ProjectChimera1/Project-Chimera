@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using System;
 using System.Collections.Generic;
 using Godot;
@@ -212,6 +212,7 @@ namespace ProjectChimera.CreationSuite
             if (_gameState.Mode != GameMode.Edit) return;
 
             // ── Key shortcuts ─────────────────────────────────────────────────
+            if (@event is InputEventKey && ProjectChimera.UI.TextFocusGuard.IsTyping(this)) return; // hotkeys must not fire while typing
             if (@event is InputEventKey key && key.Pressed && !key.Echo)
             {
                 switch (key.Keycode)
