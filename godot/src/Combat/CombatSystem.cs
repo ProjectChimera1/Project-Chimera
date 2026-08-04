@@ -29,6 +29,10 @@ namespace ProjectChimera.Combat
     ///
     /// Status (DW-266): a <see cref="StatusFlags.Stunned"/> unit takes NO combat action at all; a
     /// <see cref="StatusFlags.Disarmed"/> unit still acquires and chases but can never land a hit.
+    ///
+    /// NON-COMBATANTS (EffectiveAttackDamage == 0, non-gatherer) never enter an acquisition or engagement
+    /// path, but they ARE still driven by the pure-MOVEMENT half of the vocabulary — see
+    /// <see cref="TickNonCombatant"/> (Story 15.4, DW-242/DW-202).
     /// </summary>
     public class CombatSystem : ISimSystem
     {
@@ -142,12 +146,17 @@ namespace ProjectChimera.Combat
                         world.CommandState[i] = UnitCommand.Idle;
                     continue;
                 }
-                // EDGE (Story 1.12): this zero-damage guard sits BEFORE the command switch, so a zero-damage
-                // non-gatherer is skipped entirely — it therefore cannot Patrol/Follow (both are partly
-                // movement). Acceptable for 1.12: every order is issued to damage-bearing combat units (the
-                // golden + tests use such units). Supporting zero-damage support units patrolling/following is
-                // an Epic-2 concern; do NOT hoist the movement branches above this guard here. Flagged, not built.
-                if (world.EffectiveAttackDamage[i] == Fixed.Zero) continue; // non-combatant
+                // Story 15.4 (DW-242, closing the Story-1.12 edge note): a zero-damage NON-COMBATANT still gets
+                // its command routed — through the MOVEMENT-ONLY router, never the engagement branches below.
+                // Before 15.4 this was a blanket `continue`, so a zero-damage non-gatherer parked in
+                // AttackMove/Patrol/Follow/AttackTarget/AttackBuilding sat inert forever with no system able to
+                // advance or normalize the order (and, when AI-owned, leaked permanently out of the wave pool,
+                // which only re-counts Idle/Stop units — DW-202).
+                if (world.EffectiveAttackDamage[i] == Fixed.Zero) // non-combatant
+                {
+                    TickNonCombatant(world, i, dt);
+                    continue;
+                }
 
                 switch (world.CommandState[i])
                 {
@@ -156,6 +165,16 @@ namespace ProjectChimera.Combat
 
                     case UnitCommand.PickupItem:
                         continue; // Story 3.15: a hero walking to a ground item ignores enemies (like Move); ItemSystem drives MoveTarget + the proximity claim
+
+                    case UnitCommand.Build:
+                        // Story 15.4 (DW-206): a unit walking to a build site is pure navigation — BuildingSystem
+                        // drives it (BuildingSystem.QueueWorkerBuild sets this state and TickWorkerBuild completes
+                        // it). It used to fall through to `default:` → TickIdleCombat, which was harmless ONLY
+                        // because the gatherer guard above exits first and today only gatherers ever receive Build.
+                        // That guard tests GatherState, not "is a worker": any non-gatherer that ever receives a
+                        // Build order would auto-chase enemies and have its MoveTarget overwritten mid-walk. This
+                        // case is the explicit route, so the invariant no longer rests on an accident of ordering.
+                        continue;
 
                     case UnitCommand.Stop:
                         TickStopCombat(world, i, dt);
@@ -185,10 +204,62 @@ namespace ProjectChimera.Combat
                         TickFollowCombat(world, i, dt);
                         break;
 
-                    default: // Idle (and Build — workers are handled by the gatherer guard above)
+                    default: // Idle (and the never-persisted wire-only commands, which never reach a CommandState)
                         TickIdleCombat(world, i, dt);
                         break;
                 }
+            }
+        }
+
+        // ── Non-combatant routing (Story 15.4 — DW-242 / DW-202) ──────────────────
+        //
+        // A unit with zero EffectiveAttackDamage cannot deal damage, so it stays excluded from every
+        // acquisition/engagement path — that long-standing rule is PRESERVED here, deliberately: hoisting the
+        // engagement branches instead would make support units auto-attack, and would re-open the AI wave leak
+        // from the other side. What a non-combatant is NOT excluded from is MOVEMENT. AttackMove, Patrol and
+        // Follow are part navigation, and with no combat tick at all their movement half never ran, so the order
+        // could never advance, complete, or normalize — the unit was stuck in it for the rest of the match.
+        //
+        // The two force-attack orders have no movement half worth running (the unit would chase something it can
+        // never damage, forever), so they normalize to Idle — the same disposal the gatherer guard above applies
+        // to the same orders.
+        //
+        // Every other state (Idle / Move / Stop / HoldPosition / Build / PickupItem) is either a stable resting
+        // state or driven by another system, so it stays a no-op: byte-identical to the pre-15.4 blanket skip.
+        // That is what keeps the committed goldens — whose zero-damage units are all Idle or Move — unmoved.
+        private void TickNonCombatant(EntityWorld world, int i, Fixed dt)
+        {
+            switch (world.CommandState[i])
+            {
+                case UnitCommand.AttackMove:
+                    // Walk the goal leg only, never acquire. ResumeAttackMove normalizes to Idle on arrival, so an
+                    // AI-owned non-combatant returns to the wave pool instead of leaking out of it forever (DW-202).
+                    world.Flags[i] &= ~EntityFlags.Attacking;
+                    ResumeAttackMove(world, i);
+                    break;
+
+                case UnitCommand.Patrol:
+                    // Walk the route only, never engage en route.
+                    world.Flags[i] &= ~EntityFlags.Attacking;
+                    ResumePatrol(world, i);
+                    break;
+
+                case UnitCommand.Follow:
+                    // Follow is pure tracking for EVERY unit — it never acquires and never deals damage (Story
+                    // 1.12) — so the combatant body is reused verbatim, including its followed-unit-died→Idle drop.
+                    TickFollowCombat(world, i, dt);
+                    break;
+
+                case UnitCommand.AttackTarget:
+                case UnitCommand.AttackBuilding:
+                    // Un-executable for a non-combatant: it would chase and then stand at the target dealing
+                    // nothing. Normalize to Idle, clearing both target refs and both flags (the same clean revert
+                    // TickAttackBuildingCombat/TickFollowCombat do), so the unit stops being stuck.
+                    world.CommandState[i]  = UnitCommand.Idle;
+                    world.CommandTarget[i] = -1;
+                    world.AttackTarget[i]  = -1;
+                    world.Flags[i]        &= ~(EntityFlags.Moving | EntityFlags.Attacking);
+                    break;
             }
         }
 
