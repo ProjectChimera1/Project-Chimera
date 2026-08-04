@@ -86,6 +86,83 @@ namespace ProjectChimera.Effects
         /// <summary>Period length in ticks for <see cref="PeriodEffect"/> (0 when there is none).</summary>
         public readonly int PeriodTicks;
 
+        // ────────────────────── DW-488: content-authoring bounds on a modifier's stat contribution ──────────────────────
+
+        /// <summary>
+        /// DW-488 — the per-modifier authoring ceiling on <c>|delta| × MaxStacks</c>, in 16.16 RAW units, for EACH of the
+        /// four stat deltas.
+        /// <para><c>ModifierSystem.AccumulateBonus</c> sums a host's live modifier contributions with the WRAPPING int
+        /// <c>+=</c>; DW-28's <see cref="Fixed.AddSaturating"/> only saturates the later <c>Base + Σbonus</c> READ, and (per
+        /// its own docstring) a widen-then-clamp cannot recover a value that has ALREADY wrapped in the int add. Saturating
+        /// the accumulator per-step instead would break <c>AccumulateBonus</c>'s order-independence invariant at the
+        /// boundary — so the wrap is closed on the AUTHORING side, as DW-28's intent proposed: bound each modifier's
+        /// worst-case contribution to <c>int.MaxValue / <see cref="EffectCaps.MaxModifiersPerEntity"/></c>. At most
+        /// <see cref="EffectCaps.MaxModifiersPerEntity"/> instances can be live on one host, so the summed magnitude is at
+        /// most <c>MaxModifiersPerEntity × this</c> ≤ <c>int.MaxValue</c> — un-wrappable by construction.</para>
+        /// <para>≈ 4096.0 in stat units: orders of magnitude above any shipped delta (the largest today is the
+        /// <c>ring_of_vigor</c> +50 max health), so this rejects only content that was already pathological. Derived from
+        /// named constants, never a bare literal (CHM0004). Deliberately NOT an <see cref="EffectCaps"/> entry: it is a
+        /// LOAD-TIME AUTHORING bound, not a runtime execution cap, so it stays out of the <c>RulesetHash</c> wire
+        /// fingerprint (adding an EffectCaps entry moves the handshake agreement hash).</para>
+        /// </summary>
+        public const int MaxStatDeltaTotalRaw = int.MaxValue / EffectCaps.MaxModifiersPerEntity;
+
+        /// <summary>
+        /// DW-488 — the authoring ceiling on <see cref="MaxStacks"/> itself, without which the product bound above is
+        /// meaningless. <c>ModifierStore.RemoveSlot</c> reverts a slot's contribution as
+        /// <c>delta × Fixed.FromInt(stackCount)</c>, and <see cref="Fixed.FromInt"/> shifts left by
+        /// <see cref="Fixed.FRACTIONAL_BITS"/> — so a stack count above this limit is not representable in 16.16 and the
+        /// revert would subtract the WRONG amount (a permanently-poisoned accumulator). This constant IS that exact
+        /// representable limit, derived from <see cref="Fixed.FRACTIONAL_BITS"/>.
+        /// </summary>
+        public const int MaxAuthorableStacks = int.MaxValue >> Fixed.FRACTIONAL_BITS;
+
+        /// <summary>
+        /// DW-488 — the load-time authoring check behind <see cref="MaxStatDeltaTotalRaw"/> /
+        /// <see cref="MaxAuthorableStacks"/>. Returns <c>null</c> when this descriptor is within bounds, or the offending
+        /// <c>(field, reason)</c> pair for the caller to LOCATE into its own error shape (so the same rule can be adopted
+        /// by any validator that mints modifiers, not just <c>AbilityValidator</c>).
+        /// <para>Only <see cref="StackRule.Stack"/> multiplies a modifier's contribution — <see cref="StackRule.Refresh"/>
+        /// and <see cref="StackRule.Ignore"/> hold exactly one instance whatever <see cref="MaxStacks"/> says (the store
+        /// re-adds deltas only on the Stack branch). Pure, never throws; allocates a string only on a REJECT.</para>
+        /// </summary>
+        public (string Field, string Reason)? CheckAuthoringBounds()
+        {
+            long stacks = 1;
+            if (Stacking == StackRule.Stack)
+            {
+                if (MaxStacks < 1)
+                    return ("max_stacks",
+                        $"={MaxStacks} must be >= 1 when stacking is Stack (a stacking modifier that can hold no stack is inert).");
+                if (MaxStacks > MaxAuthorableStacks)
+                    return ("max_stacks",
+                        $"={MaxStacks} exceeds MaxAuthorableStacks={MaxAuthorableStacks} — expiry reverts the slot as " +
+                        $"delta x Fixed.FromInt(stackCount), which is not representable in 16.16 past that.");
+                stacks = MaxStacks;
+            }
+
+            return CheckDelta("max_health_delta",    MaxHealthDelta,    stacks)
+                ?? CheckDelta("attack_damage_delta", AttackDamageDelta, stacks)
+                ?? CheckDelta("move_speed_delta",    MoveSpeedDelta,    stacks)
+                ?? CheckDelta("armor_delta",         ArmorDelta,        stacks);
+        }
+
+        /// <summary>
+        /// DW-488 helper: reject one stat delta whose worst-case contribution (<c>|delta| × stacks</c>) would let
+        /// <see cref="EffectCaps.MaxModifiersPerEntity"/> such instances wrap <c>ModifierSystem</c>'s int accumulator.
+        /// The product is computed in <c>long</c> so the CHECK itself can never overflow.
+        /// </summary>
+        private static (string Field, string Reason)? CheckDelta(string field, Fixed delta, long stacks)
+        {
+            long magnitude = delta.Raw < 0 ? -(long)delta.Raw : delta.Raw; // long-widened: |int.MinValue| is representable
+            long total = magnitude * stacks;
+            if (total > MaxStatDeltaTotalRaw)
+                return (field,
+                    $"|delta| x max_stacks = {total} raw exceeds MaxStatDeltaTotalRaw={MaxStatDeltaTotalRaw} — " +
+                    $"{EffectCaps.MaxModifiersPerEntity} such modifiers on one host would wrap ModifierSystem's int stat accumulator negative.");
+            return null;
+        }
+
         /// <summary>Construct a modifier descriptor. Pure data; no execution happens here.
         /// <paramref name="armorDelta"/> is an optional trailing parameter (Story 2.6) so every pre-2.6
         /// <c>new Modifier(...)</c> call site stays source-compatible (defaults to <see cref="Fixed.Zero"/>).</summary>
