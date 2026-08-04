@@ -266,5 +266,82 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Equal(2560, s.ResolutionWidth);
             Assert.Equal(1440, s.ResolutionHeight);
         }
+
+        // ── DW-482 — newer-schema files bail out of MigrateForward (no downgrade-stamp) ──────────────
+        //
+        // A settings.json written by a NEWER build carries a higher schema_version. This build's
+        // MigrateForward encodes CURRENT rules only, so it must return the instance untouched — stamping
+        // CurrentSchemaVersion (or clamping/resetting values legal under the newer schema) would persist
+        // a silent downgrade on the next Save.
+
+        [Fact]
+        public void NewerSchema_MigrateForward_DoesNotDowngradeStamp()
+        {
+            int future = SettingsData.CurrentSchemaVersion + 1;
+            var s = new SettingsData { SchemaVersion = future }.MigrateForward();
+            Assert.Equal(future, s.SchemaVersion);
+        }
+
+        [Fact]
+        public void NewerSchema_FromJson_PreservesVersionAndOutOfBandValues()
+        {
+            // ui_scale 2.5 and window_mode "ultrawide" are illegal under THIS build's schema but may be
+            // legal under the newer one that wrote the file — the bail must leave both verbatim rather
+            // than clamp/reset them to current-build rules.
+            int future = SettingsData.CurrentSchemaVersion + 1;
+            string json = $"{{ \"schema_version\": {future}, \"ui_scale\": 2.5, \"window_mode\": \"ultrawide\" }}";
+
+            var s = SettingsData.FromJson(json, Opts);
+
+            Assert.Equal(future, s.SchemaVersion);
+            Assert.Equal(2.5f, s.UiScale);
+            Assert.Equal("ultrawide", s.WindowMode);
+        }
+
+        [Fact]
+        public void NewerSchema_SurvivesLoadThenSaveRoundTrip_WithoutVersionDowngrade()
+        {
+            // The exact defect from the ledger: load a newer file, then Save — the persisted JSON must
+            // still carry the FUTURE schema_version, not this build's, so the newer build re-normalizes
+            // under its own rules on the next upgrade instead of trusting a downgraded stamp.
+            int future = SettingsData.CurrentSchemaVersion + 2;
+            string json = $"{{ \"schema_version\": {future}, \"quality_preset\": \"cinematic\" }}";
+
+            var loaded = SettingsData.FromJson(json, Opts);
+            string saved = JsonSerializer.Serialize(loaded, Opts);
+            var reloaded = JsonSerializer.Deserialize<SettingsData>(saved, Opts);
+
+            Assert.NotNull(reloaded);
+            Assert.Equal(future, reloaded!.SchemaVersion);
+            Assert.Equal("cinematic", reloaded.QualityPreset);
+        }
+
+        [Fact]
+        public void CurrentSchema_StillNormalizesAndStamps()
+        {
+            // Guard against overshooting the bail to >=: a file AT the current version still gets the
+            // full normalization pass (it may be hand-edited), and the stamp is a no-op.
+            string json = $"{{ \"schema_version\": {SettingsData.CurrentSchemaVersion}, \"window_mode\": \"cinema\", \"ui_scale\": 9.0 }}";
+
+            var s = SettingsData.FromJson(json, Opts);
+
+            Assert.Equal(SettingsData.CurrentSchemaVersion, s.SchemaVersion);
+            Assert.Equal("windowed", s.WindowMode); // unknown mode reset under current rules
+            Assert.Equal(1.5f, s.UiScale);          // clamped under current rules
+        }
+
+        [Fact]
+        public void OlderSchema_StillMigratesAndStamps()
+        {
+            // The pre-existing upgrade path must be unaffected by the bail: an older file (v2, explicit
+            // null endpoint string) is normalized and stamped up to the current version.
+            const string json = "{ \"schema_version\": 2, \"nakama_host\": null, \"window_mode\": \"cinema\" }";
+
+            var s = SettingsData.FromJson(json, Opts);
+
+            Assert.Equal(SettingsData.CurrentSchemaVersion, s.SchemaVersion);
+            Assert.Equal("", s.NakamaHost);
+            Assert.Equal("windowed", s.WindowMode);
+        }
     }
 }

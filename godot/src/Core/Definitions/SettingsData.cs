@@ -25,8 +25,9 @@ namespace ProjectChimera.Core.Definitions
 
         /// <summary>Story 8.1: the persisted schema version. An older <c>settings.json</c> that predates this field
         /// deserializes to <c>0</c>; <see cref="MigrateForward"/> stamps <see cref="CurrentSchemaVersion"/> so a
-        /// subsequent <c>Save</c> persists the version. Never governs alone — always run through
-        /// <see cref="MigrateForward"/> on load.</summary>
+        /// subsequent <c>Save</c> persists the version. DW-482: a HIGHER persisted version (file written by a newer
+        /// build) is preserved verbatim — <see cref="MigrateForward"/> bails rather than downgrade-stamping. Never
+        /// governs alone — always run through <see cref="MigrateForward"/> on load.</summary>
         [JsonPropertyName("schema_version")]
         public int SchemaVersion { get; set; } = 0;
 
@@ -205,9 +206,24 @@ namespace ProjectChimera.Core.Definitions
         /// <see cref="LlmProviderCatalog.DefaultModel"/>, then sets <see cref="SchemaVersion"/> to
         /// <see cref="CurrentSchemaVersion"/> so a subsequent <c>Save</c> persists the version. Idempotent — call it
         /// in <c>SettingsManager.Load</c> after deserialize. Returns <c>this</c> for fluent use.
+        ///
+        /// DW-482: a file whose persisted version is AHEAD of this build (written by a newer build, then the game was
+        /// downgraded) is returned untouched — no normalization, no stamp. Every rule below encodes CURRENT-build
+        /// semantics; applying them to a future file would downgrade it in place (clamp/reset values that are legal
+        /// under the newer schema, then stamp the older version so the next <c>Save</c> persists the downgrade as if
+        /// it were canonical). Bailing keeps the file's version stamp and known-field values intact across a Save
+        /// round-trip, so the newer build re-normalizes under its OWN rules on the next upgrade instead of trusting a
+        /// downgraded stamp. In-session the presentation layer tolerates out-of-band values (<c>ApplyVideo</c> maps
+        /// unknown enum strings via switch defaults and caps resolution to the screen). Residual: fields this build's
+        /// DTO does not declare are still dropped by deserialize→Save (no <c>[JsonExtensionData]</c> round-trip) —
+        /// only the version stamp and the fields both builds share survive a downgrade Save.
         /// </summary>
         public SettingsData MigrateForward()
         {
+            // DW-482: never drag a newer build's file backward — bail before touching anything (see summary).
+            if (SchemaVersion > CurrentSchemaVersion)
+                return this;
+
             // Unknown provider id → curated default (a free-text/legacy value that no longer maps to a provider).
             if (!LlmProviderCatalog.TryGet(LlmProvider, out _))
                 LlmProvider = LlmProviderCatalog.DefaultProviderId;
