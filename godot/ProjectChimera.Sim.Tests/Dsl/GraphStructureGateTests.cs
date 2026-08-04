@@ -280,6 +280,135 @@ namespace ProjectChimera.Sim.Tests.Dsl
             Assert.Contains("not a known wire type", ex.Message);
         }
 
+        // ── ExecEdge converter strictness (DW-357, symmetric to the DataEdge block above): every endpoint key
+        //    required, duplicates reject, unknown properties reject — a missing src/dst used to silently default
+        //    to node 0 (which exists), so the mis-wired edge PASSED the structural gate and rerouted the chain. ──
+
+        private static string GraphWithExecEdge(string edgeJson) => @"{
+                ""nodes"": [
+                    { ""id"": 0, ""kind"": ""trigger"", ""name"": ""t"" },
+                    { ""id"": 1, ""kind"": ""match_start"" }
+                ],
+                ""exec_edges"": [ " + edgeJson + @" ],
+                ""data_edges"": []
+            }";
+
+        [Theory]
+        [InlineData(@"{ ""src_port"": 0, ""dst"": 0, ""dst_port"": 0 }", "src")]
+        [InlineData(@"{ ""src"": 1, ""dst"": 0, ""dst_port"": 0 }", "src_port")]
+        [InlineData(@"{ ""src"": 1, ""src_port"": 0, ""dst_port"": 0 }", "dst")]
+        [InlineData(@"{ ""src"": 1, ""src_port"": 0, ""dst"": 0 }", "dst_port")]
+        public void ExecEdgeMissingAnyEndpointKey_IsALocatedParseReject(string edgeJson, string missingKey)
+        {
+            // Regression (DW-357): before the converter, the missing-dst variant deserialized as dst=0 — a REAL
+            // node — so FromJson succeeded and GraphStructureGate.Check admitted the rerouted edge.
+            var ex = Assert.Throws<System.Text.Json.JsonException>(() => TriggerGraph.FromJson(GraphWithExecEdge(edgeJson)));
+            Assert.Contains($"'{missingKey}'", ex.Message);
+            Assert.Contains("missing", ex.Message);
+        }
+
+        [Fact]
+        public void ExecEdgeDuplicateKey_IsALocatedParseReject()
+        {
+            string edge = @"{ ""src"": 1, ""src"": 99, ""src_port"": 0, ""dst"": 0, ""dst_port"": 0 }";
+            var ex = Assert.Throws<System.Text.Json.JsonException>(() => TriggerGraph.FromJson(GraphWithExecEdge(edge)));
+            Assert.Contains("duplicate", ex.Message);
+        }
+
+        [Fact]
+        public void ExecEdgeUnknownProperty_IsALocatedParseReject()
+        {
+            // Exec edges are untyped control flow — a stray 'wire' (or any unknown key) is a closed-shape reject.
+            string edge = @"{ ""src"": 1, ""src_port"": 0, ""dst"": 0, ""dst_port"": 0, ""wire"": ""Boolean"" }";
+            var ex = Assert.Throws<System.Text.Json.JsonException>(() => TriggerGraph.FromJson(GraphWithExecEdge(edge)));
+            Assert.Contains("unknown", ex.Message);
+            Assert.Contains("'wire'", ex.Message);
+        }
+
+        [Fact]
+        public void ExecEdgeConverter_KeepsCanonicalBytesUnchanged()
+        {
+            // The converter's Write must emit the exact POCO property layout (src, src_port, dst, dst_port) so
+            // canonical serialization is byte-stable across the parse→emit round-trip for every existing graph.
+            string json = SoundGraph().ToCanonicalJson();
+            Assert.Equal(json, TriggerGraph.FromJson(json).ToCanonicalJson());
+        }
+
+        // ── Forked exec-IN (DW-358): two exec edges into one (dst, dstPort) reject — a cross-trigger
+        //    convergence escapes the per-trigger cycle guard and would execute the node under two owners;
+        //    the trigger event-in port stays the ONE sanctioned exec fan-in (multi-event subscription). ──
+
+        /// <summary>Two triggers (0, 1), each with its own event (2, 3), whose chains BOTH exec into action 4.</summary>
+        private static TriggerGraph CrossTriggerExecInForkGraph()
+        {
+            var g = new TriggerGraph();
+            g.Nodes.Add(new TriggerNode { Id = 0, Name = "a" });
+            g.Nodes.Add(new TriggerNode { Id = 1, Name = "b" });
+            g.Nodes.Add(new EventNode { Id = 2, Kind = "match_start" });
+            g.Nodes.Add(new EventNode { Id = 3, Kind = "unit_dies" });
+            g.Nodes.Add(new ActionNode { Id = 4, Kind = "display_message", Text = "shared" });
+            g.ExecEdges.Add(new ExecEdge(2, TriggerGraph.EventExecOutPort, 0, TriggerGraph.TriggerEventInPort));
+            g.ExecEdges.Add(new ExecEdge(3, TriggerGraph.EventExecOutPort, 1, TriggerGraph.TriggerEventInPort));
+            g.ExecEdges.Add(new ExecEdge(0, TriggerGraph.TriggerExecOutPort, 4, TriggerGraph.ActionExecInPort));
+            g.ExecEdges.Add(new ExecEdge(1, TriggerGraph.TriggerExecOutPort, 4, TriggerGraph.ActionExecInPort));
+            return g;
+        }
+
+        [Fact]
+        public void ForkedExecIn_AcrossTriggers_Rejects()
+        {
+            string? err = Check(CrossTriggerExecInForkGraph());
+            Assert.NotNull(err);
+            Assert.Contains("multiple exec edges enter port", err);
+            Assert.Contains("node 4", err);
+        }
+
+        [Fact]
+        public void TriggerEventInExecFanIn_StaysLegal() // multi-event subscription is the sanctioned exec fan-in
+        {
+            var g = SoundGraph();
+            g.Nodes.Add(new EventNode { Id = 3, Kind = "unit_dies" });
+            g.ExecEdges.Add(new ExecEdge(3, TriggerGraph.EventExecOutPort, 0, TriggerGraph.TriggerEventInPort));
+            Assert.Null(Check(g));
+        }
+
+        [Fact]
+        public void ForkedExecIn_RejectsAtBothGates()
+        {
+            ScenarioData model = ModelWithGraph(CrossTriggerExecInForkGraph().ToCanonicalJson());
+
+            ValidationResult r = new ScenarioValidator().Validate(model);
+            Assert.False(r.Ok);
+            Assert.Contains("multiple exec edges enter port", r.Error);
+
+            var host = SimulationHost.Create(NullLogSink.Instance, new FactionRegistry(2),
+                new FactionDefinition(), new FactionDefinition());
+            var ex = Assert.Throws<System.Text.Json.JsonException>(() => host.ScenarioDirector.LoadScenario(model));
+            Assert.Contains("multiple exec edges enter port", ex.Message);
+        }
+
+        [Fact]
+        public void TryValidateNewEdge_RejectsExecInAlreadyOccupied() // editor parity with the DW-358 load reject
+        {
+            var g = SoundGraph(); // action 2's exec-in is already driven by trigger 0
+            g.Nodes.Add(new TriggerNode { Id = 3, Name = "b" });
+            string? err = GraphStructureGate.TryValidateNewEdge(
+                g, isData: false, src: 3, srcPort: TriggerGraph.TriggerExecOutPort,
+                dst: 2, dstPort: TriggerGraph.ActionExecInPort, wire: default);
+            Assert.NotNull(err);
+            Assert.Contains("already has an incoming edge", err);
+        }
+
+        [Fact]
+        public void TryValidateNewEdge_AdmitsASecondEventIntoTheTriggerEventIn()
+        {
+            var g = SoundGraph(); // event 1 already fires trigger 0's event-in
+            g.Nodes.Add(new EventNode { Id = 3, Kind = "unit_dies" });
+            Assert.Null(GraphStructureGate.TryValidateNewEdge(
+                g, isData: false, src: 3, srcPort: TriggerGraph.EventExecOutPort,
+                dst: 0, dstPort: TriggerGraph.TriggerEventInPort, wire: default));
+        }
+
         // ── Graph-channel comparison-operator vocabulary (review follow-up): membership enforced at parse from
         //    the ONE NodeKinds.Operators source (the same array the flat ScenarioValidator gate aliases). ──
 

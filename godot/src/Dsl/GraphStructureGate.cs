@@ -37,6 +37,9 @@ namespace ProjectChimera.Dsl
     ///     into a non-data port, or from a non-data source, rejects);
     ///   • forked exec edges — two exec edges out of one <c>(src, srcPort)</c> — reject (the 7.2/7.6 "first-match"
     ///     tolerance is retired);
+    ///   • forked exec-IN — two exec edges into one <c>(dst, dstPort)</c> — reject (DW-358: a cross-trigger
+    ///     convergence escapes the per-trigger cycle guard and would execute the node under multiple owners) —
+    ///     EXCEPT the trigger event-in port, whose fan-in is the sanctioned multi-event subscription wiring;
     ///   • forked data edges into one <c>(dst, dstPort)</c> reject, generalizing the 7.4/7.6 value-in / branch
     ///     cond-in / index-in fork rejects — EXCEPT the trigger condition-in port, whose fan-in is the sanctioned
     ///     multi-condition AND wiring;
@@ -147,6 +150,12 @@ namespace ProjectChimera.Dsl
                 foreach (ExecEdge e in graph.ExecEdges)
                     if (e.Src == src && e.SrcPort == srcPort)
                         return $"new exec edge out of node {src} port {srcPort}: that exec-out port already drives an edge (forked exec chains are not allowed).";
+                // DW-358 — mirror the load gate's forked exec-IN reject (trigger event-in exempt), so the editor
+                // never admits an edge the load path then rejects (the save-a-brick trap).
+                if (!NodePorts.AllowsExecFanIn(dstNode, dstPort))
+                    foreach (ExecEdge e in graph.ExecEdges)
+                        if (e.Dst == dst && e.DstPort == dstPort)
+                            return $"new exec edge into node {dst} port {dstPort}: that exec-in port already has an incoming edge (forked exec-in; a node is driven by exactly one chain).";
                 // Cycle: control would flow src → dst, so the new edge closes a loop iff src is already reachable
                 // FROM dst along exec edges (any out-port — a body/then/else chain rejoining an ancestor is still a
                 // cycle; WalkChain rejects it at load, so admit-then-badge would be a save-a-brick trap).
@@ -233,9 +242,10 @@ namespace ProjectChimera.Dsl
                     return new GraphNodeError(n.Id, $"graph node id {n.Id} is declared more than once (duplicate node ids).");
             }
 
-            // ── 2. Exec edges: endpoints exist, ports legal, no forked exec-out ──
+            // ── 2. Exec edges: endpoints exist, ports legal, no forked exec-out, no forked exec-in ──
             //    Canonical tuple order → deterministic first-fail (the module convention).
             var execOutSeen = new HashSet<(int Src, int Port)>();
+            var execInSeen  = new HashSet<(int Dst, int Port)>();
             foreach (ExecEdge e in graph.ExecEdges.OrderBy(x => x))
             {
                 if (!byId.TryGetValue(e.Src, out NodeBase? src))
@@ -248,6 +258,13 @@ namespace ProjectChimera.Dsl
                     return new GraphNodeError(e.Dst, $"exec edge ({e.Src}:{e.SrcPort} → {e.Dst}:{e.DstPort}): port {e.DstPort} is not an exec-in port of node {e.Dst} ('{NodeKinds.KindOf(dst)}').");
                 if (!execOutSeen.Add((e.Src, e.SrcPort)))
                     return new GraphNodeError(e.Src, $"node {e.Src}: multiple exec edges leave port {e.SrcPort} (forked exec chains are not allowed — the 'first-match' tolerance is retired; use a branch container).");
+                // DW-358 — forked exec-IN: two exec edges entering one (dst, dstPort) would leave the node
+                // executing under MULTIPLE owners (two triggers' chains both claim it — the within-one-trigger
+                // convergence case is caught by BuildExecutionOrder's shared visited set, but a cross-trigger
+                // convergence escapes it). The trigger event-in port is the ONE sanctioned exec fan-in (each
+                // subscribed event fires the trigger independently — the FromFlat multi-event wiring).
+                if (!NodePorts.AllowsExecFanIn(dst, e.DstPort) && !execInSeen.Add((e.Dst, e.DstPort)))
+                    return new GraphNodeError(e.Dst, $"node {e.Dst}: multiple exec edges enter port {e.DstPort} (forked exec-in; a node is driven by exactly one chain — only a trigger's event-in port fans in).");
             }
 
             // ── 3. Data edges: endpoints exist, ports legal, no forked data-in (trigger condition-in exempt) ──

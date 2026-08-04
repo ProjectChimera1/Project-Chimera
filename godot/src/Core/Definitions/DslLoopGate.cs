@@ -25,6 +25,14 @@ namespace ProjectChimera.Core.Definitions
     ///
     /// Story 7.7 also adds the loop-var SHADOWING rule here: nested loops sharing one <c>loop_var</c> along a
     /// nesting chain reject located (the inner loop would silently overwrite the outer loop's live value).
+    /// A <c>loop_var</c> colliding with a declared Global/PerPlayer/Array NAME is rejected by
+    /// <see cref="CheckLoopVar"/>'s TriggerLocal-scope requirement (declaration names are unique at both gates),
+    /// so the loop binding can never silently shadow a declared non-local variable (DW-359).
+    ///
+    /// DW-348 — ORPHAN loop/array nodes (not exec-reachable from any trigger chain) run the SAME per-node
+    /// semantic checks at the end of <see cref="CheckGraph"/>: an undeclared array / bad <c>up_to</c> /
+    /// loop-var violation rejects whether or not the node is wired, while an individually-valid disconnected
+    /// node still passes (the T3 WIP posture — rejection targets malformed content, not disconnection).
     ///
     /// Every reject is a LOCATED error string naming the offending node and, for caps, the
     /// <see cref="DslBounds"/> constant — never a silent runtime truncation. Checks:
@@ -209,6 +217,33 @@ namespace ProjectChimera.Core.Definitions
                 {
                     string? cyc = RunCycleDfs(ex.Trigger.Id, runTargets, runColor, runPath, ctx.ById);
                     if (cyc != null) throw new GateException(cyc);
+                }
+
+                // ── DW-348 — ORPHAN loop/array nodes (not exec-reachable from any trigger chain) get the SAME
+                //    per-node semantic checks the exec walk applies (undeclared arrays, bad up_to, loop-var
+                //    declaration/scope/type, batch_size/faction range, region existence): an orphan for_each
+                //    referencing an undeclared array used to validate silently as an inert canvas node. The T3
+                //    WIP posture is preserved — an individually-VALID disconnected node still passes (rejection
+                //    targets malformed CONTENT, not disconnection); chain-contextual rules (nesting depth, cost,
+                //    top-level-only, batched-per-trigger counts, loop-var shadowing) stay exec-walk-only — they
+                //    bound runtime behavior an orphan never has. Ascending id → deterministic first-fail; runs
+                //    LAST so every pre-existing error keeps its precedence. ──
+                var reachable = new HashSet<int>();
+                foreach (TriggerGraph.TriggerExec ex in execs)
+                {
+                    reachable.Add(ex.Trigger.Id);
+                    CollectItemNodeIds(ex.Items, reachable);
+                }
+                foreach (NodeBase n in graph.Nodes.OrderBy(x => x.Id))
+                {
+                    if (reachable.Contains(n.Id)) continue;
+                    switch (n)
+                    {
+                        case ForEachNode ofe:        CheckForEach(ctx, ofe); break;
+                        case ForEachBatchedNode ofb: CheckForEachBatched(ctx, ofb); break;
+                        case ActionNode oa when NodeKinds.IsArrayActionKind(oa.Kind):
+                            RequireDeclaredArray(ctx, oa); break;
+                    }
                 }
 
                 return null;
@@ -521,6 +556,21 @@ namespace ProjectChimera.Core.Definitions
                     $"{kind} node {nodeId}: objective_id '{objectiveId}' references no declared objective.");
         }
 
+        /// <summary>DW-348 — collect every node id an exec-item tree touches (top-level + container
+        /// body/then/else/branches) into <paramref name="ids"/>, for the orphan-node pass.</summary>
+        private static void CollectItemNodeIds(TriggerGraph.ExecItem[] items, HashSet<int> ids)
+        {
+            foreach (TriggerGraph.ExecItem it in items)
+            {
+                ids.Add(it.Node.Id);
+                CollectItemNodeIds(it.Body, ids);
+                CollectItemNodeIds(it.Then, ids);
+                CollectItemNodeIds(it.Else, ids);
+                foreach (TriggerGraph.ExecItem[] br in it.Branches)
+                    CollectItemNodeIds(br, ids);
+            }
+        }
+
         /// <summary>Story 7.13 — collect every <see cref="RunTriggerNode"/> target reachable in an exec-item chain
         /// (top-level + container body/then/else/branches) into <paramref name="targets"/>, for the run-cycle DFS.</summary>
         private static void CollectRunTargets(TriggerGraph.ExecItem[] items, List<int> targets)
@@ -642,11 +692,19 @@ namespace ProjectChimera.Core.Definitions
                     $"for_each node {nodeId}: loop_var '{loopVar}' is {decl.Type}-typed; this loop writes {required} values.");
         }
 
-        private static long CheckArrayAction(Ctx ctx, ActionNode act, TriggerGraph.ExecItem it)
+        /// <summary>The declared-Array requirement every array action carries (shared by the exec walk and the
+        /// DW-348 orphan pass, so the located message is identical by construction).</summary>
+        private static (DslValueType Elem, int Capacity) RequireDeclaredArray(Ctx ctx, ActionNode act)
         {
             if (string.IsNullOrEmpty(act.Variable) || !ctx.ArrayDecls.TryGetValue(act.Variable!, out (DslValueType Elem, int Capacity) adecl))
                 throw new GateException(
                     $"action node {act.Id} ({act.Kind}): 'variable' must name a declared Array variable (got '{act.Variable}').");
+            return adecl;
+        }
+
+        private static long CheckArrayAction(Ctx ctx, ActionNode act, TriggerGraph.ExecItem it)
+        {
+            (DslValueType Elem, int Capacity) adecl = RequireDeclaredArray(ctx, act);
 
             long cost = 1;
             switch (act.Kind)

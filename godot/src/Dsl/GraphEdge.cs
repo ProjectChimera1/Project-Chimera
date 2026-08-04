@@ -192,4 +192,77 @@ namespace ProjectChimera.Dsl
             return v;
         }
     }
+
+    /// <summary>
+    /// DW-357 — the fail-closed <see cref="ExecEdge"/> converter, symmetric to <see cref="DataEdgeJsonConverter"/>
+    /// (minus the wire — exec edges are untyped control flow). Before this, the struct deserialized through its
+    /// <c>[JsonConstructor]</c>, where a hand-authored <c>exec_edge</c> OMITTING <c>src</c>/<c>dst</c> silently
+    /// defaulted the missing endpoint to node/port 0 — and because node 0 usually exists (the first trigger),
+    /// <c>GraphStructureGate</c>'s "every endpoint must exist" check was satisfied and the malformed edge REROUTED
+    /// the exec chain onto node 0 undetected. This converter makes EVERY missing endpoint key a LOCATED parse
+    /// reject; a DUPLICATE key is a located reject too (mirroring the data-edge posture — <c>JsonDocument</c>
+    /// permits duplicate names, and a second value could otherwise smuggle past validation); an unknown property
+    /// rejects (the closed-shape posture a custom converter must re-apply because it bypasses
+    /// <c>UnmappedMemberHandling.Disallow</c>). <see cref="Write"/> emits the exact property layout the POCO
+    /// serialization produced (src, src_port, dst, dst_port), so canonical bytes are unchanged for every existing
+    /// graph. Sanctioned editor output always writes full endpoints — only direct/hand-crafted JSON is affected.
+    /// </summary>
+    public sealed class ExecEdgeJsonConverter : JsonConverter<ExecEdge>
+    {
+        /// <inheritdoc />
+        public override ExecEdge Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            using JsonDocument doc = JsonDocument.ParseValue(ref reader);
+            JsonElement el = doc.RootElement;
+            if (el.ValueKind != JsonValueKind.Object)
+                throw new JsonException($"exec edge must be a JSON object, got {el.ValueKind}.");
+
+            int src = 0, srcPort = 0, dst = 0, dstPort = 0;
+            bool hasSrc = false, hasSrcPort = false, hasDst = false, hasDstPort = false;
+            foreach (JsonProperty p in el.EnumerateObject())
+            {
+                switch (p.Name)
+                {
+                    case "src":      RejectDuplicate(hasSrc, "src");           src     = ReadInt(p, "src");      hasSrc = true; break;
+                    case "src_port": RejectDuplicate(hasSrcPort, "src_port");  srcPort = ReadInt(p, "src_port"); hasSrcPort = true; break;
+                    case "dst":      RejectDuplicate(hasDst, "dst");           dst     = ReadInt(p, "dst");      hasDst = true; break;
+                    case "dst_port": RejectDuplicate(hasDstPort, "dst_port");  dstPort = ReadInt(p, "dst_port"); hasDstPort = true; break;
+                    default:
+                        throw new JsonException($"exec edge property '{p.Name}' is unknown (exec edges are closed: src/src_port/dst/dst_port).");
+                }
+            }
+            // ALL four keys are required — a missing endpoint would silently default to node/port 0 (fail-open:
+            // node 0 usually exists, so the mis-wired edge would pass the structural gate and reroute the chain).
+            if (!hasSrc)     throw new JsonException("exec edge is missing its required 'src' node id (it would silently default to node 0).");
+            if (!hasSrcPort) throw new JsonException($"exec edge (src {src}) is missing its required 'src_port'.");
+            if (!hasDst)     throw new JsonException($"exec edge (src {src}:{srcPort}) is missing its required 'dst' node id (it would silently default to node 0).");
+            if (!hasDstPort) throw new JsonException($"exec edge ({src}:{srcPort} → {dst}) is missing its required 'dst_port'.");
+            return new ExecEdge(src, srcPort, dst, dstPort);
+        }
+
+        /// <summary>Located duplicate-key reject (each field may appear at most once — the AR-22 posture).</summary>
+        private static void RejectDuplicate(bool seen, string name)
+        {
+            if (seen)
+                throw new JsonException($"exec edge property '{name}' is a duplicate (each field may appear at most once).");
+        }
+
+        /// <inheritdoc />
+        public override void Write(Utf8JsonWriter writer, ExecEdge value, JsonSerializerOptions options)
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("src", value.Src);
+            writer.WriteNumber("src_port", value.SrcPort);
+            writer.WriteNumber("dst", value.Dst);
+            writer.WriteNumber("dst_port", value.DstPort);
+            writer.WriteEndObject();
+        }
+
+        private static int ReadInt(JsonProperty p, string name)
+        {
+            if (p.Value.ValueKind != JsonValueKind.Number || !p.Value.TryGetInt32(out int v))
+                throw new JsonException($"exec edge '{name}' must be a 32-bit integer.");
+            return v;
+        }
+    }
 }

@@ -368,8 +368,12 @@ namespace ProjectChimera.Sim.Tests.Validation
         public void CyclicTriggerGraph_IsRejectedAtTheGate_NotMidApply()
         {
             // A cyclic exec chain parses fine (FromJson does no structural checks) but previously blew up ONLY
-            // inside LoadScenario — the exact partial-apply crash the gate exists to close. The gate now runs
-            // BuildExecutionOrder (7.2's fail-closed cycle guard) so the cycle is a located validation error.
+            // inside LoadScenario — the exact partial-apply crash the gate exists to close. The chain-rejoin
+            // edge (b → a) necessarily gives node a TWO incoming exec edges, so since DW-358 the structural
+            // gate's forked exec-IN reject fires FIRST (every trigger-reachable exec cycle forks an exec-in);
+            // BuildExecutionOrder's cycle guard stays the defense-in-depth for direct callers (pinned by
+            // ForEachExecutionTests.BodyChainRejoiningAncestor_IsALocatedCycleReject). Either way the reject is
+            // a LOCATED validation error at the gate — never a mid-apply crash.
             var g = new TriggerGraph();
             g.Nodes.Add(new TriggerNode { Id = 0, Name = "cyc" });
             g.Nodes.Add(new EventNode { Id = 1, Kind = "match_start" });
@@ -378,14 +382,14 @@ namespace ProjectChimera.Sim.Tests.Validation
             g.ExecEdges.Add(new ExecEdge(1, 0, 0, 0)); // event → trigger
             g.ExecEdges.Add(new ExecEdge(0, 0, 2, 0)); // trigger → a
             g.ExecEdges.Add(new ExecEdge(2, 0, 3, 0)); // a → b
-            g.ExecEdges.Add(new ExecEdge(3, 0, 2, 0)); // b → a (cycle)
+            g.ExecEdges.Add(new ExecEdge(3, 0, 2, 0)); // b → a (cycle; forks a's exec-in)
 
             var m = ValidModelWithTrigger();
             m.TriggerGraphJson = g.ToCanonicalJson();
             ValidationResult r = NewValidator().Validate(m);
             Assert.False(r.Ok);
             Assert.Contains("trigger_graph", r.Error!);
-            Assert.Contains("cycle", r.Error!);
+            Assert.Contains("multiple exec edges enter port", r.Error!);
         }
 
         [Fact]
