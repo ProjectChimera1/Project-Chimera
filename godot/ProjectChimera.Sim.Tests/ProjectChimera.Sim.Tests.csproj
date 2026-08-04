@@ -60,6 +60,10 @@
          (src/CreationSuite is not globbed by SimSources.props — the EditorHistory single-file precedent) so the
          legacy-path PerPlayer exclusion is Tier-1 testable. -->
     <Compile Include="..\src\CreationSuite\TriggerVarPickerPolicy.cs" LinkBase="Sim\CreationSuite" />
+    <!-- DW-406/DW-408: the Godot-free minimap fog policy core — the RevealAll-honoring fog-texture alpha map and the
+         fog-visibility dot gate — included as a single file (src/UI is not globbed by SimSources.props) so both
+         minimap fog decisions are Tier-1 testable against a real FogOfWarSystem. Presentation-side, never hashed. -->
+    <Compile Include="..\src\UI\MinimapFogPolicy.cs" LinkBase="Sim\UI" />
   </ItemGroup>
 
   <!-- Story 9.12: the SHARED C#<->TS hero-profile validation oracle. Embedded (read via manifest stream, like the

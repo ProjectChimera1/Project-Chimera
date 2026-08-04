@@ -24,6 +24,11 @@ namespace ProjectChimera.Core.Bootstrap
             // view. _ctx.Lockstep is built later (phase 17); the closure defers the read to gameplay time, and the
             // ?? Player1 guard keeps single-player byte-identical.
             minimap.SetLocalFaction(() => _ctx.Lockstep?.EffectiveLocalFaction ?? Faction.Player1);
+            // DW-406: mirror the spectator/observer reveal into the minimap. FogOfWarBridge.RevealAll is flipped at
+            // spectator match start, on local elimination (spectate-out), and back off on reset/edit-return; the
+            // deferred read keeps every current AND future flip site driving BOTH views from the one flag (Rendering
+            // built FogBridge earlier; ?? false keeps any unwired boot byte-identical to the fogged read).
+            minimap.SetRevealAll(() => _ctx.FogBridge?.RevealAll ?? false);
             _ctx.Minimap = minimap;
         }
     }
