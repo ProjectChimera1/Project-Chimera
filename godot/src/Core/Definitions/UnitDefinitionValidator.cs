@@ -244,7 +244,21 @@ namespace ProjectChimera.Core.Definitions
             CheckStat(errors, kind, id, "splash_radius", def.SplashRadius);
             CheckStat(errors, kind, id, "max_energy", def.MaxEnergy);
             CheckStat(errors, kind, id, "vision_range", def.VisionRange);
-            CheckStat(errors, kind, id, "train_time", def.TrainTime);
+
+            // ── train_time (DW-481) — ONE rule, chosen by whether this def can ever sit in a production queue.
+            //    A STRUCTURE is built (construction_time), never enqueued, and every shipped building authors
+            //    train_time 0, so it keeps the generic [0, Range) bound. Everything trainable gets the strictly-
+            //    positive bound: BuildingSystem.TrainUnit seeds the head slot's ProductionTimer from train_time, and
+            //    a head whose timer starts already expired is never a timed order — it completes the instant the
+            //    production tick reaches it, so the whole depth-5 queue behind it drains at one unit per tick (and,
+            //    before the DW-479 tick fix, was skipped forever and froze instead). Exactly one of the two rules
+            //    runs per def, so the field can never be double-badged (the DW-380 per-field-badge contract, D-9). ──
+            if (string.Equals(def.Category, nameof(ProjectChimera.Core.UnitCategory.Structure),
+                              System.StringComparison.Ordinal))
+                CheckStat(errors, kind, id, "train_time", def.TrainTime);
+            else
+                CheckStatPositive(errors, kind, id, "train_time", def.TrainTime,
+                    "a queued order whose timer starts already expired is never actually trained over time — the whole production queue behind it drains at one unit per tick");
 
             // ── DEGENERATE-AT-ZERO stats (DW-380). The generic CheckStat bound is [0, 32768) — INCLUSIVE of 0 — which
             //    is right for every stat above (0 armor / 0 splash / 0 energy / an immobile 0-speed structure / a
