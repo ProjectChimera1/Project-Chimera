@@ -348,9 +348,15 @@ namespace ProjectChimera.Effects
                         if (_ticksUntilPeriod[slot] <= 0)
                         {
                             RunEffect(i, slot, PeriodEffectOf(slot)!);
-                            // Defensive: a future LETHAL period (DamageEffect) could destroy the host mid-pulse →
-                            // OnDestroy → ClearEntity already wiped this entity's slots. 2.2b periods are non-lethal
-                            // (DirectHpDelta/Heal clamp), so this never fires today; the guard keeps the walk safe.
+                            // DW-267: a LETHAL period — an authored `damage` leaf, which the ability validator accepts
+                            // in a period_effect — destroys the host MID-PULSE, so OnDestroy → ClearEntity has ALREADY
+                            // wiped this entity's slots and zeroed its count. Bail out of the slot loop before touching
+                            // them: rewriting the schedule below onto a cleared slot expires it and then CompactSlots a
+                            // ring whose _count is already 0, indexing `base − 1` (a throw at owner id 0; a _count of
+                            // −1 that lands the next install in the PREVIOUS entity's ring at any higher id). BREAK,
+                            // never `return` — the dead host's slot loop ends, but every higher-id entity must still
+                            // pulse this same tick. No shipped content authors a lethal period yet; the guard's teeth
+                            // are LethalPeriodMidAdvanceTests (which also covers RemoveSlot's expire-effect twin).
                             if (!_world.IsAlive(i)) break;
                             _ticksUntilPeriod[slot] = PeriodLengthOf(slot);
                             _periodsRemaining[slot]--;
@@ -425,7 +431,9 @@ namespace ProjectChimera.Effects
             if (expireEffect != null)
             {
                 RunEffect(hostId, slot, expireEffect);
-                if (!_world.IsAlive(hostId)) return; // expire-effect killed the host → ClearEntity already wiped slots
+                // DW-267 (the period guard's twin, same walk): a lethal expire-effect killed the host → ClearEntity
+                // already wiped its slots + count, so the revert/status-union/compact below would touch a dead ring.
+                if (!_world.IsAlive(hostId)) return;
             }
 
             Modifier? mod = _modifier[slot];
