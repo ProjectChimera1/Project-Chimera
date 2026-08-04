@@ -1961,7 +1961,8 @@ origin: 7-12-review-2-defer
 source_spec: `spec-7-12-n-faction-victory-resolution-and-per-player-elimination.md`
 severity: low
 reason: The trigger/DSL victory escape hatch computes the winner of a lose-action as `OnVictory?.Invoke(1 - a.Faction)` (godot/src/Core/ScenarioDirector.cs:1576), valid only for faction slots 0/1. Story 7.12 generalized the sim `WinConditionSystem` to N-faction, team-aware resolution but — per the 7.12 intent's explicit "The ScenarioDirector.OnVictory trigger action stays intact as the advanced/T3 escape hatch" boundary — deliberately left this DSL path untouched. So a DSL-authored `victory`/`defeat` action on a slot ≥2 faction in a 3–4-faction scenario computes a winner of `1 - 2 = -1` (or lower), which flows to `ShowGameOver(winnerSlot + 1)` with a nonsensical/negative arg. NOT reachable in 1.0 (offline and MP are both 2 players; `ServerTransport.MAX_PLAYERS = 2`) and out of scope for 7.12 by the intent's own "stays intact" boundary — logged as a pre-existing latent limitation surfaced incidentally by 7.12 enabling N-faction resolution elsewhere. Surfaced by the Verification Gap layer on the 7-12 follow-up review pass. Closure = teach the DSL victory/defeat escape hatch to resolve the winner through the same N-faction team-aware path the built-in resolver now uses (or, minimally, latch a per-faction verdict and let presentation consume it) instead of the 2-faction `1 - a.Faction` complement, when the >2-faction DSL-authored-victory case becomes reachable (Story 9.2/9.15 player-count widening).
-status: open
+status: done 2026-08-04
+resolution: closed by workflow burn-down (bundle n-player-winner-resolution) - ScenarioDirector `defeat` now latches only its own faction's WinStateStore.VERDICT_LOST (injected via SetWinState) and lets the N-faction team-aware WinConditionSystem resolve the winner - the `1 - a.Faction` complement is gone. 1v1 outcome preserved one tick later, derived not guessed. +28 tests.
 
 ### DW-190: The per-player-elimination presentation path (MainScene) has no headless/automated verification — the story's headline UX deliverable can regress with the whole suite green
 origin: 7-12-review-2-defer
@@ -2163,7 +2164,8 @@ origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-9-2-expand-the-faction-player-model-to-8-and-audit-every-int-faction-site.md`
 location: ScenarioDirector.cs
 reason: ScenarioDirector `defeat` action resolves the winner as `OnVictory(1 - a.Faction)`, a 1v1-only "other faction wins" computation that yields a garbage negative faction slot for a.Faction >= 2; N-player FFA winner-on-single-defeat semantics belongs to Story 9.14 (teams/victory). — Evidence: ScenarioDirector.cs ~:2089; reachable only once 8-player `defeat` triggers exist (this story enables them). Not folded into SimChecksum (presentation callback), so no desync — but a real latent presentation bug at slots 3-8.
-status: open
+status: done 2026-08-04
+resolution: closed by workflow burn-down (bundle n-player-winner-resolution) - Same fix as DW-189: the `defeat` leaf's `OnVictory(1 - a.Faction)` complement was replaced by a per-faction VERDICT_LOST latch resolved by the built-in N-faction resolver, so no negative winner slot is possible at slots 2-7.
 
 ### DW-384: TriggerEditorPanel's live custom-event raiser-slot validation still passes `(int)Faction.Player4` while the…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -3075,7 +3077,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of story 1.11 (
 location: godot/src/Core/Definitions/ScenarioValidator.cs:340-355,763-782
 severity: medium
 reason: Still no known-unit_id check in either the trigger spawn_unit action pass or the pre-placed units loop. Severity reduced since logged: the runtime now fails closed-and-loud (ScenarioDelegateBinder.cs:34-39 resolves the def, warns + returns on null) — the residual gap is no load-time reject / no editor feedback. The pre-placed half may need a fail-closed decision for existing scenarios. Verified 2026-07-28.
-status: open
+status: done 2026-08-04
+resolution: closed by workflow burn-down (bundle scenario-unit-id-validation) - ScenarioValidator now rejects unknown/cross-faction unit_id at all three sites (pre-placed units, flat trigger spawn_unit, trigger-graph spawn_unit ActionNode) via IsKnownUnitId resolved against the same per-slot roster the applier reads; no-op when the faction def is not threaded (Story 6.8 shape). +16 tests.
 decision: 2026-07-28 correct-course — bundle scenario-unit-id-validation (Epic 15, Story 15.6)
 
 ## Deferred from: code review of story-1.12 (2026-06-25) — migrated 2026-07-28
@@ -3972,7 +3975,8 @@ origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-11-6-production-queue-depth-5-with-queue-display-and-cancel-refund.md`
 location: godot/src/Economy/BuildingSystem.cs:422-427
 reason: Depth-5 production queue lets a player queue N units against unchanged live SupplyUsed (supply is consumed at spawn, never reserved at enqueue), so queuing can overshoot the supply cap by up to 4. — Evidence: BuildingSystem.TrainUnit (godot/src/Economy/BuildingSystem.cs:422-427) gates each enqueue with resources.HasSupply against SupplyUsed, which is recomputed from LIVE units and never incremented by enqueue; five enqueues therefore all see the same headroom. At depth-1 (2.8) at most one order was ever in flight so overshoot was impossible — the depth-5 widening (this story) introduces it. Deferred, not fixed: reserving supply on enqueue (WC3-strict) vs consume-at-spawn (the existing model, kept deliberately) is a design decision the intent does not specify; consequence is a self-correcting balance overshoot (own-ore overspend, deterministic across peers), not a crash/desync/free-resource exploit.
-status: open
+status: done 2026-08-04
+resolution: closed by workflow burn-down (bundle production-queue-correctness) - BuildingSystem.TrainUnit now gates on HasSupply(faction, cost + QueuedSupply(faction)) - a gate-time projection re-derived from the already-folded production queue, never written into the checksum-folded SupplyUsed. Per the recorded 2026-07-30 WC3-strict decision.
 decision: 2026-07-30 Reserve supply at enqueue (WC3-strict) — Count queued supply against the cap to prevent overshoot
 
 ### DW-479: If SpawnTrainedUnit no-ops at the EntityWorld entity cap, TickProduction still calls AdvanceQueue and discards the…
@@ -3981,7 +3985,8 @@ source_spec: `_bmad-output/implementation-artifacts/spec-11-6-production-queue-d
 location: godot/src/Economy/BuildingSystem.cs:192-193
 severity: low
 reason: If SpawnTrainedUnit no-ops at the EntityWorld entity cap, TickProduction still calls AdvanceQueue and discards the paid-for head order with no refund — and now advances the whole depth-5 queue rather than a single order. — Evidence: BuildingSystem.TickProduction (godot/src/Economy/BuildingSystem.cs:192-193) calls SpawnTrainedUnit then AdvanceQueue unconditionally. Pre-existing at depth-1 (the 2.8 code likewise spawned-then-reset the single slot), so not introduced here, but the depth-5 queue makes a stalled spawn burn slots tick by tick. Low: only reachable at the entity cap (500-2000 sim entities), rare in normal play.
-status: open
+status: done 2026-08-04
+resolution: closed by workflow burn-down (bundle production-queue-correctness) - SpawnTrainedUnit now reports success; the queue advances only when an entity was actually created, so a spawn blocked at the EntityWorld cap commits nothing (no cue, no DSL event, no MatchStats credit) and retries next tick.
 
 ### DW-480: CancelTrain addresses a queue slot by POSITION resolved at exec-tick; under lockstep input delay a head completion…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -3995,7 +4000,8 @@ origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-11-6-production-queue-depth-5-with-queue-display-and-cancel-refund.md`
 location: godot/src/Economy/BuildingSystem.cs:183-184
 reason: A unit authored with TrainTime <= 0 makes a non-empty head whose timer is 0; TickProduction's "timer <= 0 -> continue" guard skips it forever, and it now also blocks the four slots queued behind it. — Evidence: BuildingSystem.TickProduction (godot/src/Economy/BuildingSystem.cs:183-184): idle is detected by an empty head slot, then a non-empty head with ProductionTimer <= 0 is skipped. At enqueue an idle head's timer is set to def.TrainTime (:452-453); TrainTime <= 0 -> timer 0 -> permanent skip. Pre-existing content-validation gap (no validator enforces TrainTime > 0); depth-5 widens the blast radius from one stuck order to the whole queue. Fix belongs in content validation, out of this story's scope.
-status: open
+status: done 2026-08-04
+resolution: closed by workflow burn-down (bundle production-queue-correctness) - UnitDefinitionValidator now routes train_time through CheckStatPositive (strictly positive, the DW-380 precedent) for anything trainable, keeping the generic [0, 32768) bound only for Structures, which are built via construction_time and never enqueued.
 
 ### DW-482: SettingsData.MigrateForward stamps CurrentSchemaVersion unconditionally, so a settings.json written by a newer…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -4048,7 +4054,8 @@ source_spec: `_bmad-output/implementation-artifacts/spec-dw-28-325-modifier-effe
 location: godot/src/Effects/ModifierSystem.cs:152-155 (AccumulateBonus `_flat*Bonus[id] += delta`, wrapping)
 severity: medium
 reason: DW-28 saturated the `Base + bonus` READ in `RecomputeEntity` but not the per-modifier accumulator write, so a stack of large +MaxHealth modifiers can wrap `_flatMaxHealthBonus` negative BEFORE the read; `AddSaturating(Base, wrappedNegative)` then saturates to `MinValue` → `Max(0,…)==0` → the new DW-325 trigger now KILLS the over-buffed unit (previously it was a benign 0-ceiling zombie), a strictly worse divergent outcome. — Evidence: adversarial + edge-case + intent-alignment lenses independently landed on it; `AddSaturating`'s own docstring concedes "a widen-then-clamp cannot recover a value that has ALREADY wrapped in the int add." Not closable by saturating the accumulator itself — per-step saturation would break `AccumulateBonus`'s order-independence invariant at the boundary; DW-28's intent offered "or a Base+modifier authoring bound" as the alternative. Full closure = a content-authoring cap on `MaxStacks × delta` magnitude (a validator rule). Content-gated + requires an already-extreme base; deterministic (no desync).
-status: open
+status: done 2026-08-04
+resolution: closed by workflow burn-down (bundle modifier-robustness-and-ceiling) - Closed on the authoring side as the entry prescribes: Modifier.MaxStatDeltaTotalRaw (int.MaxValue / EffectCaps.MaxModifiersPerEntity) + Modifier.MaxAuthorableStacks, exposed as Modifier.CheckAuthoringBounds() and enforced fail-closed by AbilityValidator on every ApplyModifierEffect across all four stat deltas, making the 8-slot accumulator un-wrappable by construction. Not added to EffectCaps (would move RulesetHash).
 
 ### DW-489: ModifierStore.Apply / RemoveByModifierId gained a "target may be destroyed on return" post-condition (DW-325); external callers were not audited and cannot distinguish "installed & alive" from "installed & host died"
 origin: deferred by review of `_bmad-output/implementation-artifacts/spec-dw-28-325-modifier-effective-stat-clamp-and-death.md`, 2026-08-01
@@ -4072,7 +4079,8 @@ source_spec: `_bmad-output/implementation-artifacts/spec-dw-28-325-modifier-effe
 location: godot/src/Effects/ModifierStore.cs:566-567 (`if (_world.IsAlive(id) && _world.EffectiveMaxHealth[id] == Fixed.Zero) KillEntity(...)`)
 severity: low
 reason: The kill fires whenever a MaxHealth-touching modifier leaves the host at ceiling 0 while alive, regardless of sign or prior ceiling — so an entity that legitimately sits at `EffectiveMaxHealth == 0` (e.g. a base-0 / item-sustained host) is killed by ANY MaxHealth modifier, and even a POSITIVE +MaxHealth heal applied to such a host satisfies the gate and is lethal, contradicting the "net-negative-MaxHealth only" wording in the same comment. — Evidence: adversarial + edge-case lenses; the gate has no sign check on `maxHealthChange` and no "ceiling WAS >0 and dropped to 0 this apply" transition test. Content-gated (no shipped content produces a base-0 live entity; the modifier-delta `!= 0` gate excludes the aura_guard=0 case). Closure = gate on a downward ceiling transition (or on `maxHealthChange < 0`) rather than the absolute value, if a legitimately-ceiling-0 live entity is ever introduced.
-status: open
+status: done 2026-08-04
+resolution: closed by workflow burn-down (bundle modifier-robustness-and-ceiling) - The kill is now a downward COLLAPSE transition with three conjuncts - net-negative change, prior ceiling > 0 (snapshotted before the accumulate/recompute), new ceiling == 0 - so a legitimately-ceiling-0 host and any positive +MaxHealth grant are no longer lethal. Every real collapse still kills.
 
 ### DW-492: The DW-325 "no 0-HP zombie" invariant is enforced ONLY inside ApplyStatDeltas — RestoreSlot (SP load) and the Tick catch-all recompute can still reconstitute a living 0-ceiling unit
 origin: deferred by review of `_bmad-output/implementation-artifacts/spec-dw-28-325-modifier-effective-stat-clamp-and-death.md`, 2026-08-01
@@ -4081,6 +4089,7 @@ location: godot/src/Effects/ModifierStore.cs (RestoreSlot re-accumulation, no de
 severity: low
 reason: The ceiling-collapse death only runs on the apply/stack/remove paths through `ApplyStatDeltas`; `RestoreSlot` (save-game load) re-accumulates bonuses and the Tick catch-all recompute both compute `EffectiveMaxHealth` WITHOUT the death check, so a save produced with (future) net-negative-MaxHealth content, or a bonus dirtied outside the store, can load/recompute a living unit at ceiling 0 — the exact zombie DW-325 advertises as impossible, leaving the fresh-apply and loaded states divergent. — Evidence: adversarial + edge-case lenses; verified neither `RestoreSlot` nor the dirty-recompute in `RecomputeEntity` invokes `KillEntity`. Content-gated (requires net-negative-MaxHealth content, none shipped). Closure = run the ceiling==0 death check after load/dirty-recompute, or document that pre-existing ceiling-0 entities are intentionally not retro-killed and prove none can be created.
 status: open
+seen-again: 2026-08-04 (workflow burn-down, modifier-robustness-and-ceiling bundle) - the same RestoreSlot no-recompute gap now ALSO makes the new DW-491 prior-ceiling snapshot stale: the collapse gate reads _world.EffectiveMaxHealth[id] as the prior ceiling, which is fresh everywhere the store touches stats EXCEPT after RestoreSlot, so a store Apply issued between an SP save-load restore and the next ModifierSystem.Tick compares against a stale ceiling. Documented in a code comment at the gate and left to this entry.
 
 ### DW-493: DamageResolver.KillEntity has no fail-closed `if (!IsAlive) return;` entry guard — the new lethal ApplyStatDeltas path's whole safety rests on a single inline call-site check
 origin: deferred by review of `_bmad-output/implementation-artifacts/spec-dw-28-325-modifier-effective-stat-clamp-and-death.md`, 2026-08-01
@@ -5206,4 +5215,67 @@ origin: workflow burn-down run, 2026-08-04
 location: godot/src/Effects/AbilityCastSystem.cs:257
 severity: low
 reason: EntityWorld.PendingCastSlot is a byte[] (sentinel NO_PENDING_CAST = 255), so the slot read can never be negative; only the `slot >= abilityCount` half of the guard can ever fire. Harmless, and the ability-cast-path-hardening bundle kept it as-is for symmetry with the original code and with the regIdx guard below it - noted rather than changed because deleting a guard in a hot path is a pure-cosmetic edit with no defect behind it. Worth a comment or a byte-typed slot local if anyone touches that block.
+status: open
+
+### DW-650: The DW-488 authoring bound is enforced only on the ABILITY path - the three non-ability Modifier minters still bypass it
+origin: workflow burn-down run, 2026-08-04
+location: godot/src/Combat/ItemSystem.cs:339 (ApplyItemStatModifier) + godot/src/Combat/HeroXpSystem.cs:338 (level-growth modifier) + godot/src/Economy/ResearchSystem.cs:368 (BuildCumulativeModifier)
+severity: medium
+reason: DW-488's closure put the MaxStacks x delta magnitude cap in AbilityValidator, which is where its recorded closure named it, but those three sites build Modifiers directly and never reach AbilityValidator - so an authored ItemDefinition stat bonus (or a pathological research/hero-growth curve) can still contribute an unbounded delta into the same 8-slot accumulator DW-488 set out to make un-wrappable. The rule is deliberately public and self-contained as Modifier.CheckAuthoringBounds() so ItemDefinitionValidator and the research/hero paths can adopt it verbatim in one line each. Not done in the bundle because ItemDefinitionValidator.cs was being edited by the parallel unit-def-validator-strict-bounds bundle (guaranteed merge conflict) and the other two are outside that bundle's intent.
+status: open
+
+### DW-651: A base-0 / item-sustained host now dies when its sustaining +MaxHealth modifier is REMOVED - the one remaining death-on-removal shape
+origin: workflow burn-down run, 2026-08-04
+location: godot/src/Effects/ModifierStore.cs ApplyStatDeltas (the DW-491 collapse gate), reached via RemoveSlot / RemoveByModifierId - e.g. godot/src/Combat/ItemSystem.cs:255 (UseItem charge-zero) and :296 (DropOne revert)
+severity: low
+reason: DW-491 removed the lethality of a 0 -> 0 ceiling and of positive grants, but a host whose ceiling is 50 purely because of an equipped +50 item DOES collapse 50 -> 0 on unequip with a negative change, so all three conjuncts hold and it dies. That is consistent with the recorded 2026-08-03 decision ('the ONLY lethal path is a ceiling driven to LITERALLY ZERO, i.e. a 0/0 unit') and with DW-489, which already tracks RemoveByModifierId's new lethal post-condition as caller bookkeeping - so it was deliberately left as-is rather than special-cased. Closure = an explicit design confirmation when DW-489 is worked, since this is the one remaining death-on-removal shape.
+status: open
+
+### DW-652: Fail-closed escalation: an unresolvable pre-placed unit_id now rejects the WHOLE scenario, not just that unit
+origin: workflow burn-down run, 2026-08-04
+location: godot/src/Core/Definitions/ScenarioValidator.cs:384-395 (pre-placed units) + godot/src/Core/Bootstrap/Phases/ScenarioLoadPhase.cs:315-330
+severity: medium
+reason: By design (DW-240's stated intent) but never given a recorded human decision - decisions.json carries no DW-240 entry. Two concrete paths can now hit a full reject where they previously lost one entity: (1) SlotFactionResolver runs UnitTagValidator.ValidateAndDropUnits AFTER load, so a shipped unit carrying an unknown tag is DROPPED from the roster and a scenario naming it now fails the gate and boots the fallback map instead of merely missing that unit; (2) ScenarioApplier.WorkerIdForSlot (ScenarioApplier.cs:508-515) falls back to the literal id 'worker' when a threaded faction declares no Worker-category unit, so the fallback MIRROR could itself be rejected and ScenarioLoadPhase.ApplyFallbackThroughApplier would then apply NOTHING (empty world). Neither is reachable with the shipped alpha/beta factions (both tag-clean and Worker-complete, and FactionValidator.ValidateComplete guarantees a Worker for any selectable faction), so nothing regresses today. Closure = a recorded decision on the fail-closed posture plus hardening WorkerIdForSlot's degenerate fallback.
+status: open
+
+### DW-653: ScenarioItem.item_id has the same unvalidated-dangling-reference shape DW-240 just closed for unit_id
+origin: workflow burn-down run, 2026-08-04
+location: godot/src/Core/Definitions/ScenarioValidator.cs (no items loop at all) + godot/src/Core/Definitions/ScenarioData.cs:366-377
+severity: medium
+reason: Pre-placed items carry an item_id that must match an ItemRegistry entry, and the scenario gate has no items loop whatsoever - the exact sibling of the defect DW-240 named for unit_id, with the same silent-drop-at-runtime consequence. Not fixed in the scenario-unit-id-validation bundle because it resolves against the ItemRegistry rather than the per-slot faction rosters, so it needs a registry threaded into ScenarioValidator.Validate (a signature change) that was outside that bundle's scope.
+status: open
+
+### DW-654: The DSL `victory` leaf latches no verdict: the declared WINNER's own score screen reads DEFEAT with zero rows, and the leaf is a total no-op headless
+origin: workflow burn-down run, 2026-08-04
+location: godot/src/Core/ScenarioDirector.cs (the `victory` case in ExecuteLeaf) + godot/src/Core/MainScene.cs ShowGameOver + godot/src/Core/Bootstrap/Phases/ScenarioDelegateBinder.cs
+severity: high
+reason: The victory leaf only fires the OnVictory presentation delegate; it writes no WinStateStore.Verdict. So on a DSL-authored victory: (a) GameOverSummary.Build emits a row per faction WITH A LATCHED VERDICT, so the score screen is empty; (b) GameOverPresentation.BuildHeadline keys LocalWin off Verdict[local] == VERDICT_WON, so the player the author just declared the winner is shown the DEFEAT headline alongside a 'Player N Wins!' sub-line (the DW-448 contradiction class at a different surface); (c) OnVictory is bound only by ScenarioDelegateBinder in the Godot scene, so on the dedicated server / headless the leaf does literally nothing and the match never resolves. Latching VERDICT_WON there fixes all three and is the natural completion of the DW-189/DW-383 fix - but it makes ScenarioDelegateBinder's OnVictory->ShowGameOver AND MainScene._Process's DecideOutcome->ShowGameOver both fire in the same frame (see DW-655), and the guard can only live in MainScene / the binder, in-engine-gated presentation files outside the Godot-free burn-down track. Left unshipped rather than shipped unobserved.
+status: open
+
+### DW-655: MainScene.ShowGameOver has no re-entrancy guard, unlike the sibling ShowHalt
+origin: workflow burn-down run, 2026-08-04
+location: godot/src/Core/MainScene.cs:2138 (ShowGameOver) vs godot/src/Core/MainScene.cs:2272 (ShowHalt)
+severity: low
+reason: ShowHalt opens with `if (_gameOver) return;` but ShowGameOver only SETS `_gameOver = true`. The _Process win branch's `!_gameOver` condition (MainScene.cs:1407) is evaluated at block ENTRY, so anything that shows game-over during _host.Update/StepOnce inside that block is still followed by the DecideOutcome switch in the same frame - a second ShowGameOver would re-post the chat system line, re-run StopRecording and re-Show the score screen. Not reachable today (the only mid-block shower is the DSL victory leaf, which latches nothing so DecideOutcome returns Continue), but it is the exact blocker for DW-654. One-line fix; needs an in-engine gate, so out of the Godot-free track.
+status: open
+
+### DW-656: Proof-of-play minting (Story 9.8) is reachable ONLY through the DSL `victory` escape hatch - no built-in/native win ever mints
+origin: workflow burn-down run, 2026-08-04
+location: godot/src/Core/Bootstrap/Phases/ScenarioDelegateBinder.cs:69 (TryMintProofOfPlay, called only from the OnVictory binding)
+severity: high
+reason: TryMintProofOfPlay is invoked solely from ScenarioDirector.OnVictory. Every win resolved by WinConditionSystem - skirmish, MP, last-team-standing, concede-driven, and now the DSL-defeat-driven win DW-189/DW-383 introduced - reaches presentation via GameOverPresentation.DecideOutcome -> MainScene.ShowGameOver, which never mints. A pre-existing gap for the common paths; the n-player-winner-resolution bundle adds the DSL-defeat path to the un-minted set (previously a 2-faction `defeat` reached the mint through the complement). Closure = drive the mint off the latched WON verdict at the ShowGameOver seam rather than off the escape-hatch delegate - a presentation-layer (in-engine-gated) change, out of the Godot-free track's scope.
+status: open
+
+### DW-657: Train-button affordance still reads live-supply-only HasSupply, so it offers an enqueue DW-478 now denies
+origin: workflow burn-down run, 2026-08-04
+location: godot/src/UI/CommandCardSystem.cs:416 (bool hasSupply = _resources.HasSupply(faction, supply))
+severity: medium
+reason: With DW-478's enqueue-time reservation the exec gate is strictly tighter than the affordance the command card renders: once queued orders have reserved the remaining headroom the train button still looks available and the click is denied at exec-tick. A SupplyCapped OrderDenied cue does fire, so the player gets feedback - it is a stale-affordance gap, not a silent failure. The one-line fix is to pass supply + _buildSys.QueuedSupply(faction), and BuildingSystem.QueuedSupply was made public precisely so that wiring needs no further Economy change. Not done in the production-queue-correctness bundle because godot/src/UI/** is inside the enforced in-engine gate (godot/CLAUDE.md) that the Godot-free burn-down track cannot run - it belongs on the bmad-loop Godot-coupled path.
+status: open
+
+### DW-658: BuildingStore.Destroy leaves the razed producer's ProductionQueue slots and ProductionTimer populated - no refund, and phantom orders stay in the checksum fold
+origin: workflow burn-down run, 2026-08-04
+location: godot/src/Core/BuildingStore.cs:355-362 (Destroy) vs godot/src/Core/SimChecksum.cs:406-431 (the fold runs 0..Count with no Alive filter)
+severity: medium
+reason: Destroy only flips Alive[id] and pushes the free-list entry; the depth-5 queue and head timer are zeroed solely on the next Create of that slot. Two consequences. (1) A producer razed mid-training silently forfeits every paid-for queued order with no refund - WC3 refunds them, and the codebase already has the exact re-resolve-from-def refund machinery in CancelTrainCommand. (2) The dead slot's stale queue bytes and timer stay in the SimChecksum fold until the slot is recycled; deterministic on every peer (Destroy is deterministic and Create zeroes on recycle) so it is not a desync, but the folded state carries phantom orders. Out of the production-queue-correctness bundle's scope: it is a destroy-path refund POLICY decision, not one of the three queue-correctness defects that bundle named, and adding a refund on destroy would move ResourceStore.Ore (a folded value) on a path goldens can reach - it needs its own isolated story. DW-478's QueuedSupply already skips dead buildings explicitly, so the supply reservation is unaffected.
 status: open
