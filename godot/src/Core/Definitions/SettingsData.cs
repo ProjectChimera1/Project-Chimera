@@ -217,12 +217,23 @@ namespace ProjectChimera.Core.Definitions
         /// unknown enum strings via switch defaults and caps resolution to the screen). Residual: fields this build's
         /// DTO does not declare are still dropped by deserialize→Save (no <c>[JsonExtensionData]</c> round-trip) —
         /// only the version stamp and the fields both builds share survive a downgrade Save.
+        ///
+        /// DW-614: the bail still runs the RESOLUTION band repair. ApplyVideo has a screen ceiling but NO floor and
+        /// safe-revert never arms on the boot-restore path, so a newer-schema file carrying a sub-pixel resolution
+        /// (hand-corrupted, or written broken then downgraded) would boot a 1×1 window with Settings unreachable —
+        /// the exact lockout the Story 11.7 review-2 repair exists to prevent. A sub-640×480 window is broken under
+        /// EVERY schema, so repairing these two fields is a safety clamp, not current-build normalization: the
+        /// version stamp and every other field stay verbatim, preserving the downgrade-safety contract above.
         /// </summary>
         public SettingsData MigrateForward()
         {
-            // DW-482: never drag a newer build's file backward — bail before touching anything (see summary).
+            // DW-482: never drag a newer build's file backward — bail before normalizing. The ONE exception is the
+            // schema-agnostic resolution sanity band (DW-614): without it the bail reopens the 1×1 boot lockout.
             if (SchemaVersion > CurrentSchemaVersion)
+            {
+                RepairResolutionBand();
                 return this;
+            }
 
             // Unknown provider id → curated default (a free-text/legacy value that no longer maps to a provider).
             if (!LlmProviderCatalog.TryGet(LlmProvider, out _))
@@ -252,19 +263,28 @@ namespace ProjectChimera.Core.Definitions
             // ContentScaleFactor and blank the UI; a non-finite value falls back to the 1.0 default.
             UiScale = float.IsFinite(UiScale) ? System.Math.Clamp(UiScale, 0.75f, 1.5f) : 1.0f;
 
-            // Story 11.7 review-2: guard a corrupt/hand-edited resolution. ApplyVideo caps to the screen with
-            // Mathf.Min but has no floor, so a sub-pixel width (e.g. resolution_width:1) would restore a 1×1 window
-            // on boot — where safe-revert never arms — locking the player out. Reset BOTH to the 1080p default if
-            // either falls outside a sane [640×480, 16384×16384] band (keeps the aspect coherent).
+            RepairResolutionBand();
+
+            SchemaVersion = CurrentSchemaVersion;
+            return this;
+        }
+
+        /// <summary>
+        /// Story 11.7 review-2 (+ DW-614): guard a corrupt/hand-edited resolution. ApplyVideo caps to the screen
+        /// with Mathf.Min but has no floor, so a sub-pixel width (e.g. resolution_width:1) would restore a 1×1
+        /// window on boot — where safe-revert never arms — locking the player out. Reset BOTH to the 1080p default
+        /// if either falls outside a sane [640×480, 16384×16384] band (keeps the aspect coherent). Runs on EVERY
+        /// schema version, including the DW-482 newer-schema bail: the band is physical-pixel sanity, not schema
+        /// semantics, so it can never downgrade a future file's legal values.
+        /// </summary>
+        private void RepairResolutionBand()
+        {
             if (ResolutionWidth < 640 || ResolutionHeight < 480 ||
                 ResolutionWidth > 16384 || ResolutionHeight > 16384)
             {
                 ResolutionWidth  = 1920;
                 ResolutionHeight = 1080;
             }
-
-            SchemaVersion = CurrentSchemaVersion;
-            return this;
         }
 
         /// <summary>

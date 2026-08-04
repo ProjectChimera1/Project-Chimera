@@ -316,6 +316,46 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Equal("cinematic", reloaded.QualityPreset);
         }
 
+        // ── DW-614 — the bail must NOT skip the resolution-band repair ────────────────────────────────
+        //
+        // The DW-482 bail originally returned before the Story 11.7 review-2 resolution repair, so a
+        // newer-schema file with a sub-pixel resolution booted a 1×1 window (ApplyVideo is ceiling-only
+        // and safe-revert never arms on boot restore) with the Settings panel unreachable. The band is
+        // physical-pixel sanity — schema-agnostic — so it must run even for future files, while the
+        // version stamp and every other out-of-band value stay verbatim.
+
+        [Fact]
+        public void NewerSchema_CorruptResolution_IsStillRepaired()
+        {
+            // The exact lockout repro from the ledger (DW-614): schema_version ahead of this build AND a
+            // sub-pixel windowed resolution. Pre-fix this loaded verbatim → WindowSetSize(1,1) on boot.
+            int future = SettingsData.CurrentSchemaVersion + 1;
+            string json = $"{{ \"schema_version\": {future}, \"window_mode\": \"ultrawide\", " +
+                          "\"resolution_width\": 1, \"resolution_height\": 1 }";
+
+            var s = SettingsData.FromJson(json, Opts);
+
+            Assert.Equal(1920, s.ResolutionWidth);          // repaired — the lockout band is schema-agnostic
+            Assert.Equal(1080, s.ResolutionHeight);
+            Assert.Equal(future, s.SchemaVersion);          // still no downgrade-stamp (DW-482 contract holds)
+            Assert.Equal("ultrawide", s.WindowMode);        // every other out-of-band value stays verbatim
+        }
+
+        [Fact]
+        public void NewerSchema_ValidResolution_IsPreservedVerbatim()
+        {
+            // In-band resolutions ride the bail untouched — the repair fires only outside [640×480, 16384²],
+            // so a future build's legal (if exotic) size survives the downgrade round-trip.
+            int future = SettingsData.CurrentSchemaVersion + 1;
+            string json = $"{{ \"schema_version\": {future}, \"resolution_width\": 7680, \"resolution_height\": 4320 }}";
+
+            var s = SettingsData.FromJson(json, Opts);
+
+            Assert.Equal(7680, s.ResolutionWidth);
+            Assert.Equal(4320, s.ResolutionHeight);
+            Assert.Equal(future, s.SchemaVersion);
+        }
+
         [Fact]
         public void CurrentSchema_StillNormalizesAndStamps()
         {
