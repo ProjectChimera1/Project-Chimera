@@ -88,36 +88,71 @@ ICON_NEG = (
 )
 ICON_SIZE = 512  # generate large, downsample in-engine; 512 keeps detail for a 64px read
 
+# ── Placeholder art ─────────────────────────────────────────────────────────────────────────────────
+# Faction palette: (deep plate, lit face/mid tone, metal accent, rim light).
 PALETTES = {
-    "alpha": ("#3d5a80", "#8fb8de", "#c8a24a"),   # slate-blue plate, cyan-white sigil, brass accent
-    "beta":  ("#5c1f28", "#d4636f", "#b08d57"),   # oxblood plate, crimson core-glow, dull brass
-    "item":  ("#2f3a34", "#93c9a5", "#c8a24a"),
+    "alpha": ("#1b2a3d", "#3d5a80", "#c8a24a", "#a8d0f0"),   # Covenant: slate-blue, brass, cyan-white sigil
+    "beta":  ("#2a0f14", "#5c1f28", "#b08d57", "#e0707c"),   # Court: oxblood, dull brass, crimson core-glow
+    "item":  ("#16211c", "#2f3a34", "#c8a24a", "#93c9a5"),
 }
 
-# Category → silhouette recipe. Keyed off the object's own role so the placeholder is REPRESENTATIVE:
-# the outline hints at the real subject's read (heavy = broad, scout = thin dart, caster = tall+orb).
-SHAPES = {
-    "worker":    "M32 78 L32 52 Q32 44 40 44 L56 44 Q64 44 64 52 L64 78 Z M40 44 L40 34 Q48 26 56 34 L56 44",
-    "soldier":   "M26 78 L26 50 Q26 40 36 38 L60 38 Q70 40 70 50 L70 78 Z M40 38 L40 28 Q48 20 56 28 L56 38",
-    "scout":     "M38 78 L38 52 Q38 46 44 45 L52 45 Q58 46 58 52 L58 78 Z M42 45 L42 33 Q48 27 54 33 L54 45",
-    "heavy":     "M20 78 L20 48 Q20 36 34 34 L62 34 Q76 36 76 48 L76 78 Z M38 34 L38 24 Q48 16 58 24 L58 34",
-    "caster":    "M30 78 L34 46 Q36 38 48 38 Q60 38 62 46 L66 78 Z M42 38 L42 28 Q48 21 54 28 L54 38",
-    "hero":      "M24 78 L26 46 Q28 36 40 34 L56 34 Q68 36 70 46 L72 78 Z M40 34 L40 24 Q48 15 56 24 L56 34",
-    "vehicle":   "M16 72 L16 54 L30 54 L36 44 L64 44 L70 54 L84 54 L84 72 Z",
-    "air":       "M12 56 L44 48 L48 34 L52 48 L84 56 L52 62 L48 74 L44 62 Z",
-    "structure": "M22 80 L22 44 L48 26 L74 44 L74 80 Z",
-    "item":      "M40 30 L56 30 L56 40 L64 56 Q64 76 48 76 Q32 76 32 56 L40 40 Z",
+# Role comes from the FACTION JSON's own `category` field (Worker/Melee/Ranged/Siege/Air) — authoritative
+# data, not prose guessing. An earlier pass inferred roles from the prompt text and got mage->soldier and
+# crossbowman->heavy wrong, because substring matching also fires on unrelated words ("flowing" contains
+# "wing", "flaring" contains "ring").
+ROLE_BY_CATEGORY = {
+    "Worker": "worker", "Melee": "melee", "Ranged": "ranged",
+    "Siege": "siege", "Air": "air",
 }
 
-ROLE_HINTS = [  # matched against the SUBJECT clause, most specific first
-    ("hero", ("hero", "commander", "champion", "greycrest", "the bonded")),
-    ("caster", ("caster", "savant", "alchemist mage", "sigil", "transmuter", "conduit", "ritual")),
-    ("heavy", ("heavy", "broad", "tankiest", "plate", "bulwark", "juggernaut", "brute")),
-    ("scout", ("runner", "scout", "lean", "dart", "courier", "swift")),
-    ("worker", ("acolyte", "laborer", "worker", "thrall", "forgehand", "digging")),
-    ("soldier", ("soldier", "infantry", "marksman", "line")),
-]
+# Bust compositions — head + shoulders, matching the icon convention rather than a full body. Each role
+# reads differently in OUTLINE alone (the thing that survives being shrunk to 64px): the worker is small
+# and round-shouldered, melee is broad and square, ranged is narrow and tall, siege is a machine block.
+BUSTS = {
+    "worker": {"head": "M48 26 a11 11 0 1 1 -0.1 0 z",
+               "body": "M27 78 Q27 52 40 47 L56 47 Q69 52 69 78 Z"},
+    "melee":  {"head": "M48 24 a12 12 0 1 1 -0.1 0 z",
+               "body": "M18 78 Q18 48 34 42 L62 42 Q78 48 78 78 Z"},
+    "ranged": {"head": "M48 25 a10.5 10.5 0 1 1 -0.1 0 z",
+               "body": "M31 78 Q31 50 41 45 L55 45 Q65 50 65 78 Z"},
+    "siege":  {"head": "M36 34 L60 34 L64 44 L32 44 Z",
+               "body": "M16 78 L16 52 L28 52 L34 44 L62 44 L68 52 L80 52 L80 78 Z"},
+    "air":    {"head": "M48 32 a9 9 0 1 1 -0.1 0 z",
+               "body": "M30 74 Q30 50 40 44 L56 44 Q66 50 66 74 Z"},
+    "structure": {"head": "", "body": "M20 80 L20 46 L48 28 L76 46 L76 80 Z"},
+    "item":   {"head": "", "body": "M41 28 L55 28 L55 38 L63 54 Q63 76 48 76 Q33 76 33 54 L41 38 Z"},
+}
 
+# Motifs are matched on the SUBJECT clause with WORD BOUNDARIES (see the substring bug above) and drawn
+# as a small accent so two units sharing a role still differ at a glance.
+MOTIFS = {
+    "automail":  "M64 58 L74 58 L74 70 L64 70 Z M66 60 L72 60 M66 64 L72 64",   # brass forearm plate
+    "claw":      "M68 56 L74 68 M72 55 L76 66 M64 58 L68 70",
+    "maul":      "M62 34 L78 34 L78 44 L62 44 Z M69 44 L69 66",
+    "sword":     "M70 30 L74 34 L58 62 L54 58 Z",
+    "crossbow":  "M58 50 L80 50 M69 42 L69 60 M62 44 Q69 50 76 44",
+    "bolt":      "M60 44 L80 56 M74 52 L80 56 L74 60",
+    "hood":      "M36 22 Q48 8 60 22 Q56 30 48 30 Q40 30 36 22 Z",
+    "mask":      "M38 30 L58 30 L58 40 Q48 46 38 40 Z",
+    "scarf":     "M36 46 Q24 54 22 70 L32 70 Q34 56 42 50 Z",
+    "wings":     "M18 44 Q34 34 44 44 M78 44 Q62 34 52 44",
+    "barrel":    "M60 40 L84 46 L84 54 L60 50 Z",
+    "chimney":   "M62 20 L70 20 L70 46 L62 46 Z",
+    "arch":      "M40 80 L40 62 Q48 52 56 62 L56 80 Z",
+    "core":      "M48 60 a7 7 0 1 1 -0.1 0 z",
+    "vent":      "M40 56 L56 56 M40 62 L56 62 M40 68 L56 68",
+    "potion":    "M43 34 L53 34 L53 40 L59 54 Q59 72 48 72 Q37 72 37 54 L43 40 Z",
+    "ring":      "M48 52 a13 13 0 1 1 -0.1 0 z M48 60 a5 5 0 1 0 0.1 0 z",
+}
+MOTIF_WORDS = {           # word(s) to look for -> motif key
+    "automail": "automail", "prosthetic": "claw", "claw": "claw",
+    "maul": "maul", "sword": "sword", "crossbow": "crossbow", "bow": "crossbow",
+    "bolt": "bolt", "hood": "hood", "hooded": "hood", "mask": "mask", "masked": "mask",
+    "scarf": "scarf", "wings": "wings", "wingspan": "wings",
+    "barrel": "barrel", "mortar": "barrel", "cannon": "barrel",
+    "smokestack": "chimney", "chimney": "chimney", "arched": "arch", "arch": "arch",
+    "core": "core", "vent": "vent", "vents": "vent", "potion": "potion", "ring": "ring",
+}
 
 def subject_of(prompt: str) -> str:
     """The object's own appearance clause — everything after SUBJECT:, which is the ONLY part that
@@ -132,14 +167,48 @@ def palette_of(prompt: str) -> str:
     return m.group(0).strip() if m else ""
 
 
+_CATEGORY_CACHE = {}
+
+
+def faction_categories():
+    """(faction, unit id) -> the faction JSON's own `category`. The authoritative role source."""
+    if _CATEGORY_CACHE:
+        return _CATEGORY_CACHE
+    for fac in ("alpha", "beta"):
+        fp = os.path.join(ROOT, "godot", "resources", "data", "factions", f"{fac}_faction.json")
+        if not os.path.exists(fp):
+            continue
+        with open(fp, encoding="utf-8") as f:
+            d = json.load(f)
+        for u in d.get("units", []):
+            _CATEGORY_CACHE[(fac, u["id"])] = u.get("category", "Melee")
+    return _CATEGORY_CACHE
+
+
 def category_of(asset: dict) -> str:
-    if asset["prefix"] in ("structure", "vehicle", "air"):
-        return asset["prefix"]
-    hay = (asset["id"] + " " + subject_of(asset.get("prompt", ""))).lower()
-    for cat, needles in ROLE_HINTS:
-        if any(n in hay for n in needles):
-            return cat
-    return "soldier"
+    """Icon role. Structures/vehicles/air come straight off the mesh prefix; humanoids use the faction
+    JSON's declared category so the role can never disagree with the game data."""
+    if asset["prefix"] == "structure":
+        return "structure"
+    cat = faction_categories().get((asset["faction"], asset["id"]))
+    if cat:
+        return ROLE_BY_CATEGORY.get(cat, "melee")
+    return {"vehicle": "siege", "air": "air"}.get(asset["prefix"], "melee")
+
+
+def motifs_of(subject: str, limit: int = 2) -> list:
+    """Up to `limit` motif keys named by the SUBJECT, matched on WORD boundaries. Order follows the
+    description so the most prominent feature wins."""
+    low = subject.lower()
+    found, seen = [], set()
+    for m in re.finditer(r"[a-z]+", low):
+        key = MOTIF_WORDS.get(m.group(0))
+        if key and key not in seen:
+            seen.add(key)
+            found.append(key)
+            if len(found) >= limit:
+                break
+    return found
 
 
 def icon_prompt(asset: dict) -> str:
@@ -156,6 +225,7 @@ def load_assets():
         rows.append({
             "id": a["id"], "faction": a["faction"], "kind": "buildings" if a["prefix"] == "structure" else "units",
             "category": category_of(a), "prompt": icon_prompt(a), "mesh": a.get("mesh_file", ""),
+            "motifs": motifs_of(subject_of(a.get("prompt", ""))),
         })
     # Items live in the game data, not the mesh manifest (they have no model) — describe them here so
     # they ride the same rail as everything else rather than being a special case.
@@ -167,6 +237,7 @@ def load_assets():
             it = json.load(f)
         rows.append({
             "id": it["id"], "faction": "item", "kind": "items", "category": "item", "mesh": "",
+            "motifs": motifs_of(it.get("display_name", it["id"]) + " " + it["id"]),
             "prompt": f"{ICON_PREFIX}\nSUBJECT: a single {it.get('display_name', it['id'])} "
                       f"as an alchemical apothecary object on a dark recessed background",
         })
@@ -174,25 +245,39 @@ def load_assets():
 
 
 def svg_for(row: dict) -> str:
-    base, glow, accent = PALETTES.get(row["faction"], PALETTES["item"])
-    path = SHAPES.get(row["category"], SHAPES["soldier"])
+    """A composed placeholder: recessed faction plate, rim-lit bust in the object's ROLE outline, and up
+    to two motifs the description actually names. Deliberately readable at 64px — the outline and the
+    faction hue do the work, exactly as a real icon must."""
+    deep, mid, metal, rim = PALETTES.get(row["faction"], PALETTES["item"])
+    bust = BUSTS.get(row["category"], BUSTS["melee"])
+    ms = row.get("motifs", [])
     initials = "".join(p[0] for p in re.split(r"[_\-\s]+", row["id"])[:2]).upper()
+    motif_svg = "".join(
+        f'<path d="{MOTIFS[m]}" fill="none" stroke="{metal}" stroke-width="2.4" '
+        f'stroke-linecap="round" opacity="0.95"/>' for m in ms if m in MOTIFS)
+    head = f'<path d="{bust["head"]}" fill="{mid}"/>' if bust["head"] else ""
     return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96">
-  <!-- PLACEHOLDER for {row['id']} ({row['faction']}/{row['category']}) — generated by tools/asset-gen/scripts/icon_gen.py.
-       Representative, not final: faction palette + role silhouette so it reads correctly at 64px.
-       Replace by dropping a painted {row['id']}.png beside this file; the loader prefers .png.
-       Path is faction-scoped: BuildingType ids (command_center, barracks, ...) are shared across factions. -->
+  <!-- PLACEHOLDER: {row['id']} ({row['faction']}/{row['category']}) motifs={ms or 'none'}
+       Generated by tools/asset-gen/scripts/icon_gen.py --placeholders. Representative, not final.
+       Role comes from the faction JSON's category; motifs from the object's own SUBJECT clause.
+       Drop a painted {row['id']}.png beside this file to replace it (the loader prefers .png).
+       Faction-scoped path: BuildingType ids are shared across factions. -->
   <defs>
-    <radialGradient id="bg" cx="50%" cy="38%" r="72%">
-      <stop offset="0%" stop-color="{base}"/><stop offset="100%" stop-color="#12151a"/>
+    <radialGradient id="p{initials}{row['faction']}" cx="50%" cy="32%" r="78%">
+      <stop offset="0%" stop-color="{mid}"/><stop offset="70%" stop-color="{deep}"/><stop offset="100%" stop-color="#080a0d"/>
     </radialGradient>
+    <linearGradient id="r{initials}{row['faction']}" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="{rim}" stop-opacity="0.95"/><stop offset="55%" stop-color="{rim}" stop-opacity="0"/>
+    </linearGradient>
   </defs>
-  <rect width="96" height="96" rx="8" fill="url(#bg)"/>
-  <rect x="2" y="2" width="92" height="92" rx="7" fill="none" stroke="{accent}" stroke-width="2" opacity="0.75"/>
-  <path d="{path}" fill="{glow}" opacity="0.92"/>
-  <path d="{path}" fill="none" stroke="#0d1014" stroke-width="1.6" opacity="0.65"/>
-  <text x="48" y="90" font-family="sans-serif" font-size="11" font-weight="700"
-        text-anchor="middle" fill="{accent}" opacity="0.9">{initials}</text>
+  <rect width="96" height="96" rx="9" fill="url(#p{initials}{row['faction']})"/>
+  <path d="{bust['body']}" fill="{deep}" stroke="#05070a" stroke-width="1.5"/>
+  {head}
+  <path d="{bust['body']}" fill="url(#r{initials}{row['faction']})" opacity="0.55"/>
+  {motif_svg}
+  <rect x="2.5" y="2.5" width="91" height="91" rx="7.5" fill="none" stroke="{metal}" stroke-width="1.8" opacity="0.8"/>
+  <text x="48" y="91" font-family="sans-serif" font-size="10" font-weight="700"
+        text-anchor="middle" fill="{metal}" opacity="0.85">{initials}</text>
 </svg>
 """
 
