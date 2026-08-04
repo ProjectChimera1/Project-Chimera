@@ -53,6 +53,7 @@ namespace ProjectChimera.UI
         private GodotTheme        _theme  = null!;
 
         private bool _online;
+        private bool _surrenderPending; // DW-464 — an online concede is confirmed+buffered but its verdict has not latched yet
         private ChimeraDialog? _activeDialog; // a live concede/quit confirm — Esc is owned by it while open
 
         private Button _resumeBtn  = null!;
@@ -215,6 +216,26 @@ namespace ProjectChimera.UI
         /// tick). Safe to call once at bootstrap; null leaves every slot rendered as empty.</summary>
         public void SetSaveStore(ISaveStore? store) => _saveStore = store;
 
+        /// <summary>DW-464 — true while a confirmed ONLINE concede is in flight (buffered on the lockstep bus) and
+        /// the LOST verdict has not latched yet. Read by the scene to know the menu is showing "Surrendering…".</summary>
+        public bool SurrenderPending => _surrenderPending;
+
+        /// <summary>
+        /// DW-464 — pending-surrender feedback. An ONLINE concede only takes effect a tick-round-trip later (the
+        /// order round-trips through the server's merged stream before WinConditionSystem latches LOST), so the
+        /// scene flags it pending here: the Concede action disables and relabels "Surrendering…", and the confirm
+        /// flow keeps the menu OPEN instead of dropping the player back into the still-live match as if nothing
+        /// happened. The scene clears it when the verdict latches (game over / local elimination) or the match
+        /// resets — deliberately NOT in <see cref="Close"/>/<see cref="Open"/>, so an Esc-close + reopen (or the
+        /// Settings hop) while the surrender is still in flight keeps showing the feedback.
+        /// </summary>
+        public void SetSurrenderPending(bool pending)
+        {
+            _surrenderPending = pending;
+            _concedeBtn.Disabled = pending;
+            _concedeBtn.Text = pending ? "Surrendering…" : "Concede";
+        }
+
         /// <summary>Story 11.3 — the ChimeraDialog slot picker. In save mode it offers the manual slots; in load mode it
         /// also offers the autosave slot, and only readable slots are choosable. Choosing a slot fires
         /// <see cref="OnSave"/>/<see cref="OnLoad"/> and resumes the match.</summary>
@@ -259,7 +280,15 @@ namespace ProjectChimera.UI
         private void ConfirmConcede()
         {
             OpenConfirm("Concede match?", "Your faction forfeits the match. This cannot be undone.",
-                "Concede", () => { OnConcede?.Invoke(); OnResume?.Invoke(); });
+                "Concede", () =>
+                {
+                    OnConcede?.Invoke();
+                    // DW-464: the scene flags a pending ONLINE surrender synchronously inside the OnConcede dispatch
+                    // (the verdict only latches a tick-round-trip later). Keep the menu OPEN showing the disabled
+                    // "Surrendering…" action until it does; otherwise (offline instant apply, or a spectator's no-op
+                    // press) close-and-resume exactly as before.
+                    if (!_surrenderPending) OnResume?.Invoke();
+                });
         }
 
         private void ConfirmQuit()
