@@ -99,17 +99,19 @@ namespace ProjectChimera.Multiplayer
         /// machine. Constructed at InGame (HandleReady) alongside <see cref="_builder"/>. Null until the match starts.</summary>
         private Server.DelayController? _delayController;
 
-        /// <summary>Story 9.6: the Godot-free ACK-gated freeze authority — on an in-match disconnect it holds the
-        /// pending <c>DropDirective</c>, collects survivor <c>DropAck</c>s, and (on all-ACK) marks the slot frozen so
-        /// <see cref="Server.FrozenSlotInjector"/> injects empty commands for it each tick. Constructed at InGame
-        /// (HandleReady) alongside <see cref="_builder"/>/<see cref="_delayController"/>. Null until the match starts.</summary>
-        private Server.DropController? _dropController;
+        /// <summary>Story 9.6 / DW-411: the Godot-free disconnect-freeze decision glue — on an in-match disconnect it
+        /// decides match-over vs freeze-and-continue, holds the pending <c>DropDirective</c> (queueing concurrent
+        /// drops, DW-409), collects survivor <c>DropAck</c>s, and (on all-ACK) commits the freeze so
+        /// <see cref="Server.FrozenSlotInjector"/> injects empty commands for the slot each tick. This node only
+        /// supplies the transport/builder/host seams. Constructed at InGame (HandleReady) alongside
+        /// <see cref="_builder"/>/<see cref="_delayController"/>. Null until the match starts.</summary>
+        private Server.DropCoordinator? _dropCoordinator;
 
         /// <summary>Story 9.13: the Godot-free per-slot command-rate throttle (anti-spam, NOT anti-cheat). Gates each
         /// inbound <c>TickCommands</c> packet through <c>TryAdmit(slot, wall-clock ms)</c> so a misbehaving/malicious
         /// client cannot flood the merged fan-in. Its decision (drop/accept) NEVER enters the sim, the builder, or any
         /// checksum. Sized to <see cref="ServerTransport.MAX_SLOTS"/> and constructed at InGame (HandleReady)
-        /// alongside <see cref="_builder"/>/<see cref="_delayController"/>/<see cref="_dropController"/>; reset per
+        /// alongside <see cref="_builder"/>/<see cref="_delayController"/>/<see cref="_dropCoordinator"/>; reset per
         /// slot on connect so a recycled slot never inherits the prior occupant's count.</summary>
         private Server.CommandRateLimiter? _rateLimiter;
 
@@ -281,46 +283,38 @@ namespace ProjectChimera.Multiplayer
 
             if (slot >= ExpectedPlayers) return; // spectator — no state change
 
-            // Story 9.6: an in-match disconnect is NO LONGER treated as match-over. The transport has already
-            // cleared this slot, so CountConnectedPlayers() is the surviving player count. If any survivor remains,
-            // dictate a deterministic freeze-and-continue for the dropped slot and STAY InGame; only a survivor-less
-            // drop ends the match.
-            if (_state == State.InGame && _dropController != null && _builder != null)
+            // Story 9.6 / DW-411: an in-match disconnect is NO LONGER treated as match-over. The transport has
+            // already cleared this slot, so connectivity reads are the surviving player set. All decision logic
+            // (match-over vs freeze-and-continue, applyAtTick capture, survivor set, the DW-409 concurrent-drop
+            // queue + pending-ACK reconcile) lives in the Godot-free DropCoordinator; this node only reacts.
+            if (_state == State.InGame && _dropCoordinator != null && _builder != null)
             {
-                int survivors = CountConnectedPlayers();
-                if (survivors <= 0)
+                switch (_dropCoordinator.OnPlayerDisconnect(slot))
                 {
-                    // No one left to play — the match is truly over. Emit the determinism verdict-so-far (once) and
-                    // fall through to the lobby-state recompute below.
-                    EmitSummaryOnce();
-                }
-                else
-                {
-                    // applyAtTick = the next unemitted merged tick (the informational idle-from marker). The freeze is
-                    // tick-counted, never wall-clock. Survivors = every OTHER connected player slot. This marker stays
-                    // valid across the directive→ACK window BECAUSE the merge is stalled on the now-silent dropped slot
-                    // until commit: EmittedThrough cannot advance past this tick until injection begins (post-commit),
-                    // so EmittedThrough+1 still names the first idle tick when the survivors read it.
-                    uint applyAtTick = (uint)(_builder.EmittedThrough + 1);
-                    int[] survivorSlots = SurvivingPlayerSlots(slot);
-                    if (_dropController.NotifyDrop(slot, applyAtTick, survivorSlots))
-                    {
-                        var directive = TickCommandPacket.MakeDropDirective((byte)SLOT_FACTION[slot], applyAtTick);
-                        _transport.BroadcastReliable(directive);
-                        GD.Print($"[Server] Slot {slot} ({SLOT_FACTION[slot]}) dropped mid-match — freezing at tick " +
-                                 $"{applyAtTick}, awaiting {survivorSlots.Length} survivor ACK(s). Match continues.");
-                    }
-                    return; // keep InGame — no MATCH SUMMARY, no state flip
+                    case Server.DropCoordinator.DisconnectOutcome.MatchOver:
+                        // No one left to play — the match is truly over. Emit the determinism verdict-so-far (once)
+                        // and fall through to the lobby-state recompute below.
+                        EmitSummaryOnce();
+                        break;
+                    case Server.DropCoordinator.DisconnectOutcome.Queued:
+                        // DW-409: a freeze directive is already pending — this slot's directive is issued
+                        // automatically when it commits. (Its ACK-set prune already happened inside the coordinator.)
+                        GD.Print($"[Server] Slot {slot} ({SLOT_FACTION[slot]}) dropped while another freeze is " +
+                                 "pending — freeze queued; its directive follows the pending commit. Match continues.");
+                        return; // keep InGame — no MATCH SUMMARY, no state flip
+                    default:
+                        // DirectiveIssued (the broadcast seam already sent + logged it) or Ignored — keep InGame.
+                        return;
                 }
             }
             else if (_state == State.InGame)
             {
-                // Unreachable today: at InGame both _builder and _dropController are always constructed together in
+                // Unreachable today: at InGame both _builder and _dropCoordinator are always constructed together in
                 // HandleReady. If a future setup-ordering regression ever leaves them null while InGame, the freeze
                 // path would silently no-op (a drop would fall through to a match-ending state flip below). Make that
                 // a VISIBLE failure rather than a silent one.
                 GD.PrintErr($"[Server] In-match disconnect (slot {slot}) but freeze machinery is null " +
-                            $"(_builder={_builder != null}, _dropController={_dropController != null}) — " +
+                            $"(_builder={_builder != null}, _dropCoordinator={_dropCoordinator != null}) — " +
                             "freeze-and-continue skipped; falling through to match-end. This is a setup-ordering bug.");
                 EmitSummaryOnce();
             }
@@ -330,33 +324,17 @@ namespace ProjectChimera.Multiplayer
             BroadcastLobbyRoster(); // Story 9.7 (P2): occupancy/ready changed (lobby-phase only; no-op InGame)
         }
 
-        /// <summary>Story 9.6: the connected PLAYER slots other than <paramref name="droppedSlot"/> — the set that
-        /// must ACK a drop directive before the freeze commits. Spectators (slots ≥ ExpectedPlayers) are excluded.</summary>
-        private int[] SurvivingPlayerSlots(int droppedSlot)
-        {
-            var survivors = new System.Collections.Generic.List<int>();
-            for (int s = 0; s < ExpectedPlayers; s++)
-                if (s != droppedSlot && _transport.IsSlotConnected(s)) survivors.Add(s);
-            return survivors.ToArray();
-        }
-
-        /// <summary>Story 9.6: map a DropAck's (transport-untrusted) faction byte back to a player slot via the
-        /// authoritative <see cref="SLOT_FACTION"/> table — never trusting it as a slot index. −1 if no slot matches.</summary>
-        private int FactionToSlot(Faction faction)
-        {
-            for (int s = 0; s < ExpectedPlayers; s++)
-                if (SLOT_FACTION[s] == faction) return s;
-            return -1;
-        }
+        // Story 9.6 → DW-411: SurvivingPlayerSlots + FactionToSlot moved into the Godot-free
+        // Server.DropCoordinator (with the rest of the disconnect/ACK decision glue) so they are Tier-1 tested.
 
         /// <summary>Story 9.6: inject empty commands for every frozen slot across the whole unemitted gap up to the
         /// current frontier, building + broadcasting each newly-completable merged tick. Called after transport Poll
         /// (<see cref="_Process"/>) and after a survivor's submit (<see cref="FanInTickCommands"/>).</summary>
         private void PumpFrozenInjection()
         {
-            if (_builder == null || _dropController == null || _injectBroadcast == null) return;
-            if (_dropController.FrozenSlots.Count == 0) return;
-            Server.FrozenSlotInjector.Drain(_builder, _dropController.FrozenSlots, SLOT_FACTION,
+            if (_builder == null || _dropCoordinator == null || _injectBroadcast == null) return;
+            if (_dropCoordinator.Controller.FrozenSlots.Count == 0) return;
+            Server.FrozenSlotInjector.Drain(_builder, _dropCoordinator.Controller.FrozenSlots, SLOT_FACTION,
                 _latestSeenTick, _injectBuf, _injectBroadcast);
         }
 
@@ -410,27 +388,15 @@ namespace ProjectChimera.Multiplayer
                     break;
 
                 case PacketType.DropAck:
-                    // Story 9.6: a survivor acknowledges the pending freeze directive. Slot is transport-authoritative
-                    // (this callback's `slot`); the ACK's faction byte is mapped back to the DROPPED slot via
-                    // SLOT_FACTION (never trusted as a slot index). When every survivor has ACKed the same
-                    // (droppedSlot, applyAtTick), commit the freeze, drop the leaver from the checksum quorum, and
-                    // begin injecting empty commands so the merged stream keeps flowing.
-                    if (_state == State.InGame && _dropController != null && slot < ExpectedPlayers &&
+                    // Story 9.6 / DW-411: a survivor acknowledges the pending freeze directive. Slot is
+                    // transport-authoritative (this callback's `slot`); the coordinator maps the ACK's faction byte
+                    // back to the DROPPED slot via the authoritative table (never trusted as a slot index). When
+                    // every survivor has ACKed the same (droppedSlot, applyAtTick), the coordinator commits the
+                    // freeze — the commit seam drops the leaver from the checksum quorum + pumps injection — and
+                    // (DW-409) issues any queued follow-on directive.
+                    if (_state == State.InGame && _dropCoordinator != null && slot < ExpectedPlayers &&
                         TickCommandPacket.TryReadDropAck(data, len, out byte dropAckFaction, out uint dropApplyAt))
-                    {
-                        int droppedSlot = FactionToSlot((Faction)dropAckFaction);
-                        if (droppedSlot >= 0)
-                        {
-                            _dropController.RecordAck(slot, droppedSlot, dropApplyAt);
-                            if (_dropController.AllAcked() && _dropController.Commit())
-                            {
-                                _serverHost?.DropReporter(droppedSlot);
-                                GD.Print($"[Server] Freeze committed for slot {droppedSlot} ({(Faction)dropAckFaction}) at " +
-                                         $"tick {dropApplyAt} (all survivors ACKed). Injecting empty commands; quorum reduced.");
-                                PumpFrozenInjection(); // fill the gap immediately so survivors unstall
-                            }
-                        }
-                    }
+                        _dropCoordinator.OnDropAck(slot, dropAckFaction, dropApplyAt);
                     break;
 
                 case PacketType.TickCommands:
@@ -602,9 +568,29 @@ namespace ProjectChimera.Multiplayer
                 // measured RTT genuinely shifts the target.
                 _delayController = new Server.DelayController(connected, LockstepManager.INPUT_DELAY);
 
-                // Story 9.6: stand up the ACK-gated freeze authority alongside the fan-in + delay authority, and
-                // cache the frozen-slot drain's broadcast sink (BroadcastCommands reaches every peer + spectator).
-                _dropController  = new Server.DropController(connected);
+                // Story 9.6 / DW-411: stand up the Godot-free freeze decision glue alongside the fan-in + delay
+                // authority. This node only supplies the seams: the builder's emitted high-water (applyAtTick
+                // capture), transport connectivity, the directive broadcast, and the commit chain (checksum-quorum
+                // drop + injection pump — the pump runs BEFORE any DW-409 queued follow-on directive is issued, so
+                // that directive's applyAtTick reads the post-pump frontier). Also cache the frozen-slot drain's
+                // broadcast sink (BroadcastCommands reaches every peer + spectator).
+                _dropCoordinator = new Server.DropCoordinator(connected, SLOT_FACTION,
+                    () => _builder!.EmittedThrough,
+                    s => _transport.IsSlotConnected(s),
+                    (droppedFaction, applyAtTick) =>
+                    {
+                        _transport.BroadcastReliable(TickCommandPacket.MakeDropDirective((byte)droppedFaction, applyAtTick));
+                        GD.Print($"[Server] {droppedFaction} dropped mid-match — freezing at tick {applyAtTick}, " +
+                                 "awaiting survivor ACK(s). Match continues.");
+                    },
+                    droppedSlot =>
+                    {
+                        _serverHost?.DropReporter(droppedSlot);
+                        GD.Print($"[Server] Freeze committed for slot {droppedSlot} ({SLOT_FACTION[droppedSlot]}) at " +
+                                 $"tick {_dropCoordinator!.Controller.FrozenApplyTick(droppedSlot)} (all survivors " +
+                                 "ACKed). Injecting empty commands; quorum reduced.");
+                        PumpFrozenInjection(); // fill the gap immediately so survivors unstall
+                    });
                 _injectBroadcast = (buf, n) => _transport.BroadcastCommands(buf, n);
 
                 // Story 9.13: stand up the per-slot command-rate throttle. Sized to MAX_SLOTS (not `connected`) so the

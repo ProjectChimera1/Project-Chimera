@@ -62,6 +62,10 @@
          allows) extracted from LobbyUi so it is Tier-1 unit-testable (HandshakeGateTests). Single-file include —
          the DelayMath precedent; the rest of src/Multiplayer stays Godot/ENet-coupled and un-globbed. -->
     <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\HandshakeGate.cs"   LinkBase="Sim\Multiplayer" />
+    <!-- DW-417: the client's merged-arrival ring + Flush stall gate, extracted from LockstepManager so the
+         mid-match-drop unstall (Story 9.6's problem statement) is Tier-1-testable against the PRODUCTION gate.
+         Single-file include — the DelayMath/HandshakeGate precedent; LockstepManager itself stays Godot-coupled. -->
+    <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\MergedStreamGate.cs" LinkBase="Sim\Multiplayer" />
     <!-- Story 9.7: new Godot-free decision cores — the N-player matchmaker parameterization, the N-slot lobby
          readiness model, the pure party model, and the Godot-free faction/team palette table. Single-file/folder
          includes (the DelayMath/HandshakeGate precedent) so each is Tier-1 unit-testable while the rest of

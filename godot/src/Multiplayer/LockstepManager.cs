@@ -26,8 +26,8 @@ namespace ProjectChimera.Multiplayer
     /// Server-authoritative merged tick (Story 9.3):
     ///   The client still SENDS its own single-faction TickCommands for issueTick, but it APPLIES only the
     ///   server's merged echo — one TickCommandsMerged per tick carrying every faction's sub-bundle (the local
-    ///   one re-stamped and included). It gates on a single merged-arrival ring (_mergedArrived / _mergedTickFor /
-    ///   _mergedBytes) and applies via MergedTickApplier — the SOLE command source, so every peer + spectator
+    ///   one re-stamped and included). It gates on a single merged-arrival ring (the Godot-free
+    ///   <see cref="MergedStreamGate"/>, DW-417) and applies via MergedTickApplier — the SOLE command source, so every peer + spectator
     ///   applies byte-identical bytes in the same ascending-faction order. The client no longer self-applies, and
     ///   the two-slot p1Ready/p2Ready demux is gone.
     ///
@@ -48,8 +48,10 @@ namespace ProjectChimera.Multiplayer
         // extracted to the Godot-free DelayMath helper so they are Tier-1 unit-testable. This class now delegates
         // to DelayMath.ComputeTargetDelay / DelayMath.AgreeDelay (behavior-neutral). TICK_MS also lives there.
 
-        /// <summary>Circular buffer slots (must be a power of two and &gt; <c>DelayMath.MAX_DELAY</c> + 1).</summary>
-        private const int BUFFER_SIZE = 16;
+        /// <summary>Circular buffer slots (must be a power of two and &gt; <c>DelayMath.MAX_DELAY</c> + 1). DW-417:
+        /// locked to <see cref="MergedStreamGate.RING_SIZE"/> so the send-tracking ring here and the extracted
+        /// merged-arrival ring can never drift apart.</summary>
+        private const int BUFFER_SIZE = MergedStreamGate.RING_SIZE;
         private const int BUFFER_MASK = BUFFER_SIZE - 1;
 
         private const float RTT_ALPHA  = 0.125f;       // EWMA smoothing weight for RTT samples
@@ -216,13 +218,11 @@ namespace ProjectChimera.Multiplayer
         private readonly bool[] _localSent = new bool[BUFFER_SIZE];
 
         // ── Merged-arrival ring (Story 9.3) ───────────────────────────────────
-        // One authoritative TickCommandsMerged per tick, keyed by tick % BUFFER_SIZE. Preallocated byte buffers
-        // (copied into on receipt) so the receive path never allocates. A seeded bootstrap-gap tick stores len 0
-        // (an empty merged → the applier is a deterministic no-op).
-        private readonly bool[]   _mergedArrived = new bool[BUFFER_SIZE];
-        private readonly uint[]   _mergedTickFor = new uint[BUFFER_SIZE];
-        private readonly byte[][] _mergedBytes;
-        private readonly int[]    _mergedLen     = new int[BUFFER_SIZE];
+        // One authoritative TickCommandsMerged per tick. DW-417: the ring + stall gate were extracted verbatim into
+        // the Godot-free MergedStreamGate so the Flush gate is Tier-1-testable (the mid-match-drop unstall — the
+        // center of Story 9.6's problem statement — is pinned by ClientDropFlushGateTests against THIS production
+        // gate). A seeded bootstrap-gap tick stores len 0 (an empty merged → the applier is a deterministic no-op).
+        private readonly MergedStreamGate _mergedGate = new();
 
         // ── Send buffers ──────────────────────────────────────────────────────
 
@@ -248,10 +248,6 @@ namespace ProjectChimera.Multiplayer
         {
             _transport = transport;
             _world     = world;
-
-            _mergedBytes = new byte[BUFFER_SIZE][];
-            for (int i = 0; i < BUFFER_SIZE; i++)
-                _mergedBytes[i] = new byte[MergedTickPacket.MERGED_MAX_BYTES];
 
             _recordHook = (faction, buf, baseIdx, count) =>
                 Recorder?.RecordTick(_recordTick, faction, buf, baseIdx, count);
@@ -411,18 +407,15 @@ namespace ProjectChimera.Multiplayer
             // packet (all factions, ascending) exactly like a player — one deterministic apply order for both.
             if (IsSpectator)
             {
-                int execModS = (int)(currentTick & BUFFER_MASK);
-
                 _transport.Poll();
 
-                if (!(_mergedArrived[execModS] && _mergedTickFor[execModS] == currentTick))
+                if (!_mergedGate.TryConsume(currentTick, out byte[] mergedS, out int mergedLenS))
                 {
                     IsStalling = true;
                     return false;
                 }
 
-                ApplyMerged(execModS, currentTick);
-                _mergedArrived[execModS] = false;
+                ApplyMerged(mergedS, mergedLenS, currentTick);
                 IsStalling = false;
                 return true;
             }
@@ -460,33 +453,32 @@ namespace ProjectChimera.Multiplayer
             // ── Poll transport ────────────────────────────────────────────────
             _transport.Poll();
 
-            // ── Gate on the merged packet for this exec tick ──────────────────
-            if (!(_mergedArrived[execMod] && _mergedTickFor[execMod] == currentTick))
+            // ── Gate on the merged packet for this exec tick (DW-417: the extracted MergedStreamGate) ──
+            if (!_mergedGate.TryConsume(currentTick, out byte[] merged, out int mergedLen))
             {
                 IsStalling = true;
                 return false;
             }
 
             // ── Apply the authoritative merged tick (its SOLE command source) ──
-            ApplyMerged(execMod, currentTick);
+            ApplyMerged(merged, mergedLen, currentTick);
 
-            _localSent[execMod]     = false;
-            _mergedArrived[execMod] = false;
+            _localSent[execMod] = false;
 
             IsStalling = false;
             return true;
         }
 
         /// <summary>
-        /// Story 9.3 — apply the stored merged packet for ring slot <paramref name="mod"/> via the single
-        /// <see cref="MergedTickApplier"/> core (the same core the spectator path and the FR-39 golden use). The
-        /// per-sub-bundle recorder hook feeds the replay recorder from the one authoritative command stream. A
-        /// seeded bootstrap/gap tick (len 0) decodes to nothing → a deterministic no-op.
+        /// Story 9.3 — apply a consumed merged packet via the single <see cref="MergedTickApplier"/> core (the same
+        /// core the spectator path and the FR-39 golden use). The per-sub-bundle recorder hook feeds the replay
+        /// recorder from the one authoritative command stream. A seeded bootstrap/gap tick (len 0) decodes to
+        /// nothing → a deterministic no-op.
         /// </summary>
-        private void ApplyMerged(int mod, uint currentTick)
+        private void ApplyMerged(byte[] merged, int mergedLen, uint currentTick)
         {
             _recordTick = currentTick;
-            MergedTickApplier.Apply(_mergedBytes[mod], _mergedLen[mod], _world,
+            MergedTickApplier.Apply(merged, mergedLen, _world,
                 OnRequestPath, OnRequestAttackMove, OnCancelPath,
                 Buildings, CombatEvents, Items, Research, DslEventSink,
                 Recorder != null ? _recordHook : null, WinState);
@@ -703,21 +695,12 @@ namespace ProjectChimera.Multiplayer
 
         /// <summary>
         /// Story 9.3 — receive the server-authoritative merged tick. Keyed by its own tick into the merged-arrival
-        /// ring; the raw bytes are copied into the preallocated ring buffer (no per-packet allocation) and applied
-        /// later in <see cref="Flush"/> when the sim reaches that tick. Identical handling for players and
-        /// spectators — the merged packet is the sole command source for both.
+        /// ring (DW-417: the extracted <see cref="MergedStreamGate"/>); the raw bytes are copied into the
+        /// preallocated ring buffer (no per-packet allocation) and applied later in <see cref="Flush"/> when the sim
+        /// reaches that tick. Identical handling for players and spectators — the merged packet is the sole command
+        /// source for both.
         /// </summary>
-        private void HandleMergedTick(byte[] data, int len)
-        {
-            if (!MergedTickPacket.TryPeekTick(data, len, out uint tick)) return;
-            if (len > MergedTickPacket.MERGED_MAX_BYTES) return; // over-ceiling → drop (defensive; the codec also rejects)
-
-            int mod = (int)(tick & BUFFER_MASK);
-            Array.Copy(data, _mergedBytes[mod], len);
-            _mergedLen[mod]     = len;
-            _mergedArrived[mod] = true;
-            _mergedTickFor[mod] = tick;
-        }
+        private void HandleMergedTick(byte[] data, int len) => _mergedGate.TryReceive(data, len);
 
         // ── RTT measurement ───────────────────────────────────────────────────
 
@@ -834,14 +817,13 @@ namespace ProjectChimera.Multiplayer
                 for (uint gap = currentTick + (uint)_currentDelay + 1;
                      gap <= currentTick + (uint)newDelay; gap++)
                 {
-                    int mod = (int)(gap & BUFFER_MASK);
                     // Both peers pre-seed the gap as empty and do NOT send for it; the server therefore never
                     // emits a merged packet for these ticks, so the client self-seeds an empty merged (len 0 →
-                    // the applier no-ops) exactly as it does for the bootstrap-gap ticks (Story 9.3).
-                    _localSent[mod]     = true;   // "sent" — both peers treat as empty
-                    _mergedArrived[mod] = true;   // "received" — empty merged
-                    _mergedTickFor[mod] = gap;
-                    _mergedLen[mod]     = 0;
+                    // the applier no-ops) exactly as it does for the bootstrap-gap ticks (Story 9.3). NOTE the
+                    // DW-417 asymmetry: a mid-match DROP is deliberately NOT seeded — the server keeps the merged
+                    // stream flowing via injection, so the gate fills from arriving packets alone.
+                    _localSent[(int)(gap & BUFFER_MASK)] = true; // "sent" — both peers treat as empty
+                    _mergedGate.SeedEmpty(gap);                  // "received" — empty merged
                 }
             }
 
@@ -869,11 +851,8 @@ namespace ProjectChimera.Multiplayer
             // pre-seeded empty (len 0 → the applier no-ops) so the sim can advance through the bootstrap gap.
             for (int i = 0; i < _currentDelay; i++)
             {
-                int mod = i & BUFFER_MASK;
-                _localSent[mod]     = true;
-                _mergedArrived[mod] = true;
-                _mergedTickFor[mod] = (uint)i;
-                _mergedLen[mod]     = 0;
+                _localSent[i & BUFFER_MASK] = true;
+                _mergedGate.SeedEmpty((uint)i);
             }
         }
     }

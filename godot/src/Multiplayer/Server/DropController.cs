@@ -21,8 +21,12 @@ namespace ProjectChimera.Multiplayer.Server
     ///
     /// Slot identity is TRANSPORT-AUTHORITATIVE throughout: the adapter passes the ENet peer→slot callback slot for
     /// the acking survivor and maps the ACK's faction byte back to the dropped slot via <c>SLOT_FACTION</c> — a
-    /// packet byte is never trusted as a slot index. One drop directive is in flight at a time (N=2 has ≤1 survivor,
-    /// so a second concurrent drop = the match is over; the adapter emits the terminal summary instead).
+    /// packet byte is never trusted as a slot index. One drop directive is in flight at a time; a CONCURRENT drop
+    /// (a second disconnect while a directive is pending — reachable at N≥3) is QUEUED by
+    /// <see cref="DropCoordinator"/> and issued after the pending freeze commits, and the concurrently-dropped slot
+    /// is pruned from the pending directive's survivor-ACK set via <see cref="RemoveSurvivor"/> so the fan-in never
+    /// waits on an ACK that can no longer arrive (DW-409). At N=2 a second drop means no survivor remains — the
+    /// adapter emits the terminal summary instead.
     ///
     /// Everything here is tick-counted — <c>applyAtTick</c> is a sim tick number, never wall-clock — so the whole
     /// freeze path is deterministic and never folds into <c>SimChecksum</c>.
@@ -134,6 +138,30 @@ namespace ProjectChimera.Multiplayer.Server
                 if (!_acked[s]) return false;
             }
             return anySurvivor;
+        }
+
+        /// <summary>
+        /// DW-409 — reconcile the pending directive's survivor-ACK set with a LATER in-match disconnect: a survivor
+        /// that disconnects before ACKing can never ACK, so leaving it in the recorded survivor set would deadlock
+        /// <see cref="AllAcked"/> (and therefore the freeze commit + the merge fan-in) forever. Clears
+        /// <paramref name="slot"/> from BOTH the survivor and ACK sets of the pending directive. No-op (returns
+        /// <c>false</c>) when no directive is pending, the slot is out of range, or the slot is not a recorded
+        /// survivor (including the pending dropped slot itself). Returns <c>true</c> when the pending ACK set
+        /// changed — the caller MUST then re-check <see cref="AllAcked"/> (and <see cref="Commit"/>), because the
+        /// remaining survivors may already have all ACKed.
+        ///
+        /// <para>If this empties the survivor set entirely, the pending directive can never commit
+        /// (<see cref="AllAcked"/> stays <c>false</c> — a survivor-less freeze is deliberately impossible); that
+        /// state is only reachable when every survivor disconnected, which the adapter handles as match-over.</para>
+        /// </summary>
+        public bool RemoveSurvivor(int slot)
+        {
+            if ((uint)slot >= (uint)Expected) return false;
+            if (!_pending) return false;
+            if (!_isSurvivor[slot]) return false;
+            _isSurvivor[slot] = false;
+            _acked[slot]      = false;
+            return true;
         }
 
         /// <summary>

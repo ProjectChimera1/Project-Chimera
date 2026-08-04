@@ -76,8 +76,9 @@ namespace ProjectChimera.Sim.Tests.Golden
             return new GoldenHarness(host, 0);
         }
 
-        /// <summary>The Global <c>g</c> + <c>bump</c> event + order-sensitive handler that make apply order observable.</summary>
-        private static ScenarioData BuildOrderSensitiveScenario()
+        /// <summary>The Global <c>g</c> + <c>bump</c> event + order-sensitive handler that make apply order observable.
+        /// Shared with <see cref="MidMatchDropScenario"/> (which builds its OWN world but keeps the identical fold).</summary>
+        public static ScenarioData BuildOrderSensitiveScenario()
         {
             var vars = new[]
             {

@@ -1,5 +1,6 @@
 #nullable enable
 using System.Linq;
+using ProjectChimera.Core;
 using Xunit;
 
 namespace ProjectChimera.Sim.Tests.Golden
@@ -7,15 +8,26 @@ namespace ProjectChimera.Sim.Tests.Golden
     /// <summary>
     /// Story 9.6 (FR-39 freeze-and-continue regression gate) — a mid-match disconnect keeps the surviving peers in
     /// deterministic lockstep. Over <see cref="MidMatchDropScenario"/> (Player2 dropped at tick 100, sim run 300+
-    /// ticks past the drop through the REAL <see cref="ProjectChimera.Multiplayer.Server.FrozenSlotInjector"/>):
+    /// ticks past the drop through the REAL <see cref="ProjectChimera.Multiplayer.Server.FrozenSlotInjector"/>).
+    ///
+    /// What IS verified here (DW-416 corrected the over-claiming comment):
     ///   (a) two independent runs of the drop path are byte-identical (the freeze is fully deterministic — no
-    ///       static/shared-state leak, no wall-clock in the freeze path); and
-    ///   (b) the drop run DIVERGES from the no-drop control (non-vacuous: freezing Player2's command stream really
-    ///       changed the sim — idle units + a truncated bump fold — so a broken injector that silently kept applying
-    ///       Player2's orders, or dropped the faction from the sim, would be caught).
+    ///       static/shared-state leak, no wall-clock in the freeze path);
+    ///   (b) the drop run DIVERGES from a no-drop control and from a no-injection reference (non-vacuous: freezing
+    ///       Player2's command stream really changed the sim, and the injector really delivers Player1's ongoing
+    ///       commands — a stubbed injector or one that kept applying Player2's orders would be caught);
+    ///   (c) THE POSITIVE PIN (DW-416): the drop run is BYTE-IDENTICAL to an explicit-idle control in which Player2
+    ///       stays connected and submits empty (zero-order) packets every post-drop tick — so the freeze is pinned
+    ///       to the CORRECT idle-but-folded state, not merely "deterministic and different". A deterministic-but-
+    ///       wrong injector output (garbage orders, wrong sub-bundle shape, a faction dropped from the merge) would
+    ///       diverge from the genuine-idle stream and fail this equality.
+    ///   (d) DW-413: AC3's named passive-sim straddle cases are CONSTRUCTED and probed — a Player2 projectile
+    ///       in flight across the drop tick lands post-drop, and a Player2 unit mid-health-regen at the drop
+    ///       completes its regen post-drop.
     ///
     /// The dropped faction is NEVER removed from the sim or <c>SimChecksum</c> — it stays folded (idle) — so no
     /// pre-existing golden and no <c>SimChecksum.AlgoVersion</c> moves (that would be a Block-If, not a re-baseline).
+    /// This scenario is deliberately baseline-free: every gate is relative to a control built in the same run.
     /// </summary>
     public class MidMatchDropDesyncTests
     {
@@ -41,13 +53,33 @@ namespace ProjectChimera.Sim.Tests.Golden
         }
 
         [Fact]
+        public void DropPath_MatchesExplicitIdleControl_ByteForByte()
+        {
+            // DW-416 — the de-relativized POSITIVE assertion. The prior gate proved the drop run was deterministic
+            // and DIFFERENT from two references, but never that it was the CORRECT state: a deterministic-but-wrong
+            // injector (still different from both references) would have passed. The explicit-idle control pins the
+            // meaning of the freeze: Player2 stays connected and genuinely submits ZERO-order packets each post-drop
+            // tick — the injected empties must be indistinguishable from that at every checksum, i.e. "frozen" IS
+            // "idle-but-still-folded", exactly what the DropDirective doc promises.
+            var drop = MidMatchDropScenario.RunDrop();
+            var idle = MidMatchDropScenario.RunDropIdleControl();
+
+            var div = GoldenChecksumReplay.CompareSequences(idle, drop);
+            Assert.True(div is null,
+                div is null ? "" : "The freeze-and-continue run DIVERGED from the explicit-idle control — the " +
+                "injected empty stream is not equivalent to the dropped player genuinely idling, so the frozen slot " +
+                "is in a WRONG (not merely idle) state: " + GoldenChecksumReplay.DescribeDivergence(div.Value));
+        }
+
+        [Fact]
         public void DropPath_DivergesFromNoInjectionReference()
         {
             // The teeth of the gate: a NO-OP injector (Player2 gone AND no empties injected → merge stalls, Player1's
             // post-drop orders never apply) is deterministic, diverges from the no-drop control, and matches the
-            // pre-drop tail — so it would slip past every OTHER assertion here. The REAL drop run (Player1 continues,
-            // Player2 idle via injected empties) must DIVERGE from that no-injection reference, proving the injector
-            // actually delivers Player1's ongoing commands post-drop.
+            // pre-drop tail — so it would slip past every OTHER assertion here except the idle-equality (which it
+            // also fails, by stalling). The REAL drop run (Player1 continues, Player2 idle via injected empties)
+            // must DIVERGE from that no-injection reference, proving the injector actually delivers Player1's
+            // ongoing commands post-drop.
             var drop     = MidMatchDropScenario.RunDrop();
             var noInject = MidMatchDropScenario.RunDropNoInject();
 
@@ -85,6 +117,58 @@ namespace ProjectChimera.Sim.Tests.Golden
             // Every sample strictly BEFORE the drop tick must be byte-identical between drop and control runs.
             for (int i = 0; i < drop.Count && drop[i].Tick < MidMatchDropScenario.DefaultDropTick; i++)
                 Assert.Equal(noDrop[i], drop[i]);
+        }
+
+        [Fact]
+        public void Ac3StraddleCases_ProjectileInFlight_AndMidRegen_ContinueAcrossTheDrop()
+        {
+            // DW-413 — AC3's NAMED passive-sim examples, previously covered only transitively ("the real pipeline
+            // ticks, so determinism implies them"), are now constructed and probed at the surface AC3 names:
+            //  • a Player2 PROJECTILE is genuinely IN FLIGHT at the drop tick, and shots keep landing after it
+            //    (the Neutral target's health keeps falling post-drop);
+            //  • a Player2 unit is genuinely MID-HEALTH-REGEN at the drop tick, and completes its regen after it.
+            // This drives the same DropDriver + real injector as the golden gate, then inspects the world directly.
+            GoldenHarness h = MidMatchDropScenario.BuildDropHost();
+            var driver = new MidMatchDropScenario.DropDriver(
+                h.World, h.Host.DslEventSink, MidMatchDropScenario.DefaultDropTick);
+
+            for (int i = 0; i < MidMatchDropScenario.DefaultDropTick; i++)
+            {
+                driver.ApplyTick(i, h.World);
+                h.Host.StepOnce();
+            }
+
+            // ── At the drop boundary ──────────────────────────────────────────
+            bool projectileInFlight = false;
+            var store = h.Host.Projectiles;
+            for (int p = 0; p < ProjectChimera.Combat.ProjectileStore.MAX_PROJECTILES; p++)
+                if (store.Alive[p] && store.Owner[p] == Faction.Player2) { projectileInFlight = true; break; }
+            Assert.True(projectileInFlight,
+                "No Player2 projectile is in flight at the drop tick — the AC3 straddle case is not constructed " +
+                "(retune ProjectileSpeed/positions so a pre-drop shot is still flying at tick 100).");
+
+            Fixed regenAtDrop  = h.World.Health[MidMatchDropScenario.RegenUnitId];
+            Fixed targetAtDrop = h.World.Health[MidMatchDropScenario.ProjectileTargetId];
+            Assert.True(regenAtDrop > MidMatchDropScenario.RegenStartHealth,
+                $"The regen unit has not healed at all by the drop tick (health {regenAtDrop}) — regen is not running.");
+            Assert.True(regenAtDrop < MidMatchDropScenario.RegenMaxHealth,
+                $"The regen unit is already full ({regenAtDrop}) at the drop tick — it does not STRADDLE the drop; " +
+                "lower the heal rate or deepen the pre-damage.");
+
+            // ── Across + past the drop (the freeze) ───────────────────────────
+            for (int i = MidMatchDropScenario.DefaultDropTick; i < MidMatchDropScenario.DefaultTicks; i++)
+            {
+                driver.ApplyTick(i, h.World);
+                h.Host.StepOnce();
+            }
+
+            Fixed targetAtEnd = h.World.Health[MidMatchDropScenario.ProjectileTargetId];
+            Assert.True(targetAtEnd < targetAtDrop,
+                $"The projectile target's health did not fall after the drop ({targetAtDrop} → {targetAtEnd}) — " +
+                "in-flight/post-drop shots stopped landing, so passive combat did NOT continue across the freeze.");
+
+            Fixed regenAtEnd = h.World.Health[MidMatchDropScenario.RegenUnitId];
+            Assert.Equal(MidMatchDropScenario.RegenMaxHealth, regenAtEnd);
         }
     }
 }

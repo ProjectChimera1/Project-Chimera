@@ -63,6 +63,17 @@ namespace ProjectChimera.Multiplayer.Server
         /// </summary>
         public int AbandonedWindows { get; private set; }
 
+        /// <summary>
+        /// DW-414 — completed windows whose quorum was a SINGLE reporter (the post-drop 1v1 floor). A lone reporter
+        /// is trivially its own strict majority, so these windows are pure LIVENESS/observability — proof the
+        /// survivor's sim is still advancing — NOT cross-peer determinism attestation (no comparison peer remains).
+        /// They still count in <see cref="WindowsCompared"/> and never flip <see cref="Passing"/>, but the human
+        /// surface must not read them as PASS: the per-window line says "attestation suspended", and
+        /// <see cref="LogSummary"/> reports them separately from the cross-peer-attested count (an all-single-reporter
+        /// match is INCONCLUSIVE, not PASS).
+        /// </summary>
+        public int SingleReporterWindows { get; private set; }
+
         public ServerHost(int expectedPeerCount, ILogSink log,
                           Action<int, byte[]> sendReliableTo, Action<byte[]> broadcastReliable)
         {
@@ -112,9 +123,22 @@ namespace ProjectChimera.Multiplayer.Server
 
             if (v.HasMajority && v.Minority.Count == 0)
             {
-                // Story 1.9b: ALL expected peers agreed → the positive PASS evidence (FR-39). This is the line a
-                // human reads on the dedicated-server console to confirm the match is still in lockstep.
-                _log.Info($"[Determinism] tick {tick}: all {ExpectedPeerCount} peers matched 0x{v.Canonical:X8} (window #{WindowsCompared}).");
+                if (ExpectedPeerCount == 1)
+                {
+                    // DW-414: the quorum has floored to a single reporter (the post-drop 1v1 state). The window
+                    // completing is LIVENESS only — a lone reporter is trivially its own majority, so nothing was
+                    // cross-attested. Say so explicitly instead of emitting a PASS-shaped line a human cannot
+                    // distinguish from genuine cross-peer agreement.
+                    SingleReporterWindows++;
+                    _log.Info($"[Determinism] tick {tick}: single reporter 0x{v.Canonical:X8} — attestation " +
+                              $"suspended (no comparison peer; liveness only, INCONCLUSIVE) (window #{WindowsCompared}).");
+                }
+                else
+                {
+                    // Story 1.9b: ALL expected peers agreed → the positive PASS evidence (FR-39). This is the line a
+                    // human reads on the dedicated-server console to confirm the match is still in lockstep.
+                    _log.Info($"[Determinism] tick {tick}: all {ExpectedPeerCount} peers matched 0x{v.Canonical:X8} (window #{WindowsCompared}).");
+                }
             }
             else if (v.HasMajority)
             {
@@ -165,7 +189,10 @@ namespace ProjectChimera.Multiplayer.Server
         /// <para>When the drop floors the quorum to a single reporter (the 1v1 case), the windows that keep completing
         /// are LIVENESS / observability — proof the lone survivor's sim is still advancing — NOT cross-peer
         /// attestation: a lone reporter is trivially its own majority, so there is no comparison peer left to attest
-        /// agreement against. See <see cref="ServerChecksumCollector.DropExpectedReporter"/>.</para>
+        /// agreement against. See <see cref="ServerChecksumCollector.DropExpectedReporter"/>. DW-414: those windows
+        /// are SURFACED as such — the per-window line reads "attestation suspended" (not the PASS-shaped peer-match
+        /// line), they are counted in <see cref="SingleReporterWindows"/>, and <see cref="LogSummary"/> reports them
+        /// separately so the MATCH SUMMARY cannot over-claim enforcement.</para>
         /// </summary>
         public void DropReporter(int slot)
         {
@@ -196,11 +223,27 @@ namespace ProjectChimera.Multiplayer.Server
         /// scan). DW-239: the abandoned count is reported too — those windows were never compared, so a non-zero
         /// abandoned count qualifies how much of the match the PASS actually covers (it is NOT a desync and does not
         /// flip the verdict).
+        ///
+        /// <para>DW-414: single-reporter (post-drop floor-1) windows are broken out of the compared total — they are
+        /// liveness, not attestation. When EVERY completed window was single-reporter the verdict is INCONCLUSIVE
+        /// (nothing was ever cross-attested); when a zero-desync match mixes attested and single-reporter windows the
+        /// PASS names the attested count and marks the rest attestation-suspended, so the summary can no longer
+        /// over-claim determinism enforcement after a 1v1 drop. A match with no drop keeps the exact legacy format.</para>
         /// </summary>
         public void LogSummary()
         {
-            string verdict = WindowsCompared == 0 ? "INCONCLUSIVE" : Passing ? "PASS" : "FAIL";
-            _log.Info($"[Determinism] MATCH SUMMARY: {WindowsCompared} windows compared, {DesyncCount} desync, " +
+            int attested = WindowsCompared - SingleReporterWindows; // windows with >= 2 comparing reporters
+            string counts = SingleReporterWindows > 0
+                ? $"{WindowsCompared} windows compared ({attested} cross-peer attested, {SingleReporterWindows} single-reporter)"
+                : $"{WindowsCompared} windows compared";
+            string verdict =
+                WindowsCompared == 0 ? "INCONCLUSIVE"
+                : !Passing ? "FAIL"
+                : attested == 0 ? "INCONCLUSIVE (single reporter — attestation suspended, liveness only)"
+                : SingleReporterWindows > 0
+                    ? $"PASS over the {attested} attested window(s) ({SingleReporterWindows} single-reporter window(s) are liveness, not attestation)"
+                    : "PASS";
+            _log.Info($"[Determinism] MATCH SUMMARY: {counts}, {DesyncCount} desync, " +
                       $"{AbandonedWindows} abandoned — {verdict}.");
         }
     }
