@@ -59,7 +59,12 @@ namespace ProjectChimera.Core.Bootstrap
                     // AFTER tag-drop so it reflects the roster that will actually spawn. Never blocks the load; just
                     // surfaces a located error if the roster fails ValidateComplete (e.g. missing Worker role or a
                     // blank mesh_path) so it isn't a silent unplayable match start.
-                    FactionValidationResult completeResult = FactionValidator.ValidateComplete(def);
+                    // DW-327: threaded with the SAME abilityRegistry the discovery scan
+                    // (FactionDefinition.LoadSelectableFromDirectory) and the Edit→Play launch gate (FactionLaunchGate)
+                    // now use, so the signature_mechanic_effect_id resolution check is no longer dormant on this leg —
+                    // a dangling signature id is reported at match-load instead of surfacing for the first time as a
+                    // hard Play veto. Still non-blocking here by design (diagnostic, not a gate).
+                    FactionValidationResult completeResult = FactionValidator.ValidateComplete(def, abilityRegistry);
                     if (!completeResult.Ok)
                         foreach ((string _, string message) in completeResult.Errors)
                             GD.PrintErr($"[FactionValidator] slot {slot.Slot} ({abs}): {message}");

@@ -20,12 +20,17 @@ namespace ProjectChimera.Core.Definitions
     /// <para><b>Registry threading (closes 14.3's deferral at the launch gate).</b> Story 14.3 shipped
     /// <see cref="FactionValidator.ValidateComplete"/> with an optional registry and left threading one at the
     /// launch gate to 14.4. The caller threads the real loaded <c>AbilityRegistry</c> through here so the
-    /// <c>signature_mechanic_effect_id</c> resolution check fires when entering Play. This closes the deferral at
-    /// the launch gate ONLY — the other two <c>ValidateComplete</c> sites (the boot match-load shadow diagnostic in
-    /// <c>ScenarioLoadPhase</c> and the boot discovery scan in <c>FactionDefinition.LoadSelectableFromDirectory</c>)
-    /// still call it registry-less by design, so the signature check stays dormant there. A <c>null</c>/empty
+    /// <c>signature_mechanic_effect_id</c> resolution check fires when entering Play. A <c>null</c>/empty
     /// registry deliberately skips ONLY the signature check (existing <see cref="FactionValidator.ValidateComplete"/>
     /// semantics); the hero/roster/mesh checks still enforce.</para>
+    ///
+    /// <para><b>DW-327 — all three client sites now agree.</b> 14.4 closed the deferral at this gate only; the other
+    /// two client <c>ValidateComplete</c> sites (the boot discovery scan in
+    /// <see cref="FactionDefinition.LoadSelectableFromDirectory"/> and the boot match-load shadow diagnostic in
+    /// <c>SlotFactionResolver</c>) stayed registry-less, so the signature check was dormant there and a faction with
+    /// a typo'd signature id was reported SELECTABLE at boot yet hard-vetoed here at Edit→Play. Both now take the
+    /// same loaded registry, so discovery's "selectable" set and this gate's "launchable" verdict cannot disagree on
+    /// a dangling ability ref.</para>
     ///
     /// Pure — never throws, never logs.
     /// </summary>

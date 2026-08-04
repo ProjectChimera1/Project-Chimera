@@ -399,9 +399,15 @@ namespace ProjectChimera.Core
             // Play/Playtest, so this alone satisfies "no restart needed" — same posture as the Ability/Behavior/
             // Item registries above). No skirmish/lobby picker screen exists yet (Story 11.1, which depends on
             // THIS list), so the console-printed discovered set is the one currently-real "selectable list" surface.
+            // DW-327: thread the ability registry built above (_abilityRegistry) so discovery runs the SAME
+            // ValidateComplete the Edit→Play launch gate runs — a faction with a dangling
+            // signature_mechanic_effect_id is now excluded here (its located reason printed in the boot console)
+            // instead of listing as selectable and only being hard-vetoed later at Play. Ordering matters: this
+            // scan sits AFTER the AbilityRegistry.LoadFromDirectory above, so the registry is always populated.
             string factionsAbs = ProjectSettings.GlobalizePath(FACTIONS_DIR);
             var selectableFactions = FactionDefinition.LoadSelectableFromDirectory(
-                factionsAbs, (name, reason) => GD.Print($"[Factions] skipped invalid {name}: {reason}"));
+                factionsAbs, (name, reason) => GD.Print($"[Factions] skipped invalid {name}: {reason}"),
+                _abilityRegistry);
             GD.Print($"[Factions] {selectableFactions.Count} selectable: "
                 + string.Join(", ", selectableFactions.Select(f => f.Id)));
 
@@ -2549,9 +2555,11 @@ namespace ProjectChimera.Core
             // 2b. Fail-closed roster-completeness gate (Story 14.4, DW-97). Mirrors the scenario veto above:
             //     validate BEFORE the clear so an incomplete faction leaves the world entirely unchanged, and
             //     return false so the caller stays in Edit. Threads _abilityRegistry so the
-            //     signature_mechanic_effect_id resolution check fires at THIS launch gate (the boot-shadow and
-            //     discovery paths deliberately stay registry-less — see FactionLaunchGate). The pure decision
-            //     lives in FactionLaunchGate (Tier-1 testable); this layer only does the Godot side effects.
+            //     signature_mechanic_effect_id resolution check fires at THIS launch gate — and, since DW-327, at
+            //     the other two client ValidateComplete sites too (the boot discovery scan and the boot match-load
+            //     shadow both take the same registry now), so "selectable" can no longer disagree with "launchable".
+            //     The pure decision lives in FactionLaunchGate (Tier-1 testable); this layer only does the Godot
+            //     side effects.
             string? factionBlock = Definitions.FactionLaunchGate.FirstIncompleteReason(_slotFactionDefs, _abilityRegistry);
             if (factionBlock != null)
             {
