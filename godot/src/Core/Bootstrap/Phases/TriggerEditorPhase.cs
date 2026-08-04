@@ -65,9 +65,15 @@ namespace ProjectChimera.Core.Bootstrap
             _ctx.ToastLabel.OffsetRight = 300f;
             _ctx.UiCanvas.AddChild(_ctx.ToastLabel);
 
+            // DW-368: keys are stored per provider — report the key state of the provider actually selected in
+            // settings (a local provider needs none), never the legacy shared "llm" id.
+            string llmProviderId = _ctx.SettingsMgr?.Current?.LlmProvider
+                                   ?? Definitions.LlmProviderCatalog.DefaultProviderId;
+            string llmKeyState = !AI.Providers.LlmProviderFactory.RequiresKey(llmProviderId)
+                ? "not required (local provider)."
+                : _ctx.SecretStore.Has(Definitions.SecretIds.ForLlmProvider(llmProviderId)) ? "configured." : "not set.";
             GD.Print("[TriggerEditor] Initialized — press L in Edit mode to open. " +
-                     "AI provider key " +
-                     (_ctx.SecretStore.Has(Definitions.SecretIds.Llm) ? "configured." : "not set."));
+                     $"AI provider '{llmProviderId}' key " + llmKeyState);
         }
     }
 }
