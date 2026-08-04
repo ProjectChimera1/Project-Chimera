@@ -1,6 +1,7 @@
 #nullable enable
-using ProjectChimera.Combat; // DamageTable / CombatEventQueue / MatchStats (period-effect resolution sinks)
-using ProjectChimera.Core;   // EntityWorld, Fixed, Faction
+using ProjectChimera.Combat;   // DamageTable / CombatEventQueue / MatchStats (period-effect resolution sinks)
+using ProjectChimera.Core;     // EntityWorld, Fixed, Faction
+using ProjectChimera.Core.Sim; // ILogSink — the AR-4 injected diagnostic seam (DW-83 refused-install warning)
 
 namespace ProjectChimera.Effects
 {
@@ -26,7 +27,8 @@ namespace ProjectChimera.Effects
     /// fields), named caps only. The foldable per-instance fields are all <c>int</c>: <c>_modifierId</c>,
     /// <c>_remainingTicks</c>, <c>_ticksUntilPeriod</c>, <c>_periodsRemaining</c>, <c>_stackCount</c>. The descriptor
     /// references + caster id/faction are NOT folded — authored / peer-identical by construction (like a
-    /// <c>UnitDefinition</c> reference).</para>
+    /// <c>UnitDefinition</c> reference). Nor is the DW-83 diagnostic pair (<c>_log</c>, <c>_refusedInstalls</c>):
+    /// no sim branch reads them, so they cannot move a checksum or a golden.</para>
     ///
     /// <para><b>Re-entrancy.</b> The store runs ALL THREE effect phases — <c>InitialEffect</c> (on install),
     /// <c>PeriodEffect</c> (each pulse), and <c>ExpireEffect</c> (on removal) — on its OWN dedicated
@@ -46,6 +48,15 @@ namespace ProjectChimera.Effects
         /// decremented, removed only explicitly or on recycle. A fixed constant so the fold mixes it deterministically.
         /// </summary>
         public const int PERMANENT = int.MinValue;
+
+        /// <summary>
+        /// DW-83 log throttle: the FIRST refused install is always warned, then one line per this many further
+        /// refusals. Not a gameplay cap (so deliberately NOT in <see cref="EffectCaps"/>, which is folded into the
+        /// ruleset hash) — a pure diagnostic cadence. Needed because an aura RE-GRANTS its modifier every tick
+        /// (<c>AbilityCastSystem.TickAuras</c>): an un-throttled warn on one ring-full aura target would be 30
+        /// lines per second.
+        /// </summary>
+        public const int RefusedInstallLogEvery = 64;
 
         // ── Foldable per-instance numeric state (all int, ascending owner-id then slot — the determinism contract) ──
         private readonly int[] _modifierId;        // Modifier.Id (0 for a pure PersistentEffect instance — see Apply scan)
@@ -70,6 +81,10 @@ namespace ProjectChimera.Effects
         private readonly MatchStats? _stats;
         private readonly EffectExecutor _executor;  // DEDICATED — never shared with a graph-running executor
 
+        // ── DW-83 diagnostics (NEVER folded into SimChecksum; never read by any sim branch) ──
+        private readonly ILogSink? _log;   // injected AR-4 seam (never a static ambient sink); null ⇒ the pre-DW-83 silent refusal
+        private int _refusedInstalls;      // monotonic tally of ring-full refusals since construction / Clear
+
         /// <summary>
         /// Construct the store, wire deps, and subscribe the destroy hook. <paramref name="system"/>/<paramref
         /// name="events"/>/<paramref name="stats"/> are nullable so a cheap FOLD-ONLY store can be built
@@ -77,15 +92,20 @@ namespace ProjectChimera.Effects
         /// <paramref name="system"/> ref is required for any real apply/remove (it calls <c>AccumulateBonus</c>); a
         /// fold-only store never applies a modifier. <paramref name="damageTable"/> resolves to
         /// <see cref="DamageTable.Default"/> (mirrors <c>CombatSystem</c>/<c>ProjectileSystem</c>).
+        /// <para>DW-83: <paramref name="log"/> is the injected diagnostic seam a REFUSED (ring-full) install warns
+        /// through — the AR-4 <see cref="ILogSink"/>, never a static ambient sink / <c>Console</c> / <c>GD.Print</c>.
+        /// Null (every golden/headless/fold-only construction) leaves a refusal byte-identical to its pre-DW-83
+        /// silent self; the live host wires its own sink. Diagnostics only: a sink must never mutate sim state.</para>
         /// </summary>
         public ModifierStore(EntityWorld world, ModifierSystem? system = null, DamageTable? damageTable = null,
-                             CombatEventQueue? events = null, MatchStats? stats = null)
+                             CombatEventQueue? events = null, MatchStats? stats = null, ILogSink? log = null)
         {
             _world = world;
             _system = system;
             _damageTable = damageTable ?? DamageTable.Default;
             _events = events;
             _stats = stats;
+            _log = log;
             _executor = new EffectExecutor(); // its own pre-allocated stack (re-entrancy-safe)
 
             int cap = EntityWorld.MAX_ENTITIES * EffectCaps.MaxModifiersPerEntity;
@@ -115,7 +135,9 @@ namespace ProjectChimera.Effects
         /// <item><b>Ignore</b> — a no-op while an instance is active (no refresh, no stack).</item>
         /// </list>
         /// A dead/stale <paramref name="targetId"/> is a no-op (no throw). A slot-full target refuses the new install
-        /// DETERMINISTICALLY (drops it; never overflows the per-entity ring). Persistent instances carry
+        /// DETERMINISTICALLY (drops it; never overflows the per-entity ring) — and, since DW-83, that drop is no
+        /// longer SILENT: it bumps <see cref="RefusedInstallCount"/> and warns through the injected
+        /// <see cref="ILogSink"/> (throttled). The refusal's behavior and state are unchanged. Persistent instances carry
         /// <c>_modifier == null</c> so they never match the same-id stacking scan (a <c>Modifier.Id == 0</c> can't
         /// collide with one).
         /// <para><b>Returns</b> <c>true</c> when the modifier was installed OR an existing same-id instance was handled
@@ -140,7 +162,14 @@ namespace ProjectChimera.Effects
 
             if (existing < 0)
             {
-                if (n >= EffectCaps.MaxModifiersPerEntity) return false; // full → refuse (drop), never overflow
+                if (n >= EffectCaps.MaxModifiersPerEntity)
+                {
+                    // DW-83: full → refuse (drop), never overflow. The DROP itself is unchanged (same deterministic
+                    // false, same untouched state) — what changes is OBSERVABILITY: tally + a throttled warn, so an
+                    // earned research/item/hero-growth buff silently lost to a full ring is debuggable.
+                    NoteRefusedInstall(targetId, mod.Id, casterId, persistent: false);
+                    return false;
+                }
                 int slot = @base + n;
                 _modifierId[slot]    = mod.Id;
                 _modifier[slot]      = mod;
@@ -206,7 +235,11 @@ namespace ProjectChimera.Effects
 
             int @base = targetId * EffectCaps.MaxModifiersPerEntity;
             int n = _count[targetId];
-            if (n >= EffectCaps.MaxModifiersPerEntity) return; // full → refuse
+            if (n >= EffectCaps.MaxModifiersPerEntity)
+            {
+                NoteRefusedInstall(targetId, modifierId: 0, casterId, persistent: true); // DW-83: observable, not silent
+                return; // full → refuse
+            }
 
             int slot = @base + n;
             _modifierId[slot]    = 0;     // no stacking identity (scanned out of Apply via _modifier == null)
@@ -398,7 +431,61 @@ namespace ProjectChimera.Effects
             System.Array.Clear(_casterId);
             System.Array.Clear(_casterFaction);
             System.Array.Clear(_count);
+            _refusedInstalls = 0; // DW-83: the refusal tally is PER-MATCH diagnostics — a re-Play starts it clean
             _system?.ClearAll(); // zero the external stat-bonus accumulators + dirty flags (the store's driver half)
+        }
+
+        // ─────────────────────────────────── DW-83 refused-install diagnostics ──────────────────────────────────
+
+        /// <summary>
+        /// DW-83 — monotonic count of installs REFUSED because the target's per-entity ring was already full
+        /// (<see cref="EffectCaps.MaxModifiersPerEntity"/>), since construction or the last <see cref="Clear"/>.
+        /// A dead/stale target is NOT counted (that is a normal race, not a lost buff). Diagnostics only: never
+        /// folded into <see cref="SimChecksum"/>, never read by any sim branch, so reading or ignoring it is
+        /// byte-identical. Lets a caller attribute its OWN refusal exactly (compare the value across an
+        /// <see cref="Apply"/> — the seam <c>ResearchSystem</c> uses) without re-deriving the ring-full test.
+        /// </summary>
+        public int RefusedInstallCount => _refusedInstalls;
+
+        /// <summary>
+        /// DW-83 — record a refused (ring-full) install and surface it: bump <see cref="RefusedInstallCount"/> and
+        /// WARN through the injected <see cref="ILogSink"/>, naming the host, the dropped modifier, the caster, and
+        /// the ids ALREADY holding the ring (so the producer that starved this install — item / hero growth /
+        /// self-passive / research — is identifiable from the one line). THROTTLED to the first refusal plus one
+        /// line per <see cref="RefusedInstallLogEvery"/>: an aura re-grants its modifier every tick, so a ring-full
+        /// aura target would otherwise emit 30 warn lines a second. Mutates no sim state and allocates only on the
+        /// throttled, sink-wired path.
+        /// </summary>
+        private void NoteRefusedInstall(int hostId, int modifierId, int casterId, bool persistent)
+        {
+            _refusedInstalls++;
+            if (_log == null) return; // sink-less (goldens/headless/tests) ⇒ exactly the pre-DW-83 silent behavior
+            if (_refusedInstalls != 1 && _refusedInstalls % RefusedInstallLogEvery != 0) return;
+
+            string dropped = persistent ? "a PersistentEffect" : $"modifier id 0x{modifierId:X8}";
+            _log.Warn($"[ModifierStore] install REFUSED (ring full): {dropped} from caster {casterId} was DROPPED on " +
+                      $"entity {hostId} ({_world.FactionOf[hostId]}) — it already holds all " +
+                      $"{EffectCaps.MaxModifiersPerEntity} modifier slots [{DescribeRing(hostId)}]. " +
+                      $"Refused installs so far: {_refusedInstalls} (throttled to 1 line per {RefusedInstallLogEvery}).");
+        }
+
+        /// <summary>DW-83 — render host <paramref name="hostId"/>'s occupied ring as its per-slot
+        /// <see cref="Modifier.Id"/>s in hex (a <see cref="PersistentEffect"/> instance carries no stacking identity
+        /// and renders as "persistent"), ascending slot. Diagnostic string-building only — called solely from the
+        /// throttled warn path.</summary>
+        private string DescribeRing(int hostId)
+        {
+            int @base = hostId * EffectCaps.MaxModifiersPerEntity;
+            int n = _count[hostId];
+            var sb = new System.Text.StringBuilder(n * 12);
+            for (int s = 0; s < n; s++)
+            {
+                if (s > 0) sb.Append(", ");
+                int sl = @base + s;
+                if (_persistent[sl] != null) sb.Append("persistent");
+                else sb.Append("0x").Append(_modifierId[sl].ToString("X8"));
+            }
+            return sb.ToString();
         }
 
         // ─────────────────────────────────────────────── Energy ─────────────────────────────────────────────────
