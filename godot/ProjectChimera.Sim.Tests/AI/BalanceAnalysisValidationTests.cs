@@ -76,5 +76,34 @@ namespace ProjectChimera.Sim.Tests.AI
             Assert.Contains("dragon", err);   // names the offending unit id
             Assert.Contains("unit_id", err);
         }
+
+        // ── DW-382 (recorded decision: "add speed only, drop mesh_scale") ─────────────────────────────────────────
+
+        [Fact]
+        public void ValidateBalanceReport_SpeedSuggestion_Accepted()
+        {
+            // RED without DW-382: "speed" was outside the closed tunable set, so the validate router rejected any
+            // movement-speed suggestion and a Commander could never receive one end-to-end.
+            string json =
+                "{\"suggestions\":[{\"unit_id\":\"grunt\",\"field\":\"speed\",\"current\":4,\"proposed\":5,\"rationale\":\"too slow\"}]}";
+            var (report, err) = LLMService.ValidateBalanceReport(json, Ctx());
+
+            Assert.Null(err);
+            Assert.NotNull(report);
+            Assert.Equal("speed", report!.Suggestions[0].Field);
+        }
+
+        [Fact]
+        public void ValidateBalanceReport_MeshScaleSuggestion_LocatedReject()
+        {
+            // mesh_scale is cosmetic, not a balance lever — dropped from the vocabulary by the recorded decision.
+            string json =
+                "{\"suggestions\":[{\"unit_id\":\"grunt\",\"field\":\"mesh_scale\",\"proposed\":2,\"rationale\":\"bigger\"}]}";
+            var (report, err) = LLMService.ValidateBalanceReport(json, Ctx());
+
+            Assert.Null(report);
+            Assert.NotNull(err);
+            Assert.Contains("mesh_scale", err);
+        }
     }
 }
