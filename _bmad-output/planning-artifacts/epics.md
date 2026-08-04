@@ -4175,29 +4175,43 @@ The WC3 row carries the **primary-attribute** concept specifically — it is the
 
 ### Epic 15 bundle index — sweep run `20260730-122934-d7ae` (authoritative)
 
+> **STATUS 2026-08-04 — read this before checking anything off.** The 2026-08-03/04 workflow burn-down
+> closed **171** Epic-15-era ledger entries and merged **83 of 86** Godot-free bundles, but it executed a
+> **RE-CUT partition** (sweep run `20260803-002039-5312`, worklist `.claude/workflows/dw-worklist.json`),
+> **not** the 2026-07-30 partition this table lists. Only **14 of these 82 bundle names** exist in that
+> worklist — e.g. `tier1-test-hardening` was re-cut as `tier1-determinism-test-hardening`. **So this table
+> can no longer be checked off bundle-by-bundle: the names are stale.** Join on **DW ids** instead. The
+> authoritative completion signal is each entry's `status:` in `deferred-work.md`; the per-story closure
+> column below is computed from it. The **29 Godot-COUPLED bundles were never touched** — excluded from the
+> workflow track by construction (single-client editor bridge + routed in-engine gate) and still owed to
+> `bmad-loop sweep`. Remaining Godot-free open ids: **3** (`gather-state-checksum-fold` refused pending its
+> own golden re-baseline; `hero-xp-per-kill-repurpose` died report-less; `hero-row-free-on-editor-delete`
+> was already resolved 2026-08-03).
+
+
 _Generated from the 2026-07-30 partition. `bmad-loop sweep` executes **by bundle name**, and several bundles were re-cut or renamed relative to the 2026-07-28 plan, so this table — not the prose above — is the mapping to check a story off against. All 82 bundles / 239 ids are covered; a story is done when every bundle on its row is committed and its DW entries closed._
 
-| Story | Bundles | ids |
-|---|---|---|
-| **15.2** | `editor-map-bounds-guards` | 2 |
-| **15.3** | `modifier-period-semantics` · `status-effects-become-real` | 6 |
-| **15.4** | `noncombatant-command-gate` · `pathability-and-movement-blocking` · `production-queue-entity-cap-guard` · `searcharea-target-selection` · `sim-numeric-hardening` · `worker-gather-init-and-release` | 17 |
-| **15.5** | `algoversion-test-rename` · `canonical-hash-fold-completeness` · `godot-free-test-extraction` · `match-seed-plumbing` · `nullable-directive-cleanup` · `research-system-completion` · `reset-guards-and-completeness` · `signature-mechanic-test-fidelity` · `tier1-test-hardening` | 24 |
-| **15.6** | `content-validator-hardening` · `faction-definer-wizard-ux` · `faction-load-fail-closed` · `faction-mesh-path-hygiene` · `housekeeping-docs-and-eol` · `loader-fail-closed-hardening` · `map-package-import-one-path` · `mapwritegate-export-slot-defs` · `null-safe-definition-getters` · `scenario-reapply-slot-faction-defs` · `scenario-validation-hardening` · `shared-json-options-consolidation` | 35 |
-| **15.7** | `lockstep-wiring-fail-loud` · `minority-halt-quorum-rebase` · `passive-install-idempotence` · `scenecontext-producer-consumer-guards` · `skirmish-boot-and-slot-color` · `skirmish-content-and-spawn` | 11 |
-| **15.8** | `card-panel-edit-hardening` · `creation-suite-panel-conventions` · `customui-panel-and-gate` · `elevated-terrain-editing` · `entity-placer-scenario-sync` · `entity-placer-undo-and-fidelity` · `hud-viewport-resize` · `item-editor-registry-diagnostics` · `minimap-fog-and-faction-clamp` · `onboarding-and-scenario-origination` · `shared-overlay-base` · `start-position-slot-handling` | 36 |
-| **15.9** | `ability-cast-path-hardening` · `ability-editor-cleanup` · `ai-scoring-supply-awareness` · `command-card-producer-surfaces` · `custom-building-render-and-footprint` · `determinism-golden-coverage` · `dsl-graph-editor-node-inspector` · `hero-store-and-xp` · `win-condition-elimination-and-identity` | 26 |
-| **15.11** | `ability-targeting-increments` | 2 |
-| **15.12** | `energy-and-stack-mechanics` | 4 |
-| **15.13** | `effect-vocabulary-completion` | 1 |
-| **15.14** | `dedicated-server-test-coverage` · `dropcontroller-and-delay-recovery` · `per-peer-misbehavior-handling` · `post-drop-checksum-honesty` · `server-rtt-and-reset-hygiene` | 19 |
-| **15.15** | `lobbyui-and-handshake-coverage` · `mergedtick-scratch-pool` · `mp-godot-free-test-extraction` · `nakama-ts-handler-hardening` | 10 |
-| **15.16** | `alliance-awareness-sim` · `team-mode-validation-and-vision` | 7 |
-| **15.17** | `dsl-loop-gate-cost-model` · `dsl-runtime-robustness` · `graph-structure-gate-strictness` · `trigger-editor-legacy-form` | 13 |
-| **15.18** | `content-browser-and-load-path` · `content-packager-integrity` · `replay-lifecycle-hardening` | 11 |
-| **15.19** | `ai-draft-panel-and-llmservice-lifecycle` · `llmservice-validation-and-secrets` | 8 |
-| **15.20** | `hud-and-settings-polish` · `save-load-and-serialization` | 7 |
-| | **82 bundles** | **239** |
+| Story | Bundles (2026-07-30 names — STALE, see note) | ids | DW closed / total |
+|---|---|---|---|
+| **15.2** | `editor-map-bounds-guards` | 2 | ◐ 3/4 |
+| **15.3** | `modifier-period-semantics` · `status-effects-become-real` | 6 | ◐ 1/2 |
+| **15.4** | `noncombatant-command-gate` · `pathability-and-movement-blocking` · `production-queue-entity-cap-guard` · `searcharea-target-selection` · `sim-numeric-hardening` · `worker-gather-init-and-release` | 17 | ◐ 19/21 |
+| **15.5** | `algoversion-test-rename` · `canonical-hash-fold-completeness` · `godot-free-test-extraction` · `match-seed-plumbing` · `nullable-directive-cleanup` · `research-system-completion` · `reset-guards-and-completeness` · `signature-mechanic-test-fidelity` · `tier1-test-hardening` | 24 | ◐ 20/24 |
+| **15.6** | `content-validator-hardening` · `faction-definer-wizard-ux` · `faction-load-fail-closed` · `faction-mesh-path-hygiene` · `housekeeping-docs-and-eol` · `loader-fail-closed-hardening` · `map-package-import-one-path` · `mapwritegate-export-slot-defs` · `null-safe-definition-getters` · `scenario-reapply-slot-faction-defs` · `scenario-validation-hardening` · `shared-json-options-consolidation` | 35 | ◐ 23/41 |
+| **15.7** | `lockstep-wiring-fail-loud` · `minority-halt-quorum-rebase` · `passive-install-idempotence` · `scenecontext-producer-consumer-guards` · `skirmish-boot-and-slot-color` · `skirmish-content-and-spawn` | 11 | ◐ 9/12 |
+| **15.8** | `card-panel-edit-hardening` · `creation-suite-panel-conventions` · `customui-panel-and-gate` · `elevated-terrain-editing` · `entity-placer-scenario-sync` · `entity-placer-undo-and-fidelity` · `hud-viewport-resize` · `item-editor-registry-diagnostics` · `minimap-fog-and-faction-clamp` · `onboarding-and-scenario-origination` · `shared-overlay-base` · `start-position-slot-handling` | 36 | ◐ 21/39 |
+| **15.9** | `ability-cast-path-hardening` · `ability-editor-cleanup` · `ai-scoring-supply-awareness` · `command-card-producer-surfaces` · `custom-building-render-and-footprint` · `determinism-golden-coverage` · `dsl-graph-editor-node-inspector` · `hero-store-and-xp` · `win-condition-elimination-and-identity` | 26 | ◐ 22/30 |
+| **15.11** | `ability-targeting-increments` | 2 | **✅ 1/1** |
+| **15.12** | `energy-and-stack-mechanics` | 4 | ☐ 0/2 |
+| **15.13** | `effect-vocabulary-completion` | 1 | — |
+| **15.14** | `dedicated-server-test-coverage` · `dropcontroller-and-delay-recovery` · `per-peer-misbehavior-handling` · `post-drop-checksum-honesty` · `server-rtt-and-reset-hygiene` | 19 | ◐ 15/20 |
+| **15.15** | `lobbyui-and-handshake-coverage` · `mergedtick-scratch-pool` · `mp-godot-free-test-extraction` · `nakama-ts-handler-hardening` | 10 | **✅ 11/11** |
+| **15.16** | `alliance-awareness-sim` · `team-mode-validation-and-vision` | 7 | ◐ 1/8 |
+| **15.17** | `dsl-loop-gate-cost-model` · `dsl-runtime-robustness` · `graph-structure-gate-strictness` · `trigger-editor-legacy-form` | 13 | ◐ 15/16 |
+| **15.18** | `content-browser-and-load-path` · `content-packager-integrity` · `replay-lifecycle-hardening` | 11 | ◐ 10/11 |
+| **15.19** | `ai-draft-panel-and-llmservice-lifecycle` · `llmservice-validation-and-secrets` | 8 | ◐ 4/10 |
+| **15.20** | `hud-and-settings-polish` · `save-load-and-serialization` | 7 | ◐ 5/9 |
+| | **82 bundles** (stale names) | **239** | **◐ 183/281 ids closed** |
 
 Stories **15.1** (MP reconnect v1) and **15.10** (Scenario Settings + New-Scenario flow) carry no bundles by design — they are net-new builds, not burn-down. DW-2 sits in the sweep's `skip` partition precisely because it was promoted to 15.1 and is tracked by that story; DW-126/DW-127 are recorded 2026-07-25 build decisions. Bundle sizes are uneven on purpose: **15.6** (35 ids) and **15.8** (36 ids) are large enough to want splitting across sweep cycles, while **15.13** is a single bundle.
 
