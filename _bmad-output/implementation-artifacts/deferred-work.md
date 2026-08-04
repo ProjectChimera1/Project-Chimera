@@ -2646,7 +2646,8 @@ resolution: done via bundle elimination-headline-godot-free (workflow burn-down,
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-9-16-full-content-pre-match-hash-handshake.md`
 reason: The shared effect-tree walk (`CanonicalFold.MixEffect`/`MixModifier`) folds a hand-maintained subset of each `EffectNode`/`Modifier` field and its `default` case folds only the runtime type name (value-blind), with NO reflection completeness guard over the effect subtypes — so a new effect field or a brand-new effect kind moves the sim but not the handshake hash, letting a modded ability/item effect pass the gate and desync mid-match. — Evidence: `CanonicalFold.MixEffect`'s `default:` arm folds `e.GetType().Name` only (zero fields, no recursion); the def POCOs are guarded by `ContentFoldCompletenessTests` but effect subtypes are not. PRE-EXISTING — the walk was moved verbatim from `CanonicalModelHash` (same behavior for DSL `run_effect` embeds since v8), so this change did not introduce it; it only widens the blast radius to ability/item `EffectGraph`s (Story 9.16). Closure = a reflection completeness guard over `EffectNode`/`Modifier` subtypes (analogous to the def guard), or fail-closed on an unrecognized effect kind in the content-fold path instead of a value-blind name fold.
-status: open
+status: done 2026-08-04
+resolution: `canonicalfold-effect-completeness` bundle (b5327a9) — both closure halves: new `MixUnknownEffect` folds an unknown effect kind's name plus every public readable member BY VALUE in a deterministic insertion-sorted walk (Fixed via .Raw, enums by name, children through the shared walks, null markers) and fails closed (NotSupportedException) on a member type it cannot make value-visible; plus new `EffectFoldCompletenessTests` reflection guard over EffectNode/Modifier subtypes (unclassified kind or unfolded field turns Tier-1 RED), a namespace-escape companion guard, future-kind probes, and the fail-closed pin. MixModifier audited (all 11 fields already folded) and now guarded. Default arm is dead code for the seven shipped kinds, so no golden/CanonicalModelHash/StartStateHash/SimChecksum value moved; Tier-1 4128/0/1.
 
 ### DW-450: `FactionDefinition.GetBuilding` still NREs on a null `Buildings` list or a null building element — the exact…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -3806,14 +3807,16 @@ status: open
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-11-1-the-real-skirmish-setup-screen-loading-match-start-flow.md`
 reason: `SkirmishSetupToScenario.Build` drops Open/Closed player slots but leaves the base map's triggers, win-condition spec, and scenario entities byte-identical — so a shipped map authored with per-slot triggers or a per-player-elimination win condition referencing a now-dropped slot boots with dangling references the setup screen never warns about. — Evidence: `Build` rebuilds only `PlayerSlots` (per its own doc-comment) and the transform has no trigger/win-condition reconciliation; reachable if a 3–4-start shipped map with per-slot trigger/win-condition logic is launched as a 1v1 (2 active slots). Low probability today (win-condition presets are mostly last-team-standing), needs a design decision on prune-vs-reject, so deferred rather than patched.
-status: open
+status: done 2026-08-04
+resolution: `skirmish-scenario-and-boot` bundle (d16d336) — per the recorded prune-and-reconcile decision, `SkirmishSetupToScenario.Build` now strips/rewrites every per-slot reference left dangling by a dropped-slot launch: trigger events stripped (trigger dropped when none remain), a condition on a dropped slot drops the whole trigger, actions stripped (trigger dropped when empty), kept refs renumbered; win-spec TimedSurvival slot and Assassination/Landmark placement indices remapped or the spec pruned to the built-in fallback; Income nodes owned by dropped slots dropped (their dangling owner_slot previously made the boot validator REJECT the whole built scenario and silently substitute the fallback map — now pinned by a new end-to-end validator test). Identity launches keep reference-identical triggers/win-spec/nodes. Residual scope limitation (trigger_graph IR + custom_events.allowed_raisers) filed as DW-609.
 decision: 2026-07-30 Prune-and-reconcile — Strip/rewrite triggers and win-condition clauses referencing dropped slots during Build; add coverage test
 
 ### DW-459: The entire `MainScene` skirmish match-start orchestration — the async `_Ready` handoff…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-11-1-the-real-skirmish-setup-screen-loading-match-start-flow.md`
 reason: The entire `MainScene` skirmish match-start orchestration — the async `_Ready` handoff, `activePlayers`/`FactionRegistry` sizing from the in-memory `PendingGeneratedScenario`, the AI-level override, the read-then-clear of the skirmish statics, and the fail-safe re-open (`FailSafeSkirmishBoot` / `_bootAborted` / `_bootPending`) — has zero automated coverage, so a regression in the story's headline flow (e.g. re-sizing the registry from the stale on-disk `ScenarioPath`, or the fail-safe not clearing `PendingGeneratedScenario`) would pass the full Tier-1 suite green. — Evidence: All Story-11.1 tests are Godot-free core (validator/transform/catalog/runner); grep for `LaunchSkirmish`/`PendingSkirmish`/`_bootAborted`/`_bootPending` across the test projects returns nothing. The pure decisions (rawSlots from the in-memory scenario; the fail-safe state transition) could be extracted to Godot-free helpers and pinned, mirroring how the `ScenePhaseRunner` progress seam was extracted; live in-engine verification for Epic 11 is otherwise deferred to Epic 10 per project record.
-status: open
+status: done 2026-08-04
+resolution: `skirmish-scenario-and-boot` bundle (d16d336) — the boot orchestration's pure decisions extracted to Godot-free `SkirmishBootFlow`/`SkirmishBootHandoff` (Arm/ConsumeStart/RawRegistrySlots/FailBoot/CommitSuccess/TakeReopen + ArmLoad/TakeLoad/DisarmLoad); MainScene and ScenarioLoadPhase.PendingGeneratedScenario delegate to the one handoff, and both named regressions (registry sized from the stale on-disk map; fail-safe not clearing PendingGeneratedScenario) are Tier-1 pinned. FailBoot additionally disarms a pending SP load, closing a pre-existing gap where a failed boot left a stale save armed for a later unrelated launch. The AI-map-generator boot path still peeks the on-disk map for registry sizing — pinned as-is and filed as DW-610; in-engine observation of the refactored path filed as DW-611.
 
 ### DW-460: The setup-screen slot swatch (`SkirmishSetupOverlay.SlotColorFor(i)` keyed by the map's start-position ROW index)…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -3826,7 +3829,8 @@ resolution: workflow burn-down bundle team-color-slot-mapping (commit 5971848) -
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-11-1-the-real-skirmish-setup-screen-loading-match-start-flow.md`
 reason: Dev/test scratch scenarios that ship in `res://resources/data/scenarios/` (e.g. `123.json` "Alpha Skirmish" and `my-new-map.json` "My New Map", each with 2 authored `player_slots`) now surface as selectable, launchable maps on the skirmish setup screen, because `SkirmishCatalog.ScanMaps` lists every parseable `*.json` with ≥1 start position and there is no curation allow-list. — Evidence: `SkirmishCatalog.ScanMaps` filters only maps with 0 start positions; `123.json`/`my-new-map.json` both have 2 `player_slots` so they pass. The story intent explicitly scopes the list to "shipped `res://…/scenarios/*.json` only" (mod.io/curation deferred), so the CODE is per-intent — the real issue is content hygiene: dev scratch files live in the shipped scenarios dir. Fix = either remove/relocate scratch maps out of the shipped dir, or add a curated shipped-map manifest/flag. Pre-existing content surfaced incidentally by this story's new map list; not caused by the diff.
-status: open
+status: done 2026-08-04
+resolution: `skirmish-scenario-and-boot` bundle (d16d336) — `123.json`, `my-new-map.json` and `123.chimera.zip` relocated to `dev-scratch/scenarios/` (no code referenced them), and new `ShippedScenarioHygieneTests` pins the curated shipped-map id set so a stray scratch save dropped into the shipped scenarios dir turns Tier-1 red.
 
 ### DW-462: The in-match team-color slot→palette mapping (`FactionVisualsPhase.SlotColorAt` / `SlotColor(Faction) =…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -3846,13 +3850,15 @@ status: open
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-11-2-in-match-menu-pause-game-speed-concede-surrender-leave-victory-defeat-score-screen.md`
 reason: The ONLINE concede path has two unpolished robustness/UX gaps — (a) `LockstepManager.EnqueueConcede`'s online branch silently drops the concede order when `_pendingCount >= TickCommandPacket.MAX_ORDERS` (returns false, `MainScene.IssueConcede` ignores it, no retry/feedback), and (b) after a confirmed online concede the menu closes immediately with no "surrendering…" feedback while the verdict only latches a tick-round-trip later, so the player is dropped back into a still-live match as if nothing happened. — Evidence: Surfaced by the Story 11.2 adversarial + edge-case review. Both are online-only: the offline path applies the concede immediately (verified in the in-engine gate — P1→LOST resolves next tick), so neither is reachable in the currently-shippable offline skirmish. Live MP is explicitly deferred to Epic 9 (the spec scopes online as "not in-engine verifiable now"), so these are genuine but un-exercisable now. Fix when the MP shell lands: buffer/retry a dropped concede (a rare high-intent order must not be lost on a busy tick) and give the online player pending-surrender feedback (disable Concede / show "Surrendering…") until the verdict latches.
-status: open
+status: done 2026-08-04
+resolution: `concede-buffer-retry` bundle (e959dd0) — both halves fixed. (a) New Godot-free `ConcedeBuffer` (godot/src/Multiplayer/ConcedeBuffer.cs, single-file-included in SimSources.props per the DelayMath/HandshakeGate precedent): EnqueueConcede latches a sticky queued flag, Flush's send branch claims a batch slot for it (retrying next send on a full batch), and EnqueueOrder/EnqueueDslEvent reserve the last slot while one is queued so order spam can never starve it; reset on GoOnline/GoSpectate/GoOffline. (b) `InMatchMenuOverlay.SetSurrenderPending` keeps the menu OPEN with Concede disabled and relabeled "Surrendering…", driven by MainScene.IssueConcede from the real EnqueueConcede result (guarded so a spectator's no-op press shows no false promise) and cleared at the three verdict/reset seams. Offline flow unchanged; all changes client-send-side or presentation-only, nothing folded into SimChecksum, zero goldens moved; Tier-1 4118/0/1. Spectator enabled-Concede quirk filed as DW-612; live two-client verification owed via DW-613.
 
 ### DW-465: Cold-boot load a saved game from the main menu (not just mid-match), rebuilding the scenario from the save…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-11-3-sp-save-load-full-world-serializer-slots-autosave-format-stability.md`
 reason: Cold-boot load a saved game from the main menu (not just mid-match), rebuilding the scenario from the save header's persisted SkirmishSetup launch record via SkirmishSetupToScenario.Build. — Evidence: Story 11.3 wired in-match Save→Load (the FR-67 mid-match target) and IssueLoad reuses the current match's _ctx.Scenario; the header already persists MapId + per-slot Kind/FactionId/Team/Ai (SaveGameHeaderData.ToSkirmishSetup) but no load-from-menu entry point consumes it, so a save can only be loaded while already in a match on the identical scenario.
-status: open
+status: done 2026-08-04
+resolution: `skirmish-scenario-and-boot` bundle (d16d336) — cold-boot load-from-menu built: Godot-free `SaveGameColdBoot.TryPlan` (fail-closed parse, MapId catalog resolution, scenario rebuild via SkirmishSetupToScenario.Build from the header's persisted launch record, CanonicalModelHash gate, AI level), `MainScene.LoadSaveFromMenu` adds the content-hash gate over the rebuilt scenario's resolved defs then arms the load and relaunches through the existing skirmish spine, and the main menu gains a Load Game entry with a slot picker. In-engine observation of the live menu flow filed as DW-611.
 ### DW-466: SP saves are not portable across machines and the format cannot detect it; make AiOpponentSystem Fixed-point (or…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-11-3-sp-save-load-full-world-serializer-slots-autosave-format-stability.md`
@@ -4880,4 +4886,46 @@ origin: workflow burn-down run, 2026-08-04
 location: godot/src/UI/LobbyUi.cs HandlePeerConnected (~line 500) + OnChatSubmitted
 severity: low
 reason: Between the raw ENet connect and the server's Hello (typically the same poll frame), HandlePeerConnected still shows the Ready button and 'Connected! Click Ready' to a spectator - the Hello then hides it, so it is a one-frame transient - and a chat line submitted inside that window would still local-echo (role flags are still 0) and then double-render when the server's echo lands, the DW-419 symptom in miniature. Practically unreachable, since the Hello is the server's first packet on connect, and fixing it means restructuring connect-time UI state, so it was left out of the `lobby-chat-echo-and-spectator-hello` bundle and documented in LobbyHelloPolicy's doc comments instead. Closure = defer the connect-time lobby UI state until the first Hello (or gate the optimistic echo on having seen one).
+status: open
+
+### DW-608: DW-463's in-engine P1:2 observation is Godot-coupled or transient — the Godot-free spawn chain is now proven clean, so closing it needs one live gate drive
+origin: workflow burn-down run, 2026-08-04
+location: godot/src/Core/MainScene.cs (skirmish boot tail) / presentation layer; regression net: godot/ProjectChimera.Sim.Tests/Skirmish/SkirmishLaunchSpawnParityTests.cs
+severity: medium
+reason: DW-463's requested applier-level check now exists and it exonerates the sim layer: `SkirmishLaunchSpawnParityTests` drives the REAL shipped `alpha_map_01` plus the real faction files through catalog scan, setup validation, transform, scenario validation, apply, ClearForReset + re-apply, and 2 ticks, same-faction and cross-faction, and proves all 3 slot-0 units — the mage at x=-40,z=0 included — spawn and survive at every stage. The 2026-07-28 in-engine HUD reading of P1:2 at [PLAY] therefore cannot be reproduced sim-side today, so the defect is re-located to the Godot-coupled path (spawn presentation / HUD count) or was transient. Closure = one in-engine drive of a real skirmish launch reading the live unit count, which is Godot-coupled work this Godot-free burn-down workflow explicitly excludes (single-client bridge; bmad-loop track).
+status: open
+
+### DW-609: DW-458's prune-and-reconcile does not reach trigger_graph IR or custom_events.allowed_raisers, so those can still carry refs to dropped slots
+origin: workflow burn-down run, 2026-08-04
+location: godot/src/Core/Skirmish/SkirmishSetupToScenario.cs (reconcile helpers)
+severity: low
+reason: The DW-458 prune-and-reconcile covers the flat `Triggers` array, the win-condition spec, and Income node owners. A base map authoring graph-IR triggers (`ScenarioData.TriggerGraphJson`) or `custom_events.allowed_raisers` can still carry faction refs to dropped slots after a reduced-player launch: the boot validator only engine-ceiling-gates those (no declared-slot check), so nothing rejects and the dangling refs are inert (they never match or raise) — but they are semantically stale and a later validator tightening would surface them as boot rejections. Deliberately out of the bundle's scope because reconciling graph IR means parsing and rewriting TriggerGraph node params; no shipped map authors either block today. Closure = extend the reconcile pass over TriggerGraphJson node params and allowed_raisers, or add a declared-slot check to the boot validator so a stale graph fails loudly.
+status: open
+
+### DW-610: The AI-map-generator boot path still sizes the FactionRegistry from the on-disk ScenarioPath, not the pending generated scenario
+origin: workflow burn-down run, 2026-08-04
+location: godot/src/Core/MainScene.cs (LoadGeneratedScenario / _Ready rawSlots) + godot/src/Core/Skirmish/SkirmishBootFlow.cs RawRegistrySlots
+severity: low
+reason: Story 11.1's PATCH 1 fixed in-memory registry sizing for SKIRMISH starts only. The AI map-generator path (LoadGeneratedScenario → reload without the start flag) still takes the normal-boot branch and peeks the on-disk default map for its slot count, so a generated scenario with a non-2 slot count would mis-span the FactionRegistry. Pre-existing behavior, now explicitly pinned as-is by `RawRegistrySlots_NormalBoot_DefersToTheDiskPeek` in the DW-459 extraction, so a future fix must flip that pin deliberately. Left unfixed because changing it is a behavior change outside the `skirmish-scenario-and-boot` bundle's DW ids. Closure = route the generated-scenario reload through the same pending-scenario handoff the skirmish start uses so the registry is sized from the scenario actually about to boot.
+status: open
+
+### DW-611: In-engine observation owed for the cold-boot Load Game menu flow and the refactored skirmish boot path
+origin: workflow burn-down run, 2026-08-04
+location: godot/src/UI/MainMenuOverlay.cs (OpenLoadPicker), godot/src/Core/Bootstrap/Phases/MainMenuPhase.cs, godot/src/Core/MainScene.cs (LoadSaveFromMenu)
+severity: medium
+reason: The DW-459/DW-465 changes touch the `godot/CLAUDE.md` in-engine gate areas (`src/UI/**`, `src/Core/Bootstrap/**`, MainScene). Their Godot-free halves are Tier-1 pinned, but the live flow has not been observed running: save mid-match → quit to menu → Load Game → slot picker → resumed tick, plus the fail-safe reopen after a cold-boot content-hash reject. Per project record, live verification for this burn-down track is deferred to the Epic 10 batch / a bmad-loop in-engine drive. Closure = one in-engine drive of that save→menu→load→resume loop and the reject-reopen path.
+status: open
+
+### DW-612: An online spectator sees an enabled Concede button whose press is a silent no-op
+origin: workflow burn-down run, 2026-08-04
+location: godot/src/UI/InMatchMenuOverlay.cs (SetOnline/Open) + godot/src/Core/MainScene.cs (ToggleInMatchMenu)
+severity: low
+reason: Pre-existing quirk in the same family as DW-464 but out of the `concede-buffer-retry` bundle's scope: the in-match menu's `Open(online)` signature carries no spectator flag, so a spectator gets an enabled Concede whose `EnqueueConcede` early-returns on IsSpectator and nothing happens. The DW-464 fix deliberately guards its new pending-surrender feedback so a spectator never sees a false 'Surrendering…' (close-with-no-feedback preserved, not made worse). Closure = thread spectator state into Open/SetOnline and disable or hide Concede — a signature change rippling to two callers, left unfixed to keep the bundle scoped.
+status: open
+
+### DW-613: The online pending-surrender UX has no live two-client verification yet
+origin: workflow burn-down run, 2026-08-04
+location: godot/src/UI/InMatchMenuOverlay.cs + godot/src/Core/MainScene.cs (DW-464 part b wiring)
+severity: medium
+reason: The menu-stays-open + 'Surrendering…' + verdict-latch clearing flow is presentation code on the ONLINE path. This burn-down track's gate is build + Godot-free Tier-1 only, and a two-client live match cannot be driven over the single-client godot-mcp bridge, so the flow has never been seen with a real tick round-trip (including the OnLocalPlayerEliminated close-on-latch seam). Consistent with the accepted A5-E9 deferral (all live MP verification deferred to Epic 10). Closure = exercise a two-client online concede when that live-verify pass happens.
 status: open
