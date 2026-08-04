@@ -99,6 +99,9 @@ namespace ProjectChimera.Core.Bootstrap
         /// ScenarioLoad; null when nothing is blocked. Read by the PathabilityTool overlay (a later phase) for its
         /// initial render. The sim consumes its own injected copy (via the applier/EntityWorld), never this handle.</summary>
         public ProjectChimera.Navigation.PathabilityGrid? Pathability = null;  // ScenarioLoad
+        /// <summary>Story 6.5: the pathability paint tool + its WC3-style overlay. Published so the Edit-mode
+        /// hotkey strip can report the overlay's live on/off state (the toggle was otherwise undiscoverable).</summary>
+        public ProjectChimera.CreationSuite.PathabilityTool? PathTool = null;  // PathabilityTool phase
         public ScenarioData?       FallbackMirror = null; // ScenarioLoad (hardcoded-fallback mirror, for the canonical hash)
         public bool                ScenarioApplied = false; // ScenarioLoad (true once a model reached the sim — gates the _Ready hash)
 

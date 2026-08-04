@@ -2011,8 +2011,13 @@ namespace ProjectChimera.Core
             {
                 string snap = _ctx.Placer.GridSnapEnabled ? "ON" : "OFF";
                 string edge = _ctx.Cam.EdgeScrollEnabled ? "ON" : "OFF";
+                // K/P were bound since Story 6.5 but advertised nowhere, so the WC3-style pathing view read as
+                // missing (Alec asked for it on 2026-08-04 while it was already working). Shown with live state
+                // like Snap/Edge — a toggle you cannot see the state of is barely a toggle.
+                string paths = _ctx.PathTool != null && _ctx.PathTool.OverlayVisible ? "ON" : "OFF";
                 _ctx.ControlsLabel.Text =
                     $"F5=Play   N=Lobby   O=Maps   Esc=Settings   T=Terrain   G=Snap({snap})   E=Edge({edge})" +
+                    $"   K=PaintPaths   P=Paths({paths})" +
                     $"   Tab=Mode   U=Unit   B=Building   Del=Delete   Ctrl+Z=Undo";
             }
             else

@@ -36,6 +36,7 @@ namespace ProjectChimera.Core.Bootstrap
 
             var tool = new PathabilityTool();
             _ctx.Scene.AddChild(tool);
+            _ctx.PathTool = tool; // so the Edit hotkey strip can show the overlay's live state
             // _ctx.Placer.History is the shared editor undo/redo stack (History may itself be null; Initialize accepts it).
             tool.Initialize(_ctx.Cam, _ctx.GameState, _ctx.Scenario, _ctx.Placer.History, _ctx.Pathability);
             GD.Print("[PathabilityTool] Ready — press K in Edit mode to paint impassable terrain; P toggles the overlay.");

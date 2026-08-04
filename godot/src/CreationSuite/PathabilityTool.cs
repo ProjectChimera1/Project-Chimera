@@ -95,6 +95,12 @@ namespace ProjectChimera.CreationSuite
 
         // ── Godot lifecycle ───────────────────────────────────────────────────
 
+        /// <summary>Whether the pathability overlay is currently shown (the independent <c>P</c> toggle — the tool
+        /// itself does not have to be active). Read by the Edit-mode hotkey strip so the toggle reports live state
+        /// instead of being invisible: the feature shipped working but unadvertised, and Alec asked for a WC3-style
+        /// pathing view on 2026-08-04 not knowing it was already bound.</summary>
+        public bool OverlayVisible => _overlayVisible;
+
         public override void _Process(double delta)
         {
             bool inEdit = _gameState != null && _gameState.Mode == GameMode.Edit;
