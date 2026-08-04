@@ -555,9 +555,21 @@ namespace ProjectChimera.Effects
         /// never heals. This kills the earlier symmetric-model exploit where a wearing-off −MaxHealth debuff net-healed
         /// the host (an enemy debuff that grants HP); a debuff round-trip now restores the ceiling without restoring HP.
         /// Health is always re-clamped into <c>[0, EffectiveMaxHealth]</c> (no phantom HP, never a death-on-expiry).
+        /// <para><b>DW-491 post-condition.</b> This method can DESTROY <paramref name="id"/> (the DW-325 ceiling-collapse
+        /// death) — but only on a genuine downward collapse: a NET-NEGATIVE <paramref name="maxHealthChange"/> that takes
+        /// the host's <c>EffectiveMaxHealth</c> from above zero to exactly zero. A positive grant, and any change on a host
+        /// whose ceiling was ALREADY zero, are never lethal. Every caller must re-check <c>IsAlive</c> before its next
+        /// slot/status write.</para>
         /// </summary>
         private void ApplyStatDeltas(int id, Fixed attackChange, Fixed maxHealthChange, Fixed moveChange, Fixed armorChange, bool isApply)
         {
+            // DW-491: snapshot the PRIOR ceiling before the accumulate/recompute, so the collapse test below can be a
+            // downward TRANSITION (>0 → 0) instead of the absolute `== 0` it used to be. This read is the pipeline's own
+            // invariant: EntityWorld.Create seeds EffectiveMaxHealth from the ctor health and every store apply/remove
+            // recomputes eagerly a few lines down, so the value here is always the host's current ceiling. (The SP-load
+            // RestoreSlot path accumulates without recomputing and is deliberately non-lethal — tracked separately.)
+            Fixed ceilingBefore = _world.EffectiveMaxHealth[id];
+
             _system?.AccumulateBonus(id, attackChange, maxHealthChange, moveChange, armorChange);
             _system?.RecomputeEntity(_world, id);
 
@@ -575,12 +587,23 @@ namespace ProjectChimera.Effects
                 // `== Fixed.Zero` test below matches the floored result) leaves the host clamped to 0 HP but still
                 // alive — a "zombie". Kill it
                 // ONCE, through the SINGLE combat death sequence (UnitKilled event + Destroy) so no invented death path
-                // exists. Gated on maxHealthChange.Raw != 0 (this block) && EffectiveMaxHealth == 0 && IsAlive so it
-                // fires only on a genuine ceiling collapse. Killer = Faction.Neutral (no attacker): RecordKill counts
+                // exists. Killer = Faction.Neutral (no attacker): RecordKill counts
                 // the victim's loss but credits no kill/XP (killer index 0 is skipped). The kill fires
                 // OnDestroy→ClearEntity, wiping this host's slots + accumulators — every ApplyStatDeltas caller
                 // re-checks IsAlive before its next slot/status write.
-                if (_world.IsAlive(id) && _world.EffectiveMaxHealth[id] == Fixed.Zero)
+                //
+                // DW-491 — the gate is a COLLAPSE, not an absolute reading. It used to be `IsAlive && ceiling == 0`,
+                // which made two non-collapses lethal and contradicted this comment's own "net-negative-MaxHealth" wording:
+                //   • a host that legitimately SITS at ceiling 0 (a base-0 / item-sustained unit) was killed by ANY
+                //     MaxHealth-touching modifier, because 0 → 0 satisfied the absolute test; and
+                //   • even a POSITIVE +MaxHealth grant on such a host was lethal (its ceiling can stay floored at 0 while
+                //     a net-negative bonus still dominates), so a heal killed its target.
+                // Three conjuncts now, all required: the change is NET-NEGATIVE (a buff/heal is never lethal — which also
+                // keeps the DW-488 accumulator-wrap outcome the benign 0-ceiling zombie it was before DW-325, instead of
+                // an outright kill), the ceiling WAS above zero, and it is zero NOW. Every real collapse (fresh install,
+                // collapsing stack, expiry-driven revert) still satisfies all three.
+                if (_world.IsAlive(id) && maxHealthChange < Fixed.Zero
+                    && ceilingBefore > Fixed.Zero && _world.EffectiveMaxHealth[id] == Fixed.Zero)
                     DamageResolver.KillEntity(_world, id, Faction.Neutral, _events, _stats);
             }
         }

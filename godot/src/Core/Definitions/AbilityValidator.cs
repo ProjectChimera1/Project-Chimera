@@ -149,6 +149,10 @@ namespace ProjectChimera.Core.Definitions
         /// an install-leaf there would re-enter the dedicated executor and clobber its shared work-stack).
         /// <para>DW-278: the walk also appends the non-fatal inert-content warnings for every Modifier / Persistent
         /// descriptor it visits into <paramref name="warnings"/>. The caller DISCARDS them when this returns an error.</para>
+        /// <para>DW-488: every <c>ApplyModifierEffect</c>'s descriptor is additionally run through
+        /// <see cref="Modifier.CheckAuthoringBounds"/> — a FATAL bound on <c>|delta| × max_stacks</c> (and on
+        /// <c>max_stacks</c> itself), because a modifier over that bound can wrap <c>ModifierSystem</c>'s int stat
+        /// accumulator negative, which DW-28's saturating read cannot recover.</para>
         /// </summary>
         private static string? WalkGraph(string id, EffectNode root, List<(string FieldPath, string Message)> warnings)
         {
@@ -173,6 +177,14 @@ namespace ProjectChimera.Core.Definitions
                         if (f.InPersistentPhase)
                             return Located(id, f.Path,
                                 "ApplyModifierEffect is not allowed inside a PersistentEffect phase (install re-entrancy).");
+                        // DW-488: fail-closed authoring bound on |delta| x max_stacks (and on max_stacks itself). The
+                        // rule lives on Modifier so any future minter can adopt it verbatim; this is its enforcement.
+                        if (am.Modifier is not null)
+                        {
+                            (string Field, string Reason)? overBound = am.Modifier.CheckAuthoringBounds();
+                            if (overBound is not null)
+                                return Located(id, $"{f.Path}.modifier.{overBound.Value.Field}", overBound.Value.Reason);
+                        }
                         // A Modifier.period_effect is store-run per-tick on that same dedicated executor with
                         // spatial:null — structurally identical to a PersistentEffect.period_effect. EffectBounds and
                         // this walk otherwise treat ApplyModifier as a leaf, so descend here (inPersistentPhase +
