@@ -164,6 +164,25 @@ namespace ProjectChimera.Sim.Tests.AI
         }
 
         [Fact]
+        public void GenerateTrigger_OllamaLanHost_ShortCircuits_HostRestrictedMessage_NoRequest()
+        {
+            // DW-370 (recorded decision): a LAN-hosted Ollama config short-circuits the generate path with the
+            // HostRestricted message — which NAMES the loopback-only restriction — instead of the misleading
+            // "no AI provider is configured", and still sends nothing to the disallowed host.
+            var stub = StubHttpMessageHandler.Ok(AnthropicBody(ValidTriggerJson));
+            var svc = new LLMService(
+                () => Settings("ollama", baseUrl: "http://192.168.1.5:11434"),
+                new FakeSecretStore(), new HttpClient(stub));
+
+            var (trigger, error) = RunTrigger(svc);
+
+            Assert.Null(trigger);
+            Assert.Equal(AiAvailabilityMessages.Describe(AiAvailability.HostRestricted), error);
+            Assert.Contains("loopback", error!, StringComparison.OrdinalIgnoreCase); // the restriction is named
+            Assert.Equal(0, stub.CallCount);
+        }
+
+        [Fact]
         public void GenerateScenario_NoKey_ShortCircuits_FourStateMessage_NoRequest()
         {
             var stub = StubHttpMessageHandler.Ok(AnthropicBody(ValidScenarioJson));

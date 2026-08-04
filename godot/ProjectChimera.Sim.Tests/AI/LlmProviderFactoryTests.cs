@@ -10,8 +10,9 @@ namespace ProjectChimera.Sim.Tests.AI
 {
     /// <summary>
     /// Story 8.2 — the single construction site: correct adapter per provider id, base-URL override vs catalog
-    /// default, key sourced from the secret store, non-allowlisted host → NoProvider-class refusal, and the
-    /// no-fallback contract (a failing provider never yields another's success).
+    /// default, key sourced from the secret store, non-allowlisted host → synchronous refusal (cloud → NoProvider;
+    /// ollama non-loopback → HostRestricted per DW-370), and the no-fallback contract (a failing provider never
+    /// yields another's success).
     /// </summary>
     public class LlmProviderFactoryTests
     {
@@ -103,6 +104,34 @@ namespace ProjectChimera.Sim.Tests.AI
         {
             bool ok = LlmProviderFactory.TryCreate(
                 Settings("anthropic", baseUrl: "not a url"), new FakeSecretStore("sk-x"), AnyClient(), out _, out var failure);
+
+            Assert.False(ok);
+            Assert.Equal(AiAvailability.NoProvider, failure);
+        }
+
+        [Fact]
+        public void Ollama_LanBaseUrl_ReturnsHostRestricted()
+        {
+            // DW-370 (recorded decision): a LAN-hosted Ollama (well-formed URL, non-loopback host) stays REJECTED —
+            // the loopback-only policy is kept — but is classified HostRestricted, the state whose message names the
+            // restriction, not the misleading NoProvider ("no AI provider is configured").
+            bool ok = LlmProviderFactory.TryCreate(
+                Settings("ollama", baseUrl: "http://192.168.1.5:11434"),
+                new FakeSecretStore(), AnyClient(), out var provider, out var failure);
+
+            Assert.False(ok);
+            Assert.Null(provider);
+            Assert.Equal(AiAvailability.HostRestricted, failure);
+        }
+
+        [Fact]
+        public void Ollama_MalformedBaseUrl_ReturnsNoProvider_NotHostRestricted()
+        {
+            // The base-URL parse failure precedes the allowlist: a garbage ollama base URL is a config error, not a
+            // host-policy rejection — HostRestricted is reserved for the loopback-only refusal it names.
+            bool ok = LlmProviderFactory.TryCreate(
+                Settings("ollama", baseUrl: "not a url"),
+                new FakeSecretStore(), AnyClient(), out _, out var failure);
 
             Assert.False(ok);
             Assert.Equal(AiAvailability.NoProvider, failure);
