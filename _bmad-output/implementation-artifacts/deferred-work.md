@@ -3979,7 +3979,8 @@ status: open
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-11-7-video-settings-the-mode-select-honesty-strip.md`
 reason: SettingsData.MigrateForward stamps CurrentSchemaVersion unconditionally, so a settings.json written by a newer build (higher schema) is silently downgraded and its forward-only fields dropped on the next Save. — Evidence: MigrateForward has no `if (SchemaVersion > CurrentSchemaVersion)` bail; pre-existing since Story 8.1, surfaced by the 11.7 review. Real cross-build data-loss on a version downgrade.
-status: open
+status: done 2026-08-04
+resolution: resolved by workflow burn-down bundle settings-schema-forward-bail (merge 34a664a; merge agent died report-less, closed during morning reconciliation)
 
 ### DW-483: Editor/creation-suite panels (center-anchored, fixed CustomMinimumSize) are unverified at high UI-scale (1.5x) and…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
