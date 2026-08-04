@@ -114,7 +114,13 @@ namespace ProjectChimera.Sim.Tests.Effects
         public readonly AbilityRegistry Registry;
         public readonly AbilityCastSystem Cast;
 
-        public CastHarness(params AbilityDefinition[] abilities)
+        public CastHarness(params AbilityDefinition[] abilities) : this(null, abilities) { }
+
+        /// <summary>
+        /// DW-285 overload: same wiring, plus the injected AR-4 diagnostic sink the cast system warns through when a
+        /// cast/aura/self-passive cannot resolve. A null <paramref name="log"/> is byte-identical to the ctor above.
+        /// </summary>
+        public CastHarness(ProjectChimera.Core.Sim.ILogSink? log, params AbilityDefinition[] abilities)
         {
             World     = new EntityWorld();
             Resources = new ResourceStore(Fixed.Zero);
@@ -122,7 +128,20 @@ namespace ProjectChimera.Sim.Tests.Effects
             Modifiers = new ModifierStore(World, ModSys);
             ModSys.AttachStore(Modifiers);
             Registry  = new AbilityRegistry(abilities);
-            Cast      = new AbilityCastSystem(Registry, Resources, Modifiers);
+            Cast      = new AbilityCastSystem(Registry, Resources, Modifiers, log: log);
+        }
+
+        /// <summary>
+        /// Write a pending-cast intent for an EXPLICIT slot DIRECTLY into the SoA (bypassing OrderApplier, which
+        /// pre-filters <c>slot &gt;= AbilityCount</c> at input time), then tick once. This is how the DW-285 tests
+        /// reach <c>AbilityCastSystem</c>'s OWN tick-side "no such slot" guard — the one that catches an
+        /// AbilityCount that shrank between the order and the tick.
+        /// </summary>
+        public void PendSlotAndTick(int casterId, int slot, int targetId)
+        {
+            World.PendingCastSlot[casterId]   = (byte)slot;
+            World.PendingCastTarget[casterId] = targetId;
+            Cast.Tick(World, SimulationLoop.FixedDt);
         }
 
         /// <summary>Create a P1 caster with ability <paramref name="abilityId"/> in slot 0 and a full energy pool.</summary>

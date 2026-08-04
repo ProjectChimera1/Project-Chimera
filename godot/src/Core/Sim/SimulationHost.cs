@@ -230,8 +230,13 @@ namespace ProjectChimera.Core.Sim
             // ctor (recycle safety). A null registry → the Empty registry, so existing callers stay scenario-identical.
             var modSys = new ModifierSystem();
             Modifiers = new ModifierStore(World, modSys, damageTable, CombatEvents, MatchStats);
+            // DW-285: the host's ILogSink is threaded in as the cast system's diagnostic seam, so an unresolvable
+            // cast / aura / self-passive WARNS instead of vanishing on every host that already owns a real sink
+            // (MainScene's GodotLogSink, the dedicated server's) while the golden/Tier-1 NullLogSink stays silent.
+            // Diagnostics only — the sink never mutates sim state, so the tick stays byte-identical either way.
             var abilitySys = new AbilityCastSystem(registry ?? AbilityRegistry.Empty, Resources, Modifiers,
-                                                   damageTable, CombatEvents, MatchStats, _deathFeed, Alliances); // Story 9.14: team-aware ability targeting
+                                                   damageTable, CombatEvents, MatchStats, _deathFeed, Alliances, // Story 9.14: team-aware ability targeting
+                                                   _log);
             modSys.AttachStore(Modifiers);
 
             // Story 7.3 — wire the run_effect runtime into the ScenarioDirector now that the stores exist. An
