@@ -594,7 +594,8 @@ decision: 2026-07-28 correct-course — bundle faction-load-error-handling exten
 source_spec: `_bmad-output/implementation-artifacts/spec-4-4-data-driven-supply-cap-model-per-scenario.md`
 location: godot/src/AI/AiOpponentSystem.cs
 reason: summary: `AiOpponentSystem`'s supply-headroom scoring can saturate to a meaningless deeply-negative magnitude when a scenario authors `supply.enabled:false` and `SupplyUsed` climbs unboundedly past `SupplyCap`. evidence: Not a crash and not a new failure mode class — negative headroom was already reachable pre-Story-4.4 via a building-loss cap drop, and the AI's `&lt;=` threshold ladder already saturates gracefully at its worst tier ("critical") for any negative value, which remains directionally sensible (the AI still leans toward expanding supply) even though the magnitude is no longer meaningfully informative once gating is disabled and supply is no longer actually constraining anything. Closure: give the AI's strategic scoring explicit awareness of `SupplyGatingEnabled` (e.g. skip/deprioritize the `ExpandSupplyCap` action entirely when gating is disabled, since expanding an unenforced cap has no real benefit) if/when a scenario author actually ships a disabled-gating scenario with AI opponents. Flagged by the Blind Hunter and Edge Case Hunter review layers.
-status: open
+status: done 2026-08-04
+resolution: 2026-08-04 closed by the ai-supply-headroom-scoring bundle (workflow burn-down run).
 
 ## Deferred from: code review of story-4.5 (2026-07-09)
 
@@ -2067,7 +2068,8 @@ origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-8-3-ai-generation-on-the-provider-stack-triggers-new-dsl-constructs-maps.md`
 location: godot/src/AI/LLMService.cs
 reason: A real `ScenarioType`/`GameMode` registry — an enum + per-type map-clamp preset table (min player slots, max combat units/slot, faction-path resolution) + a scenario-type selection UI that populates `MapGeneratorContext` — is deferred; Story 8.3 shipped only the trusted-context clamp mechanism with RTS-preserving defaults. — Evidence: The Epic 8 map-clamp requirement wants clamps relaxed "so non-RTS scenario types are not wrongly rejected," but no story defines a scenario-type schema, and the epic explicitly forbids sourcing relaxed limits from the untrusted scenario file (circular validation) and says to flag it for a decision. 8.3 parameterized the three RTS clamps (`MinPlayerSlots`=2, `MaxCombatUnitsPerSlot`=6, per-slot `FactionJsonResolver`) onto the TRUSTED `MapGeneratorContext` (godot/src/AI/LLMService.cs) with defaults that reproduce today's RTS behavior byte-for-byte, and proved the slice (relaxed context ⇒ previously-rejected scenario passes; default context ⇒ identical behavior; universal position/spacing/bounds passes always run). Closure = add a `ScenarioType` enum + per-type preset table + a scenario-type selection UI in the Map Generator that populates the context's clamp fields per selected type. No persisted `ScenarioType`/`MapType`/`GameMode` schema was introduced (per the spec's Never constraints). (Story 8.3.)
-status: open
+status: done 2026-08-04
+resolution: 2026-08-04 closed by the scenario-type-registry bundle (workflow burn-down run).
 decision: 2026-07-30 Build ScenarioType enum + preset table + Map Generator selection UI — Enable non-RTS scenario types end-to-end
 
 ### DW-372: The map-clamp parameterization is only half-applied for non-2-slot scenarios — the map-gen prompt's SCHEMA and…
@@ -2745,7 +2747,8 @@ origin: migrated from legacy ledger ("From spec-ai-deadlock-combat-gathering-fix
 location: godot/src/Economy/BuildingSystem.cs:183-280
 severity: high
 reason: SpawnTrainedUnit ends at the rally/Stop branch without writing the caller-owned GatherState/CarryCapacity residue fields. Previously latent (CC production blocked); NOW REACHABLE since Story 6.8 — an authored custom building with `produces_category: "Worker"` trains workers that never gather and are combat-active. The correct 4-line reference implementation exists at ScenarioApplier.SpawnUnitAt (ScenarioApplier.cs:493-497). Verified 2026-07-28.
-status: open
+status: done 2026-08-04
+resolution: 2026-08-04 closed by the trained-worker-gather-init bundle (workflow burn-down run).
 decision: 2026-07-28 correct-course — bundle trained-worker-gather-init (Epic 15, Story 15.4)
 
 ### DW-206: UnitCommand.Build falls to CombatSystem's default case (TickIdleCombat)
@@ -5065,4 +5068,46 @@ origin: workflow burn-down run, 2026-08-04
 location: godot/src/Multiplayer/DedicatedServer.cs:261,277 (CS8602); godot/src/CreationSuite/UnitCardPanel.Edit.cs:532 (CS8604 x2); godot/src/UI/ScoreScreenOverlay.cs:138 (CS0108); godot/ProjectChimera.Sim.Tests/Definitions/ScenarioItemRoundTripTests.cs:37 (CS8602)
 severity: low
 reason: All present on the run base, unrelated to the CS8632 class DW-213 named and to any file that bundle touched, so fixing them would have been unscoped churn on a merge-contended tree. Each is a real possible-null-dereference / possible-null-argument / member-hides-inherited-member signal worth clearing before the DW-630 batches make the nullable context project-wide. DedicatedServer.cs is additionally a Godot-coupled bundle owned by the bmad-loop track, so its two sites must be fixed there rather than on the Godot-free rail.
+status: open
+
+### DW-632: The new Map Generator scenario-type picker has never been observed in-engine
+origin: workflow burn-down run, 2026-08-04
+location: godot/src/CreationSuite/MapGeneratorPanel.cs — BuildUi scenario-type row, OnScenarioTypeSelected
+severity: low
+reason: godot/CLAUDE.md's in-engine gate covers src/CreationSuite/**, but the scenario-type-registry bundle ran on the headless workflow rail (build + Tier-1 only) and the godot-mcp bridge is single-client, so no /godot-verify pass was possible. All decision logic lives in the Godot-free ScenarioTypeRegistry and is Tier-1 tested; what is unverified is the widget plumbing — that the OptionButton renders and fires ItemSelected, that the wrapping clamp-hint label updates on selection, and that the raised PANEL_H=600 still fits the Load/Save action row on screen. Closure = one in-engine observation pass (press M in Edit mode, switch scenario type twice, confirm the hint text changes and nothing is clipped).
+status: open
+
+### DW-633: Worker gather residue (GatherState.Idle + CarryCapacity 20u) is hand-written at three spawn sites with no shared seam
+origin: workflow burn-down run, 2026-08-04
+location: godot/src/Economy/BuildingSystem.cs SpawnTrainedUnit (added by the trained-worker-gather-init bundle); godot/src/Core/Sim/ScenarioApplier.cs:555-559; godot/src/UI/EntityPlacer.cs:841-843
+severity: medium
+reason: Three independent spawn paths each hand-write the same worker residue, and DW-205 is exactly the failure mode of that duplication — a fourth path was added and the residue was forgotten, producing a worker that could never gather AND that fell through to auto-combat. The durable fix is one shared seam (e.g. EntityWorld.InitWorkerGatherState(id)) that all three call, recorded alongside the existing residue rule in godot/CLAUDE.md so any future spawn path inherits it. Not done in the bundle because it touches ScenarioApplier and EntityPlacer, outside that bundle's file scope and under concurrent edit by parallel agents that wave.
+status: open
+
+### DW-634: A trained worker's rally point is silently overridden by auto-gather on the next tick
+origin: workflow burn-down run, 2026-08-04
+location: godot/src/Economy/BuildingSystem.cs SpawnTrainedUnit rally branch, vs godot/src/Economy/GatheringSystem.cs TickIdle/AssignToNode
+severity: low
+reason: With the DW-205 residue written, a worker trained from a building that has a rally point still gets CommandState=Move + MoveTarget=rally, but GatheringSystem.TickIdle re-targets MoveTarget to the nearest eligible node on the very next tick, so the rally never takes effect for workers (combat units are unaffected). This matches how a scenario-placed worker behaves and is strictly better than the pre-fix "never gathers, auto-shoots" state, but "walk to the rally point, THEN start gathering" would need a rally-aware first leg or a new gather state. Design question rather than a defect; closure = decide whether worker rally should be honored and, if so, add the first-leg state.
+status: open
+
+### DW-635: CategoryForBuilding's CommandCenter -> "Worker" mapping is dead code — TrainUnit rejects a CommandCenter before it is ever read
+origin: workflow burn-down run, 2026-08-04
+location: godot/src/Economy/BuildingSystem.cs:330 (mapping) vs godot/src/Economy/BuildingSystem.cs:521 (guard)
+severity: low
+reason: CategoryForBuilding(BuildingType.CommandCenter) returns "Worker", but TrainUnit returns false for any CommandCenter before the category is resolved, so that switch arm is unreachable in production. Harmless today and pinned by a guard test, but it reads as a live capability and is the kind of stale mapping that invites a future "why doesn't my CC train workers" fix in the wrong place. Closure = either comment the mapping as intentionally-unreachable or take an explicit decision on whether a CommandCenter should gain a train surface.
+status: open
+
+### DW-636: ScoreBuildSecondBarracks is gated on the SUPPLY expansion, coupling AI production growth to a supply device
+origin: workflow burn-down run, 2026-08-04
+location: godot/src/AI/AiOpponentSystem.cs — ScoreBuildSecondBarracks (`if (!s.HasCCExpansion) return 0f;`)
+severity: medium
+reason: The AI can only ever build a second Barracks after it has committed the supply-expansion CommandCenter, wiring an economic/production decision to a supply-pressure trigger. That coupling is what forced DW-63's fix to DEPRIORITIZE the ungated expansion (flat 0.25) rather than hard-skip it — a hard skip would permanently cost an ungated-scenario AI its second production building. Closure = decouple the second-Barracks gate onto ore/army demand instead of HasCCExpansion, then revisit whether ScoreExpandSupply can return 0 when gating is disabled. This is a real AI-tuning change with golden implications.
+status: open
+
+### DW-637: The AI's expansion CommandCenter is neither a resource drop-off nor a production building
+origin: workflow burn-down run, 2026-08-04
+location: godot/src/AI/AiOpponentSystem.cs — DoExpandSupplyCap; godot/src/Economy/GatheringSystem.cs:245,416
+severity: low
+reason: DoExpandSupplyCap creates a CommandCenter but never adds it to _productionBuildingIds, and gathering deposits route through the single per-faction ResourceStore.FactionBase rather than the nearest CC — so the expansion's only real payoffs are its +10 SupplyBonus and the second-Barracks unlock (see DW-636). A second base therefore does not behave like an expansion in any economic sense. Closure = make deposits resolve to the nearest owned drop-off and register the expansion for production; this is a design/feature change, not deferred-work repair, so it needs a scoping decision first.
 status: open
