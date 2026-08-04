@@ -63,7 +63,13 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("faction")]
         public int Faction { get; set; } = 0;
 
-        /// <summary>Building type name ("CommandCenter" | "Barracks" | "ArcheryRange" | "SiegeWorkshop"). Used by building_completed.</summary>
+        /// <summary>Building reference. Used by building_completed. DW-170 — DUAL MEANING (mirroring
+        /// <c>ScenarioBuilding.Type</c>): either a legacy <c>BuildingType</c> ENUM NAME ("CommandCenter" |
+        /// "Barracks" | "ArcheryRange" | "SiegeWorkshop" | "Aviary"), or an AUTHORED building-def id
+        /// (<c>[a-z0-9_]</c>, e.g. "watchtower") declared by the faction in the slot <see cref="Faction"/> names —
+        /// that slot IS the faction qualifier, since the occurrence only ever matches its own builder slot. The
+        /// gate resolves the authored form against the owner faction's <c>Buildings</c>; the director matches it
+        /// against the placed building's <c>DefinitionId</c>. The bare "Custom" sentinel is rejected.</summary>
         [JsonPropertyName("building_type")]
         public string? BuildingType { get; set; }
 
@@ -106,6 +112,10 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("faction")]
         public int Faction { get; set; } = 0;
 
+        /// <summary>Building reference for building_exists. DW-170 — DUAL MEANING, identical to
+        /// <see cref="TriggerEvent.BuildingType"/>: a legacy <c>BuildingType</c> enum name, or an AUTHORED
+        /// building-def id declared by the faction in the slot <see cref="Faction"/> names (the qualifier — the
+        /// scan only ever looks at that faction's buildings, matching their <c>DefinitionId</c>).</summary>
         [JsonPropertyName("building_type")]
         public string? BuildingType { get; set; }
 

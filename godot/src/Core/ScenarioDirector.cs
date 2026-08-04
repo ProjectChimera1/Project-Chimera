@@ -137,6 +137,18 @@ namespace ProjectChimera.Core
         private string[] _timerNameTable = Array.Empty<string>();
         private Dictionary<string, int> _timerNameIndex = new(StringComparer.Ordinal);
 
+        // DW-170 — the same index-encoding trick for the building_completed occurrence's AUTHORED-id lane
+        // (FiredEvent.DataId), which cannot ride the int-only re-queue rail either. The closed universe is every
+        // NON-enum building_type any event node references (an enum-name ref matches through the Data lane, which
+        // the rail already re-derives from P0, so it needs no entry); built at LoadScenario in node order, so the
+        // table is deterministic and load-stable. The rail slot is encoded index+1, so a completed building whose
+        // id is ABSENT from the table encodes the literal 0 that slot carried pre-DW-170 and decodes back to a
+        // null DataId (no trigger names it, so no match is lost). That bias is what keeps the fold clean: the
+        // DslEventQueue IS folded into SimChecksum, and every scenario authored before this feature has an EMPTY
+        // table, so its persisted building_completed rows stay byte-identical.
+        private string[] _buildingIdTable = Array.Empty<string>();
+        private Dictionary<string, int> _buildingIdIndex = new(StringComparer.Ordinal);
+
         // Story 7.4 — compiled expression programs, indexed by _execs position. Compiled ONCE per LoadScenario
         // (the two-phase contract: compile at load, zero-allocation eval in the tick). _condPrograms[i] are the
         // Bool programs ANDed with the trigger's legacy conditions. Empty for every expression-free (legacy)
@@ -644,6 +656,18 @@ namespace ProjectChimera.Core
                     timerNameList.Add(ct.TimerName!);
             var timerNameIndex = new Dictionary<string, int>(timerNameList.Count, StringComparer.Ordinal);
             for (int i = 0; i < timerNameList.Count; i++) timerNameIndex[timerNameList[i]] = i;
+            // DW-170 — the parallel AUTHORED-building-id table, over the same deterministic node walk: every
+            // NON-enum building_type an event node references (first-seen order). Locals; committed below.
+            var buildingIdList = new List<string>();
+            var buildingIdIndex = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (NodeBase n in graph.Nodes)
+                if (n is EventNode { Kind: "building_completed" } be && !string.IsNullOrEmpty(be.BuildingType)
+                    && Array.IndexOf(BuildingTypeNames, be.BuildingType!) < 0 // an EXACT enum name rides the Data lane
+                    && !buildingIdIndex.ContainsKey(be.BuildingType!))
+                {
+                    buildingIdIndex[be.BuildingType!] = buildingIdList.Count;
+                    buildingIdList.Add(be.BuildingType!);
+                }
             // Story 7.13 — add headroom for the sim-event feed drain (unit_damaged/unit_trained/ability_cast/
             // hero_level occurrences collected into the base buffer alongside the polled events) AND for Arm D's
             // player_chat pending buffer (up to EventBounds.MaxNextTickEventQueue occurrences drain into this SAME
@@ -755,6 +779,8 @@ namespace ProjectChimera.Core
             _pendingRequeueCount = 0; // DW-349 — nor a pending re-queued edge occurrence
             _timerNameTable = timerNameList.ToArray(); // DW-349 — the timer_expires index-encoding table
             _timerNameIndex = timerNameIndex;
+            _buildingIdTable = buildingIdList.ToArray(); // DW-170 — the authored-building-id index-encoding table
+            _buildingIdIndex = buildingIdIndex;
             _frameCount = 0;
             _eventQueue.Clear();
 
@@ -1376,6 +1402,7 @@ namespace ProjectChimera.Core
                     ev.Slot        = _eventQueue.RaiserAt(i);
                     ev.Numeric     = 0;
                     ev.Data        = null;
+                    ev.DataId      = null; // DW-170 — no building ref on a custom occurrence (slots are reused)
                     ev.TargetExec  = -1; // DW-349 — custom occurrences are never target-restricted
                     ev.P0 = _eventQueue.ParamAt(i, 0);
                     ev.P1 = _eventQueue.ParamAt(i, 1);
@@ -1474,11 +1501,13 @@ namespace ProjectChimera.Core
         /// ≥ 0 marks a REDELIVERED occurrence visible to that exec alone (−1 — every fresh emission — is
         /// unrestricted); written unconditionally because buffer slots are reused across ticks.</summary>
         private void AddBaseEvent(string type, int slot, int numeric, string? data,
-                                  int p0 = 0, int p1 = 0, int p2 = 0, int p3 = 0, int targetExec = -1)
+                                  int p0 = 0, int p1 = 0, int p2 = 0, int p3 = 0, int targetExec = -1,
+                                  string? dataId = null)
         {
             if (_baseEventCount >= _baseEvents.Length) return; // defensive drop-newest (sizing covers worst case)
             ref FiredEvent ev = ref _baseEvents[_baseEventCount++];
             ev.Type = type; ev.Slot = slot; ev.Numeric = numeric; ev.Data = data;
+            ev.DataId = dataId; // DW-170 — written unconditionally (buffer slots are reused across ticks)
             ev.CustomIndex = -1;
             ev.TargetExec = targetExec;
             ev.P0 = p0; ev.P1 = p1; ev.P2 = p2; ev.P3 = p3;
@@ -1503,11 +1532,18 @@ namespace ProjectChimera.Core
                 int kind = _pendingRequeueKind[i];
                 if ((uint)kind >= (uint)RequeueKindNames.Length) continue; // defensive (dequeue range-checked)
                 string? data = null;
-                if (kind == 2) // building_completed — P0 = (int)BuildingType
+                string? dataId = null;
+                if (kind == 2) // building_completed — P0 = (int)BuildingType, P1 = building-id table index (DW-170)
                 {
                     int bt = _pendingRequeueP0[i];
                     if ((uint)bt >= (uint)BuildingTypeNames.Length) continue; // decode miss → deterministic drop
                     data = BuildingTypeNames[bt];
+                    // DW-170 — the AUTHORED id lane rides its own load-built index table (a string cannot ride the
+                    // int-only queue, exactly like the timer names), encoded index+1 so ABSENT stays the literal 0
+                    // this slot always carried. An id outside the closed universe decodes to a null DataId:
+                    // nothing references it, so no def can match on it either way.
+                    int bi = _pendingRequeueP1[i] - 1;
+                    if ((uint)bi < (uint)_buildingIdTable.Length) dataId = _buildingIdTable[bi];
                 }
                 else if (kind == 3) // timer_expires — P0 = timer-name table index
                 {
@@ -1517,7 +1553,7 @@ namespace ProjectChimera.Core
                 }
                 AddBaseEvent(RequeueKindNames[kind], _pendingRequeueSlot[i], 0, data,
                     p0: _pendingRequeueP0[i], p1: _pendingRequeueP1[i], p2: _pendingRequeueP2[i],
-                    targetExec: _pendingRequeueTarget[i]);
+                    targetExec: _pendingRequeueTarget[i], dataId: dataId);
             }
             _pendingRequeueCount = 0;
 
@@ -1579,10 +1615,21 @@ namespace ProjectChimera.Core
                 bool isDone  = isAlive && _buildings.ConstructionTimer[i] <= Fixed.Zero;
 
                 if (isAlive && !wasDone && isDone)
+                {
                     // DW-349 — P0 carries the int building type so a re-queue of this occurrence can ride the
                     // int-only DslEventQueue (FiredEvent is transient/never folded; nothing else reads its P0).
+                    // DW-170 — the occurrence ALSO carries the building's AUTHORED DefinitionId (the second match
+                    // lane, so a faction-qualified custom building ref resolves) plus its index in the load-built
+                    // id table in P1, which is how that string survives a re-queue round trip. DETERMINISM: P1
+                    // rides the re-queue rail into the CHECKSUMMED DslEventQueue, so the encoding is index+1 —
+                    // an id no event node references (every pre-DW-170 scenario: the table is empty) encodes the
+                    // literal 0 this slot always carried, leaving the folded rail byte-identical.
+                    string? defId = _buildings.DefinitionId[i];
+                    int idEncoded = defId != null && _buildingIdIndex.TryGetValue(defId, out int bi) ? bi + 1 : 0;
                     AddBaseEvent("building_completed", (int)_buildings.FactionOf[i] - 1, 0,
-                        BuildingTypeNameOf(_buildings.Type[i]), p0: (int)_buildings.Type[i]);
+                        BuildingTypeNameOf(_buildings.Type[i]), p0: (int)_buildings.Type[i], p1: idEncoded,
+                        dataId: defId);
+                }
             }
 
             // Timers — decrement each ACTIVE timer and collect expiries in CREATION-INDEX (declaration) order via the
@@ -1905,6 +1952,7 @@ namespace ProjectChimera.Core
             ev.Slot        = raiser;
             ev.Numeric     = 0;
             ev.Data        = null;
+            ev.DataId      = null; // DW-170 — a custom occurrence carries no building ref (slots are reused)
             ev.TargetExec  = -1; // DW-349 — custom occurrences are never target-restricted (buffer slots are reused)
             ev.P0 = paramCount > 0 ? paramRaws[0] : 0;
             ev.P1 = paramCount > 1 ? paramRaws[1] : 0;
@@ -2029,7 +2077,14 @@ namespace ProjectChimera.Core
                     return f.Slot == def.Faction;
                 case "building_completed":
                     if (f.Slot != def.Faction) return false;
-                    return string.IsNullOrEmpty(def.BuildingType) || f.Data == def.BuildingType;
+                    // DW-170 — the ref is FACTION-QUALIFIED by the slot check above, so it may name EITHER
+                    // vocabulary: the legacy BuildingType enum name (Data — byte-identical to the pre-DW-170
+                    // match) or the authored building-def id the owner faction declares (DataId, e.g.
+                    // "watchtower" for a Custom building or "barracks" for an enum-backed one). The two
+                    // vocabularies do not collide (enum names are PascalCase, authored ids are [a-z0-9_]).
+                    return string.IsNullOrEmpty(def.BuildingType)
+                        || f.Data == def.BuildingType
+                        || f.DataId == def.BuildingType;
                 case "timer_expires":
                     return string.IsNullOrEmpty(def.TimerName) || f.Data == def.TimerName;
                 case "resource_threshold":
@@ -2082,10 +2137,17 @@ namespace ProjectChimera.Core
                 case "building_exists":
                 {
                     if (string.IsNullOrEmpty(c.BuildingType)) return true;
-                    if (!Enum.TryParse<BuildingType>(c.BuildingType, out var bt)) return false;
+                    // DW-170 — the scan is already FACTION-QUALIFIED (it only ever looks at `faction`), so the
+                    // ref may name either vocabulary. A legacy BuildingType enum NAME keeps the byte-identical
+                    // enum-Type comparison; anything else is an AUTHORED building-def id, matched against the
+                    // placed building's DefinitionId (the same id the scenario-buildings gate resolves against
+                    // the owner faction's Buildings). Pre-DW-170 a non-enum name returned false unconditionally,
+                    // so a custom building could never satisfy a trigger condition.
+                    bool byEnum = Enum.TryParse<BuildingType>(c.BuildingType, out var bt);
                     for (int i = 0; i < _buildings.Count; i++)
                         if (_buildings.Alive[i] && _buildings.FactionOf[i] == faction
-                            && _buildings.Type[i] == bt
+                            && (byEnum ? _buildings.Type[i] == bt
+                                       : string.Equals(_buildings.DefinitionId[i], c.BuildingType, StringComparison.Ordinal))
                             && _buildings.ConstructionTimer[i] <= Fixed.Zero)
                             return true;
                     return false;
@@ -2677,7 +2739,14 @@ namespace ProjectChimera.Core
             public string  Type;
             public int     Slot;        // -1 = no faction (built-ins); the raiser slot for custom occurrences
             public int     Numeric;     // typed numeric payload: ore raw-Fixed integer, or unit count
-            public string? Data;        // string payload: building type, timer name (null when unused)
+            public string? Data;        // string payload: building type ENUM NAME, timer name (null when unused)
+            // DW-170 — the second building-ref lane: the completed building's AUTHORED DefinitionId (e.g.
+            // "watchtower" for a BuildingType.Custom building, "barracks" for an enum-backed one). Kept SEPARATE
+            // from Data so the legacy enum-name payload stays byte-identical; building_completed matches a
+            // trigger's building_type against EITHER lane, which is what lets a faction-qualified custom building
+            // ref resolve. Null on every other event kind (and on a redelivered occurrence whose id is outside the
+            // load-built index table — nothing references it, so nothing can match on it).
+            public string? DataId;
             public int     CustomIndex; // custom-event registry index (-1 = a built-in event)
             public int     TargetExec;  // DW-349: -1 = every trigger may match; >= 0 = a REDELIVERED occurrence visible to that exec alone
             public int     P0, P1, P2, P3; // Story 7.5 payload raws (EventBounds.MaxEventParams slots)

@@ -709,8 +709,15 @@ namespace ProjectChimera.Core.Definitions
                         return ValidationResult.Fail($"{ep}.type='{e.Type}' is not a known trigger event type.");
                     string? fe = CheckFactionSlot($"{ep}.faction", e.Faction);
                     if (fe != null) return ValidationResult.Fail(fe);
-                    if (!string.IsNullOrEmpty(e.BuildingType) && !IsKnownBuildingType(e.BuildingType))
-                        return ValidationResult.Fail($"{ep}.building_type='{e.BuildingType}' is not a known BuildingType.");
+                    // DW-170 — FACTION-QUALIFIED building refs. building_type is accepted as a legacy BuildingType
+                    // enum name OR an authored building-def id present in the faction this event already names
+                    // (its `faction` slot IS the qualifier — a building_completed occurrence only ever matches its
+                    // own builder slot), resolved through the SAME OwnerFactionDef/GetBuilding path as the
+                    // scenario-buildings gate above. With no faction defs threaded this stays enum-name-only.
+                    if (!string.IsNullOrEmpty(e.BuildingType)
+                        && !IsKnownBuildingType(e.BuildingType, OwnerFactionDef(slotFactionDefs, e.Faction)))
+                        return ValidationResult.Fail(
+                            $"{ep}.building_type='{e.BuildingType}' is not a known BuildingType enum name or an authored building id in faction slot {e.Faction}.");
                     if (!InSet(_operators, e.Operator))
                         return ValidationResult.Fail($"{ep}.operator='{e.Operator}' is not a known comparison operator.");
                     if (e.Type == "timer_expires" && !string.IsNullOrEmpty(e.TimerName) && !declaredTimers.Contains(e.TimerName))
@@ -727,8 +734,12 @@ namespace ProjectChimera.Core.Definitions
                         return ValidationResult.Fail($"{cp}.type='{c.Type}' is not a known trigger condition type.");
                     string? fe = CheckFactionSlot($"{cp}.faction", c.Faction);
                     if (fe != null) return ValidationResult.Fail(fe);
-                    if (!string.IsNullOrEmpty(c.BuildingType) && !IsKnownBuildingType(c.BuildingType))
-                        return ValidationResult.Fail($"{cp}.building_type='{c.BuildingType}' is not a known BuildingType.");
+                    // DW-170 — same faction-qualified resolution as the event arm: a building_exists condition
+                    // scans ONLY the faction it names, so that slot is the qualifier for an authored building id.
+                    if (!string.IsNullOrEmpty(c.BuildingType)
+                        && !IsKnownBuildingType(c.BuildingType, OwnerFactionDef(slotFactionDefs, c.Faction)))
+                        return ValidationResult.Fail(
+                            $"{cp}.building_type='{c.BuildingType}' is not a known BuildingType enum name or an authored building id in faction slot {c.Faction}.");
                     if (!InSet(_operators, c.Operator))
                         return ValidationResult.Fail($"{cp}.operator='{c.Operator}' is not a known comparison operator.");
                     // Story 7.3 (P4/P5): a variable_comparison READS a variable BEFORE the trigger-local scope is
@@ -1488,7 +1499,11 @@ namespace ProjectChimera.Core.Definitions
         /// to enum names only — byte-identical to the pre-6.8 gate. The bare <c>"Custom"</c> sentinel name is NOT a
         /// placeable identity (it resolves no def → a stat-less, unrendered ghost), so it is excluded from the enum-name
         /// match — a custom building must name its authored id; a lowercase authored id such as <c>"custom"</c> is still
-        /// accepted through <paramref name="ownerDef"/>.</summary>
+        /// accepted through <paramref name="ownerDef"/>.
+        /// DW-170 — the trigger gate now calls this with the OWNER faction of the event/condition's own
+        /// <c>faction</c> slot (its faction qualifier), so a trigger can name an authored custom building exactly
+        /// like a pre-placed scenario building does. <c>ScenarioDirector</c> resolves the same two vocabularies at
+        /// runtime (enum name → <c>BuildingStore.Type</c>, authored id → <c>BuildingStore.DefinitionId</c>).</summary>
         private static bool IsKnownBuildingType(string? type, FactionDefinition? ownerDef = null)
         {
             if (type is null) return false;
