@@ -1,3 +1,4 @@
+#nullable enable
 using System.Collections.Generic;
 using ProjectChimera.Core.Definitions; // SupplyConfig (Story 4.4)
 
