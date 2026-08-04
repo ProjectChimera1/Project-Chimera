@@ -37,6 +37,10 @@ namespace ProjectChimera.UI
 
         // ── Configuration ─────────────────────────────────────────────────────
 
+        /// <summary>DW-425 — where a failed-integrity download is moved. A SIBLING of user://packages/ (never inside
+        /// it) so the RefreshLocal scan can never re-list a quarantined package as a playable local card.</summary>
+        private const string QUARANTINE_DIR = "user://packages_quarantine/";
+
         private string         _scanDir = "";
         private ModIoService?  _modIo;
         // Story 9.8: the secret store supplies the per-install proof-of-play HMAC key so the publish gate can VERIFY a
@@ -1068,9 +1072,12 @@ namespace ProjectChimera.UI
                 // Story 9.9: integrity-verify the freshly downloaded package (scenario + terrain + asset bytes) BEFORE
                 // it is playable. A hash mismatch or a missing/disallowed/oversized listed entry throws
                 // InvalidDataException → the download is marked not-playable (never added to _downloadComplete, so its
-                // card is not offered as ready) and the located reason is surfaced. The bundled assets are NOT ingested
-                // here: ReloadCurrentScene rebuilds the AssetRegistry, so the render ingest runs on the load path
-                // (FactionVisualsPhase) into the registry the bridges actually read. This extraction is verify-only.
+                // card is not offered as ready) and the located reason is surfaced. DW-425: the rejected .chimera.zip
+                // is also quarantined OUT of user://packages/ — leaving it there let RefreshLocal (which scans that
+                // directory) re-list the rejected package as a playable local card on the next refresh/launch. The
+                // bundled assets are NOT ingested here: ReloadCurrentScene rebuilds the AssetRegistry, so the render
+                // ingest runs on the load path (FactionVisualsPhase) into the registry the bridges actually read.
+                // This extraction is verify-only.
                 string cacheDir = Path.Combine(
                     ProjectSettings.GlobalizePath("user://package_cache/"), modId.ToString());
                 try
@@ -1089,6 +1096,7 @@ namespace ProjectChimera.UI
                 {
                     if (_downloadLabels.TryGetValue(modId, out var badLbl))
                         badLbl.Text = "Corrupt ✗";
+                    QuarantineRejectedDownload(modId, localPath);
                     _onlineStatusLabel.Text = $"Download rejected — {ex.Message}";
                     GD.PrintErr($"[ContentBrowser] Integrity check failed for mod {modId}: {ex.Message}");
                 }
@@ -1096,6 +1104,7 @@ namespace ProjectChimera.UI
                 {
                     if (_downloadLabels.TryGetValue(modId, out var errLbl))
                         errLbl.Text = "Verify failed ✗";
+                    QuarantineRejectedDownload(modId, localPath);
                     _onlineStatusLabel.Text = $"Download could not be verified — {ex.Message}";
                     GD.PrintErr($"[ContentBrowser] Verify error for mod {modId}: {ex.Message}");
                 }
@@ -1163,6 +1172,27 @@ namespace ProjectChimera.UI
                             pair.Down.Disabled = false;
                         }
             };
+        }
+
+        // ── DW-425 — rejected-download quarantine ─────────────────────────────
+
+        /// <summary>
+        /// Move a download that failed integrity verification OUT of the local-packages scan directory (into
+        /// <see cref="QUARANTINE_DIR"/>, bytes kept for diagnostics; deleted as a fallback if the move fails), then
+        /// refresh the local tab so any card the rejected file was shown as disappears. Without this, the rejected
+        /// .chimera.zip stayed in user://packages/ and RefreshLocal re-listed it as an unverified playable card on
+        /// the next launch (the DW-425 defect).
+        /// </summary>
+        private void QuarantineRejectedDownload(int modId, string localPath)
+        {
+            string? quarantined = ContentPackager.QuarantineRejectedPackage(
+                localPath, ProjectSettings.GlobalizePath(QUARANTINE_DIR));
+            GD.PrintErr(quarantined != null
+                ? $"[ContentBrowser] Rejected download for mod {modId} quarantined → {quarantined}"
+                : $"[ContentBrowser] Rejected download for mod {modId} removed from the packages directory " +
+                  "(quarantine move unavailable).");
+            // Drop any local card the rejected file may have been listed as (mirrors the success branch's refresh).
+            RefreshLocal();
         }
 
         // ── Story 9.8 publish-gate inputs ─────────────────────────────────────

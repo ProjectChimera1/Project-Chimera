@@ -314,16 +314,32 @@ namespace ProjectChimera.Core.Definitions
         /// <summary>
         /// Extract a .chimera.zip package to a directory.
         /// The directory is created if it does not exist.
+        ///
+        /// <para>DW-426 — on success the validated <c>manifest.json</c> is materialized into
+        /// <paramref name="extractDir"/> as the LAST step, only after every integrity check passed. Its presence is
+        /// therefore the "extraction completed + verified" seal: the load-path asset ingest
+        /// (<c>FactionVisualsPhase.IngestImportedAssets</c>) reads it via <see cref="ReadExtractedManifest"/> and
+        /// ingests ONLY its <c>AssetFiles</c> logical ids, so a partial extraction (throw mid-unpack ⇒ no seal) or an
+        /// orphan file a raw directory scan would have picked up can never be ingested unverified.</para>
         /// </summary>
         /// <param name="zipPath">Absolute path to the .chimera.zip file.</param>
         /// <param name="extractDir">Absolute path to the output directory.</param>
+        /// <param name="cleanExtractDir">DW-426 — when true, <paramref name="extractDir"/> is deleted (recursively)
+        /// before extraction so stale/orphan files from a prior extraction of a same-Id package cannot survive into
+        /// the fresh materialization. Opt-in: default false preserves the historical non-destructive behavior for
+        /// callers extracting into throwaway dirs they manage themselves.</param>
         /// <exception cref="InvalidDataException">
         /// If manifest.json is missing, malformed, or the scenario hash doesn't match.
         /// </exception>
-        public static UnpackResult Unpack(string zipPath, string extractDir)
+        public static UnpackResult Unpack(string zipPath, string extractDir, bool cleanExtractDir = false)
         {
             if (!File.Exists(zipPath))
                 throw new FileNotFoundException("Package file not found.", zipPath);
+
+            // DW-426: clear the target first (only once the source zip is known to exist) so a re-import of a
+            // same-Id package can never inherit the previous import's leftover files.
+            if (cleanExtractDir && Directory.Exists(extractDir))
+                Directory.Delete(extractDir, recursive: true);
 
             Directory.CreateDirectory(extractDir);
 
@@ -461,6 +477,12 @@ namespace ProjectChimera.Core.Definitions
                         $"got 0x{actualHash:X8}. Package may be corrupt.");
             }
 
+            // 7. DW-426 — materialize the manifest into the extract dir LAST, after every integrity check above has
+            //    passed, so its presence on disk is the unambiguous "extraction completed + verified" seal. A throw
+            //    anywhere above leaves the partial extraction UNsealed and the manifest-driven load-path ingest
+            //    (ReadExtractedManifest ⇒ null) refuses to touch it.
+            manifestEntry.ExtractToFile(Path.Combine(extractDir, "manifest.json"), overwrite: true);
+
             return new UnpackResult
             {
                 Manifest     = manifest,
@@ -470,6 +492,76 @@ namespace ProjectChimera.Core.Definitions
                 TerrainFiles  = terrainOuts,
                 AssetFiles    = assetOuts,
             };
+        }
+
+        /// <summary>
+        /// DW-426 — read the <c>manifest.json</c> a successful <see cref="Unpack"/> materialized into
+        /// <paramref name="extractDir"/> (its verified-extraction seal). Returns null when the file is absent
+        /// (legacy/pre-seal or partial extraction) or malformed — the load-path ingest treats null as "nothing
+        /// verifiable to ingest" rather than falling back to a raw directory scan.
+        /// </summary>
+        /// <param name="extractDir">Absolute path to a directory a package was extracted into.</param>
+        public static ContentPackageManifest? ReadExtractedManifest(string extractDir)
+        {
+            try
+            {
+                string manifestPath = Path.Combine(extractDir, "manifest.json");
+                if (!File.Exists(manifestPath)) return null;
+                return JsonSerializer.Deserialize<ContentPackageManifest>(
+                    File.ReadAllText(manifestPath), _jsonOpts);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        // ── Quarantine a rejected download (DW-425) ──────────────────────────────
+
+        /// <summary>
+        /// DW-425 — move a rejected (failed-integrity / failed-verify) downloaded package OUT of the local-packages
+        /// scan directory into <paramref name="quarantineDir"/>, so <see cref="ScanDirectory"/> (the content
+        /// browser's local-tab listing) can never re-offer it as a playable local card. The move is collision-safe
+        /// (an already-quarantined file of the same name is never overwritten — the new file gets a numbered prefix)
+        /// and preserves the bytes for diagnostics. If the move itself fails, the file is deleted instead —
+        /// deletion also satisfies the invariant; the one unacceptable outcome is leaving the rejected package
+        /// in the scan directory.
+        /// </summary>
+        /// <param name="zipPath">Absolute path to the rejected package file.</param>
+        /// <param name="quarantineDir">Absolute path to the quarantine directory (created if absent).</param>
+        /// <returns>The quarantined file's absolute path, or null when nothing was moved (source absent, or the
+        /// move failed and the fallback delete ran).</returns>
+        public static string? QuarantineRejectedPackage(string zipPath, string quarantineDir)
+        {
+            if (!File.Exists(zipPath)) return null;
+            try
+            {
+                Directory.CreateDirectory(quarantineDir);
+
+                // Collision-safe destination: prefix (not suffix) a counter so the ".chimera.zip" double extension
+                // survives intact; past a sanity cap fall back to a GUID prefix which cannot collide.
+                string leaf = Path.GetFileName(zipPath);
+                string dest = Path.Combine(quarantineDir, leaf);
+                for (int n = 2; File.Exists(dest); n++)
+                {
+                    if (n > 99)
+                    {
+                        dest = Path.Combine(quarantineDir, Guid.NewGuid().ToString("N") + "_" + leaf);
+                        break;
+                    }
+                    dest = Path.Combine(quarantineDir, $"{n}_{leaf}");
+                }
+
+                File.Move(zipPath, dest);
+                return dest;
+            }
+            catch
+            {
+                // Fallback: deleting still keeps the rejected package out of the scan dir. Best-effort — if even
+                // this fails (e.g. the file is transiently locked), the caller's next verify pass rejects it again.
+                try { File.Delete(zipPath); } catch { /* best-effort */ }
+                return null;
+            }
         }
 
         // ── Rewrite manifest in place (Story 9.8, publish-time consent) ──────────

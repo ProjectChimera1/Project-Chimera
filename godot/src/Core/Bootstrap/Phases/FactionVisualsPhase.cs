@@ -71,9 +71,16 @@ namespace ProjectChimera.Core.Bootstrap
         /// <summary>
         /// Story 9.9 — ingest any custom GLB assets an imported map bundled into the shared render registry. Derives the
         /// map's import dir from the scenario path stem (HandleLoadMap unpacks to user://imported_maps/&lt;id&gt;/ with
-        /// an assets/ subdir); a normal res:// scenario has no such dir, so this is a no-op. The bytes were already
-        /// integrity-verified by the Unpack that produced the dir; here we only decode + register per-asset (each
-        /// invalid/unsafe asset falls back to the box placeholder inside <see cref="AssetRegistry.IngestPackage"/>).
+        /// an assets/ subdir); a normal res:// scenario has no such dir, so this is a no-op.
+        ///
+        /// <para>DW-426 — ingest is driven by the manifest's integrity-verified <c>AssetFiles</c> list, NOT a raw scan
+        /// of the on-disk assets/ dir: a scan would also pick up a stale/orphan .glb left by a prior same-Id import or
+        /// a failed extraction — bytes THIS package's integrity check never covered. <c>Unpack</c> materializes
+        /// <c>manifest.json</c> into the extract dir as its final step (only after every integrity check passed), so
+        /// its presence is the "extraction completed + verified" seal; absent ⇒ nothing verifiable ⇒ skip (re-loading
+        /// the package from the content browser re-materializes it). Each listed asset is decoded defensively — an
+        /// invalid/unsafe file still falls back to the box placeholder inside
+        /// <see cref="AssetRegistry.IngestPackage"/>.</para>
         /// </summary>
         private void IngestImportedAssets()
         {
@@ -84,16 +91,24 @@ namespace ProjectChimera.Core.Bootstrap
             if (string.IsNullOrEmpty(mapId)) return;
 
             string importDir = ProjectSettings.GlobalizePath($"user://imported_maps/{mapId}/");
-            string assetsDir = System.IO.Path.Combine(importDir, "assets");
-            if (!System.IO.Directory.Exists(assetsDir)) return;
+            if (!System.IO.Directory.Exists(importDir)) return;
 
-            var logicalIds = new System.Collections.Generic.List<string>();
-            foreach (var f in System.IO.Directory.EnumerateFiles(assetsDir))
-                logicalIds.Add("assets/" + System.IO.Path.GetFileName(f));
-            if (logicalIds.Count == 0) return;
+            var manifest = ContentPackager.ReadExtractedManifest(importDir);
+            if (manifest == null)
+            {
+                // Legacy (pre-DW-426) or partial extraction: no verified manifest seal, so nothing is ingested.
+                if (System.IO.Directory.Exists(System.IO.Path.Combine(importDir, "assets")))
+                    GD.Print($"[FactionVisuals] {importDir} has an assets/ dir but no verified manifest.json " +
+                             "(pre-DW-426 or partial extraction) — skipping asset ingest; re-load the package " +
+                             "from the content browser to re-materialize it.");
+                return;
+            }
 
-            _ctx.AssetRegistry.IngestPackage(importDir, logicalIds);
-            GD.Print($"[FactionVisuals] Ingested {_ctx.AssetRegistry.Count} custom asset(s) from {assetsDir}.");
+            if (manifest.AssetFiles == null || manifest.AssetFiles.Count == 0) return;
+
+            _ctx.AssetRegistry.IngestPackage(importDir, manifest.AssetFiles);
+            GD.Print($"[FactionVisuals] Ingested {_ctx.AssetRegistry.Count} manifest-listed custom asset(s) " +
+                     $"from {importDir}.");
         }
     }
 }

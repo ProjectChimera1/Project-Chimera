@@ -580,7 +580,9 @@ namespace ProjectChimera.Core.Bootstrap
                 $"user://imported_maps/{manifest.Id}/");
             try
             {
-                var result = ContentPackager.Unpack(zipPath, extractDir);
+                // DW-426: clean the import dir first — same hygiene as ContentBrowserPhase.HandleLoadMap, so the
+                // editor Import-Map flow can't leave stale same-Id orphans for the load-path asset ingest either.
+                var result = ContentPackager.Unpack(zipPath, extractDir, cleanExtractDir: true);
                 // Copy the scenario to the project's scenarios directory so it can be selected.
                 string destScenario = ProjectSettings.GlobalizePath(
                     $"res://resources/data/scenarios/{manifest.Id}.json");
