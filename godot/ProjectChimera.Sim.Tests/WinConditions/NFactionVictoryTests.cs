@@ -151,7 +151,9 @@ namespace ProjectChimera.Sim.Tests.WinConditions
             h.Alliances.TeamId[(int)Faction.Player2] = (int)Faction.Player1; // {P1,P2} allied
             Unit(h, 0, 0, Faction.Player1);  // both allies in the zone — they must NOT contest each other
             Unit(h, 1, 1, Faction.Player2);
-            // P3 outside the zone.
+            // P3 outside the zone. DW-188: it must actually EXIST — an asset-less P3 now latches LOST via the KotH
+            // elimination fallback, resolving the match before the hold completes.
+            Unit(h, 20, 20, Faction.Player3);
             var regions = OneRegion("zone", -5, 5);
             h.WinCon.Configure(new ScenarioData
             {
@@ -368,7 +370,11 @@ namespace ProjectChimera.Sim.Tests.WinConditions
             h.Alliances.TeamId[(int)Faction.Player2] = (int)Faction.Player1; // team {P1,P2}, rep = P1 (lowest slot)
             int u1 = Unit(h, 0, 0, Faction.Player1); // rep unit in zone
             Unit(h, 1, 1, Faction.Player2);          // ally in zone
-            // P3 opponent outside the zone.
+            // P3 opponent outside the zone (DW-188: must exist, or the wipeout fallback resolves the match early).
+            // This test is ALSO the hold-race guard for the DW-188 TEAM-scoped wipeout: destroying u1 below fully
+            // wipes the REP faction, and the live-ally team guard must keep P1 unresolved so the rep-keyed hold
+            // counter can still win — a per-faction wipeout latch would orphan it and dead-end the hold.
+            Unit(h, 20, 20, Faction.Player3);
             var regions = OneRegion("zone", -5, 5);
             h.WinCon.Configure(new ScenarioData
             {
