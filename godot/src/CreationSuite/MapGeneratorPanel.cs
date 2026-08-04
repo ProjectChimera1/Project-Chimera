@@ -12,7 +12,10 @@ namespace ProjectChimera.CreationSuite
     /// <summary>
     /// Edit-mode AI map generation panel (Phase 5).
     ///
-    /// Toggle with the M key (in Edit mode). Three sections:
+    /// Toggle with the M key (in Edit mode). Four sections:
+    ///   • Scenario type — DW-371: the ScenarioTypeRegistry picker. Selecting a type writes that type's TRUSTED
+    ///     map clamps (min player slots, max pre-placed combat units per slot, per-slot faction-path resolution)
+    ///     onto the MapGeneratorContext, so non-RTS scenarios stop being wrongly rejected by the RTS gate.
     ///   • Brief — natural language map description.
     ///   • Generate — calls LLMService.GenerateScenarioAsync; shows map stats on success.
     ///   • Load / Save — Load applies the scenario immediately (no disk write);
@@ -26,7 +29,9 @@ namespace ProjectChimera.CreationSuite
         // ── Panel dimensions ──────────────────────────────────────────────────
 
         private const float PANEL_W = 400f;
-        private const float PANEL_H = 520f;
+        // DW-371 added the scenario-type row + its wrapping clamp hint above the brief; the panel grows to keep the
+        // Load/Save action row on screen at the previous content height.
+        private const float PANEL_H = 600f;
         private const float MARGIN  = 12f;
 
         // ── Dependencies ──────────────────────────────────────────────────────
@@ -45,6 +50,10 @@ namespace ProjectChimera.CreationSuite
 
         private CanvasLayer    _canvas     = null!;
         private PanelContainer _panel      = null!;
+        // DW-371 — scenario-type picker + its clamp hint. Every decision behind them lives in the Godot-free
+        // ScenarioTypeRegistry (Tier-1 tested); these two nodes are a thin shell over that table.
+        private OptionButton   _typeOpt    = null!;
+        private Label          _typeHint   = null!;
         private TextEdit       _briefInput = null!;
         private Button         _genBtn     = null!;
         private Label          _statusLabel = null!;
@@ -78,7 +87,29 @@ namespace ProjectChimera.CreationSuite
 
             _gameState.ModeChanged += OnModeChanged;
             _panel.Visible = false;
+            SyncScenarioTypeUi();
             RefreshAvailability();
+        }
+
+        /// <summary>DW-371 — point the picker at the context's CURRENT scenario type without mutating the context.
+        /// The boot phase seeds a fresh context (ScenarioType.Rts, RTS clamps); a caller that pre-applied a type,
+        /// or hand-set clamps, keeps exactly what it configured — selecting an item in the picker is the only thing
+        /// that rewrites the clamps.</summary>
+        private void SyncScenarioTypeUi()
+        {
+            if (_typeOpt == null) return; // UI not built yet
+
+            var type = _context.ScenarioType;
+            for (int i = 0; i < _typeOpt.ItemCount; i++)
+                if (_typeOpt.GetItemId(i) == (int)type)
+                {
+                    _typeOpt.Selected = i;
+                    break;
+                }
+
+            _typeHint.Text = ScenarioTypeRegistry.TryGet(type, out _)
+                ? ScenarioTypeRegistry.DescribeClamps(type)
+                : "";
         }
 
         /// <summary>Story 8.2 — drive the AI-availability status line + Generate gating from the config-derived
@@ -165,6 +196,35 @@ namespace ProjectChimera.CreationSuite
 
             root.AddChild(new HSeparator());
 
+            // ── Scenario type (DW-371) ────────────────────────────────────────
+            // The picker populates the TRUSTED MapGeneratorContext clamps from ScenarioTypeRegistry — the seam
+            // Story 8.3 parameterized but left without a caller, so every generated map was gated by RTS clamps.
+            var typeRow = new HBoxContainer();
+            root.AddChild(typeRow);
+            typeRow.AddChild(new Label { Text = "Scenario type:" });
+
+            _typeOpt = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            foreach (var preset in ScenarioTypeRegistry.All)
+                _typeOpt.AddItem(preset.DisplayName, (int)preset.Type);
+            _typeOpt.Selected = 0; // RTS — the registry's declaration order puts the default first.
+            _typeOpt.ItemSelected += OnScenarioTypeSelected;
+            AttachTip(_typeOpt, "Scenario type",
+                "Chooses which map rules the generated scenario is checked against — how many player slots it must " +
+                "have, how many pre-placed combat units each slot may keep, and how slots map to factions. " +
+                "RTS skirmish is the classic 1v1 gate.");
+            typeRow.AddChild(_typeOpt);
+
+            _typeHint = new Label
+            {
+                Text = ScenarioTypeRegistry.DescribeClamps(ScenarioTypeRegistry.DefaultType),
+                AutowrapMode = TextServer.AutowrapMode.Word,
+                CustomMinimumSize = new Vector2(PANEL_W - MARGIN * 2, 0),
+            };
+            _typeHint.Modulate = new Color(0.75f, 0.78f, 0.85f);
+            root.AddChild(_typeHint);
+
+            root.AddChild(new HSeparator());
+
             // ── Brief input ───────────────────────────────────────────────────
             root.AddChild(new Label { Text = "Describe your map concept:" });
 
@@ -230,6 +290,18 @@ namespace ProjectChimera.CreationSuite
         }
 
         // ── Button callbacks ──────────────────────────────────────────────────
+
+        /// <summary>DW-371 — the picker's only job: push the selected type's TRUSTED preset onto the live
+        /// MapGeneratorContext (min player slots, max pre-placed combat units per slot, per-slot faction-path
+        /// resolver) and echo the resulting clamps. The decision itself is the Godot-free
+        /// <see cref="ScenarioTypeRegistry.Apply"/>; re-selecting RTS restores the historical clamps exactly, so
+        /// toggling can never leave a stale relaxed clamp behind.</summary>
+        private void OnScenarioTypeSelected(long index)
+        {
+            var type = (ScenarioType)_typeOpt.GetItemId((int)index);
+            ScenarioTypeRegistry.Apply(_context, type);
+            _typeHint.Text = ScenarioTypeRegistry.DescribeClamps(type);
+        }
 
         private void OnGeneratePressed()
         {
