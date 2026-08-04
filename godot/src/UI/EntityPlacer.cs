@@ -415,6 +415,12 @@ namespace ProjectChimera.UI
 
             if (@event is not InputEventKey key || !key.Pressed || key.Echo) return;
 
+            // Every binding below lives in _Input (it must beat the placer/selection to the event) and ends in
+            // SetInputAsHandled(), so without this guard a focused LineEdit never receives the character: typing
+            // "r" rotated the ghost instead of writing an r, and "b"/"u"/Tab drove this palette from inside the
+            // map-generator prompt and the New Map menu. See TextFocusGuard for the full rule.
+            if (TextFocusGuard.IsTyping(this)) return;
+
             // Story 6.6: R rotates the armed placement's yaw by a step (visual-only; excluded from every checksum) and
             // re-rotates the props in the current selection. The tooltip states rotation is visual-only.
             if (editMode && key.Keycode == Key.R && !key.CtrlPressed)

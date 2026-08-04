@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -53,6 +53,10 @@ namespace ProjectChimera.CreationSuite
         {
             if (_panel is null || !_panel.Visible) return;   // only own input while open (⇒ Edit mode)
             if (@event is not InputEventKey key || !key.Pressed || key.Echo) return;
+
+            // Ctrl+Z/Y here are _Input bindings that SetInputAsHandled, so while a field has focus they
+            // would steal the keystroke and undo the CARD instead of the text the user is editing.
+            if (ProjectChimera.UI.TextFocusGuard.IsTyping(this)) return;
 
             // Ctrl+Z / Ctrl+Y route through THIS history; SetInputAsHandled so another open editor's Ctrl+Z (also
             // _Input) doesn't also fire (mirrors UnitCardPanel.Edit.cs's guard).

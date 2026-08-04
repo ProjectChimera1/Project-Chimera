@@ -146,11 +146,7 @@ namespace ProjectChimera.UI
 
         /// <summary>True when a text-editing control owns keyboard focus (a LineEdit or TextEdit, including a
         /// SpinBox's internal LineEdit), so <see cref="HandlePan"/> must not consume WASD/arrows as camera pan.</summary>
-        private bool IsTypingInTextField()
-        {
-            Control focus = GetViewport()?.GuiGetFocusOwner();
-            return focus is LineEdit || focus is TextEdit;
-        }
+        private bool IsTypingInTextField() => TextFocusGuard.IsTyping(this);
 
         private void UpdateCameraTransform()
         {

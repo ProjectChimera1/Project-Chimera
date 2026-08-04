@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -132,6 +132,10 @@ namespace ProjectChimera.CreationSuite
         {
             if (_panel is null || !_panel.Visible) return;
             if (@event is not InputEventKey key || !key.Pressed || key.Echo) return;
+
+            // Ctrl+Z/Y here are _Input bindings that SetInputAsHandled, so while a field has focus they
+            // would steal the keystroke and undo the CARD instead of the text the user is editing.
+            if (ProjectChimera.UI.TextFocusGuard.IsTyping(this)) return;
 
             if (key.CtrlPressed && key.Keycode == Key.Z) { _history.Undo(); GetViewport().SetInputAsHandled(); return; }
             if (key.CtrlPressed && key.Keycode == Key.Y) { _history.Redo(); GetViewport().SetInputAsHandled(); return; }
