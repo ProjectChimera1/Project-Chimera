@@ -234,6 +234,11 @@ namespace ProjectChimera.Multiplayer
         // Story 7.9 — how many of _pendingOrders this tick are DslEvent raises, so EnqueueDslEvent can enforce the
         // per-player MaxDslEventsPerTick cap (drop-newest). Reset alongside _pendingCount when the batch is sent.
         private int                  _pendingDslEventCount;
+        // DW-464 — sticky guaranteed-delivery buffer for an online Concede: EnqueueConcede queues it, the Flush send
+        // branch claims a batch slot for it (retrying next send on a full batch), and EnqueueOrder/EnqueueDslEvent
+        // reserve the last slot while one is queued so a spam-click flood can never starve the surrender out of the
+        // command stream. Godot-free (Tier-1 tested by ConcedeBufferTests).
+        private readonly ConcedeBuffer _concedeBuffer = new ConcedeBuffer();
 
         // ── Send-tracking + merged-arrival ring (Story 9.3 / DW-390) ──────────
         // The client still SENDS its own single-faction commands for issueTick; the ring's send guard enforces one
@@ -296,6 +301,7 @@ namespace ProjectChimera.Multiplayer
             IsStalling    = false;
             _pendingCount = 0;
             _pendingDslEventCount = 0;
+            _concedeBuffer.Reset(); // DW-464 — a new match never inherits a stale queued surrender
             ResetAdaptiveState();
             SeedInitialTicks();
 
@@ -317,6 +323,7 @@ namespace ProjectChimera.Multiplayer
             IsSpectator  = false;
             IsStalling   = false;
             LocalFaction = LocalFactionPolicy.OfflineLocalFaction; // DW-407: one clamped source of truth offline
+            _concedeBuffer.Reset(); // DW-464 — never leak a queued online surrender into a later session
         }
 
         /// <summary>Spectator mode: both P1+P2 command streams arrive from the network.</summary>
@@ -328,6 +335,7 @@ namespace ProjectChimera.Multiplayer
             IsStalling    = false;
             _pendingCount = 0;
             _pendingDslEventCount = 0;
+            _concedeBuffer.Reset(); // DW-464 — mirrors GoOnline (a spectator never sends, but keep the state clean)
             ResetAdaptiveState();
 
             // Story 9.3: a spectator consumes the SAME server-built merged stream as the players — one merged
@@ -348,7 +356,9 @@ namespace ProjectChimera.Multiplayer
             if (!IsOnline)   return true;
             if (IsSpectator) return false;
 
-            if (_pendingCount < TickCommandPacket.MAX_ORDERS)
+            // DW-464: while a Concede is queued the last batch slot is RESERVED for it (budget MAX_ORDERS-1), so a
+            // spam-click flood can never starve the surrender out of the stream. Full budget otherwise (unchanged).
+            if (_pendingCount < _concedeBuffer.OrderBudget(TickCommandPacket.MAX_ORDERS))
                 _pendingOrders[_pendingCount++] = new UnitOrder(unitId, command, targetX, targetZ);
 
             return false;
@@ -382,8 +392,9 @@ namespace ProjectChimera.Multiplayer
             if (IsSpectator) return false;
 
             // Online: buffer for the exec-tick, honouring BOTH the per-tick DslEvent cap and the shared packet budget
-            // (drop-newest — mirrors the _pendingCount < MAX_ORDERS idiom; never throws).
-            if (DslEventRateLimit.CanAccept(_pendingDslEventCount, _pendingCount, TickCommandPacket.MAX_ORDERS))
+            // (drop-newest — mirrors the _pendingCount < MAX_ORDERS idiom; never throws). DW-464: the budget shrinks
+            // by one while a Concede is queued (its slot is reserved — see EnqueueOrder).
+            if (DslEventRateLimit.CanAccept(_pendingDslEventCount, _pendingCount, _concedeBuffer.OrderBudget(TickCommandPacket.MAX_ORDERS)))
             {
                 _pendingOrders[_pendingCount++] = new UnitOrder(eventIndex, UnitCommand.DslEvent,
                     Fixed.FromRaw(arg0), Fixed.FromRaw(arg1));
@@ -400,7 +411,9 @@ namespace ProjectChimera.Multiplayer
         /// <see cref="UnitCommand.Concede"/> order for the exec-tick (applied identically on every peer, recorded to
         /// replay) — the server re-stamps the sub-bundle's faction from the transport-authoritative slot (the anti-cheat
         /// truth), so the buffered order carries no faction (like every other order). A spectator (Neutral) cannot concede
-        /// (it owns no faction). Returns true when applied now (offline), false when buffered/dropped.
+        /// (it owns no faction). Returns true when applied now (offline), false when deferred (online — GUARANTEED
+        /// delivery via the sticky <see cref="ConcedeBuffer"/>, never dropped on a busy tick; DW-464) or ignored
+        /// (spectator).
         /// </summary>
         public bool EnqueueConcede(Faction faction)
         {
@@ -414,8 +427,11 @@ namespace ProjectChimera.Multiplayer
             }
             if (IsSpectator) return false;
 
-            if (_pendingCount < TickCommandPacket.MAX_ORDERS)
-                _pendingOrders[_pendingCount++] = new UnitOrder(0, UnitCommand.Concede, Fixed.Zero, Fixed.Zero);
+            // DW-464: NEVER silently drop a concede on a busy tick (the old path pushed into _pendingOrders directly
+            // and lost the order when the batch was full). Latch it on the sticky buffer instead; the Flush send
+            // branch claims a batch slot for it — this send if one is free, else retried next send (the batch drains
+            // every tick, and the buffer reserves the last slot so normal orders cannot starve it). Idempotent.
+            _concedeBuffer.Queue();
             return false;
         }
 
@@ -479,6 +495,12 @@ namespace ProjectChimera.Multiplayer
             // packet. It is NOT self-applied here — the merged echo is the sole command source (Story 9.3).
             if (!_ring.HasSent(issueTick))
             {
+                // DW-464: a queued Concede claims a batch slot ahead of the snapshot below — on a full batch the
+                // sticky flag survives and retries on the NEXT send (the batch drains to zero right below, and the
+                // enqueue budget reserves the last slot while one is queued, so the surrender is never lost).
+                if (_concedeBuffer.TryClaimSlot(_pendingCount, TickCommandPacket.MAX_ORDERS))
+                    _pendingOrders[_pendingCount++] = new UnitOrder(0, UnitCommand.Concede, Fixed.Zero, Fixed.Zero);
+
                 int n = _pendingCount;
                 _pendingCount = 0;
                 _pendingDslEventCount = 0; // Story 7.9 — the DslEvent-per-tick budget resets with the batch

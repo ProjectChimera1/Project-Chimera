@@ -850,7 +850,14 @@ namespace ProjectChimera.Core
         {
             if (_ctx.Lockstep == null) return; // defensive: no lockstep manager ⇒ nothing to concede through
             Faction local = _ctx.Lockstep.EffectiveLocalFaction;
-            _ctx.Lockstep.EnqueueConcede(local);
+            bool appliedNow = _ctx.Lockstep.EnqueueConcede(local);
+            // DW-464: ONLINE the concede is only BUFFERED here (guaranteed delivery via the lockstep ConcedeBuffer)
+            // and the LOST verdict latches a tick-round-trip later — flag the menu's pending-surrender feedback
+            // ("Surrendering…", menu stays open) until ShowGameOver / OnLocalPlayerEliminated observes the latch.
+            // A spectator's press is a lockstep no-op (it owns no faction) — never promise a surrender that cannot
+            // come true. Offline applies instantly (appliedNow == true), so no pending state is ever shown.
+            if (!appliedNow && _ctx.Lockstep.IsOnline && !_ctx.Lockstep.IsSpectator)
+                _ctx.InMatchMenu?.SetSurrenderPending(true);
         }
 
         // ── Story 11.3 (FR-67): SP save / load ─────────────────────────────────────────────────────────────────────
@@ -2151,6 +2158,7 @@ namespace ProjectChimera.Core
             // Story 11.2 — close the in-match menu if it was open when the match resolved (so the terminal score
             // screen is not stacked under a live menu) and restore the default offline cadence.
             _ctx.InMatchMenu?.Close();
+            _ctx.InMatchMenu?.SetSurrenderPending(false); // DW-464 — verdict latched: end any "Surrendering…" feedback
             _paused = false; _gameSpeed = 1f;
 
             // Story 9.15 — render EVERY active slot (up to 8), not just P1/P2. The Godot-free GameOverSummary builder
@@ -2761,6 +2769,7 @@ namespace ProjectChimera.Core
             if (_ctx.GameOverOverlay != null) _ctx.GameOverOverlay.Visible = false;
             // Story 11.2 — dismiss the session-shell overlays and restore the default offline cadence on the return to Edit.
             _ctx.InMatchMenu?.Close();
+            _ctx.InMatchMenu?.SetSurrenderPending(false); // DW-464 — a new match must never inherit a stale "Surrendering…"
             _ctx.ScoreScreen?.Hide();
             _gameSpeed = 1f;
             _paused    = false;
@@ -2825,6 +2834,16 @@ namespace ProjectChimera.Core
         private void OnLocalPlayerEliminated()
         {
             _localEliminated = true;
+
+            // DW-464: if this elimination is the local player's own pending ONLINE surrender latching (a >2-player
+            // match — the match continues, so ShowGameOver has not fired), the "Surrendering…" promise is now kept:
+            // close the menu (left open for the feedback) so the spectate reveal + banner show, and re-arm the
+            // Concede action for future matches. A non-concede elimination leaves the menu exactly as before.
+            if (_ctx.InMatchMenu != null && _ctx.InMatchMenu.SurrenderPending)
+            {
+                _ctx.InMatchMenu.Close();
+                _ctx.InMatchMenu.SetSurrenderPending(false);
+            }
 
             // Reveal the whole map so the eliminated player keeps watching (the existing spectator reveal toggle).
             if (_ctx.FogBridge != null) _ctx.FogBridge.RevealAll = true;

@@ -94,6 +94,10 @@
          discriminator is Tier-1 unit-testable (LobbyHelloPolicyTests). Single-file include — the HandshakeGate
          precedent; the rest of src/Multiplayer stays Godot/ENet-coupled and un-globbed. -->
     <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\LobbyHelloPolicy.cs" LinkBase="Sim\Multiplayer" />
+    <!-- DW-464: the Godot-free guaranteed-delivery Concede buffer (sticky queue + last-slot reservation + per-send
+         claim) extracted from LockstepManager's enqueue/send path so the never-drop-a-concede policy is Tier-1
+         unit-testable (ConcedeBufferTests). Single-file include — the DelayMath/HandshakeGate precedent. -->
+    <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\ConcedeBuffer.cs"   LinkBase="Sim\Multiplayer" />
     <!-- Story 9.7: new Godot-free decision cores — the N-player matchmaker parameterization, the N-slot lobby
          readiness model, the pure party model, and the Godot-free faction/team palette table. Single-file/folder
          includes (the DelayMath/HandshakeGate precedent) so each is Tier-1 unit-testable while the rest of
