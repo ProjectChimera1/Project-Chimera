@@ -81,7 +81,7 @@ namespace ProjectChimera.CreationSuite
         public override void _UnhandledInput(InputEvent @event)
         {
             if (_gameState == null || _gameState.Mode != GameMode.Edit) return;
-            if (@event is InputEventKey key && key.Pressed && !key.Echo && key.Keycode == Key.N)
+            if (@event is InputEventKey key && key.Pressed && !key.Echo && key.Keycode == Key.N && !key.CtrlPressed) // Ctrl+N belongs to the Replay Browser
             {
                 _toolActive = !_dragging && !_toolActive;
                 if (!_toolActive) CancelDrag();

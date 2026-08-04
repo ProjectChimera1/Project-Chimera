@@ -126,7 +126,7 @@ namespace ProjectChimera.CreationSuite
             if (_gameState == null || _gameState.Mode != GameMode.Edit) return;
             if (@event is not InputEventKey key || !key.Pressed || key.Echo) return;
 
-            if (key.Keycode == Key.K)
+            if (key.Keycode == Key.K && !key.CtrlPressed) // Ctrl+K belongs to the Ability Editor
             {
                 _toolActive = !_painting && !_toolActive; // never toggle mid-stroke
                 if (!_toolActive) CancelStroke();

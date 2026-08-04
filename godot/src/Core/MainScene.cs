@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using Godot;
 using ProjectChimera.AI;
 using ProjectChimera.Combat;
@@ -1213,9 +1213,11 @@ namespace ProjectChimera.Core
                 _ctx.ContentBrowser.ToggleVisible();
                 GetViewport().SetInputAsHandled();
             }
-            else if (key.Keycode == Key.N)
+            else if (key.Keycode == Key.N && key.CtrlPressed)
             {
-                // Story 9.11: N opens the replay browser (freed in Story 9.7 when the dev lobby keybind was removed).
+                // Ctrl+N, not N: plain N is WaterTool's tool toggle, which consumes it first — this shortcut was
+                // dead (the browser stayed reachable only via the main menu's Replays button). WaterTool now
+                // ignores Ctrl+N to match.
                 _ctx.ReplayBrowser.ToggleVisible();
                 GetViewport().SetInputAsHandled();
             }
@@ -1229,8 +1231,13 @@ namespace ProjectChimera.Core
                 _ctx.MapGenPanel.Toggle();
                 GetViewport().SetInputAsHandled();
             }
-            else if (key.Keycode == Key.K)
+            else if (key.Keycode == Key.K && key.CtrlPressed)
             {
+                // Ctrl+K, not K: plain K is PathabilityTool's paint-tool toggle, which runs earlier and consumes
+                // the event, so this branch NEVER fired and the Ability Editor — whose only entry point is right
+                // here — was 100% unreachable (confirmed in-engine 2026-08-04: K opened nothing, while calling
+                // Toggle() directly rendered 89 controls). Every letter A-Z is already bound somewhere in Edit
+                // mode, so a modifier is the only free space left; PathabilityTool now ignores Ctrl+K to match.
                 _ctx.AbilityEditorPanel.Toggle();
                 GetViewport().SetInputAsHandled();
             }
@@ -2024,7 +2031,11 @@ namespace ProjectChimera.Core
                 _ctx.ControlsLabel.Text =
                     $"F5=Play   N=Lobby   O=Maps   Esc=Settings   T=Terrain   G=Snap({snap})   E=Edge({edge})" +
                     $"   K=PaintPaths   P=Paths({paths})" +
-                    $"   Tab=Mode   U=Unit   B=Building   Del=Delete   Ctrl+Z=Undo";
+                    $"   Tab=Mode   U=Unit   B=Building   Del=Delete   Ctrl+Z=Undo\n" +
+                    // Editors, none of which were advertised anywhere. Ctrl+K/Ctrl+N are the rebinds forced by a
+                    // saturated keymap (every letter A-Z is bound): plain K/N belong to the paint and water tools.
+                    $"Editors:   C=Building   J=Unit   G=Item   R=TechTree   X=Faction   Y=DslGraph   L=Trigger" +
+                    $"   M=MapGen   Ctrl+K=Ability   O=Maps   Ctrl+N=Replays";
             }
             else
             {
