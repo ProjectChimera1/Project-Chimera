@@ -226,11 +226,17 @@ namespace ProjectChimera.Sim.Tests.Sim
 
             return new StoreResetFixture("Modifiers.Clear()", fresh, dirty, dirty.Clear)
             {
+                // DW-83: `_refusedInstalls` (the ring-full refusal tally) is non-array per-match diagnostic state
+                // with no public write path, so the synthetic array fill cannot reach it — poke it, per the sweep's
+                // own instruction. Clear() must zero it: a re-Play that inherits the prior match's refusal count
+                // would mis-throttle (and mis-report) the next match's diagnostics.
+                DirtyNonArrayState = () => ClearCompletenessSweep.Poke(dirty, "_refusedInstalls", 3),
                 Allowlist = new[]
                 {
                     // Host-lifetime wiring (readonly ctor deps, shared between fresh and dirty; Clear() preserves
                     // them by omission — clearing them would orphan the system↔store cycle the host wired once).
-                    "_world", "_system", "_damageTable", "_events", "_stats",
+                    // `_log` (DW-83) is the same shape: an injected AR-4 diagnostic sink, construction-lifetime.
+                    "_world", "_system", "_damageTable", "_events", "_stats", "_log",
                     // The store's OWN dedicated EffectExecutor: a construction-owned helper whose only mutable
                     // state (pre-allocated work stack + LastPeakStackDepth diagnostic) self-refreshes per Run and
                     // is unfolded — per-instance identity, preserved across reset by design (DW-20 investigation).

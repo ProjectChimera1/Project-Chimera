@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using ProjectChimera.Combat;
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
+using ProjectChimera.Core.Sim;   // ILogSink — the AR-4 injected diagnostic seam (DW-83)
 using ProjectChimera.Effects;
 
 namespace ProjectChimera.Economy
@@ -46,18 +47,23 @@ namespace ProjectChimera.Economy
         private readonly ResearchStore  _research;
         private readonly ModifierStore  _modifiers;
         private readonly CombatEventQueue? _events;
+        // DW-83: the injected AR-4 diagnostic seam (never a static ambient sink). Null (goldens/tests/headless) ⇒
+        // exactly the pre-DW-83 behavior. Diagnostics only — never read by a sim branch, never folded.
+        private readonly ILogSink? _log;
         // Per-faction definitions indexed by (int)Faction. Slot 0 = Neutral (unused) — mirrors BuildingSystem._factions.
         private readonly FactionDefinition?[] _factions;
 
         public ResearchSystem(BuildingStore buildings, ResourceStore resources, ResearchStore research,
                               ModifierStore modifiers, CombatEventQueue? events = null,
-                              FactionDefinition? p1Faction = null, FactionDefinition? p2Faction = null)
+                              FactionDefinition? p1Faction = null, FactionDefinition? p2Faction = null,
+                              ILogSink? log = null)
         {
             _buildings = buildings;
             _resources = resources;
             _research  = research;
             _modifiers = modifiers;
             _events    = events;
+            _log       = log;
             _factions  = new FactionDefinition?[FactionRegistry.FACTION_ARRAY_SIZE]; // 9: Neutral + Player1..Player8
             _factions[(int)Faction.Player1] = p1Faction;
             _factions[(int)Faction.Player2] = p2Faction;
@@ -308,14 +314,29 @@ namespace ProjectChimera.Economy
 
             // Apply to every currently alive unit of this faction — mirrors SupplySystem.Tick's ascending-id loop.
             int hwm = world.HighWaterMark;
+            int refusedUnits = 0; // DW-83: units whose full modifier ring dropped this completion's permanent buff
             for (int id = 0; id < hwm; id++)
             {
                 if ((world.Flags[id] & EntityFlags.Alive) == 0) continue;
                 if (world.FactionOf[id] != faction) continue;
                 // DW-85: living-army completion must NOT burst-heal — preserve current Health across the
                 // remove-then-reapply while the MaxHealth ceiling grows.
-                ApplyCumulativeModifier(world, id, faction, f, researchIndex, preserveCurrentHealth: true);
+                if (!ApplyCumulativeModifier(world, id, faction, f, researchIndex, preserveCurrentHealth: true))
+                    refusedUnits++;
             }
+
+            // DW-83: ONE aggregated line per completion (never one per unit — a completion can sweep a 200-unit
+            // army). Research is the producer the ledger flagged: each completed research owns its OWN permanent
+            // modifier id, so a unit already carrying items + a self-passive + earlier researches can silently lose
+            // an EARNED, PAID-FOR upgrade. Named by research id + level so a designer can act on it. The per-unit
+            // spawn-catch-up path (ApplyCompletedResearch) deliberately stays on ModifierStore's own THROTTLED warn
+            // — it fires per spawn, so an aggregate there would be per-spawn spam.
+            if (refusedUnits > 0)
+                _log?.Warn($"[ResearchSystem] '{rdef.Id}' level {levelIdx + 1} ({faction}) completed, but its permanent " +
+                           $"bonus was DROPPED on {refusedUnits} living unit(s): their {EffectCaps.MaxModifiersPerEntity}-slot " +
+                           "modifier ring was already full (items + hero growth + self-passives + earlier researches). " +
+                           "Those units keep the research's cost but not its effect — raise the cap or reduce the " +
+                           "per-unit modifier load (DW-83).");
 
             _events?.Push(CombatEventType.ResearchComplete, _research.StartedAtPosition[f], faction); // Story 11.4: stamp the actor faction for the local-only completion cue
 
@@ -344,11 +365,19 @@ namespace ProjectChimera.Economy
         /// raised <see cref="EntityWorld.EffectiveMaxHealth"/> — so the ceiling grows but current Health stays invariant.
         /// The future-spawn catch-up path (<see cref="ApplyCompletedResearch"/>) passes false so a newly trained unit
         /// still spawns at full upgraded HP. <see cref="ModifierStore"/>'s shared heal-on-apply semantics are untouched.</para>
+        ///
+        /// <para><b>DW-83 refusal reporting.</b> Returns <c>false</c> iff the re-apply was REFUSED because the unit's
+        /// per-entity modifier ring was already full — i.e. this research's earned permanent bonus was silently
+        /// dropped for that unit. Detected by the delta in <see cref="ModifierStore.RefusedInstallCount"/> across the
+        /// call rather than by <c>Apply</c>'s bare bool, which is ALSO false for a dead/stale target (a normal race,
+        /// and reachable here: the remove step can collapse a MaxHealth ceiling and kill the host). Diagnostics only —
+        /// no caller branches sim state on it.</para>
         /// </summary>
-        private void ApplyCumulativeModifier(EntityWorld world, int id, Faction faction, int f, int researchIndex, bool preserveCurrentHealth)
+        private bool ApplyCumulativeModifier(EntityWorld world, int id, Faction faction, int f, int researchIndex, bool preserveCurrentHealth)
         {
             int modId = ResearchModifierId(researchIndex);
             Fixed healthBefore = world.Health[id];    // DW-85: snapshot to suppress the remove-then-reapply burst-heal
+            int refusedBefore = _modifiers.RefusedInstallCount; // DW-83: exact ring-full attribution (see the doc above)
             _modifiers.RemoveByModifierId(id, modId); // revert the stale (smaller) delta, if any
             _modifiers.Apply(id, BuildCumulativeModifier(f, researchIndex), casterId: id, casterFaction: faction);
             // living-army completion only; future-spawn catch-up keeps its heal. IsAlive re-checked because this
@@ -356,6 +385,7 @@ namespace ProjectChimera.Economy
             // (defensive against a future lethal research period/expire effect that could recycle the host mid-apply).
             if (preserveCurrentHealth && world.IsAlive(id))
                 world.Health[id] = Fixed.Clamp(healthBefore, Fixed.Zero, world.EffectiveMaxHealth[id]);
+            return _modifiers.RefusedInstallCount == refusedBefore;
         }
 
         /// <summary>

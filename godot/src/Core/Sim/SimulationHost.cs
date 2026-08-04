@@ -229,7 +229,9 @@ namespace ProjectChimera.Core.Sim
             // stats sinks combat uses (null → DamageTable.Default); it subscribes World.OnDestroy += ClearEntity in its
             // ctor (recycle safety). A null registry → the Empty registry, so existing callers stay scenario-identical.
             var modSys = new ModifierSystem();
-            Modifiers = new ModifierStore(World, modSys, damageTable, CombatEvents, MatchStats);
+            // DW-83: the live host wires its ILogSink into the store so a REFUSED (8-slot ring full) install — an
+            // earned item / hero-growth / self-passive / research buff silently dropped — warns instead of vanishing.
+            Modifiers = new ModifierStore(World, modSys, damageTable, CombatEvents, MatchStats, log);
             var abilitySys = new AbilityCastSystem(registry ?? AbilityRegistry.Empty, Resources, Modifiers,
                                                    damageTable, CombatEvents, MatchStats, _deathFeed, Alliances); // Story 9.14: team-aware ability targeting
             modSys.AttachStore(Modifiers);
@@ -246,7 +248,9 @@ namespace ProjectChimera.Core.Sim
 
             // Story 4.9 — the research order path. Constructed AFTER Modifiers (completion applies a permanent
             // cumulative Modifier through the same store). Registered into _systems immediately after BuildSys below.
-            ResearchSys = new ResearchSystem(Buildings, Resources, Research, Modifiers, CombatEvents, factionDef1, factionDef2);
+            // DW-83: the sink also reaches ResearchSystem, which reports the AGGREGATE (per-completion) count of
+            // living units whose full ring dropped an earned, paid-for permanent research bonus.
+            ResearchSys = new ResearchSystem(Buildings, Resources, Research, Modifiers, CombatEvents, factionDef1, factionDef2, log);
 
             // Story 2.6 — wire the WHILE-ALIVE self-passive installer to the spawn seam. EntityWorld fires
             // OnUnitDefinitionApplied once per def-based spawn (after the SoA is written); the cast system installs the
