@@ -159,7 +159,23 @@ namespace ProjectChimera.Navigation
             // The START cell is never tested: a unit is already standing there (the DW-148 confinement contract).
             while (col != colEnd || row != rowEnd)
             {
-                bool advanceX = stepR == 0 || (stepC != 0 && ax * adz <= az * adx);
+                // Advance whichever axis reaches its next boundary first — but NEVER an axis that has already
+                // ARRIVED at its destination index. That axis's next boundary lies at or beyond the segment end, so
+                // taking it steps PAST colEnd/rowEnd, and because an index only ever moves in its own step direction
+                // it can never come back: the loop would spin forever (MAX_SWEPT_CELLS bounds only the initial span,
+                // not the walk). Only X could overshoot, because the tie at `<=` resolves in its favour: a −X/+Z
+                // segment whose BOTH endpoint coordinates land exactly on a cell boundary (an even world integer)
+                // produces a spurious X crossing at t == 1 — floor() puts an on-boundary endpoint in the UPPER cell,
+                // so travelling −X leaves one unused crossing behind — which ties with Z's genuine final crossing at
+                // t == 1. Pure Fixed/integer state, so every lockstep peer and every same-seed replay froze on the
+                // same tick. `col != colEnd` also subsumes the old `stepC != 0` guard (dx == 0 ⇒ colEnd == col) and
+                // `row == rowEnd` subsumes `stepR == 0`.
+                //
+                // Every segment that TERMINATED before picks the same axis it picked before, so no behaviour (and no
+                // checksum/golden) moves: with X arrived the Z boundary was already strictly nearer in every
+                // non-hanging case, and with Z arrived the remaining X boundary is at t ≤ 1 ≤ t_z, so X already won
+                // the comparison. The walk now provably ends after exactly spanC + spanR steps.
+                bool advanceX = col != colEnd && (row == rowEnd || ax * adz <= az * adx);
                 if (advanceX) { col += stepC; ax += CELL_RAW; }
                 else          { row += stepR; az += CELL_RAW; }
 
