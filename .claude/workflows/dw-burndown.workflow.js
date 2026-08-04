@@ -247,10 +247,7 @@ for (let i = 0; i < NAMES.length; i += CHUNK) {
   // Per-chunk so a crash loses at most one chunk of bookkeeping, never the whole run.
   if (merged.length) {
     phase('Ledger')
-    // model stays 'opus' until run wf_bbdf1721-ebb is fully done: changing opts here would
-    // invalidate ledger:chunk-1..3's resume cache and re-file their findings as duplicates.
-    // TODO after that run: switch to MODEL.
-    await safeAgent(ledgerPrompt(merged), { label: `ledger:chunk-${n}`, phase: 'Ledger', model: 'opus', effort: 'high' })
+    await safeAgent(ledgerPrompt(merged), { label: `ledger:chunk-${n}`, phase: 'Ledger', model: MODEL, effort: 'high' })
   }
 
   log(`chunk ${n}/${total} done — merged ${merged.length}/${chunk.length}; running total ${allMerged.length}`)
