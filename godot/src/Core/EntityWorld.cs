@@ -255,8 +255,12 @@ namespace ProjectChimera.Core
         /// Per-entity boolean status the active <see cref="ProjectChimera.Effects.Modifier"/> instances impose
         /// (the OR-union over a unit's modifiers — Stunned/Rooted/Silenced/Disarmed/Invulnerable). Written by the
         /// Story 2.2b <c>ModifierStore</c> on apply/remove; <c>Create</c>-defaulted to <see cref="StatusFlags.None"/>
-        /// (so a recycled slot never inherits the prior occupant's status). The combat/movement systems that HONOUR
-        /// each flag land in a later story (2.4+/2.9a); 2.2b only sets/clears them correctly. It is mutable sim truth
+        /// (so a recycled slot never inherits the prior occupant's status). DW-266 wired every flag to a real
+        /// runtime consumer: <c>Stunned</c> → the whole-unit gate in <c>CombatSystem.Tick</c> + the
+        /// <c>MovementSystem</c> anchor + the <c>AbilityCastSystem</c> refusal; <c>Rooted</c> → the
+        /// <c>MovementSystem</c> anchor; <c>Disarmed</c> → <c>CombatSystem</c>'s two damage choke points;
+        /// <c>Silenced</c> → the <c>AbilityCastSystem</c> refusal; <c>Invulnerable</c> → <c>DamageResolver.Apply</c>.
+        /// It is mutable sim truth
         /// the moment a status modifier exists → FOLDED into <see cref="SimChecksum"/> (v6). Lives here (not in the
         /// store) so future systems read it for free via <c>world</c>, exactly like <see cref="EffectiveAttackDamage"/>.
         /// </summary>

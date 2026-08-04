@@ -21,8 +21,8 @@ namespace ProjectChimera.Effects
     /// <para><b>Story 2.2b — Zero-floor.</b> The recompute now floors each <c>Effective*</c> at <see cref="Fixed.Zero"/>:
     /// a debuff can never drive damage/maxhealth/speed negative (a negative effective damage would HEAL through
     /// <c>DamageResolver</c>'s matrix; a negative speed would reverse movement; a negative maxhealth would invert the
-    /// Health clamp). "Cannot attack" is modeled by <see cref="StatusFlags.Disarmed"/> (read by a later story), never
-    /// by a sub-zero stat.</para>
+    /// Health clamp). "Cannot attack" is modeled by <see cref="StatusFlags.Disarmed"/> — read by <c>CombatSystem</c>'s
+    /// damage choke points since DW-266 — never by a sub-zero stat.</para>
     ///
     /// <para><b>Determinism (why the dirty flag + bonuses are private and UNHASHED).</b> They are a transient
     /// recompute optimisation, not sim truth: the recompute is idempotent (<c>Effective = Base + bonus</c> regardless

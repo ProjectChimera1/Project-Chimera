@@ -29,6 +29,8 @@ namespace ProjectChimera.UI
             DenialReason.InventoryFull   => "Inventory full",
             DenialReason.QueueFull       => "Can't queue that right now",
             DenialReason.InsufficientResources => "Not enough resources",
+            DenialReason.Silenced        => "Silenced",
+            DenialReason.Stunned         => "Stunned",
             _                            => string.Empty, // an unmapped reason is a located test failure, not a silent fallback
         };
     }
