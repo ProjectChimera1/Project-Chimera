@@ -166,8 +166,8 @@ namespace ProjectChimera.Navigation
                 world.Position[i] = pos + velocity * dt;
 
                 // Story 6.5 — deterministic blocked-cell rejection (the sim TEETH; the flow-field OR-in is only the
-                // live-game "route around" nicety). A live unit may not INTEGRATE its position INTO a blocked cell it
-                // was not already in. Null / all-clear grid ⇒ an exact no-op (Position untouched ⇒ byte-identical to
+                // live-game "route around" nicety). A live unit may not INTEGRATE its position INTO — or THROUGH
+                // (DW-147) — a blocked cell it was not already in. Null / all-clear grid ⇒ an exact no-op (Position untouched ⇒ byte-identical to
                 // pre-feature, so flat maps never move a per-tick checksum). Pure Fixed, integer cell lookup, so it is
                 // byte-identical across same-seed replays and both lockstep peers.
                 var pathability = world.Pathability;
@@ -183,14 +183,24 @@ namespace ProjectChimera.Navigation
                     //     its own cell and walk out into a CLEAR neighbour, but it can no longer traverse ONWARD
                     //     through the blocked region. Pre-fix such a unit was exempt from blocking entirely and walked
                     //     through walls freely.
+                    // DW-147: the test is SWEPT, not endpoint-only. The whole segment pos→np is walked cell by cell
+                    // (PathabilityGrid.IsBlockedOnSegmentOutside) and rejected on the FIRST foreign blocked cell it
+                    // enters. Endpoint-only sampling let a unit whose per-tick displacement reached the 2-unit cell
+                    // size (move speed ≳ 60 u/s) TUNNEL a one-cell-thick wall — both endpoints clear, the wall never
+                    // sampled — and let a diagonal step clip a blocked cell's corner. For an AXIS-ALIGNED sub-cell step
+                    // the swept walk visits exactly the two endpoint cells, so it is byte-identical to the pre-fix
+                    // check; a DIAGONAL sub-cell step additionally visits the one shared-edge cell it really passes
+                    // through, which is the deliberate tightening (no corner-cutting through an obstacle).
                     int fromCell = PathabilityGrid.CellOf(pos.X, pos.Z);
-                    if (pathability.IsBlockedOutside(fromCell, np.X, np.Z))
+                    if (pathability.IsBlockedOnSegmentOutside(fromCell, pos.X, pos.Z, np.X, np.Z))
                     {
                         // Wall-slide: keep whichever single-axis move stays out of a foreign blocked cell; otherwise
-                        // fully retain the pre-step position. Ascending id + Fixed-only ⇒ deterministic.
-                        if (!pathability.IsBlockedOutside(fromCell, np.X, pos.Z))
+                        // fully retain the pre-step position. Each candidate slide is itself SWEPT from the pre-step
+                        // position, so a fast axis-aligned slide cannot tunnel the wall the full step was rejected for.
+                        // Ascending id + Fixed-only ⇒ deterministic.
+                        if (!pathability.IsBlockedOnSegmentOutside(fromCell, pos.X, pos.Z, np.X, pos.Z))
                             world.Position[i] = new FixedVec3(np.X, np.Y, pos.Z); // slide along X
-                        else if (!pathability.IsBlockedOutside(fromCell, pos.X, np.Z))
+                        else if (!pathability.IsBlockedOnSegmentOutside(fromCell, pos.X, pos.Z, pos.X, np.Z))
                             world.Position[i] = new FixedVec3(pos.X, np.Y, np.Z); // slide along Z
                         else
                             world.Position[i] = pos;                              // hard stop at the boundary
