@@ -2,6 +2,7 @@
 using ProjectChimera.Combat;            // DamageTable / CombatEventQueue / MatchStats (effect-resolution sinks)
 using ProjectChimera.Core;              // EntityWorld, Fixed, Faction, ISimSystem, ResourceStore, SimulationLoop
 using ProjectChimera.Core.Definitions;  // AbilityRegistry, AbilityDefinition, AbilityTargeting
+using ProjectChimera.Core.Sim;          // ILogSink (DW-285: unresolvable-ability drops warn instead of vanishing)
 using ProjectChimera.Navigation;        // SpatialHash (SearchArea fan-out)
 
 namespace ProjectChimera.Effects
@@ -17,7 +18,10 @@ namespace ProjectChimera.Effects
     ///
     /// <para><b>Atomic cast (AC6).</b> Cooldown + affordability are CHECKED before anything mutates; only when ALL
     /// pass are energy/ore/crystal debited, the graph run, and the cooldown started. An insufficient or on-cooldown
-    /// cast is refused with ZERO side effects (no partial spend, no cooldown started, no effect run).</para>
+    /// cast is refused with ZERO side effects (no partial spend, no cooldown started, no effect run). <b>DW-283</b>
+    /// closes the one hole in that argument: the pre-checks are all <c>have &gt;= cost</c> comparisons, which a
+    /// NEGATIVE authored cost passes while the debits disagree about it (energy refuses, ore/crystal grant) — so a
+    /// negative cost is now refused up front, and the debit RETURNS are checked and rolled back rather than discarded.</para>
     ///
     /// <para><b>Determinism.</b> Pure C# (no <c>using Godot;</c>, no <c>float</c>/<c>double</c>, no
     /// <c>Fixed.FromFloat</c>/<c>ToFloat</c> — cooldown seconds→ticks is integer truncation). Ascending-id,
@@ -38,6 +42,18 @@ namespace ProjectChimera.Effects
         // Story 9.14 — the sim-owned alliance mask, threaded onto every cast EffectContext so an ability's Ally/Enemy
         // SearchArea filter is TEAM-aware. Optional: null ⇒ strict faction equality (byte-identical to pre-9.14 / FFA).
         private readonly AllianceStore? _alliances;
+        // DW-285 — the injected diagnostic seam (AR-4 ILogSink, NEVER a static ambient sink / Console / GD.Print).
+        // Every "this cast/passive cannot resolve" branch below used to be a BARE return: the intent vanished with no
+        // trace, so an unwired registry / a stale AbilityIndices back-fill was indistinguishable from a player simply
+        // not casting. The branches stay the SAME deterministic no-ops; they now WARN through this sink. Null (goldens,
+        // bare tests, the host before wiring) ⇒ exactly the pre-DW-285 behavior. Diagnostics only: the sink must never
+        // mutate sim state, so a peer with a sink and a peer without stay byte-identical in lockstep.
+        private readonly ILogSink? _log;
+        // DW-285 — per-owner de-duplication for the ONE per-tick diagnostic site (TickAuras). A broken aura index is a
+        // wiring bug that would otherwise re-warn 30x/second for the unit's whole life; the cast + self-passive sites
+        // are inherently one-shot and need no de-dupe. Allocated lazily and ONLY when a sink is attached, so a
+        // sink-less (golden/headless) run allocates nothing. Never read by the sim — not folded, not a tick input.
+        private System.Collections.Generic.HashSet<int>? _warnedAuraOwners;
 
         // Graph-running executor — NOT the ModifierStore's dedicated period executor (re-entrancy safety). Its own
         // pre-allocated work-stack; an ApplyModifier/Persistent leaf in a cast graph re-enters the STORE's executor.
@@ -59,7 +75,7 @@ namespace ProjectChimera.Effects
         /// </summary>
         public AbilityCastSystem(AbilityRegistry registry, ResourceStore resources, ModifierStore modifiers,
                                  DamageTable? damageTable = null, CombatEventQueue? events = null, MatchStats? stats = null,
-                                 DeathFeed? deaths = null, AllianceStore? alliances = null)
+                                 DeathFeed? deaths = null, AllianceStore? alliances = null, ILogSink? log = null)
         {
             _registry    = registry;
             _resources   = resources;
@@ -69,6 +85,7 @@ namespace ProjectChimera.Effects
             _stats       = stats;
             _deaths      = deaths;
             _alliances   = alliances; // Story 9.14 (optional — FFA/null → strict faction equality, byte-identical)
+            _log         = log;       // DW-285 (optional — null → the pre-DW-285 silent no-op branches)
         }
 
         /// <summary>Ticks per second for the seconds→ticks cooldown conversion (the named sim rate, CHM0004-clean).</summary>
@@ -83,10 +100,36 @@ namespace ProjectChimera.Effects
         private const StatusFlags CAST_BLOCKING = StatusFlags.Silenced | StatusFlags.Stunned;
 
         /// <summary>
-        /// Convert an ability cooldown in Fixed SECONDS to integer ticks (Fixed multiply then <see cref="Fixed.ToInt"/>
-        /// truncation — deterministic + drift-free; never <c>ToFloat</c>). At 30 tps: 3s→90, 6s→180, 12s→360.
+        /// DW-284 — the authoring UPPER BOUND for an ability cooldown, in Fixed SECONDS: the exact value above which
+        /// the ORIGINAL 16.16 conversion overflowed. That conversion was <c>(seconds * Fixed.FromInt(TicksPerSecond))
+        /// .ToInt()</c>, whose 16.16 product is cast back to <c>int</c> — so it wrapped once
+        /// <c>seconds.Raw * TicksPerSecond</c> left int32, i.e. above raw <c>int.MaxValue / TicksPerSecond</c>
+        /// (71 582 788 raw ≈ 1092.266 s ≈ 18.2 min at 30 tps), turning a very long cooldown into a NEGATIVE tick count
+        /// — which the <c>&gt; 0</c> countdown gate reads as "ready", i.e. unlimited spam.
+        ///
+        /// <para><see cref="AbilityValidator"/> rejects authored content above this bound by referencing THIS constant
+        /// — never a hand-copied number (the DW-125 duplicated-constant lesson) — and
+        /// <see cref="SecondsToTicks"/> is independently overflow-proof (64-bit intermediate) so an UNVALIDATED def
+        /// still degrades to a huge-but-positive cooldown instead of wrapping. Belt and braces: the validator is the
+        /// content gate, the widened arithmetic is the runtime backstop.</para>
         /// </summary>
-        public static int SecondsToTicks(Fixed seconds) => (seconds * Fixed.FromInt(TicksPerSecond)).ToInt();
+        public static readonly Fixed MaxCooldownSeconds = Fixed.FromRaw(int.MaxValue / TicksPerSecond);
+
+        /// <summary>
+        /// Convert an ability cooldown in Fixed SECONDS to integer ticks (16.16 multiply then truncation —
+        /// deterministic + drift-free; never <c>ToFloat</c>). At 30 tps: 3s→90, 6s→180, 12s→360.
+        ///
+        /// <para>DW-284: the multiply runs in a 64-bit intermediate. <c>seconds.Raw * TicksPerSecond &gt;&gt; 16</c> is
+        /// algebraically IDENTICAL to the former <c>(seconds * Fixed.FromInt(TicksPerSecond)).ToInt()</c> — the 16.16
+        /// product's low 16 fractional bits are shifted away by the same <c>ToInt</c> truncation either way — minus the
+        /// int32 cast inside <c>Fixed.operator*</c> that used to WRAP above <see cref="MaxCooldownSeconds"/>. Every
+        /// value that already fit converts byte-identically (all shipped cooldowns are 0-20 s), so no folded
+        /// <c>AbilityCooldownTicks</c> value moves; the only behavior change is above the bound, where a 2000 s
+        /// cooldown produced −5536 ticks (permanently "ready") and now correctly produces 60 000. The widened
+        /// intermediate covers the WHOLE Fixed range (max ≈ 983 039 ticks ≈ 9.1 h), so no clamp is reachable.</para>
+        /// </summary>
+        public static int SecondsToTicks(Fixed seconds) =>
+            (int)(((long)seconds.Raw * TicksPerSecond) >> Fixed.FRACTIONAL_BITS);
 
         /// <inheritdoc />
         public void Tick(EntityWorld world, Fixed dt)
@@ -142,7 +185,11 @@ namespace ProjectChimera.Effects
             {
                 if (!world.IsAlive(id)) continue;
                 int auraIdx = world.AuraAbilityIndex[id];
-                if (auraIdx < 0 || auraIdx >= _registry.Count) continue;
+                // DW-285: auraIdx < 0 is the NORMAL "this unit has no aura" case — never diagnosed. An index at or
+                // beyond the registry is a WIRING BUG (the def was resolved against a different/larger registry than
+                // this system holds), which silently disabled the aura for the whole match; warn once per owner.
+                if (auraIdx >= _registry.Count) { WarnBrokenAura(id, auraIdx); continue; }
+                if (auraIdx < 0) continue;
 
                 // Build the spatial hash once, only when an aura actually exists (current post-cast positions).
                 if (!spatialBuilt) { _spatial.Rebuild(world); spatialBuilt = true; }
@@ -158,6 +205,22 @@ namespace ProjectChimera.Effects
         }
 
         /// <summary>
+        /// DW-285 — warn ONCE per owner that its <see cref="EntityWorld.AuraAbilityIndex"/> points past the registry
+        /// (so its aura silently never runs). De-duplicated because <see cref="TickAuras"/> is a per-tick loop; the set
+        /// is allocated only when a sink is attached and is pure diagnostics state (never read by the sim, never
+        /// folded), so a run with a sink is byte-identical to one without.
+        /// </summary>
+        private void WarnBrokenAura(int ownerId, int auraIdx)
+        {
+            if (_log is null) return;
+            _warnedAuraOwners ??= new System.Collections.Generic.HashSet<int>();
+            if (!_warnedAuraOwners.Add(ownerId)) return;
+            _log.Warn($"[AbilityCastSystem] entity {ownerId} carries AuraAbilityIndex={auraIdx} but the registry holds " +
+                      $"{_registry.Count} abilities — the aura will never run. Its UnitDefinition was resolved against a " +
+                      "different AbilityRegistry than this system was constructed with (ResolveAbilities/registry wiring).");
+        }
+
+        /// <summary>
         /// Story 2.6 — the WHILE-ALIVE self-passive installer (AC3). Subscribed to
         /// <see cref="EntityWorld.OnUnitDefinitionApplied"/> (fired once per def-based spawn, AFTER the SoA is written),
         /// it installs the unit's self-passive — a <c>Persistent</c> (DoT/HoT) or a permanent <c>ApplyModifier</c> — by
@@ -170,7 +233,16 @@ namespace ProjectChimera.Effects
         {
             if (!world.IsAlive(id)) return;
             int idx = world.SelfPassiveAbilityIndex[id];
-            if (idx < 0 || idx >= _registry.Count) return;
+            // DW-285: idx < 0 is the NORMAL "no self-passive" case. An index at/beyond the registry is a wiring bug
+            // that silently drops the unit's while_alive passive for its entire life — warn (once per spawn: this
+            // installer is called from the OnUnitDefinitionApplied seam, not per tick).
+            if (idx >= _registry.Count)
+            {
+                _log?.Warn($"[AbilityCastSystem] entity {id} carries SelfPassiveAbilityIndex={idx} but the registry holds " +
+                           $"{_registry.Count} abilities — the while_alive passive was NOT installed (ResolveAbilities/registry wiring).");
+                return;
+            }
+            if (idx < 0) return;
             AbilityDefinition passive = _registry.Get(idx);
             var ctx = new EffectContext(world, casterId: id, primaryTargetId: id, casterFaction: world.FactionOf[id],
                                         _damageTable, spatial: null, _events, _stats, modifierStore: _modifiers, deaths: _deaths,
@@ -185,9 +257,27 @@ namespace ProjectChimera.Effects
         private void TryCast(EntityWorld world, int id, int abBase, int abilityCount)
         {
             int slot = world.PendingCastSlot[id];
-            if (slot < 0 || slot >= abilityCount) return;           // no such slot
+            // DW-285: both resolution failures below were BARE returns — a queued cast intent vanished with no denial
+            // cue and no log, so a mis-addressed order and a stale/unresolved AbilityId slot looked exactly like "the
+            // player did not cast". They stay the same deterministic no-op; they now surface an OrderDenied cue (the
+            // Story 11.4 guard-emits-reason contract; presentation-only, never folded) AND warn through the sink.
+            // One diagnostic per attempt at most — the pending intent is consumed and cleared every tick.
+            if (slot < 0 || slot >= abilityCount)                   // no such slot
+            {
+                _events?.PushDenied(world.Position[id], world.FactionOf[id], DenialReason.InvalidTarget);
+                _log?.Warn($"[AbilityCastSystem] entity {id} requested cast slot {slot} but holds {abilityCount} " +
+                           "ability slot(s) — cast dropped.");
+                return;
+            }
             int regIdx = world.AbilityId[abBase + slot];
-            if (regIdx < 0 || regIdx >= _registry.Count) return;    // empty / out-of-range slot
+            if (regIdx < 0 || regIdx >= _registry.Count)            // empty / out-of-range slot
+            {
+                _events?.PushDenied(world.Position[id], world.FactionOf[id], DenialReason.InvalidTarget);
+                _log?.Warn($"[AbilityCastSystem] entity {id} slot {slot} holds AbilityId={regIdx}, outside the " +
+                           $"{_registry.Count}-ability registry — cast dropped (unresolved ability id, or a def " +
+                           "resolved against a different AbilityRegistry).");
+                return;
+            }
             AbilityDefinition ab = _registry.Get(regIdx);
 
             // DW-266 — SILENCE / STUN GATE. Refused FIRST, so a silenced caster is told it is silenced rather than
@@ -213,9 +303,27 @@ namespace ProjectChimera.Effects
                 return;
             }
 
+            Faction faction = world.FactionOf[id];
+
+            // DW-283 — fail-closed on a NEGATIVE authored cost, BEFORE any check-then-debit reasoning. Every
+            // affordability pre-check below is a "have >= cost" comparison, which a negative cost passes trivially —
+            // but the DEBITS then DISAGREE: ModifierStore.TryDebitEnergy explicitly REFUSES a cost < 0 (returns false,
+            // mutates nothing — "never refund a negative cost"), while ResourceStore.SpendOre/SpendCrystal happily
+            // subtract it and therefore GRANT resources. That asymmetry IS a partial spend: no energy debited,
+            // ore/crystal credited, the graph run and the cooldown started. AbilityValidator already rejects a
+            // negative cost at authoring time ((b) cost sign); this is the runtime's fail-closed backstop for a def
+            // that never went through it (hand-built, editor-draft, or a future non-validated path).
+            if (ab.CostEnergy < Fixed.Zero || ab.CostOre < 0 || ab.CostCrystal < 0 || ab.CostHealth < 0)
+            {
+                _events?.PushDenied(world.Position[id], faction, DenialReason.InvalidTarget);
+                _log?.Warn($"[AbilityCastSystem] cast refused: ability '{ab.Id}' declares a NEGATIVE cost " +
+                           $"(energy raw={ab.CostEnergy.Raw}, ore={ab.CostOre}, crystal={ab.CostCrystal}, health={ab.CostHealth}) — " +
+                           "the content validator rejects this shape; refusing rather than partial-spending.");
+                return;
+            }
+
             // Affordability — CHECK ALL three, mutate NOTHING yet (AC6 atomic: a failed crystal check must not have
             // debited energy/ore). Costs are int on the ability → Fixed.FromInt.
-            Faction faction = world.FactionOf[id];
             Fixed oreCost     = Fixed.FromInt(ab.CostOre);
             Fixed crystalCost = Fixed.FromInt(ab.CostCrystal);
             if (world.Energy[id] < ab.CostEnergy)
@@ -259,9 +367,25 @@ namespace ProjectChimera.Effects
             }
 
             // Debit ALL (every gate passed → each refuse-when-insufficient call necessarily succeeds; atomic).
-            _modifiers.TryDebitEnergy(id, ab.CostEnergy);
-            _resources.SpendOre(faction, oreCost);
-            _resources.SpendCrystal(faction, crystalCost);
+            // DW-283: the returns are the PROOF of that claim, not decoration — DISCARDING them is what let a
+            // check/debit disagreement (see the negative-cost gate above) run the graph on a partially-spent cast.
+            // Short-circuit so a refusal never even attempts the later debits, then UNDO whatever already landed and
+            // refuse with ZERO net mutation (the AC6 refuse-atomic contract). Both undos are exact — Fixed is integer
+            // arithmetic, and each is the precise inverse of the debit that ran. Unreachable for validated content;
+            // this is the fail-closed backstop that makes the "necessarily succeeds" comment enforceable.
+            bool spentEnergy  = _modifiers.TryDebitEnergy(id, ab.CostEnergy);
+            bool spentOre     = spentEnergy && _resources.SpendOre(faction, oreCost);
+            bool spentCrystal = spentOre    && _resources.SpendCrystal(faction, crystalCost);
+            if (!spentCrystal)
+            {
+                if (spentOre)    _resources.AddOre(faction, oreCost);   // exact inverse of SpendOre
+                if (spentEnergy) world.Energy[id] += ab.CostEnergy;     // exact inverse of TryDebitEnergy
+                _events?.PushDenied(world.Position[id], faction, DenialReason.InsufficientResources);
+                _log?.Warn($"[AbilityCastSystem] cast of '{ab.Id}' by entity {id} refused at the debit step " +
+                           $"(energy={spentEnergy}, ore={spentOre}, crystal={spentCrystal}) after every affordability " +
+                           "gate passed — debits rolled back. This is a check/debit disagreement, not a shortfall.");
+                return;
+            }
 
             // Execute the validated effect graph (mirrors ModifierStore.RunEffect). Rebuild the spatial hash so a
             // SearchArea (e.g. fireball) queries CURRENT positions; harmless for non-SearchArea graphs (they ignore

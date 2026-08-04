@@ -54,8 +54,11 @@ namespace ProjectChimera.Core.Sim
             foreach (var def in slotFactionDefs)
             {
                 if (def == null) continue;
+                // DW-285: thread the server's ILogSink so an unknown / over-cap / shadowed-passive ability id WARNS
+                // instead of silently shrinking the roster's powers. The drop itself is unchanged (fail-open), so the
+                // server↔client resolve stays byte-identical — only the diagnostics are new.
                 foreach (var u in def.Units)
-                    u.ResolveAbilities(registry);
+                    u.ResolveAbilities(registry, log);
                 // Story 2.11 (AC2): closed-set tag validation — drop unknown-tag units (fail-closed, located error).
                 // Runs the IDENTICAL drop as the client pre-pass (ScenarioLoadPhase) so the arbitrating server stays
                 // in parity — a divergent roster between server + client would desync from tick 1.

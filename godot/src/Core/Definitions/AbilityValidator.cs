@@ -19,7 +19,8 @@ namespace ProjectChimera.Core.Definitions
     ///     a <c>SearchAreaEffect</c> inside a <c>PersistentEffect.period_effect</c> subtree (periods are
     ///     direct-target only — no per-tick spatial rebuild exists). A TOP-LEVEL ApplyModifier/Persistent is
     ///     ACCEPTED (both execute since 2.2b).
-    ///   • The FR-12 model floor — id present, targeting in the closed set, costs/cooldown ≥ 0, ≥ 1 effect node.
+    ///   • The FR-12 model floor — id present, targeting in the closed set, costs/cooldown ≥ 0, ≥ 1 effect node, and
+    ///     (DW-284) cooldown ≤ <see cref="AbilityCastSystem.MaxCooldownSeconds"/>, the 16.16 seconds→ticks limit.
     ///
     /// <para><b>DW-278 — the non-fatal WARNING channel.</b> Everything above is fail-closed: a violation rejects the
     /// ability. But the 2.2b/2.5b footgun class is <i>valid, authorable and INERT</i> — content that loads, runs, and
@@ -92,6 +93,17 @@ namespace ProjectChimera.Core.Definitions
                 return Fail(id, "cost_health", $"={def.CostHealth} must be >= 0 (a negative self-cost is a heal — use direct_hp_delta/heal).");
             if (def.Cooldown.Raw < 0)
                 return Fail(id, "cooldown", $"raw {def.Cooldown.Raw} must be >= 0.");
+            // DW-284: the MISSING upper bound. `cooldown` was gated only for sign, so an authored value above the
+            // 16.16 seconds→ticks conversion limit (AbilityCastSystem.MaxCooldownSeconds ≈ 1092.27 s at 30 tps)
+            // shipped as valid content while the runtime conversion wrapped it into a NEGATIVE tick count — which the
+            // `> 0` countdown gate reads as "ready", so the longest cooldown an author can write became NO cooldown at
+            // all. The bound is REFERENCED from the runtime constant, never hand-copied (the DW-125 lesson), so the
+            // gate and the conversion can never drift apart.
+            if (def.Cooldown > AbilityCastSystem.MaxCooldownSeconds)
+                return Fail(id, "cooldown",
+                    $"raw {def.Cooldown.Raw} exceeds the maximum representable cooldown " +
+                    $"(raw {AbilityCastSystem.MaxCooldownSeconds.Raw}, ≈ {AbilityCastSystem.MaxCooldownSeconds.ToInt()} seconds " +
+                    $"at {SimulationLoop.TICKS_PER_SECOND} ticks/s) — the seconds→ticks conversion cannot carry it.");
 
             // Decision #4: a passive is never player-cast, so the runtime never debits it — reject any non-zero
             // cost/cooldown fail-closed (rather than silently ignore an authored value that implies a cost gate).

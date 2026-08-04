@@ -373,8 +373,19 @@ namespace ProjectChimera.Core.Definitions
         /// the FIRST of each kind wins). Passives are kept OUT of <see cref="AbilityIndices"/> so they never appear as
         /// castable on the command card. Run once at scenario link, before any spawn; idempotent. (Allocation here is
         /// fine — link-time, not the tick.)
+        ///
+        /// <para><b>DW-285 — the drop diagnostics.</b> Every drop above used to be SILENT, so a typo'd ability id, a
+        /// roster that outgrew <c>MAX_ABILITIES_PER_UNIT</c>, and a second aura/on_hit/while_alive passive shadowed by
+        /// the first were all indistinguishable from "the author didn't give this unit that ability" — the unit simply
+        /// spawned with fewer powers and nothing said why. The DROP BEHAVIOR IS UNCHANGED (fail-open, never crash — the
+        /// spawn path depends on it); each drop now also WARNS through the injected <paramref name="log"/> (AR-4
+        /// <see cref="ProjectChimera.Core.Sim.ILogSink"/>, never a static ambient sink / <c>GD.Print</c>). A null sink —
+        /// goldens, Tier-1 harnesses, callers that have not been threaded yet — is exactly the pre-DW-285 behavior.
+        /// Link-time only: this never runs inside the tick, so the string formatting costs nothing per frame.</para>
         /// </summary>
-        public void ResolveAbilities(AbilityRegistry registry)
+        /// <param name="registry">The validated ability table to resolve ids against.</param>
+        /// <param name="log">Optional AR-4 diagnostic sink for the otherwise-silent drops (DW-285). Null ⇒ silent.</param>
+        public void ResolveAbilities(AbilityRegistry registry, ProjectChimera.Core.Sim.ILogSink? log = null)
         {
             AbilityIndices          = System.Array.Empty<int>();
             AuraAbilityIndex        = -1;
@@ -389,27 +400,46 @@ namespace ProjectChimera.Core.Definitions
             for (int i = 0; i < Abilities.Length; i++)
             {
                 int idx = registry.IndexOf(Abilities[i]);
-                if (idx < 0) continue; // drop unknown ids (never crash)
+                if (idx < 0)
+                {
+                    // Drop unknown ids (never crash) — DW-285: but say so. This is the single most common content
+                    // slip (a renamed/typo'd/unshipped ability id) and it produced no signal at all before.
+                    log?.Warn($"[ResolveAbilities] unit '{Id}': ability '{Abilities[i]}' is not in the ability registry " +
+                              $"({registry.Count} entries) — dropped; the unit spawns without it.");
+                    continue;
+                }
 
                 // The registry holds only validated abilities → ParsedActivation is non-null; default-to-Active is defensive.
                 switch (registry.Get(idx).ParsedActivation ?? PassiveActivation.Active)
                 {
                     case PassiveActivation.Aura:
                         if (AuraAbilityIndex < 0) AuraAbilityIndex = idx;
+                        else log?.Warn(ShadowedPassive("aura", Abilities[i]));
                         break;
                     case PassiveActivation.OnHit:
                         if (OnHitAbilityIndex < 0) OnHitAbilityIndex = idx;
+                        else log?.Warn(ShadowedPassive("on_hit", Abilities[i]));
                         break;
                     case PassiveActivation.WhileAlive:
                         if (SelfPassiveAbilityIndex < 0) SelfPassiveAbilityIndex = idx;
+                        else log?.Warn(ShadowedPassive("while_alive", Abilities[i]));
                         break;
                     default: // Active — a player-cast slot (capped)
                         if (active.Count < max) active.Add(idx);
+                        else
+                            log?.Warn($"[ResolveAbilities] unit '{Id}': active ability '{Abilities[i]}' exceeds " +
+                                      $"MAX_ABILITIES_PER_UNIT={max} — dropped; only the first {max} active abilities " +
+                                      "are castable (declaration order decides).");
                         break;
                 }
             }
             AbilityIndices = active.ToArray();
         }
+
+        /// <summary>DW-285: the located "a second passive of this kind was shadowed by the first" drop message.</summary>
+        private string ShadowedPassive(string activation, string abilityId) =>
+            $"[ResolveAbilities] unit '{Id}': a second '{activation}' passive ('{abilityId}') was dropped — a unit " +
+            $"carries at most ONE {activation} passive and the first declared one wins.";
 
         // ── Enum conversions ────────────────────────────────────────────────────
 
