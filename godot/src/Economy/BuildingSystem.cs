@@ -61,6 +61,22 @@ namespace ProjectChimera.Economy
         /// </summary>
         private const int TRAIN_CANCEL_REFUND_FRACTION = 1;
 
+        /// <summary>
+        /// DW-205: the unit category whose members drive the gather loop — the same token
+        /// <see cref="CategoryForBuilding(BuildingType)"/> maps a CommandCenter to and an authored custom producer
+        /// declares as <c>produces_category</c>. Compared case-insensitively, matching both
+        /// <see cref="TrainUnit"/>'s chosen-unit category guard and <c>ScenarioApplier.SpawnUnitAt</c>'s worker test.
+        /// </summary>
+        private const string WORKER_CATEGORY = "Worker";
+
+        /// <summary>
+        /// DW-205: carry capacity (world resource units per trip) a freshly trained worker enters the gather loop
+        /// with — the value <c>ScenarioApplier.SpawnUnitAt</c> and <c>EntityPlacer.DoSpawnWorker</c> already give a
+        /// scenario-placed / editor-placed worker, so all three spawn paths agree. A load-time constant (never a
+        /// per-tick <see cref="Fixed.FromFloat"/>), so it is one quantization done once.
+        /// </summary>
+        private static readonly Fixed WORKER_CARRY_CAPACITY = Fixed.FromFloat(20f);
+
         // Spawn offset (world units) from building centre
         private static readonly Fixed SPAWN_OFFSET = Fixed.FromFloat(3f);
 
@@ -302,6 +318,28 @@ namespace ProjectChimera.Economy
             // Presentation: tag the unit type so MultiMeshBridge renders the right mesh (meshType resolved above
             // from the persisted Units index — the same coordinate IndexOfUnit returns).
             world.MeshType[id] = (byte)(meshType < 0 ? 0 : meshType);
+
+            // DW-205: the caller-owned worker gather residue. GatherState/CarryCapacity are deliberately NOT part of
+            // ApplyUnitDefinition (they are runtime state, not def data — see the EntityWorld residue rule), so every
+            // spawn path has to write them itself; this one never did. Create() leaves a fresh slot at
+            // GatherState.Inactive/CarryCapacity 0, which makes a trained worker doubly wrong: GatheringSystem.Tick
+            // skips Inactive entities (it can never gather) AND CombatSystem's gatherer exemption is keyed on
+            // GatherState != Inactive, so the worker instead auto-acquires and shoots anything in range. Latent until
+            // Story 6.8 (the only built-in "Worker" producer is the CommandCenter, and <see cref="TrainUnit"/> rejects
+            // a CommandCenter outright) but reachable now that an authored Custom building can declare
+            // produces_category:"Worker" and train through this very path. Mirrors ScenarioApplier.SpawnUnitAt's
+            // worker branch exactly (same OrdinalIgnoreCase category test TrainUnit's own chosen-unit guard uses, same
+            // 20u capacity), so a trained worker and a scenario-placed one enter the gather loop in identical state.
+            // Deliberately placed BEFORE the rally/Stop branch so BOTH branches get the residue.
+            // NOTE (rally): a worker trained from a building with a rally point still gets the Move→rally command
+            // below, but GatheringSystem.TickIdle re-targets it to the nearest eligible node on its next tick — i.e.
+            // auto-gather wins over the rally, exactly as it does for a scenario-placed worker. Sequencing a rally
+            // walk BEFORE the first gather trip would need a new gather state and is deliberately out of scope here.
+            if (def != null && string.Equals(def.Category, WORKER_CATEGORY, System.StringComparison.OrdinalIgnoreCase))
+            {
+                world.GatherState[id]   = GatherState.Idle;
+                world.CarryCapacity[id] = WORKER_CARRY_CAPACITY;
+            }
 
             // Walk to rally point if the building has one set
             if (_buildings.HasRallyPoint[buildingId])
