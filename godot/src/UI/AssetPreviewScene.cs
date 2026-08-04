@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using Godot;
 using ProjectChimera.Core.Definitions;
 
@@ -60,6 +60,8 @@ namespace ProjectChimera.UI
             int total = _faction.Units.Count + _faction.Buildings.Count;
             if (total == 0) return;
 
+            // Left/Right are text-cursor keys too — never steal them from a focused field.
+            if (@event is InputEventKey && ProjectChimera.UI.TextFocusGuard.IsTyping(this)) return;
             if (@event is InputEventKey key && key.Pressed)
             {
                 if (key.Keycode == Key.Right)

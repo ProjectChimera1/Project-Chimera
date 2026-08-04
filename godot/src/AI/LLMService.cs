@@ -537,6 +537,25 @@ play_sound      — sound_id (string)");
         /// (1/5/6) always run regardless of clamp values. NO clamp value is ever sourced from the parsed (untrusted)
         /// scenario file. Returns (null, errorMessage) on failure, (scenario, null) on success.
         /// </summary>
+        /// <summary>
+        /// The text of the line a <see cref="JsonException"/> points at, trimmed and length-capped, as a
+        /// <c>" — line N: ..."</c> suffix. Empty when there is no usable line number. Purely diagnostic: it turns an
+        /// abstract parser complaint into the model's actual output, which is otherwise discarded with the response.
+        /// </summary>
+        internal static string DescribeOffendingLine(string json, long? lineNumber)
+        {
+            if (json == null || lineNumber is not long ln || ln < 0) return "";
+
+            string[] lines = json.Split('\n');
+            if (ln >= lines.Length) return "";
+
+            string text = lines[ln].Trim().TrimEnd('\r');
+            if (text.Length == 0) return "";
+            const int Cap = 160;
+            if (text.Length > Cap) text = text.Substring(0, Cap) + "…";
+            return $" — line {ln + 1}: {text}";
+        }
+
         public static (ScenarioData? scenario, string? error) ValidateScenario(
             string json, MapGeneratorContext context)
         {
@@ -549,9 +568,25 @@ play_sound      — sound_id (string)");
                 // collection (the per-collection gates all run post-parse). Over-cap → the guard's JsonException is
                 // caught below and surfaced as the pass-1 validation error.
                 ScenarioSerializer.GuardScenarioInputSize(Encoding.UTF8.GetByteCount(json), "generated scenario");
-                scenario = JsonSerializer.Deserialize<ScenarioData>(json,
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true, Converters = { new FixedJsonConverter() } })
-                    ?? throw new InvalidOperationException("Deserialised to null.");
+                scenario = JsonSerializer.Deserialize<ScenarioData>(json, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true,
+                    Converters = { new FixedJsonConverter() },
+                    // A model is not a JSON serializer: trailing commas and // comments are its two most common
+                    // deviations and both are pure syntax, so rejecting them throws away a whole (paid) generation
+                    // over nothing. Everything about the CONTENT is still decided by passes 2-7 below — being
+                    // lenient here widens the syntax accepted, never the values trusted.
+                    AllowTrailingCommas = true,
+                    ReadCommentHandling = JsonCommentHandling.Skip,
+                }) ?? throw new InvalidOperationException("Deserialised to null.");
+            }
+            catch (JsonException jex)
+            {
+                // Quote the offending line. The raw response is not retained anywhere, so without this the model's
+                // actual output dies with the exception and the failure is undiagnosable — exactly what happened to
+                // "'4' is an invalid end of a number ... $.resource_nodes[5].max_gatherers" (Alec, 2026-08-04),
+                // where the malformed token could not be recovered after the fact.
+                return (null, $"Invalid JSON: {jex.Message}{DescribeOffendingLine(json, jex.LineNumber)}");
             }
             catch (Exception ex)
             {
