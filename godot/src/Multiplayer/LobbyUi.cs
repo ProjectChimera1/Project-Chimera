@@ -141,6 +141,13 @@ namespace ProjectChimera.Multiplayer
         private bool         _onlineModeActive;
         private bool         _isHostRole;
 
+        /// <summary>DW-419/DW-420: the sender-role flags byte from the most recent VALIDATED Hello
+        /// (<see cref="TickCommandPacket.HELLO_FLAG_DEDICATED"/> / <see cref="TickCommandPacket.HELLO_FLAG_SPECTATOR"/>;
+        /// 0 = none yet / P2P). Read by <see cref="LobbyHelloPolicy.ShouldLocalEchoLobbyChat"/> to suppress the
+        /// optimistic chat echo on the dedicated path (the server rebroadcasts to the sender). Reset with the rest
+        /// of the connection state so a later P2P session echoes locally again.</summary>
+        private byte _helloRoleFlags;
+
         /// <summary>Story 9.7: the N-slot readiness model — the presentation + all-ready-Start-gate source.</summary>
         private LobbyReadyModel _readyModel = new(FactionRegistry.PLAYER_COUNT);
 
@@ -234,6 +241,7 @@ namespace ProjectChimera.Multiplayer
             _assignedFaction    = Core.Faction.Neutral;
             _onlineHeroAttested = false; // Story 9.12: re-require attestation next online match
             _versionGate.Reset();        // DW-403
+            _helloRoleFlags     = 0;     // DW-419/DW-420: forget the dedicated/spectator role with the connection
             _readyModel.Reset();
         }
 
@@ -490,6 +498,7 @@ namespace ProjectChimera.Multiplayer
             _isHostRole         = false;
             _onlineHeroAttested = false; // Story 9.12
             _versionGate.Reset();        // DW-403: cancelling tears the connection down — drop the version latch
+            _helloRoleFlags     = 0;     // DW-419/DW-420
             _readyModel.Reset();
             RebuildSlotGrid();
             SetStatus("Disconnected.");
@@ -532,6 +541,7 @@ namespace ProjectChimera.Multiplayer
             _onlineModeActive   = false;
             _onlineHeroAttested = false; // Story 9.12
             _versionGate.Reset();        // DW-403: the block is per-connection — a reconnect starts unblocked
+            _helloRoleFlags     = 0;     // DW-419/DW-420
             _readyModel.Reset();
             RebuildSlotGrid();
         }
@@ -544,12 +554,14 @@ namespace ProjectChimera.Multiplayer
             switch (type)
             {
                 case PacketType.Hello:
+                {
 #if DEBUG
                     GD.Print("[Lobby] Hello packet received from server.");
 #endif
                     // Story 9.4: validate the peer/server PROTOCOL_VERSION fail-closed (the D3.8 gap).
                     // DW-402: the decision lives in the Godot-free LobbyVersionGate (Tier-1 pinned).
-                    bool helloParsed = TickCommandPacket.TryReadHello(data, len, out var f, out ushort helloVer);
+                    // DW-419/DW-420: parse via the flags-aware overload — a legacy 4-byte Hello reads flags 0.
+                    bool helloParsed = TickCommandPacket.TryReadHello(data, len, out var f, out ushort helloVer, out byte helloFlags);
                     var helloVerdict = _versionGate.EvaluateHello(helloParsed, helloVer);
                     if (!helloVerdict.Allowed)
                     {
@@ -567,27 +579,41 @@ namespace ProjectChimera.Multiplayer
                         _peerReadyConfirmed = false;
                         _readyModel.Reset();
                     }
-                    if (f != Core.Faction.Neutral)
+                    // DW-419: remember the sender-role flags — OnChatSubmitted's local-echo decision reads them.
+                    _helloRoleFlags = helloFlags;
+                    var helloKind = LobbyHelloPolicy.Classify(f, helloFlags);
+                    switch (helloKind)
                     {
-                        // Dedicated server assigned our faction/slot. Mark OUR slot; the server LobbyRoster fills the rest.
-                        _assignedFaction = f;
-                        _readyModel.SetOccupied(LocalSlot(), true);
-                        SetStatus($"Server assigned faction: {f}. Click Ready when set up.");
+                        case LobbyHelloKind.AssignedPlayer:
+                            // Dedicated server assigned our faction/slot. Mark OUR slot; the server LobbyRoster fills the rest.
+                            _assignedFaction = f;
+                            _readyModel.SetOccupied(LocalSlot(), true);
+                            SetStatus($"Server assigned faction: {f}. Click Ready when set up.");
+                            break;
+                        case LobbyHelloKind.P2pHostConfirm:
+                            // P2P host confirmed (Neutral Hello, no role flags): a 2-player match — mark host (slot 0) + self (slot 1).
+                            _readyModel.SetOccupied(0, true);
+                            _readyModel.SetOccupied(1, true);
+                            SetStatus("Host confirmed. Click Ready when set up.");
+                            break;
+                        default: // LobbyHelloKind.DedicatedSpectator
+                            // DW-420: a dedicated server seated us as a SPECTATOR. No occupancy inference (the
+                            // server's LobbyRoster broadcast fills the grid) and NO Ready offer — the server drops
+                            // a spectator's Ready (slot >= ExpectedPlayers), so the old P2P-style 2-player
+                            // "Host confirmed — click Ready" reading of this Neutral Hello was a misrepresentation.
+                            SetStatus("Connected as spectator — watching the lobby.");
+                            break;
                     }
-                    else
-                    {
-                        // P2P host confirmed (Neutral Hello): a 2-player match — mark host (slot 0) + self (slot 1).
-                        _readyModel.SetOccupied(0, true);
-                        _readyModel.SetOccupied(1, true);
-                        SetStatus("Host confirmed. Click Ready when set up.");
-                    }
-                    _readyBtn.Visible  = true;
-                    _readyBtn.Disabled = false;
+                    bool isSpectator = helloKind == LobbyHelloKind.DedicatedSpectator;
+                    _readyBtn.Visible  = !isSpectator; // also undoes HandlePeerConnected's pre-Hello Ready reveal
+                    _readyBtn.Disabled = isSpectator;
                     RebuildSlotGrid();
 #if DEBUG
-                    TryAutoReady();   // Story 1.9a loopback smoke: auto-ready once the server assigns a faction
+                    if (!isSpectator)
+                        TryAutoReady();   // Story 1.9a loopback smoke: auto-ready once the server assigns a faction
 #endif
                     break;
+                }
 
                 case PacketType.Ready:
                 {
@@ -706,7 +732,12 @@ namespace ProjectChimera.Multiplayer
             if (string.IsNullOrEmpty(msg) || !_transport.IsConnected) return;
             Core.Faction f = LobbyLocalFaction();
             _transport.SendReliable(TickCommandPacket.MakeLobbyChat(f, msg));
-            AppendChat(f, msg); // optimistic echo (the dedicated server rebroadcasts to sender too)
+            // DW-419: optimistic local echo ONLY on the P2P path (no rebroadcast there — the echo is the only way
+            // the sender sees its own line). On the dedicated path (any Hello role flag) the server re-stamps and
+            // BroadcastReliable's the message back to every peer INCLUDING the sender, so the echo rendered the
+            // sender's own line twice; there the line appears once, when the server's authoritative copy arrives.
+            if (LobbyHelloPolicy.ShouldLocalEchoLobbyChat(_helloRoleFlags))
+                AppendChat(f, msg);
         }
 
         private void AppendChat(Core.Faction faction, string message)

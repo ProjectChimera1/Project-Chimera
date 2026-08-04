@@ -767,7 +767,7 @@ namespace ProjectChimera.Multiplayer
 
         // ── Lobby packet helpers ───────────────────────────────────────────────
 
-        /// <summary>4-byte Hello packet: type(1) + protocolVersion(2) + faction(1).</summary>
+        /// <summary>Hello packet: type(1) + protocolVersion(2) + faction(1) + roleFlags(1) (DW-419/DW-420).</summary>
         /// <remarks>Story 9.4: bumped 1→2 — the coordinated wire change that adds the server-dictated
         /// <see cref="PacketType.DelayDirective"/>/<see cref="PacketType.DelayAck"/> exchange and the widened
         /// Ready packet (protocol version + 64-bit match-agreement hash). The version is now VALIDATED fail-closed
@@ -776,20 +776,42 @@ namespace ProjectChimera.Multiplayer
         public const ushort PROTOCOL_VERSION = 2;
 
         /// <summary>
-        /// Create a Hello packet. The server sends one to each connecting client,
-        /// embedding the faction assigned to that client.
-        /// P2P mode: both sides use Faction.Neutral (faction determined by host/client role).
+        /// DW-419/DW-420 — Hello role flag: the sender is a DEDICATED SERVER (not a P2P host). Tells the client
+        /// (a) a Neutral-faction Hello is NOT a P2P host confirmation, and (b) the server rebroadcasts
+        /// <see cref="PacketType.LobbyChat"/> back to the sender, so the client must NOT locally echo its own line.
+        /// A P2P host's Hello carries flags 0 (and a legacy 4-byte Hello reads back as flags 0 — same behavior).
         /// </summary>
-        public static byte[] MakeHello(Core.Faction faction = Core.Faction.Neutral) => new byte[] {
+        public const byte HELLO_FLAG_DEDICATED = 0x01;
+
+        /// <summary>
+        /// DW-420 — Hello role flag: the RECIPIENT's transport slot was classified a SPECTATOR seat
+        /// (<c>SlotAllocation.Classify</c> ≥ the match's player count). The lobby renders a spectator view instead
+        /// of the P2P "Host confirmed — click Ready" 2-slot confirmation. Always sent together with
+        /// <see cref="HELLO_FLAG_DEDICATED"/> (only dedicated servers classify spectators).
+        /// </summary>
+        public const byte HELLO_FLAG_SPECTATOR = 0x02;
+
+        /// <summary>
+        /// Create a Hello packet: type(1) + protocolVersion(2 LE) + faction(1) + roleFlags(1) = 5 bytes.
+        /// The server sends one to each connecting client, embedding the faction assigned to that client and the
+        /// DW-419/DW-420 role flags (<see cref="HELLO_FLAG_DEDICATED"/> / <see cref="HELLO_FLAG_SPECTATOR"/>).
+        /// P2P mode: both sides use Faction.Neutral + flags 0 (faction determined by host/client role).
+        /// The flags byte is an ADDITIVE lobby-phase extension (the LobbyRoster/MapPing precedent — no
+        /// <see cref="PROTOCOL_VERSION"/> bump): a reader of the old 4-byte layout ignores it, and
+        /// <see cref="TryReadHello(byte[], int, out Core.Faction, out ushort, out byte)"/> defaults flags to 0
+        /// when the byte is absent, which reproduces the pre-flag P2P behavior.
+        /// </summary>
+        public static byte[] MakeHello(Core.Faction faction = Core.Faction.Neutral, byte roleFlags = 0) => new byte[] {
             (byte)PacketType.Hello,
             (byte)PROTOCOL_VERSION,
             (byte)(PROTOCOL_VERSION >> 8),
-            (byte)faction
+            (byte)faction,
+            roleFlags
         };
 
         /// <summary>Parse a Hello packet. Returns Faction.Neutral if the packet has no faction byte.</summary>
         public static bool TryReadHello(byte[] buf, int len, out Core.Faction faction)
-            => TryReadHello(buf, len, out faction, out _);
+            => TryReadHello(buf, len, out faction, out _, out _);
 
         /// <summary>
         /// Story 9.4 — parse a Hello packet, exposing BOTH the assigned faction and the peer's
@@ -797,13 +819,25 @@ namespace ProjectChimera.Multiplayer
         /// before proceeding (the D3.8 gap). Faction is Neutral if the packet has no faction byte.
         /// </summary>
         public static bool TryReadHello(byte[] buf, int len, out Core.Faction faction, out ushort version)
+            => TryReadHello(buf, len, out faction, out version, out _);
+
+        /// <summary>
+        /// DW-419/DW-420 — parse a Hello packet, additionally exposing the sender-role flags byte
+        /// (<see cref="HELLO_FLAG_DEDICATED"/> / <see cref="HELLO_FLAG_SPECTATOR"/>, offset 4). Flags default to 0
+        /// when the packet predates the flags byte (a legacy 4-byte Hello), which reads back as "P2P host" — the
+        /// exact pre-flag interpretation, so the extension is behavior-neutral for old senders.
+        /// </summary>
+        public static bool TryReadHello(byte[] buf, int len, out Core.Faction faction, out ushort version,
+                                        out byte roleFlags)
         {
-            faction = Core.Faction.Neutral;
-            version = 0;
+            faction   = Core.Faction.Neutral;
+            version   = 0;
+            roleFlags = 0;
             if (len < 3) return false;
             if ((PacketType)buf[0] != PacketType.Hello) return false;
             version = (ushort)(buf[1] | (buf[2] << 8));
-            if (len >= 4) faction = (Core.Faction)buf[3];
+            if (len >= 4) faction   = (Core.Faction)buf[3];
+            if (len >= 5) roleFlags = buf[4];
             return true;
         }
 
