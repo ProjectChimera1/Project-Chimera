@@ -18,11 +18,23 @@ namespace ProjectChimera.Sim.Tests.AI
         [InlineData(AiAvailability.NoKey)]
         [InlineData(AiAvailability.Unreachable)]
         [InlineData(AiAvailability.FailedValidation)]
+        [InlineData(AiAvailability.HostRestricted)]
         public void Describe_EachState_NonEmpty_Commander(AiAvailability state)
         {
             string msg = AiAvailabilityMessages.Describe(state);
             Assert.False(string.IsNullOrWhiteSpace(msg));
             Assert.Contains("Commander", msg); // UX-DR52 voice
+        }
+
+        [Fact]
+        public void Describe_HostRestricted_NamesTheLoopbackRestriction()
+        {
+            // DW-370 (recorded decision: keep loopback-only, name the restriction in the unavailable message): a
+            // LAN-hosted Ollama must not be voiced as the generic "no AI provider is configured" — the message must
+            // name the loopback-only policy so the creator understands WHY the host is rejected.
+            string msg = AiAvailabilityMessages.Describe(AiAvailability.HostRestricted);
+            Assert.Contains("loopback", msg, StringComparison.OrdinalIgnoreCase);
+            Assert.NotEqual(AiAvailabilityMessages.Describe(AiAvailability.NoProvider), msg);
         }
 
         [Fact]

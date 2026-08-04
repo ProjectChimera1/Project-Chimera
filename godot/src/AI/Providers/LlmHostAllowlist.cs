@@ -32,6 +32,9 @@ namespace ProjectChimera.AI.Providers
                     return HostEquals(endpoint.Host, OpenRouterHost);
                 case "ollama":
                     // Local provider — only loopback (localhost / 127.0.0.0/8 / ::1). Never a remote host.
+                    // DW-370 (recorded decision 2026-07-30): loopback-only is KEPT (not widened to RFC-1918);
+                    // the factory voices the rejection as AiAvailability.HostRestricted so the creator-facing
+                    // message names this restriction.
                     return endpoint.IsLoopback;
                 default:
                     return false;

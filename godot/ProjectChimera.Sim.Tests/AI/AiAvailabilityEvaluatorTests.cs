@@ -10,9 +10,9 @@ using Xunit;
 namespace ProjectChimera.Sim.Tests.AI
 {
     /// <summary>
-    /// Story 8.2 — drives all five states through the stub handler + fake secret store: NoProvider, NoKey, Healthy,
-    /// Unreachable, FailedValidation. The synchronous split (config-derived vs round-trip) and the no-fallback
-    /// contract are exercised here.
+    /// Story 8.2 — drives the availability states through the stub handler + fake secret store: NoProvider, NoKey,
+    /// Healthy, Unreachable, FailedValidation, and (DW-370) HostRestricted. The synchronous split (config-derived vs
+    /// round-trip) and the no-fallback contract are exercised here.
     /// </summary>
     public class AiAvailabilityEvaluatorTests
     {
@@ -73,6 +73,27 @@ namespace ProjectChimera.Sim.Tests.AI
                 eval.EvaluateConfig(Settings("anthropic", "not a url"), new FakeSecretStore("sk-x")));
         }
 
+        [Fact]
+        public void EvaluateConfig_OllamaLanBaseUrl_HostRestricted()
+        {
+            // DW-370: the synchronous state every AI panel renders for a LAN-hosted Ollama
+            // (http://192.168.1.5:11434) is HostRestricted — whose microcopy names the loopback-only restriction —
+            // not the generic NoProvider. The host stays rejected (loopback-only policy kept).
+            var eval = Eval(StubHttpMessageHandler.Ok("{}"));
+            Assert.Equal(AiAvailability.HostRestricted,
+                eval.EvaluateConfig(Settings("ollama", "http://192.168.1.5:11434"), new FakeSecretStore()));
+        }
+
+        [Fact]
+        public void EvaluateConfig_OllamaLoopbackBaseUrl_StillHealthyCandidate()
+        {
+            // Guard the other arm of DW-370: a loopback override remains a Healthy candidate — the new
+            // HostRestricted classification must not leak onto permitted loopback hosts.
+            var eval = Eval(StubHttpMessageHandler.Ok("{}"));
+            Assert.Equal(AiAvailability.Healthy,
+                eval.EvaluateConfig(Settings("ollama", "http://127.0.0.1:11434"), new FakeSecretStore()));
+        }
+
         // ── TestConnectionAsync (round-trip) ──────────────────────────────────────
 
         [Fact]
@@ -89,6 +110,19 @@ namespace ProjectChimera.Sim.Tests.AI
             var eval = Eval(StubHttpMessageHandler.Ok("{}"));
             var state = await eval.TestConnectionAsync(Settings("anthropic"), new FakeSecretStore(), CancellationToken.None);
             Assert.Equal(AiAvailability.NoKey, state);
+        }
+
+        [Fact]
+        public async Task TestConnection_OllamaLanBaseUrl_HostRestricted_NoRequest()
+        {
+            // DW-370: Test connection against a LAN-hosted Ollama refuses pre-flight with HostRestricted — the
+            // restriction-naming state — and never sends a request to the disallowed host.
+            var stub = StubHttpMessageHandler.Ok("{}");
+            var eval = Eval(stub);
+            var state = await eval.TestConnectionAsync(
+                Settings("ollama", "http://192.168.1.5:11434"), new FakeSecretStore(), CancellationToken.None);
+            Assert.Equal(AiAvailability.HostRestricted, state);
+            Assert.Equal(0, stub.CallCount); // rejected before any network call
         }
 
         [Fact]

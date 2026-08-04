@@ -11,7 +11,8 @@ namespace ProjectChimera.AI.Providers
     /// seam:
     /// <list type="bullet">
     ///   <item><see cref="EvaluateConfig"/> — synchronous, config-derived: <see cref="AiAvailability.NoProvider"/> /
-    ///         <see cref="AiAvailability.NoKey"/> or a Healthy-candidate. Cheap enough to run on panel-open.</item>
+    ///         <see cref="AiAvailability.NoKey"/> / <see cref="AiAvailability.HostRestricted"/> or a
+    ///         Healthy-candidate. Cheap enough to run on panel-open.</item>
     ///   <item><see cref="TestConnectionAsync"/> — builds the provider via <see cref="LlmProviderFactory"/>, runs a
     ///         minimal round-trip, and maps the result to <see cref="AiAvailability.Healthy"/> /
     ///         <see cref="AiAvailability.Unreachable"/> / <see cref="AiAvailability.FailedValidation"/>.</item>
@@ -32,7 +33,9 @@ namespace ProjectChimera.AI.Providers
         public AiAvailabilityEvaluator(HttpClient http) => _http = http;
 
         /// <summary>Synchronous, config-only classification. Returns <see cref="AiAvailability.NoProvider"/> when the
-        /// settings name a provider outside the catalog OR an un-parseable / non-allowlisted base URL,
+        /// settings name a provider outside the catalog OR an un-parseable / non-allowlisted base URL
+        /// (<see cref="AiAvailability.HostRestricted"/> instead when ollama's loopback-only policy is the sole
+        /// rejection — DW-370: the message names the restriction),
         /// <see cref="AiAvailability.NoKey"/> when a cloud provider has no stored key, else
         /// <see cref="AiAvailability.Healthy"/> (a candidate — reachability is only confirmed by
         /// <see cref="TestConnectionAsync"/>). No network call.
@@ -48,7 +51,7 @@ namespace ProjectChimera.AI.Providers
                 : failure;
 
         /// <summary>Build the configured provider and run a minimal round-trip. Returns the config-derived state when
-        /// the factory refuses (NoProvider/NoKey); otherwise maps the round-trip result: success →
+        /// the factory refuses (NoProvider/NoKey/HostRestricted); otherwise maps the round-trip result: success →
         /// <see cref="AiAvailability.Healthy"/>, <see cref="NormalizedFailure.Unreachable"/> →
         /// <see cref="AiAvailability.Unreachable"/>, and a reached-but-unhealthy answer
         /// (<see cref="NormalizedFailure.HttpError"/>/<see cref="NormalizedFailure.MalformedResponse"/>) →
@@ -57,7 +60,7 @@ namespace ProjectChimera.AI.Providers
             SettingsData settings, ISecretStore secretStore, CancellationToken ct)
         {
             if (!LlmProviderFactory.TryCreate(settings, secretStore, _http, out ILLMProvider? provider, out AiAvailability failure))
-                return failure; // NoProvider / NoKey — synchronous, no request attempted
+                return failure; // NoProvider / NoKey / HostRestricted — synchronous, no request attempted
 
             NormalizedResult result = await provider!.GenerateAsync(TestPrompt, ct);
             if (result.Ok)
