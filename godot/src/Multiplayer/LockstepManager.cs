@@ -734,7 +734,10 @@ namespace ProjectChimera.Multiplayer
             if (!TickCommandPacket.TryReadPong(data, len, out byte seq, out uint senderMs)) return;
             if (seq != (byte)(_pingSeq - 1)) return; // stale pong from a previous seq — ignore
 
-            float rttSample = (float)Time.GetTicksMsec() - senderMs;
+            // DW-396 (client mirror): the ping stamped a uint-truncated clock, so the RTT must be computed in
+            // WRAP-SAFE uint arithmetic (now − sender mod 2^32). A full-width subtraction would read ~4.29e9 ms
+            // once uptime passes ~49.7 days and every sample would fail the sanity filter, freezing adaptation.
+            float rttSample = unchecked((uint)Time.GetTicksMsec() - senderMs);
             if (rttSample <= 0f || rttSample > 10_000f) return; // sanity-check
 
             // Exponential weighted moving average.

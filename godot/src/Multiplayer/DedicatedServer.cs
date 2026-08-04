@@ -131,15 +131,19 @@ namespace ProjectChimera.Multiplayer
         private readonly ulong[]  _readyHash    = new ulong[ServerTransport.MAX_SLOTS];
         private readonly ushort[] _readyVersion = new ushort[ServerTransport.MAX_SLOTS];
 
-        /// <summary>Seconds elapsed since the last per-slot RTT-probe (Ping) broadcast.</summary>
+        /// <summary>Seconds elapsed since the last per-slot RTT-probe (Ping) broadcast. Reset alongside the
+        /// <see cref="_delayController"/> rebuild at match start (DW-401). The probe SEQ itself lives in the
+        /// controller (<see cref="Server.DelayController.NextPingSeq"/>) so a rebuilt controller starts fresh.</summary>
         private double _sincePing;
-        private byte   _pingSeq;
 
         /// <summary>How often the server probes each client's RTT (seconds).</summary>
         private const double PING_INTERVAL_SEC = 1.0;
 
         /// <summary>The highest sim tick the server has seen fanned in — the frontier a dictated directive's
-        /// <c>applyAtTick</c> is measured forward from.</summary>
+        /// <c>applyAtTick</c> is measured forward from. Reset alongside the <see cref="_delayController"/> rebuild
+        /// at match start (DW-401): a second match in one process must not measure its first directive's
+        /// applyAtTick forward from the PRIOR match's (large) frontier, which would schedule it at an unreachable
+        /// tick and silently break adaptive delay.</summary>
         private uint _latestSeenTick;
 
         // ── Story 1.9a: server authority ───────────────────────────────────────────
@@ -226,10 +230,18 @@ namespace ProjectChimera.Multiplayer
             if (_sincePing >= PING_INTERVAL_SEC)
             {
                 _sincePing = 0;
-                var ping = TickCommandPacket.MakePing(_pingSeq++, (uint)Time.GetTicksMsec());
+                // DW-395/DW-401: the probe seq is controller-owned — one seq per broadcast, re-arming the
+                // per-slot one-echo-per-probe guard; a rebuilt controller (second match) restarts from seq 0.
+                var ping = TickCommandPacket.MakePing(_delayController.NextPingSeq(), (uint)Time.GetTicksMsec());
                 for (int s = 0; s < ExpectedPlayers; s++)
                     if (_transport.IsSlotConnected(s)) _transport.SendReliableTo(s, ping);
             }
+
+            // DW-400: bound the un-ACKed directive window. Reliable transport means every still-connected client
+            // received + scheduled the directive — a wedged ACK must not disable adaptive delay for the match.
+            if (_delayController.CheckAckTimeout(_latestSeenTick, out int toDelay, out uint toApplyAt))
+                GD.Print($"[Server] Delay ACK timeout — force-committing {toDelay} ticks at tick {toApplyAt} " +
+                         "(reliable transport implies delivery; a genuine drop is excused on the freeze path).");
 
             // PATCH 1a: the confirmed high-water = the tick through which the merged fan-in has emitted (all players
             // submitted past it). It gates directive pipelining so a new directive is not issued until the prior one
@@ -239,7 +251,8 @@ namespace ProjectChimera.Multiplayer
             {
                 var directive = TickCommandPacket.MakeDelayDirective((byte)delay, applyAtTick);
                 _transport.BroadcastCommands(directive, directive.Length);
-                GD.Print($"[Server] Dictating input delay → {delay} ticks, applyAtTick {applyAtTick} (awaiting all-{ExpectedPlayers} ACK).");
+                GD.Print($"[Server] Dictating input delay → {delay} ticks, applyAtTick {applyAtTick} " +
+                         $"(awaiting all-{_delayController.ActiveCount} ACK).");
             }
         }
 
@@ -386,25 +399,31 @@ namespace ProjectChimera.Multiplayer
                     break;
 
                 case PacketType.Pong:
-                    // Story 9.4: the client's echo of a server RTT probe. rtt = now - the senderMs we stamped into
-                    // the Ping. Slot is transport-authoritative (this callback's slot), never a packet byte.
-                    if (_state == State.InGame && _delayController != null && slot < ExpectedPlayers &&
-                        TickCommandPacket.TryReadPong(data, len, out _, out uint pongMs))
-                        _delayController.RecordRtt(slot, (float)Time.GetTicksMsec() - pongMs);
+                    // Story 9.4: the client's echo of a server RTT probe. Slot is transport-authoritative (this
+                    // callback's slot), never a packet byte. The controller applies the client-symmetric guards
+                    // (DW-395: seq must match the OUTSTANDING probe, one echo per slot per probe) and computes the
+                    // RTT in WRAP-SAFE uint arithmetic against the same uint-truncated clock the ping stamped
+                    // (DW-396: a full-width subtraction would reject every sample past ~49.7 days of uptime,
+                    // silently freezing delay adaptation). Player-slot membership is the controller's slot map.
+                    if (_state == State.InGame && _delayController != null &&
+                        TickCommandPacket.TryReadPong(data, len, out byte pongSeq, out uint pongMs))
+                        _delayController.RecordPong(slot, pongSeq, (uint)Time.GetTicksMsec(), pongMs);
                     break;
 
                 case PacketType.DelayAck:
-                    // Story 9.4: a player acknowledges the pending server-dictated delay. When every player has
-                    // ACKed the (delay, applyAtTick) pair, log the commit and advance the controller so the next
-                    // directive may issue.
-                    if (_state == State.InGame && _delayController != null && slot < ExpectedPlayers &&
+                    // Story 9.4: a player acknowledges the pending server-dictated delay. When every ACTIVE player
+                    // has ACKed the (delay, applyAtTick) pair, log the commit and advance the controller so the
+                    // next directive may issue. Player-slot membership is the controller's slot map (DW-397) —
+                    // a spectator/unknown slot's ACK is ignored inside RecordAck.
+                    if (_state == State.InGame && _delayController != null &&
                         TickCommandPacket.TryReadDelayAck(data, len, out byte ackDelay, out uint ackApplyAt))
                     {
                         _delayController.RecordAck(slot, ackDelay, ackApplyAt);
                         if (_delayController.AllAcked(ackDelay, ackApplyAt))
                         {
                             _delayController.Commit(ackDelay, ackApplyAt);
-                            GD.Print($"[Server] Delay change committed → {ackDelay} ticks at tick {ackApplyAt} (all {ExpectedPlayers} players ACKed).");
+                            GD.Print($"[Server] Delay change committed → {ackDelay} ticks at tick {ackApplyAt} " +
+                                     $"(all {_delayController.ActiveCount} players ACKed).");
                         }
                     }
                     break;
@@ -427,6 +446,17 @@ namespace ProjectChimera.Multiplayer
                                 _serverHost?.DropReporter(droppedSlot);
                                 GD.Print($"[Server] Freeze committed for slot {droppedSlot} ({(Faction)dropAckFaction}) at " +
                                          $"tick {dropApplyAt} (all survivors ACKed). Injecting empty commands; quorum reduced.");
+
+                                // DW-400: excuse the frozen slot from the delay authority — it leaves the delay-ACK
+                                // quorum and its stale RTT stops driving the dictated delay. If a delay directive was
+                                // pending on ONLY its ACK, finalize now (otherwise _pending would wedge forever and
+                                // adaptive delay would be silently disabled for the rest of the match).
+                                _delayController?.DeactivateSlot(droppedSlot);
+                                if (_delayController != null &&
+                                    _delayController.TryFinalizePending(out int exDelay, out uint exApplyAt))
+                                    GD.Print($"[Server] Delay change committed → {exDelay} ticks at tick {exApplyAt} " +
+                                             "(surviving players had all ACKed; dropped slot excused).");
+
                                 PumpFrozenInjection(); // fill the gap immediately so survivors unstall
                             }
                         }
@@ -559,16 +589,29 @@ namespace ProjectChimera.Multiplayer
             int readyCount = CountReadyPlayers();
             if (Server.ServerLobbyPolicy.ShouldStart(connected, readyCount, ExpectedPlayers))
             {
-                // Story 9.4: the ADDITIONAL start-state-agreement gate — every slot must share one non-zero
-                // match-agreement hash AND run PROTOCOL_VERSION. On disagreement, broadcast a terminal HALT and do
-                // NOT StartGame (fail-closed). Checked BEFORE flipping state / standing up the match machinery.
+                // The connected player slots (arrival order) — collected ONCE and fed to the agreement gate, the
+                // roster freeze, and the delay authority so all three read the SAME slot map (DW-397).
+                var arrivalSlots = new System.Collections.Generic.List<int>(connected);
+                for (int s = 0; s < ExpectedPlayers; s++)
+                    if (_transport.IsSlotConnected(s)) arrivalSlots.Add(s);
+
+                // Story 9.4: the ADDITIONAL start-state-agreement gate — every READY PLAYER slot must share one
+                // non-zero match-agreement hash AND run PROTOCOL_VERSION. Evaluated over the actual occupied slot
+                // set (DW-397), not a dense [0, expected) assumption that would read an unoccupied slot's default-0
+                // hash and false-HALT under a non-contiguous layout. On disagreement, broadcast a terminal HALT and
+                // do NOT StartGame (fail-closed). Checked BEFORE flipping state / standing up the match machinery.
                 HaltReason? disagreement = Server.ServerLobbyPolicy.CheckStartStateAgreement(
-                    _readyHash, _readyVersion, ExpectedPlayers);
+                    _readyHash, _readyVersion, arrivalSlots);
                 if (disagreement != null)
                 {
                     GD.PrintErr($"[Server] Start-state agreement FAILED ({disagreement}) — broadcasting HALT, not starting.");
                     _transport.BroadcastReliable(TickCommandPacket.MakeHalt(0u, disagreement.Value));
+                    // DW-398: wipe the collected hashes/versions/ready flags so a later re-Ready (the Story 9.6
+                    // reconnect/re-ready path) can never re-run the gate against stale payloads from this aborted
+                    // attempt — every player must re-attest from scratch.
+                    Server.ServerLobbyPolicy.ResetAgreement(_readyHash, _readyVersion, _ready);
                     _state = State.Lobby;
+                    BroadcastLobbyRoster(); // ready flags changed — keep any surviving client's grid truthful
                     return;
                 }
 
@@ -576,15 +619,15 @@ namespace ProjectChimera.Multiplayer
                 // order) at StartGame — the single source every downstream faction-stamp reads from (slot →
                 // FactionRegistry.ToFaction), never a client packet byte. A duplicate/absent/out-of-range slot
                 // rejects the build → HALT (fail-closed) rather than starting a match whose slots we can't attest.
-                var arrivalSlots = new System.Collections.Generic.List<int>(connected);
-                for (int s = 0; s < ExpectedPlayers; s++)
-                    if (_transport.IsSlotConnected(s)) arrivalSlots.Add(s);
                 if (!Server.AssignedRoster.TryFreeze(arrivalSlots, connected, out var roster, out string? rosterErr)
                     || roster == null)
                 {
                     GD.PrintErr($"[Server] AssignedRoster freeze FAILED ({rosterErr}) — broadcasting HALT, not starting.");
                     _transport.BroadcastReliable(TickCommandPacket.MakeHalt(0u, HaltReason.StartStateDisagreement));
+                    // DW-398: same stale-agreement wipe as the disagreement branch above.
+                    Server.ServerLobbyPolicy.ResetAgreement(_readyHash, _readyVersion, _ready);
                     _state = State.Lobby;
+                    BroadcastLobbyRoster();
                     return;
                 }
                 _roster = roster;
@@ -599,8 +642,18 @@ namespace ProjectChimera.Multiplayer
 
                 // Story 9.4: stand up the server delay authority alongside the fan-in. The initial delay baseline is
                 // LockstepManager.INPUT_DELAY (the delay the clients start at), so no directive issues until a
-                // measured RTT genuinely shifts the target.
-                _delayController = new Server.DelayController(connected, LockstepManager.INPUT_DELAY);
+                // measured RTT genuinely shifts the target. Constructed from the SAME slot map the gate + roster
+                // used (DW-397) so RTT/ACK indexing tracks the actual occupied slots, sized to the transport's slot
+                // bound so a high slot id can never run off the end.
+                _delayController = new Server.DelayController(
+                    arrivalSlots, ServerTransport.MAX_SLOTS, LockstepManager.INPUT_DELAY);
+
+                // DW-401: the delay-frontier fields are SIBLINGS of the controller and must reset with it — a
+                // second match in one server process would otherwise compute its first directive's applyAtTick
+                // forward from the PRIOR match's frontier (scheduling it at an unreachable tick) and inherit a
+                // mid-interval ping accumulator. The probe seq resets implicitly: it lives in the new controller.
+                _latestSeenTick = 0;
+                _sincePing      = 0;
 
                 // Story 9.6: stand up the ACK-gated freeze authority alongside the fan-in + delay authority, and
                 // cache the frozen-slot drain's broadcast sink (BroadcastCommands reaches every peer + spectator).

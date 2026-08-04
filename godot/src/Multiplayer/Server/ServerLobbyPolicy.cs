@@ -61,7 +61,8 @@ namespace ProjectChimera.Multiplayer.Server
         ///   • <see cref="HaltReason.StartStateDisagreement"/> — if any slot's hash is 0 or the hashes are not all
         ///     equal.
         /// Fail-closed: any 0 hash, version skew, or per-slot disagreement blocks the start (never fail-open).
-        /// The arrays must have at least <paramref name="expected"/> entries.
+        /// The arrays must have at least <paramref name="expected"/> entries. Dense [0, expected) sugar over the
+        /// slot-map-aware overload (DW-397) — use that one when the ready players may not occupy dense slots.
         /// </summary>
         public static HaltReason? CheckStartStateAgreement(ulong[] perSlotHash, ushort[] perSlotVersion, int expected)
         {
@@ -80,6 +81,64 @@ namespace ProjectChimera.Multiplayer.Server
                     return HaltReason.StartStateDisagreement;
 
             return null; // all versions match + all hashes equal non-zero → start allowed
+        }
+
+        /// <summary>
+        /// DW-397 (slot-map-aware) — the same fail-closed agreement gate evaluated over the match's ACTUAL
+        /// ready-player slot set instead of assuming a dense [0, expected) layout. A non-contiguous layout (a ready
+        /// player at slot ≥ expected, Story 9.15 open-slot lobbies) would make the dense overload read an
+        /// unoccupied slot's default-0 hash and false-HALT with <see cref="HaltReason.StartStateDisagreement"/>;
+        /// this overload reads exactly the occupied slots. Semantics otherwise identical: version skew first
+        /// (<see cref="HaltReason.ProtocolMismatch"/>), then all listed slots must share ONE non-zero hash.
+        /// Fail-closed on an empty slot set or a slot outside the collected arrays (never fail-open).
+        /// </summary>
+        /// <param name="perSlotHash">Per-slot 64-bit match-agreement hashes, indexed by transport slot.</param>
+        /// <param name="perSlotVersion">Per-slot protocol versions, indexed by transport slot.</param>
+        /// <param name="playerSlots">The transport slots of the ready players whose payloads must agree.</param>
+        public static HaltReason? CheckStartStateAgreement(ulong[] perSlotHash, ushort[] perSlotVersion,
+                                                           System.Collections.Generic.IReadOnlyList<int> playerSlots)
+        {
+            if (playerSlots == null || playerSlots.Count <= 0)
+                return HaltReason.StartStateDisagreement; // a zero-player lobby never agrees on a start
+
+            // A slot outside the collected arrays has no attested payload → fail-closed (checked before anything
+            // else so a malformed slot map can never index out of range or fail-open).
+            for (int i = 0; i < playerSlots.Count; i++)
+                if ((uint)playerSlots[i] >= (uint)perSlotHash.Length ||
+                    (uint)playerSlots[i] >= (uint)perSlotVersion.Length)
+                    return HaltReason.StartStateDisagreement;
+
+            // Protocol version FIRST — a version skew is its own reason (fail-closed).
+            for (int i = 0; i < playerSlots.Count; i++)
+                if (perSlotVersion[playerSlots[i]] != TickCommandPacket.PROTOCOL_VERSION)
+                    return HaltReason.ProtocolMismatch;
+
+            // Every listed slot must share ONE non-zero match-agreement hash.
+            ulong first = perSlotHash[playerSlots[0]];
+            if (first == 0UL) return HaltReason.StartStateDisagreement;
+            for (int i = 1; i < playerSlots.Count; i++)
+            {
+                ulong h = perSlotHash[playerSlots[i]];
+                if (h == 0UL || h != first) return HaltReason.StartStateDisagreement;
+            }
+
+            return null; // all versions match + all hashes equal non-zero → start allowed
+        }
+
+        /// <summary>
+        /// DW-398 — wipe the per-slot Ready agreement state after a FAILED start gate (agreement disagreement or
+        /// roster-freeze rejection). The fail branch broadcasts a HALT and returns to the lobby WITHOUT clearing
+        /// the collected hashes/versions/ready flags, so a later re-Ready (the Story 9.6 reconnect/re-ready path)
+        /// would re-run the gate against a mix of stale and fresh payloads — a slot that never re-sent Ready could
+        /// pass on data from the aborted attempt. Clearing everything forces every player to re-attest (a cleared
+        /// hash is 0 → the gate stays fail-closed until a genuine fresh Ready arrives). Full-array clear: stale
+        /// data in spectator/unused slots has no business surviving either.
+        /// </summary>
+        public static void ResetAgreement(ulong[] perSlotHash, ushort[] perSlotVersion, bool[] ready)
+        {
+            Array.Clear(perSlotHash, 0, perSlotHash.Length);
+            Array.Clear(perSlotVersion, 0, perSlotVersion.Length);
+            Array.Clear(ready, 0, ready.Length);
         }
     }
 }
