@@ -841,5 +841,13 @@ namespace ProjectChimera.Dsl
         /// the trigger condition-in port (conditions and condition-expression roots AND together).</summary>
         public static bool AllowsDataFanIn(NodeBase n, int port) =>
             n is TriggerNode && port == TriggerGraph.TriggerConditionInPort;
+
+        /// <summary>DW-358 — true when (<paramref name="n"/>, <paramref name="port"/>) accepts MULTIPLE exec
+        /// edges — only the trigger event-in port (each subscribed EventNode fires the trigger independently;
+        /// <c>FromFlat</c> emits one edge per event). Every other exec-in takes exactly ONE incoming edge: a
+        /// second would leave the node executing under multiple owners (cross-trigger convergence escapes the
+        /// per-trigger cycle guard, so the structural gate rejects it here).</summary>
+        public static bool AllowsExecFanIn(NodeBase n, int port) =>
+            n is TriggerNode && port == TriggerGraph.TriggerEventInPort;
     }
 }

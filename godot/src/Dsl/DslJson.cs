@@ -43,6 +43,10 @@ namespace ProjectChimera.Dsl
                 // Story 7.7 — a data edge MISSING its 'wire' is now a located parse reject (it silently defaulted
                 // to Boolean through the [JsonConstructor] before); Write emits the identical byte layout.
                 new DataEdgeJsonConverter(),
+                // DW-357 — the symmetric exec-edge strictness: a hand-authored exec_edge omitting src/dst used to
+                // silently default the endpoint to node 0 (which usually exists) and pass GraphStructureGate
+                // mis-wired; now every missing/duplicate/unknown key is a located parse reject. Identical Write layout.
+                new ExecEdgeJsonConverter(),
             },
         };
     }
