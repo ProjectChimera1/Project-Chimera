@@ -227,6 +227,64 @@ namespace ProjectChimera.Effects
             if (pe.InitialEffect != null) RunEffect(targetId, slot, pe.InitialEffect); // one-shot install pulse
         }
 
+        /// <summary>
+        /// DW-300 — the <b>install-once probe</b> for a re-runnable install graph: does <paramref name="targetId"/>
+        /// ALREADY host an instance that <paramref name="root"/> would install? Read-only; folds nothing; allocates
+        /// nothing. It answers only for the two shapes a <c>while_alive</c> self-passive root is validated to be
+        /// (<c>AbilityValidator</c>: "a 'while_alive' passive's effect root must be a permanent ApplyModifier or a
+        /// Persistent"):
+        /// <list type="bullet">
+        /// <item><see cref="PersistentEffect"/> — matched by DESCRIPTOR REFERENCE. A persistent instance carries no
+        ///   stacking identity at all (<c>_modifierId = 0</c>, <c>_modifier = null</c>) — the gap Story 2.13's own
+        ///   "never re-InstallPersistent, which has no same-id dedup" comment names — so the authored descriptor
+        ///   (one shared instance per registry entry, peer-identical by construction, like a <c>UnitDefinition</c>
+        ///   reference) IS its identity.</item>
+        /// <item><see cref="ApplyModifierEffect"/> — matched by <see cref="Modifier.Id"/>, i.e. exactly the same
+        ///   identity <see cref="Apply"/>'s own stacking scan uses.</item>
+        /// </list>
+        /// Any other root shape (or a null one) returns <c>false</c> — FAIL OPEN, i.e. the caller installs exactly as
+        /// it did before this probe existed. Deterministic: a pure read of <c>[0,_count)</c> in ascending slot order.
+        /// </summary>
+        /// <param name="targetId">The prospective host entity.</param>
+        /// <param name="root">The install graph's root node (an ability's <c>EffectGraph</c>).</param>
+        /// <returns><c>true</c> only when a re-run of <paramref name="root"/> would duplicate a LIVE instance.</returns>
+        public bool HostsInstanceFrom(int targetId, EffectNode? root)
+        {
+            if (root is null || !_world.IsAlive(targetId)) return false; // IsAlive also bounds-checks the id
+
+            int @base = targetId * EffectCaps.MaxModifiersPerEntity;
+            int n = _count[targetId];
+            switch (root)
+            {
+                case PersistentEffect pe:
+                    for (int s = 0; s < n; s++)
+                        if (ReferenceEquals(_persistent[@base + s], pe)) return true;
+                    return false;
+
+                case ApplyModifierEffect am when am.Modifier != null:
+                    for (int s = 0; s < n; s++)
+                    {
+                        int sl = @base + s;
+                        if (_modifier[sl] != null && _modifierId[sl] == am.Modifier.Id) return true;
+                    }
+                    return false;
+
+                default:
+                    return false; // unknown/unsupported root shape → never claims "already installed"
+            }
+        }
+
+        /// <summary>
+        /// DW-300 companion — re-derive entity <paramref name="id"/>'s <c>Effective*</c> stats from its CURRENT
+        /// <c>Base*</c> plus the live modifier accumulators (<see cref="ModifierSystem.RecomputeEntity"/>, which is
+        /// idempotent: <c>Effective = max(0, Base + Σbonus)</c>). Needed because
+        /// <see cref="EntityWorld.ApplyUnitDefinition"/> re-mirrors <c>Base*</c> into <c>Effective*</c>, discarding
+        /// every installed modifier's contribution — and <see cref="ModifierSystem.Tick"/> only recomputes entities
+        /// something DIRTIED, so on a live re-apply whose install is skipped as a duplicate nothing would restore it.
+        /// No-op on a fold-only store (no <see cref="ModifierSystem"/> wired); bounds/IsAlive-guarded downstream.
+        /// </summary>
+        public void RecomputeEffectiveStats(int id) => _system?.RecomputeEntity(_world, id);
+
         // ─────────────────────────────────────────── Per-tick advance ───────────────────────────────────────────
 
         /// <summary>
