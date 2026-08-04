@@ -1127,6 +1127,15 @@ namespace ProjectChimera.CreationSuite
             // legacy cost_ore/cost_crystal fields on the next Save. Copy the dictionary (not the reference) so the
             // clone validates/edits independently, mirroring CloneBuilding's identical fix.
             Cost = s.Cost is null ? null : new Dictionary<string, int>(s.Cost),
+            // DW-72 — the Story 3.16 shop trio, omitted here since 3.16 while CloneBuilding copied all three
+            // (BuildingCardPanel.Edit.cs:930-932). Duplicating a shop-capable unit silently dropped its shop
+            // identity, so the copy stopped selling and its stock vanished with no error. ShopStock is deep-copied
+            // and null-guarded exactly like Prerequisites/Abilities above — sharing the array would let an edit on
+            // the clone mutate the original's stock, and an unguarded .Clone() on a null NullReference-crashes the
+            // Duplicate action.
+            SellsItems = s.SellsItems,
+            ShopStock  = s.ShopStock is null ? null : (string[])s.ShopStock.Clone(),
+            ShopRadius = s.ShopRadius,
         };
 
         // ── Save = persist the in-memory list to the file (Task 6; D-1/D-10) ─────────
