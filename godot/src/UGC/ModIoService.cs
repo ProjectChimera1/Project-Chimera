@@ -8,6 +8,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace ProjectChimera.UGC
@@ -159,15 +160,25 @@ namespace ProjectChimera.UGC
         private readonly HttpClient              _http;
         private readonly ConcurrentQueue<Action> _queue = new();
 
+        /// <summary>
+        /// DW-428: monotonically increasing browse request generation. Each <see cref="BrowseModsAsync"/> call
+        /// stamps itself with the next generation; the completion (success or browse error) is dropped at
+        /// dispatch time unless its stamp is still the latest, so rapid sort-change / tag-toggle / search
+        /// re-issues can never leave the panel rendering a stale mod set out of arrival order.
+        /// </summary>
+        private int _browseGeneration;
+
         // ── Constructor ───────────────────────────────────────────────────────
 
         /// <param name="gameId">Your mod.io game ID (found in the Mod Manager dashboard).</param>
         /// <param name="apiKey">Your read-only API key from mod.io > API Access.</param>
-        public ModIoService(int gameId, string apiKey)
+        /// <param name="httpHandler">Test seam (DW-428): inject a custom <see cref="HttpMessageHandler"/> so
+        /// tests can control response ordering deterministically. Null (the default) uses the real HTTP stack.</param>
+        public ModIoService(int gameId, string apiKey, HttpMessageHandler? httpHandler = null)
         {
             _gameId = gameId;
             _apiKey = apiKey;
-            _http   = new HttpClient();
+            _http   = httpHandler == null ? new HttpClient() : new HttpClient(httpHandler);
             _http.DefaultRequestHeaders.Add("User-Agent", "ProjectChimera/0.1 (modio-csharp)");
         }
 
@@ -189,6 +200,11 @@ namespace ProjectChimera.UGC
         /// Fetch a page of public mods for this game from mod.io.
         /// Results arrive via <see cref="OnBrowseComplete"/>.
         /// No authentication required.
+        ///
+        /// DW-428: each call stamps itself with an incrementing request generation; a completion (success or
+        /// browse error) whose stamp is no longer the latest at dispatch time is dropped silently, so rapid
+        /// sort-change / tag-toggle / search re-issues can never render a stale mod set — only the newest
+        /// query's response (which is always still inbound) reaches <see cref="OnBrowseComplete"/>.
         /// </summary>
         /// <param name="limit">Number of results per page (max 100).</param>
         /// <param name="offset">Pagination offset.</param>
@@ -196,10 +212,16 @@ namespace ProjectChimera.UGC
         /// <param name="sort">Optional mod.io-native <c>_sort</c> token (e.g. <c>-downloads</c>). Null/blank ⇒ default
         /// <c>-popular</c>.</param>
         /// <param name="tags">Optional mod.io tag names; each becomes one <c>tags=</c> param (mod.io ANDs them).</param>
-        public void BrowseModsAsync(int limit = 20, int offset = 0, string? searchQuery = null,
+        /// <returns>The in-flight request task. Production callers ignore it (fire-and-forget, results arrive via
+        /// events); tests await it so the completion enqueue is deterministically observable before draining.</returns>
+        public Task BrowseModsAsync(int limit = 20, int offset = 0, string? searchQuery = null,
                                     string? sort = null, IReadOnlyList<string>? tags = null)
         {
-            _ = Task.Run(async () =>
+            // Stamp BEFORE the task launches so issue order — not thread-pool scheduling — defines which
+            // request is newest. Interlocked: completions read the field from pool threads.
+            int requestId = Interlocked.Increment(ref _browseGeneration);
+
+            return Task.Run(async () =>
             {
                 try
                 {
@@ -211,20 +233,29 @@ namespace ProjectChimera.UGC
                     if (!response.IsSuccessStatusCode)
                     {
                         string err = ParseError(body) ?? $"HTTP {(int)response.StatusCode}";
-                        _queue.Enqueue(() => OnError?.Invoke("browse", err));
+                        _queue.Enqueue(() => { if (IsLatestBrowse(requestId)) OnError?.Invoke("browse", err); });
                         return;
                     }
 
                     var result = JsonSerializer.Deserialize<ModIoListResponse<ModIoMod>>(body, _json);
                     var mods   = result?.Data ?? new List<ModIoMod>();
-                    _queue.Enqueue(() => OnBrowseComplete?.Invoke(mods));
+                    // Staleness is checked at DISPATCH time (inside the drained action, on the main thread),
+                    // not enqueue time: a newer browse issued while this action sits in the queue still wins.
+                    _queue.Enqueue(() => { if (IsLatestBrowse(requestId)) OnBrowseComplete?.Invoke(mods); });
                 }
                 catch (Exception ex)
                 {
-                    _queue.Enqueue(() => OnError?.Invoke("browse", ex.Message));
+                    _queue.Enqueue(() => { if (IsLatestBrowse(requestId)) OnError?.Invoke("browse", ex.Message); });
                 }
             });
         }
+
+        /// <summary>
+        /// DW-428 seam: true iff <paramref name="requestId"/> is the newest browse generation issued. A stale
+        /// (superseded) browse completion is dropped instead of dispatched — the newest browse's own response
+        /// is always still inbound, so the panel converges on the query its controls show.
+        /// </summary>
+        public bool IsLatestBrowse(int requestId) => requestId == Volatile.Read(ref _browseGeneration);
 
         /// <summary>
         /// Pure builder for the browse request URL — the Story 9.10 Tier-1 testable seam that proves the six
