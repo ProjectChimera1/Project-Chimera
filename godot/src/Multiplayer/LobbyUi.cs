@@ -144,6 +144,12 @@ namespace ProjectChimera.Multiplayer
         /// <summary>Story 9.7: the N-slot readiness model — the presentation + all-ready-Start-gate source.</summary>
         private LobbyReadyModel _readyModel = new(FactionRegistry.PLAYER_COUNT);
 
+        /// <summary>DW-402/DW-403: the Godot-free client-side PROTOCOL_VERSION gate + mismatch-recovery latch. Both
+        /// inbound version clauses (Hello + peer Ready) live in it (Tier-1 pinned by <c>LobbyVersionGateTests</c>);
+        /// a mismatch latches it, and a subsequently valid Hello on the same connection recovers the lobby to a
+        /// ready-able state. Reset wherever the connection/lobby state resets.</summary>
+        private readonly LobbyVersionGate _versionGate = new(TickCommandPacket.PROTOCOL_VERSION);
+
         // Story 9.7 (P2): scratch for decoding the server's authoritative lobby-roster snapshot.
         private readonly bool[] _rosterOccupied = new bool[TickCommandPacket.MAX_ROSTER_SLOTS];
         private readonly bool[] _rosterReady    = new bool[TickCommandPacket.MAX_ROSTER_SLOTS];
@@ -200,6 +206,7 @@ namespace ProjectChimera.Multiplayer
         {
             Visible = true;
             _readyModel = new LobbyReadyModel(FactionRegistry.PLAYER_COUNT);
+            _versionGate.Reset(); // DW-403: a freshly opened lobby never inherits a stale version block
             _readyBtn.Visible = false;
             _startBtn.Visible = false;
 
@@ -226,6 +233,7 @@ namespace ProjectChimera.Multiplayer
             _peerReadyConfirmed = false;
             _assignedFaction    = Core.Faction.Neutral;
             _onlineHeroAttested = false; // Story 9.12: re-require attestation next online match
+            _versionGate.Reset();        // DW-403
             _readyModel.Reset();
         }
 
@@ -481,6 +489,7 @@ namespace ProjectChimera.Multiplayer
             _onlineModeActive   = false;
             _isHostRole         = false;
             _onlineHeroAttested = false; // Story 9.12
+            _versionGate.Reset();        // DW-403: cancelling tears the connection down — drop the version latch
             _readyModel.Reset();
             RebuildSlotGrid();
             SetStatus("Disconnected.");
@@ -522,6 +531,7 @@ namespace ProjectChimera.Multiplayer
             _peerReadyConfirmed = false;
             _onlineModeActive   = false;
             _onlineHeroAttested = false; // Story 9.12
+            _versionGate.Reset();        // DW-403: the block is per-connection — a reconnect starts unblocked
             _readyModel.Reset();
             RebuildSlotGrid();
         }
@@ -538,15 +548,24 @@ namespace ProjectChimera.Multiplayer
                     GD.Print("[Lobby] Hello packet received from server.");
 #endif
                     // Story 9.4: validate the peer/server PROTOCOL_VERSION fail-closed (the D3.8 gap).
-                    if (!TickCommandPacket.TryReadHello(data, len, out var f, out ushort helloVer)
-                        || helloVer != TickCommandPacket.PROTOCOL_VERSION)
+                    // DW-402: the decision lives in the Godot-free LobbyVersionGate (Tier-1 pinned).
+                    bool helloParsed = TickCommandPacket.TryReadHello(data, len, out var f, out ushort helloVer);
+                    var helloVerdict = _versionGate.EvaluateHello(helloParsed, helloVer);
+                    if (!helloVerdict.Allowed)
                     {
-                        SetStatus("CANNOT START — protocol version mismatch.\n" +
-                                  $"Server protocol: v{helloVer}\n" +
-                                  $"Your protocol:  v{TickCommandPacket.PROTOCOL_VERSION}\n" +
-                                  "Both players must run the same game build.");
+                        SetStatus(helloVerdict.BlockReason!);
                         _readyBtn.Visible = false;
                         break;
+                    }
+                    if (helloVerdict.Recovered)
+                    {
+                        // DW-403: a subsequently VALID Hello on the same connection lifts the version block —
+                        // restart the ready handshake from a clean slate (stale pre-block ready/confirmation
+                        // state must not survive into the recovered lobby; occupancy is re-established below and
+                        // by the server's LobbyRoster snapshots, and both sides must re-confirm Ready).
+                        _readyConfirmed     = false;
+                        _peerReadyConfirmed = false;
+                        _readyModel.Reset();
                     }
                     if (f != Core.Faction.Neutral)
                     {
@@ -572,6 +591,18 @@ namespace ProjectChimera.Multiplayer
 
                 case PacketType.Ready:
                 {
+                    // DW-402/DW-403: the STATEFUL version latch is consulted FIRST — the Godot-free
+                    // LobbyVersionGate (Tier-1 pinned by LobbyVersionGateTests) latches on a peer version
+                    // mismatch and, while blocked, refuses ANY Ready fail-closed (even a version-matching one)
+                    // until a valid Hello recovers the lobby.
+                    bool parsed = TickCommandPacket.TryReadReady(data, len, out ushort peerVer, out _);
+                    string? versionBlock = _versionGate.CheckPeerReady(parsed, peerVer);
+                    if (versionBlock != null)
+                    {
+                        SetStatus(versionBlock);
+                        _peerReadyConfirmed = false;
+                        return;
+                    }
                     // Story 7.7 / 9.4 / DW-360 — the FULL parse → version gate → HandshakeGate marshalling (parsed
                     // flag, local/peer hash argument order, peer-slot resolution) is the Godot-free
                     // ReadyPacketRouting.Route (Tier-1-tested); this handler only APPLIES the returned decision.
