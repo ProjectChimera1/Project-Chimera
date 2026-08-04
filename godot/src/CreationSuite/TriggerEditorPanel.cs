@@ -781,11 +781,13 @@ namespace ProjectChimera.CreationSuite
             }
             if (act == "set_variable" && string.IsNullOrEmpty(SelectedText(_manualActVar)))
             {
-                // Story 7.4: the picker widens to Int/Fixed/Bool when a value expression is present — say so
-                // (PerPlayer targets are excluded there: the form has no slot picker; Raw IR carries the slot).
+                // Story 7.4: the picker widens to Int/Fixed/Bool when a value expression is present — say so.
+                // DW-345: BOTH paths exclude PerPlayer targets (the form has no slot picker and the flat
+                // TriggerAction.Faction defaults to 0 — it would silently write player slot 0); Raw IR carries
+                // the slot, so both messages name that hatch.
                 SetManualStatus(_manualActValExpr.Text.Trim().Length > 0
                     ? "✘ set_variable needs a declared Int/Fixed/Bool variable (Global or TriggerLocal; PerPlayer targets via Raw IR) — add one in the Variables section first."
-                    : "✘ set_variable needs a declared Int variable — add one in the Variables section first.");
+                    : "✘ set_variable needs a declared Int variable (Global or TriggerLocal; PerPlayer targets via Raw IR) — add one in the Variables section first.");
                 return;
             }
 
@@ -1137,6 +1139,18 @@ namespace ProjectChimera.CreationSuite
                         return;
                     }
 
+            // DW-343 (decision 2026-07-30: lint at declaration): names the expression grammar owns are refused
+            // ('true'/'false' silently parse as the Bool literal — the silently-diverging class) or declared with
+            // a warning (built-in/'length'/'event' collisions, non-identifier spellings — loud-failing or
+            // position-only, still fully usable from pickers/flat triggers/Raw IR). The LOAD gate stays permissive
+            // so legacy scenarios carrying such names keep loading; this lint is authoring-surface only.
+            ExprNameLintVerdict lint = ExprNameLint.CheckVariableName(name, out string lintMsg);
+            if (lint == ExprNameLintVerdict.Reject)
+            {
+                _varsStatus.Text = $"✘ {lintMsg}";
+                return;
+            }
+
             var type  = (DslValueType)Math.Max(0, _varType.Selected);
             var scope = (VarScope)Math.Max(0, _varScope.Selected);
             // Review follow-up: unparseable initial text used to silently become 0 — refuse with feedback instead
@@ -1190,7 +1204,11 @@ namespace ProjectChimera.CreationSuite
             var decl = new ScenarioVariable { Name = name, Type = type, Scope = scope, Initial = initial, ElementType = elemType, Capacity = capacity };
             _scenario.Variables = Append(_scenario.Variables ?? Array.Empty<ScenarioVariable>(), decl);
             _varName.Text = "";
-            _varsStatus.Text = $"✔ Declared '{name}'.";
+            // DW-343: a Warn-classified name declares fine but carries the lint note (the variable works from
+            // pickers/flat triggers/Raw IR; only some expression-text positions are shadowed).
+            _varsStatus.Text = lint == ExprNameLintVerdict.Warn
+                ? $"✔ Declared '{name}'. ⚠ {lintMsg}"
+                : $"✔ Declared '{name}'.";
             RefreshVarsList();
             RefreshVarPickers();
         }
@@ -1234,7 +1252,10 @@ namespace ProjectChimera.CreationSuite
         /// <see cref="VarScope.TriggerLocal"/> ones — a condition reads before the trigger-local scope is entered
         /// (it would read 0), so TriggerLocal is write-scratch only and stays available to the action picker.
         /// Story 7.4: the set_variable picker WIDENS to Int/Fixed/Bool-typed variables when a value expression is
-        /// present (the properly-typed expression path); Int-only otherwise (the 7.3 literal path).</summary>
+        /// present (the properly-typed expression path); Int-only otherwise (the 7.3 literal path). DW-345: BOTH
+        /// set_variable paths exclude PerPlayer targets — the form has no player-slot picker and both persisted
+        /// shapes write slot 0, so a PerPlayer pick would silently assign the wrong player (Raw IR carries the
+        /// slot). Eligibility lives in the Godot-free <see cref="TriggerVarPickerPolicy"/> (Tier-1 tested).</summary>
         private void RefreshVarPickers()
         {
             if (_manualCondVar == null || _manualActVar == null) return;
@@ -1249,17 +1270,9 @@ namespace ProjectChimera.CreationSuite
             if (vars != null)
                 foreach (var v in vars)
                 {
-                    // Review (7.4 pass 2): the WIDENED (expression) path excludes PerPlayer-scoped targets — the
-                    // manual form has no player-slot picker and PersistManualExpression writes slot 0, so offering
-                    // a PerPlayer variable would silently assign the wrong player. Per-player expression targets
-                    // are authored via Raw IR (which carries the slot). The literal path keeps its legacy filter.
-                    bool actEligible = widened
-                        ? (v.Type is DslValueType.Int or DslValueType.Fixed or DslValueType.Bool)
-                          && v.Scope != VarScope.PerPlayer
-                        : v.Type == DslValueType.Int;
-                    if (actEligible)
+                    if (TriggerVarPickerPolicy.SetVariableTargetEligible(v.Type, v.Scope, widened))
                         _manualActVar.AddItem(v.Name);                // set_variable: TriggerLocal allowed (write-scratch)
-                    if (v.Type == DslValueType.Int && v.Scope != VarScope.TriggerLocal)
+                    if (TriggerVarPickerPolicy.ConditionVariableEligible(v.Type, v.Scope))
                         _manualCondVar.AddItem(v.Name);               // variable_comparison: exclude TriggerLocal (read)
                 }
             SelectItemByText(_manualCondVar, prevCond);

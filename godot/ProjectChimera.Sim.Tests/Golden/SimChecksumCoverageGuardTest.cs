@@ -351,6 +351,10 @@ namespace ProjectChimera.Sim.Tests.Golden
             // ── v16 (Story 7.3): the mutable DslVarTable is folded (first-ever fold of this store) ──
             AssertDslVarTableFoldedIntoChecksum(registry);
 
+            // ── v16 follow-up (DW-341): Point-typed variables fold BOTH raw components (Raw0/X AND Raw1/Z) —
+            //    teeth deferred until the Raw1 population path (Story 7.4's SetRaw) landed ──
+            AssertDslPointVarsFoldedIntoChecksum(registry);
+
             // ── v17 (Story 7.6): declared arrays fold inside the DslVarTable, and the DslLoopState (batched
             //    continuation rows + per-tick fuel) folds after it ──
             AssertDslArraysFoldedIntoChecksum(registry);
@@ -694,6 +698,69 @@ namespace ProjectChimera.Sim.Tests.Golden
             uint withNull  = SimChecksum.Compute(world, buildings, resources, registry, null, null, null, null, null, null);
             Assert.True(withEmpty == withNull,
                 "A null DslVarTable does NOT fold byte-identically to an empty table (v16 null≡empty promise broken).");
+        }
+
+        /// <summary>
+        /// DW-341 (Story 7.3 v16 follow-up) coverage teeth: a Point-typed variable must fold BOTH raw components.
+        /// The v16 fold mixes Raw0 for every folded slot but Raw1 (the Point Z lane) ONLY for Point-typed slots —
+        /// and in 7.3 nothing could populate Raw1, so the original teeth above are Int-only and could not catch a
+        /// future Point write escaping the checksum. The population path has since landed (Story 7.4's
+        /// <see cref="DslVarTable.SetRaw"/> — reachable from compiled expressions and the 11.3 save-restore overlay),
+        /// so these teeth close the gap: on a declared Global Point AND a declared PerPlayer Point, moving X (Raw0)
+        /// alone moves the hash, then moving Z (Raw1) ALONE moves it again — the Z-only step is precisely the write
+        /// a Raw0-only fold would miss (a silent Point-Z desync surface). The PerPlayer Z tooth also runs on a
+        /// SECOND player slot so the per-slot inner loop cannot mix Raw1 for slot 0 only.
+        /// </summary>
+        private static void AssertDslPointVarsFoldedIntoChecksum(FactionRegistry registry)
+        {
+            var world     = new EntityWorld();          // empty — isolates the DslVarTable contribution
+            var resources = new ResourceStore(Fixed.Zero);
+            var buildings = new BuildingStore();
+
+            // NAMED trailing arg (never positional) — the DslEventQueue/AllianceStore precedent: pin the table to
+            // its parameter by NAME, immune to the next Compute-tail widening.
+            static uint Hash(EntityWorld w, BuildingStore b, ResourceStore r, FactionRegistry reg, DslVarTable v) =>
+                SimChecksum.Compute(w, b, r, reg, vars: v);
+
+            var vars = new DslVarTable();
+            vars.InitFromDeclarations(new[]
+            {
+                new DslVarDecl("gpt", DslValueType.Point, VarScope.Global,    0, 0),
+                new DslVarDecl("ppt", DslValueType.Point, VarScope.PerPlayer, 0, 0),
+            }, System.Array.Empty<DslTimerDecl>());
+
+            uint baseline = Hash(world, buildings, resources, registry, vars);
+
+            // Global Point: X (Raw0) alone moves the hash…
+            vars.SetRaw("gpt", 0, Fixed.FromInt(3).Raw, 0);
+            uint gx = Hash(world, buildings, resources, registry, vars);
+            Assert.True(baseline != gx,
+                "A Global Point variable's X (Raw0) write did not move the checksum — the v16 fold is not reading Point Raw0.");
+
+            // …then Z (Raw1) ALONE moves it again — the lane a Raw0-only fold would silently drop (DW-341).
+            vars.SetRaw("gpt", 0, Fixed.FromInt(3).Raw, Fixed.FromInt(7).Raw);
+            uint gz = Hash(world, buildings, resources, registry, vars);
+            Assert.True(gx != gz,
+                "A Global Point variable's Z (Raw1) lane is NOT folded into SimChecksum (v16) — a Point Z divergence would desync silently (DW-341).");
+
+            // PerPlayer Point, slot 0: X alone…
+            vars.SetRaw("ppt", 0, Fixed.FromInt(-2).Raw, 0);
+            uint px = Hash(world, buildings, resources, registry, vars);
+            Assert.True(gz != px,
+                "A PerPlayer Point variable's X (Raw0) write did not move the checksum — the v16 per-player fold is not reading Point Raw0.");
+
+            // …then Z ALONE on the same slot.
+            vars.SetRaw("ppt", 0, Fixed.FromInt(-2).Raw, Fixed.FromInt(11).Raw);
+            uint pz = Hash(world, buildings, resources, registry, vars);
+            Assert.True(px != pz,
+                "A PerPlayer Point variable's Z (Raw1) lane is NOT folded into SimChecksum (v16) (DW-341).");
+
+            // Z ALONE on a SECOND player slot (slot 3, an inactive faction in the 2-player registry) — proves the
+            // per-slot inner loop mixes Raw1 for EVERY slot 0..7 (the v16 all-slots contract), not slot 0 only.
+            vars.SetRaw("ppt", 3, 0, Fixed.FromInt(5).Raw);
+            uint pz3 = Hash(world, buildings, resources, registry, vars);
+            Assert.True(pz != pz3,
+                "A PerPlayer Point Z (Raw1) write on a SECOND slot (3) is NOT folded — the per-slot Raw1 mix may be slot-0-only (DW-341).");
         }
 
         /// <summary>

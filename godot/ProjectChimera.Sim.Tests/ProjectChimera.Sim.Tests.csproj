@@ -56,6 +56,10 @@
          mesh AABB > guarded default) extracted from NavObstacleManager, included as a single file (src/UI is not
          globbed by SimSources.props) so the resolution order is Tier-1 testable. -->
     <Compile Include="..\src\UI\BuildingNavFootprint.cs" LinkBase="Sim\UI" />
+    <!-- DW-345: the Godot-free variable-picker eligibility policy extracted from TriggerEditorPanel.RefreshVarPickers
+         (src/CreationSuite is not globbed by SimSources.props — the EditorHistory single-file precedent) so the
+         legacy-path PerPlayer exclusion is Tier-1 testable. -->
+    <Compile Include="..\src\CreationSuite\TriggerVarPickerPolicy.cs" LinkBase="Sim\CreationSuite" />
   </ItemGroup>
 
   <!-- Story 9.12: the SHARED C#<->TS hero-profile validation oracle. Embedded (read via manifest stream, like the
