@@ -3313,7 +3313,8 @@ origin: migrated from legacy ledger ("Deferred from: story 2.2b (2026-06-26)"), 
 location: godot/src/Effects/ModifierStore.cs:252-255,314
 severity: low
 reason: Defensive machinery looks correct on inspection (alive-check breaks after a pulse; caster attribution via _casterFaction) but no shipped content authors a lethal period and SelfLethalCastTests covers cast-time only. Verification gap, not a known defect. Verified 2026-07-28.
-status: open
+status: done 2026-08-04
+resolution: resolved by sweep bundle modifier-lethal-period-tests
 decision: 2026-07-28 correct-course — test rides Story 15.3 (status effects become real)
 
 ### DW-268: EntityPlacer snapshot of Effective/modifier state (2.2b facet)
@@ -3603,7 +3604,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-2.6 (2
 location: godot/src/Effects/AbilityCastSystem.cs:161-171; godot/src/Effects/ModifierStore.cs:266-269
 severity: medium
 reason: Latent, unchanged — no install-once guard, no same-id dedup (2.13's own comment names it). Precondition holds (every mapper caller runs on a fresh Create slot) but the seam now has TWO subscribers (InstallSelfPassive + ResearchSystem.ApplyCompletedResearch) — a future in-place re-apply (upgrade/morph/tech) double-fires both. Verified 2026-07-28.
-status: open
+status: done 2026-08-04
+resolution: resolved by sweep bundle passive-install-idempotence
 decision: 2026-07-28 correct-course — bundle passive-install-idempotence (Epic 15, Story 15.7): 3-line dedup now beats waiting for the trap
 
 ### DW-301: Editor RestoreUnit silently dropped authored armor + passives
@@ -5278,4 +5280,39 @@ origin: workflow burn-down run, 2026-08-04
 location: godot/src/Core/BuildingStore.cs:355-362 (Destroy) vs godot/src/Core/SimChecksum.cs:406-431 (the fold runs 0..Count with no Alive filter)
 severity: medium
 reason: Destroy only flips Alive[id] and pushes the free-list entry; the depth-5 queue and head timer are zeroed solely on the next Create of that slot. Two consequences. (1) A producer razed mid-training silently forfeits every paid-for queued order with no refund - WC3 refunds them, and the codebase already has the exact re-resolve-from-def refund machinery in CancelTrainCommand. (2) The dead slot's stale queue bytes and timer stay in the SimChecksum fold until the slot is recycled; deterministic on every peer (Destroy is deterministic and Create zeroes on recycle) so it is not a desync, but the folded state carries phantom orders. Out of the production-queue-correctness bundle's scope: it is a destroy-path refund POLICY decision, not one of the three queue-correctness defects that bundle named, and adding a refund on destroy would move ResourceStore.Ore (a folded value) on a path goldens can reach - it needs its own isolated story. DW-478's QueuedSupply already skips dead buildings explicitly, so the supply reservation is unaffected.
+status: open
+
+### DW-659: A live re-ApplyUnitDefinition silently wipes Effective* for every entity WITHOUT a self-passive
+origin: workflow burn-down run, 2026-08-04
+location: godot/src/Core/EntityWorld.cs:1022-1034 (the Base*->Effective* re-mirror) + godot/src/Effects/ModifierSystem.cs:60-72 (Tick recomputes only DIRTIED entities)
+severity: medium
+reason: Same future trap as DW-300 but a different defect, and outside the passive-install-idempotence bundle's two named files. ApplyUnitDefinition re-mirrors BaseAttackDamage/BaseArmor into EffectiveAttackDamage/EffectiveArmor, discarding every installed modifier's contribution; ModifierSystem.Tick only recomputes entities something DIRTIED, so for a unit carrying a research/item/aura modifier and NO self-passive the bonus vanishes until an unrelated apply/remove happens to re-dirty it. DW-300 fixed only the guarded self-passive path (the new ModifierStore.RecomputeEffectiveStats, called from InstallSelfPassive) - provably zero blast radius. The general fix is one more line in SimulationHost.cs:252-259: wire Modifiers.RecomputeEffectiveStats as a third OnUnitDefinitionApplied subscriber. Deliberately NOT done in that bundle: it would run on every def-based spawn and a spawn path that sets Effective* before the mapper could not be ruled out, i.e. a possible golden move that needs its own story.
+status: open
+
+### DW-660: ResearchSystem.ApplyCompletedResearch is state-idempotent but NOT heal-idempotent on a re-fired seam
+origin: workflow burn-down run, 2026-08-04
+location: godot/src/Economy/ResearchSystem.cs:391-406 (ApplyCompletedResearch) and :348-359 (ApplyCumulativeModifier)
+severity: medium
+reason: The OTHER OnUnitDefinitionApplied subscriber named in DW-300's reason line. Its stat state IS idempotent (RemoveByModifierId then Apply per research id), so DW-300 left it alone. But it passes preserveCurrentHealth:false, and ApplyStatDeltas heals current Health by any positive MaxHealth delta on apply - so a live in-place re-apply re-triggers the full heal for every completed +MaxHealth research. That turns a re-map (upgrade/morph/tech) into a repeatable free army heal, the exact defect DW-85 closed for the living-army completion path. Latent today (no production caller re-applies on a live unit); out of the passive-install-idempotence bundle's file scope.
+status: open
+
+### DW-661: A morph/def-swap re-apply leaves the PREVIOUS while-alive self-passive installed forever
+origin: workflow burn-down run, 2026-08-04
+location: godot/src/Effects/AbilityCastSystem.cs:176-186 (InstallSelfPassive, the DW-300 guard)
+severity: medium
+reason: Pinned by a DW-300 test (HostsInstanceFrom_IsFalse_ForAnUnrelatedPassiveOnTheSameHost) which asserts the CURRENT behavior: if a live re-apply swaps SelfPassiveAbilityIndex to a different ability, the new passive correctly installs but the old one is never removed, so the unit ends up carrying both (CountAt 2). Removing it needs a remove-by-source seam (ModifierStore has RemoveByModifierId but nothing for a Persistent, which carries no stacking identity: _modifierId=0, _modifier=null) plus a design decision about what a morph should do to in-flight buffs. Beyond DW-300's stated idempotence scope, so the behavior was pinned rather than a policy invented.
+status: open
+
+### DW-662: ModifierStore.Advance has no guard for a period effect that kills a DIFFERENT entity than its host
+origin: workflow burn-down run, 2026-08-04
+location: godot/src/Effects/ModifierStore.cs:269 (RunEffect -> the !IsAlive(i) bail)
+severity: low
+reason: The bail only checks the HOST (i). Unreachable today because ModifierStore.RunEffect builds its EffectContext with spatial: null, so a SearchArea node inside a period fans out to nobody and every period leaf is direct-target (host == target). If a future story ever threads a real SpatialHash into the store's period executor, an AoE period could destroy an entity other than its host and no bail covers that - the same CompactSlot/_count corruption class the DW-267 teeth experiment reproduced for the host case (IndexOutOfRangeException at owner id 0, corrupted _count and attribution at higher ids). Out of the modifier-lethal-period-tests bundle's scope (DW-267 was a test-coverage entry and the case cannot be constructed today), so reported rather than fixed.
+status: open
+
+### DW-663: ModifierStore.cs class doc still describes the store as "2.2b" with unbuilt re-entrancy defence
+origin: workflow burn-down run, 2026-08-04
+location: godot/src/Effects/ModifierStore.cs:33-42 (the <para><b>Re-entrancy</b> block)
+severity: low
+reason: The paragraph claims "In 2.2b all three phases use only direct-target leaves ... so no nesting occurs" and describes the re-entrancy defence as unsupported/unbuilt, without noting the Story 2.3 validator fence that actually holds the line. DW-324's doc sweep explicitly named ModifierStore.cs:39 in its scope but closed done 2026-08-03 with this paragraph still stale in main - re-filed here so the residue is not lost. The modifier-lethal-period-tests bundle left it untouched deliberately to avoid a merge conflict with the housekeeping-docs-normalization bundle that owned the line.
 status: open
