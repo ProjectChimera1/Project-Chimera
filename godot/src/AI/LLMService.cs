@@ -52,8 +52,9 @@ namespace ProjectChimera.AI
         // ── Story 8.3 — the three RTS clamps, parameterized out of ValidateScenario/BuildMapSystemPrompt onto this
         //    TRUSTED context (editor/caller-supplied). Defaults reproduce today's RTS behavior exactly, so RTS output
         //    is byte-for-byte unchanged; a non-RTS caller supplies relaxed values. NONE of these is ever sourced from
-        //    the parsed (untrusted) scenario file — that would weaken the validation gate circularly. A future
-        //    ScenarioType registry can populate them per type (see deferred-work DW note). ──
+        //    the parsed (untrusted) scenario file — that would weaken the validation gate circularly. DW-371 landed
+        //    the promised populator: <see cref="ScenarioTypeRegistry.Apply"/> writes all three (plus
+        //    <see cref="ScenarioType"/>) from a selected type's trusted preset. ──
 
         /// <summary>Story 8.3: the minimum number of player slots a valid scenario must declare. RTS default 2;
         /// <see cref="ValidateScenario"/> rejects fewer. Trusted (never read from the scenario file).</summary>
@@ -68,6 +69,15 @@ namespace ProjectChimera.AI
         /// A non-RTS caller supplies its own trusted mapping. <see cref="ValidateScenario"/> OVERWRITES each slot's
         /// hallucinated <c>faction_json</c> from this resolver, so the untrusted file never dictates the path.</summary>
         public Func<int, string>? FactionJsonResolver { get; set; }
+
+        /// <summary>DW-371: the scenario type this context's clamps were populated for, set by
+        /// <see cref="ScenarioTypeRegistry.Apply"/>. Editor-side and IN-MEMORY ONLY — never written into or read
+        /// back out of a scenario file (the Story 8.3 "Never" constraint). Drives only the per-type guidance block
+        /// in <see cref="BuildMapSystemPrompt"/>; the gate itself reads the three clamp fields above, so a caller
+        /// that sets them by hand keeps working unchanged.</summary>
+        // NOTE: fully-qualified initializer — the property deliberately shares its name with its enum type, so the
+        // simple name would be the "Color Color" ambiguity inside an instance initializer.
+        public ScenarioType ScenarioType { get; set; } = ProjectChimera.AI.ScenarioType.Rts;
 
         /// <summary>Resolve the trusted faction-JSON path for the given 0-based <paramref name="slot"/>, honoring
         /// <see cref="FactionJsonResolver"/> when set else the RTS slot-0/slot-1 default mapping.</summary>
@@ -681,6 +691,18 @@ play_sound      — sound_id (string)");
             // Story 8.3: reflect the SAME max-combat clamp ValidateScenario gates against (RTS default 6).
             sb.AppendLine($"- Pre-place at most {ctx.MaxCombatUnitsPerSlot} combat (non-worker) units per faction slot.");
             sb.AppendLine("- Start workers 3–5 units from their CommandCenter.");
+
+            // DW-371 — per-type guidance from the TRUSTED ScenarioTypeRegistry preset (never from the generated
+            // file). EMPTY for the RTS default, so the RTS prompt is byte-for-byte what it was before the registry
+            // landed — pinned by ScenarioTypeRegistryTests.RtsPrompt_IsUnchangedByApplyingTheDefaultType.
+            string typeGuidance = ScenarioTypeRegistry.PromptGuidance(ctx.ScenarioType);
+            if (!string.IsNullOrEmpty(typeGuidance))
+            {
+                sb.AppendLine();
+                sb.AppendLine("=== SCENARIO TYPE ===");
+                sb.AppendLine(typeGuidance);
+            }
+
             sb.AppendLine();
             sb.AppendLine("=== AVAILABLE UNIT IDs ===");
             sb.AppendLine(string.Join(", ", ctx.UnitIds.Select(id => $"\"{id}\"")));
