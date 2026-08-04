@@ -221,6 +221,7 @@ namespace ProjectChimera.Core.Sim
             WinCon           = new WinConditionSystem(WinState, World, Buildings, checksumFactions, Alliances); // Story 7.11/7.12 — team-aware sim-layer win evaluator (DW-184: World for generation-stamped leader refs)
             ScenarioDirector = new ScenarioDirector(Buildings, Resources, Vars, LoopState, DslEvents, TriggerEnabled, DslSimEvents, TriggerFireLog, checksumFactions); // Story 9.2 — active-count drives the threshold poll span
             ScenarioDirector.SetReadback(Readback);   // Story 7.8 — the director publishes into it once per tick at the tick boundary
+            ScenarioDirector.SetWinState(WinState);   // DW-189/DW-383 — the DSL `defeat` leaf latches VERDICT_LOST on the SAME folded store WinCon (above) and OrderApplier's Concede resolve from
 
             // AR-9 effective-stat recompute (Story 2.2a), the Story 2.2b ModifierStore it drives, and the Story 2.4a
             // ability-cast system. Construct the systems + store FIRST — the store ctor takes modSys, and

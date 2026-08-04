@@ -258,6 +258,17 @@ namespace ProjectChimera.Core
         // ── Named regions (Story 6.4) ─────────────────────────────────────────
         private RegionStore _regions = RegionStore.Empty;
 
+        // ── DW-189 / DW-383 — the folded per-faction verdict store the DSL `defeat` leaf latches into. ────────
+        // The SAME store WinConditionSystem writes and the Concede order (OrderApplier, UnitCommand.Concede)
+        // latches, so a DSL-authored defeat and a surrender are one rail with one resolver: the built-in
+        // N-faction, team-aware WinConditionSystem awards the winner (it ticks at index 14, immediately BEFORE
+        // this director at 15, so a defeat latched on tick T is resolved on tick T+1), and presentation merely
+        // consumes the latched verdicts (GameOverPresentation.DecideOutcome). Nullable by design: a direct test
+        // construction — and every golden/headless/replay path that owns no win state — makes the `defeat` leaf a
+        // deterministic no-op, exactly the `winState == null` posture OrderApplier's Concede branch documents.
+        // NOT owned here (SimulationHost owns and folds it); read/written only through LatchDefeat below.
+        private WinStateStore? _winState;
+
         // ── run_effect runtime (Story 7.3) ────────────────────────────────────
         // The director owns its OWN EffectExecutor + SpatialHash (the AbilityCastSystem pattern — "no second
         // executor" forbids a re-implementation of the effect runtime, not a second INSTANCE of the shared class).
@@ -375,7 +386,12 @@ namespace ProjectChimera.Core
         /// <summary>Requests a sound effect. (soundId)</summary>
         public Action<string>? OnPlaySound;
 
-        /// <summary>Signals a match outcome. (winnerFactionSlot: 0=P1, 1=P2)</summary>
+        /// <summary>Signals an AUTHOR-DECLARED WINNER — the <c>victory</c> leaf only. (winnerFactionSlot, 0-based:
+        /// 0=P1 … 7=P8.) DW-189/DW-383 narrowed the contract: the <c>defeat</c> leaf no longer fires this with a
+        /// derived "other faction" slot (it latched <c>1 - slot</c>, i.e. a negative slot for any faction ≥ P3);
+        /// a defeat now latches its own <see cref="WinStateStore.VERDICT_LOST"/> (see <c>LatchDefeat</c>) and the
+        /// winner, if the match has one, is resolved by <see cref="WinConditionSystem"/> and read off the folded
+        /// verdicts by presentation. So this delegate is never invoked with a slot the author did not name.</summary>
         public Action<int>? OnVictory;
 
         // ── Story 7.13 — the PRESENTATION-ONLY action-leaf delegates (mirror the On* pattern; C3-clean: the body
@@ -455,6 +471,15 @@ namespace ProjectChimera.Core
         /// Story 6.4: supply the resolved <see cref="RegionStore"/> the <c>unit_in_region</c> condition scans.
         /// </summary>
         public void SetRegionStore(RegionStore? store) => _regions = store ?? RegionStore.Empty;
+
+        /// <summary>
+        /// DW-189 / DW-383 — wire the FOLDED <see cref="WinStateStore"/> the DSL <c>defeat</c> leaf latches a
+        /// per-faction <see cref="WinStateStore.VERDICT_LOST"/> into. <c>SimulationHost</c> passes its owned,
+        /// checksum-folded instance (the same object <c>WinConditionSystem</c> and <c>OrderApplier</c>'s Concede
+        /// branch write); a null (direct test construction, golden/headless/replay without win state) makes the
+        /// leaf a deterministic no-op. Injection — never ownership: the director never clears or re-allocates it.
+        /// </summary>
+        public void SetWinState(WinStateStore? store) => _winState = store;
 
         /// <summary>
         /// Story 7.8 — wire the presentation read rail. <c>SimulationHost</c> passes its shared
@@ -2543,10 +2568,19 @@ namespace ProjectChimera.Core
                         OnPlaySound?.Invoke(a.SoundId);
                     break;
                 case "victory":
+                    // The winner is NAMED by the author, so this leaf carries no faction arithmetic and is already
+                    // N-player-safe (slot 5 declares Player6 the winner, not "the other one"). Unchanged by
+                    // DW-189/DW-383; see LatchDefeat's remarks for why the WON half stays on this delegate.
                     OnVictory?.Invoke(a.Faction);
                     break;
                 case "defeat":
-                    OnVictory?.Invoke(1 - a.Faction); // other faction wins
+                    // DW-189 / DW-383 — was `OnVictory?.Invoke(1 - a.Faction)` ("the other faction wins"), a
+                    // 2-faction complement that produced a NEGATIVE, nonsensical winner slot for any a.Faction >= 2
+                    // (slot 2 → -1 → ShowGameOver(0)) and silently mis-declared the winner in any >2-faction map.
+                    // A defeat NAMES ONE LOSER and says nothing about who won (the WC3 "Game - Defeat Player 3"
+                    // shape, recorded decision 2026-08-02): latch that faction's own VERDICT_LOST and let the
+                    // built-in N-faction, team-aware WinConditionSystem decide whether anybody has won yet.
+                    LatchDefeat(a.Faction);
                     break;
                 case "create_timer":
                     if (!string.IsNullOrEmpty(a.TimerName) && a.TimerSeconds > Fixed.Zero)
@@ -2589,6 +2623,51 @@ namespace ProjectChimera.Core
                         _vars.ArrayClear(a.Variable);
                     break;
             }
+        }
+
+        /// <summary>
+        /// DW-189 / DW-383 — the N-player-safe <c>defeat</c> leaf: latch <see cref="WinStateStore.VERDICT_LOST"/>
+        /// for the AUTHORED faction and nothing else. It replaces the 2-faction complement
+        /// <c>OnVictory?.Invoke(1 - a.Faction)</c>, which was valid only for slots 0/1 and handed presentation a
+        /// negative winner slot (slot 2 → -1, slot 7 → -6) in any &gt;2-faction map — a garbage
+        /// <c>ShowGameOver(winnerSlot + 1)</c> arg and a silently wrong outcome.
+        ///
+        /// <para><b>Why nothing is declared WON here</b> (recorded decision, 2026-08-02, WC3-shaped): victory and
+        /// defeat are INDEPENDENT per-player declarations — WC3's "Game - Defeat Player 3" says who LOST, never
+        /// who won — and in an N-player map "who won" is genuinely undecidable from one loser (three live
+        /// factions minus one is still a match in progress). So this leaf publishes the single fact it owns onto
+        /// the FOLDED verdict rail and the built-in, N-faction, team-aware <see cref="WinConditionSystem"/> owns
+        /// the winner: it ticks at index 14, immediately BEFORE this director at 15, so a defeat latched on tick T
+        /// is resolved on tick T+1 by the same <c>ApplyLastTeamStanding</c> path a surrender takes (its
+        /// <c>AnyLost()</c> gate is now satisfied). In a 2-faction match that reproduces the old "other faction
+        /// wins" outcome exactly — one tick later, and via the resolver instead of a complement; at N&gt;2 it
+        /// correctly declares NO winner until one team is actually left. Presentation consumes the latched
+        /// verdicts through the existing <c>GameOverPresentation.DecideOutcome</c> rail.</para>
+        ///
+        /// <para>Determinism: <paramref name="slot"/> is authored data (identical on every peer and in replay) and
+        /// the write is MONOTONE — only a <see cref="WinStateStore.VERDICT_NONE"/> faction latches, mirroring the
+        /// store's own never-overwrite rule — so a re-fired trigger, a second defeat for the same slot, or a
+        /// faction the resolver already decided is a no-op. Out-of-range slots are dropped rather than throwing
+        /// (the load-time <c>ScenarioValidator.CheckFactionSlot</c> gate already rejects them; this is
+        /// defence-in-depth for an unvalidated/hand-seeded scenario). A null <see cref="_winState"/> — every
+        /// golden, headless and replay-without-win-state path — is a deterministic no-op, so no golden moves.</para>
+        /// </summary>
+        /// <param name="slot">The authored 0-based faction slot (slot 0 = <see cref="Faction.Player1"/>).</param>
+        private void LatchDefeat(int slot)
+        {
+            if (_winState == null) return;
+
+            // Bound by the ACTIVE faction span when a registry is wired (SimChecksum folds Verdict per ACTIVE
+            // faction, so latching an inactive slot would mutate state the checksum cannot see); fall back to the
+            // engine player ceiling for a direct test construction that supplied no registry.
+            int activeCount = _factionRegistry?.ActiveCount ?? FactionRegistry.PLAYER_COUNT;
+            if (slot < 0 || slot >= activeCount) return;
+
+            int idx = (int)FactionRegistry.ToFaction(slot);
+            if (idx <= 0 || idx >= _winState.Verdict.Length) return; // Neutral/OOB can never hold a verdict
+            if (_winState.Verdict[idx] != WinStateStore.VERDICT_NONE) return; // monotone latch — never overwrite
+
+            _winState.Verdict[idx] = WinStateStore.VERDICT_LOST;
         }
 
         /// <summary>
