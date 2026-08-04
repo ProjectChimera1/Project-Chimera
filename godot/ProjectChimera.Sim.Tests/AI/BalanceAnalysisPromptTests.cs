@@ -39,6 +39,17 @@ namespace ProjectChimera.Sim.Tests.AI
             Assert.Contains("archer", prompt);
         }
 
+        [Fact]
+        public void BuildBalanceAnalysisPrompt_DW382_ListsSpeed_NotMeshScale()
+        {
+            // DW-382 (recorded decision: "add speed only, drop mesh_scale"): the prompt must offer movement speed as
+            // a tunable line and must no longer offer the cosmetic mesh_scale knob. HeadsALine is the exact-token
+            // guard, so attack_speed / projectile_speed lines cannot satisfy the "speed" assertion.
+            string prompt = LLMService.BuildBalanceAnalysisPrompt(Ctx());
+            Assert.True(HeadsALine(prompt, "speed"), "balance prompt omits tunable field 'speed'");
+            Assert.False(HeadsALine(prompt, "mesh_scale"), "balance prompt still offers the dropped cosmetic field 'mesh_scale'");
+        }
+
         /// <summary>True when some prompt line's first whitespace-delimited token is exactly <paramref name="token"/> —
         /// i.e. the member heads its own line, not merely appears as a substring of another (the 8.3/8.4 guard idiom).</summary>
         private static bool HeadsALine(string prompt, string token)

@@ -18,9 +18,11 @@ namespace ProjectChimera.AI
     /// deserialize with <see cref="FactionDefinition.JsonOptions"/> — a deterministic plain-float round-trip, NO second
     /// quantize path), sets the proposed value on the CLONE, and re-gates it through the SAME
     /// <see cref="UnitDefinitionValidator"/> hand-authored unit edits pass. A rejected value leaves the original
-    /// untouched and returns a located error. Quantization still happens ONLY later at
-    /// <c>EntityWorld.ApplyUnitDefinition</c> (the single float→Fixed boundary), so an applied stat hashes identically
-    /// to a hand-authored one by construction.</para>
+    /// untouched and returns a located error. Quantization still happens ONLY later at the existing load-time
+    /// float→Fixed boundary — <c>EntityWorld.ApplyUnitDefinition</c> for the def-mapped stats, the
+    /// <c>EntityWorld.Create</c> ctor args for <c>hp</c>/<c>speed</c> (every spawn site quantizes
+    /// <c>Fixed.FromFloat(def.Speed)</c> there) — so an applied stat hashes identically to a hand-authored one by
+    /// construction; this applier introduces no quantize path of its own.</para>
     /// </summary>
     public static class BalanceSuggestionApplier
     {
@@ -30,12 +32,16 @@ namespace ProjectChimera.AI
         /// exercised by Story 8.4). A member added here MUST also be handled by <see cref="SetField"/>/<see cref="TryReadField"/>
         /// and enumerated by <see cref="LLMService.BuildBalanceAnalysisPrompt"/> — the prompt staleness-guard test
         /// (BalanceAnalysisPromptTests) and the SetField coverage-guard test (BalanceAnalysisApplyTests) fail otherwise.
+        /// DW-382 (recorded decision 2026-07-30, "add speed only, drop mesh_scale"): movement <c>speed</c> IS tunable —
+        /// it quantizes at the <c>EntityWorld.Create</c> ctor arg (the same single load-time float→Fixed boundary the
+        /// spawn sites already use), so an applied speed hashes identically to a hand-authored one; cosmetic
+        /// <c>mesh_scale</c> is NOT a balance lever and was dropped; nullable/derived <c>xp_bounty</c> stays out.
         /// </summary>
         public static readonly IReadOnlyList<string> TunableFields = new[]
         {
             // ── unit numeric stats ──
-            "attack_damage", "hp", "armor", "attack_range", "attack_speed", "splash_radius", "vision_range",
-            "cost_ore", "cost_crystal", "supply", "train_time", "max_energy", "collision_radius", "mesh_scale",
+            "attack_damage", "hp", "speed", "armor", "attack_range", "attack_speed", "splash_radius", "vision_range",
+            "cost_ore", "cost_crystal", "supply", "train_time", "max_energy", "collision_radius",
             "projectile_speed",
             // ── hero growth stats ──
             "hero.max_level", "hero.base_xp", "hero.xp_growth", "hero.xp_per_kill", "hero.xp_share_radius",
@@ -112,6 +118,7 @@ namespace ProjectChimera.AI
                 // ── unit float stats ──
                 case "attack_damage":    u.AttackDamage    = F(proposed); return null;
                 case "hp":               u.Hp              = F(proposed); return null;
+                case "speed":            u.Speed           = F(proposed); return null;
                 case "armor":            u.Armor           = F(proposed); return null;
                 case "attack_range":     u.AttackRange     = F(proposed); return null;
                 case "attack_speed":     u.AttackSpeed     = F(proposed); return null;
@@ -120,7 +127,6 @@ namespace ProjectChimera.AI
                 case "train_time":       u.TrainTime       = F(proposed); return null;
                 case "max_energy":       u.MaxEnergy       = F(proposed); return null;
                 case "collision_radius": u.CollisionRadius = F(proposed); return null;
-                case "mesh_scale":       u.MeshScale       = F(proposed); return null;
                 case "projectile_speed": u.ProjectileSpeed = F(proposed); return null;
 
                 // ── unit int stats ──
@@ -167,6 +173,7 @@ namespace ProjectChimera.AI
             {
                 case "attack_damage":    value = u.AttackDamage;    return true;
                 case "hp":               value = u.Hp;              return true;
+                case "speed":            value = u.Speed;           return true;
                 case "armor":            value = u.Armor;           return true;
                 case "attack_range":     value = u.AttackRange;     return true;
                 case "attack_speed":     value = u.AttackSpeed;     return true;
@@ -175,7 +182,6 @@ namespace ProjectChimera.AI
                 case "train_time":       value = u.TrainTime;       return true;
                 case "max_energy":       value = u.MaxEnergy;       return true;
                 case "collision_radius": value = u.CollisionRadius; return true;
-                case "mesh_scale":       value = u.MeshScale;       return true;
                 case "projectile_speed": value = u.ProjectileSpeed; return true;
 
                 case "cost_ore":     value = u.CostOre;     return true;

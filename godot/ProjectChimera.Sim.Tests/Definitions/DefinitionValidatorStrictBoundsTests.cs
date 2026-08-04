@@ -184,6 +184,8 @@ namespace ProjectChimera.Sim.Tests.Definitions
         {
             // The originating defect (DW-380 came out of the Story 8.5 review): a balance suggestion made reaching these
             // degenerate values ONE CLICK, because TryApply gates the proposal through this very validator.
+            // DW-382 note: mesh_scale has since been dropped from the tunable vocabulary entirely, so its row now
+            // rejects even EARLIER (the not-tunable gate) — every assertion below still holds.
             var target = ValidUnit();
             var (candidate, err) = ProjectChimera.AI.BalanceSuggestionApplier.TryApply(target, field, 0d, null);
 

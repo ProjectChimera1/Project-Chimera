@@ -148,6 +148,7 @@ namespace ProjectChimera.Sim.Tests.AI
         {
             Row("attack_damage",    (Func<UnitDefinition, double>)(u => u.AttackDamage)),
             Row("hp",               u => u.Hp),
+            Row("speed",            u => u.Speed),   // DW-382: movement speed IS a tunable balance lever
             Row("armor",            u => u.Armor),
             Row("attack_range",     u => u.AttackRange),
             Row("attack_speed",     u => u.AttackSpeed),
@@ -156,7 +157,6 @@ namespace ProjectChimera.Sim.Tests.AI
             Row("train_time",       u => u.TrainTime),
             Row("max_energy",       u => u.MaxEnergy),
             Row("collision_radius", u => u.CollisionRadius),
-            Row("mesh_scale",       u => u.MeshScale),
             Row("projectile_speed", u => u.ProjectileSpeed),
             Row("cost_ore",         u => u.CostOre),
             Row("cost_crystal",     u => u.CostCrystal),
@@ -261,6 +261,93 @@ namespace ProjectChimera.Sim.Tests.AI
             int id = w.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromFloat(def.Hp), Fixed.FromFloat(def.Speed));
             w.ApplyUnitDefinition(id, def);
             return w.BaseAttackDamage[id];
+        }
+
+        // ── DW-382 (recorded decision 2026-07-30: "add speed only, drop mesh_scale") ──────────────────────────────
+
+        [Fact]
+        public void TunableVocabulary_DW382_ContainsSpeed_NotMeshScale_NotXpBounty()
+        {
+            // RED without DW-382: movement speed — arguably the highest-leverage balance stat — was outside the
+            // closed set while cosmetic mesh_scale was in it. The recorded decision adds speed ONLY (derived/nullable
+            // xp_bounty stays out) and cuts the cosmetic knob.
+            Assert.Contains("speed", BalanceSuggestionApplier.TunableFields);
+            Assert.DoesNotContain("mesh_scale", BalanceSuggestionApplier.TunableFields);
+            Assert.DoesNotContain("xp_bounty", BalanceSuggestionApplier.TunableFields);
+        }
+
+        [Fact]
+        public void TryApply_Speed_AppliesToClone_OriginalUntouched()
+        {
+            var target = Grunt();   // Speed = 4f
+            var (candidate, err) = BalanceSuggestionApplier.TryApply(target, "speed", 5.5, null);
+
+            Assert.Null(err);
+            Assert.NotNull(candidate);
+            Assert.Equal(5.5f, candidate!.Speed);
+            Assert.Equal(4f, target.Speed);   // apply is on a clone
+        }
+
+        [Fact]
+        public void TryApply_Speed_OutOfFixedRange_LocatedReject_OriginalUnchanged()
+        {
+            var target = Grunt();
+            var (candidate, err) = BalanceSuggestionApplier.TryApply(target, "speed", 40000, null);
+
+            Assert.Null(candidate);           // gated by the SAME UnitDefinitionValidator CheckStat("speed") rule
+            Assert.NotNull(err);
+            Assert.Contains("speed", err);
+            Assert.Equal(4f, target.Speed);
+        }
+
+        [Fact]
+        public void TryApply_MeshScale_NoLongerTunable_LocatedReject_OriginalUntouched()
+        {
+            var target = Grunt();
+            var (candidate, err) = BalanceSuggestionApplier.TryApply(target, "mesh_scale", 2.0, null);
+
+            Assert.Null(candidate);
+            Assert.NotNull(err);
+            Assert.Contains("mesh_scale", err);
+            Assert.Contains("is not a tunable balance field", err);
+            Assert.Equal(1f, target.MeshScale);   // untouched (class default)
+        }
+
+        [Fact]
+        public void TryReadField_Speed_Reads_MeshScale_DoesNot()
+        {
+            var u = Grunt();   // Speed = 4f
+            Assert.True(BalanceSuggestionApplier.TryReadField(u, "speed", out double v));
+            Assert.Equal(4d, v, 3);
+            // The reader is the "handles exactly TunableFields" counterpart of SetField — a dropped field must not
+            // be served by it either.
+            Assert.False(BalanceSuggestionApplier.TryReadField(u, "mesh_scale", out _));
+        }
+
+        [Fact]
+        public void AppliedSpeed_QuantizesToSameCreateCtorFixedAsHandAuthored()
+        {
+            // speed's float→Fixed boundary is the EntityWorld.Create ctor arg (every spawn site quantizes
+            // Fixed.FromFloat(def.Speed) there — ScenarioApplier/SimulationHost), NOT ApplyUnitDefinition. An applied
+            // speed must reach the SoA byte-identical to a hand-authored one through that same single path.
+            var (candidate, err) = BalanceSuggestionApplier.TryApply(Grunt(), "speed", 5.25, null);
+            Assert.Null(err);
+            Assert.NotNull(candidate);
+
+            var hand = new UnitDefinition { Id = "grunt", Category = "Melee", Hp = 120f, Speed = 5.25f };
+
+            Assert.Equal(CreateAndReadMoveSpeed(hand).Raw, CreateAndReadMoveSpeed(candidate!).Raw);
+            Assert.Equal(Fixed.FromFloat(5.25f).Raw, CreateAndReadMoveSpeed(candidate!).Raw);
+        }
+
+        /// <summary>Spawn <paramref name="def"/> through the ctor-arg path every spawn site uses and read the
+        /// quantized <c>BaseMoveSpeed</c> (Create mirrors it into EffectiveMoveSpeed).</summary>
+        private static Fixed CreateAndReadMoveSpeed(UnitDefinition def)
+        {
+            var w = new EntityWorld();
+            int id = w.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromFloat(def.Hp), Fixed.FromFloat(def.Speed));
+            w.ApplyUnitDefinition(id, def);
+            return w.BaseMoveSpeed[id];
         }
     }
 }
