@@ -1,0 +1,210 @@
+{
+ "alpha/worker": {
+  "kind": "units",
+  "faction": "alpha",
+  "category": "worker",
+  "size": 512,
+  "negative": "full body, tiny subject, wide shot, multiple characters, character sheet, text, watermark, letters, ui frame, border, rounded corners, drop shadow, busy background, scenery, low contrast, blurry",
+  "prompt": "game UI portrait icon, square 1:1, tight bust framing from the chest up, subject centered and filling the frame, strong rim light separating the subject from a dark recessed vignette background, bold readable shapes at small size, flat stylized painted look with clean edges, early-20th-century industrial FMA-inspired alchemy world, no text, no border frame\nFACTION PALETTE: slate-blue greatcoats and leather, matte brass-colored automail accents (used sparingly), chalk-white transmutation sigils that flare cyan-white; flat color blocks, no implied metal gloss.\nSUBJECT: a slight young acolyte in a knee-length slate-blue work coat with rolled sleeves, one simple brass automail forearm, chalk satchel and a small pick at the hip; compact unarmed silhouette clearly the smallest humanoid; a faint chalk-white circle glows on the open palm. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view)."
+ },
+ "alpha/infantry": {
+  "kind": "units",
+  "faction": "alpha",
+  "category": "soldier",
+  "size": 512,
+  "negative": "full body, tiny subject, wide shot, multiple characters, character sheet, text, watermark, letters, ui frame, border, rounded corners, drop shadow, busy background, scenery, low contrast, blurry",
+  "prompt": "game UI portrait icon, square 1:1, tight bust framing from the chest up, subject centered and filling the frame, strong rim light separating the subject from a dark recessed vignette background, bold readable shapes at small size, flat stylized painted look with clean edges, early-20th-century industrial FMA-inspired alchemy world, no text, no border frame\nFACTION PALETTE: slate-blue greatcoats and leather, matte brass-colored automail accents (used sparingly), chalk-white transmutation sigils that flare cyan-white; flat color blocks, no implied metal gloss.\nSUBJECT: a standing soldier in a belted slate-blue greatcoat over a leather cuirass, etched chalk bracers, a short straight sword at the hip, hands meeting over a small glowing chalk-white circle; bulk the shoulders and pauldrons so this is the widest of the Covenant humanoids; baseline soldier read. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view)."
+ },
+ "alpha/scout": {
+  "kind": "units",
+  "faction": "alpha",
+  "category": "caster",
+  "size": 512,
+  "negative": "full body, tiny subject, wide shot, multiple characters, character sheet, text, watermark, letters, ui frame, border, rounded corners, drop shadow, busy background, scenery, low contrast, blurry",
+  "prompt": "game UI portrait icon, square 1:1, tight bust framing from the chest up, subject centered and filling the frame, strong rim light separating the subject from a dark recessed vignette background, bold readable shapes at small size, flat stylized painted look with clean edges, early-20th-century industrial FMA-inspired alchemy world, no text, no border frame\nFACTION PALETTE: slate-blue greatcoats and leather, matte brass-colored automail accents (used sparingly), chalk-white transmutation sigils that flare cyan-white; flat color blocks, no implied metal gloss.\nSUBJECT: a lean runner in a cropped slate-blue jacket and tight leggings, a long scarf swept hard to one side and a light dagger; low crouched stance with no shoulder bulk so the outline is a thin dart shape; chalk-white speed-streak sigils glow along the boots. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view)."
+ },
+ "alpha/heavy_infantry": {
+  "kind": "units",
+  "faction": "alpha",
+  "category": "heavy",
+  "size": 512,
+  "negative": "full body, tiny subject, wide shot, multiple characters, character sheet, text, watermark, letters, ui frame, border, rounded corners, drop shadow, busy background, scenery, low contrast, blurry",
+  "prompt": "game UI portrait icon, square 1:1, tight bust framing from the chest up, subject centered and filling the frame, strong rim light separating the subject from a dark recessed vignette background, bold readable shapes at small size, flat stylized painted look with clean edges, early-20th-century industrial FMA-inspired alchemy world, no text, no border frame\nFACTION PALETTE: slate-blue greatcoats and leather, matte brass-colored automail accents (used sparingly), chalk-white transmutation sigils that flare cyan-white; flat color blocks, no implied metal gloss.\nSUBJECT: a broad heavily-built soldier in matte brass-and-iron plate over a slate-blue underlayer, large slab pauldron, heavy two-handed maul held head-down; bulky wide top-heavy silhouette, clearly the tankiest human; one chalk-white circle glowing at a shoulder seam. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view)."
+ },
+ "alpha/archer": {
+  "kind": "units",
+  "faction": "alpha",
+  "category": "caster",
+  "size": 512,
+  "negative": "full body, tiny subject, wide shot, multiple characters, character sheet, text, watermark, letters, ui frame, border, rounded corners, drop shadow, busy background, scenery, low contrast, blurry",
+  "prompt": "game UI portrait icon, square 1:1, tight bust framing from the chest up, subject centered and filling the frame, strong rim light separating the subject from a dark recessed vignette background, bold readable shapes at small size, flat stylized painted look with clean edges, early-20th-century industrial FMA-inspired alchemy world, no text, no border frame\nFACTION PALETTE: slate-blue greatcoats and leather, matte brass-colored automail accents (used sparingly), chalk-white transmutation sigils that flare cyan-white; flat color blocks, no implied metal gloss.\nSUBJECT: a poised marksman in a long slate-blue duster and leather bandolier, peaked cap and goggles, a long brass-fitted bolt-action rifle held horizontally across the body; tall slim vertical figure that reads as ranged; chalk-white sigil glows at the rifle breech. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view)."
+ },
+ "alpha/mage": {
+  "kind": "units",
+  "faction": "alpha",
+  "category": "soldier",
+  "size": 512,
+  "negative": "full body, tiny subject, wide shot, multiple characters, character sheet, text, watermark, letters, ui frame, border, rounded corners, drop shadow, busy background, scenery, low contrast, blurry",
+  "prompt": "game UI portrait icon, square 1:1, tight bust framing from the chest up, subject centered and filling the frame, strong rim light separating the subject from a dark recessed vignette background, bold readable shapes at small size, flat stylized painted look with clean edges, early-20th-century industrial FMA-inspired alchemy world, no text, no border frame\nFACTION PALETTE: slate-blue greatcoats and leather, matte brass-colored automail accents (used sparingly), chalk-white transmutation sigils that flare cyan-white; flat color blocks, no implied metal gloss.\nSUBJECT: a robed scholar in a flowing hooded slate-blue coat with wide split sleeves, no automail, a large glowing chalk-white transmutation circle held symmetrically between two outstretched hands; distinctive floating-circle silhouette and trailing hem; thin and unarmored. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view)."
+ },
+ "alpha/siege_engine": {
+  "kind": "units",
+  "faction": "alpha",
+  "category": "vehicle",
+  "size": 512,
+  "negative": "full body, tiny subject, wide shot, multiple characters, character sheet, text, watermark, letters, ui frame, border, rounded corners, drop shadow, busy background, scenery, low contrast, blurry",
+  "prompt": "game UI portrait icon, square 1:1, tight bust framing from the chest up, subject centered and filling the frame, strong rim light separating the subject from a dark recessed vignette background, bold readable shapes at small size, flat stylized painted look with clean edges, early-20th-century industrial FMA-inspired alchemy world, no text, no border frame\nFACTION PALETTE: slate-blue greatcoats and leather, matte brass-colored automail accents (used sparingly), chalk-white transmutation sigils that flare cyan-white; flat color blocks, no implied metal gloss.\nSUBJECT: a two-wheeled brass-and-iron mortar carriage with a stubby upward-angled barrel feeding from a glowing crucible furnace at the rear, slate-blue plating, hand-crank; low wide wheeled machine silhouette, clearly mechanical and much bigger than infantry; chalk-white sigils ring the barrel mouth. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view)."
+ },
+ "alpha/griffin": {
+  "kind": "units",
+  "faction": "alpha",
+  "category": "air",
+  "size": 512,
+  "negative": "full body, tiny subject, wide shot, multiple characters, character sheet, text, watermark, letters, ui frame, border, rounded corners, drop shadow, busy background, scenery, low contrast, blurry",
+  "prompt": "game UI portrait icon, square 1:1, tight bust framing from the chest up, subject centered and filling the frame, strong rim light separating the subject from a dark recessed vignette background, bold readable shapes at small size, flat stylized painted look with clean edges, early-20th-century industrial FMA-inspired alchemy world, no text, no border frame\nFACTION PALETTE: slate-blue greatcoats and leather, matte brass-colored automail accents (used sparingly), chalk-white transmutation sigils that flare cyan-white; flat color blocks, no implied metal gloss.\nSUBJECT: a noble eagle-lion chimera with broad smooth rounded feathered wings, a lion's hindquarters, one brass automail foreleg-talon, a slim slate-blue saddle-harness with a chalk-white brand on the shoulder; instantly-readable rounded winged silhouette; alert and loyal, not monstrous. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view)."
+ },
+ "alpha/command_center": {
+  "kind": "buildings",
+  "faction": "alpha",
+  "category": "structure",
+  "size": 512,
+  "negative": "full body, tiny subject, wide shot, multiple characters, character sheet, text, watermark, letters, ui frame, border, rounded corners, drop shadow, busy background, scenery, low contrast, blurry",
+  "prompt": "game UI portrait icon, square 1:1, tight bust framing from the chest up, subject centered and filling the frame, strong rim light separating the subject from a dark recessed vignette background, bold readable shapes at small size, flat stylized painted look with clean edges, early-20th-century industrial FMA-inspired alchemy world, no text, no border frame\nFACTION PALETTE: slate-blue greatcoats and leather, matte brass-colored automail accents (used sparingly), chalk-white transmutation sigils that flare cyan-white; flat color blocks, no implied metal gloss.\nSUBJECT: a stout fortified chapel-workshop of slate-blue stone with a steep slate roof, a tall central clocktower-spire, brass-pipe chimneys and telegraph wires, arched doors with a glowing chalk-white sigil banner over the entrance; clearly the largest, tallest friendly structure, civic and protective. (a solid 3D building with real depth and a roof, seen at a 3/4 aerial isometric angle; NOT top-down, NOT a floor plan or map, NOT a flat facade or wall, NOT an emblem or seal or medallion, NOT a 2D drawing; ONE isolated building centered on plain white)."
+ },
+ "alpha/barracks": {
+  "kind": "buildings",
+  "faction": "alpha",
+  "category": "structure",
+  "size": 512,
+  "negative": "full body, tiny subject, wide shot, multiple characters, character sheet, text, watermark, letters, ui frame, border, rounded corners, drop shadow, busy background, scenery, low contrast, blurry",
+  "prompt": "game UI portrait icon, square 1:1, tight bust framing from the chest up, subject centered and filling the frame, strong rim light separating the subject from a dark recessed vignette background, bold readable shapes at small size, flat stylized painted look with clean edges, early-20th-century industrial FMA-inspired alchemy world, no text, no border frame\nFACTION PALETTE: slate-blue greatcoats and leather, matte brass-colored automail accents (used sparingly), chalk-white transmutation sigils that flare cyan-white; flat color blocks, no implied metal gloss.\nSUBJECT: a long low slate-blue barracks hall with a pitched roof and an arched drilling-yard gateway, a banner of crossed chalk and sword over the door, brick chimney; squat rectangular military building, distinctly lower than the spired command center. (a solid 3D building with real depth and a roof, seen at a 3/4 aerial isometric angle; NOT top-down, NOT a floor plan or map, NOT a flat facade or wall, NOT an emblem or seal or medallion, NOT a 2D drawing; ONE isolated building centered on plain white)."
+ },
+ "alpha/archery_range": {
+  "kind": "buildings",
+  "faction": "alpha",
+  "category": "structure",
+  "size": 512,
+  "negative": "full body, tiny subject, wide shot, multiple characters, character sheet, text, watermark, letters, ui frame, border, rounded corners, drop shadow, busy background, scenery, low contrast, blurry",
+  "prompt": "game UI portrait icon, square 1:1, tight bust framing from the chest up, subject centered and filling the frame, strong rim light separating the subject from a dark recessed vignette background, bold readable shapes at small size, flat stylized painted look with clean edges, early-20th-century industrial FMA-inspired alchemy world, no text, no border frame\nFACTION PALETTE: slate-blue greatcoats and leather, matte brass-colored automail accents (used sparingly), chalk-white transmutation sigils that flare cyan-white; flat color blocks, no implied metal gloss.\nSUBJECT: an open-fronted slate-blue range building with a tall slatted firing canopy roof, hanging brass lanterns, a stacked row of target butts along one side; horizontal open-air building with a distinctive overhanging slatted roof. (a solid 3D building with real depth and a roof, seen at a 3/4 aerial isometric angle; NOT top-down, NOT a floor plan or map, NOT a flat facade or wall, NOT an emblem or seal or medallion, NOT a 2D drawing; ONE isolated building centered on plain white)."
+ },
+ "alpha/siege_workshop": {
+  "kind": "buildings",
+  "faction": "alpha",
+  "category": "structure",
+  "size": 512,
+  "negative": "full body, tiny subject, wide shot, multiple characters, character sheet, text, watermark, letters, ui frame, border, rounded corners, drop shadow, busy background, scenery, low contrast, blurry",
+  "prompt": "game UI portrait icon, square 1:1, tight bust framing from the chest up, subject centered and filling the frame, strong rim light separating the subject from a dark recessed vignette background, bold readable shapes at small size, flat stylized painted look with clean edges, early-20th-century industrial FMA-inspired alchemy world, no text, no border frame\nFACTION PALETTE: slate-blue greatcoats and leather, matte brass-colored automail accents (used sparingly), chalk-white transmutation sigils that flare cyan-white; flat color blocks, no implied metal gloss.\nSUBJECT: a heavy industrial forge-hall of slate-blue brick with a tall brick smokestack and a large arched vehicle bay, glowing orange crucible light spilling from the bay, brass gauges on the walls; bulky workshop building with the tall chimney as its read-at-distance marker. (a solid 3D building with real depth and a roof, seen at a 3/4 aerial isometric angle; NOT top-down, NOT a floor plan or map, NOT a flat facade or wall, NOT an emblem or seal or medallion, NOT a 2D drawing; ONE isolated building centered on plain white)."
+ },
+ "beta/forgehand": {
+  "kind": "units",
+  "faction": "beta",
+  "category": "worker",
+  "size": 512,
+  "negative": "full body, tiny subject, wide shot, multiple characters, character sheet, text, watermark, letters, ui frame, border, rounded corners, drop shadow, busy background, scenery, low contrast, blurry",
+  "prompt": "game UI portrait icon, square 1:1, tight bust framing from the chest up, subject centered and filling the frame, strong rim light separating the subject from a dark recessed vignette background, bold readable shapes at small size, flat stylized painted look with clean edges, early-20th-century industrial FMA-inspired alchemy world, no text, no border frame\nFACTION PALETTE: oxblood-crimson cloth, flat black-iron and brass blocks, faint crimson alchemic Core-glow as emissive accent, gothic-uncanny homunculus mood; flat color blocks, no implied metal gloss.\nSUBJECT: a stooped hollow-eyed laborer in a soot-stained leather apron, one crude brass prosthetic ending in a digging claw, a dim red Core-ember glowing through a chest vent; hunched, the smallest and simplest silhouette so it reads as a non-combatant worker. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view)."
+ },
+ "beta/footsoldier": {
+  "kind": "units",
+  "faction": "beta",
+  "category": "heavy",
+  "size": 512,
+  "negative": "full body, tiny subject, wide shot, multiple characters, character sheet, text, watermark, letters, ui frame, border, rounded corners, drop shadow, busy background, scenery, low contrast, blurry",
+  "prompt": "game UI portrait icon, square 1:1, tight bust framing from the chest up, subject centered and filling the frame, strong rim light separating the subject from a dark recessed vignette background, bold readable shapes at small size, flat stylized painted look with clean edges, early-20th-century industrial FMA-inspired alchemy world, no text, no border frame\nFACTION PALETTE: oxblood-crimson cloth, flat black-iron and brass blocks, faint crimson alchemic Core-glow as emissive accent, gothic-uncanny homunculus mood; flat color blocks, no implied metal gloss.\nSUBJECT: a gaunt fused thrall-beast in a tattered oxblood coat, an iron half-mask and one over-grafted brute arm ending in a fused cleaver-maul, faint red Core-light bleeding from coat seams; lean asymmetric humanoid-beast silhouette, rank-and-file, slightly inhuman in outline. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view)."
+ },
+ "beta/bulwark": {
+  "kind": "units",
+  "faction": "beta",
+  "category": "heavy",
+  "size": 512,
+  "negative": "full body, tiny subject, wide shot, multiple characters, character sheet, text, watermark, letters, ui frame, border, rounded corners, drop shadow, busy background, scenery, low contrast, blurry",
+  "prompt": "game UI portrait icon, square 1:1, tight bust framing from the chest up, subject centered and filling the frame, strong rim light separating the subject from a dark recessed vignette background, bold readable shapes at small size, flat stylized painted look with clean edges, early-20th-century industrial FMA-inspired alchemy world, no text, no border frame\nFACTION PALETTE: oxblood-crimson cloth, flat black-iron and brass blocks, faint crimson alchemic Core-glow as emissive accent, gothic-uncanny homunculus mood; flat color blocks, no implied metal gloss.\nSUBJECT: a broad squat humanoid whose left side is a massive fused slab of dark iron forming a built-in tower shield, the other arm a stubby crushing maul; a single broad glowing crimson seam across the slab; wide low blocky silhouette that reads as a wall on legs. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view)."
+ },
+ "beta/ironclad": {
+  "kind": "units",
+  "faction": "beta",
+  "category": "heavy",
+  "size": 512,
+  "negative": "full body, tiny subject, wide shot, multiple characters, character sheet, text, watermark, letters, ui frame, border, rounded corners, drop shadow, busy background, scenery, low contrast, blurry",
+  "prompt": "game UI portrait icon, square 1:1, tight bust framing from the chest up, subject centered and filling the frame, strong rim light separating the subject from a dark recessed vignette background, bold readable shapes at small size, flat stylized painted look with clean edges, early-20th-century industrial FMA-inspired alchemy world, no text, no border frame\nFACTION PALETTE: oxblood-crimson cloth, flat black-iron and brass blocks, faint crimson alchemic Core-glow as emissive accent, gothic-uncanny homunculus mood; flat color blocks, no implied metal gloss.\nSUBJECT: a towering armored homunculus in flat black-iron plate over a crimson tabard, an uncanny too-perfect masked face, a heavy gauntleted fist, regal stance, a bright red Core glowing through a breastplate gap; the largest, most imposing humanoid silhouette, an elite head-and-shoulders above the rest. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view)."
+ },
+ "beta/crossbowman": {
+  "kind": "units",
+  "faction": "beta",
+  "category": "heavy",
+  "size": 512,
+  "negative": "full body, tiny subject, wide shot, multiple characters, character sheet, text, watermark, letters, ui frame, border, rounded corners, drop shadow, busy background, scenery, low contrast, blurry",
+  "prompt": "game UI portrait icon, square 1:1, tight bust framing from the chest up, subject centered and filling the frame, strong rim light separating the subject from a dark recessed vignette background, bold readable shapes at small size, flat stylized painted look with clean edges, early-20th-century industrial FMA-inspired alchemy world, no text, no border frame\nFACTION PALETTE: oxblood-crimson cloth, flat black-iron and brass blocks, faint crimson alchemic Core-glow as emissive accent, gothic-uncanny homunculus mood; flat color blocks, no implied metal gloss.\nSUBJECT: a hooded thrall whose forearms are bolted into a bulky black-iron repeating crossbow held at the hip, heavy shoulder plates, dim red Core-glow at the throat; distinct wide horizontal weapon silhouette separating it from the bare-handed melee bodies. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view)."
+ },
+ "beta/rune_caster": {
+  "kind": "units",
+  "faction": "beta",
+  "category": "caster",
+  "size": 512,
+  "negative": "full body, tiny subject, wide shot, multiple characters, character sheet, text, watermark, letters, ui frame, border, rounded corners, drop shadow, busy background, scenery, low contrast, blurry",
+  "prompt": "game UI portrait icon, square 1:1, tight bust framing from the chest up, subject centered and filling the frame, strong rim light separating the subject from a dark recessed vignette background, bold readable shapes at small size, flat stylized painted look with clean edges, early-20th-century industrial FMA-inspired alchemy world, no text, no border frame\nFACTION PALETTE: oxblood-crimson cloth, flat black-iron and brass blocks, faint crimson alchemic Core-glow as emissive accent, gothic-uncanny homunculus mood; flat color blocks, no implied metal gloss.\nSUBJECT: a tall robed thrall in a hooded oxblood greatcoat with one bare arm raised, a single glowing red transmutation disc held off to that one raised hand (asymmetric, one-sided), an uncanny serene masked face, a bright Core at the sternum; slender silhouette defined by the off-side floating disc. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view)."
+ },
+ "beta/war_machine": {
+  "kind": "units",
+  "faction": "beta",
+  "category": "vehicle",
+  "size": 512,
+  "negative": "full body, tiny subject, wide shot, multiple characters, character sheet, text, watermark, letters, ui frame, border, rounded corners, drop shadow, busy background, scenery, low contrast, blurry",
+  "prompt": "game UI portrait icon, square 1:1, tight bust framing from the chest up, subject centered and filling the frame, strong rim light separating the subject from a dark recessed vignette background, bold readable shapes at small size, flat stylized painted look with clean edges, early-20th-century industrial FMA-inspired alchemy world, no text, no border frame\nFACTION PALETTE: oxblood-crimson cloth, flat black-iron and brass blocks, faint crimson alchemic Core-glow as emissive accent, gothic-uncanny homunculus mood; flat color blocks, no implied metal gloss.\nSUBJECT: a massive low many-legged crawling siege furnace, a fat upward-angled mortar barrel over a glowing red boiler-belly, flat black-iron plating and brass gauges, vents leaking crimson light; the single largest and lowest silhouette, clearly a vehicle not a humanoid. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view)."
+ },
+ "beta/wyvern": {
+  "kind": "units",
+  "faction": "beta",
+  "category": "air",
+  "size": 512,
+  "negative": "full body, tiny subject, wide shot, multiple characters, character sheet, text, watermark, letters, ui frame, border, rounded corners, drop shadow, busy background, scenery, low contrast, blurry",
+  "prompt": "game UI portrait icon, square 1:1, tight bust framing from the chest up, subject centered and filling the frame, strong rim light separating the subject from a dark recessed vignette background, bold readable shapes at small size, flat stylized painted look with clean edges, early-20th-century industrial FMA-inspired alchemy world, no text, no border frame\nFACTION PALETTE: oxblood-crimson cloth, flat black-iron and brass blocks, faint crimson alchemic Core-glow as emissive accent, gothic-uncanny homunculus mood; flat color blocks, no implied metal gloss.\nSUBJECT: a stitched flying chimera with wide ragged asymmetric bat-leather wings with trailing tatters, an elongated fanged maw, faint extra human-like faces fused into a crimson-glowing torso; broad torn-wing silhouette that reads instantly as airborne. (single full-body character, ONE subject only, isolated and centered on a plain seamless white background, full figure from head to feet, straight-on front view)."
+ },
+ "beta/command_center": {
+  "kind": "buildings",
+  "faction": "beta",
+  "category": "structure",
+  "size": 512,
+  "negative": "full body, tiny subject, wide shot, multiple characters, character sheet, text, watermark, letters, ui frame, border, rounded corners, drop shadow, busy background, scenery, low contrast, blurry",
+  "prompt": "game UI portrait icon, square 1:1, tight bust framing from the chest up, subject centered and filling the frame, strong rim light separating the subject from a dark recessed vignette background, bold readable shapes at small size, flat stylized painted look with clean edges, early-20th-century industrial FMA-inspired alchemy world, no text, no border frame\nFACTION PALETTE: oxblood-crimson cloth, flat black-iron and brass blocks, faint crimson alchemic Core-glow as emissive accent, gothic-uncanny homunculus mood; flat color blocks, no implied metal gloss.\nSUBJECT: a tall gothic foundry-cathedral of black iron and brass with a great central furnace-chimney pouring red light, ringed by smaller smokestacks, tall arched doors with a crimson sigil over them; the largest, most vertical and ornate building. (a solid 3D building with real depth and a roof, seen at a 3/4 aerial isometric angle; NOT top-down, NOT a floor plan or map, NOT a flat facade or wall, NOT an emblem or seal or medallion, NOT a 2D drawing; ONE isolated building centered on plain white)."
+ },
+ "beta/barracks": {
+  "kind": "buildings",
+  "faction": "beta",
+  "category": "structure",
+  "size": 512,
+  "negative": "full body, tiny subject, wide shot, multiple characters, character sheet, text, watermark, letters, ui frame, border, rounded corners, drop shadow, busy background, scenery, low contrast, blurry",
+  "prompt": "game UI portrait icon, square 1:1, tight bust framing from the chest up, subject centered and filling the frame, strong rim light separating the subject from a dark recessed vignette background, bold readable shapes at small size, flat stylized painted look with clean edges, early-20th-century industrial FMA-inspired alchemy world, no text, no border frame\nFACTION PALETTE: oxblood-crimson cloth, flat black-iron and brass blocks, faint crimson alchemic Core-glow as emissive accent, gothic-uncanny homunculus mood; flat color blocks, no implied metal gloss.\nSUBJECT: a long low fortified hall of dark iron and stone with a pitched roof, barred pens along one side and a wide arched mustering gate stained crimson; broad horizontal building, lower than the central furnace cathedral. (a solid 3D building with real depth and a roof, seen at a 3/4 aerial isometric angle; NOT top-down, NOT a floor plan or map, NOT a flat facade or wall, NOT an emblem or seal or medallion, NOT a 2D drawing; ONE isolated building centered on plain white)."
+ },
+ "beta/archery_range": {
+  "kind": "buildings",
+  "faction": "beta",
+  "category": "structure",
+  "size": 512,
+  "negative": "full body, tiny subject, wide shot, multiple characters, character sheet, text, watermark, letters, ui frame, border, rounded corners, drop shadow, busy background, scenery, low contrast, blurry",
+  "prompt": "game UI portrait icon, square 1:1, tight bust framing from the chest up, subject centered and filling the frame, strong rim light separating the subject from a dark recessed vignette background, bold readable shapes at small size, flat stylized painted look with clean edges, early-20th-century industrial FMA-inspired alchemy world, no text, no border frame\nFACTION PALETTE: oxblood-crimson cloth, flat black-iron and brass blocks, faint crimson alchemic Core-glow as emissive accent, gothic-uncanny homunculus mood; flat color blocks, no implied metal gloss.\nSUBJECT: a narrow tall vaulted chapel-armory of black iron with a steep roof and tall slit firing-windows, racks of crimson-glowing quarrels along the front wall; upright slender building distinct from the squat barracks. (a solid 3D building with real depth and a roof, seen at a 3/4 aerial isometric angle; NOT top-down, NOT a floor plan or map, NOT a flat facade or wall, NOT an emblem or seal or medallion, NOT a 2D drawing; ONE isolated building centered on plain white)."
+ },
+ "beta/siege_workshop": {
+  "kind": "buildings",
+  "faction": "beta",
+  "category": "structure",
+  "size": 512,
+  "negative": "full body, tiny subject, wide shot, multiple characters, character sheet, text, watermark, letters, ui frame, border, rounded corners, drop shadow, busy background, scenery, low contrast, blurry",
+  "prompt": "game UI portrait icon, square 1:1, tight bust framing from the chest up, subject centered and filling the frame, strong rim light separating the subject from a dark recessed vignette background, bold readable shapes at small size, flat stylized painted look with clean edges, early-20th-century industrial FMA-inspired alchemy world, no text, no border frame\nFACTION PALETTE: oxblood-crimson cloth, flat black-iron and brass blocks, faint crimson alchemic Core-glow as emissive accent, gothic-uncanny homunculus mood; flat color blocks, no implied metal gloss.\nSUBJECT: a massive heavy-industrial foundry building of black iron with an overhead gantry crane, oversized brass boiler tanks and a wide vehicle-bay door glowing red inside; the bulkiest, most mechanical building with a clear vehicle exit. (a solid 3D building with real depth and a roof, seen at a 3/4 aerial isometric angle; NOT top-down, NOT a floor plan or map, NOT a flat facade or wall, NOT an emblem or seal or medallion, NOT a 2D drawing; ONE isolated building centered on plain white)."
+ },
+ "item/potion_of_healing": {
+  "kind": "items",
+  "faction": "item",
+  "category": "item",
+  "size": 512,
+  "negative": "full body, tiny subject, wide shot, multiple characters, character sheet, text, watermark, letters, ui frame, border, rounded corners, drop shadow, busy background, scenery, low contrast, blurry",
+  "prompt": "game UI portrait icon, square 1:1, tight bust framing from the chest up, subject centered and filling the frame, strong rim light separating the subject from a dark recessed vignette background, bold readable shapes at small size, flat stylized painted look with clean edges, early-20th-century industrial FMA-inspired alchemy world, no text, no border frame\nSUBJECT: a single Potion of Healing as an alchemical apothecary object on a dark recessed background"
+ },
+ "item/ring_of_vigor": {
+  "kind": "items",
+  "faction": "item",
+  "category": "item",
+  "size": 512,
+  "negative": "full body, tiny subject, wide shot, multiple characters, character sheet, text, watermark, letters, ui frame, border, rounded corners, drop shadow, busy background, scenery, low contrast, blurry",
+  "prompt": "game UI portrait icon, square 1:1, tight bust framing from the chest up, subject centered and filling the frame, strong rim light separating the subject from a dark recessed vignette background, bold readable shapes at small size, flat stylized painted look with clean edges, early-20th-century industrial FMA-inspired alchemy world, no text, no border frame\nSUBJECT: a single Ring of Vigor as an alchemical apothecary object on a dark recessed background"
+ }
+}
