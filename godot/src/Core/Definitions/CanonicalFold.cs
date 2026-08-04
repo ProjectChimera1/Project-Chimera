@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Reflection;
 using System.Text;
 
 namespace ProjectChimera.Core.Definitions
@@ -63,7 +64,14 @@ namespace ProjectChimera.Core.Definitions
         /// <summary>The typed effect-tree walk (kind string + semantic fields; <c>Fixed</c> via <c>.Raw</c>; enums as
         /// names) — never serialized bytes. Null child ⇒ a 0 marker; a present node ⇒ a 1 marker first (so absent vs
         /// default-valued children cannot alias). Depth is bounded by the JSON parser's MaxDepth, so the recursion is
-        /// safe on any FromJson-parsed graph. Moved verbatim from <see cref="CanonicalModelHash"/> (v8).</summary>
+        /// safe on any FromJson-parsed graph. Moved verbatim from <see cref="CanonicalModelHash"/> (v8).
+        ///
+        /// <para><b>DW-449.</b> A kind WITHOUT an explicit arm below no longer folds value-blind (the old default arm
+        /// mixed only <c>GetType().Name</c>): it takes the FULL-FIELD reflection fold in
+        /// <see cref="MixUnknownEffect"/>, and a member type that fold cannot make value-visible FAILS CLOSED
+        /// (<see cref="NotSupportedException"/>) instead of hashing blind. The seven shipped kinds all have explicit
+        /// arms, so this path is dead for existing content — no golden/hash moves. EffectFoldCompletenessTests guards
+        /// that every shipped kind keeps an explicit arm and every field of each kind stays consciously folded.</para></summary>
         internal static ulong MixEffect(ulong h, ProjectChimera.Effects.EffectNode? e)
         {
             if (e is null) return MixInt(h, 0);
@@ -114,10 +122,135 @@ namespace ProjectChimera.Core.Definitions
                     h = MixInt(h, p.Lifelong ? 1 : 0);
                     break;
                 default:
-                    h = MixStr(h, e.GetType().Name); // total/never-throw for a future kind
+                    // DW-449: full-field fold — value-visible for a future kind, never the old name-only fold.
+                    h = MixUnknownEffect(h, e);
                     break;
             }
             return h;
+        }
+
+        /// <summary>
+        /// DW-449 — the FULL-FIELD fold for an effect kind that has no explicit arm in <see cref="MixEffect"/>.
+        /// The old default arm folded only <c>GetType().Name</c> (value-blind), so a brand-new effect kind's payload
+        /// could change without moving the handshake hash — two peers with divergent modded effect payloads would
+        /// pass the lobby gate and desync mid-match. This walk folds the kind name PLUS every public readable member
+        /// (fields and non-indexer properties, inherited included), each by VALUE using the family's conventions.
+        ///
+        /// <para><b>Determinism:</b> reflection member-enumeration order is UNSPECIFIED, so members are sorted on the
+        /// composite ordinal key (member name, then declaring type) — total and duplicate-free even under member
+        /// hiding — via an in-place insertion sort (no comparerless <c>Array.Sort</c> in sim code, CHM0003; the list
+        /// is tiny and this path is cold — it can only run for a not-yet-shipped kind).</para>
+        ///
+        /// <para><b>Fail-closed:</b> a member whose type cannot be folded by value throws
+        /// <see cref="NotSupportedException"/> — a loud error at hash time beats a silent value-blind hash that
+        /// desyncs mid-match (the DW-449 hole). Every member type expressible under the vocabulary's closedness
+        /// contract (no float/double/object/delegate/Godot) folds fine: <c>Fixed</c>/<c>FixedVec3</c>, integrals,
+        /// bool, string, enums, <see cref="ProjectChimera.Effects.EffectNode"/>/<see cref="ProjectChimera.Effects.Modifier"/>
+        /// children, and arrays thereof.</para>
+        /// </summary>
+        private static ulong MixUnknownEffect(ulong h, ProjectChimera.Effects.EffectNode e)
+        {
+            Type t = e.GetType();
+            h = MixStr(h, t.Name); // the kind discriminator — the old default arm's (only) component, kept first
+
+            FieldInfo[] fields = t.GetFields(BindingFlags.Public | BindingFlags.Instance);
+            PropertyInfo[] props = t.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+
+            foreach (PropertyInfo p in props)
+            {
+                if (p.GetIndexParameters().Length != 0 || !p.CanRead)
+                    throw new NotSupportedException(
+                        $"CanonicalFold.MixEffect: effect kind '{t.Name}' has a non-readable or indexer property " +
+                        $"('{p.Name}') whose state this fold cannot make value-visible. Add an explicit arm to " +
+                        "CanonicalFold.MixEffect for this kind (DW-449 fail-closed; see EffectFoldCompletenessTests).");
+            }
+
+            int n = fields.Length + props.Length;
+            string[] keys = new string[n];
+            object?[] values = new object?[n];
+            int w = 0;
+            foreach (FieldInfo f in fields)
+            {
+                keys[w] = f.Name + " " + (f.DeclaringType?.FullName ?? string.Empty);
+                values[w] = f.GetValue(e);
+                w++;
+            }
+            foreach (PropertyInfo p in props)
+            {
+                keys[w] = p.Name + " " + (p.DeclaringType?.FullName ?? string.Empty);
+                values[w] = p.GetValue(e);
+                w++;
+            }
+
+            // In-place insertion sort on the composite ordinal key (unique ⇒ the order is fully deterministic
+            // regardless of the runtime's reflection enumeration order).
+            for (int i = 1; i < n; i++)
+            {
+                string k = keys[i];
+                object? v = values[i];
+                int j = i - 1;
+                while (j >= 0 && string.CompareOrdinal(keys[j], k) > 0)
+                {
+                    keys[j + 1] = keys[j];
+                    values[j + 1] = values[j];
+                    j--;
+                }
+                keys[j + 1] = k;
+                values[j + 1] = v;
+            }
+
+            h = MixInt(h, n); // member count — an added/removed member always moves the hash
+            for (int i = 0; i < n; i++)
+            {
+                h = MixStr(h, keys[i]); // name + declaring type, so a hidden (`new`) member cannot alias its base
+                h = MixMemberValue(h, values[i], t.Name);
+            }
+            return h;
+        }
+
+        /// <summary>One unknown-kind member VALUE, folded by runtime type (DW-449). Effect/Modifier children delegate
+        /// to the shared walks (which own their 0/1 null markers); any other null ⇒ a 0 marker and any other present
+        /// value ⇒ a 1 marker + value fold, so null can never alias a zero/default value. An unfoldable member type
+        /// fails closed (<see cref="NotSupportedException"/>) instead of hashing value-blind.</summary>
+        private static ulong MixMemberValue(ulong h, object? v, string owningKind)
+        {
+            // Children first: the shared walks fold their own null/present markers, so a child folds byte-identically
+            // here and in an explicit arm.
+            if (v is ProjectChimera.Effects.EffectNode child) return MixEffect(h, child);
+            if (v is ProjectChimera.Effects.Modifier mod) return MixModifier(h, mod);
+            if (v is null) return MixInt(h, 0);
+
+            h = MixInt(h, 1); // present marker
+            switch (v)
+            {
+                case ProjectChimera.Core.Fixed fx: return MixInt(h, fx.Raw);
+                case ProjectChimera.Core.FixedVec3 v3:
+                    h = MixInt(h, v3.X.Raw);
+                    h = MixInt(h, v3.Y.Raw);
+                    return MixInt(h, v3.Z.Raw);
+                case bool b: return MixInt(h, b ? 1 : 0);
+                case Enum en: return MixStr(h, en.ToString()); // family convention: enums fold by NAME
+                case string s: return MixStr(h, s);
+                case int i: return MixInt(h, i);
+                case uint ui: return MixInt(h, unchecked((int)ui));
+                case long l: return MixULong(h, unchecked((ulong)l));
+                case ulong ul: return MixULong(h, ul);
+                case short sh: return MixInt(h, sh);
+                case ushort us: return MixInt(h, us);
+                case byte by: return MixInt(h, by);
+                case sbyte sb: return MixInt(h, sb);
+                case char c: return MixInt(h, c);
+                case Array arr:
+                    h = MixInt(h, arr.Length); // length prefix (the SequenceEffect convention)
+                    foreach (object? el in arr) h = MixMemberValue(h, el, owningKind);
+                    return h;
+                default:
+                    throw new NotSupportedException(
+                        $"CanonicalFold.MixEffect: effect kind '{owningKind}' carries a member of type " +
+                        $"'{v.GetType().FullName}' this fold cannot make value-visible. Add an explicit arm to " +
+                        "CanonicalFold.MixEffect for the kind (see EffectFoldCompletenessTests) — a value-blind fold " +
+                        "would reopen the DW-449 desync hole, so this fails closed.");
+            }
         }
 
         /// <summary>An <c>apply_modifier</c> payload (v8): every semantic Modifier field in fixed order. Moved verbatim
