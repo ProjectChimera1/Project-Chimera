@@ -96,6 +96,82 @@ namespace ProjectChimera.Navigation
         public static int CellOf(Fixed x, Fixed z) => FlowField.WorldToIndex(x, z);
 
         /// <summary>
+        /// DW-147 — the SWEPT-CELL blocked test: true when the STRAIGHT SEGMENT (<paramref name="x0"/>,
+        /// <paramref name="z0"/>) → (<paramref name="x1"/>, <paramref name="z1"/>) crosses ANY blocked cell other than
+        /// <paramref name="fromCell"/> — not merely when its ENDPOINT lands in one.
+        ///
+        /// <para><b>Why.</b> <see cref="IsBlockedOutside"/> samples the two endpoints only, so a per-tick displacement
+        /// at or beyond the 2-world-unit cell size (move speed ≳ 60 u/s at 30 tps) TUNNELS a one-cell-thick wall: both
+        /// endpoints are clear, the wall in between is never sampled. A diagonal step can likewise clip the corner of a
+        /// blocked cell and come out the far side. This walks the cells the segment actually enters (an Amanatides–Woo
+        /// DDA) and rejects on the FIRST blocked one.</para>
+        ///
+        /// <para><b>Cell identity.</b> The traversal derives its cell indices by FLOOR-DIVIDING the raw
+        /// <see cref="Fixed"/> coordinate — provably the SAME mapping as <see cref="FlowField.WorldToCell"/> (which
+        /// floors the world coordinate then integer-divides by the cell size, then clamps), so the swept walk and every
+        /// other consumer of the grid can never disagree about which cell a point is in. Out-of-grid cells clamp to the
+        /// nearest edge cell exactly as <see cref="IsBlocked"/> does.</para>
+        ///
+        /// <para><b>Determinism.</b> Integer/<see cref="Fixed"/>-raw arithmetic only — the "which boundary comes first"
+        /// ordering is decided by CROSS-MULTIPLYING the two boundary distances (<c>ax*|dz|</c> vs <c>az*|dx|</c>, both
+        /// non-negative), so there is no division and no rounding in the comparison. An exact corner crossing (a tie)
+        /// deterministically advances the X axis first, which visits one extra cell and is therefore the CONSERVATIVE
+        /// resolution: a unit can never thread a perfect diagonal corner gap in a wall. Byte-identical across platforms
+        /// and same-seed replays.</para>
+        ///
+        /// <para><b>AXIS-ALIGNED sub-cell steps are byte-identical to <see cref="IsBlockedOutside"/>.</b> A segment
+        /// that moves along one axis only and crosses at most one boundary visits exactly the two endpoint cells, so
+        /// for a mover under one cell per tick moving on an axis this decides identically. A DIAGONAL sub-cell step
+        /// additionally visits the one shared-edge cell the segment genuinely passes through — the deliberate
+        /// tightening (a unit may no longer cut the corner of an obstacle it visibly clips).</para>
+        ///
+        /// <para>A step spanning more than <see cref="MAX_SWEPT_CELLS"/> cells (over twice the map, unreachable by
+        /// integration at any sane speed) is refused outright rather than swept: that bounds the walk, keeps the
+        /// cross-multiply inside <see cref="long"/> range, and fails CLOSED (a teleport-scale displacement may not
+        /// pass through walls).</para>
+        /// </summary>
+        public bool IsBlockedOnSegmentOutside(int fromCell, Fixed x0, Fixed z0, Fixed x1, Fixed z1)
+        {
+            if (!AnyBlocked) return false;
+
+            // Grid space: shift world XZ so the grid's low corner is 0, then a cell is CELL_RAW wide.
+            long gx0 = (long)x0.Raw + GRID_ORIGIN_RAW, gz0 = (long)z0.Raw + GRID_ORIGIN_RAW;
+            long gx1 = (long)x1.Raw + GRID_ORIGIN_RAW, gz1 = (long)z1.Raw + GRID_ORIGIN_RAW;
+
+            long col = FloorDiv(gx0, CELL_RAW), row = FloorDiv(gz0, CELL_RAW);
+            long colEnd = FloorDiv(gx1, CELL_RAW), rowEnd = FloorDiv(gz1, CELL_RAW);
+
+            long spanC = colEnd - col; if (spanC < 0) spanC = -spanC;
+            long spanR = rowEnd - row; if (spanR < 0) spanR = -spanR;
+            if (spanC + spanR > MAX_SWEPT_CELLS) return true; // teleport-scale step — refuse, never sweep unbounded
+
+            long dx = gx1 - gx0, dz = gz1 - gz0;
+            int stepC = dx > 0 ? 1 : (dx < 0 ? -1 : 0);
+            int stepR = dz > 0 ? 1 : (dz < 0 ? -1 : 0);
+            long adx = dx < 0 ? -dx : dx;
+            long adz = dz < 0 ? -dz : dz;
+
+            // Distance from the segment START to the next cell boundary on each axis (non-negative; 0 when the start
+            // sits exactly on a boundary and travel is toward the lower cell — it leaves immediately, as it should).
+            long ax = stepC > 0 ? (col + 1) * CELL_RAW - gx0 : (stepC < 0 ? gx0 - col * CELL_RAW : 0L);
+            long az = stepR > 0 ? (row + 1) * CELL_RAW - gz0 : (stepR < 0 ? gz0 - row * CELL_RAW : 0L);
+
+            // The START cell is never tested: a unit is already standing there (the DW-148 confinement contract).
+            while (col != colEnd || row != rowEnd)
+            {
+                bool advanceX = stepR == 0 || (stepC != 0 && ax * adz <= az * adx);
+                if (advanceX) { col += stepC; ax += CELL_RAW; }
+                else          { row += stepR; az += CELL_RAW; }
+
+                int c = col < 0 ? 0 : (col > GRID_SIZE - 1 ? GRID_SIZE - 1 : (int)col);
+                int r = row < 0 ? 0 : (row > GRID_SIZE - 1 ? GRID_SIZE - 1 : (int)row);
+                int idx = r * GRID_SIZE + c;
+                if (idx != fromCell && Blocked[idx]) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
         /// FNV-1a digest over the packed bitset for the <see cref="ProjectChimera.Core.Definitions.CanonicalModelHash"/>
         /// fold. Returns 0 when NO cell is blocked (so an all-clear grid is indistinguishable from an absent layer),
         /// else a non-zero fold (0→1 sentinel). Consistent with <see cref="DigestOfBase64"/>.
@@ -168,11 +244,25 @@ namespace ProjectChimera.Navigation
         /// <summary>
         /// Story 6.5 — deterministically OR steep flow cells into <paramref name="mask"/> from
         /// <paramref name="elev"/>. For each 128²/2-unit flow cell (identity shared with the sim/flow field), sample
-        /// the terrain height at the cell centre and at its +X / +Z neighbours (2 world units apart) and block the
-        /// cell when the max neighbour rise/run reaches <paramref name="threshold"/> (world Y per world unit). Pure
-        /// <see cref="Fixed"/> math over the clamped <see cref="ElevationGrid.Sample"/> lookup — byte-identical across
-        /// platforms and recomputed identically on every load, so the derived cells need not persist. Returns true if
-        /// any cell was newly derived. Null grid / non-positive threshold ⇒ no derivation.
+        /// the terrain height at the cell centre and at ALL FOUR of its −X / +X / −Z / +Z neighbours (2 world units
+        /// apart) and block the cell when the max neighbour rise/run reaches <paramref name="threshold"/> (world Y per
+        /// world unit). Pure <see cref="Fixed"/> math over the clamped <see cref="ElevationGrid.Sample"/> lookup —
+        /// byte-identical across platforms and recomputed identically on every load, so the derived cells need not
+        /// persist. Returns true if any cell was newly derived. Null grid / non-positive threshold ⇒ no derivation.
+        ///
+        /// <para><b>DW-149 — why all four neighbours.</b> Sampling only the FORWARD (+X / +Z) neighbours made the
+        /// derivation directionally asymmetric: the far EAST column and far SOUTH row could never auto-block, because
+        /// <see cref="ElevationGrid.Sample"/> CLAMPS past the last column/row so their forward neighbour returns the
+        /// cell's own height (rise 0) no matter how steep the terrain actually is there. It also landed every derived
+        /// cliff wall ONE CELL to the low side — only the cell whose forward neighbour was up on the plateau blocked,
+        /// never the cell perched on the plateau edge itself. Taking the MAX over all four neighbours makes a cliff
+        /// block symmetrically from both sides and gives the edge cells a neighbour that is genuinely off-cell.</para>
+        ///
+        /// <para>A neighbour whose sample CLAMPS back onto the centre's own elevation cell contributes rise 0, which
+        /// can never win a max — so the "skip clamp-equal neighbours" refinement is a no-op under this formulation and
+        /// is deliberately not coded (it would only matter for a central-difference average). A neighbour that clamps
+        /// to a nearer-than-<c>run</c> cell divides its rise by the full run, i.e. UNDER-estimates the slope: the
+        /// conservative direction (it never fabricates a blocked cell at the map edge).</para>
         /// </summary>
         public static bool DeriveSlopeBlockedInto(bool[] mask, ElevationGrid? elev, Fixed threshold)
         {
@@ -189,11 +279,12 @@ namespace ProjectChimera.Navigation
                     Fixed cx = Fixed.FromInt(col * FlowField.CELL_SIZE_WORLD + 1 - FlowField.WORLD_HALF_INT);
                     Fixed cz = Fixed.FromInt(row * FlowField.CELL_SIZE_WORLD + 1 - FlowField.WORLD_HALF_INT);
                     Fixed h0 = elev.Sample(cx, cz);
-                    Fixed hx = elev.Sample(cx + run, cz);
-                    Fixed hz = elev.Sample(cx, cz + run);
-                    Fixed riseX = AbsFixed(hx - h0);
-                    Fixed riseZ = AbsFixed(hz - h0);
-                    Fixed rise = riseX.Raw >= riseZ.Raw ? riseX : riseZ;
+                    // DW-149: max rise over all FOUR neighbours (fixed order −X, +X, −Z, +Z — a max is
+                    // order-independent, but the fixed order keeps the read byte-identical for a reviewer).
+                    Fixed rise = AbsFixed(elev.Sample(cx - run, cz) - h0);
+                    rise = MaxFixed(rise, AbsFixed(elev.Sample(cx + run, cz) - h0));
+                    rise = MaxFixed(rise, AbsFixed(elev.Sample(cx, cz - run) - h0));
+                    rise = MaxFixed(rise, AbsFixed(elev.Sample(cx, cz + run) - h0));
                     // slope = rise / run ≥ threshold  ⇔  rise ≥ threshold * run (avoids a divide, same Fixed result).
                     if (rise.Raw >= (threshold * run).Raw) { mask[idx] = true; any = true; }
                 }
@@ -302,7 +393,33 @@ namespace ProjectChimera.Navigation
 
         private static Fixed AbsFixed(Fixed v) => v.Raw < 0 ? -v : v;
 
+        private static Fixed MaxFixed(Fixed a, Fixed b) => a.Raw >= b.Raw ? a : b;
+
         // ── Private ───────────────────────────────────────────────────────────
+
+        // ── DW-147 swept-cell traversal constants ────────────────────────────
+
+        /// <summary>Raw-<see cref="Fixed"/> shift that maps world XZ into non-negative grid space (world −128 ⇒ 0),
+        /// mirroring <see cref="FlowField.WorldToCell"/>'s <c>+ WORLD_HALF_INT</c>.</summary>
+        private const long GRID_ORIGIN_RAW = (long)FlowField.WORLD_HALF_INT << Fixed.FRACTIONAL_BITS;
+
+        /// <summary>Raw-<see cref="Fixed"/> width of one grid cell (<see cref="FlowField.CELL_SIZE_WORLD"/> world units).</summary>
+        private const long CELL_RAW = (long)FlowField.CELL_SIZE_WORLD << Fixed.FRACTIONAL_BITS;
+
+        /// <summary>Cell budget for ONE swept step. A straight segment crosses at most <see cref="GRID_SIZE"/> column
+        /// plus <see cref="GRID_SIZE"/> row boundaries, so anything beyond this spans more than the whole map in a
+        /// single tick — not a legitimate integration step. Bounds the walk AND keeps the cross-multiplied ordering
+        /// comparison inside <see cref="long"/> range.</summary>
+        private const int MAX_SWEPT_CELLS = 2 * GRID_SIZE;
+
+        /// <summary>Integer FLOOR division (C# <c>/</c> truncates toward zero, which would mis-place negative grid
+        /// coordinates by one cell). <paramref name="divisor"/> is always positive here.</summary>
+        private static long FloorDiv(long value, long divisor)
+        {
+            long q = value / divisor;
+            if (value % divisor != 0 && (value < 0) != (divisor < 0)) q--;
+            return q;
+        }
 
         private const uint FNV_OFFSET = 2166136261u;
         private const uint FNV_PRIME  = 16777619u;

@@ -21,8 +21,9 @@ namespace ProjectChimera.Sim.Tests.Validation
     /// surfaces the located error.</para>
     ///
     /// <para>Fixture: the cliff-at-X=0 elevation grid (identical to SlopeAutoBlockTests / PathabilityReapplyRebuildTests)
-    /// makes flow column 63 — world X ∈ [-2, 0) — slope-blocked, and nothing else. World (-1, 0) is therefore the one
-    /// blocked spot; every other placement below sits on a clear cell.</para>
+    /// makes the two flow columns straddling the cliff — 63 and 64, world X ∈ [-2, 2) — slope-blocked, and nothing
+    /// else (DW-149 widened the derivation from the low side only to both sides). World (-1, 0) is inside column 63;
+    /// every other placement below sits well clear of both.</para>
     /// </summary>
     public class ResolvedGridSpawnGuardTests
     {
