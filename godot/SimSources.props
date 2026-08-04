@@ -52,6 +52,10 @@
     <!-- Story 9.11: Godot-free replay formatting/policy helpers (duration/result/speed-clamp) — Tier-1 testable
          and the single reference to the authoritative sim tick rate. -->
     <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\ReplayFormat.cs"   LinkBase="Sim\Multiplayer" />
+    <!-- DW-431: the replay playback view-perspective state machine extracted from MainScene so the session
+         transitions (begin/cycle/end-of-session reveal-all reset) are Tier-1 testable. Single-file include —
+         the ReplayFormat precedent; the rest of src/Multiplayer stays Godot/ENet-coupled and un-globbed. -->
+    <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\ReplayPerspectiveState.cs" LinkBase="Sim\Multiplayer" />
     <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\NetworkCommand.cs" LinkBase="Sim\Multiplayer" />
     <!-- Story 1.11 (AC2a): the Godot-free adaptive-input-delay math (RTT→delay clamp + commutative agreement)
          extracted from LockstepManager so it is Tier-1 unit-testable (DelayMathTests). Single-file include —

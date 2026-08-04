@@ -126,7 +126,9 @@ namespace ProjectChimera.Multiplayer
         /// Record one faction's orders for a tick. Skips silently if count == 0 (empty ticks cost nothing).
         /// Called once per faction per tick (ascending by faction id, from the single authoritative merged stream).
         /// The recorder buffers the tick's sub-bundles and flushes one <see cref="MergedTickPacket"/> frame when the
-        /// tick advances (or on <see cref="Close(int,bool)"/>).
+        /// tick advances (or on <see cref="Close(int,bool)"/>). Throws <see cref="InvalidOperationException"/>
+        /// (DW-432 — fail loud, never silently drop) if a single tick accumulates more than
+        /// <see cref="MergedTickPacket.MERGED_MAX_SUBBUNDLES"/> sub-bundles.
         /// </summary>
         public void RecordTick(uint tick, Faction faction, UnitOrder[] buf, int baseIdx, int count)
         {
@@ -143,7 +145,17 @@ namespace ProjectChimera.Multiplayer
                 _bufCount    = 0;
             }
 
-            if (_bufCount >= MergedTickPacket.MERGED_MAX_SUBBUNDLES) return; // drop-not-clamp (never overflow)
+            // DW-432: the recorder's stated invariant is "never silently discard", so a tick accumulating more
+            // per-faction sub-bundles than the frozen MergedTickPacket envelope carries must fail LOUD — the
+            // pre-fix silent `return` would drop the overflowing faction's orders and write a divergent replay
+            // (the exact silent-drop class the v4 format is fail-closed against). Unreachable in ≤8-slot play
+            // (MERGED_MAX_SUBBUNDLES == FactionRegistry.PLAYER_COUNT and the merged stream feeds one sub-bundle
+            // per faction per tick), so this is a tripwire for a future >8-slot mode, never a live branch.
+            if (_bufCount >= MergedTickPacket.MERGED_MAX_SUBBUNDLES)
+                throw new InvalidOperationException(
+                    $"ReplayRecorder: tick {tick} accumulated more than {MergedTickPacket.MERGED_MAX_SUBBUNDLES} " +
+                    "per-faction sub-bundles — refusing to silently drop orders from the recording " +
+                    "(RecordTick is called once per faction per tick from the merged stream).");
             if (count > TickCommandPacket.MAX_ORDERS) count = TickCommandPacket.MAX_ORDERS;
 
             int slot = _bufCount;
