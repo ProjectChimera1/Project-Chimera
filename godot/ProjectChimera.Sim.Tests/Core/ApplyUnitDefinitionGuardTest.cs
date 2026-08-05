@@ -433,6 +433,31 @@ namespace ProjectChimera.Sim.Tests.Core
             Assert.Equal(0, w.GateClosedTicks[reused]);
         }
 
+        // ── DW-634 — RallyMovePending is the outstanding rally FIRST LEG of a trained worker: RUNTIME state written only
+        //    by BuildingSystem.SpawnTrainedUnit's rally branch and cleared only by GatheringSystem.TickIdle (never
+        //    def-derived, so ApplyUnitDefinition does not touch it — the GateClosedTicks/HeroIndex posture). A recycled
+        //    slot must be reset in Create or a brand-new worker spawned WITHOUT a rally inherits a corpse's pending leg
+        //    and then refuses to gather until it happens to stand within the goal-arrive radius of whatever CommandGoal
+        //    it was handed. This is the SOLE teeth on that mandatory reset: the field is UNFOLDED (the
+        //    GatherState/GatherTarget/CarryAmount posture), so no checksum fold catches an omission, and default(bool)
+        //    == false makes the reset line look redundant. ──
+        [Fact]
+        public void RecycledSlot_CarriesNoPriorRallyMovePending()
+        {
+            var w = new EntityWorld();
+            int first = w.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            // Dirty the flag on the first occupant, as if it had been trained from a rallied hall and died en route.
+            w.RallyMovePending[first] = true;
+            Assert.True(w.RallyMovePending[first]);
+
+            w.Destroy(first);
+            int reused = w.Create(FixedVec3.Zero, Faction.Player2, Fixed.FromInt(50), Fixed.FromInt(3));
+            Assert.Equal(first, reused); // same id off the free list
+
+            // The new occupant owes no rally — proves the mandatory Create() recycle-reset.
+            Assert.False(w.RallyMovePending[reused]);
+        }
+
         // ── Story 3.17 — editor delete→undo restore fidelity. SnapshotUnit + RestoreUnit route a def-based unit back
         //    through ApplyUnitDefinition (the A2 mapper), so every def-derived authored field is re-derived — never a
         //    hand-copy that silently drops fields (the recurring RestoreUnit drop-debt). This Tier-1 round-trip guard

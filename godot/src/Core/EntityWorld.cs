@@ -663,6 +663,31 @@ namespace ProjectChimera.Core
         /// </summary>
         public readonly int[]         GateClosedTicks;
 
+        /// <summary>
+        /// DW-634 — TRUE while this worker still owes its production building's RALLY POINT a first leg, i.e. it was
+        /// trained from a building carrying a rally point and has not yet reached it. <c>GatheringSystem.TickIdle</c>
+        /// skips (does NOT re-target) a worker whose flag is set, so an explicit player rally beats the automatic
+        /// idle-gather sweep; the flag is a ONE-SHOT — the sweep itself clears it the moment the worker arrives at its
+        /// <see cref="CommandGoal"/> (or the rally <see cref="UnitCommand.Move"/> is superseded by any other command
+        /// state), after which the EXISTING nearest-node logic runs normally and picks the node beside the rally point.
+        ///
+        /// <para>Arrival is tested against <see cref="CommandGoal"/> with <see cref="ArrivalTuning.GoalArriveRadiusSqr"/>
+        /// — the PURE-SIM goal-arrival signal <c>OrderQueueSystem</c> already uses — never <see cref="EntityFlags.Moving"/>
+        /// or the presentation <c>Move→Stop</c> flip, both of which are presentation-written and would diverge
+        /// headless-golden vs live-client.</para>
+        ///
+        /// <para>Written ONLY by <c>BuildingSystem.SpawnTrainedUnit</c>'s rally branch (and only for a WORKER — a
+        /// combat unit is never ticked by <c>GatheringSystem</c>, so it has no reader and gets no flag) and cleared
+        /// ONLY by <c>GatheringSystem.TickIdle</c>. NOT folded into <see cref="SimChecksum"/> and NOT persisted by
+        /// <c>SaveGameState</c> — deliberately the exact posture of every other field of this worker state machine
+        /// (<see cref="GatherState"/>/<see cref="GatherTarget"/>/<see cref="CarryAmount"/>/<see cref="GateClosedTicks"/>
+        /// are all unfolded; only the node-side <c>AssignedGatherers</c> is). A resumed save therefore forgets an
+        /// in-flight rally leg and auto-gathers, which is what a pre-DW-634 save already did. RUNTIME state, NOT
+        /// def-derived: defaulted in <see cref="Create"/> (the mandatory recycle-trap reset), and NOT snapshot residue
+        /// (the <see cref="CarryAmount"/>/<see cref="GateClosedTicks"/> posture — a delete→undo drops the pending leg).</para>
+        /// </summary>
+        public readonly bool[]        RallyMovePending;
+
         // --- Worker construction ---
         /// <summary>
         /// Building ID the worker is walking to construct.
@@ -807,6 +832,7 @@ namespace ProjectChimera.Core
             CarryResourceType = new ResourceKind[MAX_ENTITIES]; // Story 4.7 — defaults to Ore (0)
             CarryCapacity  = new Fixed[MAX_ENTITIES];
             GateClosedTicks = new int[MAX_ENTITIES];            // DW-80 — closed-gate streak (NOT folded; 0 == fresh, no Array.Fill needed)
+            RallyMovePending = new bool[MAX_ENTITIES];          // DW-634 — outstanding rally first leg (NOT folded; false == fresh, no Array.Fill needed)
             BuildTarget    = new int[MAX_ENTITIES];
 
             Generation = new int[MAX_ENTITIES]; // DW-184 — per-slot recycle generation (UNFOLDED; 0 == never recycled)
@@ -961,6 +987,12 @@ namespace ProjectChimera.Core
             // worker early, or (worse) never, depending on the corpse. Unfolded, so this line's ONLY teeth are
             // RecycledSlot_CarriesNoPriorGateClosedStreak.
             GateClosedTicks[id] = 0;
+            // DW-634: MANDATORY recycle-reset of the outstanding-rally-leg flag. A recycled slot must NEVER inherit the
+            // prior occupant's pending rally (the 1.12/1.13/2.6 SoA-recycle defect class) — a brand-new worker spawned
+            // WITHOUT a rally would inherit a corpse's true flag and then refuse to gather until it happened to stand
+            // within the goal-arrive radius of whatever CommandGoal it was given. Unfolded, so this line's ONLY teeth
+            // are RecycledSlot_CarriesNoPriorRallyMovePending.
+            RallyMovePending[id] = false;
             BuildTarget[id]   = -1;
 
             AliveCount++;
@@ -1322,6 +1354,7 @@ namespace ProjectChimera.Core
             Array.Clear(HeroIndex);             Array.Clear(GatherState);           Array.Clear(GatherTarget);
             Array.Clear(CarryAmount);           Array.Clear(CarryResourceType);     Array.Clear(CarryCapacity);         Array.Clear(BuildTarget);
             Array.Clear(GateClosedTicks);       // DW-80 (0 == the fresh-ctor state)
+            Array.Clear(RallyMovePending);      // DW-634 (false == the fresh-ctor state)
             Array.Clear(Generation);            // DW-184 — recycle generations restart at 0 (the fresh-ctor state)
             Array.Clear(_freeList);
 

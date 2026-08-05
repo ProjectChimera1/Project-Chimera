@@ -25,6 +25,13 @@ namespace ProjectChimera.Economy
     /// forever. All four now route through the one static <see cref="ReleaseGatherSlot"/> path — the tick loop, the
     /// <see cref="EntityWorld.OnDestroy"/> subscription this system installs, and <c>BuildingSystem.QueueWorkerBuild</c>.
     ///
+    /// DW-634 — an EXPLICIT ORDER BEATS THE AUTOMATIC SWEEP. A worker trained from a building carrying a rally point
+    /// spawns with <see cref="EntityWorld.RallyMovePending"/> set; <see cref="TickIdle"/> stands down (no
+    /// <see cref="AssignToNode"/>) until that worker reaches its rally <see cref="EntityWorld.CommandGoal"/>, then
+    /// clears the one-shot flag and resumes the unchanged nearest-node logic — which, from the rally point, picks the
+    /// node the player rallied to. Pre-fix the sweep overwrote the rally MoveTarget on the very next tick, so a rally
+    /// could never direct new workers to a specific mine.
+    ///
     /// CombatSystem skips any entity with GatherState != Inactive, so workers never
     /// auto-attack — even when their unit data carries attack damage.
     /// MovementSystem handles their physical movement via MoveTarget + Moving flag.
@@ -115,6 +122,29 @@ namespace ProjectChimera.Economy
 
         private void TickIdle(EntityWorld world, int id)
         {
+            // DW-634 — an outstanding RALLY first leg outranks the automatic sweep. A worker trained from a building
+            // carrying a rally point spawns with CommandState=Move + MoveTarget/CommandGoal = the rally point and
+            // EntityWorld.RallyMovePending set; until it gets there this sweep must NOT overwrite MoveTarget with the
+            // nearest node, or the player's explicit rally is silently discarded on the very next tick (the defect).
+            // The flag is a ONE-SHOT: cleared here the moment the leg is finished, after which the unchanged
+            // nearest-node logic below runs normally — and, the worker now standing AT the rally, naturally picks the
+            // node beside it (which is the mine the player rallied to). No new gather state, no rally-to-resource
+            // targeting: the recorded MINIMAL shape.
+            if (world.RallyMovePending[id])
+            {
+                // ARRIVAL is the PURE-SIM goal test OrderQueueSystem uses — SqrDistance(Position, CommandGoal) against
+                // the shared ArrivalTuning radius — never EntityFlags.Moving or the presentation Move→Stop flip, both
+                // of which are presentation-written and would diverge headless-golden vs live-client.
+                bool arrived = FixedVec3.SqrDistance(world.Position[id], world.CommandGoal[id])
+                               <= ArrivalTuning.GoalArriveRadiusSqr;
+                // SUPERSEDED: any command state other than the rally's own Move means something else took the worker
+                // (a Stop/Idle from CombatSystem's gatherer normalization, ClearWorkerBuild's Idle after a build, a
+                // fresh player order). The rally leg is over, and gating on an arrival that may never come would park
+                // the worker in Idle forever.
+                if (world.CommandState[id] == UnitCommand.Move && !arrived) return;
+                world.RallyMovePending[id] = false;
+            }
+
             int node = FindBestNode(world.Position[id], world.FactionOf[id]);
             if (node < 0) return; // No nodes available — stay Idle
 

@@ -353,11 +353,8 @@ namespace ProjectChimera.Economy
             // worker branch exactly (same OrdinalIgnoreCase category test TrainUnit's own chosen-unit guard uses, same
             // 20u capacity), so a trained worker and a scenario-placed one enter the gather loop in identical state.
             // Deliberately placed BEFORE the rally/Stop branch so BOTH branches get the residue.
-            // NOTE (rally): a worker trained from a building with a rally point still gets the Move→rally command
-            // below, but GatheringSystem.TickIdle re-targets it to the nearest eligible node on its next tick — i.e.
-            // auto-gather wins over the rally, exactly as it does for a scenario-placed worker. Sequencing a rally
-            // walk BEFORE the first gather trip would need a new gather state and is deliberately out of scope here.
-            if (def != null && string.Equals(def.Category, WORKER_CATEGORY, System.StringComparison.OrdinalIgnoreCase))
+            bool isWorker = def != null && string.Equals(def.Category, WORKER_CATEGORY, System.StringComparison.OrdinalIgnoreCase);
+            if (isWorker)
             {
                 world.GatherState[id]   = GatherState.Idle;
                 world.CarryCapacity[id] = WORKER_CARRY_CAPACITY;
@@ -369,6 +366,30 @@ namespace ProjectChimera.Economy
                 world.CommandState[id] = UnitCommand.Move;
                 world.CommandGoal[id]  = _buildings.RallyPoint[buildingId];
                 world.MoveTarget[id]   = _buildings.RallyPoint[buildingId];
+
+                // DW-634 — HONOR THE RALLY FIRST, THEN AUTO-GATHER (recorded decision, 2026-08-05). Pre-fix, the
+                // Move→rally above was written and then silently discarded for a WORKER: GatheringSystem.TickIdle
+                // re-targeted MoveTarget to the nearest eligible node on the very next tick, so a player could never
+                // rally new workers to a specific mine (rallying the hall to a far mine / a new expansion is standard
+                // macro). The flag makes the idle-gather sweep stand down until this worker reaches the rally, at which
+                // point the sweep clears it and the EXISTING nearest-node logic picks the node beside the rally point —
+                // no new gather state, no rally-to-resource targeting (the recorded MINIMAL shape).
+                //
+                // WORKER-ONLY, both lines, and deliberately so:
+                //   • RallyMovePending has exactly one reader (GatheringSystem, which only ticks gatherers), so a combat
+                //     unit's flag would be write-only state that nothing ever clears.
+                //   • EntityFlags.Moving is what actually makes MovementSystem walk the unit; this branch never set it,
+                //     so a rallied unit has never physically walked to its rally in the SIM (presentation only steers
+                //     units it holds a flow field / nav path for, which a trained unit has neither of). Without it the
+                //     gather sweep would stand down forever and the worker would never gather at all — strictly worse
+                //     than the pre-fix state. Setting it for a COMBAT unit too would be the wider (correct) fix, but
+                //     that path IS golden-covered — ShiftQueueScenario trains a Melee grunt from a rallied Barracks —
+                //     so it would move a recorded checksum and belongs in a deliberate re-baseline, not here.
+                if (isWorker)
+                {
+                    world.Flags[id]           |= EntityFlags.Moving;
+                    world.RallyMovePending[id] = true;
+                }
             }
             else
             {
