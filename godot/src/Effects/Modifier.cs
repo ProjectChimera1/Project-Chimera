@@ -30,6 +30,37 @@ namespace ProjectChimera.Effects
     }
 
     /// <summary>
+    /// DW-618 — the CANONICAL buff/debuff polarity of the <see cref="StatusFlags"/> set, hosted here beside the enum
+    /// it classifies so every consumer reads the SAME partition.
+    ///
+    /// <para>The classification itself is not new: Story 11.5's presentation classifier
+    /// (<c>ProjectChimera.UI.ModifierPolarity</c>) has always encoded it, and it now reads these constants instead of
+    /// its own private copy. The reason it moved is that a SECOND consumer appeared on the far side of the
+    /// simulation/presentation boundary — <c>AbilityValidator</c>'s Ally-filtered-harmful-grant lint — and a sim-layer
+    /// content gate must not reach into <c>ProjectChimera.UI</c> for a rule. Two hand-kept copies of "which flags are
+    /// harmful" would drift the moment a flag is added, and the drift would be silent in both directions (an icon
+    /// tinted green for a debuff, or a validator that stops warning about it).</para>
+    ///
+    /// <para>Deliberately NOT members of <see cref="StatusFlags"/> itself: the content loader parses the authored
+    /// <c>status</c> string against that enum, so a combined member would become authorable content
+    /// (<c>"status": "Harmful"</c>) and widen the wire vocabulary. Pure compile-time constants — never folded into any
+    /// checksum, never a runtime input.</para>
+    /// </summary>
+    public static class StatusPolarity
+    {
+        /// <summary>
+        /// The statuses that are imposed ON a victim: they take capability away (act / move / cast / attack). A
+        /// modifier carrying any of these is a DEBUFF on its host however generous its stat deltas are.
+        /// </summary>
+        public const StatusFlags Harmful =
+            StatusFlags.Stunned | StatusFlags.Rooted | StatusFlags.Silenced | StatusFlags.Disarmed;
+
+        /// <summary>The statuses that are granted TO an ally — the complement of <see cref="Harmful"/> within the
+        /// set. <see cref="StatusFlags.Invulnerable"/> is the only one today.</summary>
+        public const StatusFlags Beneficial = StatusFlags.Invulnerable;
+    }
+
+    /// <summary>
     /// A first-class, timed stat/status descriptor applied to an entity (AR-9). It is NOT an
     /// <see cref="EffectNode"/> — it is the typed payload an <see cref="ApplyModifierEffect"/> leaf installs into
     /// the ModifierStore. Both the type AND its fields are DEFINED in Story 2.1 (so the closed vocabulary is
