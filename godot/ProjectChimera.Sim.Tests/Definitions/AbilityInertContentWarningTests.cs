@@ -21,6 +21,11 @@ namespace ProjectChimera.Sim.Tests.Definitions
     /// Teeth in both directions: well-formed graphs warn about NOTHING (including all shipped
     /// <c>resources/data/abilities/*.json</c>, so the channel is signal not noise), a REJECTED ability reports its error
     /// only, and the cases the hard passive rules already reject are not double-reported.
+    ///
+    /// <para>DW-504 narrowed the channel: the three <c>period_ticks</c>/<c>period_effect</c> MISMATCH cases graduated to
+    /// hard rejects (owner decision, 2026-08-04) and are covered by <see cref="AbilityPeriodMismatchRejectTests"/>. What
+    /// stays here is the class that genuinely must NOT reject — every shape below loads, runs, and does something; it just
+    /// does not do what a naive author would assume.</para>
     /// </summary>
     public class AbilityInertContentWarningTests
     {
@@ -72,25 +77,12 @@ namespace ProjectChimera.Sim.Tests.Definitions
         }
 
         // ── Inert modifier periods ──
-
-        [Fact]
-        public void ModifierPeriodEffect_WithNonPositivePeriodTicks_Warns_PulseNeverFires()
-        {
-            // ModifierStore.HasPeriod requires PeriodTicks > 0, so this pulse can never fire — the modifier still grants
-            // its stat deltas, which is exactly what makes it invisible. (The while_alive Persistent sibling is a HARD
-            // reject; a modifier's had no gate at all.)
-            AbilityValidationResult r = V.Validate(Def(
-                new ApplyModifierEffect(Mod(duration: 60, period: new HealEffect(Fixed.FromInt(2)), periodTicks: 0))));
-            AssertOneWarning(r, "effect.modifier.period_ticks", "period_ticks=0", "never fires");
-        }
-
-        [Fact]
-        public void ModifierPeriodTicks_WithNoPeriodEffect_Warns_PeriodIgnored()
-        {
-            AbilityValidationResult r = V.Validate(Def(
-                new ApplyModifierEffect(Mod(duration: 60, period: null, periodTicks: 15))));
-            AssertOneWarning(r, "effect.modifier.period_ticks", "period_ticks=15", "ignored");
-        }
+        //
+        // DW-504 (owner decision 2026-08-04): the two period_ticks/period_effect MISMATCH cases that used to live here
+        // — a period_effect with period_ticks <= 0, and period_ticks > 0 with no period_effect — were promoted from
+        // warnings to HARD REJECTS, matching the while_alive Persistent rule. Their coverage moved to
+        // AbilityPeriodMismatchRejectTests. What remains below is the part of the modifier channel that is still
+        // (correctly) non-fatal: a shape that runs and does something, just not what a naive author expected.
 
         [Fact]
         public void StackingPeriodicModifier_Warns_ThePulseDoesNotScaleWithStacks()
@@ -122,13 +114,8 @@ namespace ProjectChimera.Sim.Tests.Definitions
             AssertOneWarning(r, "effect", "no initial_effect", "does nothing");
         }
 
-        [Fact]
-        public void ActivePersistent_WithPeriodEffectButNoPeriodTicks_Warns()
-        {
-            AbilityValidationResult r = V.Validate(Def(
-                new PersistentEffect(null, new HealEffect(Fixed.FromInt(3)), null, periodTicks: 0, periodCount: 5)));
-            AssertOneWarning(r, "effect.period_ticks", "period_ticks=0", "never fires");
-        }
+        // DW-504: the active-ability Persistent's `period_effect with period_ticks <= 0` warning was promoted to a hard
+        // reject too (see AbilityPeriodMismatchRejectTests) — the rule no longer depends on the activation.
 
         [Fact]
         public void ActivePersistent_WithZeroPeriodCount_Warns_ExpiresBeforeItsFirstPulse()
@@ -196,15 +183,17 @@ namespace ProjectChimera.Sim.Tests.Definitions
         [Fact]
         public void MultipleFootgunsInOneGraph_AllSurface()
         {
-            // Two independent modifiers, two independent defects — the channel is a LIST, not a first-fail.
+            // Two independent modifiers, two independent defects — the channel is a LIST, not a first-fail. (Both are
+            // still WARNINGS post-DW-504: a one-tick modifier and a stacking period both run and do something.)
             var seq = new SequenceEffect(
                 new ApplyModifierEffect(Mod(duration: 0)),                                        // one-tick surprise
-                new ApplyModifierEffect(Mod(duration: 60, period: null, periodTicks: 20)));        // ignored period
+                new ApplyModifierEffect(Mod(duration: 60, period: new DamageEffect(Fixed.FromInt(2), DamageType.Magic),
+                                            periodTicks: 20, rule: StackRule.Stack, maxStacks: 4)));  // non-scaling stacked DoT
             AbilityValidationResult r = V.Validate(Def(seq));
             Assert.True(r.Ok, r.Error);
             Assert.Equal(2, r.Warnings.Count);
             Assert.Contains(r.Warnings, w => w.FieldPath == "effect.children[0].modifier.duration_ticks");
-            Assert.Contains(r.Warnings, w => w.FieldPath == "effect.children[1].modifier.period_ticks");
+            Assert.Contains(r.Warnings, w => w.FieldPath == "effect.children[1].modifier.period_effect");
         }
 
         // ── Shipped content is warning-clean (the channel is signal, not noise) ──
