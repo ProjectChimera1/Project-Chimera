@@ -232,7 +232,10 @@ namespace ProjectChimera.Core.Sim
             var modSys = new ModifierSystem();
             // DW-83: the live host wires its ILogSink into the store so a REFUSED (8-slot ring full) install — an
             // earned item / hero-growth / self-passive / research buff silently dropped — warns instead of vanishing.
-            Modifiers = new ModifierStore(World, modSys, damageTable, CombatEvents, MatchStats, log);
+            // DW-490: the SAME DeathFeed combat/projectile/ability deaths record into is threaded in too, because the
+            // store's DW-325 ceiling-collapse kill is a real lethal path — without it, a creator-authored lethal
+            // −MaxHealth debuff would be the one death in the game that grants no hero XP.
+            Modifiers = new ModifierStore(World, modSys, damageTable, CombatEvents, MatchStats, log, _deathFeed);
             // DW-285: the same host ILogSink is threaded in as the cast system's diagnostic seam, so an unresolvable
             // cast / aura / self-passive WARNS instead of vanishing on every host that already owns a real sink
             // (MainScene's GodotLogSink, the dedicated server's) while the golden/Tier-1 NullLogSink stays silent.
