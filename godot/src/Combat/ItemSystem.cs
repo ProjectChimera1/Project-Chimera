@@ -304,12 +304,81 @@ namespace ProjectChimera.Combat
 
         /// <summary>Subscriber for <see cref="EntityWorld.OnDestroy"/> — when a HERO entity dies, drop its carried items
         /// at the (still-valid) death position and clear its inventory. Non-hero entities (HeroIndex == HERO_NONE) are a
-        /// no-op. The revived hero returns empty (inventory-on-persisted-row + WC3 drop — the Story 3.14 obligation).</summary>
+        /// no-op. The revived hero returns empty (inventory-on-persisted-row + WC3 drop — the Story 3.14 obligation).
+        ///
+        /// <para>DW-43: the packed <see cref="EntityWorld.HeroIndex"/> handle is <c>(Generation&lt;&lt;8)|slot</c>. Every
+        /// in-match death keeps the <see cref="HeroStore"/> row Alive for revival, so <see cref="HeroStore.TryResolveRef"/>
+        /// succeeds and the live-row <see cref="DropAll"/> path runs byte-for-byte as before. The fallback below handles the
+        /// opposite teardown order — the row freed BEFORE the entity — which makes the packed handle fail to resolve. That
+        /// order is NOT hypothetical: the DW-52 editor delete (<c>EntityPlacer.DeleteUnit</c>/<c>BuildDeleteUnit</c> call
+        /// <see cref="HeroStore.DestroyByRef"/> before <c>world.Destroy</c>) already produces it on every hero deletion, and
+        /// a future permanent (non-revivable) in-match hero removal would too. Before this fix that path early-returned and
+        /// ORPHANED the carried items (<c>Held</c> forever, carrier gone, unreachable). The fallback drops them keyed off the
+        /// handle's carrier slot (its low 8 bits survive a stale ref).</para>
+        /// <para>Golden-neutral in practice: the fallback runs today only on editor delete, which is NOT a sim-tick golden
+        /// path, and an edit-mode hero carries no items (items are acquired only during play, and the Edit↔Play reset
+        /// <c>Clear</c>s the <see cref="ItemStore"/>), so the scan finds nothing to drop. No goldens move (verified: full
+        /// Tier-1 suite unchanged) and no <c>AlgoVersion</c> bump is needed.</para></summary>
         private void OnEntityDestroyed(int entityId)
         {
-            if (_world.HeroIndex[entityId] == EntityWorld.HERO_NONE) return;
-            if (!_heroes.TryResolveRef(_world.HeroIndex[entityId], out int heroSlot)) return;
-            DropAll(heroSlot, _world.Position[entityId]);
+            int packed = _world.HeroIndex[entityId];
+            if (packed == EntityWorld.HERO_NONE) return;
+            if (_heroes.TryResolveRef(packed, out int heroSlot))
+            {
+                DropAll(heroSlot, _world.Position[entityId]); // live-row path (every in-match death) — UNCHANGED
+                return;
+            }
+            // DW-43 fallback: the row no longer resolves (freed before the entity — editor delete, or a future permanent
+            // in-match removal). Drop by physical carrier slot so nothing is orphaned regardless of teardown order.
+            DropOrphansByCarrierSlot(packed & 0xFF, entityId, _world.Position[entityId]);
+        }
+
+        /// <summary>DW-43: drop the carried items whose carrier is the physical hero slot <paramref name="carrierSlot"/>,
+        /// used when the packed handle no longer resolves to a live row (the row was freed before the entity — the DW-52
+        /// editor delete today, or a future permanent hero removal). Scans the <see cref="ItemStore"/> — NOT the inventory
+        /// ring — because in the
+        /// recycled case the orphans are no longer in any ring. For each held item carried by that slot: flip it to the
+        /// ground at <paramref name="pos"/>, remove its stat modifier (keyed off the dying <paramref name="entityId"/> —
+        /// a no-op once the entity's modifiers were cleared on destroy), and clear any stale reference to it in that
+        /// slot's ring. When the slot has been RECYCLED to a new LIVE hero (<see cref="HeroStore.Alive"/>), an item still
+        /// referenced by that ring is the live occupant's OWN item — it is skipped so only true orphans are dropped.</summary>
+        private void DropOrphansByCarrierSlot(int carrierSlot, int entityId, FixedVec3 pos)
+        {
+            // A valid hero ref is always slot 0-63 (HERO_NONE is filtered by the caller); guard before indexing Alive/Inventory.
+            if (carrierSlot < 0 || carrierSlot >= HeroStore.MAX_HEROES) return;
+            bool slotLive = _heroes.Alive[carrierSlot]; // true ⇒ the slot was recycled to a different live hero
+
+            for (int itemSlot = 0; itemSlot < _items.Count; itemSlot++) // ascending slot — deterministic
+            {
+                if (!_items.Alive[itemSlot] || !_items.Held[itemSlot]) continue;
+                if (_items.CarrierHeroSlot[itemSlot] != carrierSlot) continue;
+
+                int itemRef = _items.PackRef(itemSlot);
+                int ringIdx = FindInventoryRefSlot(carrierSlot, itemRef); // -1 when this item is not in the slot's ring
+
+                // Recycled slot: the ring now belongs to the live occupant. An in-ring item is ITS item — leave untouched.
+                if (slotLive && ringIdx >= 0) continue;
+
+                _items.Held[itemSlot]            = false;
+                _items.CarrierHeroSlot[itemSlot] = ItemStore.NO_CARRIER;
+                _items.PosX[itemSlot]            = pos.X;
+                _items.PosZ[itemSlot]            = pos.Z;
+                // No-op once the dying entity's modifiers were cleared on destroy; correct key when they were not.
+                _modifiers.RemoveByModifierId(entityId, ItemModifierId(itemRef));
+                // Freed-not-recycled: Destroy leaves the dead ring referencing the orphan — clear that stale ref.
+                if (ringIdx >= 0) _heroes.Inventory[ringIdx] = HeroStore.INVENTORY_EMPTY;
+                _events?.Push(CombatEventType.ItemDropped, pos);
+            }
+        }
+
+        /// <summary>DW-43: the flat <see cref="HeroStore.Inventory"/> ring index (<c>heroSlot*stride + s</c>) that holds
+        /// the packed ref <paramref name="itemRef"/>, or -1 when this slot's ring does not reference it.</summary>
+        private int FindInventoryRefSlot(int heroSlot, int itemRef)
+        {
+            int baseIdx = heroSlot * HeroStore.INVENTORY_SLOTS;
+            for (int s = 0; s < HeroStore.INVENTORY_SLOTS; s++)
+                if (_heroes.Inventory[baseIdx + s] == itemRef) return baseIdx + s;
+            return -1;
         }
 
         // ─────────────────────────────────────────── Internals ───────────────────────────────────────────

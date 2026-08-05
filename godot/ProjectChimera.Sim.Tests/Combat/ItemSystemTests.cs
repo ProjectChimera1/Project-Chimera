@@ -268,6 +268,176 @@ namespace ProjectChimera.Sim.Tests.Combat
             Assert.Equal(HeroStore.INVENTORY_EMPTY, h.Heroes.Inventory[slot * HeroStore.INVENTORY_SLOTS + 0]);
         }
 
+        // ── DW-43 (matrix row "row-gone, slot NOT recycled"): the HeroStore row is destroyed BEFORE its entity (a future
+        //    permanent, non-revivable hero removal). TryResolveRef fails, so the pre-fix early-return would ORPHAN the
+        //    carried item (Held forever, carrier gone). The fallback drops it by physical carrier slot instead. ──
+        [Fact]
+        public void HeroRowDestroyedBeforeEntity_NotRecycled_OrphanDropsToDeathPosition()
+        {
+            var h = Build();
+            var (e, slot) = MintHero(h, 100, 5, 5);
+            int itemRef = h.Items.Create(RingDefId, 0, new FixedVec3(Fixed.FromInt(5), Fixed.Zero, Fixed.FromInt(5)));
+            OrderApplier.Apply(h.World, Pickup(e, itemRef), Faction.Player1, items: h.Sys);
+            h.Sys.Tick(h.World, SimulationLoop.FixedDt);
+            Assert.True(h.Items.Held[FirstSlot(h, itemRef)]);                 // carried
+
+            // Permanent-removal ORDERING: tear down the HeroStore row while the item is still Held (Destroy does NOT
+            // clear the inventory ring), so the packed HeroIndex handle no longer resolves — the orphan condition.
+            h.Heroes.Destroy(slot);
+            Assert.False(h.Heroes.TryResolveRef(h.World.HeroIndex[e], out _)); // the stale-ref precondition holds
+
+            h.World.Position[e] = new FixedVec3(Fixed.FromInt(7), Fixed.Zero, Fixed.FromInt(8)); // die here
+            h.World.Destroy(e); // fires OnDestroy → ItemSystem DW-43 fallback (must NOT throw, must NOT orphan)
+
+            Assert.True(h.Items.TryResolveRef(itemRef, out int isl));
+            Assert.False(h.Items.Held[isl]);                                  // dropped, not orphaned
+            Assert.Equal(ItemStore.NO_CARRIER, h.Items.CarrierHeroSlot[isl]); // de-orphaned
+            Assert.Equal(Fixed.FromInt(7), h.Items.PosX[isl]);                // at the death position
+            Assert.Equal(Fixed.FromInt(8), h.Items.PosZ[isl]);
+            Assert.Equal(HeroStore.INVENTORY_EMPTY, h.Heroes.Inventory[slot * HeroStore.INVENTORY_SLOTS + 0]); // stale ring ref cleared
+        }
+
+        // ── DW-43 (matrix row "row-gone, slot recycled"): the freed carrier slot is re-minted to a NEW live hero that
+        //    picks up its OWN item, then the ORIGINAL (stale) entity is destroyed. Only the removed hero's orphan drops;
+        //    the live occupant's carried item stays Held and referenced by its inventory ring. ──
+        [Fact]
+        public void HeroRowDestroyedBeforeEntity_SlotRecycled_DropsOrphan_PreservesLiveOccupantItem()
+        {
+            var h = Build();
+            var (e1, slot1) = MintHero(h, 100, 5, 5);
+            int orphanRef = h.Items.Create(RingDefId, 0, new FixedVec3(Fixed.FromInt(5), Fixed.Zero, Fixed.FromInt(5)));
+            OrderApplier.Apply(h.World, Pickup(e1, orphanRef), Faction.Player1, items: h.Sys);
+            h.Sys.Tick(h.World, SimulationLoop.FixedDt);
+            Assert.True(h.Items.Held[FirstSlot(h, orphanRef)]);              // H1 carries the (soon-to-be) orphan
+
+            // Permanent removal of H1's row (item still Held → orphan); the freed slot goes onto the recycle free-list.
+            h.Heroes.Destroy(slot1);
+
+            // A NEW hero H2 recycles that exact slot (LIFO free-list ⇒ slot2 == slot1, generation bumped, ring wiped).
+            var (e2, slot2) = MintHero(h, 200, 20, 20);
+            Assert.Equal(slot1, slot2);                                       // the recycle happened as designed
+
+            // H2 picks up its OWN item J (same physical carrier slot, but referenced by H2's fresh ring).
+            int liveRef = h.Items.Create(RingDefId, 0, new FixedVec3(Fixed.FromInt(20), Fixed.Zero, Fixed.FromInt(20)));
+            int liveItemSlot = FirstSlot(h, liveRef);
+            h.Items.Held[liveItemSlot]            = true;
+            h.Items.CarrierHeroSlot[liveItemSlot] = slot2;
+            h.Heroes.Inventory[slot2 * HeroStore.INVENTORY_SLOTS + 0] = liveRef;
+
+            // Now destroy H1's ORIGINAL entity — its stale handle names the recycled slot.
+            Assert.False(h.Heroes.TryResolveRef(h.World.HeroIndex[e1], out _)); // stale (generation bumped)
+            h.World.Position[e1] = new FixedVec3(Fixed.FromInt(7), Fixed.Zero, Fixed.FromInt(8));
+            h.World.Destroy(e1); // fires OnDestroy → DW-43 fallback on the recycled slot
+
+            // The removed hero's orphan dropped to the death position and de-orphaned.
+            Assert.True(h.Items.TryResolveRef(orphanRef, out int orphanSlot));
+            Assert.False(h.Items.Held[orphanSlot]);
+            Assert.Equal(ItemStore.NO_CARRIER, h.Items.CarrierHeroSlot[orphanSlot]);
+            Assert.Equal(Fixed.FromInt(7), h.Items.PosX[orphanSlot]);
+            Assert.Equal(Fixed.FromInt(8), h.Items.PosZ[orphanSlot]);
+
+            // The LIVE occupant's item is untouched — still Held, still referenced by H2's ring.
+            Assert.True(h.Items.TryResolveRef(liveRef, out int stillHeldSlot));
+            Assert.True(h.Items.Held[stillHeldSlot]);
+            Assert.Equal(slot2, h.Items.CarrierHeroSlot[stillHeldSlot]);
+            Assert.Equal(liveRef, h.Heroes.Inventory[slot2 * HeroStore.INVENTORY_SLOTS + 0]);
+        }
+
+        // ── DW-43 (multi-item + real drop-cue): the removed hero carried TWO orphans; the recycled slot's new live hero
+        //    carries its OWN item (claimed through the real pickup flow). The fallback must drop BOTH orphans, spare the
+        //    live occupant's item, and emit exactly two ItemDropped cues — exercising the loop + skip predicate across
+        //    more than one item, and the event-push the single-item rows (built with events:null) never reach. ──
+        [Fact]
+        public void HeroRowDestroyedBeforeEntity_SlotRecycled_DropsAllOrphans_PreservesLiveItem_EmitsDropCue()
+        {
+            var h = new Harness();
+            var modSys = new ModifierSystem();
+            h.Modifiers = new ModifierStore(h.World, modSys);
+            modSys.AttachStore(h.Modifiers);
+            h.Registry = new ItemRegistry(new[]
+            {
+                new ItemDefinition { Id = "ring", Charges = 0, MaxHealthDelta = Fixed.FromInt(50),
+                                     AttackDamageDelta = Fixed.FromInt(5), ArmorDelta = Fixed.FromInt(2) },
+                new ItemDefinition { Id = "potion", Charges = 3, EffectGraph = new HealEffect(Fixed.FromInt(75)) },
+            });
+            var events = new CombatEventQueue();
+            h.Sys = new ItemSystem(h.World, h.Heroes, h.Items, h.Modifiers, h.Registry, events);
+            h.Sys.ConfigureUsableSlots(HeroStore.INVENTORY_SLOTS);
+
+            // H1 carries TWO orphans, both claimed through the real pickup flow (into ring slots 0 and 1).
+            var (e1, slot1) = MintHero(h, 100, 5, 5);
+            int orphanA = h.Items.Create(RingDefId, 0, new FixedVec3(Fixed.FromInt(5), Fixed.Zero, Fixed.FromInt(5)));
+            OrderApplier.Apply(h.World, Pickup(e1, orphanA), Faction.Player1, items: h.Sys);
+            h.Sys.Tick(h.World, SimulationLoop.FixedDt);
+            int orphanB = h.Items.Create(RingDefId, 0, new FixedVec3(Fixed.FromInt(5), Fixed.Zero, Fixed.FromInt(5)));
+            OrderApplier.Apply(h.World, Pickup(e1, orphanB), Faction.Player1, items: h.Sys);
+            h.Sys.Tick(h.World, SimulationLoop.FixedDt);
+            Assert.True(h.Items.Held[FirstSlot(h, orphanA)] && h.Items.Held[FirstSlot(h, orphanB)]);
+
+            // Permanent removal of H1's row; the freed slot recycles to H2, which picks up its OWN item C (real flow).
+            h.Heroes.Destroy(slot1);
+            var (e2, slot2) = MintHero(h, 200, 20, 20);
+            Assert.Equal(slot1, slot2);
+            int liveC = h.Items.Create(RingDefId, 0, new FixedVec3(Fixed.FromInt(20), Fixed.Zero, Fixed.FromInt(20)));
+            OrderApplier.Apply(h.World, Pickup(e2, liveC), Faction.Player1, items: h.Sys);
+            h.Sys.Tick(h.World, SimulationLoop.FixedDt);
+            Assert.True(h.Items.Held[FirstSlot(h, liveC)]);
+
+            int dropsBefore = CountDrops(events); // pickups do NOT emit ItemDropped, so this is 0 — captured for exactness
+
+            // Destroy H1's ORIGINAL entity → the fallback runs on the recycled slot.
+            h.World.Position[e1] = new FixedVec3(Fixed.FromInt(7), Fixed.Zero, Fixed.FromInt(8));
+            h.World.Destroy(e1);
+
+            // BOTH orphans dropped to the death position and de-orphaned.
+            Assert.True(h.Items.TryResolveRef(orphanA, out int aSlot));
+            Assert.False(h.Items.Held[aSlot]);
+            Assert.Equal(ItemStore.NO_CARRIER, h.Items.CarrierHeroSlot[aSlot]);
+            Assert.Equal(Fixed.FromInt(7), h.Items.PosX[aSlot]);
+            Assert.Equal(Fixed.FromInt(8), h.Items.PosZ[aSlot]);
+            Assert.True(h.Items.TryResolveRef(orphanB, out int bSlot));
+            Assert.False(h.Items.Held[bSlot]);
+            Assert.Equal(ItemStore.NO_CARRIER, h.Items.CarrierHeroSlot[bSlot]);
+            Assert.Equal(Fixed.FromInt(7), h.Items.PosX[bSlot]);
+            Assert.Equal(Fixed.FromInt(8), h.Items.PosZ[bSlot]);
+
+            // The LIVE occupant's item is untouched — still Held, still referenced by H2's ring.
+            Assert.True(h.Items.TryResolveRef(liveC, out int cSlot));
+            Assert.True(h.Items.Held[cSlot]);
+            Assert.Equal(slot2, h.Items.CarrierHeroSlot[cSlot]);
+            Assert.Equal(liveC, h.Heroes.Inventory[slot2 * HeroStore.INVENTORY_SLOTS + 0]);
+
+            // EXACTLY the two orphans emitted an ItemDropped cue — not the live item, and not more.
+            Assert.Equal(2, CountDrops(events) - dropsBefore);
+        }
+
+        private static int CountDrops(CombatEventQueue events)
+        {
+            int n = 0;
+            for (int i = 0; i < events.Count; i++)
+                if (events.Get(i).Type == CombatEventType.ItemDropped) n++;
+            return n;
+        }
+
+        // ── DW-43 (matrix row "non-hero entity destroyed"): the death hook must remain a no-op for a non-hero entity
+        //    (HeroIndex == HERO_NONE) — a ground item near the death position is NOT swept up by the fallback scan. ──
+        [Fact]
+        public void NonHeroEntityDestroyed_IsNoOp_DoesNotTouchGroundItems()
+        {
+            var h = Build();
+            // A plain non-hero unit (no HeroStore row, HeroIndex left at HERO_NONE) plus a loose ground item.
+            int e = h.World.Create(new FixedVec3(Fixed.FromInt(5), Fixed.Zero, Fixed.FromInt(5)),
+                                   Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            Assert.Equal(EntityWorld.HERO_NONE, h.World.HeroIndex[e]);
+            int itemRef = h.Items.Create(RingDefId, 0, new FixedVec3(Fixed.FromInt(5), Fixed.Zero, Fixed.FromInt(5)));
+
+            h.World.Destroy(e); // fires OnDestroy → OnEntityDestroyed HERO_NONE early no-op
+
+            Assert.True(h.Items.TryResolveRef(itemRef, out int isl));
+            Assert.False(h.Items.Held[isl]);                                 // untouched — still on the ground
+            Assert.Equal(ItemStore.NO_CARRIER, h.Items.CarrierHeroSlot[isl]); // never carried, never re-dropped
+        }
+
         // ── DW-38: a HYBRID buff-consumable (charges > 0 AND a stat delta AND an effect graph) applies its carried
         //    modifier on pickup and removes it when the last charge is consumed — the behaviour the softened docs sanction. ──
         [Fact]
