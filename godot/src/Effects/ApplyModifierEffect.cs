@@ -28,6 +28,11 @@ namespace ProjectChimera.Effects
             if (ctx.ModifierStore is null)
                 throw new NotSupportedException(
                     "ApplyModifierEffect requires a ModifierStore in the EffectContext (Story 2.2b).");
+            // DW-489 audit: ModifierStore.Apply may DESTROY (and recycle) PrimaryTargetId before it returns — the
+            // DW-325/DW-491 ceiling-collapse death on a net-negative MaxHealth delta. No guard is needed HERE because
+            // this is the leaf's last statement: it writes nothing for the target afterwards, and every sibling leaf
+            // the executor pops next re-checks EntityWorld.IsAlive on its own target. Keep this the final statement —
+            // any post-apply write added below MUST first re-check ctx.World.IsAlive(ctx.PrimaryTargetId).
             ctx.ModifierStore.Apply(ctx.PrimaryTargetId, Modifier, ctx.CasterId, ctx.CasterFaction);
         }
     }

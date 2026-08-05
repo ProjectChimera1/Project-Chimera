@@ -145,6 +145,19 @@ namespace ProjectChimera.Effects
         /// ring is full. The return value is not folded into any checksum — every path's behavior/state is unchanged;
         /// callers that ignore the result (the pre-DW-34 default) are byte-identical. The DW-34 pickup site reads it to
         /// deny a ground-item claim when the carrier is at the modifier cap.</para>
+        /// <para><b>POST-CONDITION (DW-325/DW-491, audited in DW-489): this method can DESTROY
+        /// <paramref name="targetId"/>.</b> A modifier whose MaxHealth delta is NET-NEGATIVE and collapses the host's
+        /// <c>EffectiveMaxHealth</c> from above zero to exactly zero raises the ceiling-collapse death inside
+        /// <see cref="ApplyStatDeltas"/> — a synchronous <c>EntityWorld.Destroy</c>, which fires <c>OnDestroy</c>
+        /// (ClearEntity wipes this host's ring; ItemSystem drops its carried items) and returns the id to the recycle
+        /// free list. The returned <c>true</c> therefore means "installed", NOT "installed AND the host is still
+        /// alive" — the two are deliberately NOT distinguished in the return value (recorded decision 2026-08-03: no
+        /// tri-state API for a latent, content-gated case). EVERY caller that writes further state for
+        /// <paramref name="targetId"/> after this returns MUST re-check <see cref="EntityWorld.IsAlive"/> first. The
+        /// three internal <see cref="ApplyStatDeltas"/> callers do so inline; the external callers are
+        /// <c>ItemSystem.ApplyItemStatModifier</c>'s call sites (guarded / audited per DW-489),
+        /// <c>EffectExecutor</c>'s apply_modifier case and <see cref="ApplyModifierEffect.Apply"/> (both return
+        /// immediately and every subsequent leaf re-guards IsAlive), and the aura re-grant walk.</para>
         /// </summary>
         public bool Apply(int targetId, Modifier mod, int casterId, Faction casterFaction)
         {
@@ -583,6 +596,16 @@ namespace ProjectChimera.Effects
         /// the item's modifier uses a deterministic per-item <see cref="Modifier.Id"/>, so this reverts precisely that
         /// item's bonus. Returns true iff a matching instance was found + removed. A dead/stale host or an absent id is a
         /// harmless no-op (false) — e.g. death-drop after <see cref="ClearEntity"/> already wiped the entity's modifiers.
+        /// <para><b>POST-CONDITION (DW-325/DW-491, audited in DW-489): this method can DESTROY
+        /// <paramref name="hostId"/>.</b> Reverting a POSITIVE +MaxHealth contribution is a net-negative change, so a
+        /// removal that takes the host's <c>EffectiveMaxHealth</c> from above zero to exactly zero raises the
+        /// ceiling-collapse death inside <see cref="ApplyStatDeltas"/> — the same synchronous <c>Destroy</c> +
+        /// <c>OnDestroy</c> re-entrancy described on <see cref="Apply"/>. Removing a carried item's modifier is
+        /// therefore RE-ENTRANT into <c>ItemSystem</c>: the death hook runs <c>OnEntityDestroyed → DropAll → DropOne</c>
+        /// over the SAME inventory ring the caller is mid-way through mutating. Every caller must (a) re-check
+        /// <see cref="EntityWorld.IsAlive"/> before its next write for <paramref name="hostId"/>, and (b) leave no
+        /// half-updated ring slot live across this call — <c>ItemSystem.UseItemCommand</c>/<c>DropOne</c> clear the
+        /// in-flight slot BEFORE calling in, so the re-entrant sweep skips it instead of double-dropping it.</para>
         /// </summary>
         public bool RemoveByModifierId(int hostId, int modifierId)
         {
