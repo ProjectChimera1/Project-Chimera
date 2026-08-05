@@ -163,9 +163,11 @@ namespace ProjectChimera.Sim.Tests.Meta
 
         /// <summary>Story 9.4 — the net-new ruleset-fingerprint hash over the <see cref="EffectCaps"/> structural
         /// caps, folded into <see cref="MatchAgreementHash"/>. v1 = initial (AlgoVersion + every cap in file order).
+        /// DW-534 bumped v1→v2: <see cref="EffectCaps.MaxSearchRadius"/> — the authored SearchArea radius ceiling —
+        /// joins the fold as an eleventh cap. Handshake-only: no sim-array fold, so no golden moved.
         /// A bump changes the value old clients compute for the start-state handshake — update this pin in the same
         /// commit.</summary>
-        private const int ExpectedRulesetHashAlgoVersion = 1;
+        private const int ExpectedRulesetHashAlgoVersion = 2;
 
         /// <summary>Story 9.4 — the single 64-bit start-state-agreement hash on the widened Ready packet. v1 =
         /// initial (AlgoVersion + RulesetHash + initial-delay + faction-count + roster + StartStateHash). Story 9.14

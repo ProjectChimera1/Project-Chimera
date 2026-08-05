@@ -18,15 +18,19 @@ namespace ProjectChimera.Core.Definitions
     public static class RulesetHash
     {
         /// <summary>Algorithm version of THIS hash. Mixed FIRST so a bump moves the value even with no cap change.
-        /// Bump only when the folded cap set/order changes.</summary>
-        public const int AlgoVersion = 1;
+        /// Bump only when the folded cap set/order changes.
+        /// <para>v1 = initial (Story 9.4): AlgoVersion then the ten structural caps in file order.
+        /// v2 = DW-534: <see cref="EffectCaps.MaxSearchRadius"/> joins the fold as an eleventh cap (the authored
+        /// SearchArea radius ceiling), so a build that bounds the radius and one that does not are now
+        /// handshake-incompatible rather than silently running different work per cast.</para></summary>
+        public const int AlgoVersion = 2;
 
         private const ulong Offset = 14695981039346656037UL; // FNV-64 offset basis (same primitive as StartStateHash)
         private const ulong Prime  = 1099511628211UL;        // FNV-64 prime
 
         /// <summary>
         /// Fold <see cref="AlgoVersion"/> then every <see cref="EffectCaps"/> cap in FILE ORDER
-        /// (<see cref="EffectCaps.MaxEffectDepth"/> … <see cref="EffectCaps.MaxTotalEffectNodes"/>). Never returns 0
+        /// (<see cref="EffectCaps.MaxEffectDepth"/> … <see cref="EffectCaps.MaxSearchRadius"/>). Never returns 0
         /// (sentinel), so a valid ruleset never collides with the fail-open "no hash" value.
         /// </summary>
         public static ulong Compute()
@@ -46,6 +50,7 @@ namespace ProjectChimera.Core.Definitions
             h = MixInt(h, EffectCaps.MaxModifiersPerEntity);
             h = MixInt(h, EffectCaps.MaxSearchAreaDepth);
             h = MixInt(h, EffectCaps.MaxTotalEffectNodes);
+            h = MixInt(h, EffectCaps.MaxSearchRadius); // DW-534 (AlgoVersion 2)
 
             return h == 0UL ? 1UL : h;
         }

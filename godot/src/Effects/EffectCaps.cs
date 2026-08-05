@@ -120,5 +120,33 @@ namespace ProjectChimera.Effects
         /// (Story 9.4).
         /// </summary>
         public const int MaxTotalEffectNodes = 64;
+
+        /// <summary>
+        /// Maximum authored <c>SearchAreaEffect.Radius</c>, in whole world units — the SPATIAL third of the
+        /// worst-case-work bound, beside <see cref="MaxSearchAreaDepth"/> (how deeply searches nest) and
+        /// <see cref="MaxTotalEffectNodes"/> (how large the graph is). Enforced at LOAD by
+        /// <c>EffectBounds.Validate</c>, so every authoring surface already behind that gate inherits it —
+        /// abilities (<c>AbilityValidator</c>), items (<c>ItemDefinitionValidator</c>), and a scenario's
+        /// <c>run_effect</c> embeds (<c>ScenarioValidator</c>). Folded into <c>RulesetHash</c> (DW-534) because it
+        /// is a structural bound two builds must agree on before they may share a match.
+        ///
+        /// <para><b>Why the ceiling has to live at authoring time (DW-534).</b>
+        /// <c>SpatialHash.QueryRadiusLowestIds</c> visits every candidate in radius with no early exit: a full
+        /// result buffer must NOT end its scan, because a later candidate may still carry a lower id, and that is
+        /// exactly what makes its selection global rather than dependent on grid geometry. The scan therefore
+        /// cannot bound its own cost without giving up that contract, so the only remaining ceiling is the authored
+        /// radius. With no cap the walk was limited only by the grid's own bounds checks —
+        /// <c>cellRadius = radius/CELL_SIZE + 1</c> against <c>GRID_DIM=32</c> cells of <c>CELL_SIZE=10</c> — so an
+        /// authored radius of 320 visited ALL 1024 cells and ran the target predicate over every alive entity (up
+        /// to <c>EntityWorld.MAX_ENTITIES</c>), once per outer target when nested, on the 30 Hz lockstep tick path
+        /// where an overrun stalls every peer instead of degrading locally.</para>
+        ///
+        /// <para><b>The value.</b> 64 world units holds <c>cellRadius</c> at 7, i.e. at most 15×15 = 225 of the
+        /// hash's 1024 cells however wide an author writes it, while leaving an order of magnitude of headroom over
+        /// real content (the widest radius shipped today is 5) and still covering a quarter of the largest
+        /// supported map's 256-unit width. <c>EffectRadiusCapTests</c> pins both halves: the cell-span arithmetic
+        /// that makes this a cost ceiling, and the headroom over the shipped ability files.</para>
+        /// </summary>
+        public const int MaxSearchRadius = 64;
     }
 }
