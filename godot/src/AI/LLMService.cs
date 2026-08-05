@@ -168,8 +168,15 @@ namespace ProjectChimera.AI
     /// <c>AllowAutoRedirect=false</c> (a real key now flows through it — closes the cross-host redirect key-leak).
     /// Follows the ConcurrentQueue/DrainEvents pattern used by NakamaService and ModIoService.
     /// Call DrainEvents() once per _Process frame to marshal callbacks to the main thread.
+    ///
+    /// DW-375 — the service OWNS unmanaged-backed state and is therefore <see cref="IDisposable"/>: the seven per-flow
+    /// <see cref="CancellationTokenSource"/>es (one per generate entry point) and, on the <c>http: null</c> construction
+    /// path, the <see cref="HttpClient"/>/<see cref="HttpClientHandler"/> pair it builds. A superseded token source is
+    /// now cancelled AND disposed at the point of reassignment (<see cref="ReplaceTokenSource"/>) instead of being
+    /// abandoned once per Generate press, and <see cref="Dispose"/> releases everything the service owns. An INJECTED
+    /// client is never disposed — the caller that supplied it owns its lifetime.
     /// </summary>
-    public class LLMService
+    public sealed class LLMService : IDisposable
     {
         // ── Configuration ─────────────────────────────────────────────────────
 
@@ -196,11 +203,17 @@ namespace ProjectChimera.AI
         // ── Internal state ────────────────────────────────────────────────────
 
         private readonly HttpClient _http;
+        /// <summary>DW-375: true only when this service BUILT <see cref="_http"/> (the <c>http: null</c> path) and is
+        /// therefore responsible for disposing it. An injected client belongs to its caller and is left alone.</summary>
+        private readonly bool _ownsHttp;
         private readonly Func<SettingsData> _getSettings;
         private readonly ISecretStore _secretStore;
         private readonly ConcurrentQueue<Action> _queue = new();
         private CancellationTokenSource? _cts;
         private CancellationTokenSource? _mapCts;
+        /// <summary>DW-375: set once by <see cref="Dispose"/>. Written and read on the caller (Godot main) thread —
+        /// the worker tasks never touch it.</summary>
+        private bool _disposed;
 
         // ── Construction ──────────────────────────────────────────────────────
 
@@ -209,6 +222,10 @@ namespace ProjectChimera.AI
         /// (the authoritative selected provider/model/base-URL), the <see cref="ISecretStore"/> (the ONLY key source),
         /// and an optional injected <see cref="HttpClient"/> (the unit-test seam over a stub handler). When
         /// <paramref name="http"/> is null an owned client is built with <c>AllowAutoRedirect=false</c>.
+        ///
+        /// DW-375: which of the two branches ran is recorded in <see cref="_ownsHttp"/> — <see cref="Dispose"/> disposes
+        /// the client ONLY on the owned branch, so a caller-injected client (every Tier-1 test, and any future shared
+        /// client) is never torn down under its owner.
         /// </summary>
         public LLMService(Func<SettingsData> getSettings, ISecretStore secretStore, HttpClient? http = null)
         {
@@ -217,13 +234,15 @@ namespace ProjectChimera.AI
 
             if (http != null)
             {
-                _http = http;
+                _http     = http;
+                _ownsHttp = false;
             }
             else
             {
                 _http = new HttpClient(BuildOwnedHttpHandler())
                 { Timeout = TimeSpan.FromMilliseconds(TIMEOUT_MS) };
                 _http.DefaultRequestHeaders.UserAgent.ParseAdd("ProjectChimera/1.0");
+                _ownsHttp = true;
             }
         }
 
@@ -235,6 +254,131 @@ namespace ProjectChimera.AI
         /// redirect — mirrors the evaluator client 8.2 hardened.
         /// </summary>
         internal static HttpClientHandler BuildOwnedHttpHandler() => new() { AllowAutoRedirect = false };
+
+        // ── Lifecycle (DW-375) ────────────────────────────────────────────────
+
+        /// <summary>
+        /// DW-375 — install a FRESH <see cref="CancellationTokenSource"/> in <paramref name="slot"/>, cancelling and
+        /// DISPOSING whatever was there, and return the new token. Every generate entry point reassigns its per-flow
+        /// source through here. Before this, each press did <c>slot?.Cancel(); slot = new()</c> — the superseded source
+        /// was left to the GC undisposed, so a session leaked one <see cref="CancellationTokenSource"/> (plus any wait
+        /// handle / linked-registration state it had materialised) per Generate press.
+        ///
+        /// The two orderings below are both load-bearing:
+        /// <list type="bullet">
+        ///   <item>the fresh source is PUBLISHED BEFORE the old one is torn down, so a <see cref="Cancel"/> racing the
+        ///         reassignment can never observe a disposed source — <c>CancellationTokenSource.Cancel</c> throws
+        ///         <see cref="ObjectDisposedException"/> after disposal;</item>
+        ///   <item>the old source is CANCELLED BEFORE it is disposed, which is what makes disposing a source whose token
+        ///         a still-unwinding request holds safe. A cancelled token stays permanently "cancellation requested",
+        ///         and every <see cref="CancellationToken"/> member such a request touches — <c>IsCancellationRequested</c>,
+        ///         <c>ThrowIfCancellationRequested</c>, <c>Register</c>/<c>UnsafeRegister</c>, the
+        ///         <c>CreateLinkedTokenSource</c> that <c>LlmHttp.SendAsync</c> wraps the body read in, and
+        ///         <c>HttpClient.SendAsync</c> itself — short-circuits on that state instead of checking disposal. Only
+        ///         <c>Token</c>, <c>Cancel</c> and <c>WaitHandle</c> throw once disposed, and none of them is reachable
+        ///         from an in-flight generation. <c>LlmServiceLifecycleTests</c> pins that framework contract.</item>
+        /// </list>
+        /// </summary>
+        private static CancellationToken ReplaceTokenSource(ref CancellationTokenSource? slot)
+        {
+            CancellationTokenSource? superseded = slot;
+            var fresh = new CancellationTokenSource();
+            slot = fresh;
+
+            if (superseded != null)
+            {
+                superseded.Cancel();    // cancel BEFORE dispose — see the ordering note above
+                superseded.Dispose();
+            }
+            return fresh.Token;
+        }
+
+        /// <summary>
+        /// DW-375 — cancel and dispose the source in <paramref name="slot"/>, leaving the slot EMPTY. Emptying it is what
+        /// keeps a <see cref="Cancel"/> / <see cref="CancelScenario"/> / <see cref="CancelDrafts"/> /
+        /// <see cref="CancelBalanceAnalysis"/> call after <see cref="Dispose"/> a silent no-op instead of an
+        /// <see cref="ObjectDisposedException"/> out of <c>CancellationTokenSource.Cancel</c>.
+        /// </summary>
+        private static void CancelAndDisposeTokenSource(ref CancellationTokenSource? slot)
+        {
+            CancellationTokenSource? source = slot;
+            slot = null;
+            if (source == null) return;
+            source.Cancel();
+            source.Dispose();
+        }
+
+        /// <summary>DW-375 — guard for the generate entry points. A request issued after <see cref="Dispose"/> would run
+        /// against a disposed client, so fail loudly at the call site rather than surfacing an opaque "Cannot access a
+        /// disposed object" through the async error callback a frame later.</summary>
+        private void ThrowIfDisposed()
+        {
+            if (_disposed) throw new ObjectDisposedException(nameof(LLMService));
+        }
+
+        /// <summary>
+        /// DW-375 — release everything this service owns: every per-flow <see cref="CancellationTokenSource"/> (cancelled
+        /// first, so an in-flight request unwinds through its own cancellation path instead of into a disposed client),
+        /// and — ONLY when the service built it (the <c>http: null</c> construction path) — the owned
+        /// <see cref="HttpClient"/>. Disposing that client also disposes the <see cref="HttpClientHandler"/> it was built
+        /// over, because <c>new HttpClient(handler)</c> takes ownership of the handler. An INJECTED client is left
+        /// untouched.
+        ///
+        /// Idempotent. Afterwards the Cancel* methods stay callable (they no-op on the emptied slots) and
+        /// <see cref="DrainEvents"/> still flushes anything already queued; the Generate* entry points throw
+        /// <see cref="ObjectDisposedException"/>.
+        /// </summary>
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+
+            CancelAndDisposeTokenSource(ref _cts);
+            CancelAndDisposeTokenSource(ref _mapCts);
+            CancelAndDisposeTokenSource(ref _unitCts);
+            CancelAndDisposeTokenSource(ref _abilityCts);
+            CancelAndDisposeTokenSource(ref _heroCts);
+            CancelAndDisposeTokenSource(ref _factionCts);
+            CancelAndDisposeTokenSource(ref _balanceCts);
+
+            if (_ownsHttp) _http.Dispose();
+        }
+
+        /// <summary>DW-375 — the per-flow cancellation slots this service owns, one per generate entry point. The ledger
+        /// entry named the trigger/scenario pair, but all seven shared the reassign-without-dispose defect.</summary>
+        internal enum GenerationFlow
+        {
+            Trigger,
+            Scenario,
+            UnitDraft,
+            AbilityDraft,
+            HeroDraft,
+            FactionDraft,
+            BalanceAnalysis
+        }
+
+        /// <summary>DW-375 Tier-1 seam — internal (not private) for the same reason <see cref="BuildSystemPrompt"/> and
+        /// <see cref="BuildOwnedHttpHandler"/> are: the property under test is otherwise unobservable. Returns the source
+        /// currently installed for <paramref name="flow"/> (null before that flow's first request and after
+        /// <see cref="Dispose"/>), so the lifecycle test can prove a SUPERSEDED source was cancelled and disposed — a
+        /// disposed source's <c>Token</c> getter throws, which is the only external evidence of disposal. Nothing in the
+        /// shipping code reads this.</summary>
+        internal CancellationTokenSource? ActiveTokenSource(GenerationFlow flow) => flow switch
+        {
+            GenerationFlow.Trigger         => _cts,
+            GenerationFlow.Scenario        => _mapCts,
+            GenerationFlow.UnitDraft       => _unitCts,
+            GenerationFlow.AbilityDraft    => _abilityCts,
+            GenerationFlow.HeroDraft       => _heroCts,
+            GenerationFlow.FactionDraft    => _factionCts,
+            GenerationFlow.BalanceAnalysis => _balanceCts,
+            _                              => null
+        };
+
+        /// <summary>DW-375 Tier-1 seam: the <see cref="HttpClient"/> this service OWNS (built on the <c>http: null</c>
+        /// path), or null when the caller injected one. Every other test injects a client, so this is the only way to
+        /// assert that <see cref="Dispose"/> disposes what it owns — and, on the injected path, that it does not.</summary>
+        internal HttpClient? OwnedHttpClient => _ownsHttp ? _http : null;
 
         // ── Public API ────────────────────────────────────────────────────────
 
@@ -248,9 +392,10 @@ namespace ProjectChimera.AI
             ScenarioContext context,
             Action<TriggerDefinition?, string?> onComplete)
         {
-            _cts?.Cancel();
-            _cts = new CancellationTokenSource();
-            var token = _cts.Token;
+            ThrowIfDisposed();
+            // DW-375: the superseded source is cancelled AND disposed here (see ReplaceTokenSource) — this press used to
+            // abandon the previous one undisposed.
+            CancellationToken token = ReplaceTokenSource(ref _cts);
 
             // Snapshot the authoritative settings on the caller thread; the factory reads the provider/model/base-URL
             // from it and the key from the secret store — no fallback, no other provider attempted.
@@ -304,7 +449,8 @@ namespace ProjectChimera.AI
             }, token);
         }
 
-        /// <summary>Cancel any in-flight generation request.</summary>
+        /// <summary>Cancel any in-flight generation request. DW-375: a no-op after <see cref="Dispose"/> — the slot is
+        /// emptied there precisely so this stays safe to call during teardown.</summary>
         public void Cancel() => _cts?.Cancel();
 
         /// <summary>Drain queued main-thread callbacks. Call once per _Process frame.</summary>
@@ -561,9 +707,8 @@ play_sound      — sound_id (string)");
             MapGeneratorContext context,
             Action<ScenarioData?, string?> onComplete)
         {
-            _mapCts?.Cancel();
-            _mapCts = new CancellationTokenSource();
-            var token = _mapCts.Token;
+            ThrowIfDisposed();
+            CancellationToken token = ReplaceTokenSource(ref _mapCts);   // DW-375: cancels AND disposes the superseded source
 
             // Snapshot the authoritative settings on the caller thread (see GenerateTriggerAsync). No fallback.
             SettingsData settings = _getSettings();
@@ -613,7 +758,7 @@ play_sound      — sound_id (string)");
             }, token);
         }
 
-        /// <summary>Cancel any in-flight scenario generation request.</summary>
+        /// <summary>Cancel any in-flight scenario generation request. DW-375: a no-op after <see cref="Dispose"/>.</summary>
         public void CancelScenario() => _mapCts?.Cancel();
 
         /// <summary>
@@ -1017,6 +1162,8 @@ play_sound      — sound_id (string)");
         // Stays Godot-free (no Godot dependency) — Tier-1 + analyzer covered.
         // ══════════════════════════════════════════════════════════════════════
 
+        // DW-375: like _cts/_mapCts above, every one of these is reassigned ONLY through ReplaceTokenSource (cancel +
+        // dispose the superseded source) and released by Dispose. Do not hand-roll `x?.Cancel(); x = new(...)` here again.
         private CancellationTokenSource? _unitCts;
         private CancellationTokenSource? _abilityCts;
         private CancellationTokenSource? _heroCts;
@@ -1033,10 +1180,10 @@ play_sound      — sound_id (string)");
         /// </summary>
         public void GenerateUnitDraftAsync(string prompt, UnitDraftContext ctx, Action<UnitDefinition?, string?> onComplete)
         {
-            _unitCts?.Cancel();
-            _unitCts = new CancellationTokenSource();
+            ThrowIfDisposed();
+            CancellationToken token = ReplaceTokenSource(ref _unitCts);   // DW-375: cancels AND disposes the superseded source
             RunDraftAsync(BuildUnitDraftPrompt(ctx), $"Create a unit for: {prompt}",
-                json => ValidateUnitDraft(json, ctx), _unitCts.Token, onComplete);
+                json => ValidateUnitDraft(json, ctx), token, onComplete);
         }
 
         /// <summary>
@@ -1046,10 +1193,10 @@ play_sound      — sound_id (string)");
         /// </summary>
         public void GenerateAbilityDraftAsync(string prompt, AbilityDraftContext ctx, Action<AbilityDefinition?, string?> onComplete)
         {
-            _abilityCts?.Cancel();
-            _abilityCts = new CancellationTokenSource();
+            ThrowIfDisposed();
+            CancellationToken token = ReplaceTokenSource(ref _abilityCts);   // DW-375: cancels AND disposes the superseded source
             RunDraftAsync(BuildAbilityDraftPrompt(ctx), $"Create an ability for: {prompt}",
-                json => ValidateAbilityDraft(json, ctx), _abilityCts.Token, onComplete);
+                json => ValidateAbilityDraft(json, ctx), token, onComplete);
         }
 
         /// <summary>
@@ -1059,10 +1206,10 @@ play_sound      — sound_id (string)");
         /// </summary>
         public void GenerateHeroDraftAsync(string prompt, UnitDraftContext ctx, Action<UnitDefinition?, string?> onComplete)
         {
-            _heroCts?.Cancel();
-            _heroCts = new CancellationTokenSource();
+            ThrowIfDisposed();
+            CancellationToken token = ReplaceTokenSource(ref _heroCts);   // DW-375: cancels AND disposes the superseded source
             RunDraftAsync(BuildHeroDraftPrompt(ctx), $"Create a hero for: {prompt}",
-                json => ValidateHeroDraft(json, ctx), _heroCts.Token, onComplete);
+                json => ValidateHeroDraft(json, ctx), token, onComplete);
         }
 
         /// <summary>
@@ -1074,14 +1221,15 @@ play_sound      — sound_id (string)");
         /// </summary>
         public void GenerateFactionDraftAsync(string prompt, FactionDraftContext ctx, Action<FactionDefinition?, string?> onComplete)
         {
-            _factionCts?.Cancel();
-            _factionCts = new CancellationTokenSource();
+            ThrowIfDisposed();
+            CancellationToken token = ReplaceTokenSource(ref _factionCts);   // DW-375: cancels AND disposes the superseded source
             RunDraftAsync(BuildFactionDraftPrompt(ctx), $"Create a faction for: {prompt}",
-                json => ValidateFactionDraft(json, ctx), _factionCts.Token, onComplete,
+                json => ValidateFactionDraft(json, ctx), token, onComplete,
                 maxTokens: FACTION_DRAFT_MAX_TOKENS);
         }
 
-        /// <summary>Cancel any in-flight draft generation (all four kinds).</summary>
+        /// <summary>Cancel any in-flight draft generation (all four kinds) plus the balance analysis. DW-375: a no-op
+        /// after <see cref="Dispose"/>.</summary>
         public void CancelDrafts()
         {
             _unitCts?.Cancel();
@@ -1113,16 +1261,16 @@ play_sound      — sound_id (string)");
         public void GenerateBalanceAnalysisAsync(
             string prompt, BalanceAnalysisContext ctx, Action<BalanceReport?, string?> onComplete)
         {
-            _balanceCts?.Cancel();
-            _balanceCts = new CancellationTokenSource();
+            ThrowIfDisposed();
+            CancellationToken token = ReplaceTokenSource(ref _balanceCts);   // DW-375: cancels AND disposes the superseded source
             RunDraftAsync(
                 BuildBalanceAnalysisPrompt(ctx),
                 $"Analyze this faction for balance. Focus: {prompt}",
                 json => ValidateBalanceReport(json, ctx),
-                _balanceCts.Token, onComplete, maxTokens: FACTION_DRAFT_MAX_TOKENS);
+                token, onComplete, maxTokens: FACTION_DRAFT_MAX_TOKENS);
         }
 
-        /// <summary>Cancel any in-flight balance-analysis request.</summary>
+        /// <summary>Cancel any in-flight balance-analysis request. DW-375: a no-op after <see cref="Dispose"/>.</summary>
         public void CancelBalanceAnalysis() => _balanceCts?.Cancel();
 
         /// <summary>Story 8.5: internal so the staleness-guard test can assert the prompt enumerates every member of
