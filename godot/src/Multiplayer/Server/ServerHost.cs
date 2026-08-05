@@ -74,10 +74,30 @@ namespace ProjectChimera.Multiplayer.Server
         /// </summary>
         public int SingleReporterWindows { get; private set; }
 
+        /// <summary>
+        /// DW-511 — checksum reports the collector DROPPED for keying implausibly far past the server-authoritative
+        /// tick frontier. A correct lockstep client never produces one: a non-zero count means a peer tried to evict
+        /// the honest quorum's in-flight comparison windows (and blind the desync guard) with a fabricated tick.
+        /// Nothing was compared and nothing was lost, so this is neither a desync nor an abandoned window — it is a
+        /// MISBEHAVIOUR counter, reported by <see cref="LogSummary"/> so the grief attempt is not invisible.
+        /// </summary>
+        public int FarFutureChecksumRejections { get; private set; }
+
+        // DW-511: one console line per offending slot. The rejection is cheap to drive at wire rate, so an
+        // unbounded log line here would be the soft log-write DoS DW-392 already had to fix on the command path.
+        private readonly bool[] _farFutureLogged = new bool[ServerChecksumCollector.MaxSlots];
+
+        /// <param name="tickFrontier">
+        /// DW-511 — the server-authoritative confirmed tick high-water (<c>MergedTickBuilder.EmittedThrough</c>).
+        /// Supplying it ARMS the collector's far-future acceptance bound; omitting it keeps the legacy unbounded
+        /// acceptance, which is only safe when every reporter is trusted in-process code. Any host fed by a real
+        /// transport MUST pass it — see <see cref="ServerChecksumCollector"/>'s ctor doc.
+        /// </param>
         public ServerHost(int expectedPeerCount, ILogSink log,
-                          Action<int, byte[]> sendReliableTo, Action<byte[]> broadcastReliable)
+                          Action<int, byte[]> sendReliableTo, Action<byte[]> broadcastReliable,
+                          Func<long>? tickFrontier = null)
         {
-            _collector = new ServerChecksumCollector(expectedPeerCount, OnWindowAbandoned);
+            _collector = new ServerChecksumCollector(expectedPeerCount, OnWindowAbandoned, tickFrontier);
             _log = log ?? throw new ArgumentNullException(nameof(log));
             _sendReliableTo = sendReliableTo ?? throw new ArgumentNullException(nameof(sendReliableTo));
             _broadcastReliable = broadcastReliable ?? throw new ArgumentNullException(nameof(broadcastReliable));
@@ -92,9 +112,37 @@ namespace ProjectChimera.Multiplayer.Server
         {
             if (Halted) return;
 
+            // DW-511: the collector counts a far-future rejection rather than raising a seam — Record takes exactly
+            // one report per call, so a change in the counter across THIS call names THIS (slot, tick). Reading the
+            // delta keeps the drop observable without a fourth collector ctor seam for what is one log line.
+            int rejectedBefore = _collector.FarFutureRejections;
+
             ServerChecksumCollector.Verdict v = _collector.Record(tick, slot, hash);
+
+            if (_collector.FarFutureRejections != rejectedBefore)
+            {
+                OnFarFutureChecksum(slot, tick);
+                return;
+            }
+
             if (!v.Complete) return;
             ProcessVerdict(tick, v);
+        }
+
+        /// <summary>
+        /// DW-511 — a peer reported a checksum for a tick no honest client can have executed yet (implausibly far
+        /// past the server's own confirmed frontier). The report was DROPPED before it could evict an honest
+        /// in-flight comparison window or poison the collector's resolved high-water. Count it always; log it ONCE
+        /// per offending slot (an unbounded line here would be a client-drivable log-write DoS — the DW-392 lesson).
+        /// </summary>
+        private void OnFarFutureChecksum(int slot, uint tick)
+        {
+            FarFutureChecksumRejections++;
+            if ((uint)slot >= ServerChecksumCollector.MaxSlots || _farFutureLogged[slot]) return;
+            _farFutureLogged[slot] = true;
+            _log.Warn($"[Determinism] slot {slot} reported a checksum for tick {tick} — implausibly far past the " +
+                      "confirmed tick frontier; DROPPED (a correct client cannot produce this). Further such " +
+                      "reports from this slot are counted but not logged.");
         }
 
         /// <summary>
@@ -229,6 +277,10 @@ namespace ProjectChimera.Multiplayer.Server
         /// (nothing was ever cross-attested); when a zero-desync match mixes attested and single-reporter windows the
         /// PASS names the attested count and marks the rest attestation-suspended, so the summary can no longer
         /// over-claim determinism enforcement after a 1v1 drop. A match with no drop keeps the exact legacy format.</para>
+        ///
+        /// <para>DW-511: a non-zero <see cref="FarFutureChecksumRejections"/> is appended too — those reports were
+        /// dropped, not compared, so they do not move the verdict, but a human must see that a peer tried to blind
+        /// the guard. Zero rejections (every honest match) leaves the line byte-identical to the legacy format.</para>
         /// </summary>
         public void LogSummary()
         {
@@ -243,8 +295,12 @@ namespace ProjectChimera.Multiplayer.Server
                 : SingleReporterWindows > 0
                     ? $"PASS over the {attested} attested window(s) ({SingleReporterWindows} single-reporter window(s) are liveness, not attestation)"
                     : "PASS";
+            // DW-511: only surfaces when a peer actually tried it, so a clean match keeps the exact legacy format.
+            string rejected = FarFutureChecksumRejections > 0
+                ? $", {FarFutureChecksumRejections} far-future report(s) rejected"
+                : "";
             _log.Info($"[Determinism] MATCH SUMMARY: {counts}, {DesyncCount} desync, " +
-                      $"{AbandonedWindows} abandoned — {verdict}.");
+                      $"{AbandonedWindows} abandoned{rejected} — {verdict}.");
         }
     }
 }
