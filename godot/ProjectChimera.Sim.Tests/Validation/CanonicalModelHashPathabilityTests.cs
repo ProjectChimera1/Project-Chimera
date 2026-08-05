@@ -28,8 +28,10 @@ namespace ProjectChimera.Sim.Tests.Validation
             return PathabilityGrid.ToBase64(mask)!;
         }
 
+        // Bump history lives on CanonicalModelHash.AlgoVersion's XML doc, never restated here (DW-583).
+        // The pathability folds this file covers are unchanged since the version named in the class summary above.
         [Fact]
-        public void AlgoVersion_IsPinned() => Assert.Equal(14, CanonicalModelHash.AlgoVersion); // 7.5 re-land merge: 9→10 (custom-events fold); Story 7.9: 10→11 (Button fold). Pathability folds below unchanged.
+        public void AlgoVersion_IsPinned() => Assert.Equal(14, CanonicalModelHash.AlgoVersion);
 
         [Fact]
         public void AbsentPaint_And_AllClearPaint_HashEqual()
