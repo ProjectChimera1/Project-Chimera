@@ -755,6 +755,12 @@ namespace ProjectChimera.Effects
                 // keeps the DW-488 accumulator-wrap outcome the benign 0-ceiling zombie it was before DW-325, instead of
                 // an outright kill), the ceiling WAS above zero, and it is zero NOW. Every real collapse (fresh install,
                 // collapsing stack, expiry-driven revert) still satisfies all three.
+                //
+                // DW-620 — a FOURTH, implicit conjunct now lives inside the primitive: KillEntity refuses the death of
+                // an Invulnerable host (decision 2026-08-05, "Invulnerable = death-immunity"). This call site is left
+                // deliberately unguarded so the flag check has exactly one home; the collapse still happens (ceiling 0,
+                // Health clamped to 0) and the host simply survives it as a death-immune 0-HP unit until the flag drops
+                // and a FRESH collapse (or any damage) kills it. Pinned by InvulnerableDeathImmunityTests.
                 if (_world.IsAlive(id) && maxHealthChange < Fixed.Zero
                     && ceilingBefore > Fixed.Zero && _world.EffectiveMaxHealth[id] == Fixed.Zero)
                     DamageResolver.KillEntity(_world, id, Faction.Neutral, _events, _stats);

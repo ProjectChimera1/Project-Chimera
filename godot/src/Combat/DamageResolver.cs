@@ -114,6 +114,10 @@ namespace ProjectChimera.Combat
         /// cast dies through the EXACT same path, never an invented one. Caller ensures Health has already reached ≤0.
         /// DW-493: fail-closed on a dead/recycled <paramref name="id"/> (a no-op — no event, no stats, no death record),
         /// so the primitive itself can never double-kill even if a future caller forgets its own aliveness check.
+        /// DW-620: also fail-closed on <see cref="StatusFlags.Invulnerable"/> — the recorded ruling makes that flag
+        /// DEATH-immunity, so every direct-kill caller (ceiling collapse, self-lethal cast) is refused here rather
+        /// than each having to remember the check. Callers must therefore re-check <c>IsAlive</c> if they intend to
+        /// act on "it died"; a refused kill leaves the host alive and otherwise untouched.
         /// </summary>
         public static void KillEntity(EntityWorld world, int id, Faction killer, CombatEventQueue? events,
                                       MatchStats? stats, DeathFeed? deaths = null, int attackerId = -1)
@@ -124,6 +128,20 @@ namespace ProjectChimera.Combat
             // FUTURE caller (or a double-collapse in one tick) that reaches the kill without re-checking cannot
             // double-Destroy, emit a phantom UnitKilled/HeroFell, inflate RecordKill, or push a ghost death record.
             if (!world.IsAlive(id)) return;
+            // DW-620 (decision 2026-08-05 — "Invulnerable = DEATH-immunity, not merely damage-immunity"). The DW-266
+            // gate lives on Apply, which stops every DAMAGE source; but two callers reach the death sequence WITHOUT
+            // going through Apply and so used to kill an invulnerable unit outright:
+            //   • ModifierStore's DW-325 ceiling-collapse kill — a net-negative −MaxHealth debuff that drives
+            //     EffectiveMaxHealth from above zero to zero calls KillEntity directly, and
+            //   • AbilityCastSystem's deferred self-lethal cost_health death.
+            // The ruling puts the guard on the single death PRIMITIVE, so it covers those two and any future direct
+            // caller for free. Self-costs stay SPEND-ABLE: this refuses the DEATH, never the HP debit — direct_hp_delta
+            // still clamps the pool to 0 and cost_health is still paid; the caster simply survives at 0 HP.
+            // Refused BEFORE any mutation ⇒ a refused kill is a strict no-op: no killer attribution, no death-log
+            // record, no UnitKilled/HeroFell event, no RecordKill, no DeathFeed push, no Destroy.
+            // Unreachable from Apply (its own DW-266 guard returns first). Every recorded golden leaves StatusFlagsOf
+            // at None, so this branch is never entered there and no checksum moves.
+            if ((world.StatusFlagsOf[id] & StatusFlags.Invulnerable) != 0) return;
             // Story 7.5: the SINGLE write point for the killer-attribution SoA — the attacker entity id (−1 =
             // unknown) plus the killer faction SNAPSHOTTED as a slot (Neutral → −1; Player1 → 0), written BEFORE
             // Destroy recycles the slot so ScenarioDirector's death diff can read the unit_dies payload this tick.
