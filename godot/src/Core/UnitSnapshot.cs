@@ -18,13 +18,27 @@ namespace ProjectChimera.Core
     ///   • the caller-owned fields the mapper does not write (<see cref="MeshType"/>/<see cref="GatherState"/>/
     ///     <see cref="CarryCapacity"/>/<see cref="SupplyCost"/>), replayed verbatim so worker overrides survive;
     ///   • the raw combat stats read ONLY by the def-less restore branch (<see cref="AttackRange"/>…
-    ///     <see cref="SplashRadius"/>).
-    /// Pure value type, no <c>using Godot;</c> — reachable from a Tier-1 xUnit test.
+    ///     <see cref="SplashRadius"/>);
+    ///   • <see cref="Abilities"/> — DW-54: the RESOLVED ability wiring (castable registry indices + the three
+    ///     passive slots), pinned by value because it is link-time RESOLUTION, not authored data, and the pinned
+    ///     def is a live shared object an editor session can mutate/replace under the snapshot.
+    /// Godot-free value type — reachable from a Tier-1 xUnit test.
     /// </summary>
     public struct UnitSnapshot
     {
         // Def reference (null ⇒ restore uses the raw-stat fallback below).
         public UnitDefinition? Def;
+
+        /// <summary>
+        /// DW-54: the ability RESOLUTION this entity was actually running with, pinned at capture time so a restore
+        /// never re-derives it from a def that has since been edited in place, swapped out of the roster, or
+        /// re-resolved against a different/absent registry. <see cref="EntityWorld.RestoreUnit"/> feeds this to
+        /// <see cref="EntityWorld.ApplyUnitDefinition"/>, which writes it BEFORE firing the passive-install seam —
+        /// so the installed while-alive passive and <c>SelfPassiveAbilityIndex</c> can never disagree.
+        /// <para>Null ⇒ pre-DW-54 behavior (re-derive the wiring from the def). <see cref="EntityWorld.SnapshotUnit"/>
+        /// always fills it, so null only occurs on a hand-built snapshot.</para>
+        /// </summary>
+        public PinnedAbilityWiring? Abilities;
 
         // Create() ctor-arg fields.
         public FixedVec3 Position;
