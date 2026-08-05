@@ -216,8 +216,12 @@ namespace ProjectChimera.Sim.Tests.Sim
             var system = new ModifierSystem();
             var events = new CombatEventQueue();
             var stats  = new MatchStats();
-            var fresh  = new ModifierStore(world, system, null, events, stats);
-            var dirty  = new ModifierStore(world, system, null, events, stats);
+            // DW-490: the store now also holds the shared DeathFeed (its ceiling-collapse kill records into it like
+            // every other lethal path). Wired as a REAL shared instance on both sides — a null on both would satisfy
+            // the reference-equality check trivially and prove nothing about the reset preserving the wiring.
+            var deaths = new DeathFeed();
+            var fresh  = new ModifierStore(world, system, null, events, stats, log: null, deaths: deaths);
+            var dirty  = new ModifierStore(world, system, null, events, stats, log: null, deaths: deaths);
 
             // Descriptor instances for the two reference-typed slot arrays (no parameterless ctors).
             var mod = new Modifier(1, durationTicks: 100, StackRule.Refresh, maxStacks: 1,
@@ -243,7 +247,12 @@ namespace ProjectChimera.Sim.Tests.Sim
                     // Host-lifetime wiring (readonly ctor deps, shared between fresh and dirty; Clear() preserves
                     // them by omission — clearing them would orphan the system↔store cycle the host wired once).
                     // `_log` (DW-83) is the same shape: an injected AR-4 diagnostic sink, construction-lifetime.
-                    "_world", "_system", "_damageTable", "_events", "_stats", "_log",
+                    // `_deaths` (DW-490) is likewise host-lifetime wiring — the SAME shared DeathFeed the combat,
+                    // projectile and ability death paths hold. It is a per-TICK buffer owned and drained by
+                    // HeroXpSystem (and reset through its own `_deathFeed.Clear() — DeathFeed` sweep case), so the
+                    // store must preserve the reference across a reset exactly as it preserves `_events`/`_stats`;
+                    // clearing it here would orphan the store from the XP runtime on the second Play.
+                    "_world", "_system", "_damageTable", "_events", "_stats", "_log", "_deaths",
                     // The store's OWN dedicated EffectExecutor: a construction-owned helper whose only mutable
                     // state (pre-allocated work stack + LastPeakStackDepth diagnostic) self-refreshes per Run and
                     // is unfolded — per-instance identity, preserved across reset by design (DW-20 investigation).

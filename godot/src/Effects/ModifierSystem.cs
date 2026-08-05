@@ -54,6 +54,17 @@ namespace ProjectChimera.Effects
         /// Recompute every dirty entity's effective stats from its base + net modifier bonus, then clear the flag.
         /// Ascending-id (the deterministic contract). A clean entity is left untouched — that gate is what makes a
         /// recompute happen ONLY when a modifier changed (and is the AC2 "no recompute when clean" teeth).
+        ///
+        /// <para><b>DW-492 — this loop is a LETHAL path.</b> The DW-325/DW-491 ceiling-collapse death used to live only
+        /// inside <c>ModifierStore.ApplyStatDeltas</c>, so a bonus that reached <c>EffectiveMaxHealth</c> through any
+        /// OTHER producer — an SP load's <c>ModifierStore.RestoreSlot</c> re-accumulation, or an
+        /// <see cref="AccumulateBonus"/> caller outside the store — could recompute a live unit's ceiling down to zero
+        /// and leave it standing (the 0-HP zombie DW-325 advertises as impossible, and a divergence between a
+        /// freshly-applied and a loaded match). Every such entity is by definition dirty-but-not-yet-recomputed, i.e.
+        /// exactly this loop's population, so the ceiling is snapshotted before each recompute and handed to
+        /// <c>ModifierStore.RaiseExternalCeilingCollapse</c> after it. Behaviour-preserving for every store-driven
+        /// change: those recompute EAGERLY and clear the flag, so they never reach this loop at all — which is why no
+        /// recorded golden (none of which loads a save or accumulates outside the store) enters this body.</para>
         /// </summary>
         public void Tick(EntityWorld world, Fixed dt)
         {
@@ -68,7 +79,15 @@ namespace ProjectChimera.Effects
                 // since-recycled slot from writing stats onto a dead entity (the SoA-recycle trap). The dirty gate is
                 // the 2.2a "no recompute when clean" teeth; entities the store already eager-recomputed are clean here.
                 if (!world.IsAlive(i) || !_dirty[i]) continue;
+                // DW-492: snapshot the PRIOR ceiling so the reconciliation below tests the same downward TRANSITION the
+                // apply path does (>0 → 0), never an absolute reading — a host that legitimately sits at ceiling 0 must
+                // survive a recompute here exactly as it survives a modifier apply (DW-491).
+                Fixed ceilingBefore = world.EffectiveMaxHealth[i];
                 RecomputeEntity(world, i);
+                // Re-clamp Health under a moved ceiling and raise the collapse death if this recompute floored it. Runs
+                // AFTER RecomputeEntity (which cleared the dirty flag), so a kill's OnDestroy→ClearEntity cascade finds
+                // no stale flag; the walk then continues to i+1 — Destroy never allocates, so no id is skipped.
+                _store?.RaiseExternalCeilingCollapse(i, ceilingBefore);
             }
         }
 

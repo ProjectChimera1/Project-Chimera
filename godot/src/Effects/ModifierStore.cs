@@ -79,6 +79,7 @@ namespace ProjectChimera.Effects
         private readonly DamageTable _damageTable;
         private readonly CombatEventQueue? _events;
         private readonly MatchStats? _stats;
+        private readonly DeathFeed? _deaths;        // DW-490 — the XP death feed EVERY other lethal path passes to KillEntity
         private readonly EffectExecutor _executor;  // DEDICATED — never shared with a graph-running executor
 
         // ── DW-83 diagnostics (NEVER folded into SimChecksum; never read by any sim branch) ──
@@ -97,15 +98,23 @@ namespace ProjectChimera.Effects
         /// through — the AR-4 <see cref="ILogSink"/>, never a static ambient sink / <c>Console</c> / <c>GD.Print</c>.
         /// Null (every golden/headless/fold-only construction) leaves a refusal byte-identical to its pre-DW-83
         /// silent self; the live host wires its own sink. Diagnostics only: a sink must never mutate sim state.</para>
+        /// <para>DW-490: <paramref name="deaths"/> is the shared <see cref="DeathFeed"/> the XP runtime drains — the
+        /// SAME argument the hitscan, projectile and self-lethal-cast death paths already pass to
+        /// <see cref="DamageResolver.KillEntity"/>. The store needs it because the DW-325 ceiling-collapse death is a
+        /// real lethal path: without the feed an ability-driven "reduce max HP to 0" finisher would be the ONLY kill in
+        /// the game that grants no hero XP. Deliberately LAST in the parameter list so every existing positional
+        /// construction (tests, fold-only stores) is unchanged; a null feed simply records no death, exactly as before.</para>
         /// </summary>
         public ModifierStore(EntityWorld world, ModifierSystem? system = null, DamageTable? damageTable = null,
-                             CombatEventQueue? events = null, MatchStats? stats = null, ILogSink? log = null)
+                             CombatEventQueue? events = null, MatchStats? stats = null, ILogSink? log = null,
+                             DeathFeed? deaths = null)
         {
             _world = world;
             _system = system;
             _damageTable = damageTable ?? DamageTable.Default;
             _events = events;
             _stats = stats;
+            _deaths = deaths;
             _log = log;
             _executor = new EffectExecutor(); // its own pre-allocated stack (re-entrancy-safe)
 
@@ -197,7 +206,10 @@ namespace ProjectChimera.Effects
                 ResetPeriodSchedule(slot, mod);
                 _count[targetId] = n + 1;
 
-                ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta, mod.ArmorDelta, isApply: true);
+                // DW-490: the instance's OWN recorded caster (just written above) is the attribution a ceiling-collapse
+                // death inside ApplyStatDeltas credits — the same pair a period pulse from this slot resolves with.
+                ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta, mod.ArmorDelta,
+                                isApply: true, _casterId[slot], _casterFaction[slot]);
                 // DW-325 re-entrancy: a ceiling-collapse kill inside ApplyStatDeltas fired OnDestroy→ClearEntity, wiping
                 // this host's slots/status/accumulators. Bail before writing status onto the dead (recycled) slot.
                 if (!_world.IsAlive(targetId)) return true;
@@ -217,7 +229,11 @@ namespace ProjectChimera.Effects
                     if (_stackCount[eslot] < mod.MaxStacks)
                     {
                         _stackCount[eslot]++;
-                        ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta, mod.ArmorDelta, isApply: true); // each stack re-adds
+                        // DW-490: attribution follows the INSTANCE, not the re-caster — _casterId/_casterFaction are
+                        // recorded once at install and a stack never rewrites them, so a collapsing stack credits the
+                        // same caster the instance's period pulses (RunEffectAgainst) already resolve with.
+                        ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta, mod.ArmorDelta,
+                                        isApply: true, _casterId[eslot], _casterFaction[eslot]); // each stack re-adds
                         // DW-325 re-entrancy: a stack that collapsed the ceiling to 0 killed the host → ClearEntity
                         // already wiped its slots; don't write status (or refresh eslot's duration below) on a dead slot.
                         if (!_world.IsAlive(targetId)) return true;
@@ -457,10 +473,13 @@ namespace ProjectChimera.Effects
             if (mod != null)
             {
                 Fixed stacks = Fixed.FromInt(_stackCount[slot]); // exact for an int multiplier (no Fixed rounding)
+                // DW-490: read the slot's caster BEFORE the revert — CompactSlot (below) may overwrite this slot, and a
+                // collapse kill inside ApplyStatDeltas wipes the whole ring. Reverting a +MaxHealth grant to zero is
+                // still "this instance's stat change killed the host", so it credits this instance's caster.
                 ApplyStatDeltas(hostId, -(mod.AttackDamageDelta * stacks),
                                         -(mod.MaxHealthDelta * stacks),
                                         -(mod.MoveSpeedDelta * stacks),
-                                        -(mod.ArmorDelta * stacks), isApply: false);
+                                        -(mod.ArmorDelta * stacks), isApply: false, _casterId[slot], _casterFaction[slot]);
                 // DW-325 re-entrancy: reverting a +MaxHealth contribution can drop the ceiling to 0 and kill the host →
                 // OnDestroy→ClearEntity already wiped its slots; bail before the status-union/compact touch dead slots
                 // (mirrors the existing post-expire-effect guard above).
@@ -694,6 +713,15 @@ namespace ProjectChimera.Effects
         /// tick's recompute reproduces the saved <c>Effective*</c> exactly. The caller writes slots ascending
         /// <c>0..count</c> then calls <see cref="SetCount"/>. Must run AFTER <see cref="Clear"/> (which zeroes the
         /// re-applied self-passives + accumulators) and after the EntityWorld overlay (so <c>StatusFlagsOf</c> is set).
+        /// <para><b>DW-492 — deliberately NON-LETHAL, and no longer a gap.</b> This accumulates without recomputing, so
+        /// it can neither clamp Health nor raise the DW-325/DW-491 ceiling-collapse death, and it must not: a per-slot
+        /// check would destroy a host whose slot 0 restores a −MaxHealth debuff before slot 1 restores the +MaxHealth
+        /// grant that offsets it. The dirty flag this leaves set is the handoff — <c>ModifierSystem.Tick</c> recomputes
+        /// the entity once the WHOLE ring is back and routes the result through
+        /// <see cref="RaiseExternalCeilingCollapse"/>, so a loaded ring that genuinely floors the ceiling at zero kills
+        /// its host at the first resumed tick instead of reconstituting a living zombie. A save whose stored
+        /// <c>Effective*</c> already agrees with its bonuses (every consistent save) recomputes to the same ceiling and
+        /// that reconciliation is a no-op.</para>
         /// </summary>
         public void RestoreSlot(int hostId, int slot, int modifierId, int remainingTicks, int ticksUntilPeriod,
                                 int periodsRemaining, int stackCount, int casterId, Faction casterFaction,
@@ -753,14 +781,24 @@ namespace ProjectChimera.Effects
         /// the host's <c>EffectiveMaxHealth</c> from above zero to exactly zero. A positive grant, and any change on a host
         /// whose ceiling was ALREADY zero, are never lethal. Every caller must re-check <c>IsAlive</c> before its next
         /// slot/status write.</para>
+        /// <para><b>DW-490 attribution.</b> <paramref name="casterId"/>/<paramref name="casterFaction"/> are the
+        /// instance's OWN recorded caster (<c>_casterId</c>/<c>_casterFaction</c> at the slot whose stat change is being
+        /// applied or reverted) — the same pair a period pulse from that instance resolves with. They become the killer
+        /// attribution of a collapse death, so a creator-authored lethal −MaxHealth debuff credits its real caster for
+        /// scoring/hero XP instead of the hardcoded <see cref="Faction.Neutral"/> the DW-325 spec shipped. A store with
+        /// no caster context (the external-recompute catch-all) still uses Neutral / attacker −1.</para>
         /// </summary>
-        private void ApplyStatDeltas(int id, Fixed attackChange, Fixed maxHealthChange, Fixed moveChange, Fixed armorChange, bool isApply)
+        private void ApplyStatDeltas(int id, Fixed attackChange, Fixed maxHealthChange, Fixed moveChange, Fixed armorChange,
+                                     bool isApply, int casterId, Faction casterFaction)
         {
             // DW-491: snapshot the PRIOR ceiling before the accumulate/recompute, so the collapse test below can be a
             // downward TRANSITION (>0 → 0) instead of the absolute `== 0` it used to be. This read is the pipeline's own
             // invariant: EntityWorld.Create seeds EffectiveMaxHealth from the ctor health and every store apply/remove
-            // recomputes eagerly a few lines down, so the value here is always the host's current ceiling. (The SP-load
-            // RestoreSlot path accumulates without recomputing and is deliberately non-lethal — tracked separately.)
+            // recomputes eagerly a few lines down, so the value here is always the host's current ceiling. (DW-492: the
+            // SP-load RestoreSlot path is the one producer that accumulates WITHOUT recomputing — deliberately, because a
+            // per-slot check would kill a host mid-restore before a later slot's +MaxHealth grant is back. That ring is
+            // reconciled by RaiseExternalCeilingCollapse at the first ModifierSystem.Tick after the load, when the whole
+            // ring is present; the residual window before that tick can only under-read the ceiling, i.e. fail SAFE.)
             Fixed ceilingBefore = _world.EffectiveMaxHealth[id];
 
             _system?.AccumulateBonus(id, attackChange, maxHealthChange, moveChange, armorChange);
@@ -780,10 +818,21 @@ namespace ProjectChimera.Effects
                 // `== Fixed.Zero` test below matches the floored result) leaves the host clamped to 0 HP but still
                 // alive — a "zombie". Kill it
                 // ONCE, through the SINGLE combat death sequence (UnitKilled event + Destroy) so no invented death path
-                // exists. Killer = Faction.Neutral (no attacker): RecordKill counts
-                // the victim's loss but credits no kill/XP (killer index 0 is skipped). The kill fires
+                // exists. The kill fires
                 // OnDestroy→ClearEntity, wiping this host's slots + accumulators — every ApplyStatDeltas caller
                 // re-checks IsAlive before its next slot/status write.
+                //
+                // DW-490 — ATTRIBUTION. The DW-325 spec hardcoded `Faction.Neutral` with the DeathFeed argument omitted,
+                // on the reasoning that a ceiling collapse is an attacker-less rules death. That holds for a rules-driven
+                // collapse, but a creator CAN author a lethal −MaxHealth debuff cast by a real player: the instance
+                // already records who cast it, so that kill is no more attacker-less than a DoT tick. The collapse now
+                // credits the instance's own caster and pushes the victim into the shared DeathFeed, making it the same
+                // shape as EVERY other lethal path (hitscan, projectile, splash, self-lethal cast) — kill/loss counted
+                // for the right factions, hostile heroes in range earning the victim's XpBounty. When the caster is
+                // genuinely unknown the recorded pair IS `(-1, Faction.Neutral)` — the slot default and what
+                // ClearSlotFields writes — so a rules-driven collapse is byte-identical to the pre-DW-490 behaviour
+                // apart from the DeathFeed push (XP-bounty policy: a collapse death is worth exactly what any other
+                // death of that victim is worth; the bounty is the VICTIM's, so no new policy is invented here).
                 //
                 // DW-491 — the gate is a COLLAPSE, not an absolute reading. It used to be `IsAlive && ceiling == 0`,
                 // which made two non-collapses lethal and contradicted this comment's own "net-negative-MaxHealth" wording:
@@ -803,8 +852,50 @@ namespace ProjectChimera.Effects
                 // and a FRESH collapse (or any damage) kills it. Pinned by InvulnerableDeathImmunityTests.
                 if (_world.IsAlive(id) && maxHealthChange < Fixed.Zero
                     && ceilingBefore > Fixed.Zero && _world.EffectiveMaxHealth[id] == Fixed.Zero)
-                    DamageResolver.KillEntity(_world, id, Faction.Neutral, _events, _stats);
+                    DamageResolver.KillEntity(_world, id, casterFaction, _events, _stats, _deaths, casterId);
             }
+        }
+
+        /// <summary>
+        /// DW-492 — the ceiling-collapse CATCH-ALL for every recompute the store did not drive itself.
+        ///
+        /// <para>The DW-325/DW-491 death lives inside <see cref="ApplyStatDeltas"/>, which is only reached on the
+        /// apply / stack / remove paths. Two other producers move <c>EffectiveMaxHealth</c> without it:
+        /// <see cref="RestoreSlot"/> (an SP load re-accumulates every saved bonus but deliberately does NOT recompute)
+        /// and any bonus dirtied through <c>ModifierSystem.AccumulateBonus</c> from outside the store, both of which are
+        /// reconciled by <c>ModifierSystem.Tick</c>'s dirty loop. Without this hook that loop could recompute a live
+        /// unit's ceiling down to zero and leave it standing — the exact 0-HP zombie DW-325 advertises as impossible,
+        /// and a state divergence between a freshly-applied and a loaded match.</para>
+        ///
+        /// <para><b>Why here and not per-slot in <see cref="RestoreSlot"/>.</b> A restore rebuilds one ring slot at a
+        /// time. Checking after each slot would kill a host whose slot 0 is a −100 MaxHealth debuff before its slot 1
+        /// +100 grant is back — destroying a unit the save shows alive. <c>Tick</c> runs after the WHOLE ring (and the
+        /// entity overlay) is restored, so it is the first point at which the recomputed ceiling is the host's real one.</para>
+        ///
+        /// <para><b>Same rule, same shape.</b> Health is re-clamped into <c>[0, EffectiveMaxHealth]</c> whenever the
+        /// recompute MOVED the ceiling (so an external drop cannot leave phantom HP above it), and the death fires only
+        /// on the DW-491 downward TRANSITION — the ceiling was above zero and is exactly zero now. A host that
+        /// legitimately SITS at ceiling 0 across the recompute is untouched, exactly as on the apply path. No caster
+        /// exists for an external recompute, so the kill is the attacker-less <see cref="Faction.Neutral"/> / attacker
+        /// −1 form — but it still records into the <see cref="DeathFeed"/> like every other death (DW-490).</para>
+        ///
+        /// <para><b>Golden-neutral by construction.</b> Every store path recomputes EAGERLY and clears the dirty flag,
+        /// so <c>ModifierSystem.Tick</c>'s dirty loop body is unreachable in a match that never loads a save and never
+        /// accumulates a bonus outside the store — which is every recorded golden. Nothing here can move a checksum.</para>
+        /// </summary>
+        /// <param name="id">The entity <c>ModifierSystem.Tick</c> just recomputed.</param>
+        /// <param name="ceilingBefore">Its <c>EffectiveMaxHealth</c> snapshotted immediately BEFORE that recompute.</param>
+        internal void RaiseExternalCeilingCollapse(int id, Fixed ceilingBefore)
+        {
+            if (!_world.IsAlive(id)) return; // IsAlive also bounds-checks the id
+            Fixed ceilingAfter = _world.EffectiveMaxHealth[id];
+            if (ceilingAfter == ceilingBefore) return; // the recompute was a no-op for the ceiling — nothing to reconcile
+
+            // Mirrors ApplyStatDeltas: clamp FIRST (so a refused kill — DW-620 invulnerability — still lands the host at
+            // 0 HP rather than phantom HP above a zero ceiling), then raise the collapse death.
+            _world.Health[id] = Fixed.Clamp(_world.Health[id], Fixed.Zero, ceilingAfter);
+            if (ceilingBefore > Fixed.Zero && ceilingAfter == Fixed.Zero)
+                DamageResolver.KillEntity(_world, id, Faction.Neutral, _events, _stats, _deaths);
         }
 
         /// <summary>Recompute and write the host's status-flag union from all active slots EXCEPT <paramref name="excludeSlot"/>.</summary>
