@@ -43,9 +43,14 @@ namespace ProjectChimera.Dsl
     ///
     /// <para>Consistency contract (Tier-1-pinned): the EXEC ports emitted here are EXACTLY the ports
     /// <see cref="NodePorts"/> declares legal (per-kind parity), and every DATA port emitted is legal per
-    /// <see cref="NodePorts"/>. The one sanctioned data-side curation: an <see cref="ActionNode"/>'s index-in
-    /// port renders only for <c>array_set</c> (the only action kind that reads it), although the legality table
-    /// admits it on every action.</para>
+    /// <see cref="NodePorts"/>. Two sanctioned data-side curations render FEWER pins than the legality table
+    /// admits, both because the narrower rule is enforced downstream and is worth surfacing while wiring:
+    /// <list type="bullet">
+    /// <item>an <see cref="ActionNode"/>'s index-in port renders only for <c>array_set</c> (the only action kind
+    /// that reads it), although the legality table admits it on every action;</item>
+    /// <item>DW-578 — an <see cref="ExprCallNode"/>'s operand ports render only up to the built-in's arity
+    /// (<see cref="NodeKinds.ExprCallArity"/>), although the legality table admits ports 0/1 on every call.</item>
+    /// </list></para>
     /// </summary>
     public static class NodePortCatalog
     {
@@ -107,11 +112,32 @@ namespace ProjectChimera.Dsl
                     outputs.Add(new GraphPortSpec(true, TriggerGraph.ExprDataOutPort, "out", DataWireType.Int));
                     break;
                 case ExprBinaryNode:
-                case ExprCallNode:
                     inputs.Add(new GraphPortSpec(true, TriggerGraph.ExprOperandPort0, "a", DataWireType.Int));
                     inputs.Add(new GraphPortSpec(true, TriggerGraph.ExprOperandPort1, "b", DataWireType.Int));
                     outputs.Add(new GraphPortSpec(true, TriggerGraph.ExprDataOutPort, "out", DataWireType.Int));
                     break;
+
+                // ── DW-578 — expr_call renders EXACTLY the operand pins its built-in's ARITY admits
+                //    (NodeKinds.ExprCallArity — the same table ExprCompiler gates operand edges against), so the
+                //    arity rule is visible while wiring instead of only at compile time via the located badge: a
+                //    zero-arity state read (region_unit_count) draws NO operand pin, and a one-arity read draws
+                //    only "a". NodePorts legality is deliberately UNCHANGED (ports 0/1 stay legal for the kind) —
+                //    this is a rendered-port curation, exactly like the array_set-only index-in pin above. ──
+                case ExprCallNode ec:
+                {
+                    int operands = NodeKinds.ExprCallArity(ec.Fn);
+                    // An unknown fn is unreachable (parse AND the inspector both membership-check ExprCallFns);
+                    // fall back to the full legal pair rather than hiding an already-drawn wire.
+                    if (operands < 0) operands = 2;
+                    // Legality clamp: NodePorts admits operand ports 0/1 only — never render past the table.
+                    if (operands > 2) operands = 2;
+                    if (operands > 0)
+                        inputs.Add(new GraphPortSpec(true, TriggerGraph.ExprOperandPort0, "a", DataWireType.Int));
+                    if (operands > 1)
+                        inputs.Add(new GraphPortSpec(true, TriggerGraph.ExprOperandPort1, "b", DataWireType.Int));
+                    outputs.Add(new GraphPortSpec(true, TriggerGraph.ExprDataOutPort, "out", DataWireType.Int));
+                    break;
+                }
                 case ExprLiteralNode:
                 case ExprVarNode:
                 case ExprArrayLenNode:
