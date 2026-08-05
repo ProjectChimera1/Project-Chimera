@@ -1,4 +1,5 @@
 #nullable enable
+using System.Collections.Generic; // DW-442 — the diagnostic channel's List<string>
 using ProjectChimera.Core.Definitions; // ScenarioData / ScenarioPlayerSlot
 
 namespace ProjectChimera.Core
@@ -86,6 +87,114 @@ namespace ProjectChimera.Core
 
                 teamIdByFaction[faction] = canonical;
             }
+        }
+
+        /// <summary>
+        /// DW-442 — the seeder's own, human-readable account of what <see cref="ComputeTeamIds(ScenarioData?, int[])"/>
+        /// SILENTLY did to the authored teams, so an authoring surface can surface it instead of shipping a map whose
+        /// alliances do not match its JSON. Reported in ascending declaration order (deterministic), one line per
+        /// finding:
+        /// <list type="number">
+        /// <item><b>Out-of-range member</b> — a <c>team&gt;0</c> slot whose faction index falls outside
+        /// <c>[1,FACTION_COUNT)</c>. The mapping <c>continue</c>s past it, so that slot is never written into the mask
+        /// AND never lowers its team's canonical id: it plays FFA while the file claims a team. Pre-DW-442 this was
+        /// dropped with no log at all (unlike <c>ScenarioApplier</c>, which warns on its own out-of-range drops).</item>
+        /// <item><b>Duplicate <c>.Slot</c></b> — two entries naming one faction both write
+        /// <c>teamIdByFaction[faction]</c> and the LAST one wins, so the seeded mask depends on <c>PlayerSlots</c>
+        /// ORDER rather than on the declarations alone. (<c>ScenarioValidator.Validate</c> hard-rejects a duplicate
+        /// slot, so this fires only on a model that never passed that gate — the lobby's own
+        /// <c>ComputeTeamIds</c> call, or an editor model mid-edit.)</item>
+        /// <item><b>Inert team-of-one</b> — a positive ordinal held by exactly one FACTION. Its canonical id is its own
+        /// faction slot, i.e. byte-identical to the FFA default: the team buys that slot no ally whatsoever.</item>
+        /// </list>
+        ///
+        /// <para>Pure and read-only: it allocates its own list, mutates nothing, and is NEVER called from
+        /// <see cref="Seed"/> or <see cref="ComputeTeamIds(ScenarioData?, int[])"/> — the mapping those write is
+        /// untouched by this method's existence, so no checksum, golden or agreement hash can move. Null-element safe
+        /// (<c>ScenarioValidator</c> locates a null entry; this must never NRE ahead of it). Not a per-tick path.</para>
+        /// </summary>
+        /// <param name="model">The scenario whose per-slot teams to account for (null / no slots ⇒ empty).</param>
+        /// <returns>Every diagnostic, ascending by slot index; empty when the authored teams map exactly as written.</returns>
+        public static IReadOnlyList<string> CollectDiagnostics(ScenarioData? model)
+        {
+            var diagnostics = new List<string>();
+            var slots = model?.PlayerSlots;
+            if (slots == null) return diagnostics;
+
+            for (int i = 0; i < slots.Length; i++)
+            {
+                ScenarioPlayerSlot slot = slots[i];
+                if (slot is null) continue; // a null entry is ScenarioValidator's to locate — never NRE here
+                int team = slot.Team;
+                int faction = slot.Slot + 1;              // slot 0 → Player1 == faction slot index 1
+                bool inRange = faction > 0 && faction < FACTION_COUNT;
+
+                // (1) OUT-OF-RANGE MEMBER — the mapping's `continue` at the faction-range guard.
+                if (team > 0 && !inRange)
+                {
+                    diagnostics.Add(
+                        $"player_slots[{i}].slot={slot.Slot} is outside the engine faction range " +
+                        $"[0,{FACTION_COUNT - 1}), so its team={team} membership is dropped by the alliance seeder — " +
+                        "that slot ends up allied with nobody.");
+                    continue; // nothing further is knowable about a slot the mapping never touches
+                }
+
+                if (!inRange) continue; // an out-of-range FFA slot is inert either way — nothing was dropped
+
+                // (2) DUPLICATE .Slot — last-write-wins, so the seeded mask depends on declaration ORDER. Only
+                //     reportable when at least one of the two entries actually carries a team: with both at 0 the
+                //     mapping writes nothing at all, so there is no seeder behavior to account for.
+                int prev = -1;
+                for (int j = 0; j < i; j++)
+                {
+                    ScenarioPlayerSlot other = slots[j];
+                    if (other is not null && other.Slot == slot.Slot) prev = j; // the LAST earlier duplicate
+                }
+                if (prev >= 0 && (team > 0 || slots[prev].Team > 0))
+                    diagnostics.Add(
+                        $"player_slots[{i}] and player_slots[{prev}] both declare slot={slot.Slot}; the alliance " +
+                        $"seeder is last-write-wins, so team={team} overrides team={slots[prev].Team} — reordering " +
+                        "player_slots would seed a different alliance mask from the same declarations.");
+
+                // (3) INERT TEAM-OF-ONE — a positive ordinal no other FACTION shares seeds the FFA default.
+                if (team > 0 && CountTeamFactions(slots, team) == 1)
+                    diagnostics.Add(
+                        $"player_slots[{i}] (slot={slot.Slot}) is the only member of team={team}; a team of one has " +
+                        "no allies, so it is seeded exactly like an unassigned (team=0 / FFA) slot.");
+            }
+
+            return diagnostics;
+        }
+
+        /// <summary>
+        /// DW-442 — how many distinct in-range FACTIONS carry <paramref name="team"/>. Counts factions, not entries:
+        /// a duplicated <c>.Slot</c> is ONE faction listed twice and must not read as a two-member team (which would
+        /// hide the inert-team-of-one finding behind an authoring mistake). Allocation-free; slot arrays are capped at
+        /// <c>PLAYER_COUNT</c>, and this is a diagnostic path, never a per-tick one.
+        /// </summary>
+        private static int CountTeamFactions(ScenarioPlayerSlot[] slots, int team)
+        {
+            int count = 0;
+            for (int j = 0; j < slots.Length; j++)
+            {
+                ScenarioPlayerSlot other = slots[j];
+                if (other is null || other.Team != team) continue;
+                int f = other.Slot + 1;
+                if (f <= 0 || f >= FACTION_COUNT) continue; // the mapping skips these, so they are not members
+
+                bool alreadyCounted = false;
+                for (int k = 0; k < j; k++)
+                {
+                    ScenarioPlayerSlot earlier = slots[k];
+                    if (earlier is not null && earlier.Team == team && earlier.Slot == other.Slot)
+                    {
+                        alreadyCounted = true; // same faction, already tallied at its first declaration
+                        break;
+                    }
+                }
+                if (!alreadyCounted) count++;
+            }
+            return count;
         }
     }
 }

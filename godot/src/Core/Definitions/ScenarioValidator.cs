@@ -301,6 +301,27 @@ namespace ProjectChimera.Core.Definitions
                     return ValidationResult.Fail(
                         $"scenario.player_slots[{i}].slot={s.Slot} is a duplicate.");
 
+                // DW-442 — `team` was the one per-slot field this loop never looked at. A NEGATIVE ordinal is an
+                // authoring lie the file can carry all the way into a match: AllianceSeeder.ComputeTeamIds treats
+                // `team <= 0` as UNASSIGNED/FFA, so -1 silently means "no team" while the JSON says otherwise — and
+                // because Team folds into the match-agreement hash (MatchAgreementHash, algo v2) two peers whose files
+                // differ only in WHICH negative ordinal they carry fail the start handshake over alliance masks that
+                // are byte-identical. Reject it located; 0 — the omit-when-default FFA value every pre-9.14 scenario
+                // carries — still passes, so no shipped map moves.
+                //
+                // A POSITIVE ordinal is deliberately NOT range-capped here. Ordinals are arbitrary authoring labels
+                // that never reach a sim store (the canonical id is always a faction slot; AllianceSeederTests pins
+                // ordinals 5/9 seeding ids 1/3), and the DEGENERATE positive layouts — every active slot on one team,
+                // an inert team-of-one — are NOT load failures: trigger factions are gated by CheckFactionSlot, not by
+                // `declared`, so a co-op map whose enemies arrive from `spawn_unit` triggers on an UNDECLARED faction
+                // slot is legitimately all-allied among its declared slots. Those cases are non-fatal author-facing
+                // advisories in CollectAdvisories instead (the lobby's own all-allied rule, SkirmishSetupValidator
+                // rule 7, can be a hard error because there the active set IS the whole match).
+                if (s.Team < 0)
+                    return ValidationResult.Fail(
+                        $"scenario.player_slots[{i}].team={s.Team} must be >= 0 (0 = unassigned/FFA; a negative " +
+                        "ordinal is silently treated as FFA by the alliance seeder).");
+
                 string? e = CheckNonNeg($"scenario.player_slots[{i}].start_ore", s.StartOre)
                          ?? CheckNonNeg($"scenario.player_slots[{i}].start_crystal", s.StartCrystal)
                          ?? CheckCoord($"scenario.player_slots[{i}].base_x", s.BaseX, bounds)
@@ -1386,7 +1407,62 @@ namespace ProjectChimera.Core.Definitions
                     $"{nContent} placed object(s) are outside the current map bounds ({m.MapBounds}) — " +
                     $"a smaller map size can strand content; move or delete them before saving/exporting.");
 
+            // DW-442 — team advisories, APPENDED LAST so the existing advisories keep their indices. An FFA map
+            // (every slot team=0, i.e. every shipped scenario and every ScenarioData.CreateBlank) produces NOTHING
+            // here: the FFA mapping gives each faction its own side, so neither branch below can fire.
+            CollectTeamAdvisories(m, advisories);
+
             return advisories;
+        }
+
+        /// <summary>
+        /// DW-442 — the non-fatal author-facing half of the team gate: the degenerate-but-loadable team layouts
+        /// <see cref="Validate"/> deliberately does not reject (see the `team` check in its player-slots loop for why
+        /// they are advisories and not load failures).
+        ///
+        /// <para>The "sides" verdict is computed through <see cref="AllianceSeeder.ComputeTeamIds(ScenarioData?)"/> —
+        /// the SAME mapping the sim seeds into <c>AllianceStore</c> and the match-agreement hash folds — so the warning
+        /// can never disagree with the alliances the match actually gets (no second hand-copied grouping loop to
+        /// drift). Two slots are on the same side exactly when they share a canonical team id; under FFA that id is the
+        /// faction's own slot, so each unassigned slot is its own side (the semantics <c>SkirmishSetupValidator</c>
+        /// rule 7 encodes for the lobby).</para>
+        ///
+        /// <para>The seeder's OWN diagnostics (out-of-range member dropped, duplicate-<c>.Slot</c> last-write-wins,
+        /// inert team-of-one) are forwarded verbatim under a <c>scenario.</c> prefix so the editor surfaces them in the
+        /// one place authors already look, and so the knowledge of what the mapping silently does lives with the
+        /// mapping. Pure — never throws, never logs, mutates nothing.</para>
+        /// </summary>
+        private static void CollectTeamAdvisories(ScenarioData m, List<string> advisories)
+        {
+            ScenarioPlayerSlot[] slots = m.PlayerSlots ?? Array.Empty<ScenarioPlayerSlot>();
+
+            // Distinct SIDES among the slots the engine can actually field. Count distinct FACTIONS, not entries, so a
+            // duplicated .Slot (which Validate hard-rejects, but a mid-edit model can still carry) cannot inflate the
+            // active count and mask the all-allied verdict.
+            int[] teamIdByFaction = AllianceSeeder.ComputeTeamIds(m);
+            var seenFactions = new HashSet<int>();
+            var sides        = new HashSet<int>();
+            foreach (ScenarioPlayerSlot s in slots)
+            {
+                if (s is null) continue;
+                int faction = s.Slot + 1;
+                if (faction <= 0 || faction >= teamIdByFaction.Length) continue; // never fielded — Neutral / off-ceiling
+                if (!seenFactions.Add(faction)) continue;
+                sides.Add(teamIdByFaction[faction]);
+            }
+
+            // The headline degenerate case: every start position allied with every other one. Nothing auto-acquires,
+            // nothing force-fires, nothing is ever eliminated — an elimination win condition can never resolve, so the
+            // match hangs. Legal (a trigger-driven co-op map spawns its enemies on an undeclared faction slot), but
+            // almost always a mistake worth telling the author about.
+            if (seenFactions.Count >= 2 && sides.Count == 1)
+                advisories.Add(
+                    $"All {seenFactions.Count} start positions are on the same team — no two of them are hostile, so " +
+                    "nothing will ever engage and an elimination win condition can never resolve. Put at least one " +
+                    "start position on a different team, or leave a slot unassigned (team 0).");
+
+            foreach (string d in AllianceSeeder.CollectDiagnostics(m))
+                advisories.Add("scenario." + d);
         }
 
         // ── DW-148: the LOAD-TIME spawn-in-blocked-cell guard (the resolved-union half the pre-tick gate cannot see) ──
