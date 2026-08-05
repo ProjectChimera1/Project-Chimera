@@ -28,7 +28,10 @@ namespace ProjectChimera.Core.Definitions
     /// <see cref="TechTreeValidator"/> restricts its walk to Buildings→Buildings and treats units as leaves).
     /// Unlike the checks above, this is FIRST-FAIL: it stops after the first cycle found and reports the exact
     /// chain, including the closing repeated id (e.g. <c>"a -> b -> a"</c>) — byte-identical wording convention to
-    /// <see cref="TechTreeValidator"/>'s <c>"tech tree cycle: …"</c>, kinded <c>"research cycle: …"</c>.</item>
+    /// <see cref="TechTreeValidator"/>'s <c>"tech tree cycle: …"</c>, kinded <c>"research cycle: …"</c>.
+    /// The walk is an explicit-stack iteration, not recursion (DW-573, mirroring DW-59's identical fix to
+    /// <see cref="TechTreeValidator"/>) — an arbitrarily deep authored research chain can never overflow the
+    /// call stack during faction load.</item>
     /// <item>A per-faction research-count sanity cap (<see cref="MaxResearchPerFaction"/>).</item>
     /// </list>
     ///
@@ -315,18 +318,48 @@ namespace ProjectChimera.Core.Definitions
             return null;
         }
 
-        /// <summary>DFS visit of one research node. Returns a formatted cycle message the instant a gray
-        /// (in-progress) node is re-encountered, unwinding without further work; returns null on a clean
-        /// (fully-black) subtree.</summary>
+        /// <summary>DFS visit of one research node via an explicit heap stack (DW-573: this was a plain
+        /// recursion — one C# call-stack frame per graph-depth level — the identical stack-overflow class
+        /// DW-59 removed from <see cref="TechTreeValidator.Visit"/>, and this walk was copied from it. An
+        /// unbounded creator-authored or malicious-scale research→research prerequisite chain thousands of
+        /// levels deep could overflow the call stack during faction load, and a StackOverflowException kills
+        /// the whole process uncatchably. Traversal order, 3-color semantics, first-fail behavior, and the
+        /// emitted message are unchanged from the recursive original. Returns a formatted cycle message the
+        /// instant a gray (in-progress) node is re-encountered, abandoning the walk without further work;
+        /// returns null on a clean (fully-black) subtree.</summary>
         private static string? Visit(string id, Dictionary<string, ResearchDefinition> researchById,
             HashSet<string> researchIds, Dictionary<string, Color> color, List<string> path)
         {
-            color[id] = Color.Gray;
-            path.Add(id);
+            // Three parallel lists = one frame per Gray node on the current DFS chain: the node id, its
+            // Prerequisites array (looked up ONCE on push, exactly like the recursive version's one lookup
+            // per Visit entry), and the index of its next unexamined prerequisite (the "resume point" the
+            // call stack used to remember). `path` mirrors frameIds push-for-push/pop-for-pop because the
+            // cycle-extraction slice below reads it — same shared-parameter contract as before.
+            var frameIds = new List<string>();
+            var framePrereqs = new List<string[]>();
+            var frameNext = new List<int>();
 
-            ResearchDefinition? research = researchById.TryGetValue(id, out ResearchDefinition? rd) ? rd : null;
-            foreach (string prereq in research?.Prerequisites ?? Array.Empty<string>())
+            Push(id);
+
+            while (frameIds.Count > 0)
             {
+                int top = frameIds.Count - 1;
+                string[] prereqs = framePrereqs[top];
+
+                if (frameNext[top] >= prereqs.Length)
+                {
+                    // Every prerequisite of the top node examined and clean — retreat (the recursive epilogue).
+                    path.RemoveAt(path.Count - 1);
+                    color[frameIds[top]] = Color.Black;
+                    frameIds.RemoveAt(top);
+                    framePrereqs.RemoveAt(top);
+                    frameNext.RemoveAt(top);
+                    continue;
+                }
+
+                string prereq = prereqs[frameNext[top]];
+                frameNext[top]++;
+
                 if (!researchIds.Contains(prereq)) continue; // a building id (or unknown id) — not a research edge
 
                 Color prereqColor = color[prereq];
@@ -342,15 +375,24 @@ namespace ProjectChimera.Core.Definitions
                     return $"research cycle: {string.Join(" -> ", chain)}.";
                 }
                 if (prereqColor == Color.White)
-                {
-                    string? result = Visit(prereq, researchById, researchIds, color, path);
-                    if (result != null) return result;
-                }
+                    Push(prereq);
+                // Black prereq: already-proven-clean subtree — skip, same as the recursive version.
             }
 
-            path.RemoveAt(path.Count - 1);
-            color[id] = Color.Black;
             return null;
+
+            // The recursive prologue: mark Gray, extend the shared path, and open a frame with the node's
+            // prerequisite list hoisted (null Prerequisites / unknown id defensively → empty, matching the
+            // original's `research?.Prerequisites ?? Array.Empty<string>()`).
+            void Push(string nodeId)
+            {
+                color[nodeId] = Color.Gray;
+                path.Add(nodeId);
+                ResearchDefinition? research = researchById.TryGetValue(nodeId, out ResearchDefinition? rd) ? rd : null;
+                frameIds.Add(nodeId);
+                framePrereqs.Add(research?.Prerequisites ?? Array.Empty<string>());
+                frameNext.Add(0);
+            }
         }
     }
 }
