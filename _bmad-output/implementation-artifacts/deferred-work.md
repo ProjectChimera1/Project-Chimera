@@ -1803,7 +1803,8 @@ origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `{implementation_artifacts}/spec-7-8-custom-runtime-ui-read-rail-declarative-widget-tree-version-stamped-readback.md`
 location: godot/src/UI/WidgetFormat.cs
 reason: `godot/src/UI/WidgetFormat.cs` (int→string / Fixed→mm:ss / Fraction presentation formatters) has zero unit coverage; its `MmSs` (Fixed-as-seconds vs Int-as-ticks, ticksPerSecond division, negative→0:00 clamp), `Fraction` (divide-by-zero guard, [0,1] clamp), and `Number` (Fixed 16.16 trimmed decimal) all carry non-obvious branching. — Evidence: Presentation-only (regression is a visible display bug, never a desync), and it lives in the Godot `src/UI` assembly which the Godot-free Tier-1 `ProjectChimera.Sim.Tests` does not reference, so it is not unit-testable under the current harness. Covering it needs either a presentation-layer test project or relocating the pure helper to a Tier-1-visible location.
-status: open
+status: done 2026-08-05
+resolution: resolved by sweep bundle widgetformat-tests
 
 ### DW-364: `CustomUiGate` does not bound-check the widget tree's geometry — `CanvasWidth`/`CanvasHeight` and per-widget…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -4293,7 +4294,8 @@ origin: workflow burn-down run, 2026-08-03
 location: godot/ProjectChimera.Sim.Tests/Meta/NoHardcodedPlayerCountTests.cs:66-67,103-107 vs godot/src/Multiplayer/Server/ServerChecksumCollector.cs:22
 severity: medium
 reason: The allowlist justifies ServerChecksumCollector.MaxSlots as "mirrors MpSeatCeiling", but the scan's regex only matches `const int <name> = (2|4|8|9)` and the test then asserts every allowlisted site was FOUND — so writing `MaxSlots = PlayerCountPolicy.MpSeatCeiling` (the actual anti-drift fix, value-identical 4==4) makes the scan miss the site and FAILS the guard. Verified empirically in the housekeeping-docs-normalization bundle: tried it, it broke, reverted to the literal and documented WHY in the constant's own doc so the next person does not repeat it. Net effect: the documented 4-to-8 seat bump still requires a manual second edit here, kept honest only by TwoCeilingPolicy_ConstantsAgree's equality assert. Fixing it means teaching the scan to accept an aliased-to-sanctioned-constant form — a change to a Tier-1 meta-guard, so it belongs with whoever owns the seat bump.
-status: open
+status: done 2026-08-05
+resolution: resolved by sweep bundle playercount-metatest-alias
 
 ### DW-514: alpha_map_01.json (the shipped default map) carries what looks like committed editor-drag residue in its slot bases, and fields a different army than the fallback boot
 
@@ -4780,7 +4782,8 @@ resolution: workflow burn-down bundle dsl-node-port-arity - DW-578 verified stil
 origin: workflow burn-down run, 2026-08-03
 location: godot/src/Dsl/NodeBaseJsonConverter.cs:764 (ReadIntArray)
 reason: A hand-authored or hostile raw-IR graph can carry an arbitrarily long `weights` array on a `RandomChoiceNode`; after DW-195 that maps one-to-one onto rendered branch ports, so the editor will try to draw as many ports as the file asks for. The new field-level `Set` deliberately mirrors parse (it invents no cap) to keep the inspector and the parser in agreement, which means the gap is reachable from two directions instead of one. Not fixed here because adding a cap changes the parse contract, which is outside the bundle's scope. Closure = a `DslBounds.MaxRandomChoiceBranches`-style cap enforced at parse time AND in the content gate, with the field editor then inheriting it.
-status: open
+status: done 2026-08-05
+resolution: resolved by sweep bundle dsl-bounds-cap
 
 ### DW-580: `run_effect` payload remains uneditable in the T3 inspector (embedded D1 effect subgraph)
 origin: workflow burn-down run, 2026-08-03
@@ -5433,7 +5436,8 @@ origin: workflow burn-down run, 2026-08-04
 location: godot/src/Effects/ModifierStore.cs:33-42 (the <para><b>Re-entrancy</b> block)
 severity: low
 reason: The paragraph claims "In 2.2b all three phases use only direct-target leaves ... so no nesting occurs" and describes the re-entrancy defence as unsupported/unbuilt, without noting the Story 2.3 validator fence that actually holds the line. DW-324's doc sweep explicitly named ModifierStore.cs:39 in its scope but closed done 2026-08-03 with this paragraph still stale in main - re-filed here so the residue is not lost. The modifier-lethal-period-tests bundle left it untouched deliberately to avoid a merge conflict with the housekeeping-docs-normalization bundle that owned the line.
-status: open
+status: done 2026-08-05
+resolution: resolved by sweep bundle docs-normalization
 
 ### DW-664: TickNonCombatant DESTROYS the attack order of a unit whose damage is only TEMPORARILY debuffed to zero
 origin: post-merge review of the workflow burn-down, 2026-08-04
@@ -6282,4 +6286,74 @@ origin: workflow burn-down run, 2026-08-05
 location: godot/src/AI/AiOpponentSystem.cs:595 (ScoreRazeBuildings)
 severity: low
 reason: Not fixable inside the ai-opponent-scoring bundle and arguably not a code defect - a force that physically cannot damage a building cannot raze one. DW-644's fix converts the state from a silent total freeze (raze pinned at 0.90, zero orders, no production) into an honest fall-through: the AI now builds/produces whenever it can afford to, and only cycles attack waves when it is also ore-starved. Recorded so the residual case is not mistaken for a new stall later; the real closure is content-side (the AI must be able to train a Structure-capable unit) or a production-priority rule, both larger than a scoring gate.
+status: open
+
+### DW-785: PersistentEffect.cs class doc carries the same version-scoped rot DW-663 named, and one half is now FALSE
+origin: workflow burn-down run, 2026-08-05
+location: godot/src/Effects/PersistentEffect.cs:10-12 and :30
+severity: low
+reason: The class doc says its "periodic EXECUTION resolves against the ModifierStore and lands in Story 2.2b. In 2.1 the executor recognizes the type and fail-closes (throws) rather than mutating a nonexistent store" - that fail-close no longer exists (EffectExecutor runs Persistent through the store), so a reader is told the type throws when it does not. PeriodCount's doc likewise reads "bounded by EffectCaps.MaxPersistentPeriods in 2.2b". Same defect shape and same fix shape as DW-663: name the MECHANISM, not the release. Left out of the docs-normalization bundle deliberately - the bundle intent named ModifierStore.cs only, and this is a different file, so fixing it would have widened the merge surface. The new ModifierStoreReentrancyDocTests version-claim ban is scoped to ModifierStore.cs, so this file is UNGUARDED; closure should either extend that scan's file set or add a sibling guard.
+status: open
+
+### DW-786: DW-324 was closed "done" with named residue still stale - its other seven scope items were never re-verified
+origin: workflow burn-down run, 2026-08-05
+location: _bmad-output/implementation-artifacts/deferred-work.md, DW-324 block (status: done 2026-08-03)
+severity: medium
+reason: DW-324's reason list explicitly named "ModifierStore.cs:39 describes the re-entrancy guard as unbuilt without noting the validator fence" and closed done, but half that item had been satisfied since 57dd610a (2026-06-26) and the other half (the 2.2b framing) was never touched - i.e. the sweep bundle closed on an item it did not read. DW-663 recovered that one line. The remaining seven items in DW-324's scope were NOT re-verified and may carry the same class of residue: EffectCaps.cs:8/79/87, Modifier.cs:48, ServerChecksumCollector.cs:11/22-23, AbilityEditorPanel.Advanced.cs:280-281, ScenarioLoadPhase.cs:440, scripts/lan-desync-smoke.ps1. Closure = re-verify each of the seven against current source and re-file whatever is still stale; the ledger entry itself is append-only and must not be reopened.
+status: open
+
+### DW-787: Five more allowlisted player-count constants are copied literals whose own justification says they mirror a sanctioned constant
+origin: workflow burn-down run, 2026-08-05
+location: godot/src/UI/StartPositionBridge.cs:19 (MAX_SLOTS = 4), godot/src/Multiplayer/Party/PartyState.cs:20 (DefaultCapacity = 4), godot/src/Dsl/DslVarTable.cs:34 (PlayerSlots = 8), godot/src/Multiplayer/MatchmakerConfig.cs (MinPlayers = 2), godot/src/UI/EntityPlacer.cs:153 (START_SLOT_CEILING = 4)
+severity: low
+reason: DW-513 named only ServerChecksumCollector.MaxSlots, but the blocker it described (the scan's vacuous-pass guard could not see an aliased constant, so aliasing broke the build) applied to every one of these: each restates a literal that the allowlist ITSELF documents as a mirror of MpSeatCeiling / PLAYER_COUNT / MpFloor, and each was un-aliasable for the same reason. DW-513's fix taught the scan the alias form, so all five could now route through the sanctioned constant and stop needing a second manual edit at the 4-to-8 seat bump. Left alone deliberately: outside the playercount-metatest-alias bundle's named files, two live under src/UI where StartPositionBridge/EntityPlacer are Godot-coupled, and EntityPlacer's START_SLOT_CEILING derives from a Faction ENUM ORDINAL rather than any int in the sanctioned table, so it needs its own judgement rather than a mechanical sweep.
+status: open
+
+### DW-788: NoHardcodedPlayerCountTests' allowlist is now a literal-only register, not a complete list of the player-count constants the scan sees
+origin: workflow burn-down run, 2026-08-05
+location: godot/ProjectChimera.Sim.Tests/Meta/NoHardcodedPlayerCountTests.cs (Allowlist) vs godot/src/Core/FactionRegistry.cs:36 (SLOT_DEFINITIONS_SIZE)
+severity: low
+reason: After DW-513, an alias of a sanctioned constant is OBSERVED by the scan but is never stray and needs no allowlist entry. FactionRegistry.SLOT_DEFINITIONS_SIZE = FACTION_ARRAY_SIZE was invisible to the pre-fix scan and now surfaces as an observed alias site with no allowlist entry - correct by the new rule, but it means the allowlist no longer enumerates every player-count constant the scan can see. A future reader who treats it as a complete register will be wrong. The rule was documented in the class doc rather than adding the entry, because listing it would add a vacuous-pass obligation for a site that needs no sanctioning. Closure = a deliberate call on whether the allowlist should become exhaustive again (with an alias/literal column) or stay a literal-only register.
+status: open
+
+### DW-789: Two bundles edit the same NoHardcodedPlayerCountTests regex block - DW-582's landing must be merge-checked against DW-513's
+origin: workflow burn-down run, 2026-08-05
+location: godot/ProjectChimera.Sim.Tests/Meta/NoHardcodedPlayerCountTests.cs:79-81 (PlayerCountConst)
+severity: low
+reason: DW-582 (bundle `meta-test-regex`, wave2-sub4) is the mirror-image defect in the same guard - the literal regex false-positives on `= 2 * OTHER` - and its own ledger entry says the two want to land together. DW-513's fix deliberately left the literal regex line BYTE-UNCHANGED (confirmed: it appears in no `-` diff line) and put its work in a separate regex plus a separate match loop, specifically so DW-582's edit applies cleanly on top. Recorded because both bundles modify this one file and the merge should still be verified rather than assumed: in particular DW-582's expression-aware literal regex and DW-513's `PlayerCountAliasConst` must not double-classify the same declaration.
+status: open
+
+### DW-790: DslLoopGate's over-cap random_choice reject is now unreachable from every JSON load path
+origin: workflow burn-down run, 2026-08-05
+location: godot/src/Core/Definitions/DslLoopGate.cs:475
+severity: low
+reason: With DW-579's parse-side cap in NodeBaseJsonConverter.ReadIntArray, the gate's `rc.Weights.Length > EventBounds.MaxRandomChoiceBranches` arm can only fire for a graph assembled in CODE (never parsed, never inspector-edited) - no scenario file can reach it, because FromJson now rejects first. Kept deliberately (defense in depth for the programmatic entrance, and it is the arm that reports LOCATED at the scenario gate) and pinned by a test, but a reader auditing gate coverage should know the JSON path can no longer exercise it. Not removed here because deleting it would strip the only guard on the third entrance. Closure is a judgement call, not a fix: either keep it documented as defensive-only or fold the three entrances into one shared check.
+status: open
+
+### DW-791: NodePortCatalog still derives branch ports from Weights.Length with no defensive bound
+origin: workflow burn-down run, 2026-08-05
+location: godot/src/Dsl/NodePortCatalog.cs:166-171
+severity: low
+reason: The renderer trusts the node: an over-cap RandomChoiceNode constructed in code would still enumerate one port per weight. After DW-579 both authoring entrances (parse and the inspector `Set` seam) are capped, so this is unreachable from a file or the editor. Clamping HERE was rejected on purpose - a clamp would silently hide branches whose exec edges the executor still honours, which is worse than the loud rejects added upstream. Recorded so the belt-and-suspenders question (should the renderer follow the CustomUiGate pattern and bound-check what it draws?) is a decision on record rather than an oversight.
+status: open
+
+### DW-792: WidgetFormat.Number renders a small negative Fixed as the string "-0"
+origin: workflow burn-down run, 2026-08-05
+location: godot/src/UI/WidgetFormat.cs:32 (Number, the "0.##" format of Fixed.ToFloat)
+severity: low
+reason: Empirically confirmed with a throwaway probe (since removed): a Fixed raw of -1 or -100 formats as "-0", not "0" - .NET Core 3.0+ preserves the sign of a negative value that rounds to zero. Any custom-UI number widget bound to a Fixed variable that dips a fraction below zero displays "-0". Presentation-only and cosmetic, so out of scope for the widgetformat-tests coverage bundle, and it was deliberately NOT pinned in a test: enshrining "-0" as expected would force a future fix to fight the suite. The grid test only asserts the output has no comma and no scientific notation, so it will not block a fix. Closure = clamp a rounded-to-zero result to "0".
+status: open
+
+### DW-793: WidgetFormat duplicates the sim tick rate as a local literal, against the project's own written rule
+origin: workflow burn-down run, 2026-08-05
+location: godot/src/UI/WidgetFormat.cs:19 (private const int DefaultTicksPerSecond = 30)
+severity: medium
+reason: godot/src/Multiplayer/ReplayFormat.cs states the rule explicitly - the tick rate must come from SimulationLoop.TICKS_PER_SECOND, "never a local literal" - and does `public const int TicksPerSecond = SimulationLoop.TICKS_PER_SECOND;`. WidgetFormat instead hardcodes 30 with a comment claiming it "matches SimulationLoop's fixed-timestep rate", so a tick-rate change would silently mis-time every custom-UI timer widget. It is a one-token behaviour-neutral fix (both values are 30) but it is a PRODUCTION edit, which the test-coverage-only widgetformat-tests bundle was scoped out of. It is now DETECTED rather than removed: MmSs_DefaultTickRate_TracksTheAuthoritativeSimRate fails if the two ever diverge (proven by mutating the literal to 60). Closure = alias the constant.
+status: open
+
+### DW-794: WidgetFormat.Fraction's `max <= 0` guard is no longer reachable from its only production call site
+origin: workflow burn-down run, 2026-08-05
+location: godot/src/UI/WidgetFormat.cs:57 and godot/src/UI/CustomUiBridge.cs:325
+severity: low
+reason: DW-365's closure added a CustomUiGate lower bound requiring a ProgressBar's max >= 1, so pb.Max can no longer be <= 0 at the ApplyScalar call site. The guard is therefore defensive-only, meaning the new DW-363 tests covering it are CONTRACT coverage rather than live-path coverage. Not a defect and not something to remove - it is the correct backstop for any future non-gated caller (without it, 0/0 returns NaN straight through both clamp comparisons and n/0 returns +Infinity clamped to a full bar) - but recorded so a later reader does not mistake the coverage for proof that the path is exercised in production.
 status: open
