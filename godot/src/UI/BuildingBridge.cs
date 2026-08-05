@@ -96,8 +96,8 @@ namespace ProjectChimera.UI
         {
             _buildings = buildings;
 
-            var defs  = new[] { p1Def, p2Def };
-            var mats  = new[] { BuildTeamMaterial(p1Color), BuildTeamMaterial(p2Color) };
+            var defs   = new[] { p1Def, p2Def };
+            var colors = new[] { p1Color, p2Color };
 
             // Story 6.8: discover the render buckets by authored DefinitionId. Seed the 5 built-in enum ids first (in
             // their stable enum order, so legacy scenarios render exactly as before), then append any extra authored
@@ -141,7 +141,11 @@ namespace ProjectChimera.UI
                     _typeSize[t, fi]  = aabb.Size * scale;
                     _groundMinY[t, fi] = aabb.Position.Y * scale;
 
-                    _mmi[t, fi] = CreateMmi(mesh, mats[fi]);
+                    // Per-BUCKET material: each building type carries its own albedo art, so one shared
+                    // faction material cannot supply the right texture. Untextured art returns the same
+                    // flat team material this bridge always used (see TeamTintMaterial).
+                    _mmi[t, fi] = CreateMmi(mesh, TeamTintMaterial.Build(mesh, colors[fi],
+                                                                         BuildingRoughness, out _));
                     AddChild(_mmi[t, fi]);
                 }
             }
@@ -156,7 +160,8 @@ namespace ProjectChimera.UI
                 _scale[_fallbackBucket, fi]      = 1f;
                 _typeSize[_fallbackBucket, fi]   = aabb.Size;      // scale 1 → no multiply
                 _groundMinY[_fallbackBucket, fi] = aabb.Position.Y; // scale 1
-                _mmi[_fallbackBucket, fi] = CreateMmi(mesh, mats[fi]);
+                _mmi[_fallbackBucket, fi] = CreateMmi(mesh, TeamTintMaterial.Build(mesh, colors[fi],
+                                                                                  BuildingRoughness, out _));
                 AddChild(_mmi[_fallbackBucket, fi]);
             }
 
@@ -202,14 +207,10 @@ namespace ProjectChimera.UI
             }
         }
 
-        private static StandardMaterial3D BuildTeamMaterial(Color color)
-        {
-            var mat = new StandardMaterial3D();
-            mat.AlbedoColor = color;
-            mat.Roughness   = 0.7f;
-            mat.Metallic    = 0.0f;
-            return mat;
-        }
+        /// <summary>Surface roughness the building team material has always shipped with. The material
+        /// itself is now built by <see cref="TeamTintMaterial"/>, which reproduces exactly this flat
+        /// material for untextured art and a texture-preserving shader once art carries albedo.</summary>
+        private const float BuildingRoughness = 0.7f;
 
         private static StandardMaterial3D BuildRallyMaterial(Color color)
         {
@@ -424,7 +425,7 @@ namespace ProjectChimera.UI
             return true;
         }
 
-        private static MultiMeshInstance3D CreateMmi(Mesh mesh, StandardMaterial3D teamMat)
+        private static MultiMeshInstance3D CreateMmi(Mesh mesh, Material teamMat)
         {
             var mm = new MultiMesh();
             mm.Mesh            = mesh;
