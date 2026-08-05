@@ -25,7 +25,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         [Fact]
         public void AlgoVersions_AreUnchanged() // reinterpret-Type needs no bump
         {
-            Assert.Equal(14, CanonicalModelHash.AlgoVersion); // Story 7.5 (merge): custom-event registry folded (9→10); Story 7.9: Button fold (10→11)
+            Assert.Equal(14, CanonicalModelHash.AlgoVersion); // bump history: CanonicalModelHash.AlgoVersion's XML doc
             Assert.Equal(22, SimChecksum.AlgoVersion); // Story 11.6: production-queue + head-timer folded (21→22)
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }

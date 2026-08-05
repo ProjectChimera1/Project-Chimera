@@ -843,14 +843,14 @@ namespace ProjectChimera.Sim.Tests.Sim
             Assert.Equal(3, host.LoopState.RowLength(0));
         }
 
-        // ── Hash-version stamps: pinned so any UNSANCTIONED bump is loud (the 7.5 merge re-baseline is the
-        //    sanctioned one — v18 sim fold + v10 canonical fold, both landed with the single golden re-record) ─
+        // ── Hash-version stamps: pinned so any UNSANCTIONED bump is loud. Each sanctioned bump's rationale lives
+        //    ONCE, on the corresponding AlgoVersion constant's XML doc — never restated here (DW-583). ─────────
 
         [Fact]
         public void HashAlgoVersions_AreUnchanged()
         {
-            Assert.Equal(22, SimChecksum.AlgoVersion);   // v21 = Story 7.13 TriggerEnabledStore; v22 = Story 11.6 production-queue + head-timer fold
-            Assert.Equal(14, CanonicalModelHash.AlgoVersion); // v9 = Story 7.8 custom-UI fold; v10 = Story 7.5 custom-event registry fold (merge); v11 = Story 7.9 Button fold
+            Assert.Equal(22, SimChecksum.AlgoVersion);   // bump history: SimChecksum.AlgoVersion's XML doc
+            Assert.Equal(14, CanonicalModelHash.AlgoVersion); // bump history: CanonicalModelHash.AlgoVersion's XML doc
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
 

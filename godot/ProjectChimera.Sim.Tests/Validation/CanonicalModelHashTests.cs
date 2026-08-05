@@ -62,8 +62,11 @@ namespace ProjectChimera.Sim.Tests.Validation
             };
         }
 
+        // The per-version bump rationale lives ONCE, on CanonicalModelHash.AlgoVersion's XML doc (v1..v14, and
+        // whatever comes next). Do NOT restate a partial history here: a copy that stops short of the pin reads as
+        // the current version to anyone skimming, which is exactly how this line rotted (DW-583).
         [Fact]
-        public void AlgoVersion_IsPinned() => Assert.Equal(14, CanonicalModelHash.AlgoVersion); // 7.5 re-land merge bumped 9→10 (custom-events registry + graph node-kind fold); Story 7.9: 10→11 (Button fold)
+        public void AlgoVersion_IsPinned() => Assert.Equal(14, CanonicalModelHash.AlgoVersion);
 
         [Fact]
         public void ReorderedCollections_HashEqual()
@@ -294,7 +297,7 @@ namespace ProjectChimera.Sim.Tests.Validation
             // Build the documented canonical byte stream (D5 fixed order) INDEPENDENTLY of MixInt/MixStr, then
             // fold it with a textbook FNV-64. This pins the algorithm without a self-tautology.
             var buf = new List<byte>();
-            AppendInt(buf, CanonicalModelHash.AlgoVersion);  // AlgoVersion (= 11)
+            AppendInt(buf, CanonicalModelHash.AlgoVersion);  // AlgoVersion, mixed FIRST (read from the constant — never a restated literal)
             AppendInt(buf, Fixed.FromFloat(120f).Raw);       // MapBounds quantized (= 7,864,320)
             AppendStr(buf, "DestroyAllBuildings");           // WinCondition by NAME
             AppendStr(buf, "");                              // TerrainRef
