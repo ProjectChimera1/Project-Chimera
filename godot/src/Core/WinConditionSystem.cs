@@ -330,8 +330,11 @@ namespace ProjectChimera.Core
                     // reads a verdict-NONE rep — latching a wiped rep LOST while a live ally still holds would
                     // orphan the counter and make the ally's hold unwinnable. So a faction latches only once NO
                     // unresolved member of its team has any live asset; the whole dead team then latches on the
-                    // SAME tick (ascending order, order-independent → deterministic). No ActiveCount guard: the
-                    // 2-faction mutual annihilation is exactly the match this fallback must resolve. Grace-gated
+                    // SAME tick (ascending order, order-independent → deterministic). (DW-590 has since made the
+                    // accumulator RE-REP off a resolved member, so an orphan is no longer possible — but the
+                    // team-scoped guard STAYS: narrowing it to a per-faction wipeout is a different loss rule than
+                    // the DW-188 decision recorded, and DW-590 changes only the rep keying.) No ActiveCount guard:
+                    // the 2-faction mutual annihilation is exactly the match this fallback must resolve. Grace-gated
                     // like every loss-by-absence branch (a match_start spawn lands after this system's tick 1).
                     if (_store.MatchTicks < GRACE_TICKS) return false;
                     return !TeamFightingAlive(world, f);
@@ -347,9 +350,20 @@ namespace ProjectChimera.Core
         /// <summary>Advance/reset the per-TEAM contiguous sole-hold counters. Review P12(a) — NEUTRAL units neither
         /// hold nor contest the zone (presence scans iterate <see cref="FactionRegistry.ActiveFactions"/>, which
         /// excludes Neutral). Story 7.12 — presence is aggregated by TEAM: allied co-occupants do NOT contest each
-        /// other, and the accruing count is stored on the team's REPRESENTATIVE (lowest-slot member) so contiguous
-        /// team holding survives an individual ally leaving. The counter advances only when exactly ONE team is
-        /// present in the region; any contested (≥2 teams) or empty tick resets every counter.</summary>
+        /// other, and the accruing count is stored on the team's REPRESENTATIVE (see <see cref="TeamRep"/>) so
+        /// contiguous team holding survives an individual ally leaving. The counter advances only when exactly ONE
+        /// team is present in the region; any contested (≥2 teams) or empty tick resets every counter.
+        ///
+        /// <para><b>DW-590 (decision 2026-08-05) — re-rep on a resolved rep.</b> The rep used to be the lowest-slot
+        /// member FULL STOP, while <see cref="KothWinningTeam"/> reads only verdict-<see cref="WinStateStore.VERDICT_NONE"/>
+        /// factions. So when the rep latched LOST out-of-band (a Story 11.2 CONCEDE, or the DSL <c>defeat</c> leaf) while
+        /// a live ally kept sole-holding the zone, the accumulator kept accruing on the dead rep, the ally was zeroed
+        /// every tick as a non-rep, and the team's hold could never reach the win — the match HUNG. The rep is now the
+        /// lowest-slot UNRESOLVED member, and the team's accrued count is CARRIED to it (see
+        /// <see cref="TeamHoldTicks"/>) so the re-rep moves the accumulator instead of restarting the hold at zero.
+        /// Golden-neutral by construction: with no resolved member (every normal match) the rep and the carried value
+        /// are exactly the old lowest-slot rep and its own count, and a team whose members are ALL resolved falls back
+        /// to the old lowest-slot rep (an inert accumulator — <see cref="KothWinningTeam"/> can never read it).</para></summary>
         private void UpdateKothCounters(EntityWorld world)
         {
             if (_regionIndex < 0) return; // unresolved region — never advances
@@ -371,9 +385,10 @@ namespace ProjectChimera.Core
 
             if (presentTeams == 1)
             {
-                int rep = TeamRep(soleTeam); // lowest-slot active member — the one contiguous accumulator
+                int rep = TeamRep(soleTeam);            // lowest-slot UNRESOLVED member — the one contiguous accumulator
+                int held = TeamHoldTicks(soleTeam);     // DW-590: the team's accrued count, wherever it currently sits
                 foreach (Faction f in _factions.ActiveFactions)
-                    _store.KothHoldTicks[(int)f] = ((int)f == rep) ? _store.KothHoldTicks[rep] + 1 : 0;
+                    _store.KothHoldTicks[(int)f] = ((int)f == rep) ? held + 1 : 0;
             }
             else
             {
@@ -383,8 +398,26 @@ namespace ProjectChimera.Core
             }
         }
 
+        /// <summary>DW-590 — the team's currently accrued contiguous sole-hold count, read as the max over its active
+        /// members. <see cref="UpdateKothCounters"/> keeps at most ONE non-zero slot per team (every non-rep member is
+        /// zeroed each tick), so the max IS that single accumulator — and reading it positionally rather than at a
+        /// fixed slot is what lets the rep MOVE (a re-rep carries the count instead of restarting the hold at zero, and
+        /// every later tick still finds it on the new rep). Integer-only, ascending-slot scan → order-independent and
+        /// deterministic.</summary>
+        private int TeamHoldTicks(int team)
+        {
+            int held = 0;
+            foreach (Faction f in _factions.ActiveFactions)
+                if (_alliances.TeamOf(f) == team && _store.KothHoldTicks[(int)f] > held)
+                    held = _store.KothHoldTicks[(int)f];
+            return held;
+        }
+
         /// <summary>The team id whose representative counter has reached <c>hold_ticks</c>, else -1. Only the team
-        /// representative accrues (see <see cref="UpdateKothCounters"/>), so the matching faction is that rep.</summary>
+        /// representative accrues (see <see cref="UpdateKothCounters"/>), so the matching faction is that rep — and
+        /// since DW-590 keys the accumulator on the lowest-slot UNRESOLVED member, the rep this verdict-NONE scan
+        /// reads and the rep <see cref="UpdateKothCounters"/> writes are the SAME faction whenever the team still has
+        /// an unresolved member (they used to disagree the moment the lowest-slot member conceded).</summary>
         private int KothWinningTeam()
         {
             if (_holdTicks <= 0) return -1;
@@ -562,13 +595,25 @@ namespace ProjectChimera.Core
             return false;
         }
 
-        /// <summary>Lowest-slot active member of <paramref name="team"/> (<see cref="FactionRegistry.ActiveFactions"/>
-        /// is ascending), i.e. the team's KotH accumulator representative.</summary>
+        /// <summary>The team's KotH accumulator representative: DW-590 — the lowest-slot active member of
+        /// <paramref name="team"/> whose verdict is still <see cref="WinStateStore.VERDICT_NONE"/>
+        /// (<see cref="FactionRegistry.ActiveFactions"/> is ascending, so the first match IS the lowest slot). Keying
+        /// on an UNRESOLVED member is what makes this agree with <see cref="KothWinningTeam"/>'s verdict-NONE scan: a
+        /// rep that conceded (or was latched LOST by the DSL <c>defeat</c> leaf) hands the accumulator to its lowest
+        /// live ally instead of orphaning it. When NO member is unresolved the old lowest-slot member is returned as a
+        /// fallback — that team can never win, so the accumulator is inert, and keeping the historic slot keeps the
+        /// folded <c>KothHoldTicks</c> byte-identical to the pre-DW-590 fold for that (and for the FFA teams-of-1)
+        /// case. -1 only if <paramref name="team"/> has no active member at all.</summary>
         private int TeamRep(int team)
         {
+            int fallback = -1;
             foreach (Faction f in _factions.ActiveFactions)
-                if (_alliances.TeamOf(f) == team) return (int)f;
-            return -1;
+            {
+                if (_alliances.TeamOf(f) != team) continue;
+                if (_store.Verdict[(int)f] == WinStateStore.VERDICT_NONE) return (int)f; // lowest-slot unresolved
+                if (fallback < 0) fallback = (int)f;                                     // lowest-slot, resolved
+            }
+            return fallback;
         }
 
         /// <summary>True once EVERY active faction has a latched (non-<see cref="WinStateStore.VERDICT_NONE"/>) verdict
