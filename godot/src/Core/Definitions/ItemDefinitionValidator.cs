@@ -21,7 +21,9 @@ namespace ProjectChimera.Core.Definitions
     /// for move_speed so a validated item cannot tunnel a hero through pathing); the effect-graph COHERENCE
     /// rule — a charged consumable (<c>charges &gt; 0</c>) must declare an effect graph and a pure stat item
     /// (<c>charges == 0</c>) must NOT (a dangling effect graph never fires — reject fail-closed); and if an effect graph
-    /// is present it must pass <see cref="EffectBounds.Validate"/> (depth/per-Sequence caps) verbatim.
+    /// is present it must pass <see cref="EffectBounds.Validate"/> (depth/per-Sequence caps) verbatim; and (DW-650) the
+    /// carried-modifier descriptor <c>ItemSystem.ApplyItemStatModifier</c> would mint from those deltas must satisfy the
+    /// shared DW-488 accumulator bound <see cref="Modifier.CheckAuthoringBounds"/> (see <see cref="CarriedModifier"/>).
     ///
     /// <para>A charged consumable MAY ALSO carry the four stat deltas as a permanent carried modifier — a WC3-style
     /// HYBRID buff-consumable (e.g. a potion that buffs while held and heals on use). This is deliberately permitted
@@ -156,6 +158,12 @@ namespace ProjectChimera.Core.Definitions
                             ?? CheckDelta(id, "armor_delta", def.ArmorDelta, MAX_ITEM_STAT_DELTA, nameof(MAX_ITEM_STAT_DELTA));
             if (deltaErr != null) return ItemValidationResult.Fail(deltaErr);
 
+            // ── (c1b) DW-650: the SAME descriptor ItemSystem.ApplyItemStatModifier mints for a carried stat item, run
+            //         through DW-488's shared accumulator bound (Modifier.CheckAuthoringBounds). See CarriedModifier. ──
+            (string Field, string Reason)? overBound = CarriedModifier(def).CheckAuthoringBounds();
+            if (overBound is not null)
+                return Fail(id, overBound.Value.Field, overBound.Value.Reason);
+
             // ── (c2) Shop costs within [0, Range] (Story 3.16). A negative cost would ADD resource on buy
             //        (BuildingSystem.BuyItemCommand SpendOre(faction, -CostOre) refunds), so it must fail CLOSED here —
             //        the editor ValidateFields already rejects it; the sim gate must too (this is the sole minter). ──
@@ -222,10 +230,20 @@ namespace ProjectChimera.Core.Definitions
                 errors.Add(("charges", Located(id, "charges",
                     $"={def.Charges} must be >= 0 (0 = a stat item; >0 = a consumable).")));
 
+            int deltaErrorsBefore = errors.Count;
             AddDelta(errors, id, "max_health_delta", def.MaxHealthDelta, MAX_ITEM_STAT_DELTA, nameof(MAX_ITEM_STAT_DELTA));
             AddDelta(errors, id, "attack_damage_delta", def.AttackDamageDelta, MAX_ITEM_STAT_DELTA, nameof(MAX_ITEM_STAT_DELTA));
             AddDelta(errors, id, "move_speed_delta", def.MoveSpeedDelta, MAX_MOVE_SPEED_DELTA, nameof(MAX_MOVE_SPEED_DELTA));
             AddDelta(errors, id, "armor_delta", def.ArmorDelta, MAX_ITEM_STAT_DELTA, nameof(MAX_ITEM_STAT_DELTA));
+            // DW-650: the same DW-488 accumulator bound the sim Validate applies, on the editor surface. Runs ONLY when
+            // no per-stat cap already badged a delta, so the D-9 "one badge per field" contract holds (a delta over BOTH
+            // its per-stat cap and the accumulator bound reports the tighter, more actionable cap).
+            if (errors.Count == deltaErrorsBefore)
+            {
+                (string Field, string Reason)? overBound = CarriedModifier(def).CheckAuthoringBounds();
+                if (overBound is not null)
+                    errors.Add((overBound.Value.Field, Located(id, overBound.Value.Field, overBound.Value.Reason)));
+            }
 
             // Costs (Story 3.16 shops): a negative cost would ADD resource on buy; keep them in the representable range.
             if (def.CostOre < -Range || def.CostOre > Range)
@@ -257,6 +275,38 @@ namespace ProjectChimera.Core.Definitions
 
             return ItemValidationResult.Fields(errors);
         }
+
+        /// <summary>
+        /// DW-650 — the EXACT <see cref="Modifier"/> descriptor <c>ItemSystem.ApplyItemStatModifier</c> mints for a
+        /// carried stat item (permanent, <see cref="StackRule.Ignore"/>, one stack, the four authored deltas), rebuilt
+        /// here so this validator can run it through the shared DW-488 authoring bound
+        /// (<see cref="Modifier.CheckAuthoringBounds"/>) instead of re-deriving that rule. The id is irrelevant to the
+        /// bound (the runtime one is per-item-instance, <c>ItemModifierId(itemRef)</c>) so a placeholder 0 is used.
+        ///
+        /// <para><b>Why the check exists even though it cannot fire today.</b> DW-488 closed the
+        /// <c>ModifierSystem.AccumulateBonus</c> wrap on the ABILITY path only; items mint a Modifier directly and never
+        /// reach <c>AbilityValidator</c>, which is the gap DW-650 names. On the CURRENT constants the gap is latent
+        /// rather than open: <see cref="MAX_ITEM_STAT_DELTA"/> (1000) and <see cref="MAX_MOVE_SPEED_DELTA"/> (50) are
+        /// both far below <see cref="Modifier.MaxStatDeltaTotalRaw"/> (≈4096 stat units), so every item that reaches
+        /// here already satisfies the bound and this check is a pass-through. It is adopted anyway because that
+        /// implication is a coincidence of two independently-owned numbers, not an invariant: raising the per-stat cap
+        /// past ≈4096 (a plausible balance change — it is a <c>public static readonly</c> knob) would silently re-open
+        /// DW-488 on the item path. With this line the bound holds whatever the caps become, and
+        /// <c>ModifierMinterBoundsTests</c> pins the implication so a cap change surfaces as a RED test rather than as a
+        /// wrapped accumulator in a match.</para>
+        /// </summary>
+        private static Modifier CarriedModifier(ItemDefinition def) =>
+            new Modifier(0,
+                         durationTicks: -1,
+                         StackRule.Ignore,
+                         maxStacks: 1,
+                         maxHealthDelta:    def.MaxHealthDelta,
+                         attackDamageDelta: def.AttackDamageDelta,
+                         moveSpeedDelta:    def.MoveSpeedDelta,
+                         status: StatusFlags.None,
+                         periodEffect: null,
+                         periodTicks: 0,
+                         armorDelta:        def.ArmorDelta);
 
         private static void AddDelta(System.Collections.Generic.List<(string, string)> errors, string id, string path,
                                      Fixed delta, Fixed cap, string capName)

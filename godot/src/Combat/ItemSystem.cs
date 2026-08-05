@@ -446,7 +446,11 @@ namespace ProjectChimera.Combat
         /// tri-state API for a latent, content-gated case) — so EVERY caller that writes further state for the carrier
         /// must re-check <see cref="EntityWorld.IsAlive"/> itself. <see cref="ResolvePickup"/> does; the buy path's
         /// audited (deliberately unguarded) outcome is documented on <see cref="GrantPurchasedItem"/>; the persisted
-        /// re-mint runs pre-match on a freshly spawned hero and writes nothing after the apply.</para></summary>
+        /// re-mint runs pre-match on a freshly spawned hero and writes nothing after the apply.</para>
+        /// <para><b>DW-650</b> — this is one of the three <see cref="Modifier"/> minters that never reach
+        /// <c>AbilityValidator</c>, so DW-488's <see cref="Modifier.CheckAuthoringBounds"/> accumulator bound is adopted
+        /// at this path's own content gate: <c>ItemDefinitionValidator.CarriedModifier</c> rebuilds THIS exact
+        /// descriptor and checks it. Changing the shape here must be mirrored there.</para></summary>
         public static bool ApplyItemStatModifier(ModifierStore modifiers, EntityWorld world,
                                                  ItemDefinition? def, int entityId, int itemRef)
         {
