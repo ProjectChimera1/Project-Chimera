@@ -133,6 +133,13 @@ namespace ProjectChimera.Effects
                         // generic LeafEffect case below), so the leaf RequireTag gate must live here too — no-op when
                         // the primary target's tag doesn't match. Single-sourced with every other site via TagGate.
                         if (!TagGate.Passes(f.Ctx.World, f.Ctx.PrimaryTargetId, applyMod.RequireTag)) break;
+                        // DW-489 audit: Apply may DESTROY (and recycle) PrimaryTargetId before returning — the
+                        // DW-325/DW-491 ceiling-collapse death on a net-negative MaxHealth delta. Safe unguarded HERE
+                        // because this case writes nothing for the target after the call and `break`s straight back to
+                        // the pop loop; the frames popped next carry their OWN targets and every leaf (Damage / Heal /
+                        // DirectHpDelta) re-checks EntityWorld.IsAlive before touching one. TagGate is a pure bounded
+                        // read, so a recycled id cannot fault. Any post-apply write added to this case must re-check
+                        // f.Ctx.World.IsAlive(f.Ctx.PrimaryTargetId) first.
                         f.Ctx.ModifierStore.Apply(
                             f.Ctx.PrimaryTargetId, applyMod.Modifier, f.Ctx.CasterId, f.Ctx.CasterFaction);
                         break;
