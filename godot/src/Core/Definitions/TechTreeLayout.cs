@@ -17,10 +17,16 @@ namespace ProjectChimera.Core.Definitions
     /// redraws identically from the current <c>Prerequisites</c> data alone (Design Notes).</para>
     ///
     /// <para><b>Cycle safety.</b> A well-formed faction (one that has passed <see cref="TechTreeValidator.Validate"/>'s
-    /// import-time lint) is acyclic, so ordinary recursion terminates. As a defensive belt for a graph reached some
+    /// import-time lint) is acyclic, so the walk terminates on its own. As a defensive belt for a graph reached some
     /// other way (e.g. a hand-edited file opened without going through the loader), a per-call "currently visiting"
-    /// guard prevents infinite recursion — a node re-entered while still being computed short-circuits to tier 0
-    /// rather than stack-overflowing.</para>
+    /// guard prevents an infinite walk — a node re-entered while still being computed short-circuits to tier 0
+    /// rather than looping forever.</para>
+    ///
+    /// <para><b>Depth safety.</b> The walk is an explicit-stack iteration, not recursion (DW-574, mirroring DW-59 /
+    /// DW-573's identical fix to <see cref="TechTreeValidator"/> / <see cref="ResearchValidator"/>). The cycle guard
+    /// above bounds the walk against loops but never bounded its DEPTH, so an arbitrarily deep authored prerequisite
+    /// chain — one that now survives validation precisely because those two validators were hardened — would have
+    /// overflowed the call stack here instead, dying in the editor's tech-tree panel rather than at load.</para>
     /// </summary>
     public static class TechTreeLayout
     {
@@ -50,25 +56,86 @@ namespace ProjectChimera.Core.Definitions
             return tiers;
         }
 
+        /// <summary>The memoized longest-path tier walk, driven by an explicit heap stack rather than recursion
+        /// (DW-574: this was a plain recursion — one C# call-stack frame per prerequisite-chain depth level — so the
+        /// same deep authored chain DW-59/DW-573 hardened the two VALIDATORS against would instead overflow the call
+        /// stack here, killing the process uncatchably while the editor laid out its tech-tree panel: load would
+        /// survive validation and then die in the UI). Every observable behaviour is unchanged from the recursive
+        /// original — the <paramref name="tiers"/> memo, the unresolvable-id short-circuit, the
+        /// <paramref name="visiting"/> re-entry cycle guard's "short-circuit to 0 WITHOUT memoizing", prerequisite
+        /// examination in array order, and <c>max(prereq tiers) + 1</c> (0 when nothing resolvable contributed).</summary>
         private static int TierOf(string id, Dictionary<string, BuildingDefinition> byId,
             Dictionary<string, int> tiers, HashSet<string> visiting)
         {
-            if (tiers.TryGetValue(id, out int cached)) return cached;
-            if (!byId.TryGetValue(id, out BuildingDefinition? b)) return 0;   // unresolvable — caller already skips these edges
-            if (!visiting.Add(id)) return 0;   // defensive cycle guard (see class doc) — never hit for a validated graph
+            // Four parallel lists = one frame per node currently being computed: the node id, its Prerequisites
+            // array (hoisted ONCE on push, exactly like the recursive version's single lookup per call), the index
+            // of its next unexamined prerequisite (the "resume point" the call stack used to remember), and the
+            // running max over the prereq tiers resolved so far (-1 = "nothing contributed yet", the recursive
+            // version's `maxPrereqTier` seed).
+            var frameIds = new List<string>();
+            var framePrereqs = new List<string[]>();
+            var frameNext = new List<int>();
+            var frameMax = new List<int>();
 
-            int maxPrereqTier = -1;
-            foreach (string prereq in b.Prerequisites ?? Array.Empty<string>())
+            // The initial call's own prologue. A memo hit / unresolvable id / already-visiting node returns
+            // immediately without ever opening a frame — identical to the recursive version's three guard lines.
+            if (!TryDescend(id, out int immediate)) return immediate;
+
+            while (true)
             {
+                int top = frameIds.Count - 1;
+                string[] prereqs = framePrereqs[top];
+
+                if (frameNext[top] >= prereqs.Length)
+                {
+                    // Every prerequisite examined — the recursive epilogue: leave the visiting set, memoize, return.
+                    string nodeId = frameIds[top];
+                    visiting.Remove(nodeId);
+                    int tier = frameMax[top] < 0 ? 0 : frameMax[top] + 1;
+                    tiers[nodeId] = tier;
+                    frameIds.RemoveAt(top);
+                    framePrereqs.RemoveAt(top);
+                    frameNext.RemoveAt(top);
+                    frameMax.RemoveAt(top);
+
+                    if (frameIds.Count == 0) return tier;   // the initial call unwound — this is its result
+
+                    // Fold the completed child's tier into the parent's running max (the recursive version's
+                    // `int t = TierOf(...); if (t > maxPrereqTier) maxPrereqTier = t;`).
+                    int parent = frameIds.Count - 1;
+                    if (tier > frameMax[parent]) frameMax[parent] = tier;
+                    continue;
+                }
+
+                string prereq = prereqs[frameNext[top]];
+                frameNext[top]++;
+
                 if (!byId.ContainsKey(prereq)) continue;   // unresolvable prerequisite id — skipped, never throws
-                int t = TierOf(prereq, byId, tiers, visiting);
-                if (t > maxPrereqTier) maxPrereqTier = t;
+
+                // A prerequisite that resolves without opening a frame (memoized, or short-circuited by the cycle
+                // guard) contributes its value immediately; one that opens a frame folds in on its retreat above.
+                if (!TryDescend(prereq, out int resolved) && resolved > frameMax[top])
+                    frameMax[top] = resolved;
             }
 
-            visiting.Remove(id);
-            int tier = maxPrereqTier < 0 ? 0 : maxPrereqTier + 1;
-            tiers[id] = tier;
-            return tier;
+            // The recursive prologue. Returns false (with the value the recursive call would have returned) when the
+            // node needs no walk; true after opening its frame. Guard ORDER is load-bearing and preserved: memo,
+            // then unresolvable id, then the visiting re-entry guard — a node short-circuited by that guard is
+            // deliberately NOT memoized, exactly as before, so its real tier is still computed when its own
+            // frame completes.
+            bool TryDescend(string nodeId, out int immediateTier)
+            {
+                if (tiers.TryGetValue(nodeId, out immediateTier)) return false;
+                if (!byId.TryGetValue(nodeId, out BuildingDefinition? b)) { immediateTier = 0; return false; }
+                if (!visiting.Add(nodeId)) { immediateTier = 0; return false; }
+
+                frameIds.Add(nodeId);
+                framePrereqs.Add(b.Prerequisites ?? Array.Empty<string>());
+                frameNext.Add(0);
+                frameMax.Add(-1);
+                immediateTier = 0;
+                return true;
+            }
         }
     }
 }
