@@ -114,8 +114,20 @@ namespace ProjectChimera.Core
         public void AddOre(Faction faction, Fixed amount) =>
             Ore[(int)faction] = Ore[(int)faction] + amount;
 
+        /// <summary>
+        /// True iff the faction can pay <paramref name="cost"/>. DW-642: a NEGATIVE cost fails CLOSED here rather
+        /// than passing trivially (<c>Ore &gt;= -5</c> is always true), mirroring
+        /// <c>ModifierStore.TryDebitEnergy</c>'s "never refund a negative cost" rule. The guard belongs on the
+        /// PREDICATE, not just on <see cref="SpendOre"/>: nearly every caller is a check-then-debit pair
+        /// (BuildingSystem train/build/shop, ReviveHeroCommand, ResearchSystem, AiOpponentSystem) that discards the
+        /// spend's return, so guarding only the debit would turn a money printer into a silent FREE transaction —
+        /// and inside <see cref="Spend"/> it would break check-all-then-spend-all atomicity outright (a
+        /// <c>{ore:-5, crystal:10}</c> map would debit the crystal while the ore leg refused). Failing the predicate
+        /// makes every one of those sites deny with its own reason and mutate nothing.
+        /// A zero cost is still affordable — only strictly negative is rejected.
+        /// </summary>
         public bool CanAffordOre(Faction faction, Fixed cost) =>
-            Ore[(int)faction] >= cost;
+            cost >= Fixed.Zero && Ore[(int)faction] >= cost;
 
         /// <summary>Story 4.4: gated on <see cref="SupplyGatingEnabled"/> — when the config disables gating, this
         /// returns <c>true</c> unconditionally (training is never supply-blocked), though <c>SupplyCap</c>/
@@ -123,9 +135,15 @@ namespace ProjectChimera.Core
         public bool HasSupply(Faction faction, int cost = 1) =>
             !SupplyGatingEnabled || SupplyUsed[(int)faction] + cost <= SupplyCap[(int)faction];
 
-        /// <summary>Deduct ore cost. Returns false (and does nothing) if insufficient.</summary>
+        /// <summary>Deduct ore cost. Returns false (and does nothing — atomic refuse) if insufficient, or if
+        /// <paramref name="cost"/> is NEGATIVE (DW-642: subtracting a negative CREDITS ore, so an authored negative
+        /// cost was a money printer on every caller of this shared primitive, not merely a validation gap — and ore
+        /// is SimChecksum-folded). The explicit sign check is redundant with <see cref="CanAffordOre"/> today and is
+        /// kept deliberately: this is the last line before a checksum-folded write, and it must refuse a negative
+        /// cost on its own terms even if the afford predicate is ever relaxed.</summary>
         public bool SpendOre(Faction faction, Fixed cost)
         {
+            if (cost < Fixed.Zero) return false;  // never credit resources through a "spend"
             if (!CanAffordOre(faction, cost)) return false;
             Ore[(int)faction] = Ore[(int)faction] - cost;
             return true;
@@ -139,12 +157,18 @@ namespace ProjectChimera.Core
         public void AddCrystal(Faction faction, Fixed amount) =>
             Crystal[(int)faction] = Crystal[(int)faction] + amount;
 
+        /// <summary>True iff the faction can pay <paramref name="cost"/>. DW-642: fails CLOSED on a NEGATIVE cost —
+        /// the exact mirror of <see cref="CanAffordOre"/>, see that method for why the guard lives on the predicate.
+        /// A zero cost is still affordable.</summary>
         public bool CanAffordCrystal(Faction faction, Fixed cost) =>
-            Crystal[(int)faction] >= cost;
+            cost >= Fixed.Zero && Crystal[(int)faction] >= cost;
 
-        /// <summary>Deduct crystal cost. Returns false (and does nothing — atomic refuse) if insufficient.</summary>
+        /// <summary>Deduct crystal cost. Returns false (and does nothing — atomic refuse) if insufficient, or if
+        /// <paramref name="cost"/> is NEGATIVE (DW-642 — the crystal mirror of <see cref="SpendOre"/>'s guard;
+        /// Crystal is SimChecksum-folded too).</summary>
         public bool SpendCrystal(Faction faction, Fixed cost)
         {
+            if (cost < Fixed.Zero) return false;  // never credit resources through a "spend"
             if (!CanAffordCrystal(faction, cost)) return false;
             Crystal[(int)faction] = Crystal[(int)faction] - cost;
             return true;
@@ -160,7 +184,10 @@ namespace ProjectChimera.Core
 
         /// <summary>True iff the faction can afford EVERY entry in <paramref name="cost"/>. An unknown resource id
         /// (no runtime backing) fails closed — CanAfford returns false rather than silently ignoring the key.
-        /// Amounts quantize via <see cref="Fixed.FromInt"/> (exact for the <c>int</c> cost type).</summary>
+        /// Amounts quantize via <see cref="Fixed.FromInt"/> (exact for the <c>int</c> cost type). DW-642: a NEGATIVE
+        /// amount on a KNOWN key also fails closed, inherited from the per-resource predicates it delegates to —
+        /// which is what keeps <see cref="Spend"/> atomic on a mixed map like <c>{ore:-5, crystal:10}</c> (the whole
+        /// map is refused rather than the crystal leg landing while the ore leg declines to credit).</summary>
         public bool CanAfford(Faction faction, IReadOnlyDictionary<string, int> cost)
         {
             foreach (var (key, amount) in cost)
