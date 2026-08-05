@@ -13,8 +13,10 @@ namespace ProjectChimera.Core.Skirmish
     /// trigger events/conditions/actions, the win-condition preset spec, and Income resource-node owners — so a
     /// map launched with fewer active players than it authors start positions never boots with dangling slot
     /// references. When every base slot survives with its original ordinal (the common 1v1-on-a-2-start-map path)
-    /// the reconcile is skipped entirely and terrain/triggers/win-condition stay reference-identical to the base
-    /// map (byte-identical on serialize). Faction choices are committed as <c>FactionJson</c> <c>res://</c> paths
+    /// the slot reconcile is skipped entirely and terrain/triggers/win-condition stay reference-identical to the
+    /// base map (byte-identical on serialize) — the ONE exception being DW-665's faction-scoped
+    /// <c>spawn_unit</c> unit-id remap, which runs on that path too because a launch can swap the faction a slot
+    /// plays without renumbering a single ordinal. Faction choices are committed as <c>FactionJson</c> <c>res://</c> paths
     /// (never in-memory defs), so the existing <c>ResolveSlotFactionDefs</c> runs its ability resolution + tag-drop
     /// at load (DW-121 closed by construction). Deterministic: same input → identical output. Godot-free.
     /// </summary>
@@ -162,11 +164,12 @@ namespace ProjectChimera.Core.Skirmish
             if (identityRemap)
                 foreach (KeyValuePair<int, int> kv in origSlotToNew)
                     if (kv.Key != kv.Value) { identityRemap = false; break; }
+            HashSet<string> perPlayerVars = PerPlayerVariableNames(baseMap.Variables);
             if (!identityRemap)
             {
-                HashSet<string> perPlayerVars = PerPlayerVariableNames(baseMap.Variables);
                 built.Triggers = ReconcileTriggers(
-                    baseMap.Triggers ?? System.Array.Empty<TriggerDefinition>(), origSlotToNew, perPlayerVars);
+                    baseMap.Triggers ?? System.Array.Empty<TriggerDefinition>(), origSlotToNew, perPlayerVars,
+                    authoredFactionByNew, targetFactionByNew);
                 built.WinConditionSpec = ReconcileWinSpec(
                     baseMap.WinConditionSpec, origSlotToNew, unitIndexMap, buildingIndexMap);
                 built.ResourceNodes = ReconcileResourceNodes(
@@ -177,7 +180,26 @@ namespace ProjectChimera.Core.Skirmish
                 // player — wrong-player dispatch and silent authorization transfer, not mere staleness.
                 built.CustomEvents = ReconcileCustomEvents(baseMap.CustomEvents, origSlotToNew);
                 built.TriggerGraphJson = ReconcileTriggerGraphJson(
-                    baseMap.TriggerGraphJson, origSlotToNew, VacantSeat(origSlotToNew), perPlayerVars);
+                    baseMap.TriggerGraphJson, origSlotToNew, VacantSeat(origSlotToNew), perPlayerVars,
+                    authoredFactionByNew, targetFactionByNew, redirectSlots: true);
+            }
+            else if (AnyFactionSwap(activeSlots.Count, authoredFactionByNew, targetFactionByNew))
+            {
+                // ── DW-665 — an identity SLOT remap is not an identity FACTION remap. Every base slot kept its own
+                // ordinal, so the DW-458/DW-609 reconcile above is correctly skipped; but a slot may still have
+                // CHOSEN a faction other than the one the map authored its content against, and a trigger's
+                // spawn_unit unit_id is as faction-specific as a pre-placed unit's (alpha's "worker" is beta's
+                // "forgehand"). The pre-placed remap at the top of this method already handles Units; the trigger
+                // channels rode the ShallowClone verbatim. Since DW-240 the un-remapped id is no longer a single
+                // skipped spawn with a runtime warning — ScenarioValidator fail-closes on it (flat + graph), and
+                // ScenarioLoadPhase discards the WHOLE scenario and boots the flat fallback map. So a cross-faction
+                // launch of a map carrying ONE spawn_unit trigger lost the entire map. Guarded by AnyFactionSwap so
+                // the same-faction launch stays reference-identical (and parse-free) exactly as before. ──
+                built.Triggers = RemapTriggerSpawnUnitIds(
+                    built.Triggers, origSlotToNew, authoredFactionByNew, targetFactionByNew);
+                built.TriggerGraphJson = ReconcileTriggerGraphJson(
+                    built.TriggerGraphJson, origSlotToNew, VacantSeat(origSlotToNew), perPlayerVars,
+                    authoredFactionByNew, targetFactionByNew, redirectSlots: false);
             }
 
             return built;
@@ -297,11 +319,14 @@ namespace ProjectChimera.Core.Skirmish
         /// <item>an ACTION referencing a dropped slot is STRIPPED (no player to act on); a trigger with no actions
         /// left is DROPPED (it can no longer do anything);</item>
         /// <item>every KEPT slot reference is REWRITTEN to the new contiguous ordinal via <paramref name="slotMap"/>.</item>
+        /// <item>(DW-665) a KEPT <c>spawn_unit</c> action's <c>unit_id</c> is TRANSLATED into the roster of the
+        /// faction its slot chose — see <see cref="TryMapSpawnUnitId"/>.</item>
         /// </list>
         /// Fresh instances throughout — the base map's trigger objects are never mutated.
         /// </summary>
         private static TriggerDefinition[] ReconcileTriggers(
-            TriggerDefinition[] triggers, Dictionary<int, int> slotMap, HashSet<string> perPlayerVars)
+            TriggerDefinition[] triggers, Dictionary<int, int> slotMap, HashSet<string> perPlayerVars,
+            Dictionary<int, FactionEntry?> authoredByNew, Dictionary<int, FactionEntry?> targetByNew)
         {
             var kept = new List<TriggerDefinition>(triggers.Length);
             foreach (TriggerDefinition t in triggers)
@@ -354,13 +379,15 @@ namespace ProjectChimera.Core.Skirmish
                                           && a.Variable != null && perPlayerVars.Contains(a.Variable)))
                                      && a.Faction >= 0;
                     if (slotKeyed && !slotMap.ContainsKey(a.Faction)) continue; // dropped slot → strip the action
-                    newActions.Add(new TriggerAction
-                    {
-                        Type = a.Type, UnitId = a.UnitId, Faction = slotKeyed ? slotMap[a.Faction] : a.Faction,
-                        X = a.X, Z = a.Z, Count = a.Count, Text = a.Text, Duration = a.Duration,
-                        TimerName = a.TimerName, TimerSeconds = a.TimerSeconds, Amount = a.Amount,
-                        Variable = a.Variable, Value = a.Value, SoundId = a.SoundId,
-                    });
+                    // DW-665 — the id must be read in the AUTHORED slot's frame, so this runs BEFORE the faction
+                    // rewrite below. Unmappable (the chosen faction fields no unit of that role at all) strips the
+                    // action, mirroring the pre-placed-unit drop above: emitting an id that cannot resolve now
+                    // fail-closes the whole scenario at the DW-240 gate.
+                    string? unitId = a.UnitId;
+                    if (string.Equals(a.Type, "spawn_unit", System.StringComparison.Ordinal)
+                        && !TryMapSpawnUnitId(a.UnitId, a.Faction, slotMap, authoredByNew, targetByNew, out unitId))
+                        continue;
+                    newActions.Add(CloneAction(a, unitId, slotKeyed ? slotMap[a.Faction] : a.Faction));
                 }
                 if (actions.Length > 0 && newActions.Count == 0) continue; // nothing left to do → drop the trigger
 
@@ -537,9 +564,18 @@ namespace ProjectChimera.Core.Skirmish
         /// on the launch path where the caller has no recovery, and the load gate
         /// (<c>TriggerGraph.FromJson</c> → <c>GraphStructureGate</c>) is the designated place for that rejection —
         /// it reports a located error where a throw here would surface as an opaque launch failure.</para>
+        ///
+        /// <para>DW-665 — the <c>spawn_unit</c> <c>unit_id</c> remap runs on EVERY call, including the identity-slot
+        /// path where <paramref name="redirectSlots"/> is false: a launch that renumbers nothing can still swap the
+        /// FACTION a slot plays, and an untranslated id fail-closes the whole scenario at the DW-240 gate. Unlike
+        /// the flat channel this arm can only REWRITE, never strip — the graph-structure rule above forbids
+        /// removing a node — so an id with no equivalent role in the chosen roster is left verbatim for the
+        /// validator to reject with its located message.</para>
         /// </summary>
         private static string? ReconcileTriggerGraphJson(
-            string? graphJson, Dictionary<int, int> slotMap, int vacantSeat, HashSet<string> perPlayerVars)
+            string? graphJson, Dictionary<int, int> slotMap, int vacantSeat, HashSet<string> perPlayerVars,
+            Dictionary<int, FactionEntry?> authoredByNew, Dictionary<int, FactionEntry?> targetByNew,
+            bool redirectSlots)
         {
             if (string.IsNullOrWhiteSpace(graphJson)) return graphJson;
 
@@ -550,6 +586,20 @@ namespace ProjectChimera.Core.Skirmish
             bool changed = false;
             foreach (ProjectChimera.Dsl.NodeBase n in graph.Nodes)
             {
+                // DW-665 — the unit-id translation reads the AUTHORED slot ordinal, so it must run BEFORE the
+                // slot redirect below rewrites that field.
+                if (n is ProjectChimera.Dsl.ActionNode spawn
+                    && string.Equals(spawn.Kind, "spawn_unit", System.StringComparison.Ordinal)
+                    && TryMapSpawnUnitId(spawn.UnitId, spawn.Faction, slotMap, authoredByNew, targetByNew,
+                                         out string? spawnId)
+                    && !string.Equals(spawnId, spawn.UnitId, System.StringComparison.Ordinal))
+                {
+                    spawn.UnitId = spawnId;
+                    changed = true;
+                }
+
+                if (!redirectSlots) continue;
+
                 switch (n)
                 {
                     case ProjectChimera.Dsl.EventNode e when IsIn(FactionKeyedEventKinds, e.Kind):
@@ -607,5 +657,137 @@ namespace ProjectChimera.Core.Skirmish
             mapped = target;
             return true;
         }
+
+        // ── DW-665 — the faction-scoped unit-id remap for the two TRIGGER channels ────────────────────────────────
+
+        /// <summary>
+        /// DW-665 — translate a <c>spawn_unit</c> action's <c>unit_id</c> from the roster the map AUTHORED it
+        /// against into the roster the owning slot actually CHOSE, exactly as the pre-placed-unit loop in
+        /// <see cref="Build"/> does (<see cref="SkirmishRosterMap.MapUnitId"/>, keyed by the role coordinate
+        /// (Category, ordinal-within-category)).
+        ///
+        /// <para><paramref name="authoredSlot"/> is the action's AUTHORED <c>faction</c> field — the base map's slot
+        /// ordinal, before any DW-458 renumber. It selects the launch index that inherited that base position, and
+        /// with it both halves of the translation: the faction that position's content was written against and the
+        /// faction its player picked.</para>
+        ///
+        /// <para>Returns true — with the id to emit in <paramref name="mapped"/>, which is the ORIGINAL reference
+        /// whenever nothing needs to move (blank id, a faction ordinal that is not a live base slot, no resolvable
+        /// chosen faction, or a same-faction launch) — so a launch that changes nothing stays byte-identical.
+        /// Returns false only when the chosen faction fields NO unit of that role at all; the id is then
+        /// unrepresentable in this launch and the caller decides (the flat channel strips the action, the graph
+        /// channel leaves it for the validator).</para>
+        /// </summary>
+        private static bool TryMapSpawnUnitId(
+            string? unitId, int authoredSlot, Dictionary<int, int> slotMap,
+            Dictionary<int, FactionEntry?> authoredByNew, Dictionary<int, FactionEntry?> targetByNew,
+            out string? mapped)
+        {
+            mapped = unitId;
+            // A blank spawn id is an authoring error the validator already reports on EVERY load path (skirmish or
+            // not) — never this transform's to invent an id for.
+            if (string.IsNullOrEmpty(unitId)) return true;
+            if (authoredSlot < 0 || !slotMap.TryGetValue(authoredSlot, out int newSlot)) return true;
+
+            targetByNew.TryGetValue(newSlot, out FactionEntry? target);
+            if (target == null) return true; // no chosen faction resolved ⇒ nothing to translate INTO
+            authoredByNew.TryGetValue(newSlot, out FactionEntry? authored);
+
+            string? remapped = SkirmishRosterMap.MapUnitId(unitId!, authored, target);
+            if (string.IsNullOrEmpty(remapped)) return false; // no equivalent role in the chosen roster
+            mapped = remapped;
+            return true;
+        }
+
+        /// <summary>
+        /// DW-665 — true when at least one launch index CHOSE a faction other than the one its paired base position
+        /// was authored against (an unresolvable authored faction counts, since the id then only survives on an
+        /// exact roster match). False ⇒ <see cref="SkirmishRosterMap.MapUnitId"/> is the identity for every id, so
+        /// the identity-slot path can skip the trigger remap entirely and stay reference-identical + parse-free.
+        /// Ascending index iteration — never dictionary order — though the result is an order-free any-quantifier.
+        /// </summary>
+        private static bool AnyFactionSwap(
+            int launchIndexCount, Dictionary<int, FactionEntry?> authoredByNew, Dictionary<int, FactionEntry?> targetByNew)
+        {
+            for (int i = 0; i < launchIndexCount; i++)
+            {
+                targetByNew.TryGetValue(i, out FactionEntry? target);
+                if (target == null) continue; // nothing to translate into ⇒ this index can never move an id
+                authoredByNew.TryGetValue(i, out FactionEntry? authored);
+                if (authored == null
+                    || !string.Equals(authored.ResPath, target.ResPath, System.StringComparison.Ordinal))
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// DW-665 — the identity-SLOT counterpart of <see cref="ReconcileTriggers"/>: rewrite only the
+        /// <c>spawn_unit</c> unit ids for the chosen factions, touching no slot ordinal and no other field. An id
+        /// with no equivalent role in the chosen roster STRIPS the action (the pre-placed-unit rule), and a trigger
+        /// whose actions are all stripped is DROPPED (the DW-458 rule) — both far smaller blast radii than the
+        /// whole-scenario reject the DW-240 gate would otherwise produce.
+        ///
+        /// <para>Returns the input REFERENCE when no id moved, and reuses every unchanged
+        /// <see cref="TriggerDefinition"/>/<see cref="TriggerAction"/> instance, so a same-faction launch stays
+        /// byte-identical to the base map exactly as the DW-458 channels do. The base map's objects are never
+        /// mutated.</para>
+        /// </summary>
+        private static TriggerDefinition[] RemapTriggerSpawnUnitIds(
+            TriggerDefinition[] triggers, Dictionary<int, int> slotMap,
+            Dictionary<int, FactionEntry?> authoredByNew, Dictionary<int, FactionEntry?> targetByNew)
+        {
+            // Defensive null guard (the property is non-null-annotated but a hand-authored/deserialized model can
+            // still carry null, which is why every other read in this file spells `?? Array.Empty`): hand the
+            // caller back exactly what it gave us rather than substituting an empty array.
+            if (triggers is null || triggers.Length == 0) return triggers!;
+
+            var kept = new List<TriggerDefinition>(triggers.Length);
+            bool changed = false;
+
+            foreach (TriggerDefinition t in triggers)
+            {
+                if (t == null) { kept.Add(t!); continue; }
+
+                TriggerAction[] actions = t.Actions ?? System.Array.Empty<TriggerAction>();
+                var newActions = new List<TriggerAction>(actions.Length);
+                bool triggerChanged = false;
+
+                foreach (TriggerAction a in actions)
+                {
+                    if (a == null) { newActions.Add(a!); continue; }
+                    if (!string.Equals(a.Type, "spawn_unit", System.StringComparison.Ordinal)) { newActions.Add(a); continue; }
+                    if (!TryMapSpawnUnitId(a.UnitId, a.Faction, slotMap, authoredByNew, targetByNew, out string? mapped))
+                    { triggerChanged = true; continue; } // unmappable role → strip the action
+                    if (string.Equals(mapped, a.UnitId, System.StringComparison.Ordinal)) { newActions.Add(a); continue; }
+                    triggerChanged = true;
+                    newActions.Add(CloneAction(a, mapped, a.Faction));
+                }
+
+                if (!triggerChanged) { kept.Add(t); continue; }
+                changed = true;
+                if (actions.Length > 0 && newActions.Count == 0) continue; // nothing left to do → drop the trigger
+                kept.Add(new TriggerDefinition
+                {
+                    Name = t.Name, Enabled = t.Enabled, RunOnce = t.RunOnce,
+                    CooldownSeconds = t.CooldownSeconds, Priority = t.Priority,
+                    // Events/Conditions are untouched by this pass and are never mutated — shared by reference.
+                    Events = t.Events, Conditions = t.Conditions, Actions = newActions.ToArray(),
+                });
+            }
+
+            return changed ? kept.ToArray() : triggers;
+        }
+
+        /// <summary>A field-complete copy of a trigger action with a different <c>unit_id</c> and <c>faction</c>
+        /// (the base map's action object is never mutated). ONE field list shared by both trigger-rewrite passes so
+        /// a newly added <see cref="TriggerAction"/> field cannot be dropped by one of them.</summary>
+        private static TriggerAction CloneAction(TriggerAction a, string? unitId, int faction) => new()
+        {
+            Type = a.Type, UnitId = unitId, Faction = faction,
+            X = a.X, Z = a.Z, Count = a.Count, Text = a.Text, Duration = a.Duration,
+            TimerName = a.TimerName, TimerSeconds = a.TimerSeconds, Amount = a.Amount,
+            Variable = a.Variable, Value = a.Value, SoundId = a.SoundId,
+        };
     }
 }
