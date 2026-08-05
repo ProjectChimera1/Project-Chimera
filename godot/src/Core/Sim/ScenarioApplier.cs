@@ -493,25 +493,75 @@ namespace ProjectChimera.Core.Sim
                 new ScenarioBuilding { Type = "CommandCenter", Slot = 0, X = -45f, Z = 0f, PreBuilt = true },
                 new ScenarioBuilding { Type = "CommandCenter", Slot = 1, X =  45f, Z = 0f, PreBuilt = true },
             },
-            Units = new[]
-            {
-                new ScenarioUnit { UnitId = WorkerIdForSlot(slotFactionDefs, 0), Slot = 0, X = -42f, Z = -3f },
-                new ScenarioUnit { UnitId = WorkerIdForSlot(slotFactionDefs, 0), Slot = 0, X = -42f, Z =  3f },
-                new ScenarioUnit { UnitId = WorkerIdForSlot(slotFactionDefs, 1), Slot = 1, X =  42f, Z = -3f },
-                new ScenarioUnit { UnitId = WorkerIdForSlot(slotFactionDefs, 1), Slot = 1, X =  42f, Z =  3f },
-            },
+            Units = FallbackWorkerRows(slotFactionDefs),
         };
 
+        /// <summary>
+        /// DW-652 — build the fallback mirror's pre-placed worker rows: two per player slot, but ONLY for a slot whose
+        /// worker id actually resolves (see <see cref="WorkerIdForSlot"/>).
+        ///
+        /// <para><b>Why the rows are conditional.</b> The mirror is the last-resort safety net: it is validated through
+        /// the same fail-closed gate as any scenario, and a REJECTED mirror applies NOTHING — an empty world
+        /// (<c>ScenarioLoadPhase.ApplyFallbackThroughApplier</c>, <c>MainScene.ResetToAuthoredStart</c>). Naming a unit
+        /// id no threaded faction declares is the one way this engine-authored model can fail that gate, so a slot with
+        /// no resolvable unit contributes NO unit rows instead of an unresolvable one: the fallback board still boots
+        /// with its bases, resources and command centres (playable, minus that slot's two starting workers) rather than
+        /// collapsing to nothing.</para>
+        ///
+        /// <para>Unchanged on every real path: with no defs threaded (tests, the default) each slot yields the
+        /// conventional <c>"worker"</c> id, and with the shipped alpha/beta factions each yields its Worker-category id
+        /// — four rows in the same order and at the same coordinates as before, so the mirror's canonical hash and the
+        /// fallback-parity pins do not move.</para>
+        /// </summary>
+        private static ScenarioUnit[] FallbackWorkerRows(
+            System.Collections.Generic.IReadOnlyList<FactionDefinition?>? slotFactionDefs)
+        {
+            var rows = new List<ScenarioUnit>(4);
+            AddSlotWorkers(rows, slotFactionDefs, slot: 0, x: -42f);
+            AddSlotWorkers(rows, slotFactionDefs, slot: 1, x:  42f);
+            return rows.ToArray();
+
+            static void AddSlotWorkers(List<ScenarioUnit> into,
+                System.Collections.Generic.IReadOnlyList<FactionDefinition?>? defs, int slot, float x)
+            {
+                string? id = WorkerIdForSlot(defs, slot);
+                if (id == null) return; // no resolvable unit for this slot ⇒ omit rather than author a dangling ref
+                into.Add(new ScenarioUnit { UnitId = id, Slot = slot, X = x, Z = -3f });
+                into.Add(new ScenarioUnit { UnitId = id, Slot = slot, X = x, Z =  3f });
+            }
+        }
+
         /// <summary>Resolve a fallback-mirror slot's worker unit_id by CATEGORY from its faction def (the legacy
-        /// writer's lookup), falling back to the conventional "worker" id when no defs are threaded or the faction
-        /// declares no Worker-category unit.</summary>
-        private static string WorkerIdForSlot(
+        /// writer's lookup), falling back to the conventional "worker" id when no defs are threaded.
+        ///
+        /// <para>DW-652 — the degenerate fallback is hardened. The old body ended in <c>?? "worker"</c> for EVERY miss,
+        /// so a threaded faction declaring no Worker-category unit put the literal id <c>"worker"</c> into the mirror
+        /// even when its roster has no such unit; the mirror then failed the fail-closed unit_id gate and the fallback
+        /// boot applied NOTHING (empty world). The literal is now only used when it is safe: with NO def threaded
+        /// (nothing to resolve against — the gate's own amnesty), or when the roster really declares it. Otherwise the
+        /// first declared unit is preferred (any resolvable unit beats a dangling reference), and a faction with no
+        /// usable unit at all returns <c>null</c> so the caller omits the rows entirely.</para>
+        ///
+        /// <para>Deterministic and Godot-free: category match first (the legacy lookup, unchanged for both shipped
+        /// factions), then the conventional id, then the first non-null declared unit in authored order.</para>
+        /// </summary>
+        private static string? WorkerIdForSlot(
             System.Collections.Generic.IReadOnlyList<FactionDefinition?>? slotFactionDefs, int slot)
         {
             int fIdx = slot + 1; // (Faction)(slot + 1), matching Apply's cast
             FactionDefinition? def = (slotFactionDefs != null && fIdx >= 0 && fIdx < slotFactionDefs.Count)
                 ? slotFactionDefs[fIdx] : null;
-            return def?.GetUnitByCategory("Worker")?.Id ?? "worker";
+            if (def == null) return "worker"; // nothing threaded ⇒ the conventional id (the gate no-ops with no roster)
+
+            string? byCategory = def.GetUnitByCategory("Worker")?.Id;
+            if (!string.IsNullOrEmpty(byCategory)) return byCategory;
+            if (def.GetUnit("worker") != null) return "worker"; // declared but uncategorized — still resolves
+            // Last resort: the first declared unit that can actually resolve (null list / null elements / blank ids
+            // skipped, mirroring the DW-103 hardening on the other FactionDefinition accessors).
+            if (def.Units != null)
+                foreach (UnitDefinition? u in def.Units)
+                    if (u != null && !string.IsNullOrEmpty(u.Id)) return u.Id;
+            return null; // no resolvable unit — the caller omits this slot's rows rather than dangle a reference
         }
 
         /// <summary>

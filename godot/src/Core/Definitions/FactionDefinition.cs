@@ -88,6 +88,50 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("starting_crystal")]
         public float StartingCrystal { get; set; } = 0f;
 
+        // ── Runtime-only drop record (never authored, never serialized) ─────────
+
+        /// <summary>
+        /// DW-652 — the ids of units this faction DECLARED in its JSON but that
+        /// <see cref="UnitTagValidator.ValidateAndDropUnits"/> REMOVED from <see cref="Units"/> for carrying an
+        /// unknown tag. Runtime-only bookkeeping written by that validator at load; <c>[JsonIgnore]</c> so it never
+        /// round-trips through the Faction Definer wizard's re-serialize (the <see cref="UnitDefinition"/>
+        /// <c>[JsonIgnore]</c> resolved-index precedent).
+        ///
+        /// <para><b>Why it exists.</b> The tag drop runs AFTER the faction file loads and BEFORE the scenario gate, so
+        /// a shipped map naming a dropped unit sees a roster that no longer declares it. Without this record the gate
+        /// cannot tell that case (engine removed an author-declared unit — the map is innocent) from a genuine typo
+        /// (an id nothing ever declared), and DW-240's fail-closed unit_id rule turns the first one into a
+        /// WHOLE-SCENARIO reject that boots the fallback map. The record lets the gate degrade exactly that case to the
+        /// per-entity drop the applier already performs, while a real dangling reference still fails closed.</para>
+        /// </summary>
+        [JsonIgnore]
+        public List<string> TagDroppedUnitIds { get; } = new();
+
+        /// <summary>
+        /// DW-652 — record <paramref name="unitId"/> as dropped by the closed-set tag validator. Idempotent (a second
+        /// <see cref="UnitTagValidator.ValidateAndDropUnits"/> pass over the already-compacted roster finds no
+        /// offenders, and a repeated id is never appended twice), and a null/blank id is ignored — a blank reference
+        /// is never "known but dropped", it is malformed.
+        /// </summary>
+        public void NoteTagDroppedUnit(string? unitId)
+        {
+            if (string.IsNullOrEmpty(unitId)) return;
+            if (!TagDroppedUnitIds.Contains(unitId)) TagDroppedUnitIds.Add(unitId!);
+        }
+
+        /// <summary>
+        /// DW-652 — true when <paramref name="unitId"/> names a unit this faction DECLARED but the closed-set tag
+        /// validator dropped from <see cref="Units"/>. False for a blank id and for any id the faction never declared
+        /// (those stay genuinely-malformed references the scenario gate must still fail closed on).
+        /// </summary>
+        public bool WasUnitDroppedForInvalidTag(string? unitId)
+        {
+            if (string.IsNullOrEmpty(unitId)) return false;
+            for (int i = 0; i < TagDroppedUnitIds.Count; i++)
+                if (TagDroppedUnitIds[i] == unitId) return true;
+            return false;
+        }
+
         // ── Lookup helpers ──────────────────────────────────────────────────────
 
         /// <summary>Find a building definition by ID, or null if not found.</summary>
