@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
 
 namespace ProjectChimera.AI.Providers
 {
@@ -17,6 +18,19 @@ namespace ProjectChimera.AI.Providers
         /// <summary>The OpenRouter cloud host.</summary>
         public const string OpenRouterHost = "openrouter.ai";
 
+        /// <summary>
+        /// DW-589 — the pinned cloud hosts, in stable order, for the CREATOR-FACING COPY only: the
+        /// <see cref="AiAvailability.HostNotAllowlisted"/> message names this set so a rejected base URL tells the
+        /// creator exactly which hosts a cloud provider may reach, and so that copy can never drift from the policy.
+        ///
+        /// <para>PRESENTATION ONLY — this is NOT a membership test and must never become one. The enforced policy is
+        /// <see cref="IsAllowed"/>'s PER-PROVIDER exact match (anthropic may reach only <see cref="AnthropicHost"/>,
+        /// openrouter only <see cref="OpenRouterHost"/>); widening the check to "is on this list" would let a key
+        /// stored for one provider be sent to another's endpoint. Guarded by the cross-host rows in
+        /// <c>LlmHostAllowlistTests.IsAllowed_MatchesPinnedPolicy</c>.</para>
+        /// </summary>
+        public static IReadOnlyList<string> PinnedCloudHosts { get; } = new[] { AnthropicHost, OpenRouterHost };
+
         /// <summary>True iff a request to <paramref name="endpoint"/> is permitted for
         /// <paramref name="providerId"/>: an exact pinned host for a cloud provider, a loopback host for ollama,
         /// false for anything else (including an unknown provider id).</summary>
@@ -26,6 +40,12 @@ namespace ProjectChimera.AI.Providers
 
             switch (providerId)
             {
+                // Cloud providers: an EXACT, per-provider pinned host. Never a membership test over
+                // PinnedCloudHosts — anthropic must not be reachable at openrouter.ai (or vice versa), or a key
+                // stored for one provider would be sent to the other's endpoint. DW-589 (recorded scope: the
+                // security policy must not widen) changed only how the refusal below is VOICED — the factory
+                // classifies it AiAvailability.HostNotAllowlisted so the message names the pinned hosts instead of
+                // claiming no provider is configured.
                 case "anthropic":
                     return HostEquals(endpoint.Host, AnthropicHost);
                 case "openrouter":

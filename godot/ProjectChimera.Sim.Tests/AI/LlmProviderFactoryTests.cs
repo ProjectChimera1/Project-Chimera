@@ -10,9 +10,9 @@ namespace ProjectChimera.Sim.Tests.AI
 {
     /// <summary>
     /// Story 8.2 — the single construction site: correct adapter per provider id, base-URL override vs catalog
-    /// default, key sourced from the secret store, non-allowlisted host → synchronous refusal (cloud → NoProvider;
-    /// ollama non-loopback → HostRestricted per DW-370), and the no-fallback contract (a failing provider never
-    /// yields another's success).
+    /// default, key sourced from the secret store, non-allowlisted host → synchronous refusal (cloud non-pinned →
+    /// HostNotAllowlisted per DW-589; ollama non-loopback → HostRestricted per DW-370), and the no-fallback contract
+    /// (a failing provider never yields another's success).
     /// </summary>
     public class LlmProviderFactoryTests
     {
@@ -77,16 +77,40 @@ namespace ProjectChimera.Sim.Tests.AI
             Assert.Equal(AiAvailability.NoKey, failure);
         }
 
-        [Fact]
-        public void BaseUrlOverride_ToNonAllowlistedHost_ReturnsNoProvider()
+        [Theory]
+        [InlineData("anthropic",  "https://evil.example.com")]
+        [InlineData("openrouter", "https://evil.example.com")]
+        [InlineData("anthropic",  "https://api.anthropic.com.evil.com")] // suffix-spoofed pinned host
+        public void BaseUrlOverride_ToNonAllowlistedHost_ReturnsHostNotAllowlisted(string providerId, string baseUrl)
         {
+            // DW-589 (re-pinned from NoProvider): a cloud provider whose base-URL override points off the pinned
+            // allowlist stays REJECTED — the pinned-host policy is unchanged — but is classified HostNotAllowlisted,
+            // the state whose message names the allowlist, not the misleading NoProvider ("no AI provider is
+            // configured") that sent the creator to edit the provider picker instead of the base URL.
             bool ok = LlmProviderFactory.TryCreate(
-                Settings("anthropic", baseUrl: "https://evil.example.com"),
+                Settings(providerId, baseUrl: baseUrl),
                 new FakeSecretStore("sk-x"), AnyClient(), out var provider, out var failure);
 
             Assert.False(ok);
             Assert.Null(provider);
-            Assert.Equal(AiAvailability.NoProvider, failure);
+            Assert.Equal(AiAvailability.HostNotAllowlisted, failure);
+        }
+
+        [Theory]
+        [InlineData("anthropic",  "https://openrouter.ai/api/v1")]
+        [InlineData("openrouter", "https://api.anthropic.com")]
+        public void CloudProvider_PointedAtAnotherProvidersPinnedHost_StillRejected(string providerId, string baseUrl)
+        {
+            // DW-589 guard: the honest-UX reclassification must NOT widen the policy into "any pinned cloud host is
+            // fine". Each cloud provider keeps its own exact pinned host, so a key stored for one provider can never
+            // be sent to the other's endpoint (DW-368's invariant).
+            bool ok = LlmProviderFactory.TryCreate(
+                Settings(providerId, baseUrl: baseUrl),
+                new FakeSecretStore("sk-x"), AnyClient(), out var provider, out var failure);
+
+            Assert.False(ok);
+            Assert.Null(provider);
+            Assert.Equal(AiAvailability.HostNotAllowlisted, failure);
         }
 
         [Fact]
@@ -100,8 +124,11 @@ namespace ProjectChimera.Sim.Tests.AI
         }
 
         [Fact]
-        public void MalformedBaseUrl_ReturnsNoProvider()
+        public void MalformedBaseUrl_ReturnsNoProvider_NotHostNotAllowlisted()
         {
+            // The base-URL parse failure precedes the allowlist on the cloud arm too: a garbage cloud base URL is a
+            // config error, not a host-policy rejection — HostNotAllowlisted is reserved for the pinned-host refusal
+            // it names (DW-589, mirroring the ollama boundary below).
             bool ok = LlmProviderFactory.TryCreate(
                 Settings("anthropic", baseUrl: "not a url"), new FakeSecretStore("sk-x"), AnyClient(), out _, out var failure);
 

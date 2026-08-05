@@ -11,8 +11,8 @@ namespace ProjectChimera.Sim.Tests.AI
 {
     /// <summary>
     /// Story 8.2 — drives the availability states through the stub handler + fake secret store: NoProvider, NoKey,
-    /// Healthy, Unreachable, FailedValidation, and (DW-370) HostRestricted. The synchronous split (config-derived vs
-    /// round-trip) and the no-fallback contract are exercised here.
+    /// Healthy, Unreachable, FailedValidation, (DW-370) HostRestricted, and (DW-589) HostNotAllowlisted. The
+    /// synchronous split (config-derived vs round-trip) and the no-fallback contract are exercised here.
     /// </summary>
     public class AiAvailabilityEvaluatorTests
     {
@@ -56,13 +56,25 @@ namespace ProjectChimera.Sim.Tests.AI
         }
 
         [Fact]
-        public void EvaluateConfig_NonAllowlistedBaseUrl_NoProvider()
+        public void EvaluateConfig_NonAllowlistedBaseUrl_HostNotAllowlisted()
         {
             // A saved base-URL override to a non-allowlisted host must NOT present as Healthy (the panels enable
             // Generate on Healthy) — the sync state must agree with what the factory / round-trip will actually accept.
+            // DW-589 (re-pinned from NoProvider): the refusal is voiced as HostNotAllowlisted, whose microcopy names
+            // the pinned hosts, so the creator fixes the base URL rather than the provider picker.
             var eval = Eval(StubHttpMessageHandler.Ok("{}"));
-            Assert.Equal(AiAvailability.NoProvider,
+            Assert.Equal(AiAvailability.HostNotAllowlisted,
                 eval.EvaluateConfig(Settings("anthropic", "https://evil.example.com"), new FakeSecretStore("sk-x")));
+        }
+
+        [Fact]
+        public void EvaluateConfig_CloudPinnedBaseUrl_StillHealthyCandidate()
+        {
+            // Guard the other arm of DW-589: an explicit override that IS the pinned host remains a Healthy candidate —
+            // the new HostNotAllowlisted classification must not leak onto permitted cloud hosts.
+            var eval = Eval(StubHttpMessageHandler.Ok("{}"));
+            Assert.Equal(AiAvailability.Healthy,
+                eval.EvaluateConfig(Settings("anthropic", "https://api.anthropic.com"), new FakeSecretStore("sk-x")));
         }
 
         [Fact]
@@ -122,6 +134,19 @@ namespace ProjectChimera.Sim.Tests.AI
             var state = await eval.TestConnectionAsync(
                 Settings("ollama", "http://192.168.1.5:11434"), new FakeSecretStore(), CancellationToken.None);
             Assert.Equal(AiAvailability.HostRestricted, state);
+            Assert.Equal(0, stub.CallCount); // rejected before any network call
+        }
+
+        [Fact]
+        public async Task TestConnection_CloudNonAllowlistedBaseUrl_HostNotAllowlisted_NoRequest()
+        {
+            // DW-589: Test connection against a cloud provider pointed off the pinned allowlist refuses pre-flight
+            // with the allowlist-naming state — and never sends the stored API key to the disallowed host.
+            var stub = StubHttpMessageHandler.Ok("{}");
+            var eval = Eval(stub);
+            var state = await eval.TestConnectionAsync(
+                Settings("anthropic", "https://evil.example.com"), new FakeSecretStore("sk-x"), CancellationToken.None);
+            Assert.Equal(AiAvailability.HostNotAllowlisted, state);
             Assert.Equal(0, stub.CallCount); // rejected before any network call
         }
 
