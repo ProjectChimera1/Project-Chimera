@@ -117,15 +117,24 @@ namespace ProjectChimera.Sim.Tests.AI
         }
 
         [Fact]
-        public void EveryPreset_KeepsMinSlotsWithinThePromptExample()
+        public void EveryPreset_IsShownAsManySlotsAsItDemands()
         {
-            // DW-372 tripwire: BuildMapSystemPrompt's SCHEMA and EXAMPLE blocks still hardcode exactly two
-            // player_slots. A preset demanding MORE than two would tell the model "at least N" while showing it a
-            // 2-slot example — it emits 2 and the gate rejects it, i.e. an unusable scenario type. Raising a floor
-            // above 2 is unlocked by DW-372 (parameterize the prompt schema/example per slot count), not here.
+            // Was the DW-372 tripwire "MinPlayerSlots <= 2", because BuildMapSystemPrompt's SCHEMA and EXAMPLE
+            // blocks hardcoded exactly two player_slots: a preset demanding MORE told the model "at least N" while
+            // showing it a 2-slot example, so it emitted 2 and the gate rejected every generation. DW-372
+            // parameterized both blocks, so the invariant is now the REAL one — the request shows at least as many
+            // slots as it demands — and a preset may raise its floor.
             foreach (var p in ScenarioTypeRegistry.All)
-                Assert.True(p.MinPlayerSlots <= 2,
-                    $"{p.Type}: MinPlayerSlots={p.MinPlayerSlots} exceeds the 2-slot prompt example (see DW-372).");
+            {
+                var ctx = ScenarioTypeRegistry.Apply(Fresh(), p.Type);
+                Assert.True(LLMService.PromptSlotCount(ctx) >= ctx.MinPlayerSlots,
+                    $"{p.Type}: prompt renders {LLMService.PromptSlotCount(ctx)} slots but demands {ctx.MinPlayerSlots}.");
+
+                // …and the worked example the model copies really does satisfy that preset's own gate.
+                var (ok, error) = LLMService.ValidateScenario(
+                    LlmMapPromptSlotParameterizationTests.ExampleJson(LLMService.BuildMapSystemPrompt(ctx)), ctx);
+                Assert.True(ok != null, $"{p.Type}: its own prompt example fails its own gate — {error}");
+            }
         }
 
         [Fact]
@@ -151,11 +160,14 @@ namespace ProjectChimera.Sim.Tests.AI
 
             Assert.Equal(2, ctx.MinPlayerSlots);
             Assert.Equal(6, ctx.MaxCombatUnitsPerSlot);
-            // NULL resolver ⇒ ResolveFactionJson's historical slot-0/slot-1 branch, not a re-implementation.
+            // NULL resolver ⇒ ResolveFactionJson's own default branch, not a re-implementation.
             Assert.Null(ctx.FactionJsonResolver);
             Assert.Equal(ctx.Slot0FactionJson, ctx.ResolveFactionJson(0));
             Assert.Equal(ctx.Slot1FactionJson, ctx.ResolveFactionJson(1));
-            Assert.Equal(ctx.Slot1FactionJson, ctx.ResolveFactionJson(2)); // the historical collapse, unchanged
+            // DW-372: slot 2 used to collapse onto slot 1's faction (a silent 1-vs-3 the moment anything declared
+            // more than two slots). The default now alternates, so it is TOTAL; slots 0 and 1 — every scenario an
+            // RTS map declares — are untouched, which is what "reproduces the historical clamps" actually means.
+            Assert.Equal(ctx.Slot0FactionJson, ctx.ResolveFactionJson(2));
         }
 
         [Fact]
@@ -233,16 +245,22 @@ namespace ProjectChimera.Sim.Tests.AI
         // ── Faction-path resolution is TOTAL past two slots ───────────────────
 
         [Fact]
-        public void MirroredPairPolicy_KeepsSlot2OnFactionA_InsteadOfCollapsingOntoSlot1()
+        public void NoShippedPolicy_CollapsesEverySlotPastOneOntoSlot1sFaction()
         {
             var rts = ScenarioTypeRegistry.Apply(Fresh(), ScenarioType.Rts);
             var ffa = ScenarioTypeRegistry.Apply(Fresh(), ScenarioType.FreeForAll);
 
-            // The historical default collapses every slot ≥ 1 onto slot 1's faction; the mirrored policy alternates.
-            Assert.Equal(rts.Slot1FactionJson, rts.ResolveFactionJson(2));
+            // DW-372 closed the last collapsing mapping: the RTS default (a NULL resolver, i.e. the context's own
+            // branch) now alternates exactly like the explicit mirrored policy, so slots 2/3 are no longer silently
+            // fused onto slot 1's faction under EITHER policy. The two agree by construction — RtsDefault delegates
+            // to the same total default — which is the property worth pinning.
+            Assert.Null(rts.FactionJsonResolver);
+            Assert.NotNull(ffa.FactionJsonResolver);
+            for (int slot = 0; slot < 8; slot++)
+                Assert.Equal(ffa.ResolveFactionJson(slot), rts.ResolveFactionJson(slot));
+
             Assert.Equal(ffa.Slot0FactionJson, ffa.ResolveFactionJson(2));
             Assert.Equal(ffa.Slot1FactionJson, ffa.ResolveFactionJson(3));
-            Assert.NotNull(ffa.FactionJsonResolver);
         }
 
         [Fact]
@@ -312,7 +330,7 @@ namespace ProjectChimera.Sim.Tests.AI
             Assert.Equal(6, ctx.MaxCombatUnitsPerSlot);
             Assert.Null(ctx.FactionJsonResolver);
             Assert.Equal(ScenarioType.Rts, ctx.ScenarioType);
-            Assert.Equal(ctx.Slot1FactionJson, ctx.ResolveFactionJson(2));
+            Assert.Equal(ctx.Slot0FactionJson, ctx.ResolveFactionJson(2)); // DW-372: the total default, not a collapse
             Assert.Contains("at least 2 player slots", LLMService.ValidateScenario(Scenario(1, 1), ctx).error);
             Assert.Equal(LLMService.BuildMapSystemPrompt(Fresh()), LLMService.BuildMapSystemPrompt(ctx));
         }
