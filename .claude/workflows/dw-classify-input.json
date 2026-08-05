@@ -1,0 +1,1395 @@
+{
+ "generated": "2026-08-05",
+ "source_triage": ".bmad-loop/runs/20260804-194205-b800/triage.json",
+ "decision_bundles": [
+  {
+   "name": "decision-dw-113",
+   "dw_ids": [
+    "DW-113"
+   ],
+   "source": "decision",
+   "question": "Should the FactionDefiner wizard keep silently discarding in-progress state on every re-open, or add a discard-changes confirmation \u2014 given the current behavior is established as intended by the story's own Design Notes?",
+   "ledger_entry": "### DW-113: `FactionDefinerPanel.Toggle()`/`ResetWizard()` discards in-progress wizard state with no confirmation on re-open\nsource_spec: `_bmad-output/implementation-artifacts/spec-5-5-faction-definer-guided-wizard-flow-validator-gated-save-fr-17-ux-dr40.md`\nlocation: `godot/src/CreationSuite/FactionDefinerPanel.Steps.cs` (`ResetWizard`, called unconditionally by `Toggle()` on every open) \u2014 no \"discard changes?\" prompt.\nreason: summary: since `Key.X` both opens and (per the established sibling-panel `Toggle()` pattern) closes the panel, an accidental second `X` press while mid-edit re-opens a freshly-reset wizard, silently discarding all picks made so far \u2014 by design per this story's own Design Notes (\"the wizard never carries partial state across a close\"), but a real creator-facing usability gap all the same. Surfaced by the Blind Hunter review layer on Story 5.5's diff. Not this story's stated requirement to fix (the spec's Design Notes explicitly establish the no-partial-state-across-close behavior as intended), so left as a UX improvement for a future pass rather than reworked here.\nclosure: if this friction proves real in practice, add a lightweight \"discard unsaved wizard progress?\" confirmation before `ResetWizard()` runs on a re-open that finds non-default draft state (e.g. any `_draft.Units`/`Buildings`/`Research` non-empty, or `Id`/`DisplayName` non-blank). Not urgent; no user complaint yet.\nstatus: open\ndecision: 2026-08-04 Add a discard-changes confirmation prompt when re-opening mid-edit \u2014 Before ResetWizard() on Toggle(), detect in-progress wizard state and show a \"discard changes?\" prompt, only resetting on confirm.\ndecision: 2026-07-20 Add discard confirmation \u2014 Show a 'discard unsaved wizard progress?' confirmation before ResetWizard() runs on a re-open that finds non-default draft state.\ndecision: 2026-07-16 Add discard confirmation \u2014 Show a 'discard unsaved wizard progress?' confirmation before ResetWizard() runs on a re-open that finds non-default draft state.",
+   "has_scoping_note": false
+  },
+  {
+   "name": "decision-dw-204",
+   "dw_ids": [
+    "DW-204"
+   ],
+   "source": "decision",
+   "question": "Reverse Story 2.13 Decision 4 and migrate AiOpponentSystem's Score* methods from float/Math.* to FixedPoint (and de-hardcode the AI building costs), or keep the migration declined?",
+   "ledger_entry": "### DW-204: Float math in the AI utility scorer + hardcoded AI building costs\norigin: migrated from legacy ledger (\"From spec-ai-deadlock-combat-gathering-fix (2026-06-09 review)\"), 2026-07-28\nlocation: godot/src/AI/AiOpponentSystem.cs:34-37,54-55,242-351\nseverity: high\nreason: All Score* methods still use float/Math.* (Story 2.13 Decision 4 explicitly declined the migration); illegal in lockstep MP until converted. Companion: AI building costs are hardcoded `Fixed.FromFloat` constants at :34-37 that must mirror EntityPlacer.BUILDING_COSTS and faction JSON \u2014 no single source. Verified still-live 2026-07-28.\nstatus: open\ndecision: 2026-08-04 Migrate AiOpponentSystem scorer to FixedPoint + single-source the building costs \u2014 Convert all Score* methods off float/Math.* to FixedPoint deterministic math and replace the hardcoded Fixed.FromFloat cost constants (cs:34-37) with a read from EntityPlacer.BUILDING_COSTS / faction JSON, unblocking AI-in-lockstep-MP.\ndecision: 2026-07-28 correct-course \u2014 owned by Story 10.11 (AI float\u2192Fixed); hardcoded-cost data-sourcing added to 10.11's scope note",
+   "has_scoping_note": false
+  },
+  {
+   "name": "decision-dw-504",
+   "dw_ids": [
+    "DW-504"
+   ],
+   "source": "decision",
+   "question": "Should a Modifier (and a Persistent on an ACTIVE ability) carrying a period_effect with period_ticks <= 0 be promoted from a warning to a HARD reject, matching the existing while_alive Persistent rule?",
+   "ledger_entry": "### DW-504: Modifier period_ticks/period_effect mismatches are only warned about, never rejected, unlike their while_alive Persistent siblings\n\norigin: workflow burn-down run, 2026-08-03\nlocation: godot/src/Core/Definitions/AbilityValidator.cs \u2014 ValidatePassiveShape (hard rejects) vs CollectModifierWarnings (warnings)\nseverity: low\nreason: A Persistent carrying a period_effect with period_ticks <= 0 is a HARD reject on a while_alive passive, but the same shape is only a warning for a Modifier, and only a warning for a Persistent on an ACTIVE ability. DW-278 made the asymmetry explicit and diagnosed rather than silent, which was its remit, but it is a deliberate scope boundary and not a finished rule: an author who ignores the warning still ships an inert period. Promoting any of these to errors is a potentially content-breaking gate change that wants its own decision \u2014 and it is currently FREE, because all shipped content is clean today (no shipped Modifier has a period_effect), so the cost only rises as content lands.\nstatus: open\ndecision: 2026-08-04 Promote the period mismatch to a hard reject now while content is clean \u2014 Move the CollectModifierWarnings period_ticks<=0 (and period_ticks>0 with no period_effect) cases into ValidatePassiveShape-style hard rejects for Modifiers and active-ability Persistents, matching the while_alive rule.",
+   "has_scoping_note": false
+  },
+  {
+   "name": "decision-dw-509",
+   "dw_ids": [
+    "DW-509"
+   ],
+   "source": "decision",
+   "question": "Should the trigger_graph channel's spawn_unit (ActionNode) case run the \u00b1map_bounds (CheckCoordFixed) and blocked-cell (CheckNotBlocked) gates that the flat spawn_unit channel already enforces, closing the channel-parity gap?",
+   "ledger_entry": "### DW-509: trigger_graph channel spawn_unit nodes escape both the \u00b1map_bounds and the blocked-cell gates the flat channel enforces\n\norigin: workflow burn-down run, 2026-08-03\nlocation: godot/src/Core/Definitions/ScenarioValidator.cs \u2014 graph semantic pass `case ActionNode ga:` (~lines 896-916) vs the flat pass `if (a.Type == \"spawn_unit\")` (~lines 776-795)\nseverity: medium\nreason: The flat channel runs CheckCoordFixed (\u00b1map_bounds) and CheckNotBlocked (painted blocked cell) on every spawn_unit action; the graph channel's ActionNode case runs only the faction and count gates. A graph-authored spawn_unit can therefore place a unit outside map bounds or onto a blocked cell that the byte-identical flat trigger is rejected for \u2014 a channel-parity gap in the gate, related to but distinct from DW-148 (slope-derived blind spot) and DW-158 (extent ceiling). Closing it could reject existing graph content, so it belongs in its own bundle with its own decision; DW-240 (unvalidated spawn_unit.unit_id) is adjacent and may want to land with it.\nstatus: open\ndecision: 2026-08-04 Add the bounds + blocked-cell gates to the graph channel \u2014 Call CheckCoordFixed and CheckNotBlocked in the ScenarioValidator graph ActionNode spawn_unit case so both channels enforce identical spawn placement gates.",
+   "has_scoping_note": false
+  },
+  {
+   "name": "decision-dw-514",
+   "dw_ids": [
+    "DW-514"
+   ],
+   "source": "decision",
+   "question": "Is the asymmetric sub-unit float noise in alpha_map_01.json's slot bases (and the extra `mage` unit at slot 0) committed editor-drag residue to be cleaned, or intended authored content \u2014 and should the shipped default map and the ScenarioApplier fallback boot be brought back into agreement?",
+   "ledger_entry": "### DW-514: alpha_map_01.json (the shipped default map) carries what looks like committed editor-drag residue in its slot bases, and fields a different army than the fallback boot\n\norigin: workflow burn-down run, 2026-08-03\nlocation: godot/resources/data/scenarios/alpha_map_01.json:13-14,21-22,152-157\nseverity: medium\nreason: Slot bases are base_x -38.88743 / base_z 0.047416687 and base_x 38.93686 / base_z -1.5269203 \u2014 asymmetric sub-unit float noise, i.e. the signature of a MoveStartPosition drag saved into a shipped map rather than an authored value; the map also carries an extra `mage` unit at slot 0 that ScenarioApplier.BuildFallbackMirror does not. Consequence: the fallback boot and the default map are no longer the same scenario, so \"the game is always playable\" and \"the default map\" exercise different starting states. Not fixed during the doc-debt sweep because correcting a shipped map's content is a content decision (and the map's CanonicalModelHash is consumed by the handshake), not a comment edit. The divergence is now documented in BuildFallbackMirror's doc comment and deliberately EXCLUDED from the new FallbackMirror-vs-alpha_map_01 agreement test, which is scoped to the economy/board seed that does agree. Adjacent to DW-463 (that slot-0 mage reaching Play as only 2 of 3 units) \u2014 the two may want to land together.\nstatus: open\ndecision: 2026-08-04 Clean the residue and re-align the map with the fallback mirror \u2014 Reset the slot bases to symmetric authored values and reconcile the roster (drop or intentionally keep the extra mage) so the default map and BuildFallbackMirror describe the same scenario.",
+   "has_scoping_note": false
+  },
+  {
+   "name": "decision-dw-517",
+   "dw_ids": [
+    "DW-517"
+   ],
+   "source": "decision",
+   "question": "Should BuildingSystem's resource-node wiring stay an opt-in SetResourceNodes seam, or be hardened so a future construction can't silently re-open the DW-207 gatherer-slot leak?",
+   "ledger_entry": "### DW-517: BuildingSystem's resource-node seam is opt-in, so any construction that forgets to wire it silently keeps the DW-207 build-interrupt gatherer leak\n\norigin: workflow burn-down run, 2026-08-03\nlocation: godot/src/Economy/BuildingSystem.cs \u2014 SetResourceNodes / QueueWorkerBuild (~line 964)\nseverity: medium\nreason: DW-207's fix releases a gather slot from QueueWorkerBuild through a new SetResourceNodes seam rather than a required constructor parameter \u2014 chosen to avoid churning ~30 existing BuildingSystem ctor call sites and to match the existing SetDslSimEvents / SetCombatEvents pattern. SimulationHost (the only production construction) wires it and MainScene uses _host.BuildSys, so the shipped path is covered, but a future construction that omits the call gets a BuildingSystem whose build-interrupt path silently leaks AssignedGatherers again, exactly as before the fix, with no test failing. A ctor-required ResourceNodeStore would be strictly safer; it is a wider refactor than a deferred-work bundle's blast radius.\nstatus: open\ndecision: 2026-08-04 Add a Tier-1 completeness guard that the production construction path wires SetResourceNodes \u2014 Add a Godot-free test asserting SimulationHost (the production BuildingSystem construction) calls SetResourceNodes with a non-null store, mirroring the EntityWorldClearCompleteness reflection-guard style, so a future construction omitting the wiring fails red.",
+   "has_scoping_note": false
+  },
+  {
+   "name": "decision-dw-543",
+   "dw_ids": [
+    "DW-543"
+   ],
+   "source": "decision",
+   "question": "Should the per-tick fuel ceiling halt a param-reading trigger mid-occurrence when the budget exhausts, or keep letting the in-flight trigger's remaining matching occurrences dispatch?",
+   "ledger_entry": "### DW-543: Per-occurrence trigger dispatch keeps running after fuel exhaustion within one trigger, stretching the whole-trigger-boundary contract across N occurrences\norigin: workflow burn-down run, 2026-08-03\nlocation: godot/src/Core/ScenarioDirector.cs \u2014 EvaluateTriggers, the param-reading occurrence loop\nseverity: low\nreason: FuelExhausted is checked only at the sweep's per-trigger boundary, so a param-reading trigger that exhausts the budget mid-occurrence keeps dispatching its remaining matching occurrences that tick (each a full FireTrigger). Deterministic and arguably 'the in-flight trigger completes', but it stretches the documented whole-trigger-boundary contract across N occurrences of a single trigger, making the per-tick fuel ceiling less honest than it reads. Out of the dsl-runtime-fuel-hardening bundle's scope (named by none of its five entries); left unchanged to avoid altering established dispatch semantics without a recorded owner decision. Closure = an owner decision on whether the boundary is per-trigger or per-occurrence, then make the check match it.\nstatus: open\ndecision: 2026-08-04 Halt at occurrence granularity \u2014 Move the FuelExhausted check inside the occurrence loop so an exhausted budget stops dispatching further occurrences of the same trigger, tightening the per-tick ceiling to match the documented contract.",
+   "has_scoping_note": false
+  },
+  {
+   "name": "decision-dw-545",
+   "dw_ids": [
+    "DW-545"
+   ],
+   "source": "decision",
+   "question": "Should the DW-349 re-queue persistence be extended to custom-event occurrences that DrainWorkList currently abandons on fuel exhaustion?",
+   "ledger_entry": "### DW-545: DrainWorkList still abandons remaining same-tick custom occurrences on fuel exhaustion \u2014 a surviving loss class DW-349 did not close\norigin: workflow burn-down run, 2026-08-03\nlocation: godot/src/Core/ScenarioDirector.cs \u2014 DrainWorkList\nseverity: medium\nreason: Fuel exhaustion during the custom-event drain abandons the remaining same-tick work items (documented as an accepted-loss class in the method doc). DW-349's owner decision scoped the re-queue rail to base EDGE events, so custom occurrences are still silently dropped; extending persistence to them would change DrainWorkList semantics and the cascade-bound analysis and therefore needs its own decision. Filed so the ledger distinguishes this surviving loss class from the one DW-349 closed rather than reading the fuel-drop problem as fully solved. Closure = an owner decision on custom-occurrence persistence, then either extend the rail or record the loss as authored semantics in the DSL reference.\nstatus: open\ndecision: 2026-08-04 Extend re-queue rail to custom occurrences \u2014 Persist fuel-dropped same-tick custom occurrences through the DW-349 re-queue rail and re-validate the cascade-bound analysis so custom events get the same edge-parity as base events.",
+   "has_scoping_note": false
+  },
+  {
+   "name": "decision-dw-548",
+   "dw_ids": [
+    "DW-548"
+   ],
+   "source": "decision",
+   "question": "Should trigger-phase kills (run_effect damage) emit a unit_dies event (on the next tick), accepting the golden re-baseline that follows?",
+   "ledger_entry": "### DW-548: Trigger-phase kills never emit `unit_dies` (pre-existing, now pinned by test)\norigin: workflow burn-down run, 2026-08-03\nlocation: godot/src/Core/ScenarioDirector.cs (Tick order: CollectEvents runs before EvaluateTriggers/DrainWorkList; UpdateSnapshots records the kills dead before the next collect)\nreason: A run_effect damage kill executed by a trigger is invisible to the `unit_dies` source \u2014 the legacy _prevFlags diff never surfaced it and the death-feed-and-kill-guard bundle deliberately preserved that horizon (changing it would move goldens containing kill-triggers). Now pinned by UnitDiesDeathLogTests.TriggerPhaseKill_NeverSurfacesAsUnitDies_AndNeverGhostsAfterRecycle. It matters because a scenario author subscribing `unit_dies` will not see deaths their own triggers cause. Closure = a deliberate decision to emit them (on the next tick) plus the golden re-baseline that follows; out of the DW-367 bundle's scope.\nstatus: open\ndecision: 2026-08-04 Emit trigger-phase kills next tick + re-baseline \u2014 Surface trigger-phase kills to the unit_dies source on the following tick, update the pinning test, and re-baseline the goldens containing kill-triggers.",
+   "has_scoping_note": false
+  },
+  {
+   "name": "decision-dw-549",
+   "dw_ids": [
+    "DW-549"
+   ],
+   "source": "decision",
+   "question": "Should CollectEvents' _prevFlags-alive gate be loosened to emit deaths for slots that were snapshotted dead at end of tick T (trigger-phase kill) whose recycled occupant dies at T+1?",
+   "ledger_entry": "### DW-549: Residual cross-tick recycle edge: a trigger-phase kill at T followed by recycle+die at T+1 still loses the T+1 death\norigin: workflow burn-down run, 2026-08-03\nlocation: godot/src/Core/ScenarioDirector.cs \u2014 CollectEvents (the wasAlive gate on logged DeathLog records)\nreason: The `_prevFlags`-alive gate that keeps DW-367's emission byte-identical outside its defect class also means a slot snapshotted dead at end of tick T (a trigger-phase kill) whose recycled occupant dies at T+1 before the director runs is still suppressed at T+1 \u2014 identical to pre-fix behavior, so no regression, but a surviving loss class the ledger should record rather than reading DW-367 as total. Fixing it requires loosening the gate to emit for never-prev-alive slots, which changes first-tick and same-tick-spawn-then-die behavior and risks golden movement. Closure = a decision on the looser horizon (likely bundled with the trigger-phase-kill emission entry) plus re-baseline.\nstatus: open\ndecision: 2026-08-04 Loosen the alive gate + re-baseline \u2014 Emit unit_dies for never-prev-alive slots so the T+1 recycle-die surfaces, then re-baseline the affected first-tick / same-tick-spawn-then-die goldens.",
+   "has_scoping_note": false
+  },
+  {
+   "name": "decision-dw-561",
+   "dw_ids": [
+    "DW-561"
+   ],
+   "source": "decision",
+   "question": "Should ItemCardPanel.LoadItemsFromDir route through the fail-closed ItemLoader/Validate gate (symmetric with ItemRegistry.LoadFromDirectory), or keep the ungated raw load that lets a creator open and repair a broken def?",
+   "ledger_entry": "### DW-561: ItemCardPanel.LoadItemsFromDir bypasses the fail-closed ItemLoader/Validate gate, admitting hostile or invalid hand-authored defs into the editable set\norigin: workflow burn-down run, 2026-08-03\nlocation: godot/src/CreationSuite/ItemCardPanel.cs:184-185\nreason: The panel deserializes item JSON raw with no Validate gate, so an invalid or hostile hand-authored def enters the editable set silently - asymmetric with ItemRegistry.LoadFromDirectory, which validates and reports drops via onSkipped (DW-455). Bind->Revalidate does badge the offending fields and Save stays disabled, and the one concrete filesystem sink this fed (the _originalId rename-cleanup File.Delete, reachable with an id like '../../evil') was closed under DW-456, so this is not currently fail-open. It is also plausibly deliberate: an ungated load is what lets a creator open and repair a broken file, which a fail-closed loader would make impossible. Closure = a ledger decision on the intended posture - either keep the raw load and document it as the repair path, or route through ItemLoader with a visible skipped-files warning like the registry - rather than a silent asymmetry between the two loaders.\nstatus: open\ndecision: 2026-08-04 Gate the load fail-closed \u2014 Route LoadItemsFromDir through the ItemLoader/Validate gate with onSkipped reporting so invalid/hostile defs are dropped and reported at load, matching ItemRegistry.LoadFromDirectory.",
+   "has_scoping_note": false
+  },
+  {
+   "name": "decision-dw-565",
+   "dw_ids": [
+    "DW-565"
+   ],
+   "source": "decision",
+   "question": "Should InMatchMenuOverlay.OpenSlotPicker consult the background save writer (await idle / read its pending-write set), or is the millisecond slot-metadata staleness documented as accepted?",
+   "ledger_entry": "### DW-565: Slot-picker metadata can be milliseconds stale relative to an in-flight background save write\norigin: workflow burn-down run, 2026-08-03\nlocation: godot/src/UI/InMatchMenuOverlay.cs - OpenSlotPicker\nreason: The picker reads slot header metadata straight from disk when opened, so a picker opened within the few ms a DW-467 background write is still in flight shows the slot\u2019s previous state (e.g. \u201cempty\u201d for a first save). Human timescales make this nearly unhittable and the load path itself is protected by WaitForIdle, so it was recorded as accepted micro-staleness rather than patched - wiring the writer into the overlay would have grown the DW-467 bundle\u2019s surface. Closure = either have OpenSlotPicker consult the writer (await idle or read its pending-write set), or document the staleness as accepted and close.\nstatus: open\ndecision: 2026-08-04 Consult the writer in OpenSlotPicker \u2014 Have OpenSlotPicker await the writer's idle or read its pending-write set before rendering slot metadata, so an in-flight save's slot never displays stale.",
+   "has_scoping_note": false
+  },
+  {
+   "name": "decision-dw-570",
+   "dw_ids": [
+    "DW-570"
+   ],
+   "source": "decision",
+   "question": "Should the deterministic sim flow-field obstacle stamp derive each building's footprint from its definition (matching the navmesh layer) instead of the fixed 3x3-cell block?",
+   "ledger_entry": "### DW-570: Sim-side flow-field obstacle stamp is a fixed 3x3-cell block regardless of building footprint\norigin: workflow burn-down run, 2026-08-03\nlocation: godot/src/Navigation/FlowFieldSystem.cs (BUILDING_HALF_CELLS = 1, MarkBuildingCells)\nreason: The deterministic sim path layer stamps every building as a fixed 3x3 cells (~6x6 world units) no matter its real size, while the navmesh layer now derives footprints from the definition (DW-169). Built-in buildings already vary 4-7 units and custom footprints are now def-derived, so a large custom building routes NavigationServer paths around its true extent while flow-field units still only avoid 6x6 - units clip or crowd large buildings on the sim-steered path. Out of DW-169's scope (that entry targets NavObstacleManager only) and NOT safely fixable on the Godot-free burn-down track: changing the obstacle map alters MovementSystem trajectories -> Position -> SimChecksum, so it needs its own story with deliberate golden re-baseline consideration. No pre-existing ledger entry covers it. Closure = derive MarkBuildingCells' stamp from the same BuildingNavFootprint policy, with a planned SimChecksum fold / golden re-record.\nstatus: open\ndecision: 2026-08-04 Derive the flow-field stamp from the building footprint and re-record goldens \u2014 Change MarkBuildingCells to compute per-building half-cell extents from the definition footprint (mirroring the navmesh derivation), then re-record affected SimChecksum goldens on Windows.",
+   "has_scoping_note": false
+  },
+  {
+   "name": "decision-dw-580",
+   "dw_ids": [
+    "DW-580"
+   ],
+   "source": "decision",
+   "question": "How should a run_effect (EffectActionNode) embedded D1 effect subgraph become editable from the T3 inspector, where NodeFieldCatalog currently returns no fields?",
+   "ledger_entry": "### DW-580: `run_effect` payload remains uneditable in the T3 inspector (embedded D1 effect subgraph)\norigin: workflow burn-down run, 2026-08-03\nlocation: godot/src/Dsl/NodeFieldCatalog.cs (default case) plus the DslGraphEditorPanel inspector placeholder text\nreason: Deliberate scope boundary of the DW-179/DW-195 inspector work, documented in code and surfaced to the author in the UI: an `EffectActionNode`'s embedded D1 effect subgraph is authored via the ability-editor pattern, not via flat per-field rows, so `NodeFieldCatalog` returns no fields for it. Recorded so the DW-179 close-out reads as a stated boundary rather than a silent miss - a creator working purely in T3 still cannot finish a `run_effect` node. Closure = either embed the ability-editor effect surface in the T3 inspector for this kind, or make the placeholder a working deep-link into that editor.\nstatus: open\ndecision: 2026-08-04 Deep-link the placeholder into the ability-editor effect surface \u2014 Make the DslGraphEditorPanel placeholder a working button that opens the existing ability-editor effect surface for this node's embedded subgraph.",
+   "has_scoping_note": false
+  },
+  {
+   "name": "decision-dw-585",
+   "dw_ids": [
+    "DW-585"
+   ],
+   "source": "decision",
+   "question": "How should the manual TriggerEditorPanel variable_comparison CONDITION picker handle PerPlayer Ints, which currently always read player slot 0 (TriggerCondition.Faction defaults to 0 with no slot picker)?",
+   "ledger_entry": "### DW-585: Manual form's `variable_comparison` CONDITION picker offers PerPlayer Ints that always READ player slot 0\n\norigin: workflow burn-down run, 2026-08-03\nlocation: godot/src/CreationSuite/TriggerEditorPanel.cs (RefreshVarPickers / ConditionVariableEligible) + godot/src/Core/ScenarioDirector.cs:1788\nseverity: medium\nreason: The same defect class as DW-345 but on the READ side: the flat `TriggerCondition.Faction` defaults to 0 and the manual form exposes no slot picker, so a PerPlayer condition silently compares Player 1's slot no matter which player the trigger is about. Surfaced while closing DW-345 in the `dsl-var-and-legacy-authoring` bundle and deliberately left: DW-345's recorded closure scoped only the `set_variable` ACTION path, and excluding PerPlayer from the condition picker would remove a today-working (accidentally-slot-0) authoring flow without a recorded owner decision. Closure = either exclude PerPlayer from the condition picker (mirroring DW-345, with the Raw IR hatch named in the empty-picker message) or add a player-slot picker to the condition row - an owner decision, since one of those breaks existing scenarios relying on the slot-0 read.\nstatus: open\ndecision: 2026-08-04 Add a slot picker for PerPlayer conditions \u2014 Add a per-slot selector to the condition picker (mirroring the action-side fix) so a PerPlayer variable_comparison reads the intended player's slot instead of defaulting to 0.",
+   "has_scoping_note": false
+  },
+  {
+   "name": "decision-dw-590",
+   "dw_ids": [
+    "DW-590"
+   ],
+   "source": "decision",
+   "question": "Should the allied-KotH hold path be fixed so a live ally can still win when the lowest-slot (rep) team faction latches LOST via CONCEDE?",
+   "ledger_entry": "### DW-590: Allied-KotH concede by the team REP orphans the rep-keyed hold accumulator\n\norigin: workflow burn-down run, 2026-08-03\nlocation: godot/src/Core/WinConditionSystem.cs - UpdateKothCounters/TeamRep + KothWinningTeam\nseverity: medium\nreason: Pre-existing Story 11.2 x 7.12 interaction, NOT introduced or worsened by the DW-188 bundle: if the lowest-slot (rep) faction of an allied team latches LOST via CONCEDE while a live ally keeps sole-holding the zone, `UpdateKothCounters` keeps accruing hold ticks on the LOST rep (`TeamRep` ignores verdicts) but `KothWinningTeam` only reads verdict-NONE factions, so the ally's hold can never reach the win and the match hangs. Fixing it means touching the hold-race WIN path (e.g. re-repping to the lowest verdict-NONE member, which moves folded `KothHoldTicks` values) - exactly what the DW-188 decision said not to perturb - and concede-with-teams semantics deserve their own decision. The DW-188 wipeout fallback deliberately avoids this class via its team-scoped guard. Closure = a design decision on allied-KotH concede semantics, then a hold-race-path change with an explicit golden/checksum review.\nstatus: open\ndecision: 2026-08-05 Re-rep KothHoldTicks to the lowest verdict-NONE team member \u2014 Make TeamRep/KothWinningTeam agree by re-keying the accumulator to the lowest verdict-NONE ally when the rep latches LOST (moving folded KothHoldTicks), then re-record affected goldens.",
+   "has_scoping_note": false
+  },
+  {
+   "name": "decision-dw-597",
+   "dw_ids": [
+    "DW-597"
+   ],
+   "source": "decision",
+   "question": "Should the minimap keep a remembered 'ghost' dot for a scouted enemy building after its cell re-fogs to EXPLORED, or keep the current spec'd behavior where the dot vanishes immediately?",
+   "ledger_entry": "### DW-597: No last-known-position ghost for enemy buildings once fog re-covers them\norigin: workflow burn-down run, 2026-08-03\nlocation: godot/src/UI/MinimapFogPolicy.cs (ShouldDrawDot)\nseverity: low\nreason: DW-408's prescribed closure explicitly gated enemy dots on FogOfWarSystem.IsVisible, so a scouted enemy base now disappears from the minimap the moment its cell drops back to EXPLORED. Classic RTS convention keeps a remembered building ghost on explored cells, so this reads as a regression in feel even though it is exactly the specified behavior. Closure = a new memory feature (per-cell last-seen building state, drawn dimmed on EXPLORED cells) - deliberately out of the minimap-onscreen-and-fog bundle's scope because it is additive design, not a fix.\nstatus: open\ndecision: 2026-08-05 Build last-seen building memory \u2014 Add per-cell last-seen enemy-building state and draw it dimmed on EXPLORED cells (WC3-style building ghost), separate from the live fog-gated dot.",
+   "has_scoping_note": false
+  },
+  {
+   "name": "decision-dw-603",
+   "dw_ids": [
+    "DW-603"
+   ],
+   "source": "decision",
+   "question": "DW-429's recorded closure (a recording trigger on the offline match-start path) would ship a worse defect \u2014 a zero-command-frame, silently-divergent replay. Do we build a recordable choke point for offline apply-now orders, or close DW-429 as unfixable-as-scoped?",
+   "ledger_entry": "### DW-603: DW-429 is unfixable as ledgered: an offline recording trigger alone writes silently-divergent replays\norigin: workflow burn-down run, 2026-08-04\nlocation: godot/src/Multiplayer/LockstepManager.cs:256-257 (recorder fed ONLY via ApplyMerged/_recordHook, online-only); godot/src/UI/SelectionSystem.cs:724-741 (offline plain Move bypasses OrderApplier entirely via direct world writes); godot/src/UI/CommandCardSystem.cs + SelectionSystem.cs (~16 scattered offline apply-now sites); godot/src/Core/Bootstrap/Phases/WinConditionPhase.cs:267-280 (the offline AuthoredStart Edit->Play seam where the trigger would go)\nseverity: low\nreason: DW-429's recorded closure (\"add a recording trigger on the offline match-start path\") is insufficient and would ship a worse defect than the one it closes: ReplayRecorder.RecordTick is fed exclusively from the online merged stream, so an offline StartRecording would produce a header+trailer .chmr with ZERO command frames - playback re-sims the seed/scenario/AI but the player's army does nothing, a plausible-looking but silently divergent replay, the exact class Story 9.11's fail-closed gates exist to eliminate. A faithful fix needs a recordable choke point for offline apply-now orders (some sites bypass OrderApplier entirely), per-tick per-faction coalescing under the frozen 32-order sub-bundle budget (offline order volume is unbounded, so naive per-order sub-bundles would trip the new DW-432 overflow throw past 8 orders/tick), exact faction stamping (replay apply authorizes against the sub-bundle faction), and in-engine verification - i.e. a bmad-loop story touching src/UI/**, not a Godot-free bundle. DW-429 left status: open. Closure = scope it as a story-sized offline order-capture rail, not a one-line trigger.\nstatus: open\ndecision: 2026-08-05 Build an offline apply-now recordable choke point \u2014 Route all offline apply-now orders (SelectionSystem/CommandCardSystem direct writes) through a single OrderApplier-shaped choke point that feeds ReplayRecorder, then add the offline match-start recording trigger, so offline replays carry real command frames.",
+   "has_scoping_note": false
+  },
+  {
+   "name": "decision-dw-605",
+   "dw_ids": [
+    "DW-605"
+   ],
+   "source": "decision",
+   "question": "Online, a command against >32 units in one tick (e.g. box-select 40 + right-click) silently drops orders 33+ in LockstepManager.EnqueueOrder with no player cue, while the offline apply-now path applies all 40. How should the overflow be handled?",
+   "ledger_entry": "### DW-605: Online lockstep silently drops orders past 32 per tick, so large box-select commands truncate with no player feedback\norigin: workflow burn-down run, 2026-08-04\nlocation: godot/src/Multiplayer/LockstepManager.cs:318-319 (EnqueueOrder: `if (_pendingCount < TickCommandPacket.MAX_ORDERS)` with no else branch and no denial cue)\nseverity: medium\nreason: Found during the DW-429 analysis. Online, a command issued against more than 32 units in one tick (box-select 40 units + right-click = 40 per-unit orders) silently drops orders 33+: those units never move and the player gets no OrderDenied cue, while the offline apply-now path applies all 40. It is deterministic (the drop happens client-side before send) so it is not a desync, but it is a live/offline behavior divergence and a silent-drop UX gap on a very ordinary RTS input. Pre-existing and orthogonal to the replay bundle's scope, so not touched. Closure = either coalesce/queue the overflow into the next tick or surface an explicit denial cue, and pin the chosen behavior with a test.\nstatus: open\ndecision: 2026-08-05 Coalesce/queue overflow across ticks \u2014 Coalesce or queue orders beyond 32 into subsequent ticks so all selected units eventually receive the command, matching offline apply-now completeness.\nscoping-note (owner, 2026-08-05): FIRST establish whether `TickCommandPacket.MAX_ORDERS = 32` caps *orders* or *units* \u2014 it changes the implementation completely and the wrong reading builds the wrong thing. If one right-click over N selected units currently emits N separate order entries, the correct fix is NOT a cross-tick queue: it is emitting ONE order carrying a unit-ID list, which is how lockstep RTS engines normally do this, is smaller, and removes the cap pressure entirely rather than spreading it. Only if the 32 are genuinely distinct commands does cross-tick coalescing apply. Rejected option 1 (OrderDenied cue) deliberately: box-select-and-right-click is the core RTS interaction and 40 units is a small army against a 500-2000 entity target, so a denial cue would fire constantly in normal play \u2014 it labels the defect rather than fixing it, and is not a stable resting place at target scale.",
+   "has_scoping_note": true
+  },
+  {
+   "name": "decision-dw-610",
+   "dw_ids": [
+    "DW-610"
+   ],
+   "source": "decision",
+   "question": "The AI-map-generator boot path (LoadGeneratedScenario) still sizes FactionRegistry from the on-disk default ScenarioPath, not the pending generated scenario, so a generated scenario with a non-2 slot count would mis-span the registry. This is now pinned as-is by RawRegistrySlots_NormalBoot_DefersToTheDiskPeek. Flip the pin and fix, or keep it?",
+   "ledger_entry": "### DW-610: The AI-map-generator boot path still sizes the FactionRegistry from the on-disk ScenarioPath, not the pending generated scenario\norigin: workflow burn-down run, 2026-08-04\nlocation: godot/src/Core/MainScene.cs (LoadGeneratedScenario / _Ready rawSlots) + godot/src/Core/Skirmish/SkirmishBootFlow.cs RawRegistrySlots\nseverity: low\nreason: Story 11.1's PATCH 1 fixed in-memory registry sizing for SKIRMISH starts only. The AI map-generator path (LoadGeneratedScenario \u2192 reload without the start flag) still takes the normal-boot branch and peeks the on-disk default map for its slot count, so a generated scenario with a non-2 slot count would mis-span the FactionRegistry. Pre-existing behavior, now explicitly pinned as-is by `RawRegistrySlots_NormalBoot_DefersToTheDiskPeek` in the DW-459 extraction, so a future fix must flip that pin deliberately. Left unfixed because changing it is a behavior change outside the `skirmish-scenario-and-boot` bundle's DW ids. Closure = route the generated-scenario reload through the same pending-scenario handoff the skirmish start uses so the registry is sized from the scenario actually about to boot.\nstatus: open\ndecision: 2026-08-05 Flip the pin and size from the pending generated scenario \u2014 Route the AI map-generator boot path through the same registry-sizing that reads the pending generated scenario's slot count (as SKIRMISH starts do), and deliberately update RawRegistrySlots_NormalBoot_DefersToTheDiskPeek to the new expectation.",
+   "has_scoping_note": false
+  },
+  {
+   "name": "decision-dw-616",
+   "dw_ids": [
+    "DW-616"
+   ],
+   "source": "decision",
+   "question": "DeathFeed (MAX_DEATHS=256) has the same silent-drop-when-full ring as the pre-DW-469 CombatEventQueue, but a dropped DeathRecord awards no hero XP and XP is folded into SimChecksum, so a >256-death tick is a determinism-visible (self-healing, low-likelihood) feedback loss. Design a capacity/priority fix with golden work, or accept as-is?",
+   "ledger_entry": "### DW-616: DeathFeed has the identical silent-drop-when-full ring with no priority lane, and its drops are checksum-visible\norigin: workflow burn-down run, 2026-08-04\nlocation: godot/src/Combat/DeathFeed.cs:35\nseverity: medium\nreason: `MAX_DEATHS = 256` with the same drop-when-full shape as the pre-DW-469 CombatEventQueue, and its own doc comment says the cap mirrors that queue. Unlike the event queue this one has a FOLDED consequence \u2014 a dropped DeathRecord awards no hero XP, and XP is in SimChecksum \u2014 so a >256-death tick is a (self-healing, low-likelihood) determinism-visible feedback loss. Out of the combat-event-queue-capacity bundle's scope and NOT changed there: any fix moves folded XP and needs its own deliberate golden analysis. Closure = a capacity/priority design for DeathFeed with the golden work costed in.\nstatus: open\ndecision: 2026-08-05 Design capacity/priority fix with golden work costed \u2014 Raise/priority-lane DeathFeed capacity (or make overflow deterministic-and-lossless) and run the deliberate SimChecksum/golden re-baseline analysis for the folded XP change.",
+   "has_scoping_note": false
+  },
+  {
+   "name": "decision-dw-620",
+   "dw_ids": [
+    "DW-620"
+   ],
+   "source": "decision",
+   "question": "Should Invulnerable be damage-immunity (current) or death-immunity? A -MaxHealth debuff that collapses EffectiveMaxHealth to 0 calls DamageResolver.KillEntity directly and still kills an invulnerable unit; self-costs (direct_hp_delta/cost_health) also still spend HP.",
+   "ledger_entry": "### DW-620: Invulnerable does not cover the ModifierStore ceiling-collapse kill or direct_hp_delta/cost_health self-costs\norigin: workflow burn-down run, 2026-08-04\nlocation: godot/src/Effects/ModifierStore.cs:~575 (EffectiveMaxHealth==0 \u2192 DamageResolver.KillEntity); godot/src/Effects/DirectHpDeltaEffect.cs:34; godot/src/Effects/AbilityCastSystem.cs (cost_health debit)\nseverity: medium\nreason: Recorded as an explicit DW-266 scope boundary rather than an oversight: the recorded decision routes Invulnerable to DamageResolver, so it now blocks all DAMAGE, but a -MaxHealth debuff that collapses the ceiling to 0 still kills an invulnerable unit (DW-325's zombie-kill path calls KillEntity directly, bypassing Apply), and self-costs still spend HP. Both are arguably correct (a self-cost is not damage), but the ceiling-collapse case is a genuine open question. Closure = a later balance/status story settles whether Invulnerable is damage-immunity or death-immunity, and pins it with a test either way.\nstatus: open\ndecision: 2026-08-05 Invulnerable = death-immunity: also block the ceiling-collapse KillEntity path \u2014 Guard the ModifierStore EffectiveMaxHealth==0 -> KillEntity path (and any direct KillEntity) against StatusFlags.Invulnerable, leaving self-costs as spend-able, and pin with a test.",
+   "has_scoping_note": false
+  },
+  {
+   "name": "decision-dw-623",
+   "dw_ids": [
+    "DW-623"
+   ],
+   "source": "decision",
+   "question": "When a research completes but EVERY living unit refuses its modifier (all at the 8-slot EffectCaps ceiling), the level is banked and the cost stays spent with no effect and no refund. Refund, block-at-Start, or partial-credit?",
+   "ledger_entry": "### DW-623: A research completion banks the level and keeps the spend even when EVERY living unit refuses its modifier \u2014 the player pays for an upgrade nobody receives\norigin: workflow burn-down run, 2026-08-04\nlocation: godot/src/Economy/ResearchSystem.cs \u2014 CompleteResearch (the living-army application loop) vs StartResearchCommand's _resources.Spend\nseverity: medium\nreason: Cost is spent at Start and CompletedLevels is incremented BEFORE the modifier-application loop runs, so a fully-starved army (every unit at the 8-slot EffectCaps.MaxModifiersPerEntity ceiling) leaves the faction poorer with no effect and no refund. Now VISIBLE \u2014 the DW-83 bundle's new aggregate warn names the refused count \u2014 but deliberately not corrected: choosing between refund / block-the-Start / partial-credit is a design ruling exactly like DW-85's heal ruling, and out of scope for a diagnostic-only bundle whose recorded decision explicitly chose \"diagnostic on refusal\" over the cap and eviction options. Closure = a human ruling on the economic semantics, then the corresponding Start-gate or refund path.\nstatus: open\ndecision: 2026-08-05 Refund the spend when zero units received the modifier \u2014 In CompleteResearch, if the refused count equals the eligible army count (nobody received it), refund _resources.Spend and do not increment CompletedLevels.",
+   "has_scoping_note": false
+  },
+  {
+   "name": "decision-dw-634",
+   "dw_ids": [
+    "DW-634"
+   ],
+   "source": "decision",
+   "question": "A trained worker with a building rally point gets CommandState=Move+MoveTarget=rally, but GatheringSystem.TickIdle re-targets it to the nearest node next tick, so the rally never takes effect for workers. Should workers walk to the rally point first, then gather?",
+   "ledger_entry": "### DW-634: A trained worker's rally point is silently overridden by auto-gather on the next tick\norigin: workflow burn-down run, 2026-08-04\nlocation: godot/src/Economy/BuildingSystem.cs SpawnTrainedUnit rally branch, vs godot/src/Economy/GatheringSystem.cs TickIdle/AssignToNode\nseverity: low\nreason: With the DW-205 residue written, a worker trained from a building that has a rally point still gets CommandState=Move + MoveTarget=rally, but GatheringSystem.TickIdle re-targets MoveTarget to the nearest eligible node on the very next tick, so the rally never takes effect for workers (combat units are unaffected). This matches how a scenario-placed worker behaves and is strictly better than the pre-fix \"never gathers, auto-shoots\" state, but \"walk to the rally point, THEN start gathering\" would need a rally-aware first leg or a new gather state. Design question rather than a defect; closure = decide whether worker rally should be honored and, if so, add the first-leg state.\nstatus: open\ndecision: 2026-08-05 Honor the rally point first, then auto-gather \u2014 Add a rally-aware first-leg gather state so TickIdle/AssignToNode does not re-target a worker until it has reached its rally MoveTarget.\nscoping-note (owner, 2026-08-05): implement the MINIMAL shape \u2014 do NOT build rally-to-resource targeting or a new gather state machine. It is sufficient that the idle-gather sweep stops re-targeting a worker while it still has an outstanding rally MoveTarget. On arrival the worker goes idle and the EXISTING nearest-node logic picks the node next to the rally point, which is the mine the player rallied to. The desired behaviour falls out of the current code once the sweep stops firing too early. Rationale for building at all: an explicit player order must beat automatic behaviour, and the current state means you cannot direct new workers to a specific resource at production time (rallying the town hall to a far mine or a new expansion is standard macro in WC3/SC2/AoE). Note this is sim code and may move Position/SimChecksum \u2014 if it does, it joins the golden re-baseline batch.",
+   "has_scoping_note": true
+  },
+  {
+   "name": "decision-dw-636",
+   "dw_ids": [
+    "DW-636"
+   ],
+   "source": "decision",
+   "question": "ScoreBuildSecondBarracks is gated on the supply expansion (if (!s.HasCCExpansion) return 0f), coupling AI production growth to a supply device. Decouple the gate onto ore/army demand?",
+   "ledger_entry": "### DW-636: ScoreBuildSecondBarracks is gated on the SUPPLY expansion, coupling AI production growth to a supply device\norigin: workflow burn-down run, 2026-08-04\nlocation: godot/src/AI/AiOpponentSystem.cs \u2014 ScoreBuildSecondBarracks (`if (!s.HasCCExpansion) return 0f;`)\nseverity: medium\nreason: The AI can only ever build a second Barracks after it has committed the supply-expansion CommandCenter, wiring an economic/production decision to a supply-pressure trigger. That coupling is what forced DW-63's fix to DEPRIORITIZE the ungated expansion (flat 0.25) rather than hard-skip it \u2014 a hard skip would permanently cost an ungated-scenario AI its second production building. Closure = decouple the second-Barracks gate onto ore/army demand instead of HasCCExpansion, then revisit whether ScoreExpandSupply can return 0 when gating is disabled. This is a real AI-tuning change with golden implications.\nstatus: open\ndecision: 2026-08-05 Decouple second-Barracks gate onto ore/army demand \u2014 Replace the HasCCExpansion gate in ScoreBuildSecondBarracks with an ore/army-demand score, then revisit whether ScoreExpandSupply can return 0 when gating is disabled; re-record the AiActive golden.",
+   "has_scoping_note": false
+  },
+  {
+   "name": "decision-dw-652",
+   "dw_ids": [
+    "DW-652"
+   ],
+   "source": "decision",
+   "question": "Should an unresolvable pre-placed unit_id (unknown tag dropped post-load, or a missing WorkerId fallback) reject the WHOLE scenario and boot the fallback map, or drop just that entity as before?",
+   "ledger_entry": "### DW-652: Fail-closed escalation: an unresolvable pre-placed unit_id now rejects the WHOLE scenario, not just that unit\norigin: workflow burn-down run, 2026-08-04\nlocation: godot/src/Core/Definitions/ScenarioValidator.cs:384-395 (pre-placed units) + godot/src/Core/Bootstrap/Phases/ScenarioLoadPhase.cs:315-330\nseverity: medium\nreason: By design (DW-240's stated intent) but never given a recorded human decision - decisions.json carries no DW-240 entry. Two concrete paths can now hit a full reject where they previously lost one entity: (1) SlotFactionResolver runs UnitTagValidator.ValidateAndDropUnits AFTER load, so a shipped unit carrying an unknown tag is DROPPED from the roster and a scenario naming it now fails the gate and boots the fallback map instead of merely missing that unit; (2) ScenarioApplier.WorkerIdForSlot (ScenarioApplier.cs:508-515) falls back to the literal id 'worker' when a threaded faction declares no Worker-category unit, so the fallback MIRROR could itself be rejected and ScenarioLoadPhase.ApplyFallbackThroughApplier would then apply NOTHING (empty world). Neither is reachable with the shipped alpha/beta factions (both tag-clean and Worker-complete, and FactionValidator.ValidateComplete guarantees a Worker for any selectable faction), so nothing regresses today. Closure = a recorded decision on the fail-closed posture plus hardening WorkerIdForSlot's degenerate fallback.\nstatus: open\ndecision: 2026-08-05 Revert to drop-one for the two named paths \u2014 Downgrade the pre-placed unit_id gate from whole-scenario reject to a per-entity drop (with a warning) for the tag-dropped-unit and missing-WorkerId-fallback cases, keeping fail-closed only for genuinely malformed references.",
+   "has_scoping_note": false
+  },
+  {
+   "name": "decision-dw-658",
+   "dw_ids": [
+    "DW-658"
+   ],
+   "source": "decision",
+   "question": "When a producer is razed mid-training, should its paid-for queued orders be REFUNDED (WC3-style) and its ProductionQueue/timer cleared at Destroy time \u2014 accepting a SimChecksum/golden re-baseline?",
+   "ledger_entry": "### DW-658: BuildingStore.Destroy leaves the razed producer's ProductionQueue slots and ProductionTimer populated - no refund, and phantom orders stay in the checksum fold\norigin: workflow burn-down run, 2026-08-04\nlocation: godot/src/Core/BuildingStore.cs:355-362 (Destroy) vs godot/src/Core/SimChecksum.cs:406-431 (the fold runs 0..Count with no Alive filter)\nseverity: medium\nreason: Destroy only flips Alive[id] and pushes the free-list entry; the depth-5 queue and head timer are zeroed solely on the next Create of that slot. Two consequences. (1) A producer razed mid-training silently forfeits every paid-for queued order with no refund - WC3 refunds them, and the codebase already has the exact re-resolve-from-def refund machinery in CancelTrainCommand. (2) The dead slot's stale queue bytes and timer stay in the SimChecksum fold until the slot is recycled; deterministic on every peer (Destroy is deterministic and Create zeroes on recycle) so it is not a desync, but the folded state carries phantom orders. Out of the production-queue-correctness bundle's scope: it is a destroy-path refund POLICY decision, not one of the three queue-correctness defects that bundle named, and adding a refund on destroy would move ResourceStore.Ore (a folded value) on a path goldens can reach - it needs its own isolated story. DW-478's QueuedSupply already skips dead buildings explicitly, so the supply reservation is unaffected.\nstatus: open\ndecision: 2026-08-05 Refund + clear queue at Destroy, re-baseline \u2014 In BuildingStore.Destroy, refund the razed producer's queued orders via the CancelTrainCommand re-resolve-from-def path and zero the ProductionQueue slots + ProductionTimer immediately, then re-record the affected SimChecksum goldens.",
+   "has_scoping_note": false
+  }
+ ],
+ "triage_bundles": [
+  {
+   "name": "commandcard-shop-buy",
+   "dw_ids": [
+    "DW-49"
+   ],
+   "intent": "In CommandCardSystem.RefreshShopButtons, consult the resolved buyer's free-slot state (and consider any in-range owned hero with room, not just the single nearest) before enabling the Buy button, so an affordable, in-range Buy can't light up yet get rejected by BuyItemCommand's free-slot guard."
+  },
+  {
+   "name": "item-icon-rendering",
+   "dw_ids": [
+    "DW-50"
+   ],
+   "intent": "Render ItemDefinition.Icon textures in the 6-slot inventory grid, shop Buy buttons, and hero-picker slot card via Button.Icon/TextureRect (CommandCardSystem currently sets Text only, 0 Texture usages confirmed), satisfying AC4's icon requirement."
+  },
+  {
+   "name": "editor-snapshot-hardening",
+   "dw_ids": [
+    "DW-54"
+   ],
+   "intent": "Make UnitSnapshot/RestoreUnit resilient to a def being reloaded/replaced in place during a long editor session \u2014 capture the resolved AbilityIndices (or revalidate resolution) at restore time instead of assuming the pinned UnitDefinition reference stays alive and unmutated."
+  },
+  {
+   "name": "buildingtype-custom-prereq",
+   "dw_ids": [
+    "DW-57"
+   ],
+   "intent": "Fix BuildingSystem.GetBuildingPlacePrereq / EntityPlacer.PlaceBuilding prereq-lookup so BuildingType.Custom resolves as a prerequisite SOURCE (today TechTreeChecker.BuildingTypeId(Custom) returns \"\" and GetBuilding(\"\") never matches), e.g. resolve custom buildings by their def id rather than the empty enum-id."
+  },
+  {
+   "name": "factiondefinition-loader-hardening",
+   "dw_ids": [
+    "DW-62"
+   ],
+   "intent": "Wrap FactionDefinition.LoadFromFile's JsonSerializer.Deserialize (line ~245) in try/catch so a malformed JSON value yields a located, aggregated error consistent with the ResourceCost/TechTree/BuildingDefinition validators instead of a raw unhandled JsonException."
+  },
+  {
+   "name": "creationsuite-undo-history",
+   "dw_ids": [
+    "DW-64",
+    "DW-65"
+   ],
+   "intent": "In BuildingCardPanel.Edit.cs and UnitCardPanel.Edit.cs SaveFromRawPane, clear (or reconcile) _history when the bound definition object is replaced wholesale, so a Ctrl+Z after a raw-JSON Save doesn't silently no-op against dangling object-identity closures. In BuildingCardPanel.LoadFactionFromPath and UnitCardPanel.LoadFactionFromPath, clear _history when swapping in a new FactionDefinition/list so undo entries from a previously loaded faction don't become dangling references (fix alongside DW-64)."
+  },
+  {
+   "name": "creationsuite-required-field-commit",
+   "dw_ids": [
+    "DW-71"
+   ],
+   "intent": "In BuildingCardPanel.Edit.cs AddRequiredNumFloat/AddRequiredNumInt, commit the field only on an actual value change (track value at focus-enter and compare at focus-leave) so merely tabbing into an unauthored required field doesn't silently author it at 0."
+  },
+  {
+   "name": "creationsuite-panel-lifecycle",
+   "dw_ids": [
+    "DW-74"
+   ],
+   "intent": "Add a shared unsubscribe convention (e.g. an _ExitTree override) for GameState.ModeChanged across TechTreePanel, BuildingCardPanel, UnitCardPanel, and TriggerEditorPanel in one pass, removing the dangling-handler risk if a panel is ever freed independently of GameState."
+  },
+  {
+   "name": "techtreepanel-undo",
+   "dw_ids": [
+    "DW-75"
+   ],
+   "intent": "Extend the existing per-editor undo-history pattern (used by BuildingCardPanel/UnitCardPanel) to TechTreePanel edge add/remove so an accidental drag-to-disconnect has a Ctrl+Z path."
+  },
+  {
+   "name": "creationsuite-canvaslayer-registry",
+   "dw_ids": [
+    "DW-76"
+   ],
+   "intent": "Centralize all CreationSuite panel CanvasLayer numbers (TechTreePanel Layer=9, several panels at 11/13) into one shared constants class in a single pass covering every panel, replacing the ad-hoc inline-comment layering."
+  },
+  {
+   "name": "entityplacer-resourcenode-authoring",
+   "dw_ids": [
+    "DW-77"
+   ],
+   "intent": "Update EntityPlacer.PlaceResourceNode (line ~917, still calling the legacy 4-arg ResourceNodeStore.Create) to author the Story 4.7 fields (collection_model/resource_type/requires_structure/owner_slot/income_period_ticks) so the in-app placement tool can reach the capability, not just hand-edited scenario JSON."
+  },
+  {
+   "name": "faction-roundtrip-tests",
+   "dw_ids": [
+    "DW-82"
+   ],
+   "intent": "Add a BuildingDefinition.Prerequisites round-trip test in FactionWriteRoundTripTests.cs alongside the existing AvailableResearch assertion, giving Story 4.8's parity claim a shared, comparable check."
+  },
+  {
+   "name": "commandcard-research-gate",
+   "dw_ids": [
+    "DW-91"
+   ],
+   "intent": "Fix CommandCardSystem research gating so faction-wide research state is not suppressed per-building: keep the in-progress Cancel affordance visible even when the selected building offers no research (offered.Length==0 early-return at ~:483 currently hides _researchCancelBtn), and show a producer building's AvailableResearch instead of gating it out under !canProduce."
+  },
+  {
+   "name": "creationsuite-research-view-sync",
+   "dw_ids": [
+    "DW-92"
+   ],
+   "intent": "Add change-notification between ResearchCardPanel (DoCreate/DoDelete/DoDuplicate mutating _faction.Research) and TechTreePanel so a research created/deleted in the inspector triggers RebuildGraph rather than leaving a stale node/edges until the next R toggle."
+  },
+  {
+   "name": "research-ui-test-coverage",
+   "dw_ids": [
+    "DW-93"
+   ],
+   "intent": "Add unit tests for the pure logic: CommandCardSystem.RefreshResearchButtons/FirstUnmetResearchPrereq dim predicate (pinned to agree with ResearchSystem.StartResearchCommand's gate chain) and SelectionSystem.BuildResearchUpgradeSummary/AppendUpgradePart skip/order/sign/round-to-zero math."
+  },
+  {
+   "name": "factiondefiner-wizard-hardening",
+   "dw_ids": [
+    "DW-112"
+   ],
+   "intent": "In FactionDefinerWizardCore.TryFinish, catch the File.Move(overwrite:false) collision (IOException) specifically and surface the same friendly \"already exists, choose a different id\" message on the id field as the earlier File.Exists check, closing the TOCTOU UX inconsistency (lines ~351/366)."
+  },
+  {
+   "name": "factiondefiner-steproute-hardening",
+   "dw_ids": [
+    "DW-114",
+    "DW-116"
+   ],
+   "intent": "Add explicit StepForError switch cases for the signature_mechanic*/hero_unit_id/starting_ore/starting_crystal field paths in FactionDefinerWizardCore so that if FactionValidator is ever extended to emit them, the located error routes to a sensible step instead of silently defaulting to BuildingsTech. Add a raw_json case to FactionDefinerWizardCore.StepForError so a TryFinishFromRawJson parse-failure maps to a correct step instead of the BuildingsTech sniff-default, for any future caller that consumes result.Step (fix alongside DW-114)."
+  },
+  {
+   "name": "factiondefiner-finish-diagnostics",
+   "dw_ids": [
+    "DW-118",
+    "DW-326"
+   ],
+   "intent": "In FactionDefinerPanel.OnFinishPressed (FactionDefinerPanel.Steps.cs:324), call ClearStaleHeroReference(_draft) and check its bool return BEFORE TryFinish; when true, show a status note ('hero selection was cleared \u2014 the picked unit is no longer in your roster') then proceed. The 'inform and proceed' design decision is already recorded in the ledger (2026-07-20), so no further human choice is needed. In FactionDefinerPanel.OnFinishPressed (FactionDefinerPanel.Steps.cs:330), pass an onSkipped callback to AbilityRegistry.LoadFromDirectory (the param already exists, AbilityRegistry.cs:71) so an ability file that fails AbilityValidator is reported as an ability-file problem rather than silently dropped and then surfaced by the signature-resolution gate as a misleading faction-blocking 'does not resolve to any loaded ability' error (DW-107's root behavior)."
+  },
+  {
+   "name": "scenario-load-hardening",
+   "dw_ids": [
+    "DW-123"
+   ],
+   "intent": "Wrap the FactionDefinition.LoadFromFile(abs) call in SlotFactionResolver.Resolve (godot/src/Core/Bootstrap/Phases/SlotFactionResolver.cs:48) in a try/catch for the InvalidOperationException LoadFromFile throws on a lenient-Validate failure, so a hand-edited/corrupted scenario-assigned faction file degrades to a graceful 'this slot's faction is broken' fallback (keep the seeded default) instead of crashing the whole scenario load / MainScene._Ready. Confirmed still unguarded."
+  },
+  {
+   "name": "onboarding-panel-hardening",
+   "dw_ids": [
+    "DW-129",
+    "DW-130",
+    "DW-131",
+    "DW-135"
+   ],
+   "intent": "OnboardingPanel's CanvasLayer (OnboardingPanel.cs:157, Layer = 14) collides with AbilityEditorPanel's (AbilityEditorPanel.cs:152, same 14). Because OnboardingPanel is non-modal and stays open while a creator drives other panels, give it a distinct layer (deconflict from Ability Editor while staying below Settings=15) so simultaneous visibility has a defined stacking order. Both confirmed still 14. Add an _UnhandledInput Escape handler to OnboardingPanel that dismisses it and calls GetViewport().SetInputAsHandled() so the event does not also reach MainScene's global Escape->Settings toggle, matching sibling Creation Suite panels and avoiding the double-fire the reason flags. Thread the template-unit id StartFromTemplate created in step 1 through onboarding steps 2/3 (BuildTuneStatsStep/BuildPromoteHeroStep) so OpenUnitCardPanel re-binds to that specific unit rather than trusting whatever UnitCardPanel currently has bound, preventing step 2/3 instructions from silently applying to a different unit. Handle the residual dead-end where the boot-time faction lacks all three CuratedTemplateUnits (worker/infantry/archer): detect at step 1 and either surface a clear message and offer the faction's actual unit ids, or fall the step back to a create-blank path, so a user-authored faction doesn't leave all three template buttons hitting the 'Couldn't find template' warning with step 1 creating nothing."
+  },
+  {
+   "name": "unitcardpanel-ultimate-sync",
+   "dw_ids": [
+    "DW-133"
+   ],
+   "intent": "In UnitCardPanel.Edit.cs, make OnSegmentChanged (~line 207) rebuild (or re-sync the Selected index of) the Simple-mode and Advanced-mode Ultimate OptionButtons \u2014 both bound to def.Hero.UltimateAbility \u2014 instead of only toggling _advancedHost.Visible, so switching segments never shows a divergent stale selection."
+  },
+  {
+   "name": "settings-serializer-test-fidelity",
+   "dw_ids": [
+    "DW-134"
+   ],
+   "intent": "Extract SettingsManager's _jsonOpts JsonSerializerOptions into a Godot-free static (e.g. a SettingsSerializerOptions helper in sim/definitions) that both SettingsManager and SettingsDataRoundTripTests reference, so the round-trip test exercises the real serializer options and any future naming policy/converter divergence is caught."
+  },
+  {
+   "name": "content-import-hardening",
+   "dw_ids": [
+    "DW-145"
+   ],
+   "intent": "In WinConditionPhase.DoImport (godot/src/Core/Bootstrap/Phases/WinConditionPhase.cs, the `if (result.TerrainFiles.Count > 0)` at ~line 602), add an else branch that clears the imported scenario's TerrainRef to \"\" and re-saves, so importing a package that bundles zero terrain files doesn't leave a stale author-local TerrainRef causing a repeated 'TerrainRef folder missing' PrintErr on every load. Confirmed no else today."
+  },
+  {
+   "name": "pathability-shared-cell-mapping",
+   "dw_ids": [
+    "DW-150"
+   ],
+   "intent": "Route PathabilityTool's private WorldToCell/CellCenter (godot/src/CreationSuite/PathabilityTool.cs) through FlowField's shared cell-mapping methods (or a shared Godot-free helper) so editor-painted cell == sim-blocked cell is pinned by construction and a future change to the sim mapping can't silently desync what the editor paints from what the sim blocks. They agree today."
+  },
+  {
+   "name": "editor-history-test-fidelity",
+   "dw_ids": [
+    "DW-155"
+   ],
+   "intent": "Extract EntityPlacer's group-op composition (MoveSelection/PasteClipboard/DeleteSelection wrapping Push/Undo/Redo) into a Godot-free helper so EditorHistoryTests.GroupOp_IsOneUndoStep exercises the real composition instead of a local HashSet-proxy closure, closing the gap where the actual one-op-one-undo-step behavior is unpinned by Tier-1."
+  },
+  {
+   "name": "contentpackager-roundtrip-tests",
+   "dw_ids": [
+    "DW-156"
+   ],
+   "intent": "Add a ContentPackager .chimera.zip round-trip test covering props/cameras/water (pack then import, assert the ScenarioData survives) so the exact AC 'package/import' surface is exercised, not just the one-level-lower ScenarioSerializer JSON round-trip that ScenarioDataPropsCamerasWaterTests covers today."
+  },
+  {
+   "name": "mapbounds-runtime-wiring",
+   "dw_ids": [
+    "DW-165"
+   ],
+   "intent": "Wire ScenarioData.MapBounds into CameraPhase's camera pan-limits (godot/src/Core/CameraPhase.cs) so a chosen smaller map size restricts the runtime camera footprint, not just placement/tools/hash. Optionally add a per-size NavMesh clamp in NavigationPhase. Corrects the spec's inaccurate 'already wired to camera/NavMesh' Design-Notes claim."
+  },
+  {
+   "name": "minimap-preview-render-cleanup",
+   "dw_ids": [
+    "DW-166"
+   ],
+   "intent": "In MinimapPreviewRenderer (renders the caller's live edit-mode World3D), hide editor-only layers/gizmos (start-position flag poles, placement ghost, active overlays) for the one-shot top-down render \u2014 via a cull mask or visibility toggle \u2014 so preview.png consumed by skirmish setup / MP lobby / content browser is a clean map image, not one with editor gizmos."
+  },
+  {
+   "name": "buildingstore-single-mapper",
+   "dw_ids": [
+    "DW-172"
+   ],
+   "intent": "Extract one BuildingStore.CreateFromDefinition(def, pos, faction, id) helper that maps a BuildingDefinition's Hp/SupplyBonus/ConstructionTime/shop/revive into Create, and call it from both BuildingSystem.PlaceBuildingDirectById and EntityPlacer.CreateEditorBuilding (which already diverge cosmetically: ShopStock nullable vs Array.Empty), eliminating the hand-copied spawn-path duplication the A2 single-mapper rule targets. Also unlocks the DW-173 fix."
+  },
+  {
+   "name": "scenariodata-aliasing-test",
+   "dw_ids": [
+    "DW-328"
+   ],
+   "intent": "Add a Godot-free Tier-1 test that pins the a0c8d51 root mechanism: attaching a persistence manifest to one map's ScenarioData instance must not bleed into a different map's save (instance-aliasing prevention), by exercising the manifest-attach data path directly rather than only the post-commit all-shipped guard (Story 14.5's CI net). If needed, extract the attach logic from the Godot-Node-bound PersistenceManifestPanel.OnSavePressed seam into a Godot-free unit for the assertion."
+  },
+  {
+   "name": "mapwritegate-slotfactiondefs",
+   "dw_ids": [
+    "DW-330"
+   ],
+   "intent": "In the Story 14.7 export gate, re-resolve/guarantee SceneContext.SlotFactionDefs against the current _ctx.Scenario (via the same ScenarioLoadPhase.ResolveSlotFactionDefs path used at load/apply) before forwarding to ScenarioValidator.Validate, so export validates against fresh, non-null defs and cannot false-pass a stale/unloadable custom-faction map. SlotFactionDefs is declared `= null!` at SceneContext.cs:59 and is only populated at load/apply, never re-guaranteed at export time."
+  },
+  {
+   "name": "mainscene-terrain-reset",
+   "dw_ids": [
+    "DW-332"
+   ],
+   "intent": "In MainScene.ResetToAuthoredStart (MainScene.cs:~1645), re-derive slope-blocked cells from the LIVE terrain rather than the stale boot _applier.ElevationGrid so an F5 Edit->Play reset rebuilds the static PathabilityGrid at uniform freshness with the painted/prop/water layers; today a sculpted cliff is honored by the other layers but not by slope_auto_block until a full reload."
+  },
+  {
+   "name": "triggergraph-determinism-hardening",
+   "dw_ids": [
+    "DW-337"
+   ],
+   "intent": "Replace ExecEdge/DataEdge.GetHashCode's process-seed-randomized HashCode.Combine with a deterministic hash (and/or add a code comment forbidding enumeration of hash-based edge sets), pre-empting the latent determinism trap before Story 7.3+ graph editing/dedup enumerates a HashSet/Dictionary of edges. Safe today (all ordering goes through IComparable.CompareTo) but cheap to close."
+  },
+  {
+   "name": "scenariovariable-point-z",
+   "dw_ids": [
+    "DW-344"
+   ],
+   "intent": "Give ScenarioVariable a Z/second-raw lane and thread it through ScenarioDirector.ScopeInitialRaw (which currently maps a declared Point initial to raw0 only) so a Point variable loaded from an authored scenario populates Raw1/Z; the two-raw DslVarDecl ctor already exists but is reachable only from tests, leaving distance(p,q) degenerating to |dX| on the real load path."
+  },
+  {
+   "name": "scenarioloadphase-fallback-inengine-veri",
+   "dw_ids": [
+    "DW-355"
+   ],
+   "intent": "Run an in-engine godot-verify pass proving the boot-time 'invalid scenario -> validated fallback substitution' routing in ScenarioLoadPhase/MainScene.ResetToAuthoredStart actually boots the fallback world (not an empty world) on a deliberately-corrupt scenario, and record the block; the routing is <Compile Remove>d from the Tier-1 assembly (SimSources.props) so no automated test exercises it. Godot-coupled (bmad-loop in-engine gate)."
+  },
+  {
+   "name": "canonicalmodelhash-perf",
+   "dw_ids": [
+    "DW-356"
+   ],
+   "intent": "Reuse the TriggerGraphJson that ScenarioDirector.LoadScenario already parses instead of re-parsing each node into a transient JsonDocument inside TriggerGraph.FromJson/NodeBaseJsonConverter during the v8 CanonicalModelHash cold compute (~77ms of a ~96ms pathological 4000-node worst case). Not a live stall (MainScene.cs:479-480 computes the wire hash once at apply and caches it), so this is a pure cold-path optimization."
+  },
+  {
+   "name": "customuibuilder-wiring",
+   "dw_ids": [
+    "DW-362"
+   ],
+   "intent": "Wire CustomUiBuilderPanel (godot/src/CreationSuite/CustomUiBuilderPanel.cs, confirmed zero external references) into a bootstrap phase/editor menu + hotkey per the editor keymap policy so it is reachable; add the type-filtering to the bind dropdown its XML doc already claims; and allow nesting a widget inside a Panel (AddWidget currently only appends roots to _tree.Widgets). Godot-coupled (CreationSuite)."
+  },
+  {
+   "name": "widgetformat-tests",
+   "dw_ids": [
+    "DW-363"
+   ],
+   "intent": "Add unit coverage for godot/src/UI/WidgetFormat.cs (MmSs Fixed-as-seconds vs Int-as-ticks + ticksPerSecond division + negative->0:00 clamp; Fraction divide-by-zero guard + [0,1] clamp; Number Fixed 16.16 trimmed decimal). The logic is pure/Godot-free even though it lives in src/UI which ProjectChimera.Sim.Tests does not reference; include the source in the Tier-1 test compile so its non-obvious branching is regression-netted."
+  },
+  {
+   "name": "customui-writerail-inengine-verify",
+   "dw_ids": [
+    "DW-177"
+   ],
+   "intent": "In-engine godot-verify of the Godot-coupled write rail: CustomUiBridge resolves a button EventName to the custom-event registry index and extracts arg0/arg1 from ArgRaws before EnqueueDslEvent, and the DSL sink is wired onto LockstepManager/ReplayPlayer in MatchLifecycleController/Bootstrap. These are <Compile Remove>d from Tier-1 (SimSources.props); a name->index mismatch, arg off-by-one, or dropped sink is only catchable in-engine. Godot-coupled (bmad-loop)."
+  },
+  {
+   "name": "dslgrapheditor-inengine-verify",
+   "dw_ids": [
+    "DW-180",
+    "DW-182"
+   ],
+   "intent": "Execute the Story 7.10 node-graph-editor in-engine godot-verify checklist for the GraphEdit/GraphNode presentation in DslGraphEditorPanel (drag/wire/badge interactions), which is excluded from the SimSources.props Tier-1 set and was covered only by an open/add-node/save smoke test. Godot-coupled (bmad-loop in-engine gate). Add the 7.10 follow-up-pass in-engine verify steps not covered by the DW-180 checklist: reopen edit-preservation, invalid/cycle save-status, pre-draw cycle+type rejection, and the T2->T3 occlusion fix in DslGraphEditorPanel/TriggerEditorPanel. Decision logic is Tier-1-tested but the panel integration is build-verified only. Godot-coupled (bmad-loop in-engine gate)."
+  },
+  {
+   "name": "secretstore-inengine-verify",
+   "dw_ids": [
+    "DW-369"
+   ],
+   "intent": "In-engine smoke verifying the bootstrap key-resolution wiring: SettingsPhase constructs the secret store before TriggerEditorPhase/ContentBrowserPhase read it, _ctx.SecretStore is non-null at read, and a stored key actually reaches LLMService/ModIoService. Bootstrap/Phases/** is excluded from Tier-1 (SimSources.props); 8.1 covered id typos via SecretIds but not phase->service delivery. Godot-coupled (bmad-loop)."
+  },
+  {
+   "name": "llmservice-mapprompt-slots",
+   "dw_ids": [
+    "DW-372"
+   ],
+   "intent": "Finish the map-clamp parameterization for non-2-slot scenarios: parameterize the SCHEMA and EXAMPLE blocks of BuildMapSystemPrompt (godot/src/AI/LLMService.cs ~688-722, still hardcoding two player_slots) to MinPlayerSlots so a MinPlayerSlots>2 caller isn't told 'at least 4' while shown 2; generalize FactionJsonResolver so slots >=1 don't all collapse to Slot1FactionJson; and add lower-bound guards on MinPlayerSlots/MaxCombatUnitsPerSlot."
+  },
+  {
+   "name": "llmservice-lifecycle",
+   "dw_ids": [
+    "DW-375"
+   ],
+   "intent": "Make LLMService IDisposable and dispose its owned HttpClient/HttpClientHandler (8.3 http:null path) plus the per-call _cts/_mapCts CancellationTokenSources; today each Generate press reassigns a CTS without disposing the prior one and the service has no Dispose. Low impact (long-lived bootstrap singleton) but a bounded leak."
+  },
+  {
+   "name": "aidraft-panel-glue",
+   "dw_ids": [
+    "DW-376",
+    "DW-379"
+   ],
+   "intent": "Wrap FactionDefinerPanel.OnAiDraftComplete's `_draft = def;` overwrite in an undo entry (or a confirmation prompt) mirroring UnitCardPanel.OnAiDraftComplete's PushHistory(redo/undo), so an accidental Generate on a populated faction wizard no longer irreversibly destroys manual progress. Godot-coupled (CreationSuite). Extract the six near-identical AI-card methods (BuildAiCard, RefreshAvailability, OnAiGeneratePressed, OnAiDraftComplete, SetAiBusy, ShowAiStatus) duplicated across UnitCardPanel/AbilityEditorPanel/FactionDefinerPanel (which already drifted, per the ShowAiStatus color bug) into a shared AiDraftCard control; also record that no unit/ability/hero/faction schema has a lore/description field, so the intent's 'lore' promise is currently unschema'd. Godot-coupled (CreationSuite)."
+  },
+  {
+   "name": "llmservice-cancellation",
+   "dw_ids": [
+    "DW-377",
+    "DW-381"
+   ],
+   "intent": "Wire the Story 8.4 per-kind cancellation: call LLMService.CancelDrafts() (defined at LLMService.cs:865, confirmed zero callers) on panel Close, and have RunDraftAsync enqueue a cancellation callback so SetAiBusy(false) runs on cancel (today it swallows OperationCanceledException with no enqueue, so the spinner sticks and Generate stays disabled on reopen); guard panels against draining a late callback after Close. Harden the per-kind cancellation apparatus (_balanceCts and the 8.4 siblings _unitCts/_abilityCts/_heroCts/_factionCts): a provider that returns normally just after cancel still enqueues onComplete and can repaint rows/forms over a newer run, so gate the enqueue on token.IsCancellationRequested; also dispose the superseded CTS objects. Same fix family as DW-377; the balance flow now duplicates the pre-existing draft-flow pattern."
+  },
+  {
+   "name": "aidraft-ui-inengine-verify",
+   "dw_ids": [
+    "DW-378"
+   ],
+   "intent": "In-engine godot-verify of the Story 8.4 AI-draft UI wiring seams: ChimeraSpinner/'Transmuting...' toggle, the four-state availability line + hide-on-null-deps, faction _draft->Advanced-pane population, ability LoadFromRegistry landing, Initialize-before-_Ready ordering, and the unit-ctx's omitted ItemRegistry (shop-item refs skip validation at draft). All EntityDraft tests stop at the (def,err) callback and no test constructs a panel node. Godot-coupled (bmad-loop)."
+  },
+  {
+   "name": "lockstep-delaychange-inengine-verify",
+   "dw_ids": [
+    "DW-399"
+   ],
+   "intent": "Add an end-to-end integration/in-engine verify that drives a server DelayDirective through the client CommitDelayChange gap-seed and MergedTickBuilder across two clients, varying the delay mid-match, to prove they stay in lockstep across a delay change. The DelayController maturity gate is Tier-1-covered but the Godot-coupled node wiring (LockstepManager directive receipt + gap pre-seed vs builder no-emit-on-gap) is only exercised by a non-varying loopback smoke. Godot-coupled (bmad-loop)."
+  },
+  {
+   "name": "lockstep-order-routing",
+   "dw_ids": [
+    "DW-405"
+   ],
+   "intent": "Route MainScene.cs:562 QueueWorkerBuild through the _lockstep?.EnqueueOrder(...) ?? true seam like every other order site, so an online client's building placement defers to the server for re-stamp instead of mutating the sim (resource spend + CommandState=Build, folded into SimChecksum) locally-only and desyncing."
+  },
+  {
+   "name": "server-liveness-timeouts",
+   "dw_ids": [
+    "DW-410",
+    "DW-433"
+   ],
+   "intent": "Add an ACK deadline / re-send / force-commit to the drop directive-ACK state machine in DropController so a transport-connected but hung survivor that never sends DropAck cannot leave the freeze uncommitted forever; on deadline, force-commit the freeze (or drop the non-ACKing slot) via the existing FrozenSlotInjector path so other survivors and spectators are not stalled indefinitely. Add a fan-in deadline / force-advance to MergedTickBuilder.TryBuild (cs:185-186 currently returns false and buffers forever whenever any Expected slot has not submitted tick T). On timeout, force-advance by routing the silent-but-connected slot into the existing DropController/FrozenSlotInjector freeze path so a mis-set throttle cap or app-level drop cannot stall every client on a tick with no recovery."
+  },
+  {
+   "name": "replay-offline-recording",
+   "dw_ids": [
+    "DW-429"
+   ],
+   "intent": "Extend replay recording to offline/skirmish/AI matches. MatchLifecycleController.OnMatchStart calls StartRecording() only in the online player branch (before GoOnline, line 189); add a StartRecording() trigger on the offline skirmish match-start path so solo play produces a .chmr file and the replay browser is usable."
+  },
+  {
+   "name": "ai-alliance-awareness",
+   "dw_ids": [
+    "DW-439",
+    "DW-445"
+   ],
+   "intent": "Thread AllianceStore into AiOpponentSystem and make its target/raze/threat classification alliance-aware. Its hostile test (`f == AI_FACTION || f == Faction.Neutral`, e.g. cs:578) never consults AllianceStore.AreAllied, so in a teamed match the AI marches on and orders attacks against an allied faction (which combat now correctly rejects, stranding the AI at Idle). Same fix as DW-439: make AiOpponentSystem.FindNearestEnemyBuilding (~cs:462) and DoRazeBuildings (~cs:436) alliance-aware via AllianceStore.AreAllied instead of only skipping `f == AI_FACTION || f == Faction.Neutral`, so a teamed AI does not perpetually order AttackBuilding/attack onto its ally and stall at Idle."
+  },
+  {
+   "name": "selection-alliance-awareness",
+   "dw_ids": [
+    "DW-440"
+   ],
+   "intent": "Add an AllianceStore.AreAllied check to SelectionSystem.FindNearestEnemyUnit (cs:1117) and FindNearestEnemyBuilding (cs:1163) so a right-click on an allied unit/building in a teamed match no longer classifies it as an enemy and issues a force Attack order that the CombatSystem allied-force-fire guard silently rejects (dead no-op: no move, no follow, no attack)."
+  },
+  {
+   "name": "scenario-team-validation",
+   "dw_ids": [
+    "DW-442"
+   ],
+   "intent": "Add Team validation to ScenarioValidator's player-slots loop (currently validates Slot/ore/coords/uniqueness but never Team) and surface author-facing feedback for the degenerate cases: all active slots on one team (combat excludes everyone \u2192 hung match), a duplicated .Slot, an out-of-range team member silently dropped by AllianceSeeder.ComputeTeamIds, and an inert team-of-one."
+  },
+  {
+   "name": "match-agreement-hash-coverage",
+   "dw_ids": [
+    "DW-443"
+   ],
+   "intent": "Add a test asserting that EVERY match-start/peer-agreement start-state gate compares MatchAgreementHash (which folds Team) rather than CanonicalModelHash alone (which deliberately excludes Team), so a team-only disagreement between peers cannot slip past a gate \u2192 divergent AllianceStore seeds \u2192 tick-0 desync. HandshakeGate/ServerLobbyPolicy.CheckStartStateAgreement already use the agreement hash; this closes the coverage gap."
+  },
+  {
+   "name": "combat-alliance-idrecycle",
+   "dw_ids": [
+    "DW-444",
+    "DW-446"
+   ],
+   "intent": "Add an AreAllied(owner, victim) recheck to ProjectileSystem's primary/direct-hit delivery path (currently re-checks only IsAlive at impact, ~cs:96), mirroring the ApplySplash guard (cs:203), so a primary target whose entity id is recycled into an allied entity between projectile spawn and impact is not damaged. Make CombatSystem.ValidateOrClearTarget (~cs:649) recheck alliance/faction on a HELD auto-acquired AttackTarget, not just !IsAlive, so a target whose entity id is recycled into an allied (or same-faction) unit between ticks is dropped instead of fired on for a tick \u2014 Story 9.14 added allied-exclusion only at acquisition, leaving the retained-target path unguarded."
+  },
+  {
+   "name": "definition-null-hardening",
+   "dw_ids": [
+    "DW-450",
+    "DW-451"
+   ],
+   "intent": "Add a `Buildings == null` guard and a `b != null` element guard to FactionDefinition.GetBuilding (cs:94-98, still `foreach (var b in Buildings) if (b.Id == id)`), mirroring the DW-103 hardening on the sibling GetUnit/GetResearch getters, so malformed-but-parseable JSON (`\"buildings\": null` / `[null, {...}]`) no longer NREs the buildings lookup. Add a `b != null` guard to TechTreePanel.RebuildGraph's building loop (cs:206-208 dereferences b.Id via string.IsNullOrEmpty with no null-element check), matching the adjacent research loop's `r != null` guard (cs:242) and the hardened OnNodeSelected, so a null building element mid-edit does not NRE the graph rebuild."
+  },
+  {
+   "name": "scenecontext-null-guards",
+   "dw_ids": [
+    "DW-232"
+   ],
+   "intent": "Add a structural guard against the SceneContext null! cross-phase coupling (68 null! fields, zero guards, 40 phases; predicted failure already fired once in Epic 9 when CustomHudOverlayPhase captured Lockstep by value 13 phases early \u2192 permanently-null handle, silent no-op). Introduce a guarded/late-bound access pattern (e.g. property getters that throw or defer on an unset dependency) so an early by-value capture cannot silently produce a null handle invisible to Tier-1 tests."
+  },
+  {
+   "name": "phaseorder-test-hardening",
+   "dw_ids": [
+    "DW-233"
+   ],
+   "intent": "Add a duplicate-canonical-name assert (~3 lines, Tier-1) to PhaseOrderTest so concrete-phase Name drift or duplicated phase names is caught; optionally a Tier-2 GdUnit4 companion that instantiates the real 40 phases. Value rose with the phase count growing to 40."
+  },
+  {
+   "name": "chimera-zip-import-drift",
+   "dw_ids": [
+    "DW-235"
+   ],
+   "intent": "Extract a shared ImportMapPackage helper so ContentBrowserPhase.HandleLoadMap gains Story 6.2's TerrainFiles handling (copy + TerrainRef rewrite) that DoImport already has \u2014 today a terrain-bearing .chimera.zip loaded through the Content Browser silently loads FLAT with a stale TerrainRef (cs:51-95 vs WinConditionPhase.cs:556-620). One shared helper also closes the related ungated-SaveToFile and stale imported_maps/<id> legs."
+  },
+  {
+   "name": "effectnode-json-converter-symmetry",
+   "dw_ids": [
+    "DW-293"
+   ],
+   "intent": "Add a WriteEnum guard in EffectNodeJsonConverter.WriteNode so a DamageType.COUNT damage node cannot be serialized (mirroring ReadNode's hard reject), restoring write/read symmetry. Also fix the stale contradicted comment at AbilityEditorPanel.Advanced.cs:280-281. Editor-unreachable today (DraftVocabulary excludes COUNT) but the asymmetry is real."
+  },
+  {
+   "name": "ability-editor-spinbox-precision",
+   "dw_ids": [
+    "DW-296"
+   ],
+   "intent": "Stop the Composer/Simple SpinBoxes (Step=1/0.5) from visually quantizing loaded fractional Fixed values so display matches the saved value \u2014 e.g. widen step/precision on load or show the true stored value without snapping on the initial populate. No data-loss today, display-only fix."
+  },
+  {
+   "name": "abilitydraft-deadcode",
+   "dw_ids": [
+    "DW-297"
+   ],
+   "intent": "DraftNode.Depth()/SearchAreaDepth() are referenced only by AbilityDraftTests; production re-derives depth via TreeCtx/CountNodes. Either delete both methods (and their tests) or pin their semantics against EffectCaps.MaxEffectDepth by making production use them."
+  },
+  {
+   "name": "chimera-tooltip-anchoring",
+   "dw_ids": [
+    "DW-312"
+   ],
+   "intent": "ChimeraTooltip takes a one-shot position snapshot, so a keyboard-focus tooltip inside UnitCardPanel's ScrollContainer stays anchored to a stale rect when the container scrolls (35 attach sites). Hide the focus tooltip on scroll (simplest, avoids the stale-rect class) rather than re-anchoring every frame."
+  },
+  {
+   "name": "factiondefinition-loadfromfile-hardening",
+   "dw_ids": [
+    "DW-317"
+   ],
+   "intent": "UnitCardPanel.cs:165 and BuildingCardPanel.cs:117 call FactionDefinition.LoadFromFile whose Deserialize can throw uncaught (parse/IO). Fix at the root (same class as DW-62/DW-123): wrap the Deserialize in LoadFromFile in try/catch and degrade gracefully; co-locate DW-65's _history clear (same method)."
+  },
+  {
+   "name": "abilitydraft-lifelong-roundtrip",
+   "dw_ids": [
+    "DW-323"
+   ],
+   "intent": "Confirmed live: DraftNode has no Lifelong field, ToEffectNode (AbilityDraft.cs:217) constructs PersistentEffect without the lifelong arg (defaults false) and FromEffectNode (:258-264) never captures it, so opening furnace_trickle/furnace_pour in the Advanced composer and saving strips the flag \u2014 silently re-introducing the 256-pulse defect Story 2.13 fixed, and the validator can't catch it. Add a Lifelong field to DraftNode and thread it through both ToEffectNode and FromEffectNode."
+  },
+  {
+   "name": "respath-pck-scanning",
+   "dw_ids": [
+    "DW-457"
+   ],
+   "intent": "SkirmishCatalog.ScanMaps/ScanFactions (SkirmishCatalog.cs:94,98,166,170) enumerate res:// content via System.IO.Directory.GetFiles over GlobalizePath, which sees no directory in an exported PCK build -> 'No maps found'. Switch to Godot DirAccess (or embed a generated catalog) so scanning works in exported builds. Same repo-wide pattern to sweep alongside FactionDefinition.LoadSelectableFromDirectory."
+  },
+  {
+   "name": "skirmish-unit-applier",
+   "dw_ids": [
+    "DW-463"
+   ],
+   "intent": "A skirmish launch of alpha_map_01 reaches Play with only 2 of 3 units for slot 0 (the mage at x=-40,z=0 is dropped) in both same- and cross-faction launches; the loss is downstream of Story 11.1's transform in the applier/Play-entry path. Trace SkirmishSetupToScenario.Build -> applier -> Play entry to find why the 3rd slot-0 unit is dropped and fix the applier so all authored units spawn."
+  },
+  {
+   "name": "mp-antispoof-hardening",
+   "dw_ids": [
+    "DW-470"
+   ],
+   "intent": "On the P2P transport path SendMapPing (LockstepManager.cs:593) writes LocalFaction into the packet and the receiver trusts buf[1] verbatim, unlike the DedicatedServer relay which re-stamps the authoritative faction (DedicatedServer.cs:551-555). Mirror the server's authoritative re-stamp on the P2P receive path so a modified client can't forge a ping's origin faction. Cheap defensive parity; files all exist."
+  },
+  {
+   "name": "editor-panel-uiscale",
+   "dw_ids": [
+    "DW-483"
+   ],
+   "intent": "Story 11.7 re-anchored only the HUD command-card panels; editor/creation-suite panels (center-anchored, fixed CustomMinimumSize) were never re-anchored or driven at non-default UI-scale, so the UI-scale lever can shrink the logical viewport below a panel's fixed size and clip controls. Apply the 11.7 re-anchoring/scroll-fallback pattern to editor panels and verify across the 1080p/1440p/4K x scale-1.5 matrix."
+  },
+  {
+   "name": "settings-video-resolution-gating",
+   "dw_ids": [
+    "DW-484"
+   ],
+   "intent": "Confirmed: SettingsManager.ApplyVideo gates WindowSetSize behind mode==Windowed (SettingsManager.cs:156), so a resolution pick in Borderless/Fullscreen silently no-ops with no UI feedback. Grey-out/disable the Resolution dropdown (or show a hint) in the two non-windowed modes so the control never offers a setting it ignores."
+  },
+  {
+   "name": "slotfaction-resolver-hardening",
+   "dw_ids": [
+    "DW-486",
+    "DW-487"
+   ],
+   "intent": "SlotFactionResolverTests exercise only the pure ToSeeded copy; the empty-skip/missing-file/overwrite branches of SlotFactionResolver.Resolve, the three fail-closed RestorePreResolveSlotDefs rollback paths in MainScene, and the load-bearing panel same-reference (ReferenceEquals) guard are verified only by inspection. Add executable coverage for each so a regression (inverted skip, dropped rollback, removed guard) can't ship silently. The boot path (ScenarioLoadPhase.ResolveSlotFactionDefs delegating to SlotFactionResolver.Resolve) has no try/catch, while the F5 re-apply now wraps the same call to fail closed. FactionDefinition.LoadFromFile throws on a corrupt file or validator-rejected roster, so a throw escapes ahead of the Snapshot/Restore bracket and crashes launch. Wrap the boot resolver in the same fail-closed try/catch so a bad faction_json degrades to the fallback instead of taking down launch."
+  },
+  {
+   "name": "itemsystem-modifier-death-audit",
+   "dw_ids": [
+    "DW-489"
+   ],
+   "intent": "DW-325 gave ModifierStore.Apply/RemoveByModifierId a 'target may be Destroy+recycled on return' post-condition; only the 3 internal ApplyStatDeltas callers were guarded. Audit the external callers: ItemSystem.ApplyItemStatModifier (ItemSystem.cs:349) returns Apply's true as claim-success without checking host death, and RemoveByModifierId (UseItem :255 / DropOne :296) is now lethal so a re-entrant DropAll->DropOne on an in-flight slot can emit a duplicate ItemDropped and equip/claim a corpse. Add post-Apply/Remove IsAlive checks at these sites and distinguish 'installed & alive' from 'installed & host died'."
+  },
+  {
+   "name": "modifierstore-death-attribution",
+   "dw_ids": [
+    "DW-490",
+    "DW-492"
+   ],
+   "intent": "Thread the modifier's _casterFaction[slot] into ApplyStatDeltas and pass it (plus the DeathFeed argument every other lethal path passes) to the DamageResolver.KillEntity call at ModifierStore.cs:760, so an ability-driven lethal -MaxHealth debuff credits its real caster for scoring/hero XP instead of hardcoding Faction.Neutral with the feed omitted. Confirmed still present: line 760 passes Faction.Neutral, _events, _stats with no deaths/DeathFeed arg. Run the same ceiling-collapse (EffectiveMaxHealth==0) death/clamp check on the RestoreSlot (save-load) re-accumulation path (ModifierStore.cs:658) and the ModifierSystem Tick dirty-recompute path that ApplyStatDeltas already enforces, so a loaded or externally-dirtied unit at ceiling 0 cannot reconstitute as a living zombie. Confirmed: RestoreSlot accumulates without recomputing and is documented deliberately non-lethal (line 723)."
+  },
+  {
+   "name": "entityplacer-placement-integrity",
+   "dw_ids": [
+    "DW-495",
+    "DW-496",
+    "DW-497"
+   ],
+   "intent": "Add the WithinMapBounds guard (already applied to PlaceProp/BuildCreate/MoveSelection by DW-159) to the single-entity PlaceUnit (~:768), PlaceBuilding (~:970) and PlaceResourceNode (~:917) paths in EntityPlacer.cs, so an off-map single-placed unit/building cannot persist and then brick whole-scenario validation on Save/F5 (units/buildings are bounds-checked by ScenarioValidator.CheckCoord, unlike props/items). Extend MoveSelection's up-front atomic-abort pre-check (~:2300) to also abort on CAPACITY exhaustion (RestoreUnit returning -1 / ResourceNodeStore.Create failing when the world or node store is full), not just WithinMapBounds, so a capacity-driven BuildCreate null after the originals are already BuildDeleted cannot strand a deleted original in the post-move view. Route the unit create/undo legs (BuildCreate ~:2544, combat fallback ~:2557, PlaceUnit ~:771/:801) through a generation-checked resolve before _world.Destroy \u2014 mirroring the item path's TryResolveRef guard \u2014 so a redo that fails at world capacity leaves a boxed id that a later undo cannot use to destroy an unrelated unit that recycled the free-list slot."
+  },
+  {
+   "name": "matchseed-plumbing",
+   "dw_ids": [
+    "DW-498",
+    "DW-499"
+   ],
+   "intent": "Add automated regression coverage for the two LiveMatchSeed seams that apply the seed \u2014 the online reseed-to-DEFAULT invariant at MatchLifecycleController.cs:157 (World.Rng.Seed(LiveMatchSeed)) and the offline mint/reseed/store wiring in MainScene \u2014 since only the pure MatchSeedProducer is unit-tested today and no test references MatchLifecycleController. Add a debug/env override (e.g. a CHIMERA_MATCH_SEED env var checked at MainScene.cs:2478) to PIN the offline match seed to a fixed value, restoring cross-launch RNG reproducibility for A/B verification runs while keeping the per-match wall-clock seed as the default."
+  },
+  {
+   "name": "test-reflection-probe-migration",
+   "dw_ids": [
+    "DW-501"
+   ],
+   "intent": "Migrate the two surviving null-forgiving reflection sites \u2014 NodeKindsLockstepTests.cs:94 (GetField(\"_triggerEventTypes\", F)!) and TriggerGraphLiveLoweringTests.cs:34 (GetField(\"_execs\", ...)!) \u2014 to the same-assembly ProjectChimera.Sim.Tests.Golden.ReflectionProbe helper DW-218 introduced, so a field rename yields an actionable diagnostic instead of an opaque NullReferenceException. Both sites confirmed present."
+  },
+  {
+   "name": "ability-editor-warnings-surfacing",
+   "dw_ids": [
+    "DW-503"
+   ],
+   "intent": "Wire the already-built-and-tested AbilityValidationResult.Warnings channel into AbilityEditorPanel.cs \u2014 surface the warnings on the _statusLabel Ok/Err helpers (:791-800) at the three Validate/Load call sites (:633,:677,:714) \u2014 completing DW-278's editor half. Confirmed: the panel currently has zero references to Warnings. Godot-coupled (src/CreationSuite, using Godot) so it routes to the in-engine gate."
+  },
+  {
+   "name": "faction-wizard-mesh-path-routing",
+   "dw_ids": [
+    "DW-505"
+   ],
+   "intent": "Fix the FactionValidator.ValidateComplete mesh_path message so a missing UNIT mesh_path routes to the Roster step: either drop the \"faction '<id>'.\" prefix that defeats FactionDefinerWizardCore.StepForError's \"unit '\" startswith match, or teach StepForError the produced shape. Correct the false-green FactionDefinerWizardTests.cs:116-117 theory rows to assert the message the validator actually emits. All three files exist and are Godot-free."
+  },
+  {
+   "name": "assetregistry-ingest-layout",
+   "dw_ids": [
+    "DW-506"
+   ],
+   "intent": "Fix AssetRegistry.IngestPackage to preserve the logicalId's subfolder structure when building the on-disk path instead of flattening via Path.GetFileName (confirmed at IngestPackage: Path.Combine(extractDir, \"assets\", Path.GetFileName(logicalId))), so ids like assets/a/x.glb and assets/b/x.glb no longer collapse to the same file and render the wrong mesh."
+  },
+  {
+   "name": "server-pathability-grid",
+   "dw_ids": [
+    "DW-508"
+   ],
+   "intent": "In ServerBootstrap.Build, construct and inject the union blocked-cell grid via the shared Godot-free ScenarioApplier.BuildPathabilityGrid recipe (and SetElevationGrid where needed) before/around the Apply call at line 85, so the headless/server sim has the same blocked cells the client's ScenarioLoadPhase injects and MovementSystem's rejection is not a server-side no-op. Confirmed: ServerBootstrap has no SetPathabilityGrid/SetElevationGrid call. Changes server start state/tick behaviour so it needs a determinism-reviewed slice."
+  },
+  {
+   "name": "scenario-spawn-blocked-enforcement",
+   "dw_ids": [
+    "DW-510"
+   ],
+   "intent": "Promote ScenarioValidator.CheckSpawnsNotBlocked from a located _log.Warn to a fail-closed load error (ScenarioLoadPhase.BuildAndInjectPathabilityGrid ~:265) and surface it in the editor save/export gate once an elevation grid is available, so a map whose start base or trigger spawn sits on a slope-derived blocked cell cannot silently ship. Godot-coupled (src/Core/Bootstrap + src/CreationSuite) so it routes to the in-engine gate."
+  },
+  {
+   "name": "server-checksum-accept-window",
+   "dw_ids": [
+    "DW-511"
+   ],
+   "intent": "Add a far-future ACCEPT_WINDOW-style guard to ServerChecksumCollector.Record (:115-133) so a client cannot evict honest in-flight comparison windows with implausibly-far-future checksum ticks. Must NOT be a naive copy of MergedTickBuilder's ACCEPT_WINDOW: _resolvedThrough starts at -1 while real checksum ticks start at the checksum interval, so the window must not reject the first legitimate report. Confirmed: Record has monotonic _resolvedThrough drop but no far-future acceptance bound."
+  },
+  {
+   "name": "playercount-metatest-alias",
+   "dw_ids": [
+    "DW-513"
+   ],
+   "intent": "Extend the NoHardcodedPlayerCountTests scan (:66-67,:103-107) so its regex recognizes symbolic references (e.g. = PlayerCountPolicy.MpSeatCeiling), not just literal `const int <name> = (2|4|8|9)`, so ServerChecksumCollector.MaxSlots (:22) can alias the ceiling instead of a hardcoded 4 without the vacuous-pass allowlist-found assertion failing. Confirmed: MaxSlots=4 literal with a doc comment explaining the empirically-reverted alias attempt."
+  },
+  {
+   "name": "scenarioloadphase-fallback-markers",
+   "dw_ids": [
+    "DW-515"
+   ],
+   "intent": "In ScenarioLoadPhase's no-scenario fallback marker branch (:396-413), derive the start-position marker count from BuildFallbackMirror's declared slot count instead of hardcoding positions[0] and positions[1], removing the duplicated literal so the fallback honours up to StartPositionBridge.MAX_SLOTS like the with-scenario branch. Presentation-only, no sim/checksum effect; Godot-coupled so it routes to the in-engine gate."
+  },
+  {
+   "name": "persistence-completeness-guard",
+   "dw_ids": [
+    "DW-519"
+   ],
+   "intent": "Add a reflection-driven completeness test for the SAVE path (mirroring EntityWorldClearCompletenessTests) that reflects over EntityWorld's per-entity arrays and asserts each is either round-tripped by SaveGameState or on an explicit allowlist of deliberately-transient fields (e.g. GateClosedTicks), so a future array that must persist can't ship green if forgotten."
+  },
+  {
+   "name": "gathering-worker-lifecycle",
+   "dw_ids": [
+    "DW-520",
+    "DW-532"
+   ],
+   "intent": "In BuildingSystem.ClearWorkerBuild (line 1089), preserve a carrying worker's delivery instead of forcing GatherState.Idle: when world.CarryAmount[workerId] > 0, restore GatherState.MovingToBase (or bank the carry) so an interrupted-mid-carry worker finishes the delivery rather than dropping a full load and re-seeking a node. Resolve the emergent DW-148 x DW-207 interaction: a worker confined by MovementSystem.IsBlockedOutside (MovementSystem.cs:163-174) can stall forever in TickMovingToResource (GatheringSystem.cs:124-143) while holding a gather-slot reservation, re-opening the folded-capacity leak. Release the gather slot (or give up the reservation) when a MovingToResource worker is confined/cannot reach its node, so a stranded worker never permanently consumes a node's MaxGatherers slot."
+  },
+  {
+   "name": "dw-burndown-workflow-stash",
+   "dw_ids": [
+    "DW-521"
+   ],
+   "intent": "Fix the shared-stash hazard in .claude/workflows/dw-burndown.workflow.js and the per-agent bundle brief: refs/stash lives in the common .git dir so parallel worktrees corrupt each other's stashes. Replace git stash push/pop in the worktree flow with a per-worktree isolation mechanism (e.g. a named/branch-scoped WIP commit or worktree-local patch file) so no bundle agent can steal or drop another's uncommitted work."
+  },
+  {
+   "name": "json-options-choke-point",
+   "dw_ids": [
+    "DW-523",
+    "DW-524",
+    "DW-526"
+   ],
+   "intent": "Replace the six hand-declared private `static readonly JsonSerializerOptions Opt` replicas in the scenario Tier-1 tests (ObjectiveSerializationTests, ScenarioDataRegionsTests, CustomUiSerializationTests, CustomUiButtonSerializationTests, ScenarioItemRoundTripTests, ScenarioVariableRoundTripTests) with the production ContentJson.ScenarioOptions, so the tests pin the same fail-closed (allowIntegerValues:false), WidgetBaseJsonConverter, WriteIndented posture the loader actually uses. Derive ItemWriter.Options (ItemWriter.cs:19) and DslJson.Options (DslJson.cs:31) from ContentJson's shared Base()/posture builders instead of hand-copying the converter list, adding each file's extra converters (DslJson's NodeBaseJsonConverter etc.) on top, so a converter added at the ContentJson choke point reaches both content postures. Route LLMService's per-call ad-hoc JsonSerializerOptions (LLMService.cs ~:258, ~:571, ~:965) through a single shared, fail-closed, converter-complete options object (derived from ContentJson's strict posture) so every LLM-output parse path carries the FixedJsonConverter \u2014 closing the :965 site that registers none and cannot read Fixed-typed fields."
+  },
+  {
+   "name": "definition-validator-degenerate-stats",
+   "dw_ids": [
+    "DW-527"
+   ],
+   "intent": "Reject hp=0 for units in UnitDefinitionValidator (the CheckStat(\"hp\", def.Hp) at line 236 uses the [0,32768) bound, inclusive of 0), matching BuildingDefinitionValidator's hp<=0 reject and the DW-491/DW-489 zero-ceiling-is-lethal decision. Because BuildingDefinitionValidator reuses the unit gate on top of its own HpAuthored check, route hp through a positive-lower-bound check (like CheckStatPositive) without double-badging buildings."
+  },
+  {
+   "name": "reserved-device-name-guard",
+   "dw_ids": [
+    "DW-528"
+   ],
+   "intent": "Wire DW-454's IsReservedDeviceName gate into the faction wizard's free-text filename path (FactionDefinerWizardCore.cs:330, which builds `{id}_faction.json` via Path.Combine), so reserved-basename safety is explicit rather than incidental on the `_faction` suffix and survives a future refactor that shortens or parameterizes that suffix."
+  },
+  {
+   "name": "team-color-palette",
+   "dw_ids": [
+    "DW-529",
+    "DW-530"
+   ],
+   "intent": "Extend TeamColorPalette.Colors (TeamColorPalette.cs:37-43) from 4 to 8 distinct entries so Player5-8 no longer clamp to Player4's gold in SlotColorAt (line 54-58). The palette already moved to the Godot-free TeamColorPalette seam (FactionVisualsPhase now reads it), so this is Tier-1 testable; add RGBA assertions for the new slots. Replace ReplayBrowserPanel.FACTION_COLORS (ReplayBrowserPanel.cs:30-40, consumed at :225) with reads from the shared TeamColorPalette seam, eliminating the third independent hand-maintained slot-to-color table so a palette change is made in one place and the replay browser matches the in-match colors."
+  },
+  {
+   "name": "trigger-editor-event-vocab",
+   "dw_ids": [
+    "DW-531"
+   ],
+   "intent": "Update TriggerEditorPanel's hand-copied EventKinds list (TriggerEditorPanel.cs:82, consumed at :670/:679/:770) to source from NodeKinds.GraphEventTypes (12 kinds) so the five Story-7.13 built-ins (unit_damaged/unit_trained/ability_cast/hero_level/player_chat) become selectable in the manual ECA form, adding the per-kind event-parameter fields each new built-in needs. In-engine gated (CreationSuite)."
+  },
+  {
+   "name": "scenario-load-fail-closed",
+   "dw_ids": [
+    "DW-533"
+   ],
+   "intent": "Make ScenarioSerializer.LoadFromFile honour the ==null 'parse-failed' contract its two production callers (ScenarioLoadPhase.cs:88-94, MainScene.cs:2796-2798) still code to: wrap the now fail-closed (allowIntegerValues:false) deserialize in a try/catch that returns null on a malformed/numeric-enum scenario, so a bad file takes the fallback path instead of aborting boot with an uncaught exception."
+  },
+  {
+   "name": "effect-radius-cap",
+   "dw_ids": [
+    "DW-534"
+   ],
+   "intent": "Add an authored-radius upper bound in AbilityValidator/EffectBounds so a wide-radius SearchArea can't make SpatialHash.QueryRadiusLowestIds (SpatialHash.cs:276-306) scan every entity in a huge radius on the 30Hz lockstep path. The unbounded scan is required by the global-lowest-ids contract, so the cost ceiling must come from a validation-time radius cap (consistent with existing EffectBounds caps), not from an in-scan bound."
+  },
+  {
+   "name": "effect-caps-doc",
+   "dw_ids": [
+    "DW-535"
+   ],
+   "intent": "Fix the doc contradictions reintroduced by merge order in EffectCaps.cs: reconcile line 23 ('Nothing here is reserved any more') with the still-'Reserved' member docs at :69/:72, and update the three comments (EffectCaps.cs:40, :45-46, EffectExecutor.cs:103) that still describe the SearchArea pipeline searcharea-target-selection-correctness deleted. Pure doc normalization, no behaviour change."
+  },
+  {
+   "name": "real-content-test-hardening",
+   "dw_ids": [
+    "DW-536"
+   ],
+   "intent": "Harden AsymmetryPlaytestValidationTests.LoadRealContent (line 111) the same way DW-107 fixed SignatureMechanicRealContentTests: pass a non-null onSkipped and add an AbilityRegistry count floor so a future ability JSON edit that breaks AbilityValidator can't silently shrink the registry and let the test pass against quietly-reduced content."
+  },
+  {
+   "name": "loader-duplicate-key-fail-closed",
+   "dw_ids": [
+    "DW-537"
+   ],
+   "intent": "Apply DW-227's reusable RejectDuplicateKeys raw-JsonDocument pass to UnitDefinition.Cost (UnitDefinition.cs:80) and ResearchDefinition.Cost (ResearchDefinition.cs:77), both Dictionary<string,int> DTO properties, so a duplicated resource key in a cost block fails closed with a diagnostic instead of silently last-wins."
+  },
+  {
+   "name": "fail-loud-log-wiring",
+   "dw_ids": [
+    "DW-538",
+    "DW-539"
+   ],
+   "intent": "Add the missing `_ctx.ReplayPlayer.Log = _ctx.Log` line to the replay wiring block in MatchLifecycleController.cs:310-322, so replay playback gets the DW-304 fail-loud net (a dropped building command warns instead of silently no-opping) like the live lockstep paths. One line, no happy-path change. In-engine gated (Bootstrap). Add the `log:` argument to the offline OrderApplier.Apply call sites in CommandCardSystem.cs:790-969 and SelectionSystem.cs:1063 (which currently pass buildings:_buildSys but no log sink), so an offline building click on a drifted-null _buildSys warns rather than silently no-opping, matching DW-304. In-engine gated (UI)."
+  },
+  {
+   "name": "server-packet-relay-extraction",
+   "dw_ids": [
+    "DW-541"
+   ],
+   "intent": "Route DedicatedServer's inline LobbyChat (~line 520) and MapPing (~line 508) decode -> StampChatFaction -> re-encode -> BroadcastReliable branches through a parameterized ServerPacketRelay re-stamp helper (parameterize the TryRead/Make codec pair off the existing ServerPacketRelay.RestampChat template), so both relay compositions are covered by the Tier-1-tested primitive instead of only diff inspection."
+  },
+  {
+   "name": "llm-scenario-validation-hardening",
+   "dw_ids": [
+    "DW-542",
+    "DW-547",
+    "DW-627"
+   ],
+   "intent": "In LLMService.ValidateScenario passes 4/7, add a range check that every unit's u.Slot and building's b.Slot references an index within [0, PlayerSlots.Length) (i.e. a declared player slot), rejecting out-of-range placement refs at the LLM gate so the AI-gen UX no longer promises a scenario the ScenarioValidator loader will refuse. Verified present: pass 2 (lines 606-614) validates player_slot DECLARATION indices only; no equivalent guard exists for unit/building Slot placement refs. Route LLMService.ValidateScenario's pass-1 deserialize (line 571, currently an ad-hoc JsonSerializerOptions with PropertyNameCaseInsensitive + bare FixedJsonConverter + lenient syntax) through the shared ContentJson.ScenarioOptions used by file loads (DW-274 posture), so the AI-gen parse posture \u2014 enum handling, unknown-key behavior, converter order \u2014 cannot drift from what the loader produces. Preserve the intentional lenient-syntax (AllowTrailingCommas / comment-skip) for model output if ScenarioOptions is stricter, by cloning ScenarioOptions and layering only the syntax leniency. In LLMService.ValidateScenario (:287-294), replace the private 4-member shadow BuildingType enum (:443, missing Aviary) with the same two-vocabulary resolution the DW-170 ScenarioValidator uses (real BuildingType enum name + authored faction-qualified DefinitionId) so AI-generated scenarios accept custom buildings and the built-in Aviary. Coordinate merge with the scenario-type-registry (DW-371) work on the same file."
+  },
+  {
+   "name": "dsl-reference-docs",
+   "dw_ids": [
+    "DW-544",
+    "DW-553"
+   ],
+   "intent": "Document in the creator-facing DSL/trigger reference the DW-349 re-queue rail's test-pinned non-goals: authored-gate skips (disabled, run-once-spent, cooling \u2014 including cooldown armed by an earlier same-tick occurrence) never persist, and a pending TARGETED redelivery is dropped if its trigger was disabled/spent by arrival. Docs-only; no code behavior change. State the -N chat-command convention in the creator-facing trigger/DSL reference (players produce event.code N by typing `-N` in the match chat overlay; free text is never sim-visible) and surface it in the trigger-editor UI where event params are shown, closing the player_chat discoverability gap DW-374 was about. Contract currently lives only in MatchChatCommands.cs XML doc comments."
+  },
+  {
+   "name": "deathlog-persistence-guard",
+   "dw_ids": [
+    "DW-551"
+   ],
+   "intent": "Add a persistence-side assert in SaveGameState capture that the per-tick DeathLog is empty at save time (saves are taken at tick boundaries after UpdateSnapshots wipes it, so it must be empty), turning the silent coupling into a fail-fast guard should a future mid-tick save path ever capture the log non-empty. No behavior change today; purely a defensive assert."
+  },
+  {
+   "name": "multifaction-golden-header",
+   "dw_ids": [
+    "DW-554"
+   ],
+   "intent": "Narrow the re-baseline filter hint in MultiFactionGoldenTests.cs MfHeader (and the matching golden-multifaction.golden.txt header comment line) from `~MultiFaction` to `~MultiFactionGolden` so an intentional N=4 re-record no longer also matches MultiFactionExpansionTests and silently re-records the DW-387 N=8 cross-process golden. Edits a header comment line only, not checksum data \u2014 a test-safety fix, not a re-record."
+  },
+  {
+   "name": "xplat-determinism-check-tooling",
+   "dw_ids": [
+    "DW-556"
+   ],
+   "intent": "Relax the source-repo guard in cross-platform-determinism-check.wsl.sh:46 from `[ ! -d \"$SRC/.git\" ]` (which fails on a linked worktree whose .git is a FILE) to `[ ! -e \"$SRC/.git\" ]` or a `git -C \"$SRC\" rev-parse --git-dir` check, so the gate can run from a git worktree \u2014 the checkout shape the parallel burn-down track uses. Keep the separate clone-dir!=source-dir safety check intact."
+  },
+  {
+   "name": "hero-profile-online-clear",
+   "dw_ids": [
+    "DW-559"
+   ],
+   "intent": "Clear SceneContext.PendingHeroProfile on GoOnline so an online ResetToAuthoredStart re-mint cannot run with a stale offline profile and build a per-client owner-filtered hero row no other client has (a tick-0 sim divergence). Keep the deliberate Story 3.10 return-to-Edit survival; only the online transition wipes it. This is a real online-scoped defect, buildable now (MainScene.cs + SceneContext.cs both exist)."
+  },
+  {
+   "name": "contentpackager-atomic-and-symmetry",
+   "dw_ids": [
+    "DW-560"
+   ],
+   "intent": "Make ContentPackager.Pack's output write atomic: write the new export to a temp path and only rename over outputZipPath on success, instead of File.Delete(outputZipPath) up front then ZipArchiveMode.Create (~line 240). A throw mid-write (a non-hashed source \u2014 screenshot, faction file, thumbnail \u2014 deleted/locked between enumeration and the write loop) currently destroys the creator's previous export and leaves a partial zip. Same non-atomic family as DW-421, on Pack's OUTPUT."
+  },
+  {
+   "name": "reserved-device-basename-gate",
+   "dw_ids": [
+    "DW-562"
+   ],
+   "intent": "Add the DW-454 reserved-device-basename gate to the ability save path: an ability id of con/nul/aux/com1 currently writes res://resources/data/abilities/con.json and Win32 throws opaque with no field badge (SanitizeId(\"con\")==\"con\"). Wire UnitDefinitionValidator.IsReservedDeviceName into AbilityEditorPanel.cs:696-701 / AbilityValidator (which today only checks id non-empty), badging the id field and blocking save \u2014 the one editor DW-454's resolution never reached."
+  },
+  {
+   "name": "save-hash-cache",
+   "dw_ids": [
+    "DW-563"
+   ],
+   "intent": "Cache the launch-invariant CanonicalModelHash and ContentHash per match (invalidated on scenario/content reload) in MainScene.IssueSave instead of recomputing both on the game thread every save (the model hash walks the entire authored scenario). Both are fixed at launch for the whole match, so caching removes the per-save game-thread CPU cost; DW-467 moved serialization + disk I/O off-thread but named only those."
+  },
+  {
+   "name": "map-write-pipeline",
+   "dw_ids": [
+    "DW-568"
+   ],
+   "intent": "Route MapGeneratorPanel's AI-generated-map Save & Load path through MapWritePipeline.RunNewMap (as WinConditionPhase already does) instead of consulting MapWriteGate inline, so the existing Tier-1 MapWritePipelineTests pin the gate-before-write ordering at this call site too."
+  },
+  {
+   "name": "nakama-devtooling-audit",
+   "dw_ids": [
+    "DW-569"
+   ],
+   "intent": "In docs/server-deploy/nakama-modules, bump vitest off the vulnerable 2.x chain to a non-vulnerable major (npm audit fix --force / manual major bump), fix any test-runner API breakage, and re-run the module tests. Dev-tooling only; nothing vulnerable ships to the Nakama runtime."
+  },
+  {
+   "name": "recursive-graph-walk-iterative",
+   "dw_ids": [
+    "DW-573",
+    "DW-574"
+   ],
+   "intent": "Convert ResearchValidator.Visit's recursive prerequisite cycle-DFS to the explicit-stack form DW-59 applied to TechTreeValidator (heap-allocated frames plus a mirrored path list), so a thousands-deep authored research chain cannot overflow the stack during load. Add a deep-chain regression test. Convert TechTreeLayout.TierOf to an explicit-stack (or memoized iterative longest-path) walk keeping the existing visiting cycle guard, so a deep authored prerequisite chain cannot overflow the stack during tech-tree panel layout. Add a deep-chain regression test."
+  },
+  {
+   "name": "dsl-node-port-arity",
+   "dw_ids": [
+    "DW-578"
+   ],
+   "intent": "In NodePortCatalog's ExprCallNode case, curate rendered operand ports by builtin arity so a zero-arity state-read builtin (e.g. unit_count_tag) does not draw wireable operand ports a/b, surfacing the arity rule in the editor instead of only at compile time via the badge."
+  },
+  {
+   "name": "dsl-bounds-cap",
+   "dw_ids": [
+    "DW-579"
+   ],
+   "intent": "Add a DslBounds.MaxRandomChoiceBranches cap enforced in NodeBaseJsonConverter.ReadIntArray (and the mirrored field-level Set) so a raw-IR RandomChoiceNode cannot carry an arbitrarily long weights array that renders unbounded branch ports; keep parse and inspector in agreement."
+  },
+  {
+   "name": "savegame-generation-persistence",
+   "dw_ids": [
+    "DW-581"
+   ],
+   "intent": "Add a save lane for EntityWorld.Generation to SaveGameState (EA enum + CaptureEntities/RestoreEntities), mirroring the already-persisted BuildingStore.Generation, so a bumped per-slot recycle generation survives a save/load boundary rather than relying on the current apply-time gen-0 re-pack invariant."
+  },
+  {
+   "name": "meta-test-regex",
+   "dw_ids": [
+    "DW-582"
+   ],
+   "intent": "Tighten NoHardcodedPlayerCountTests' source-scan regex so `= (2|4|8|9)` does not match a leading small literal followed by `*` (a sized-buffer const like `X = 2 * OTHER_CONST`), eliminating the RingCapacity-class false positive that forced literal-last reordering."
+  },
+  {
+   "name": "hash-pin-comment-cleanup",
+   "dw_ids": [
+    "DW-583"
+   ],
+   "intent": "In CanonicalModelHashTests.cs (and CanonicalModelHashPathabilityTests.cs / CanonicalModelHashPropsWaterTests.cs), either bring each AlgoVersion bump-log comment current to the pinned value 14 in one sweep or delete the partial history so a reader skimming for the current version is not briefly misled."
+  },
+  {
+   "name": "store-clear-completeness-cleanup",
+   "dw_ids": [
+    "DW-584"
+   ],
+   "intent": "Remove the now-redundant `_enabled` allowlist entry (and DW-197 note) from StoreClearCompletenessTests' TriggerEnabledCase: DW-197 landed (TriggerEnabledStore.Clear now Array.Clears the whole buffer and IsEnabled bounds out-of-range to false), so the sweep can pin the strengthened contract instead of exempting it."
+  },
+  {
+   "name": "scenario-director-doc-comment-cleanup",
+   "dw_ids": [
+    "DW-587"
+   ],
+   "intent": "Fix the stale BuildDeclMap doc comment at ScenarioDirector.cs:712-714: since the 7.7 reconciliation, LoadScenario passes requireUnique:true unconditionally and CompileExpressionPrograms arms on anyExpr only, so no call site arms requireUnique on loop-construct presence. Update the prose to match (behaviour is already strictly stricter and safe)."
+  },
+  {
+   "name": "llm-provider-messaging",
+   "dw_ids": [
+    "DW-589"
+   ],
+   "intent": "Extend the DW-370 honest-UX fix to the cloud arm of LlmProviderFactory: when a cloud provider (anthropic/openrouter) has a base-URL override pointing at a non-allowlisted host, return/voice a pinned-host allowlist-rejection message instead of the misleading 'no AI provider is configured', and update the BaseUrlOverride test expectation accordingly."
+  },
+  {
+   "name": "lobby-connect-window-ui",
+   "dw_ids": [
+    "DW-595",
+    "DW-607"
+   ],
+   "intent": "In LobbyUi.HandlePeerConnected, gate the Ready button's Visible/Disabled enablement on a validated Hello (protocol-version-confirmed) rather than on the raw ENet connect event, so a player cannot press a Ready that can never succeed before the server has proven the version. Restructure the pre-Hello connect-window UI on the dedicated path in LobbyUi.HandlePeerConnected/OnChatSubmitted so a spectator is not shown the Ready button and 'Connected! Click Ready' before the server's Hello latches role flags, and a chat line submitted in that window does not local-echo (avoiding the DW-419 double-render when the server echo lands)."
+  },
+  {
+   "name": "match-lifecycle-state-reset",
+   "dw_ids": [
+    "DW-598",
+    "DW-600"
+   ],
+   "intent": "Clear the merged-arrival ring (now in MergedStreamGate) on GoOnline/GoSpectate (or GoOffline) so a reused LockstepManager instance cannot have stale prior-match arrivals at matching tick numbers satisfy a later match's Flush gate. Reset DedicatedServer._latestSeenTick in HandleReady alongside the rest of the per-match machinery so a reused server instance does not carry the prior match's frontier high-water into PumpFrozenInjection (wasted Submit calls / inflated informational applyAtTick)."
+  },
+  {
+   "name": "replay-recorder-fail-loud",
+   "dw_ids": [
+    "DW-604"
+   ],
+   "intent": "Replace the silent per-tick order clamp in ReplayRecorder.RecordTick (line 159: `if (count > TickCommandPacket.MAX_ORDERS) count = TickCommandPacket.MAX_ORDERS;`) with a thrown InvalidOperationException, matching the adjacent DW-432 sub-bundle-overflow guard, so the one component whose invariant is 'never silently drop' fails loud instead of truncating a >MAX_ORDERS sub-bundle."
+  },
+  {
+   "name": "nakama-ci-esbuild-gate",
+   "dw_ids": [
+    "DW-606"
+   ],
+   "intent": "Add an `npm run build` (esbuild) step to the nakama-ts-validator-gate job in .github/workflows/determinism-gate.yml (which today runs only tsc --noEmit + vitest), so a change that typechecks and passes vitest but breaks the esbuild bundle or drifts from the es2017/cjs goja target fails CI; optionally add a guard assertion mirroring NakamaTsValidatorCiGateGuardTests."
+  },
+  {
+   "name": "inmatch-menu-spectator-guard",
+   "dw_ids": [
+    "DW-612"
+   ],
+   "intent": "Thread spectator state into InMatchMenuOverlay.Open/SetOnline (and update the two callers, including MainScene.ToggleInMatchMenu) so a spectator's Concede button is disabled or hidden rather than enabled-and-silent-no-op (EnqueueConcede early-returns on IsSpectator)."
+  },
+  {
+   "name": "ui-comment-fixups",
+   "dw_ids": [
+    "DW-615"
+   ],
+   "intent": "Correct the stale comment at CombatFeedbackBridge.cs:137 ('the 256-slot queue') to the DW-469 ring size of 320 slots (256 ambient ceiling + 64 notification reserve); comment-only, substance (hit-freeze never gates drain/Clear) unchanged."
+  },
+  {
+   "name": "combat-feedback-cue-consumers",
+   "dw_ids": [
+    "DW-617"
+   ],
+   "intent": "Wire drain-side consumer cases for the HeroFell, HeroRevived, ItemPickedUp, ItemUsed and ItemDropped cues already pushed onto CombatEventQueue: add cases in CombatFeedbackBridge (~line 98), AudioManager (~line 149), and MatchAlertBridge.Update so these DW-469-protected notification cues actually render audio/feedback/alert instead of only firing when a source authored an ImpactSoundId."
+  },
+  {
+   "name": "ability-validator-polarity-lint",
+   "dw_ids": [
+    "DW-618"
+   ],
+   "intent": "Add a WARNING-channel lint to AbilityValidator that cross-checks a granted modifier's StatusFlags against its target filter, using the existing ModifierPolarity classification (HarmfulStatus = Stunned|Rooted|Silenced|Disarmed), and warns when an Ally-filtered SearchArea->ApplyModifier grants a HarmfulStatus (the self-stunning Guardian Aura class the DW-266 content fix patched but left the authoring hole open for)."
+  },
+  {
+   "name": "status-effect-action-gating",
+   "dw_ids": [
+    "DW-619"
+   ],
+   "intent": "In GatheringSystem's gather-progress accrual and BuildingSystem's construction-progress accrual, read StatusFlagsOf and skip the CarryAmount/build-progress increment when the worker is Stunned or Rooted, mirroring the DW-266 MovementSystem gate so a stun fully lands on the economy. Read-only status check; do not restructure the gather-state array (leave the DW-78 fold alone)."
+  },
+  {
+   "name": "drop-coordinator-doc",
+   "dw_ids": [
+    "DW-622"
+   ],
+   "intent": "Correct the over-claim: fix the DropCoordinator.emittedThrough param doc (~:63-65) and the client-side DirectiveMarker/UI marker to describe applyAtTick (EmittedThrough+1) as the emitted high-water tick, NOT 'the first idle tick', since a dropped peer that led the frontier has real buffered commands executing well past the marker. Doc/comment/label-only correction; behavior (pinned by DirectiveMarker_IsTheEmittedHighWater_NotTheRacersLead) is unchanged."
+  },
+  {
+   "name": "research-refusal-diagnostics",
+   "dw_ids": [
+    "DW-624"
+   ],
+   "intent": "Add a per-match aggregated diagnostic for the future-spawn research catch-up path (ResearchSystem.ApplyCompletedResearch, wired to EntityWorld.OnUnitDefinitionApplied) so refused research installs get designer-friendly research-name attribution without per-spawn spam. Accumulate refusals per match and emit one aggregate line at match end rather than per spawn."
+  },
+  {
+   "name": "research-apply-parity",
+   "dw_ids": [
+    "DW-626"
+   ],
+   "intent": "Add a SOURCE PIN (the LockstepManager_ForwardsResearch_AtEveryApplySite pattern from DW-86) covering the OFFLINE/F5 apply site: CommandCardSystem.cs:953 IssueResearchCommand and :969 IssueCancelResearchCommand must keep passing research: to OrderApplier.Apply, so a dropped arg can't silently make offline research a no-op while online+replay still apply it. Godot-coupled file (src/UI) excluded from Tier-1, so pin via source pattern, not an executable test."
+  },
+  {
+   "name": "trigger-graph-validation",
+   "dw_ids": [
+    "DW-628"
+   ],
+   "intent": "Add a building_type gate to GraphStructureGate.cs mirroring the flat gate's UnknownBuildingTypeInCondition_IsRejected_NotSilentlyInert check: validate EventNode.BuildingType / ConditionNode.BuildingType in the trigger_graph channel against the same enum-name + authored DefinitionId vocabularies so a typo'd/dropped building ref in a raw-IR graph is rejected instead of loading clean and staying permanently inert."
+  },
+  {
+   "name": "faction-definition-null-guard",
+   "dw_ids": [
+    "DW-629"
+   ],
+   "intent": "Mirror DW-103's guard in FactionDefinition.GetBuilding (:94-99): if Buildings is null return null, and skip null elements (b != null && b.Id == id), matching the hardened GetUnit/GetResearch siblings. Confirmed still unguarded at line 96 while GetUnit at 104 already has the guard."
+  },
+  {
+   "name": "nullable-context-cleanup",
+   "dw_ids": [
+    "DW-630"
+   ],
+   "intent": "Enable #nullable enable across the 21 listed shipping files in small batches, fixing the CS86xx nullable-flow warnings each batch surfaces (as EntityWorld's own enable required). Scheduled cleanup guarded by NullableContextHygieneTests; keep batches small to bound the merge surface."
+  },
+  {
+   "name": "nullable-flow-warnings",
+   "dw_ids": [
+    "DW-631"
+   ],
+   "intent": "Clear the pre-existing nullable-flow warnings: DedicatedServer.cs:261,277 (CS8602), UnitCardPanel.Edit.cs:532 (CS8604 x2), ScoreScreenOverlay.cs:138 (CS0108 member-hides), ScenarioItemRoundTripTests.cs:37 (CS8602). Fix the real possible-null-deref/arg and hides-inherited signals before DW-630 makes the nullable context project-wide. Note DedicatedServer.cs is Godot-coupled (bmad-loop track) so its two sites belong on that rail."
+  },
+  {
+   "name": "worker-gather-residue-seam",
+   "dw_ids": [
+    "DW-633"
+   ],
+   "intent": "Extract the hand-written worker gather residue (GatherState.Idle + CarryCapacity 20u) into one shared seam (e.g. EntityWorld.InitWorkerGatherState(id)) called by all three spawn sites: BuildingSystem.SpawnTrainedUnit, ScenarioApplier.cs:555-559, EntityPlacer.cs:841-843, and record the rule in godot/CLAUDE.md so future spawn paths inherit it. Closes the DW-205 duplication failure mode."
+  },
+  {
+   "name": "faction-validate-ability-registry",
+   "dw_ids": [
+    "DW-638",
+    "DW-639"
+   ],
+   "intent": "Thread the ability registry into SkirmishCatalog.ScanFactions (:182, caller SkirmishSetupOverlay.cs:66) so its FactionValidator.ValidateComplete call is registry-aware like the DW-327 sites, closing the fourth registry-less surface. Otherwise a faction with a dangling signature_mechanic_effect_id lists as selectable but is hard-vetoed at launch by FactionLaunchGate (selectable != launchable). Add automated coverage for the DW-327 boot match-load shadow leg (SlotFactionResolver.cs:62, excluded from Tier-1 by SimSources.props:140): extract the per-slot registry-aware diagnostic into a Godot-free helper beside FactionLaunchGate and Tier-1 test it, so a future edit that drops the abilityRegistry arg can't silently re-open half of DW-327 with the suite green."
+  },
+  {
+   "name": "skirmish-discovery-comments",
+   "dw_ids": [
+    "DW-640"
+   ],
+   "intent": "Fix the stale comment at MainScene.cs:400-401 that claims no skirmish/lobby picker exists yet (Story 11.1). Story 11.1 shipped SkirmishSetupOverlay + SkirmishCatalog, and that picker re-scans via SkirmishCatalog.ScanFactions rather than consuming the boot discovery list; correcting the comment removes the wrong mental model that let DW-638 go unnoticed. Comment-only change to MainScene."
+  },
+  {
+   "name": "ability-resolution-diagnostics",
+   "dw_ids": [
+    "DW-641"
+   ],
+   "intent": "Switch the CLIENT boot path (MainScene.cs:382-383 and SlotFactionResolver.cs:52) from the silent ResolveAbilities overload to the diagnostic overload DW-285 wired for the Godot-free legs, so unknown/over-cap/shadowed ability ids are warned about at client boot. Both files are Godot-coupled (in-engine gate set) so this belongs on the bmad-loop track with an in-engine verify."
+  },
+  {
+   "name": "resource-store-negative-cost",
+   "dw_ids": [
+    "DW-642"
+   ],
+   "intent": "Reject cost < 0 inside ResourceStore.SpendOre (:126-131) and SpendCrystal (:145-150) so a negative authored cost cannot ADD resources (CanAffordOre(faction,-5) is trivially true). Fixing the shared primitive protects every caller (BuildingSystem train/build/shop, BuyItemCommand, ReviveHeroCommand, AiOpponentSystem), not just the DW-283-hardened ability path; resources are SimChecksum-folded so this is a money-printer, not just a validation gap. Confirmed no cost<0 guard present."
+  },
+  {
+   "name": "effective-attack-damage-clamp",
+   "dw_ids": [
+    "DW-643"
+   ],
+   "intent": "Re-clamp EffectiveAttackDamage to Fixed.Max(Fixed.Zero, ...) on the SaveGameState restore path (SaveGameState.cs:649), which reconstructs it from raw ints bypassing ModifierSystem's clamp (:90). This keeps CombatSystem's `== Fixed.Zero` non-combatant test and AiOpponentSystem's `> Fixed.Zero` conscriptable test true complements so the two systems can't disagree about a unit loaded with a negative value; optionally unify the predicate spelling."
+  },
+  {
+   "name": "ai-opponent-scoring",
+   "dw_ids": [
+    "DW-644"
+   ],
+   "intent": "In AiOpponentSystem, make ScoreRazeBuildings gate on the count of Structure-CAPABLE free units (the same AttackDomain.Structure filter DoRazeBuildings applies at :556), not raw AvailableCombatUnits. Add a structure-capable-available count to AiSnapshot/BuildSnapshot so an AI whose free units are all air-only/anti-unit-only scores raze 0 and falls through to BuildBarracks etc. instead of pinning 0.90 on an unexecutable raze."
+  },
+  {
+   "name": "combat-command-switch-completeness",
+   "dw_ids": [
+    "DW-645"
+   ],
+   "intent": "Add a completeness guard so every UnitCommand value that PERSISTS as a CommandState has an explicit arm in CombatSystem.Tick's switch rather than silently inheriting TickIdleCombat via `default:`. Implement as a red-test enumerating the persisting subset (or a switch that throws/asserts on an un-cased persisting command), closing the DW-206 defect CLASS."
+  },
+  {
+   "name": "navigation-position-writer-guard",
+   "dw_ids": [
+    "DW-648"
+   ],
+   "intent": "Audit every direct writer of EntityWorld.Position (snap-to-waypoint, teleport-style effects, flow-field/path consumers) and route the ones that represent MOVEMENT through a shared checked-step helper that applies PathabilityGrid.IsBlockedOnSegmentOutside, so the swept rejection is not MovementSystem-only. Leave authored/scenario placement to the ScenarioValidator path. Golden-neutral on valid maps."
+  },
+  {
+   "name": "modifier-authoring-bounds",
+   "dw_ids": [
+    "DW-650"
+   ],
+   "intent": "Adopt the public Modifier.CheckAuthoringBounds() (the DW-488 MaxStacks x delta-magnitude cap, Modifier.cs:129) at the three non-ability Modifier minters that bypass AbilityValidator: ItemSystem.ApplyItemStatModifier (:339, via ItemDefinitionValidator), HeroXpSystem level-growth (:338), and ResearchSystem.BuildCumulativeModifier (:368) \u2014 one adoption line each \u2014 so an authored item/research/hero curve can't feed an unbounded delta into the same 8-slot accumulator."
+  },
+  {
+   "name": "scenario-validation",
+   "dw_ids": [
+    "DW-653"
+   ],
+   "intent": "Add a pre-placed items loop to ScenarioValidator.Validate that resolves each ScenarioItem.item_id (ScenarioData.cs:366-377) against the ItemRegistry, the exact sibling of the unit_id check DW-240 added. Requires threading the ItemRegistry into ScenarioValidator.Validate (a signature change rippling to its existing callers). Matches whatever reject/drop posture DW-652 settles on."
+  },
+  {
+   "name": "win-resolution",
+   "dw_ids": [
+    "DW-654",
+    "DW-656"
+   ],
+   "intent": "Make the DSL `victory` leaf (ScenarioDirector.cs:2570-2575) latch the named winner's WinStateStore.Verdict = VERDICT_WON (monotone, active-faction-bounded, mirroring LatchDefeat) BEFORE firing OnVictory, so the score screen (GameOverSummary.Build), the headline (GameOverPresentation.BuildHeadline keys LocalWin off Verdict==VERDICT_WON), and the headless/server path all read a WON winner instead of an empty DEFEAT screen. Drive TryMintProofOfPlay off the latched WON verdict at the MainScene.ShowGameOver / GameOverPresentation.DecideOutcome seam (depends on DW-654 latching a verdict on native wins), so skirmish/MP/last-team-standing/concede wins mint proof-of-play \u2014 not only the DSL `victory` escape hatch (ScenarioDelegateBinder.cs:69)."
+  },
+  {
+   "name": "gameover-presentation",
+   "dw_ids": [
+    "DW-655"
+   ],
+   "intent": "Add the same re-entrancy guard ShowHalt has (`if (_gameOver) return;`) to the top of MainScene.ShowGameOver (MainScene.cs:2138), so a mid-block second show (e.g. during _host.Update/StepOnce inside the _Process win branch) can't re-post the chat line, re-run StopRecording, and re-Show the score screen."
+  },
+  {
+   "name": "command-card-supply",
+   "dw_ids": [
+    "DW-657"
+   ],
+   "intent": "In CommandCardSystem.cs:416 pass `supply + _buildSys.QueuedSupply(faction)` to HasSupply so the train-button affordance matches DW-478's enqueue-time supply reservation (BuildingSystem.QueuedSupply is already public). One-line fix; no Economy change needed."
+  },
+  {
+   "name": "unit-def-reapply-hardening",
+   "dw_ids": [
+    "DW-659",
+    "DW-660"
+   ],
+   "intent": "After the Base*->Effective* re-mirror in EntityWorld.ApplyUnitDefinition (:1022-1034), call ModifierStore.RecomputeEffectiveStats (the DW-300 seam) so a live re-apply on an entity carrying a research/item/aura modifier and NO self-passive re-derives its Effective* instead of silently wiping the bonus until an unrelated dirty. Golden-neutral (a fresh spawn hosts no modifiers). Make ResearchSystem.ApplyCompletedResearch (:391-406) / ApplyCumulativeModifier (:348-359) heal-idempotent on a re-fired seam: guard the current-Health heal so a live in-place re-apply of an already-completed +MaxHealth research does not re-trigger the full army heal (the DW-85 defect class), while preserving the first-completion heal. Latent today (no live re-apply caller), so golden-neutral."
+  },
+  {
+   "name": "modifier-store-hardening",
+   "dw_ids": [
+    "DW-662"
+   ],
+   "intent": "Add a target-alive guard alongside the host-alive bail in ModifierStore.RunEffect (:269): when a period effect resolves to a target other than its host, skip if that target is dead, so a future SpatialHash-threaded AoE period can't corrupt CompactSlot/_count (the DW-267 class). Golden-neutral today (RunEffect builds EffectContext with spatial:null, so host==target always)."
+  },
+  {
+   "name": "docs-normalization",
+   "dw_ids": [
+    "DW-663"
+   ],
+   "intent": "Refresh the ModifierStore.cs:33-42 Re-entrancy <para>: drop the stale '2.2b' version framing and accurately describe the current state \u2014 all three phases use direct-target leaves and the Story 2.3 content validator fence keeps install-leaves off the executor. The DW-324 doc sweep named this line but closed with it still stale."
+  },
+  {
+   "name": "combat-noncombatant-routing",
+   "dw_ids": [
+    "DW-664"
+   ],
+   "intent": "Fix TickNonCombatant's AttackTarget/AttackBuilding arm (CombatSystem.cs:253-262) so a unit whose EffectiveAttackDamage is only TEMPORARILY debuffed to zero (ModifierSystem zero-floors at :90) does not have its attack order permanently destroyed to Idle. Distinguish a base/authored non-combatant from a debuffed combatant (e.g. gate on BaseAttackDamage) so the order is preserved and resumes when the debuff expires, instead of being wiped by the :155 gate."
+  },
+  {
+   "name": "skirmish-scenario-remap",
+   "dw_ids": [
+    "DW-665"
+   ],
+   "intent": "In SkirmishSetupToScenario, remap trigger-action unit ids through SkirmishRosterMap.MapUnitId instead of copying them verbatim (`UnitId = a.UnitId` at :359) \u2014 and rewrite base triggers on the identity-remap path (:161-165) \u2014 so a cross-faction skirmish launch doesn't feed an unresolvable spawn_unit unit_id into DW-240's fail-closed ScenarioValidator gate (:840, :941-944) and reject the whole map."
+  },
+  {
+   "name": "item-editor-mutation",
+   "dw_ids": [
+    "DW-667"
+   ],
+   "intent": "Stop the Item Card editor (CreationSuite/ItemCardPanel*.cs) from rewriting shipped item JSON on OPEN with no explicit Save, and fix the writer's serialization so it does not drop explicitly-authored zero fields (cost_crystal:0 via WhenWritingDefault), reorder keys, expand the compact effect object, or strip the trailing newline \u2014 preserving byte-stable diffs for shipped content (same shipped-content-mutation class as bfec5197)."
+  }
+ ]
+}
