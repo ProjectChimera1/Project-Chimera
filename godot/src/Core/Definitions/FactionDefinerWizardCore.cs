@@ -187,6 +187,15 @@ namespace ProjectChimera.Core.Definitions
         /// <c>FactionDefinerPanel.OnFinishPressed</c> deliberately skips the jump there, so this exists purely so any
         /// FUTURE consumer of <see cref="FactionDefinerFinishResult.Step"/> (logging, an error-label step chip, a
         /// different UI surface) reads a defensible step instead of a misleading Buildings &amp; Tech.</para>
+        ///
+        /// <para><b>DW-505 (the kind-label sniff reads the REASON).</b> The sniff used to run on the raw message, so it
+        /// only matched a message whose kind label was literally first. <see cref="FactionValidator.ValidateComplete"/>
+        /// wrapped its two item-level <c>mesh_path</c> errors in the FACTION-level <c>"faction '&lt;id&gt;'.mesh_path: "</c>
+        /// prefix, which pushed the label off the front and dropped every missing-UNIT-mesh_path error on the
+        /// Buildings &amp; Tech fallback — a step with no roster control, in the one flow (Finish) where the author is
+        /// already blocked. That validator now emits the item-level shape, and this method additionally strips a
+        /// faction-located prefix before sniffing, so neither side alone can re-open the mis-route. The two mesh_path
+        /// producers (that validator and <see cref="MeshAssetLint"/>) now share one message shape.</para>
         /// </summary>
         public static FactionDefinerStep StepForError(string fieldPath, string message)
         {
@@ -210,9 +219,46 @@ namespace ProjectChimera.Core.Definitions
                 // Color (the first step) is the defensible landing spot; Advanced mode itself never reads Step.
                 case "raw_json": return FactionDefinerStep.NameColor;
             }
-            if (!string.IsNullOrEmpty(message) && message.StartsWith("unit '", StringComparison.Ordinal))
+            // DW-505: sniff the kind label on the REASON, not on the raw message. The label normally leads
+            // (MeshAssetLint / UnitDefinitionValidator / BuildingDefinitionValidator / TechTreeValidator /
+            // ResourceCostValidator all emit "unit '<id>'.<field>: <reason>"), but a faction-level validator can wrap
+            // an item-level reason in its own "faction '<id>'.<field>: " prefix — which used to defeat this match
+            // outright and drop a missing-unit-mesh_path error on the Buildings & Tech fallback. FactionValidator no
+            // longer produces that shape (it emits the item-level form for its two mesh_path errors), and stripping
+            // the prefix here keeps the routing correct for any future faction-located message that carries a kind
+            // label. A genuine faction-level reason ("units list is null.", "duplicate building id 'x' …") carries no
+            // kind label, so it still falls through to Buildings & Tech exactly as before.
+            string reason = StripFactionLocatedPrefix(message);
+            if (reason.StartsWith("unit '", StringComparison.Ordinal))
                 return FactionDefinerStep.Roster;
             return FactionDefinerStep.BuildingsTech;
+        }
+
+        /// <summary>The head of <see cref="FactionValidator"/>'s faction-level located idiom,
+        /// <c>"faction '{id}'.{path}: {reason}"</c>.</summary>
+        private const string FactionLocatedHead = "faction '";
+
+        /// <summary>
+        /// Return <paramref name="message"/> with a leading faction-level located prefix
+        /// (<c>"faction '{id}'.{path}: "</c>) removed, or the message unchanged when it carries no such prefix
+        /// (DW-505). Null/empty reads as <c>""</c>. Parses positionally — the first <c>'.</c> after the opening quote
+        /// ends the id, the first <c>": "</c> after that ends the field path — rather than assuming a fixed id shape,
+        /// because a faction id is free text. A pathological id containing <c>'.</c> can mis-split, which at worst
+        /// yields a substring that matches no kind label and lands on the same Buildings &amp; Tech fallback an
+        /// unparsed message would have: a wrong tab is the entire blast radius, never an exception.
+        /// </summary>
+        private static string StripFactionLocatedPrefix(string message)
+        {
+            if (string.IsNullOrEmpty(message)) return "";
+            if (!message.StartsWith(FactionLocatedHead, StringComparison.Ordinal)) return message;
+
+            int idEnd = message.IndexOf("'.", FactionLocatedHead.Length, StringComparison.Ordinal);
+            if (idEnd < 0) return message;
+
+            int reasonStart = message.IndexOf(": ", idEnd + 2, StringComparison.Ordinal);
+            if (reasonStart < 0) return message;
+
+            return message[(reasonStart + 2)..];
         }
 
         /// <summary>
