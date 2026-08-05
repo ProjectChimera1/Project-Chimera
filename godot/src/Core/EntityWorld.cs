@@ -66,6 +66,82 @@ namespace ProjectChimera.Core
     }
 
     /// <summary>
+    /// DW-645 — the EXECUTABLE half of the <see cref="UnitCommand"/> doc comments above: does this command PERSIST
+    /// as an entity's <see cref="EntityWorld.CommandState"/>, or is it a fire-and-forget wire INTENT that is consumed
+    /// at apply time and never stored?
+    ///
+    /// <para><b>Why this exists.</b> The two kinds look identical on the wire but have completely different downstream
+    /// obligations. A command that persists becomes a per-tick control state, so EVERY system that switches on
+    /// <c>CommandState</c> — above all <c>CombatSystem.Tick</c> — must give it an explicit arm. A command that does not
+    /// persist is handled once by <c>OrderApplier</c> and no per-tick router ever sees it. DW-206 was exactly the
+    /// failure of that distinction: <see cref="UnitCommand.Build"/> persisted but had no arm in <c>CombatSystem</c>, so
+    /// it silently inherited idle auto-combat through the switch's <c>default:</c> and a building worker chased
+    /// enemies. Fixing that one member closed the INSTANCE; this classification plus the guards that consume it close
+    /// the CLASS — a newly appended member is unclassified here, which turns the suite red until someone decides which
+    /// kind it is, and if it persists the completeness guard then demands its explicit routing arms.</para>
+    ///
+    /// <para><b>Appending a member?</b> Add its arm below. If it PERSISTS you must also give it an explicit case in
+    /// <c>CombatSystem.Tick</c>'s command switch AND in <c>CombatSystem.TickNonCombatant</c>'s router (an intentionally
+    /// inert command joins the no-op case group there) — <c>CombatCommandSwitchCompletenessTests</c> enforces both.</para>
+    ///
+    /// <para>Classification-only: no sim state, no <see cref="SimChecksum"/> input, never called per tick.</para>
+    /// </summary>
+    public static class UnitCommandTraits
+    {
+        /// <summary>
+        /// True when <paramref name="cmd"/> is stored in <c>EntityWorld.CommandState</c> and drives per-tick behaviour;
+        /// false when it is consumed at apply time (a building order, an item action, a cast intent, or a wire-only
+        /// spelling that <c>OrderApplier</c> rewrites) and never reaches a per-tick router.
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// The value is not a declared <see cref="UnitCommand"/> member, or it is a member appended without being
+        /// classified here. The throw is the DW-645 red test: classify the new member rather than deleting it.
+        /// </exception>
+        public static bool PersistsAsCommandState(UnitCommand cmd)
+        {
+            switch (cmd)
+            {
+                // ── PERSISTING — stored in CommandState; every per-tick command router must case it explicitly ──
+                case UnitCommand.Idle:           // the resting state (also the fallback every invalid order reverts to)
+                case UnitCommand.Move:           // pure navigation
+                case UnitCommand.AttackMove:     // navigation + engage en route
+                case UnitCommand.Stop:           // stationary, engage in range
+                case UnitCommand.HoldPosition:   // stationary anchored, engage in range
+                case UnitCommand.Build:          // walking to a build site — BuildingSystem drives it (DW-206)
+                case UnitCommand.AttackTarget:   // force-attack one entity
+                case UnitCommand.AttackBuilding: // force-attack one building
+                case UnitCommand.Patrol:         // walk a waypoint ring
+                case UnitCommand.Follow:         // track a friendly
+                case UnitCommand.PickupItem:     // hero walking to a ground item — ItemSystem drives it
+                    return true;
+
+                // ── NOT PERSISTING — consumed by OrderApplier (or the system it delegates to) and never stored ──
+                case UnitCommand.PatrolAppend:   // wire-only: rewritten to Patrol before it is stored
+                case UnitCommand.CastAbility:    // intent: writes PendingCast*, restores the prior CommandState
+                case UnitCommand.Train:          // building order
+                case UnitCommand.SetRally:       // building order
+                case UnitCommand.ReviveHero:     // building order
+                case UnitCommand.UseItem:        // hero inventory action, applied immediately
+                case UnitCommand.DropItem:       // hero inventory action, applied immediately
+                case UnitCommand.BuyItem:        // shop-building order
+                case UnitCommand.StartResearch:  // building order
+                case UnitCommand.CancelResearch: // faction-wide research order
+                case UnitCommand.DslEvent:       // names a custom-event registry index, not an entity
+                case UnitCommand.Concede:        // names a faction, not an entity
+                case UnitCommand.CancelTrain:    // building order
+                    return false;
+
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(cmd), cmd,
+                        "DW-645: this UnitCommand is not classified as persisting/non-persisting. A newly appended " +
+                        "member must be added to UnitCommandTraits.PersistsAsCommandState; if it PERSISTS as a " +
+                        "CommandState it also needs explicit arms in CombatSystem.Tick's command switch and in " +
+                        "CombatSystem.TickNonCombatant, or it silently inherits idle auto-combat (the DW-206 defect).");
+            }
+        }
+    }
+
+    /// <summary>
     /// Worker/gatherer state machine. Inactive = non-gatherer (combat unit).
     /// </summary>
     public enum GatherState : byte
