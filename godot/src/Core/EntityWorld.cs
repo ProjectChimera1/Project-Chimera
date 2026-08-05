@@ -664,6 +664,37 @@ namespace ProjectChimera.Core
         public readonly int[]         GateClosedTicks;
 
         /// <summary>
+        /// DW-532 — the <see cref="Core.GatherState.MovingToResource"/> leg's STALL bookkeeping, in two ranges:
+        /// <list type="bullet">
+        ///   <item><c>&gt;= 0</c> — CONSECUTIVE whole ticks this worker has been unable to advance toward its reserved
+        ///         node at all (the <see cref="Pathability"/> grid hard-stops its whole step, both wall-slide axes
+        ///         included). Reset to 0 the instant it makes ground, on every fresh node assignment, on arrival, and on
+        ///         every <c>GatheringSystem.ReleaseGatherSlot</c>. While in this range the worker HOLDS one of its
+        ///         node's <c>ResourceNodeStore.AssignedGatherers</c> slots.</item>
+        ///   <item><c>&lt; 0</c> (<c>GatheringSystem.SLOT_YIELDED</c>) — the streak reached
+        ///         <c>GatheringSystem.WALK_STALL_GRACE_TICKS</c> and the worker HANDED THE RESERVATION BACK while
+        ///         staying en route. A stranded worker (spawned inside a blocked region the validator only warns about,
+        ///         then confined by DW-148) therefore stops consuming a node's capacity forever; it re-claims a slot
+        ///         only if it actually arrives, which is why it keeps walking rather than re-idling into a churn loop.</item>
+        /// </list>
+        ///
+        /// <para>Whole ticks, never dt-accumulated and never wall-clock (the <c>IncomeTicksElapsed</c> discipline), and
+        /// the stall test itself is the shared pure-<see cref="Fixed"/> <c>Navigation.CheckedStep.Resolve</c>, so it is
+        /// cross-platform-identical. NOT folded into <see cref="SimChecksum"/> and NOT persisted by
+        /// <c>SaveGameState</c> — the exact <see cref="GateClosedTicks"/> posture (only the node-side
+        /// <c>AssignedGatherers</c> is folded). RUNTIME state, NOT def-derived: defaulted in <see cref="Create"/> (the
+        /// mandatory recycle-trap reset), and NOT snapshot residue (a delete→undo restarts the window).</para>
+        ///
+        /// <para>The one KNOWN residual of not persisting it: a save taken while a worker is stranded records the node
+        /// counter WITHOUT that worker (it had yielded), but the restore re-applies the world first, so the worker comes
+        /// back at 0 — "holding" — and re-yields a second later, decrementing a slot it never took. Floor-guarded, so
+        /// the counter cannot go negative; the effect is bounded at one extra gatherer admitted to that node, versus the
+        /// permanent capacity LOSS on every map that not bounding the leg at all produced. Closing it properly means a
+        /// save lane for this array (the DW-581 family), deliberately out of scope here.</para>
+        /// </summary>
+        public readonly int[]         GatherWalkStallTicks;
+
+        /// <summary>
         /// DW-634 — TRUE while this worker still owes its production building's RALLY POINT a first leg, i.e. it was
         /// trained from a building carrying a rally point and has not yet reached it. <c>GatheringSystem.TickIdle</c>
         /// skips (does NOT re-target) a worker whose flag is set, so an explicit player rally beats the automatic
@@ -832,6 +863,7 @@ namespace ProjectChimera.Core
             CarryResourceType = new ResourceKind[MAX_ENTITIES]; // Story 4.7 — defaults to Ore (0)
             CarryCapacity  = new Fixed[MAX_ENTITIES];
             GateClosedTicks = new int[MAX_ENTITIES];            // DW-80 — closed-gate streak (NOT folded; 0 == fresh, no Array.Fill needed)
+            GatherWalkStallTicks = new int[MAX_ENTITIES];       // DW-532 — MovingToResource stall streak / yielded sentinel (NOT folded; 0 == fresh)
             RallyMovePending = new bool[MAX_ENTITIES];          // DW-634 — outstanding rally first leg (NOT folded; false == fresh, no Array.Fill needed)
             BuildTarget    = new int[MAX_ENTITIES];
 
@@ -987,6 +1019,12 @@ namespace ProjectChimera.Core
             // worker early, or (worse) never, depending on the corpse. Unfolded, so this line's ONLY teeth are
             // RecycledSlot_CarriesNoPriorGateClosedStreak.
             GateClosedTicks[id] = 0;
+            // DW-532: MANDATORY recycle-reset of the walk-stall streak / yielded sentinel. A recycled slot must NEVER
+            // inherit the prior occupant's partial stall window — and, far worse, must never inherit its SLOT_YIELDED
+            // sentinel, which would make the brand-new worker's very first ReleaseGatherSlot skip a decrement it really
+            // does owe (the 1.12/1.13/2.6 SoA-recycle defect class, here leaking the counter DW-207 exists to protect).
+            // Unfolded, so this line's ONLY teeth are RecycledSlot_CarriesNoPriorWalkStallState.
+            GatherWalkStallTicks[id] = 0;
             // DW-634: MANDATORY recycle-reset of the outstanding-rally-leg flag. A recycled slot must NEVER inherit the
             // prior occupant's pending rally (the 1.12/1.13/2.6 SoA-recycle defect class) — a brand-new worker spawned
             // WITHOUT a rally would inherit a corpse's true flag and then refuse to gather until it happened to stand
@@ -1381,6 +1419,7 @@ namespace ProjectChimera.Core
             Array.Clear(HeroIndex);             Array.Clear(GatherState);           Array.Clear(GatherTarget);
             Array.Clear(CarryAmount);           Array.Clear(CarryResourceType);     Array.Clear(CarryCapacity);         Array.Clear(BuildTarget);
             Array.Clear(GateClosedTicks);       // DW-80 (0 == the fresh-ctor state)
+            Array.Clear(GatherWalkStallTicks);  // DW-532 (0 == the fresh-ctor state: no streak, reservation held)
             Array.Clear(RallyMovePending);      // DW-634 (false == the fresh-ctor state)
             Array.Clear(Generation);            // DW-184 — recycle generations restart at 0 (the fresh-ctor state)
             Array.Clear(_freeList);
