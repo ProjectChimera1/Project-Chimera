@@ -1106,8 +1106,19 @@ namespace ProjectChimera.Core
         /// collision-radius clamp). Does NOT set <c>Health</c>/<c>Speed</c> (those are <see cref="Create"/> ctor
         /// args) nor <c>MeshType</c> (its faction-def index differs per caller), and does NOT touch worker gather
         /// state — callers own those. Allocation-free: value-type writes only, no LINQ/closures/boxing.
+        ///
+        /// <para><b>DW-54 — <paramref name="pinnedAbilities"/>.</b> Every field here is re-derived from
+        /// <paramref name="def"/> EXCEPT the ability slots when a caller supplies a pin. Those slots hold link-time
+        /// <c>AbilityRegistry</c> INDICES (back-filled by <see cref="UnitDefinition.ResolveAbilities"/>), not authored
+        /// data, so a def whose resolution moved/cleared since the caller captured its state must not be allowed to
+        /// silently re-write them — see <see cref="PinnedAbilityWiring"/>. Null (every spawn path) ⇒ byte-identical
+        /// pre-DW-54 behavior: the def's own resolution is used.</para>
         /// </summary>
-        public void ApplyUnitDefinition(int id, UnitDefinition def)
+        /// <param name="id">The already-<see cref="Create"/>d slot to map onto.</param>
+        /// <param name="def">The definition every mapped field is derived from.</param>
+        /// <param name="pinnedAbilities">DW-54: a previously-captured ability resolution that OVERRIDES the def's own
+        /// (see <see cref="PinnedAbilityWiring"/>). Null ⇒ derive from <paramref name="def"/> (the spawn-path default).</param>
+        public void ApplyUnitDefinition(int id, UnitDefinition def, PinnedAbilityWiring? pinnedAbilities = null)
         {
             VisionRange[id]  = Fixed.FromFloat(def.VisionRange);
             AttackRange[id]  = Fixed.FromFloat(def.AttackRange);
@@ -1164,22 +1175,55 @@ namespace ProjectChimera.Core
             // stay 0 from Create (ready). Excess ids beyond the cap were already dropped by ResolveAbilities.
             MaxEnergy[id] = Fixed.FromFloat(def.MaxEnergy);
             Energy[id]    = MaxEnergy[id];
-            byte abN = (byte)System.Math.Min(def.AbilityIndices.Length, MAX_ABILITIES_PER_UNIT);
-            AbilityCount[id] = abN;
-            int abApplyBase = id * MAX_ABILITIES_PER_UNIT;
-            for (int s = 0; s < abN; s++)
-                AbilityId[abApplyBase + s] = def.AbilityIndices[s];
-
-            // Story 2.6 (A2): the per-entity passive registration, partitioned by activation at scenario link
-            // (UnitDefinition.ResolveAbilities). Authored/peer-identical → NOT folded (the AbilityId posture).
-            AuraAbilityIndex[id]        = def.AuraAbilityIndex;
-            OnHitAbilityIndex[id]       = def.OnHitAbilityIndex;
-            SelfPassiveAbilityIndex[id] = def.SelfPassiveAbilityIndex;
+            // Story 2.6 (A2): the castable slots + the per-entity passive registration, partitioned by activation at
+            // scenario link (UnitDefinition.ResolveAbilities). Authored/peer-identical → NOT folded (the AbilityId
+            // posture; AbilityCount only bounds the v7 cooldown fold). DW-54: written from the pin when one is
+            // supplied, else from the def — a single write site either way, still BEFORE the seam below.
+            WriteAbilityWiring(id, pinnedAbilities, def);
 
             // Story 2.6: fire the spawn-install seam LAST — every field the installer reads (SelfPassiveAbilityIndex,
             // faction, position) is now set. The subscriber (wired in SimulationHost) installs a while_alive
             // self-passive exactly once per def-based spawn. Symmetric with the OnDestroy seam; A2-safe (single mapper).
             OnUnitDefinitionApplied?.Invoke(id);
+        }
+
+        /// <summary>
+        /// DW-54: the SINGLE write site for an entity's ability wiring — the castable slots (<see cref="AbilityId"/> /
+        /// <see cref="AbilityCount"/>) and the three passive registrations. Sourced from <paramref name="pinned"/> when
+        /// a caller supplies a previously-captured resolution (<see cref="RestoreUnit"/>), else from
+        /// <paramref name="def"/>'s own link-time resolution (every spawn path — byte-identical to pre-DW-54).
+        /// Always called BEFORE <see cref="OnUnitDefinitionApplied"/> fires, so the while-alive installer reads the
+        /// same <see cref="SelfPassiveAbilityIndex"/> that ends up in the SoA. Slots past the written count keep
+        /// <see cref="Create"/>'s −1 (the pre-existing contract — the count is what bounds every reader).
+        /// </summary>
+        private void WriteAbilityWiring(int id, PinnedAbilityWiring? pinned, UnitDefinition? def)
+        {
+            int abApplyBase = id * MAX_ABILITIES_PER_UNIT;
+            byte abN;
+            if (pinned != null)
+            {
+                abN = (byte)System.Math.Min(pinned.Count, MAX_ABILITIES_PER_UNIT);
+                for (int s = 0; s < abN; s++)
+                    AbilityId[abApplyBase + s] = pinned.ActiveAt(s);
+                AuraAbilityIndex[id]        = pinned.AuraIndex;
+                OnHitAbilityIndex[id]       = pinned.OnHitIndex;
+                SelfPassiveAbilityIndex[id] = pinned.SelfPassiveIndex;
+            }
+            else if (def != null)
+            {
+                // Excess ids beyond the cap were already dropped by ResolveAbilities; the Min is belt-and-braces.
+                abN = (byte)System.Math.Min(def.AbilityIndices.Length, MAX_ABILITIES_PER_UNIT);
+                for (int s = 0; s < abN; s++)
+                    AbilityId[abApplyBase + s] = def.AbilityIndices[s];
+                AuraAbilityIndex[id]        = def.AuraAbilityIndex;
+                OnHitAbilityIndex[id]       = def.OnHitAbilityIndex;
+                SelfPassiveAbilityIndex[id] = def.SelfPassiveAbilityIndex;
+            }
+            else
+            {
+                return; // Nothing to source from — leave Create's defaults (0 slots, −1 passives) untouched.
+            }
+            AbilityCount[id] = abN;
         }
 
         /// <summary>
@@ -1202,11 +1246,17 @@ namespace ProjectChimera.Core
         /// caller-owned fields the def mapper does not write (MeshType / gather state / carry capacity / supply), and
         /// the raw combat stats read ONLY by the def-less restore branch. A def-based unit needs no per-field combat
         /// capture: <see cref="RestoreUnit"/> re-derives all of it from the def through <see cref="ApplyUnitDefinition"/>.
-        /// Godot-free (Core layer) so it is reachable from a Tier-1 test. No allocation beyond the returned value.
+        /// Godot-free (Core layer) so it is reachable from a Tier-1 test.
+        ///
+        /// <para><b>DW-54:</b> the one exception to "re-derive it from the def" is the ability RESOLUTION, which is
+        /// pinned here by value (<see cref="CaptureAbilityWiring"/>) because the def is a live shared roster object an
+        /// editor session can mutate, swap, or re-resolve under a long-lived undo entry. Allocation-free except for a
+        /// unit that actually carries abilities/passives (an editor-time action, never the tick).</para>
         /// </summary>
         public UnitSnapshot SnapshotUnit(int id) => new UnitSnapshot
         {
             Def           = SourceDefinition[id],
+            Abilities     = CaptureAbilityWiring(id),
             Position      = Position[id],
             Faction       = FactionOf[id],
             // Capture the authored BASE health/speed (NOT Effective): RestoreUnit feeds these to Create (which sets
@@ -1231,6 +1281,26 @@ namespace ProjectChimera.Core
         };
 
         /// <summary>
+        /// DW-54: pin entity <paramref name="id"/>'s LIVE ability resolution (castable slots + the three passive
+        /// registrations) so <see cref="RestoreUnit"/> can replay it verbatim instead of re-deriving it from a def
+        /// whose <c>AbilityIndices</c> may since have been re-resolved, cleared, or replaced. Returns the shared
+        /// <see cref="PinnedAbilityWiring.None"/> — no allocation — for the common unit that carries neither a
+        /// castable ability nor a passive.
+        /// </summary>
+        private PinnedAbilityWiring CaptureAbilityWiring(int id)
+        {
+            int aura = AuraAbilityIndex[id], onHit = OnHitAbilityIndex[id], self = SelfPassiveAbilityIndex[id];
+            int n = AbilityCount[id];
+            if (n > MAX_ABILITIES_PER_UNIT) n = MAX_ABILITIES_PER_UNIT; // defensive; the mapper already capped it
+            if (n <= 0 && aura < 0 && onHit < 0 && self < 0) return PinnedAbilityWiring.None;
+
+            int captureBase = id * MAX_ABILITIES_PER_UNIT;
+            var active = n > 0 ? new int[n] : System.Array.Empty<int>();
+            for (int s = 0; s < n; s++) active[s] = AbilityId[captureBase + s];
+            return new PinnedAbilityWiring(active, aura, onHit, self);
+        }
+
+        /// <summary>
         /// Story 3.17: re-create an entity captured by <see cref="SnapshotUnit"/> (the editor delete→undo path).
         /// Returns the new entity id, or −1 if the world is full (graceful — no partial state). For a def-based unit
         /// every def-derived authored field (armor, passives, abilities/Energy, feedback, tags, attack domain,
@@ -1240,6 +1310,12 @@ namespace ProjectChimera.Core
         /// restored from the snapshot's raw stats (today's behavior). The caller-owned residue (MeshType / gather
         /// state / carry capacity / supply) is replayed verbatim AFTER the mapper, so worker overrides survive —
         /// identical to the <c>DoSpawnWorker</c>/<c>DoSpawnCombatUnit</c> place path.
+        ///
+        /// <para><b>DW-54:</b> the snapshot's PINNED ability resolution (<see cref="UnitSnapshot.Abilities"/>) is fed
+        /// to the mapper rather than re-derived, so an undo that lands after the def was edited in place, swapped in
+        /// the roster, or re-resolved against a different/absent registry still restores the abilities the deleted
+        /// unit actually had — instead of a changed set, or silently none. The mapper writes the pin BEFORE the
+        /// passive-install seam fires, so the installed while-alive passive always matches the SoA slot.</para>
         /// </summary>
         public int RestoreUnit(in UnitSnapshot snap)
         {
@@ -1249,8 +1325,9 @@ namespace ProjectChimera.Core
             if (snap.Def != null)
             {
                 // A2: re-derive every def-derived authored field through the single mapper (fires the passive-install
-                // seam; Destroy already cleared the old modifiers, so no double-install).
-                ApplyUnitDefinition(id, snap.Def);
+                // seam; Destroy already cleared the old modifiers, so no double-install). DW-54: the ability wiring is
+                // the one field group the mapper takes from the snapshot instead of the def.
+                ApplyUnitDefinition(id, snap.Def, snap.Abilities);
             }
             else
             {
@@ -1264,6 +1341,10 @@ namespace ProjectChimera.Core
                 ArmorTypeOf[id]           = snap.ArmorType;
                 VisionRange[id]           = snap.VisionRange;
                 SplashRadius[id]          = snap.SplashRadius;
+                // DW-54: this branch never runs the mapper, so replay the pinned wiring directly. A def-less unit can
+                // only ever have Create's empty wiring today (nothing but ApplyUnitDefinition writes those slots), so
+                // this is a no-op in practice — it exists so the two restore branches cannot drift.
+                WriteAbilityWiring(id, snap.Abilities, null);
             }
 
             // Replay the caller-owned residue verbatim (worker SupplyCost=0/GatherState/CarryCapacity + MeshType) so
