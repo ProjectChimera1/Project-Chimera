@@ -62,6 +62,25 @@ namespace ProjectChimera.Core.Definitions
         // silently defaulting them to CommandCenter the way the applier does (D4).
         private static readonly string[] _buildingTypeNames = Enum.GetNames(typeof(BuildingType));
 
+        /// <summary>
+        /// DW-627 — the PLACEABLE built-in building-type names: every <see cref="BuildingType"/> member except the
+        /// <see cref="BuildingType.Custom"/> sentinel (which resolves no def → a stat-less, unrendered ghost, so it
+        /// is not an identity a map may name). Derived from the enum, never hand-listed: a hand-listed copy is
+        /// exactly how <c>LLMService</c>'s private shadow enum sat one member behind the real one from Story 2.8
+        /// (Aviary) until DW-627. INTERNAL because the LLM generation gate reads the same vocabulary — for its
+        /// building-type prompt lines and its rejection messages — so the request and both gates can never drift.
+        /// </summary>
+        internal static readonly string[] PlaceableBuildingTypeNames = BuildPlaceableBuildingTypeNames();
+
+        private static string[] BuildPlaceableBuildingTypeNames()
+        {
+            var names = new List<string>(_buildingTypeNames.Length);
+            for (int i = 0; i < _buildingTypeNames.Length; i++)
+                if (_buildingTypeNames[i] != nameof(BuildingType.Custom))
+                    names.Add(_buildingTypeNames[i]);
+            return names.ToArray();
+        }
+
         // Story 4.7: the closed resource_type vocabulary (mirrors _buildingTypeNames — small, hand-authored,
         // allocated once). Only Ore/Crystal have real ResourceStore-backed balances today.
         private static readonly string[] _resourceTypeNames = { "Ore", "Crystal" };
@@ -1564,8 +1583,12 @@ namespace ProjectChimera.Core.Definitions
         /// DW-170 — the trigger gate now calls this with the OWNER faction of the event/condition's own
         /// <c>faction</c> slot (its faction qualifier), so a trigger can name an authored custom building exactly
         /// like a pre-placed scenario building does. <c>ScenarioDirector</c> resolves the same two vocabularies at
-        /// runtime (enum name → <c>BuildingStore.Type</c>, authored id → <c>BuildingStore.DefinitionId</c>).</summary>
-        private static bool IsKnownBuildingType(string? type, FactionDefinition? ownerDef = null)
+        /// runtime (enum name → <c>BuildingStore.Type</c>, authored id → <c>BuildingStore.DefinitionId</c>).
+        /// DW-627 — INTERNAL, not private: <c>LLMService</c>'s generation gate used to run its own 4-name copy of
+        /// this vocabulary (a private shadow enum + a hardcoded string set), so an AI-generated map naming a custom
+        /// building — or the built-in Aviary — was rejected UPSTREAM of this validator. Both LLM sites now call THIS
+        /// predicate, so there is one resolution rule for hand-authored, editor-authored and generated scenarios.</summary>
+        internal static bool IsKnownBuildingType(string? type, FactionDefinition? ownerDef = null)
         {
             if (type is null) return false;
             for (int i = 0; i < _buildingTypeNames.Length; i++)
@@ -1604,8 +1627,11 @@ namespace ProjectChimera.Core.Definitions
         /// <summary>Story 6.8 — resolve a pre-placed building's owner <see cref="FactionDefinition"/> from the
         /// per-slot defs (indexed by <c>(int)Faction</c> = slot+1). Null when no defs are threaded or the slot is out
         /// of range — the caller then falls back to enum-name-only building-type acceptance. DW-240 reuses it for the
-        /// pre-placed / spawn_unit unit-id resolution domain (the same per-slot roster the applier reads).</summary>
-        private static FactionDefinition? OwnerFactionDef(IReadOnlyList<FactionDefinition?>? slotFactionDefs, int slot)
+        /// pre-placed / spawn_unit unit-id resolution domain (the same per-slot roster the applier reads).
+        /// DW-627 — INTERNAL so <c>LLMService</c>'s generation gate resolves an owner faction with the SAME slot→def
+        /// indexing convention (slot + 1) the load gate and the applier use; a second hand-rolled cast there would be
+        /// an off-by-one waiting to happen.</summary>
+        internal static FactionDefinition? OwnerFactionDef(IReadOnlyList<FactionDefinition?>? slotFactionDefs, int slot)
         {
             if (slotFactionDefs is null) return null;
             int fIdx = slot + 1; // (Faction)(slot + 1), matching the applier's cast

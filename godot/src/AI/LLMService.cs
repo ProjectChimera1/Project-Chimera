@@ -29,6 +29,16 @@ namespace ProjectChimera.AI
 
         /// <summary>Half-width of the playable map in world units. Spawn points must be within ±Bounds.</summary>
         public float MapBounds { get; set; } = 120f;
+
+        /// <summary>
+        /// DW-627 (optional, TRUSTED) — the per-slot resolved <see cref="FactionDefinition"/>s, indexed by
+        /// <c>(int)Faction</c> = slot + 1, i.e. the SAME array shape <see cref="ScenarioValidator.Validate"/> takes.
+        /// Threading it lets a generated trigger's <c>building_type</c> name an authored custom building of the
+        /// event/condition's own faction, exactly as the DW-170 load gate allows for hand-authored triggers. NULL
+        /// (the default) restricts the check to built-in <see cref="BuildingType"/> enum names — the same amnesty
+        /// the load gate applies when no defs are threaded. Never sourced from the generated (untrusted) output.
+        /// </summary>
+        public IReadOnlyList<FactionDefinition?>? SlotFactionDefs { get; set; }
     }
 
     /// <summary>
@@ -79,6 +89,16 @@ namespace ProjectChimera.AI
         // simple name would be the "Color Color" ambiguity inside an instance initializer.
         public ScenarioType ScenarioType { get; set; } = ProjectChimera.AI.ScenarioType.Rts;
 
+        /// <summary>
+        /// DW-627 (optional, TRUSTED) — the per-slot resolved <see cref="FactionDefinition"/>s, indexed by
+        /// <c>(int)Faction</c> = slot + 1, i.e. the SAME array shape <see cref="ScenarioValidator.Validate"/> takes.
+        /// Threading it lets a generated scenario pre-place an authored CUSTOM building (a lowercase building-def id
+        /// in the owning slot's faction), exactly as the Story 6.8 load gate allows for hand-authored maps. NULL (the
+        /// default) restricts the check to built-in <see cref="BuildingType"/> enum names — the same amnesty the load
+        /// gate applies when no defs are threaded. Never sourced from the generated (untrusted) file.
+        /// </summary>
+        public IReadOnlyList<FactionDefinition?>? SlotFactionDefs { get; set; }
+
         /// <summary>Resolve the trusted faction-JSON path for the given 0-based <paramref name="slot"/>, honoring
         /// <see cref="FactionJsonResolver"/> when set else the RTS slot-0/slot-1 default mapping.</summary>
         public string ResolveFactionJson(int slot)
@@ -112,6 +132,16 @@ namespace ProjectChimera.AI
         // Safety cap: spawn_unit count is clamped to this in validation, independently
         // of the schema comment in the prompt.
         private const int    MAX_SPAWN_COUNT = 50;
+
+        /// <summary>
+        /// DW-627 — the built-in building-type choices as the prompts spell them (<c>"A"|"B"|…</c>), DERIVED from the
+        /// one <see cref="ScenarioValidator.PlaceableBuildingTypeNames"/> vocabulary the gates enforce. Both prompt
+        /// builders hardcoded a 4-name list that went stale when Story 2.8 appended <c>Aviary</c>, so the model was
+        /// told a built-in did not exist while the (equally stale) gate rejected it if the model guessed it anyway.
+        /// A member added to <see cref="BuildingType"/> now reaches the request and both gates in the same edit.
+        /// </summary>
+        internal static readonly string BuildingTypeChoices =
+            string.Join("|", ScenarioValidator.PlaceableBuildingTypeNames.Select(n => $"\"{n}\""));
 
         // ── Internal state ────────────────────────────────────────────────────
 
@@ -242,7 +272,9 @@ namespace ProjectChimera.AI
         /// 2. Construct membership (Story 8.3) — every event/condition/action Type is a member of the closed flat
         ///    <see cref="NodeKinds"/> vocabulary; an unknown or graph-only construct is rejected with a LOCATED error.
         /// 3. Faction slots — 0 or 1 only
-        /// 4. BuildingType strings — must match BuildingType enum
+        /// 4. BuildingType strings — a built-in <see cref="BuildingType"/> enum name, or (when the caller threaded
+        ///    <see cref="ScenarioContext.SlotFactionDefs"/>) a custom building id authored by the referencing
+        ///    faction — the same two vocabularies the load gate resolves (DW-627)
         /// 5. Operators — only the six standard comparison symbols
         /// 6. Range / safety — counts ≤ 50, durations > 0, spawn inside bounds
         /// Returns (null, errorMessage) on failure, (trigger, null) on success.
@@ -293,15 +325,24 @@ namespace ProjectChimera.AI
                 if (a.Faction is not (0 or 1))
                     return (null, $"Action '{a.Type}' has invalid faction slot {a.Faction}.");
 
-            // Pass 4 — building type strings.
+            // Pass 4 — building type strings (DW-627). Resolved through ScenarioValidator's ONE predicate — the same
+            // two vocabularies the DW-170 load gate accepts: a built-in BuildingType enum name, OR an authored
+            // building-def id in the faction that owns the event/condition's own `faction` slot (its faction
+            // qualifier), when the caller threaded the trusted per-slot defs. Before this, the check ran against a
+            // PRIVATE 4-member shadow enum declared in this file, so a generated trigger naming a custom building was
+            // rejected upstream of the gate that would have accepted it — and, since Story 2.8 appended Aviary to the
+            // real enum, the shadow rejected a legitimate BUILT-IN reference too.
             foreach (var ev in trigger.Events)
                 if (!string.IsNullOrEmpty(ev.BuildingType)
-                    && !Enum.TryParse<BuildingType>(ev.BuildingType, out _))
+                    && !ScenarioValidator.IsKnownBuildingType(
+                        ev.BuildingType, ScenarioValidator.OwnerFactionDef(context.SlotFactionDefs, ev.Faction)))
                     return (null, $"Unknown building_type '{ev.BuildingType}'. " +
-                        $"Valid: {string.Join(", ", Enum.GetNames(typeof(BuildingType)))}");
+                        $"Valid: {string.Join(", ", ScenarioValidator.PlaceableBuildingTypeNames)}" +
+                        " (or a custom building id authored by that faction).");
             foreach (var c in trigger.Conditions)
                 if (!string.IsNullOrEmpty(c.BuildingType)
-                    && !Enum.TryParse<BuildingType>(c.BuildingType, out _))
+                    && !ScenarioValidator.IsKnownBuildingType(
+                        c.BuildingType, ScenarioValidator.OwnerFactionDef(context.SlotFactionDefs, c.Faction)))
                     return (null, $"Unknown building_type '{c.BuildingType}'.");
 
             // Pass 5 — operator strings.
@@ -364,9 +405,9 @@ namespace ProjectChimera.AI
             // description block is HAND-AUTHORED (not derived from NodeKinds) precisely so the staleness-guard test can
             // catch a future NodeKinds addition that was not documented here.
             sb.AppendLine("=== VALID EVENT TYPES ===");
-            sb.AppendLine(@"match_start              — no additional fields
+            sb.AppendLine($@"match_start              — no additional fields
 unit_dies               — faction (0=Player1, 1=Player2)
-building_completed      — faction, building_type (""CommandCenter""|""Barracks""|""ArcheryRange""|""SiegeWorkshop"")
+building_completed      — faction, building_type ({BuildingTypeChoices})
 timer_expires           — timer_name (string)
 resource_threshold      — faction, amount (float), operator
 unit_count_threshold    — faction, count (int), operator
@@ -450,8 +491,13 @@ play_sound      — sound_id (string)");
             return text;
         }
 
-        // Helper type alias — BuildingType is defined in ProjectChimera.Core namespace.
-        private enum BuildingType { CommandCenter, Barracks, ArcheryRange, SiegeWorkshop }
+        // DW-627: the private 4-member `enum BuildingType { CommandCenter, Barracks, ArcheryRange, SiegeWorkshop }`
+        // that used to sit here is GONE. It SHADOWED ProjectChimera.Core.BuildingType (imported above), so every
+        // building-type check in this file silently gated against a hand-listed copy that stopped tracking the real
+        // enum at Story 2.8 (Aviary) and could never know about an authored custom building. Both gates now resolve
+        // through ScenarioValidator.IsKnownBuildingType — one vocabulary for hand-authored, editor-authored and
+        // generated content. Do not re-introduce a local BuildingType: the unqualified name must keep binding to the
+        // real Core enum.
 
         // ── Scenario generation ───────────────────────────────────────────────
 
@@ -525,9 +571,12 @@ play_sound      — sound_id (string)");
         /// 1. Schema — the DW-366 upstream byte-size guard (≤ <see cref="ScenarioSerializer.MaxScenarioFileBytes"/>,
         ///    checked BEFORE deserialization), then deserialization succeeds. (UNIVERSAL — always runs.)
         /// 2. Player slots — at least <see cref="MapGeneratorContext.MinPlayerSlots"/> (RTS default 2); slot indices
-        ///    unique and within [0, PlayerSlots.Length) (UNIVERSAL — always runs; DW-373); faction paths
+        ///    unique and within [0, PlayerSlots.Length) (UNIVERSAL — always runs; DW-373); every unit's/building's
+        ///    <c>slot</c> references a DECLARED player slot (UNIVERSAL — always runs; DW-542); faction paths
         ///    forced from the TRUSTED per-slot <see cref="MapGeneratorContext.ResolveFactionJson"/> mapping.
-        /// 3. Building types — only valid BuildingType enum names.
+        /// 3. Building types — a built-in <see cref="BuildingType"/> enum name, or (when the caller threaded
+        ///    <see cref="MapGeneratorContext.SlotFactionDefs"/>) a custom building id authored by the owning slot's
+        ///    faction — the same two vocabularies the load gate resolves (DW-627).
         /// 4. Unit IDs — only IDs present in MapGeneratorContext.UnitIds.
         /// 5. Position bounds — all X/Z within ±MapBounds. (UNIVERSAL — always runs.)
         /// 6. Ore node spacing — every pair at least 15 units apart. (UNIVERSAL — always runs.)
@@ -613,18 +662,39 @@ play_sound      — sound_id (string)");
                     return (null, $"player_slots[{i}].slot={slotIndex} duplicates another player slot — slot indices must be unique.");
             }
 
+            // DW-542 — PLACEMENT slot references (UNIVERSAL — structural, like the declaration check above). DW-373
+            // gated the DECLARATION indices only; a generated map could still place a unit or building on slot 3 of a
+            // 2-slot scenario. That passed here — "validated" was reported to the creator — and was then rejected at
+            // the ScenarioValidator load gate with "references no declared player_slot", so the AI-generation UX
+            // promised a scenario the loader refuses. Gate it in the SAME pass that validates the declarations, with
+            // the same located shape, so the two gates agree. Runs BEFORE the per-slot faction resolution below, so
+            // every later pass (building-type owner resolution, Pass 7's per-slot counts) reads a real declared slot.
+            for (int i = 0; i < scenario.Buildings.Length; i++)
+                if (!declaredSlots.Contains(scenario.Buildings[i].Slot))
+                    return (null, $"buildings[{i}].slot={scenario.Buildings[i].Slot} references no declared player_slot.");
+            for (int i = 0; i < scenario.Units.Length; i++)
+                if (!declaredSlots.Contains(scenario.Units[i].Slot))
+                    return (null, $"units[{i}].slot={scenario.Units[i].Slot} references no declared player_slot.");
+
             // Force faction JSON paths from the TRUSTED per-slot resolver — LLMs often hallucinate these, and the
             // untrusted file must never dictate the path. RTS default = the existing slot-0/slot-1 mapping.
             foreach (var slot in scenario.PlayerSlots)
                 slot.FactionJson = context.ResolveFactionJson(slot.Slot);
 
-            // Pass 3 — building types.
-            var validBuildings = new HashSet<string>
-                { "CommandCenter", "Barracks", "ArcheryRange", "SiegeWorkshop" };
-            foreach (var b in scenario.Buildings)
-                if (!validBuildings.Contains(b.Type))
+            // Pass 3 — building types (DW-627). The hardcoded 4-name set that used to live here has the same defect
+            // the file's private shadow enum had: it stopped tracking the real BuildingType at Story 2.8 (Aviary) and
+            // knows nothing about authored custom buildings. Resolve through ScenarioValidator's ONE predicate — a
+            // built-in enum name, or an authored building-def id in the OWNER slot's faction when the caller threaded
+            // the trusted per-slot defs — so a generated map is gated by exactly what the loader will accept.
+            for (int i = 0; i < scenario.Buildings.Length; i++)
+            {
+                ScenarioBuilding b = scenario.Buildings[i];
+                if (!ScenarioValidator.IsKnownBuildingType(
+                        b.Type, ScenarioValidator.OwnerFactionDef(context.SlotFactionDefs, b.Slot)))
                     return (null, $"Unknown building type '{b.Type}'. " +
-                        $"Valid: {string.Join(", ", validBuildings)}");
+                        $"Valid: {string.Join(", ", ScenarioValidator.PlaceableBuildingTypeNames)}" +
+                        " (or a custom building id authored by the owning slot's faction).");
+            }
 
             // Pass 4 — unit IDs.
             var validUnits = new HashSet<string>(context.UnitIds, StringComparer.OrdinalIgnoreCase);
@@ -708,7 +778,7 @@ play_sound      — sound_id (string)");
     {{ ""x"": float, ""z"": float, ""supply"": 400.0, ""rate"": 5.0, ""max_gatherers"": 4 }}
   ],
   ""buildings"": [
-    {{ ""type"": ""CommandCenter""|""Barracks""|""ArcheryRange""|""SiegeWorkshop"", ""slot"": 0|1, ""x"": float, ""z"": float, ""pre_built"": true }}
+    {{ ""type"": {BuildingTypeChoices}, ""slot"": 0|1, ""x"": float, ""z"": float, ""pre_built"": true }}
   ],
   ""units"": [
     {{ ""unit_id"": ""string"", ""slot"": 0|1, ""x"": float, ""z"": float }}
