@@ -4156,7 +4156,8 @@ source_spec: `_bmad-output/implementation-artifacts/spec-housekeeping-docs-norma
 location: godot/tools/loopback-desync-smoke.ps1:5,46 (and godot/tools/loopback-desync-smoke.cmd)
 severity: low
 reason: DW-324's banner fix added a "F9 desync drill requires a SOURCE/DEBUG build" warning to `lan-desync-smoke.ps1`, but that script explicitly calls itself the "Parameterized sibling of loopback-desync-smoke.ps1" and the loopback sibling still instructs the user to "press F9 to induce a one-peer desync" (lines 5, 46) with no DEBUG caveat. The F9 hotkey is compiled under `#if DEBUG` in `src/Core/MainScene.cs:1076-1087`, so on an exported/release build F9 is a silent no-op on the loopback drill exactly as on the LAN one — a tester running the loopback smoke against a release build sees a clean pass and wrongly concludes determinism was exercised. Pre-existing (the loopback script always lacked the banner); surfaced incidentally by this sweep, which corrected only the LAN sibling because the DW-324 intent named the "LAN smoke-test build requirement". — Evidence: edge-case-hunter lens; the loopback sibling's F9 instruction verified against `MainScene.cs:1076-1087` (`#if DEBUG`). Closure = add the same DEBUG-build banner (with the silent-no-op symptom) to `loopback-desync-smoke.ps1` and its `.cmd` launcher.
-status: open
+status: done 2026-08-04
+resolution: already resolved: godot/tools/loopback-desync-smoke.ps1:9-11,52-53 now carry the "REQUIRES A SOURCE / DEBUG BUILD (DW-324)" banner and the F9 #if DEBUG caveat, and godot/tools/loopback-desync-smoke.cmd:7-8 carry the same (added in commit 9eea4618, housekeeping-docs-normalization). The described missing-banner state no longer exists.
 
 ### DW-501: The null-forgiving reflection idiom DW-218 removed survives in two other Tier-1 test files
 
