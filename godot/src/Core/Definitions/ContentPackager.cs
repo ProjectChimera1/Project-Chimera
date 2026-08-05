@@ -247,46 +247,68 @@ namespace ProjectChimera.Core.Definitions
             // packaged bytes are the hashed snapshots, not a re-read. Null (no-op) in production.
             PackTestHookAfterHash?.Invoke();
 
-            // Delete existing output file if present.
-            if (File.Exists(outputZipPath)) File.Delete(outputZipPath);
-
-            using var archive = ZipFile.Open(outputZipPath, ZipArchiveMode.Create);
-
-            // manifest.json
-            string manifestJson = JsonSerializer.Serialize(manifest, _jsonOpts);
-            WriteEntry(archive, "manifest.json", Encoding.UTF8.GetBytes(manifestJson));
-
-            // scenario.json — the SAME byte snapshot ScenarioHash covered (DW-423), never a re-read.
-            WriteEntry(archive, "scenario.json", scenarioBytes);
-
-            // preview/preview.png (Story 6.7, optional) — the auto-generated top-down minimap preview. Takes
-            // precedence over the legacy on-disk thumbnail so a package never carries two conflicting preview slots.
-            if (options.PreviewPngBytes != null && options.PreviewPngBytes.Length > 0)
-                WriteEntry(archive, "preview/preview.png", options.PreviewPngBytes);
-            // thumbnail.png (legacy, optional) — only when no generated preview was supplied.
-            else if (options.ThumbnailPath != null && File.Exists(options.ThumbnailPath))
-                WriteEntry(archive, "thumbnail.png", File.ReadAllBytes(options.ThumbnailPath));
-
-            // factions/ (optional)
-            foreach (var fp in options.FactionPaths)
+            // DW-560 — stage the export on a temp SIBLING of the output and only rename it over
+            // outputZipPath once the archive has fully committed on Dispose. The previous shape deleted an
+            // existing export up front and then wrote straight into ZipArchiveMode.Create, so a throw mid-write
+            // destroyed the creator's previous export AND left a partial zip behind. That is reachable in
+            // practice: the NON-hashed sources (thumbnail, faction files, screenshots) are still re-read inside
+            // the write loop below, so one of them being deleted or locked between enumeration and the write
+            // throws long after the old export is already gone. Same stage-to-temp-then-atomic-File.Move pattern
+            // RewriteManifest uses (DW-421): a sibling path shares the volume, so the Move is an atomic rename.
+            string stagePath = outputZipPath + ".pack.tmp";
+            try
             {
-                if (!File.Exists(fp)) continue;
-                WriteEntry(archive, "factions/" + Path.GetFileName(fp), File.ReadAllBytes(fp));
+                using (var archive = ZipFile.Open(stagePath, ZipArchiveMode.Create))
+                {
+                    // manifest.json
+                    string manifestJson = JsonSerializer.Serialize(manifest, _jsonOpts);
+                    WriteEntry(archive, "manifest.json", Encoding.UTF8.GetBytes(manifestJson));
+
+                    // scenario.json — the SAME byte snapshot ScenarioHash covered (DW-423), never a re-read.
+                    WriteEntry(archive, "scenario.json", scenarioBytes);
+
+                    // preview/preview.png (Story 6.7, optional) — the auto-generated top-down minimap preview. Takes
+                    // precedence over the legacy on-disk thumbnail so a package never carries two conflicting preview slots.
+                    if (options.PreviewPngBytes != null && options.PreviewPngBytes.Length > 0)
+                        WriteEntry(archive, "preview/preview.png", options.PreviewPngBytes);
+                    // thumbnail.png (legacy, optional) — only when no generated preview was supplied.
+                    else if (options.ThumbnailPath != null && File.Exists(options.ThumbnailPath))
+                        WriteEntry(archive, "thumbnail.png", File.ReadAllBytes(options.ThumbnailPath));
+
+                    // factions/ (optional)
+                    foreach (var fp in options.FactionPaths)
+                    {
+                        if (!File.Exists(fp)) continue;
+                        WriteEntry(archive, "factions/" + Path.GetFileName(fp), File.ReadAllBytes(fp));
+                    }
+
+                    // map/terrain/ (Story 6.2, optional) — the same ordinal-sorted snapshots TerrainHash folded (DW-423).
+                    foreach (var (leaf, bytes) in terrainSnapshots)
+                        WriteEntry(archive, "map/terrain/" + leaf, bytes);
+
+                    // screenshots/ (Story 9.8, optional) — the same list order the manifest recorded, so entry names match.
+                    // (Screenshots are NOT integrity-hashed, so a write-time re-read carries no TOCTOU hash risk.)
+                    for (int i = 0; i < screenshotEntries.Count; i++)
+                        WriteEntry(archive, screenshotEntries[i], File.ReadAllBytes(screenshotSources[i]));
+
+                    // assets/ (Story 9.9, optional) — the same list order the manifest recorded, so entry names match;
+                    // the bytes are the same snapshots AssetHash folded (DW-423), never a re-read.
+                    for (int i = 0; i < assetEntries.Count; i++)
+                        WriteEntry(archive, assetEntries[i], assetSnapshots[i].Bytes);
+                }
+
+                // Commit: the staged archive is complete and closed, so this rename either publishes a whole,
+                // readable export or (on failure) leaves the previous one exactly as it was.
+                File.Move(stagePath, outputZipPath, overwrite: true);
             }
-
-            // map/terrain/ (Story 6.2, optional) — the same ordinal-sorted snapshots TerrainHash folded (DW-423).
-            foreach (var (leaf, bytes) in terrainSnapshots)
-                WriteEntry(archive, "map/terrain/" + leaf, bytes);
-
-            // screenshots/ (Story 9.8, optional) — the same list order the manifest recorded, so entry names match.
-            // (Screenshots are NOT integrity-hashed, so a write-time re-read carries no TOCTOU hash risk.)
-            for (int i = 0; i < screenshotEntries.Count; i++)
-                WriteEntry(archive, screenshotEntries[i], File.ReadAllBytes(screenshotSources[i]));
-
-            // assets/ (Story 9.9, optional) — the same list order the manifest recorded, so entry names match;
-            // the bytes are the same snapshots AssetHash folded (DW-423), never a re-read.
-            for (int i = 0; i < assetEntries.Count; i++)
-                WriteEntry(archive, assetEntries[i], assetSnapshots[i].Bytes);
+            catch
+            {
+                // Best-effort cleanup of the staged partial; any pre-existing export at outputZipPath was never
+                // touched, so it stays byte-identical and readable either way.
+                try { if (File.Exists(stagePath)) File.Delete(stagePath); }
+                catch { /* leave the temp file rather than mask the real error */ }
+                throw;
+            }
 
             return manifest;
         }
