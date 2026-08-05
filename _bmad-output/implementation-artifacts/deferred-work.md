@@ -587,7 +587,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-4.3 (2
 source_spec: `_bmad-output/implementation-artifacts/spec-4-3-n-resource-registry-with-sparse-cost-maps-generalize-ore-crystal.md`
 location: n/a
 reason: summary: `FactionDefinition.LoadFromFile` has no `try`/`catch` around `JsonSerializer.Deserialize` — a malformed JSON value for ANY field (e.g. `"cost": {"ore": null}` against the new non-nullable `Dictionary<string,int>` value type) throws a raw, unhandled `JsonException` instead of a located, aggregated error, unlike every field this story's own `ResourceCostValidator`/`TechTreeValidator`/`BuildingDefinitionValidator` gate reject with. evidence: Pre-existing for the entire loader — no field of any type (float, int, string, existing arrays) has ever been exception-shielded here; a malformed `cost_ore: "abc"` would throw identically today, pre-dating this story. The new `cost` map is simply the first `Dictionary`-typed authored field, so it's the first place this pre-existing gap becomes reachable through a nested/typed value rather than a top-level scalar. Closure: wrap the `Deserialize` call in a `try`/`catch (JsonException)` that folds a located parse failure into the same aggregate `errors` path, if/when malformed-JSON robustness (vs. malformed-but-well-typed content) becomes a real authoring concern. Flagged by the Edge Case Hunter review layer.
-status: open
+status: done 2026-08-05
+resolution: 2026-08-05 closed by the factiondefinition-loader-hardening bundle (workflow burn-down run).
 decision: 2026-07-28 correct-course — bundle faction-load-error-handling extended to faction-load-fail-closed (+DW-317 card-panel call sites; Epic 15, Story 15.6)
 
 ## Deferred from: code review of story-4.4 (2026-07-08)
@@ -4073,7 +4074,8 @@ source_spec: `_bmad-output/implementation-artifacts/spec-dw-28-325-modifier-effe
 location: godot/src/Combat/ItemSystem.cs:255 (UseItem charge-zero RemoveByModifierId), :296 (DropOne revert), :349 (ApplyItemStatModifier returns Apply's bool as claim-success); godot/src/Effects/EffectExecutor.cs:136 + ApplyModifierEffect.cs:31 (mid-graph Apply)
 severity: medium
 reason: The DW-325 kill makes `Apply` and `RemoveByModifierId` able to `Destroy`+recycle the host, a post-condition they never had; only the 3 INTERNAL `ApplyStatDeltas` callers were guarded. `ItemSystem.ApplyItemStatModifier` returns `Apply`'s `true` ("installed") straight through as claim-success, and `RemoveByModifierId` is now lethal so a +MaxHealth item drop/consume can re-enter `DropAll`→`DropOne` on the in-flight slot and emit a duplicate `ItemDropped` event; a future creator-authored net-negative-MaxHealth ("cursed") item would equip onto/claim a corpse. — Evidence: adversarial + edge-case lenses; `ApplyItemStatModifier` verified to return the raw `Apply` bool with no post-`IsAlive` check, and the `DropOne`/`UseItem` re-entrancy paths reach the lethal `RemoveByModifierId` before their own event/Destroy writes. Content-gated (Block-If confirmed only `aura_guard.json`=0 and `ring_of_vigor.json`=+50 author MaxHealth). Closure = document the post-condition + audit/guard external `Apply`/`RemoveByModifierId` callers (or a tri-state result).
-status: open
+status: done 2026-08-05
+resolution: 2026-08-05 closed by the itemsystem-modifier-death-audit bundle (workflow burn-down run).
 
 ### DW-490: A modifier-driven ceiling-collapse death is hardcoded to killer Faction.Neutral with the DeathFeed omitted — a future ability-driven "reduce max HP to 0" finisher would grant its caster no kill credit or hero XP
 origin: deferred by review of `_bmad-output/implementation-artifacts/spec-dw-28-325-modifier-effective-stat-clamp-and-death.md`, 2026-08-01
@@ -5097,7 +5099,8 @@ origin: workflow burn-down run, 2026-08-04
 location: godot/src/Economy/ResearchSystem.cs — ApplyCompletedResearch (wired to EntityWorld.OnUnitDefinitionApplied)
 severity: low
 reason: Deliberate asymmetry left by the DW-83 bundle: that hook fires once PER SPAWN (training, scenario placement, hero respawn, editor restore), so the per-completion aggregate line ResearchSystem emits on CompleteResearch would be per-spawn spam on this path — a 200-unit scenario load with full rings would emit 200 lines. Nothing is silent (the refusals are still counted in RefusedInstallCount and still surface through ModifierStore's throttled warn, which names the 0x3439_00xx research modifier id); only the designer-friendly research-name attribution is absent. Closure = per-match aggregation with an end-of-load flush, which is new machinery beyond the diagnostic bundle's scope.
-status: open
+status: done 2026-08-05
+resolution: 2026-08-05 closed by the research-refusal-diagnostics bundle (workflow burn-down run).
 
 ### DW-625: The 8-slot modifier ceiling itself is unchanged — EffectCaps.MaxModifiersPerEntity is still 8 with no starvation or eviction policy
 origin: workflow burn-down run, 2026-08-04
@@ -5383,7 +5386,8 @@ origin: workflow burn-down run, 2026-08-04
 location: godot/src/Effects/ModifierStore.cs:269 (RunEffect -> the !IsAlive(i) bail)
 severity: low
 reason: The bail only checks the HOST (i). Unreachable today because ModifierStore.RunEffect builds its EffectContext with spatial: null, so a SearchArea node inside a period fans out to nobody and every period leaf is direct-target (host == target). If a future story ever threads a real SpatialHash into the store's period executor, an AoE period could destroy an entity other than its host and no bail covers that - the same CompactSlot/_count corruption class the DW-267 teeth experiment reproduced for the host case (IndexOutOfRangeException at owner id 0, corrupted _count and attribution at higher ids). Out of the modifier-lethal-period-tests bundle's scope (DW-267 was a test-coverage entry and the case cannot be constructed today), so reported rather than fixed.
-status: open
+status: done 2026-08-05
+resolution: 2026-08-05 closed by the modifier-store-hardening bundle (workflow burn-down run) — RunEffect now refuses a pulse before the EffectContext is built when the host or resolved target is dead/stale (new SkippedPulseCount diagnostic, unfolded). Note: the entry's stated CompactSlot/_count mechanism does not hold literally in today's Advance; the distinct re-entrant-ring-shrink gap is filed as DW-710.
 
 ### DW-663: ModifierStore.cs class doc still describes the store as "2.2b" with unbuilt re-entrancy defence
 origin: workflow burn-down run, 2026-08-04
@@ -5671,4 +5675,53 @@ origin: workflow burn-down run, 2026-08-05
 location: godot/ProjectChimera.Sim.Tests/Definitions/ScenarioItemRoundTripTests.cs:38 (`back!.Items.Length`)
 severity: low
 reason: CS8602 possible-null-dereference, because ScenarioData.Items is nullable. Verified against run-base e221fa10 that the identical expression and warning existed BEFORE the json-options-choke-point bundle — that edit only replaced the `Opt` declaration above it, shifting the line by one. Filed purely so a reviewer diffing the warning list does not read it as newly introduced by DW-523, and so the one-line null-guard is not lost. Closure = assert non-null on the round-tripped ScenarioData (or `Assert.NotNull(back?.Items)`) before the Length read.
+status: open
+
+### DW-704: The boot scenario-load path lets a faction-file load failure escape unguarded, while the Edit↔Play re-apply path fails closed — an asymmetry between the two callers of the same resolver
+origin: workflow burn-down run, 2026-08-05
+location: godot/src/Core/Bootstrap/Phases/ScenarioLoadPhase.cs:65 and :107 (ResolveSlotFactionDefs → SlotFactionResolver.Resolve → FactionDefinition.LoadFromFile at godot/src/Core/SlotFactionResolver.cs:48), versus godot/src/Core/MainScene.cs:2486-2495
+severity: medium
+reason: MainScene.cs:2488 wraps the SAME SlotFactionResolver.Resolve call in catch(System.Exception) with an explicit veto-rollback (RestorePreResolveSlotDefs) and a comment naming exactly this hazard ("a slot's faction_json repointed/edited to a corrupt or invalid file since boot makes FactionDefinition.LoadFromFile throw"), but ScenarioLoadPhase.LoadAndApplyScenario calls it bare on BOTH the AI-generated (:65) and file (:107) legs. Every neighbouring failure there degrades to ApplyFallbackThroughApplier(); a corrupt faction_json instead throws straight out of the boot phase. Surfaced by the factiondefinition-loader-hardening bundle but out of DW-62's scope — DW-62 is about the exception TYPE and message shape the loader emits, and both the old JsonException and the new InvalidOperationException were and are equally unhandled on the boot leg, so that change neither creates, widens nor narrows this gap. Closure is also not verifiable in a Godot-free gate: SlotFactionResolver/ScenarioLoadPhase are Godot-coupled (`using Godot;`, ProjectSettings.GlobalizePath, GD.PrintErr) and excluded from the Tier-1 assembly, so this needs the in-engine gate. Closure = give the boot legs the same catch + fallback posture as the re-apply path.
+status: open
+
+### DW-705: GrantPurchasedItem silently ignores a ring-full modifier refusal, so a BOUGHT stat item can be inert while the identical PICKUP is denied
+origin: workflow burn-down run, 2026-08-05
+location: godot/src/Combat/ItemSystem.cs:112 (ApplyStatModifierIfAny result discarded) vs :186 (ResolvePickup rolls back and denies on the same false)
+severity: medium
+reason: A hero already at EffectCaps.MaxModifiersPerEntity who BUYS a stat item pays the full ore/crystal cost and receives an item that grants nothing (Apply returns false, the item still lands in the ring); the same hero picking that item off the ground is denied with DenialReason.InventoryFull and the item stays claimable. Content-visible today with any shipped stat item plus a modifier-capped hero — no cursed content needed. Pre-existing DW-34-era asymmetry rather than a death/re-entrancy defect, so it was outside the itemsystem-modifier-death-audit bundle's Apply/Remove post-condition scope. Closure = a free-slot-style pre-check in BuildingSystem.BuyItemCommand before the spend, or a refund on the false — a shop-path ruling that should not be made inside a death-audit bundle.
+status: open
+
+### DW-706: HeroProfileLoader.ReMintInventory applies persisted item modifiers in a loop with no IsAlive re-check between slots
+origin: workflow burn-down run, 2026-08-05
+location: godot/src/Core/Definitions/HeroProfileLoader.cs:233-241
+severity: low
+reason: The DW-489 "Apply may destroy the target" post-condition reaches this third external ApplyItemStatModifier call site, but DW-489's location line does not name it and it is currently unreachable (no shipped or persistable item authors a negative MaxHealth delta, and the loop runs on a freshly spawned hero at full ceiling). If a saved profile ever carried a cursed item the ceiling-collapse would kill the hero mid-loop; Apply's own entry guard makes each remaining iteration a harmless no-op, but the loop would keep walking heroes.Inventory for an entity ItemSystem's death hook has already emptied, and it runs before StartStateHash.Compute. The itemsystem-modifier-death-audit bundle documented the obligation on ApplyItemStatModifier's XML doc rather than adding an unexercised guard to the persistence loader. Closure = re-check IsAlive between slots (and decide whether a mid-load hero death is a load abort or a tolerated outcome).
+status: open
+
+### DW-707: The DW-624 diagnostic flush is wired to match TEARDOWN, not to end-of-scenario-load — a bulk load's refusals surface one match late
+origin: workflow burn-down run, 2026-08-05
+location: godot/src/Core/Sim/ScenarioApplier.cs (Apply) / godot/src/Core/MainScene.cs (ResetToAuthoredStart, after the re-apply); flush defined at godot/src/Core/Sim/SimulationHost.cs (FlushMatchDiagnostics)
+severity: low
+reason: DW-624's ledger text names an "end-of-load flush". SimulationHost.FlushMatchDiagnostics() was made public precisely so a load path could call it, but the only wired call site is ClearForReset, which runs BEFORE a re-apply — so the refusals a 200-unit scenario load produces are reported at the NEXT teardown, one match late. The research-refusal-diagnostics bundle could not close it without leaving its named files: ScenarioApplier.cs was claimed by the parallel wave2-sub4 server-pathability-grid bundle and MainScene.cs is Godot-coupled (in-engine gate). Closure = call FlushMatchDiagnostics() at the end of ScenarioApplier.Apply (or immediately after the re-apply in ResetToAuthoredStart).
+status: open
+
+### DW-708: Nothing in the sim flushes the DW-624 research-refusal tally on a WIN/LOSS verdict — a match that ends and is never reset never reports
+origin: workflow burn-down run, 2026-08-05
+location: godot/src/Core/Sim/SimulationHost.cs (FlushMatchDiagnostics call sites) vs godot/src/Core/WinConditionSystem.cs (the verdict latch)
+severity: low
+reason: ClearForReset is the only wired flush, so a session that reaches a verdict and quits without a Play→Edit toggle or re-launch discards the per-match tally silently. Making WinConditionSystem's verdict latch drive a diagnostic flush would couple index-14 to index-1 and reach a third file, and "match end" for this engine is genuinely the teardown, so the research-refusal-diagnostics bundle left it out deliberately. Closure = call SimulationHost.FlushMatchDiagnostics() from whatever presentation/bootstrap code handles the score screen.
+status: open
+
+### DW-709: A ZERO-payload (tech-gate) research refused on a spawn is reported identically to a real lost upgrade
+origin: workflow burn-down run, 2026-08-05
+location: godot/src/Economy/ResearchSystem.cs — ApplyCompletedResearch's spawn-refusal tally vs CumulativeCarriesPayload (used only by the DW-623 void rule)
+severity: low
+reason: DW-623 established that a research with no (or a net-zero) ResearchModifierDelta is a tech gate whose value is the banked level, so a ring refusal costs it nothing. The new DW-624 aggregate line does not apply that distinction — it reports every refusal literally, matching the bundle intent's wording ("refused research installs"). That is honest but can name a research the designer cannot lose anything from, which trains the reader to ignore the line. Closure = either annotate zero-payload entries in the line or filter them, once someone rules on which reading a designer wants.
+status: open
+
+### DW-710: ModifierStore.Advance caches _count[i] across a pulse and never re-validates the slot it is standing on — a re-entrant ring shrink silently loses a modifier and drives _count 2→0
+origin: workflow burn-down run, 2026-08-05
+location: godot/src/Effects/ModifierStore.cs:340-414 (Advance's inner slot loop: `int n = _count[i];` at :339, and the post-pulse bail at :360 which only tests IsAlive(i))
+severity: medium
+reason: This is the CompactSlot/_count corruption class DW-662 named, but reached by ring MUTATION rather than by a different-entity kill (which was traced during the modifier-store-hardening bundle and is genuinely harmless today — the outer walk re-tests IsAlive for every id and _count[i] is untouched). Traced failure: host id 0 holds [slot0 = periodic modifier A, slot1 = modifier B], n=2. If A's period pulse removes A's own slot (RemoveSlot → CompactSlot swaps B into slot0, _count → 1), the walk — still standing on slot0 with a stale n=2 — overwrites _ticksUntilPeriod/_periodsRemaining onto B's swapped-in fields, then at s=1 walks a CLEARED slot whose _remainingTicks decrements 0 → −1, reads as expired, and RemoveSlot/CompactSlot it: B vanishes and _count goes 2 → 0. Latent, not live: unreachable with the shipped vocabulary (no node calls RemoveByModifierId/ClearEntity) and the Story 2.3 validator fences period-nested installs. Not fixed in the modifier-store-hardening bundle because (a) it is outside DW-662's recorded intent, which is specifically the target-alive guard, and (b) it cannot be given teeth without a test-only LeafEffect that calls RemoveByModifierId mid-pulse, which requires editing the hardcoded probes allowlist in godot/ProjectChimera.Sim.Tests/Validation/EffectFoldCompletenessTests.cs:89 — a cross-bundle edit. Closure = capture the slot's descriptor refs before RunEffect and, after it, clamp n DOWN to _count[i] (never grow — a re-entrant install must still wait for the next tick, or the fold moves) and break when the slot no longer holds the instance that was pulsed; the same twin belongs after RemoveSlot's expire-effect.
 status: open
