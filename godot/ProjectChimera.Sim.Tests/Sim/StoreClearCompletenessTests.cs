@@ -230,7 +230,14 @@ namespace ProjectChimera.Sim.Tests.Sim
                 // with no public write path, so the synthetic array fill cannot reach it — poke it, per the sweep's
                 // own instruction. Clear() must zero it: a re-Play that inherits the prior match's refusal count
                 // would mis-throttle (and mis-report) the next match's diagnostics.
-                DirtyNonArrayState = () => ClearCompletenessSweep.Poke(dirty, "_refusedInstalls", 3),
+                // DW-662: `_skippedPulses` (the dead-host/dead-target pulse-refusal tally) is the same shape and
+                // carries the same per-match contract — a re-Play must start it clean or the "shipped paths never
+                // trip the guard" reading is inherited from the previous match instead of measured.
+                DirtyNonArrayState = () =>
+                {
+                    ClearCompletenessSweep.Poke(dirty, "_refusedInstalls", 3);
+                    ClearCompletenessSweep.Poke(dirty, "_skippedPulses", 5);
+                },
                 Allowlist = new[]
                 {
                     // Host-lifetime wiring (readonly ctor deps, shared between fresh and dirty; Clear() preserves
