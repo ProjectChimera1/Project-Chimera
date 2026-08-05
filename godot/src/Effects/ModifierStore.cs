@@ -27,8 +27,8 @@ namespace ProjectChimera.Effects
     /// fields), named caps only. The foldable per-instance fields are all <c>int</c>: <c>_modifierId</c>,
     /// <c>_remainingTicks</c>, <c>_ticksUntilPeriod</c>, <c>_periodsRemaining</c>, <c>_stackCount</c>. The descriptor
     /// references + caster id/faction are NOT folded — authored / peer-identical by construction (like a
-    /// <c>UnitDefinition</c> reference). Nor is the DW-83 diagnostic pair (<c>_log</c>, <c>_refusedInstalls</c>):
-    /// no sim branch reads them, so they cannot move a checksum or a golden.</para>
+    /// <c>UnitDefinition</c> reference). Nor is the diagnostic set (<c>_log</c>, <c>_refusedInstalls</c> — DW-83;
+    /// <c>_skippedPulses</c> — DW-662): no sim branch reads them, so they cannot move a checksum or a golden.</para>
     ///
     /// <para><b>Re-entrancy.</b> The store runs ALL THREE effect phases — <c>InitialEffect</c> (on install),
     /// <c>PeriodEffect</c> (each pulse), and <c>ExpireEffect</c> (on removal) — on its OWN dedicated
@@ -84,6 +84,7 @@ namespace ProjectChimera.Effects
         // ── DW-83 diagnostics (NEVER folded into SimChecksum; never read by any sim branch) ──
         private readonly ILogSink? _log;   // injected AR-4 seam (never a static ambient sink); null ⇒ the pre-DW-83 silent refusal
         private int _refusedInstalls;      // monotonic tally of ring-full refusals since construction / Clear
+        private int _skippedPulses;        // DW-662 tally of pulses skipped because the host/target was dead (see SkippedPulseCount)
 
         /// <summary>
         /// Construct the store, wire deps, and subscribe the destroy hook. <paramref name="system"/>/<paramref
@@ -370,6 +371,9 @@ namespace ProjectChimera.Effects
                             // never `return` — the dead host's slot loop ends, but every higher-id entity must still
                             // pulse this same tick. No shipped content authors a lethal period yet; the guard's teeth
                             // are LethalPeriodMidAdvanceTests (which also covers RemoveSlot's expire-effect twin).
+                            // DW-662: this POST-condition covers the HOST only. Its companion PRE-condition — the
+                            // dead-host/dead-target refusal that fires before the executor is entered, for a pulse
+                            // resolving against an entity that is not its host — lives in RunEffectAgainst.
                             if (!_world.IsAlive(i)) break;
                             _ticksUntilPeriod[slot] = PeriodLengthOf(slot);
                             _periodsRemaining[slot]--;
@@ -511,6 +515,7 @@ namespace ProjectChimera.Effects
             System.Array.Clear(_casterFaction);
             System.Array.Clear(_count);
             _refusedInstalls = 0; // DW-83: the refusal tally is PER-MATCH diagnostics — a re-Play starts it clean
+            _skippedPulses   = 0; // DW-662: same per-match contract for the dead-end pulse tally
             _system?.ClearAll(); // zero the external stat-bonus accumulators + dirty flags (the store's driver half)
         }
 
@@ -525,6 +530,18 @@ namespace ProjectChimera.Effects
         /// <see cref="Apply"/> — the seam <c>ResearchSystem</c> uses) without re-deriving the ring-full test.
         /// </summary>
         public int RefusedInstallCount => _refusedInstalls;
+
+        /// <summary>
+        /// DW-662 — monotonic count of effect pulses the store REFUSED to run because the instance's host or its
+        /// resolved target was dead/stale (see <see cref="RunEffectAgainst"/>), since construction or the last
+        /// <see cref="Clear"/>. Diagnostics only, exactly like <see cref="RefusedInstallCount"/>: never folded into
+        /// <see cref="SimChecksum"/>, never read by any sim branch, so reading or ignoring it is byte-identical.
+        /// <para>Its value on a shipped schedule is its point: every production path resolves host == target with a live
+        /// host, so this stays <b>0</b>. A non-zero reading means an instance resolved against a corpse — the signal the
+        /// DW-267 <c>CompactSlot</c>/<c>_count</c> corruption class was headed off, and the first thing to look at when a
+        /// future <c>SpatialHash</c>-threaded AoE period starts losing pulses.</para>
+        /// </summary>
+        public int SkippedPulseCount => _skippedPulses;
 
         /// <summary>
         /// DW-83 — record a refused (ring-full) install and surface it: bump <see cref="RefusedInstallCount"/> and
@@ -856,12 +873,64 @@ namespace ProjectChimera.Effects
             _periodsRemaining[slot] = hasPeriod ? EffectCaps.MaxPersistentPeriods : 0;
         }
 
-        /// <summary>Run an effect node against a fresh, direct-target (<c>spatial: null</c>) context for the host, on the dedicated executor.</summary>
-        private void RunEffect(int hostId, int slot, EffectNode effect)
+        /// <summary>Run an effect node against a fresh, direct-target (<c>spatial: null</c>) context for the host, on the
+        /// dedicated executor. Every production path resolves <b>host == target</b>; the explicitly re-targeted form is
+        /// <see cref="RunEffectAgainst"/>, which carries the DW-662 fail-closed guard both share.</summary>
+        private void RunEffect(int hostId, int slot, EffectNode effect) => RunEffectAgainst(hostId, slot, hostId, effect);
+
+        /// <summary>
+        /// DW-662 — run the instance at <paramref name="slot"/> (owned by <paramref name="hostId"/>) against an EXPLICIT
+        /// <paramref name="targetId"/>, on the dedicated executor, and FAIL CLOSED when either end of that pair is
+        /// dead/stale.
+        ///
+        /// <para><b>Why the target needs its own guard.</b> <see cref="Advance"/>'s DW-267 bail
+        /// (<c>if (!_world.IsAlive(i)) break;</c>) is a POST-condition and it covers only the HOST — it exists because a
+        /// lethal period destroys the host mid-pulse and the walk must not then rewrite/compact a ring
+        /// <see cref="ClearEntity"/> has already wiped (the <c>CompactSlot</c>/<c>_count</c> corruption class: an
+        /// <c>IndexOutOfRangeException</c> at owner id 0, a <c>_count</c> of −1 at higher ids). Nothing covered the other
+        /// end: an instance resolving against an entity that is NOT its host. That is unreachable today — this method is
+        /// the ONLY place a store context is built and every production caller passes <c>targetId == hostId</c> with
+        /// <c>spatial: null</c>, so a <c>SearchArea</c> inside a period fans out to nobody and every period leaf is
+        /// direct-target. The moment a future story threads a real <c>SpatialHash</c> into the store's period executor
+        /// (or fans a period out per matched entity through <see cref="RunSlotEffectAgainst"/>), a pulse can resolve
+        /// against a corpse. This PRE-condition makes that a deterministic, tallied skip instead of an executor run over
+        /// a dead/recycled slot.</para>
+        ///
+        /// <para><b>Golden-neutral.</b> Both conjuncts are no-ops on every shipped path: the host is alive at every call
+        /// site (<see cref="InstallPersistent"/> and <see cref="RemoveByModifierId"/> guard at entry;
+        /// <see cref="Advance"/> guards at the top of the owner walk and breaks out of the slot loop the instant a pulse
+        /// kills the host), and the target IS the host. <see cref="SkippedPulseCount"/> pins that mechanically — it stays
+        /// 0 across every production schedule.</para>
+        /// </summary>
+        private void RunEffectAgainst(int hostId, int slot, int targetId, EffectNode effect)
         {
-            var ctx = new EffectContext(_world, _casterId[slot], hostId, _casterFaction[slot],
+            // IsAlive also bounds-checks both ids. ONE tally for both conjuncts — a dead host and a dead target are the
+            // same failure to a reader (an instance resolved against something that no longer exists), and splitting it
+            // would fold nothing extra. Diagnostics only: never folded, never read by a sim branch.
+            if (!_world.IsAlive(hostId) || !_world.IsAlive(targetId)) { _skippedPulses++; return; }
+
+            var ctx = new EffectContext(_world, _casterId[slot], targetId, _casterFaction[slot],
                                         _damageTable, spatial: null, _events, _stats, modifierStore: this);
             _executor.Run(effect, in ctx);
+        }
+
+        /// <summary>
+        /// DW-662 — resolve host <paramref name="hostId"/>'s instance at ring slot <paramref name="slotIndex"/> against an
+        /// explicit <paramref name="targetId"/>. This is the seam a future <c>SpatialHash</c>-threaded AoE period fans
+        /// out through (one call per matched entity, ascending id), and it is where the
+        /// <see cref="RunEffectAgainst"/> dead-end guard has its teeth today — no shipped effect graph can reach a
+        /// non-host target, so without this entry the guard would be untestable. Deliberately <c>internal</c>: it is not
+        /// part of the store's public surface and no production caller uses it yet (the <c>EffectExecutor</c>
+        /// frame-capacity ctor is the same pattern).
+        /// <para>Fail-closed on an out-of-range host or a slot index outside the per-entity ring — those are programmer
+        /// errors, not skips, so they do NOT bump <see cref="SkippedPulseCount"/>. The slot's recorded caster
+        /// id/faction (not the target) still drive attribution, exactly as a period pulse does.</para>
+        /// </summary>
+        internal void RunSlotEffectAgainst(int hostId, int slotIndex, int targetId, EffectNode effect)
+        {
+            if ((uint)hostId >= (uint)EntityWorld.MAX_ENTITIES) return;
+            if ((uint)slotIndex >= (uint)EffectCaps.MaxModifiersPerEntity) return;
+            RunEffectAgainst(hostId, hostId * EffectCaps.MaxModifiersPerEntity + slotIndex, targetId, effect);
         }
 
         private bool HasPeriod(int slot)
