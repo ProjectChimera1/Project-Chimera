@@ -440,7 +440,16 @@ namespace ProjectChimera.Effects
                 if (world.Health[id] <= Fixed.Zero)
                 {
                     DamageResolver.KillEntity(world, id, faction, _events, _stats, _deaths, attackerId: id); // Story 7.5 — a self-lethal cast credits the caster
-                    return;
+                    // DW-620: KillEntity now REFUSES the death of an Invulnerable caster (the recorded "Invulnerable =
+                    // death-immunity" ruling), so this is no longer unconditionally fatal — re-check before assuming it
+                    // died. The cost stays SPENT (that is the ruling's "self-costs remain spend-able" half), but the
+                    // raw debit above can leave Health NEGATIVE, and returning here would skip the cooldown, letting a
+                    // death-immune caster re-cast every tick and walk Health down toward the Fixed underflow. So floor
+                    // the pool at 0 — the same [0, MaxHealth] convention DirectHpDeltaEffect uses for a self-cost — and
+                    // fall through to the normal cooldown/feedback tail: the cast succeeded, it just did not kill its
+                    // caster. Byte-identical for a killable caster (IsAlive is false ⇒ the original early return).
+                    if (!world.IsAlive(id)) return;
+                    world.Health[id] = Fixed.Zero;
                 }
             }
 

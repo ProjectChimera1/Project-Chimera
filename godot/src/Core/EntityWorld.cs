@@ -260,7 +260,10 @@ namespace ProjectChimera.Core
         /// runtime consumer: <c>Stunned</c> → the whole-unit gate in <c>CombatSystem.Tick</c> + the
         /// <c>MovementSystem</c> anchor + the <c>AbilityCastSystem</c> refusal; <c>Rooted</c> → the
         /// <c>MovementSystem</c> anchor; <c>Disarmed</c> → <c>CombatSystem</c>'s two damage choke points;
-        /// <c>Silenced</c> → the <c>AbilityCastSystem</c> refusal; <c>Invulnerable</c> → <c>DamageResolver.Apply</c>.
+        /// <c>Silenced</c> → the <c>AbilityCastSystem</c> refusal; <c>Invulnerable</c> → <c>DamageResolver.Apply</c>
+        /// AND (DW-620, "Invulnerable = death-immunity") <c>DamageResolver.KillEntity</c>, so the direct-kill paths
+        /// that bypass Apply — ModifierStore's DW-325 ceiling collapse, a self-lethal <c>cost_health</c> cast — are
+        /// refused too. Self-costs stay spend-able; only the death is refused.
         /// It is mutable sim truth
         /// the moment a status modifier exists → FOLDED into <see cref="SimChecksum"/> (v6). Lives here (not in the
         /// store) so future systems read it for free via <c>world</c>, exactly like <see cref="EffectiveAttackDamage"/>.
