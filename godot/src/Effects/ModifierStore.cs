@@ -30,16 +30,23 @@ namespace ProjectChimera.Effects
     /// <c>UnitDefinition</c> reference). Nor is the diagnostic set (<c>_log</c>, <c>_refusedInstalls</c> — DW-83;
     /// <c>_skippedPulses</c> — DW-662): no sim branch reads them, so they cannot move a checksum or a golden.</para>
     ///
-    /// <para><b>Re-entrancy.</b> The store runs ALL THREE effect phases — <c>InitialEffect</c> (on install),
-    /// <c>PeriodEffect</c> (each pulse), and <c>ExpireEffect</c> (on removal) — on its OWN dedicated
-    /// <see cref="EffectExecutor"/>, never shared with a graph-running executor, whose single pre-allocated work-stack
-    /// running re-entrantly would clobber. In 2.2b all three phases use only direct-target leaves
-    /// (DirectHpDelta/Heal/Damage, <c>spatial: null</c>) so no nesting occurs. An install-leaf
-    /// (<see cref="ApplyModifierEffect"/>/<see cref="PersistentEffect"/>) nested inside ANY of the three phases — not
-    /// just a period — would re-enter the dedicated executor AND mutate <c>_count</c> mid-<see cref="Advance"/>; that
-    /// case is unsupported in 2.2b and is kept off the executor by the Story 2.3 content validator. A future phase that
-    /// itself installs a modifier needs a fail-closed re-entrancy guard or a deferred-application queue (documented in
-    /// deferred-work, code-review 2.2b W1).</para>
+    /// <para><b>Re-entrancy.</b> The store runs ALL THREE <see cref="PersistentEffect"/> phases —
+    /// <c>InitialEffect</c> (on install), <c>PeriodEffect</c> (each pulse) and <c>ExpireEffect</c> (on removal) — plus a
+    /// <see cref="Modifier.PeriodEffect"/> pulse (DW-271), on its OWN dedicated <see cref="EffectExecutor"/>, never
+    /// shared with a graph-running executor, whose single pre-allocated work-stack running re-entrantly would clobber.
+    /// Every one of those runs resolves DIRECT-TARGET: <c>RunEffectAgainst</c> is the only place a store
+    /// <see cref="EffectContext"/> is built and it always passes <c>spatial: null</c>, so a phase subtree is
+    /// <see cref="SequenceEffect"/>s of direct-target leaves (DirectHpDelta/Heal/Damage) and nothing else.</para>
+    ///
+    /// <para>What holds that line is a MECHANISM, not a version. The Story 2.3 content validator
+    /// (<c>AbilityValidator</c>'s AC5 walk) fail-closed REJECTS an install leaf — an
+    /// <see cref="ApplyModifierEffect"/> or a nested <see cref="PersistentEffect"/> — anywhere inside a Persistent
+    /// phase OR inside a <c>Modifier.period_effect</c> subtree, and rejects a <see cref="SearchAreaEffect"/> in those
+    /// same places (no per-tick spatial rebuild exists). So no loadable ability can put one on this executor. The
+    /// hazard being fenced off is not period-specific: an install leaf in ANY of the phases would re-enter the
+    /// dedicated executor AND mutate <c>_count</c> mid-<see cref="Advance"/>. A future phase that itself installs
+    /// needs a fail-closed re-entrancy guard or a deferred-application queue HERE, with the validator fence relaxed in
+    /// the same change (deferred-work, code-review 2.2b W1).</para>
     /// </summary>
     public sealed class ModifierStore
     {
@@ -609,8 +616,9 @@ namespace ProjectChimera.Effects
         /// Debit a <see cref="Fixed"/> <paramref name="cost"/> from <see cref="EntityWorld.Energy"/> for ability
         /// affordability. Succeeds (and subtracts) ONLY when <c>Energy[id] &gt;= cost</c>; otherwise REFUSES and leaves
         /// <c>Energy</c> untouched (no partial spend, no negative balance). A negative <paramref name="cost"/> is a
-        /// programmer error — refused, never refunded. Dead/stale id → false (no throw). The affordability primitive
-        /// 2.4's ability-cast consumes; proven in isolation here (no ability exists in 2.2b).
+        /// programmer error — refused, never refunded. Dead/stale id → false (no throw). The affordability primitive the
+        /// ability cast consumes: <see cref="AbilityCastSystem"/> debits through here and, when a later gate in the same
+        /// cast refuses, adds back the exact same <see cref="Fixed"/> as its inverse.
         /// </summary>
         public bool TryDebitEnergy(int id, Fixed cost)
         {
