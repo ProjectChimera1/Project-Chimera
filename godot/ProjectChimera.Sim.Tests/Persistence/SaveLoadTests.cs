@@ -283,6 +283,53 @@ namespace ProjectChimera.Sim.Tests.Persistence
             state.Validate("t"); // must not throw
         }
 
+        // ── DW-581: the new generation lane feeds a SHIFT, not an index, so a corrupt value never crashes — it
+        //    silently breaks reference resolution instead (a live entity's own freshly-packed ref stops resolving,
+        //    e.g. an assassination leader reads as dead ⇒ a bogus verdict on the resumed tick). Reject it at the gate.
+
+        [Fact]
+        public void Validate_EntityGenerationAboveThePackableMax_ThrowsWithMessage()
+        {
+            (SaveGameState state, _) = CaptureValid();
+            int[] lane = state.Ent[(int)SaveGameState.EA.Generation];
+            Assert.NotEmpty(lane);
+            lane[0] = EntityWorld.MAX_PACKABLE_GENERATION + 1; // one past what PackRef can encode
+            var ex = Assert.Throws<InvalidDataException>(() => state.Validate("t"));
+            Assert.Contains("generation", ex.Message);
+        }
+
+        [Fact]
+        public void Validate_NegativeEntityGeneration_ThrowsWithMessage()
+        {
+            (SaveGameState state, _) = CaptureValid();
+            state.Ent[(int)SaveGameState.EA.Generation][0] = -1; // unreachable in the sim (Create only increments from 0)
+            var ex = Assert.Throws<InvalidDataException>(() => state.Validate("t"));
+            Assert.Contains("generation", ex.Message);
+        }
+
+        [Fact]
+        public void Validate_EntityGenerationAtThePackableMax_Passes()
+        {
+            // The bound is inclusive: MAX_PACKABLE_GENERATION still round-trips through PackRef/TryResolveRef, so the
+            // gate must not reject it (an off-by-one here would fail-closed on a legitimate save).
+            (SaveGameState state, _) = CaptureValid();
+            state.Ent[(int)SaveGameState.EA.Generation][0] = EntityWorld.MAX_PACKABLE_GENERATION;
+            state.Validate("t"); // must not throw
+        }
+
+        [Fact]
+        public void PackRef_AtThePackableMaxGeneration_StillResolves()
+        {
+            // Pins the constant to the packing it claims to bound — if REF_SLOT_BITS or the constant drifts apart,
+            // the save-gate bound above would be validating the wrong number.
+            var w = new EntityWorld();
+            int id = w.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+            w.Generation[id] = EntityWorld.MAX_PACKABLE_GENERATION;
+            int packed = w.PackRef(id);
+            Assert.True(packed > 0);                                    // did not overflow into the sign bit
+            Assert.True(w.TryResolveRef(packed, out int back) && back == id);
+        }
+
         // ── Review fix: ShopStock must not be ALIASED between the sim store and the save state ────────────────────
 
         [Fact]
@@ -322,9 +369,12 @@ namespace ProjectChimera.Sim.Tests.Persistence
         [Fact]
         public void Load_OlderFormatVersion_ThrowsWithMessage()
         {
+            // Version-RELATIVE (DW-581): the previous format version is the realistic older save, and it must be
+            // rejected here at the header with the "older game version" message — not parsed and then reported as a
+            // corrupt body. A hard-coded 0 would keep testing a version no build ever wrote once FormatVersion moves.
             using var ms = new MemoryStream();
             using (var w = new BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true))
-            { w.Write(SaveGameFile.MAGIC); w.Write((ushort)0); }
+            { w.Write(SaveGameFile.MAGIC); w.Write((ushort)(SaveGameFile.FormatVersion - 1)); }
             ms.Position = 0;
             var ex = Assert.Throws<InvalidDataException>(() => SaveGameFile.Read(ms));
             Assert.Contains("older", ex.Message);
@@ -472,6 +522,87 @@ namespace ProjectChimera.Sim.Tests.Persistence
                     Assert.Contains(3, h.World.CaptureFreeList());   // the recycled entity slot round-tripped in the free list
                     Assert.Equal(1, h.Buildings.Generation[0]);      // the bumped generation round-tripped
                 });
+        }
+
+        // ── DW-581 — the ENTITY recycle generation is a save lane too (BuildingStore/HeroStore/ItemStore already were) ──
+        // EntityWorld.Generation is the ABA half of a packed entity ref: PackRef stamps it in, TryResolveRef demands it
+        // back. Dropping it at the save boundary resumed the world with every slot at generation 0, so a packed ref
+        // taken BEFORE a recycle resolved against the NEW occupant — precisely the retarget DW-184's PackRef exists to
+        // stop, reintroduced by save/load. RecycledEntitySlot is destroyed then immediately re-Created, so the LIFO
+        // free list hands the same slot straight back and its generation bumps to 1.
+
+        private const int RecycledEntitySlot = 3;
+
+        /// <summary>Free + immediately re-fill entity <see cref="RecycledEntitySlot"/> so its recycle generation is 1
+        /// at save time. Asserts the precondition both ways, so the fixture can never silently stop recycling.</summary>
+        private static void RecycleEntitySlot(SimulationHost h)
+        {
+            Assert.True(h.World.IsAlive(RecycledEntitySlot));
+            Assert.Equal(0, h.World.Generation[RecycledEntitySlot]);            // gen 0 ⇒ PackRef == the bare id
+            h.World.Destroy(RecycledEntitySlot);
+            int reused = h.World.Create(new FixedVec3(Fixed.FromInt(-25), Fixed.Zero, Fixed.FromInt(25)),
+                                        Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+            Assert.Equal(RecycledEntitySlot, reused);                            // LIFO: the same slot came back
+            Assert.Equal(1, h.World.Generation[RecycledEntitySlot]);             // …and its generation bumped
+        }
+
+        [Fact]
+        public void SaveLoad_RestoresEntityRecycleGeneration_SoStalePackedRefsStayStale()
+        {
+            Harness saved = BuildApplied();
+            Step(saved.Host, SaveAtTick);
+
+            // A packed ref MINTED BEFORE the recycle (generation 0 ⇒ the bare id) — the cross-tick handle a holder
+            // would have been carrying. It must NOT resolve against the slot's new occupant, before or after a save.
+            int stalePackedRef = saved.Host.World.PackRef(RecycledEntitySlot);
+            Assert.Equal(RecycledEntitySlot, stalePackedRef);
+            RecycleEntitySlot(saved.Host);
+            Assert.False(saved.Host.World.TryResolveRef(stalePackedRef, out _)); // the live world already refuses it
+
+            SimulationHost resumed = SaveThenLoadIntoFresh(saved, null, out _);
+
+            // The lane itself round-tripped (0 here without the DW-581 save lane — the fresh re-apply's value).
+            Assert.Equal(1, resumed.World.Generation[RecycledEntitySlot]);
+            // …and the property that lane exists for: the stale handle stays stale across the save boundary. Without
+            // the lane this resolves TRUE and hands the caller the slot's NEW occupant (the ABA retarget).
+            Assert.True(resumed.World.IsAlive(RecycledEntitySlot));              // the slot IS live — so a bare-id check would pass
+            Assert.False(resumed.World.TryResolveRef(stalePackedRef, out _));
+            // The CURRENT handle still resolves, so the fix rejects staleness rather than rejecting everything.
+            Assert.True(resumed.World.TryResolveRef(resumed.World.PackRef(RecycledEntitySlot), out int live));
+            Assert.Equal(RecycledEntitySlot, live);
+        }
+
+        [Fact]
+        public void SaveLoad_ResumeByteIdentical_WithRecycledEntitySlot()
+        {
+            // The determinism half: the new lane carries UNFOLDED state, so restoring it must move no checksum. (It
+            // cannot: the reference run and the resumed run now hold the SAME generations, where before the resumed
+            // run silently held zeros.)
+            AssertResumeByteIdentical(RecycleEntitySlot, abilities: null, k: SaveAtTick, n: ResumeTicks,
+                assertRestored: h => Assert.Equal(1, h.World.Generation[RecycledEntitySlot]));
+        }
+
+        [Fact]
+        public void CaptureThenRestore_ZeroesTheGenerationTailPastTheHighWaterMark()
+        {
+            // The overlay must be TOTAL for this array: Create() re-defaults every other per-entity field when it hands
+            // out a slot, but on the fresh-APPEND path it deliberately leaves Generation alone ("fresh slot — stays
+            // 0"). A destination world carrying a stale non-zero tail would therefore hand the next appended entity a
+            // generation the saved world never had. Poke a tail slot the save cannot cover and require restore to wipe it.
+            Harness saved = BuildApplied();
+            Step(saved.Host, SaveAtTick);
+            var table = CanonicalEffectDescriptorTable.Build(saved.Host.AbilityRegistry, saved.Host.ItemRegistry);
+            SaveGameState state = SaveGameState.CaptureFrom(saved.Host, table);
+
+            Harness dest = BuildApplied();
+            int tail = state.EntHwm + 5;
+            Assert.True(tail < EntityWorld.MAX_ENTITIES);
+            dest.Host.World.Generation[tail] = 9;                 // stale residue past the saved high-water mark
+
+            var destTable = CanonicalEffectDescriptorTable.Build(dest.Host.AbilityRegistry, dest.Host.ItemRegistry);
+            state.RestoreInto(dest.Host, destTable, dest.SlotDefs);
+
+            Assert.Equal(0, dest.Host.World.Generation[tail]);    // the saved world's value there is 0 by construction
         }
 
         // ── #5b — rich non-default state: hero + research + in-flight projectile + DSL var/timer, byte-identical ──

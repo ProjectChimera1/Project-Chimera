@@ -155,7 +155,9 @@ namespace ProjectChimera.Core.Persistence
         }
 
         // ── EntityWorld per-entity array positions (named so capture/restore reference the SAME index). ──
-        private enum EA
+        // INTERNAL rather than private so the Tier-1 guard tests can name a lane instead of hard-coding its ordinal
+        // (the test assembly compiles these sources directly via SimSources.props — no InternalsVisibleTo needed).
+        internal enum EA
         {
             Flags, PosX, PosY, PosZ, VelX, VelY, VelZ, BaseMoveSpeed, EffMoveSpeed, Health, BaseMaxHealth, EffMaxHealth,
             FactionOf, MoveTargetX, MoveTargetY, MoveTargetZ, AttackTarget, AttackCooldown, AttackRange, BaseAtkDmg,
@@ -165,6 +167,9 @@ namespace ProjectChimera.Core.Persistence
             CommandGoalX, CommandGoalY, CommandGoalZ, CommandTarget, PatrolCount, PatrolIndex, PatrolDir,
             OrderQueueCount, ActiveOrderCmd, AbilityCount, PendingCastSlot, PendingCastTarget, AuraIdx, OnHitIdx,
             SelfPassiveIdx, HeroIndex, GatherState, GatherTarget, CarryAmount, CarryResType, CarryCapacity, BuildTarget,
+            // DW-581: the per-slot recycle generation backing PackRef/TryResolveRef. Last of the per-entity lanes (a
+            // new lane must stay BEFORE PatrolWpX, which is where the flat-stride half begins for the length checks).
+            Generation,
             // flat (stride) arrays — length EntHwm * stride
             PatrolWpX, PatrolWpY, PatrolWpZ, OrderQCmd, OrderQTargetX, OrderQTargetZ, AbilityId, AbilityCd,
             COUNT
@@ -294,6 +299,7 @@ namespace ProjectChimera.Core.Persistence
             var aura = A(EA.AuraIdx, n); var onhit = A(EA.OnHitIdx, n); var selfp = A(EA.SelfPassiveIdx, n); var hidx = A(EA.HeroIndex, n);
             var gs = A(EA.GatherState, n); var gt = A(EA.GatherTarget, n); var ca = A(EA.CarryAmount, n);
             var crt = A(EA.CarryResType, n); var cc = A(EA.CarryCapacity, n); var bt = A(EA.BuildTarget, n);
+            var gen = A(EA.Generation, n); // DW-581 — per-slot recycle generation (the ABA half of a packed entity ref)
             EntDefId = new string[n];
 
             for (int i = 0; i < n; i++)
@@ -318,6 +324,7 @@ namespace ProjectChimera.Core.Persistence
                 aura[i] = w.AuraAbilityIndex[i]; onhit[i] = w.OnHitAbilityIndex[i]; selfp[i] = w.SelfPassiveAbilityIndex[i]; hidx[i] = w.HeroIndex[i];
                 gs[i] = (int)w.GatherState[i]; gt[i] = w.GatherTarget[i]; ca[i] = w.CarryAmount[i].Raw;
                 crt[i] = (int)w.CarryResourceType[i]; cc[i] = w.CarryCapacity[i].Raw; bt[i] = w.BuildTarget[i];
+                gen[i] = w.Generation[i]; // DW-581
                 EntDefId[i] = w.SourceDefinition[i]?.Id ?? "";
             }
 
@@ -663,6 +670,7 @@ namespace ProjectChimera.Core.Persistence
             var pcs = G(EA.PendingCastSlot); var pct = G(EA.PendingCastTarget);
             var aura = G(EA.AuraIdx); var onhit = G(EA.OnHitIdx); var selfp = G(EA.SelfPassiveIdx); var hidx = G(EA.HeroIndex);
             var gs = G(EA.GatherState); var gt = G(EA.GatherTarget); var ca = G(EA.CarryAmount); var crt = G(EA.CarryResType); var cc = G(EA.CarryCapacity); var bt = G(EA.BuildTarget);
+            var gen = G(EA.Generation); // DW-581
 
             for (int i = 0; i < n; i++)
             {
@@ -704,6 +712,7 @@ namespace ProjectChimera.Core.Persistence
                 w.AuraAbilityIndex[i] = aura[i]; w.OnHitAbilityIndex[i] = onhit[i]; w.SelfPassiveAbilityIndex[i] = selfp[i]; w.HeroIndex[i] = hidx[i];
                 w.GatherState[i] = (GatherState)gs[i]; w.GatherTarget[i] = gt[i]; w.CarryAmount[i] = Fixed.FromRaw(ca[i]);
                 w.CarryResourceType[i] = (ResourceKind)crt[i]; w.CarryCapacity[i] = Fixed.FromRaw(cc[i]); w.BuildTarget[i] = bt[i];
+                w.Generation[i] = gen[i]; // DW-581 — the recycle generation is what keeps a packed ref ABA-safe
 
                 // Reference-typed SoA: re-resolve the def by id + faction and set the two ref fields directly (NOT via
                 // ApplyUnitDefinition, which would clobber the just-restored numeric SoA and re-fire the self-passive
@@ -719,6 +728,17 @@ namespace ProjectChimera.Core.Persistence
             for (int i = 0; i < oqcmd.Length; i++) { w.OrderQueueCmd[i] = (byte)oqcmd[i]; w.OrderQueueTargetX[i] = oqtx[i]; w.OrderQueueTargetZ[i] = oqtz[i]; }
             var abid = G(EA.AbilityId); var abcd = G(EA.AbilityCd);
             for (int i = 0; i < abid.Length; i++) { w.AbilityId[i] = abid[i]; w.AbilityCooldownTicks[i] = abcd[i]; }
+
+            // DW-581 — the generation overlay must be TOTAL, not just [0, EntHwm). Every OTHER per-entity lane can
+            // leave its tail alone because Create() re-defaults that field when it hands out a slot; Generation is the
+            // one field Create() deliberately does NOT touch on the fresh-append path ("fresh slot — Generation stays
+            // 0"), so it rests on the invariant "generation == 0 at every id past the high-water mark". A destination
+            // world carrying a stale non-zero tail (a host restored onto without an intervening Clear) would hand the
+            // next appended entity a non-zero generation the saved world never had, and its packed refs would then
+            // disagree with an uninterrupted run. The saved world satisfies the invariant by construction (a generation
+            // only bumps on a recycle, which needs id < HighWaterMark), so zeroing the tail reproduces it exactly.
+            int genTail = EntityWorld.MAX_ENTITIES - n;
+            if (n >= 0 && genTail > 0) Array.Clear(w.Generation, n, genTail);
 
             w.RestoreAllocation(EntHwm, EntAliveCount, EntFreeList, EntFreeList.Length);
         }
@@ -1101,6 +1121,18 @@ namespace ProjectChimera.Core.Persistence
             RequireByte(EA.PatrolCount, Fail); RequireByte(EA.OrderQueueCount, Fail);
             RequireByte(EA.PatrolIndex, Fail); RequireByte(EA.ActiveOrderCmd, Fail); RequireByte(EA.AbilityCount, Fail);
             RequireSByte(EA.PatrolDir, Fail);
+            // DW-581 — the generation lane feeds a SHIFT, not an index, so a corrupt value never crashes; it silently
+            // breaks reference resolution instead, which is worse. PackRef is (gen << REF_SLOT_BITS) | id, so a
+            // generation past MAX_PACKABLE_GENERATION overflows the sign bit and PackRef stops round-tripping through
+            // TryResolveRef — a LIVE entity's own freshly-packed ref would fail to resolve (an assassination leader
+            // reads as dead ⇒ a bogus verdict on the resumed tick). A negative generation is likewise unreachable in
+            // the sim (Create only ever increments from 0). Reject both here, where the fail-closed posture lives.
+            {
+                var g = Ent[(int)EA.Generation];
+                for (int i = 0; i < g.Length; i++)
+                    if ((uint)g[i] > (uint)EntityWorld.MAX_PACKABLE_GENERATION)
+                        Fail($"entity generation lane [{i}] value {g[i]} is outside [0, {EntityWorld.MAX_PACKABLE_GENERATION}].");
+            }
 
             // ── BuildingStore ──
             if ((uint)BCount > BuildingStore.MAX_BUILDINGS) Fail($"building count {BCount} exceeds cap.");

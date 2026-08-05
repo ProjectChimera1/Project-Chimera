@@ -33,8 +33,14 @@ namespace ProjectChimera.Core.Persistence
         /// <summary>Magic 'C','H','S','V' (little-endian uint on disk).</summary>
         public const uint MAGIC = 0x56534843u;
 
-        /// <summary>Current on-disk format version. A bump is a documented save-break (fail-closed), NOT a migrate.</summary>
-        public const ushort FormatVersion = 1;
+        /// <summary>Current on-disk format version. A bump is a documented save-break (fail-closed), NOT a migrate.
+        /// <para>v2 (DW-581): the entity section gained a <c>Generation</c> lane (the per-slot recycle generation
+        /// backing <c>EntityWorld.PackRef</c>/<c>TryResolveRef</c>). A v1 body carries one fewer entity lane, so
+        /// without this bump it would parse and then be rejected by <c>SaveGameState.Validate</c> as a CORRUPT save
+        /// ("entity lane count mismatch") and would still be listed as readable by <c>SaveGameHeader</c> — the bump
+        /// makes an older save fail with the accurate "made by an older game version" message, at the header, before
+        /// the body is read.</para></summary>
+        public const ushort FormatVersion = 2;
 
         /// <summary>Max player slots in a persisted launch record — a fail-closed corruption bound on the slot count.</summary>
         public const int MaxSlots = 64;
