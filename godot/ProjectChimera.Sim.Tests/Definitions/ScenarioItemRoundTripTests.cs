@@ -13,10 +13,11 @@ namespace ProjectChimera.Sim.Tests.Definitions
     /// </summary>
     public class ScenarioItemRoundTripTests
     {
-        private static readonly JsonSerializerOptions Opt = new()
-        {
-            Converters = { new JsonStringEnumConverter(), new FixedJsonConverter() },
-        };
+        /// <summary>
+        /// DW-523 - the PRODUCTION scenario options (<see cref="ContentJson.ScenarioOptions"/>), not a hand-rolled
+        /// replica that was looser than the real loader on the enum axis and missing its widget converter.
+        /// </summary>
+        private static readonly JsonSerializerOptions Opt = ContentJson.ScenarioOptions;
 
         [Fact]
         public void PlacedItems_RoundTrip()
