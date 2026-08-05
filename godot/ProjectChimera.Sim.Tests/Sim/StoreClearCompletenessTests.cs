@@ -30,13 +30,16 @@ namespace ProjectChimera.Sim.Tests.Sim
     /// to any of these stores auto-enters its sweep: forget it in the reset and the case goes red; leave it
     /// undirtiable and the precondition goes red until the fixture (or a justified allowlist entry) covers it.</para>
     ///
-    /// <para><b>Allowlists are the honest edges of the guarantee.</b> Three shapes recur, each named and justified
+    /// <para><b>Allowlists are the honest edges of the guarantee.</b> Two shapes recur, each named and justified
     /// per fixture: (1) shared dependency references and construction-lifetime config a reset deliberately
     /// preserves; (2) documented COUNT-GATED buffers whose Clear only zeroes the count and whose stale tail is
-    /// never read or folded (<c>CombatEventQueue</c>/<c>DeathFeed</c>/<c>DslSimEventFeed</c>/<c>DslEventQueue</c>);
-    /// (3) <c>TriggerEnabledStore._enabled</c>, whose stale tail is additionally reachable through the
-    /// out-of-range-returns-true <c>IsEnabled</c> — that reachability question is DW-197 (open); its allowlist
-    /// entry cites it and must be removed when DW-197 closes.</para>
+    /// never read or folded (<c>CombatEventQueue</c>/<c>DeathFeed</c>/<c>DslSimEventFeed</c>/<c>DslEventQueue</c>).
+    /// <c>TriggerEnabledStore._enabled</c> used to be a third — a count-gated tail that was ALSO reachable through
+    /// the old out-of-range-returns-<b>true</b> <c>IsEnabled</c>, so it was exempted while that reachability
+    /// question (DW-197) was open. DW-197 landed both halves (<c>IsEnabled</c> bounds to false; <c>Clear()</c>
+    /// <c>Array.Clear</c>s the WHOLE buffer), so DW-584 retired the exemption: <c>_enabled</c> is now SWEPT, and
+    /// this class PINS the wipe instead of excusing the tail — see <c>TriggerEnabledCase</c> and
+    /// <see cref="TriggerEnabledSweep_HasTeeth_AgainstAClearThatZeroesOnlyTheCount"/>.</para>
     ///
     /// <para><c>EntityWorld.Clear()</c> — the first ClearForReset line — is covered by its original DW-19 class,
     /// <see cref="EntityWorldClearCompletenessTests"/>, now driven through the same shared machinery.</para>
@@ -369,23 +372,64 @@ namespace ProjectChimera.Sim.Tests.Sim
             return new StoreResetFixture("Alliances.Clear()", new AllianceStore(), dirty, dirty.Clear);
         }
 
+        /// <summary>The dirty store's live trigger count — also the buffer capacity <c>Clear()</c> retains, which
+        /// <see cref="TriggerEnabledCase"/>'s NormalizeFresh mirrors onto the fresh side.</summary>
+        private const int TriggerEnabledLiveCount = 3;
+
         private static StoreResetFixture TriggerEnabledCase()
         {
+            var fresh = new TriggerEnabledStore();
             var dirty = new TriggerEnabledStore();
-            return new StoreResetFixture("TriggerEnabled.Clear()", new TriggerEnabledStore(), dirty, dirty.Clear)
+            return new StoreResetFixture("TriggerEnabled.Clear()", fresh, dirty, dirty.Clear)
             {
-                DirtyNonArrayState = () => dirty.Reset(3), // Count 3, buffer grown + seeded all-true
-                Allowlist = new[]
-                {
-                    // Clear() zeroes ONLY Count; the _enabled buffer keeps its stale tail by design (the folded
-                    // surface is Count-gated: a cleared store folds nothing, and the next LoadScenario's
-                    // Reset(count) re-seeds every live entry). NOTE the tail IS still observable through the
-                    // out-of-range-returns-true IsEnabled — that reachability question is DW-197 (open, medium).
-                    // When DW-197 closes (bounding IsEnabled or wiping the tail), REMOVE this entry so the sweep
-                    // pins the strengthened contract.
-                    "_enabled",
-                },
+                // Count 3, buffer grown + seeded all-true (the LoadScenario re-seed path).
+                DirtyNonArrayState = () => dirty.Reset(TriggerEnabledLiveCount),
+                // DW-584: `_enabled` carries NO allowlist entry — it is fully swept. It was exempted only while
+                // DW-197 was open (a count-gated stale tail that the old out-of-range-returns-true IsEnabled made
+                // observable); DW-197 landed, so Clear() now Array.Clears the WHOLE buffer and this case PINS that
+                // wipe. Clear() deliberately never SHRINKS the buffer — SimulationHost holds this store BY
+                // REFERENCE and Reset() reuses it in place — so, exactly like ResearchStore's never-shrinking inner
+                // arrays, the fresh side is grown to the same capacity first; otherwise the final compare trips on
+                // an incidental length mismatch (0 vs 3) instead of measuring "did every enabled bit reset".
+                // The baseline buffer is written DIRECTLY rather than through Reset()/Clear() so it can never
+                // inherit a regression in the very methods under test: a Clear() that drops its Array.Clear leaves
+                // [true,true,true] against this all-false fresh buffer and the case goes red (pinned by
+                // TriggerEnabledSweep_HasTeeth_AgainstAClearThatZeroesOnlyTheCount).
+                NormalizeFresh = () =>
+                    ClearCompletenessSweep.Poke(fresh, "_enabled", new bool[TriggerEnabledLiveCount]),
             };
+        }
+
+        /// <summary>
+        /// DW-584's teeth: with <c>_enabled</c> swept, the PRE-DW-197 <c>Clear()</c> — zero the count, leave the
+        /// enabled bits standing — must fail its sweep case at the named field. While the allowlist entry existed
+        /// that mutant shipped GREEN through the whole sweep (<see cref="ClearCompletenessSweep.DivergingFields"/>
+        /// skips allowlisted names outright), so this test is what makes the exemption's removal load-bearing
+        /// rather than cosmetic: re-add <c>"_enabled"</c> to the fixture's allowlist and this goes red.
+        /// </summary>
+        [Fact]
+        public void TriggerEnabledSweep_HasTeeth_AgainstAClearThatZeroesOnlyTheCount()
+        {
+            StoreResetFixture real = TriggerEnabledCase();
+            var mutant = new StoreResetFixture(
+                real.Name, real.Fresh, real.Dirty,
+                // The mutant reset: Count → 0 and nothing else (Count is an auto-property; Poke reaches its
+                // backing field, and is LOUD if the store ever renames it).
+                clear: () => ClearCompletenessSweep.Poke(real.Dirty, "Count", 0))
+            {
+                DirtyNonArrayState = real.DirtyNonArrayState,
+                NormalizeFresh     = real.NormalizeFresh,
+                ElementFiller      = real.ElementFiller,
+                Allowlist          = real.Allowlist,
+            };
+
+            var ex = Assert.ThrowsAny<Xunit.Sdk.XunitException>(
+                () => ClearCompletenessSweep.AssertClearRestoresFreshState(mutant));
+            Assert.Contains("TriggerEnabledStore._enabled", ex.Message);
+
+            // And the real Clear() — the shipped one — leaves the same fixture clean, so the failure above is the
+            // mutant's, not a fixture that can never pass.
+            ClearCompletenessSweep.AssertClearRestoresFreshState(TriggerEnabledCase());
         }
 
         private static StoreResetFixture TriggerFireLogCase()
