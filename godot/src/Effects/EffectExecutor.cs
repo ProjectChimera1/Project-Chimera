@@ -100,7 +100,7 @@ namespace ProjectChimera.Effects
                     case SearchAreaEffect search:
                         if (f.Depth >= EffectCaps.MaxEffectDepth) continue;
                         if (search.Child is null) break;
-                        int count = search.FindTargets(in f.Ctx, _hitBuffer); // QueryRadius + ascending sort + filter
+                        int count = search.FindTargets(in f.Ctx, _hitBuffer); // predicate runs INSIDE the query; fills ascending by id
                         // Reverse-push ⇒ lowest-id target pops (applies) first (AC3 ascending order).
                         for (int i = count - 1; i >= 0; i--)
                         {
