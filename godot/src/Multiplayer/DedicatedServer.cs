@@ -725,9 +725,19 @@ namespace ProjectChimera.Multiplayer
                 // connected PLAYER count (spectators excluded — D6). The transport seams are wrapped in lambdas
                 // because SendReliableTo/BroadcastReliable take an optional length arg, so a method-group
                 // conversion to Action<int,byte[]> / Action<byte[]> won't bind.
+                //
+                // DW-511: the last seam ARMS the collector's far-future acceptance bound with the SERVER's own
+                // confirmed frontier — the merged high-water, which advances only when ALL expected players have
+                // submitted a tick, so no single client can move it. Without it, one client reporting a fabricated
+                // far-future checksum tick evicts the honest quorum's in-flight comparison windows AND drags the
+                // collector's resolved high-water past every real tick, silently killing the desync guard for the
+                // rest of the match. Null-safe on purpose: no builder ⇒ frontier −1 ⇒ fail-CLOSED (only the
+                // bootstrap-gap ticks are accepted), never fail-open. `_builder` is constructed above in this same
+                // block, so in practice it is always live by the time a checksum can arrive.
                 _serverHost = new ServerHost(connected, Log ?? new NullLogSink(),
                     (s, pkt) => _transport.SendReliableTo(s, pkt),
-                    pkt => _transport.BroadcastReliable(pkt));
+                    pkt => _transport.BroadcastReliable(pkt),
+                    () => _builder?.EmittedThrough ?? -1L);
 
                 // Broadcast StartGame (tick 0) to all peers simultaneously.
                 var startPkt = TickCommandPacket.MakeStartGame(startTick: 0);
