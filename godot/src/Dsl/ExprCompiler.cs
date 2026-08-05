@@ -445,17 +445,9 @@ namespace ProjectChimera.Dsl
         private static DslValueType? VisitCall(Ctx ctx, ExprCallNode call, int depth)
         {
             int id = call.Id;
-            int arity = call.Fn switch
-            {
-                "count" => 1, "abs" => 1,
-                "distance" => 2, "min" => 2, "max" => 2,
-                // Story 7.13 — the state reads. entity_* + the three faction-count reads take one operand; the
-                // closed-vocab selector (tag/category/resource/region) is a STATIC field, never an operand.
-                "entity_hp" => 1, "entity_owner" => 1, "entity_position" => 1,
-                "unit_count_tag" => 1, "unit_count_category" => 1, "player_resource" => 1,
-                "region_unit_count" => 0,
-                _ => -1,
-            };
+            // DW-578 — ONE arity table, shared with the T3 port catalog (NodeKinds.ExprCallArity), so the operand
+            // pins the editor RENDERS can never drift from the operand edges this gate ACCEPTS. −1 = unknown fn.
+            int arity = NodeKinds.ExprCallArity(call.Fn);
             if (arity < 0)
             {
                 ctx.Error = $"expr node {id}: unknown built-in '{call.Fn}'.";
