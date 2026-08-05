@@ -389,6 +389,19 @@ namespace ProjectChimera.Core.Definitions
         /// (<c>con</c> → <c>con_faction.json</c>, an ordinary file) and catches one it does not (<c>con.x</c> →
         /// <c>con.x_faction.json</c>, the CON device). A portability gate — see the inline comment for what modern
         /// Windows builds actually enforce.</para>
+        ///
+        /// <para><b>DW-112: the <c>File.Exists</c> → <c>File.Move</c> TOCTOU window.</b> The target-exists pre-check
+        /// and the <c>overwrite:false</c> move are two separate filesystem observations, so a target that appears
+        /// BETWEEN them (a second wizard session, an external tool) used to fall through to the generic
+        /// <c>"save failed: {ex.Message}"</c> branch and hand the creator a raw OS string ("Cannot create a file when
+        /// that file already exists.") for the exact situation the pre-check words helpfully. The move now classifies
+        /// its own failure through <see cref="TryClassifyTargetCollision"/>: when the destination name turns out to be
+        /// taken, the SAME located <c>id</c> error the pre-check produces is returned instead — one shared builder
+        /// (<see cref="TargetFileExistsFailure"/>) so the two wordings cannot drift. The atomic move was never the
+        /// risk (<c>overwrite:false</c> still refuses to clobber); this is purely the UX half. A destination occupied
+        /// by a DIRECTORY is the same class of problem and the same remedy (choose a different id) — the pre-check's
+        /// <c>File.Exists</c> cannot see it at all, so it is classified here with its own accurate wording rather than
+        /// left on the opaque generic branch. Any other write failure keeps the generic message unchanged.</para>
         /// </summary>
         public static FactionDefinerFinishResult TryFinish(FactionDefinition def, string factionsDirAbsolute,
             AbilityRegistry? abilityRegistry = null, Func<string, bool>? meshExists = null)
@@ -477,29 +490,83 @@ namespace ProjectChimera.Core.Definitions
 
             string targetAbs = Path.Combine(factionsDirAbsolute, fileName);
             if (File.Exists(targetAbs))
-            {
-                return FactionDefinerFinishResult.Failure(new (string, string)[]
-                {
-                    ("id", $"a faction file already exists at '{targetAbs}' — choose a different id " +
-                           "(an existing faction file is never overwritten)."),
-                });
-            }
+                return TargetFileExistsFailure(targetAbs);
 
             string tmp = targetAbs + ".tmp";
+            // DW-112: distinguishes "the MOVE failed" from "the serialize/write/self-check failed". Only a move
+            // failure may be re-read as a target-name collision — a write that failed for its own reason (a locked
+            // .tmp, a full disk) must keep reporting that reason even if some other process happens to have taken
+            // the target name in the meantime, because that reason is the truthful account of what went wrong.
+            bool moveAttempted = false;
             try
             {
                 string json = SerializeDraftClean(def);
                 File.WriteAllText(tmp, json);
                 _ = FactionDefinition.LoadFromFile(tmp);   // self-check: refuse to report success for a file that won't reload
+                moveAttempted = true;
                 File.Move(tmp, targetAbs, overwrite: false);
                 return FactionDefinerFinishResult.Success(targetAbs);
             }
             catch (Exception ex)
             {
                 try { if (File.Exists(tmp)) File.Delete(tmp); } catch { /* leave no stray .tmp */ }
-                return FactionDefinerFinishResult.Failure(new (string, string)[] { ("id", $"save failed: {ex.Message}") });
+
+                // DW-112: the pre-check above and the overwrite:false move are two separate observations of the same
+                // fact, so a target created in the window between them lands here. Classify ONCE (the classifier
+                // re-probes the filesystem, and probing twice could itself observe two different states), and fall
+                // back to the unchanged generic message for every failure that is not a name collision.
+                FactionDefinerFinishResult? collision =
+                    moveAttempted ? TryClassifyTargetCollision(ex, targetAbs) : null;
+                return collision ?? FactionDefinerFinishResult.Failure(
+                    new (string, string)[] { ("id", $"save failed: {ex.Message}") });
             }
         }
+
+        /// <summary>
+        /// DW-112 — re-read a failed <see cref="File.Move(string, string, bool)"/> as a target-name collision, or
+        /// return null when it is not one (leaving the caller's generic <c>"save failed: …"</c> message in place).
+        ///
+        /// <para>Classifies by re-probing the destination rather than by inspecting the exception's platform-specific
+        /// <see cref="Exception.HResult"/>/errno: an <c>overwrite:false</c> move that fails while the destination is
+        /// occupied IS the collision, on every platform, and the probe stays readable. Only
+        /// <see cref="IOException"/>/<see cref="UnauthorizedAccessException"/> are eligible (the two families a
+        /// filesystem move raises) so an unrelated failure type can never be dressed up as a collision.</para>
+        ///
+        /// <para>Internal, not private, so the Tier-1 suite can pin the concurrent-FILE arm directly — that arm needs
+        /// a target that materialises strictly between the pre-check and the move, which no single-threaded test can
+        /// stage. The directory arm IS reachable end-to-end (<see cref="File.Exists"/> is blind to a directory, so the
+        /// pre-check waves it through and the move collides), and covers the wiring from the catch into this method.</para>
+        /// </summary>
+        internal static FactionDefinerFinishResult? TryClassifyTargetCollision(Exception moveFailure, string targetAbs)
+        {
+            if (moveFailure is not IOException and not UnauthorizedAccessException) return null;
+            if (File.Exists(targetAbs)) return TargetFileExistsFailure(targetAbs);
+            if (Directory.Exists(targetAbs)) return TargetDirectoryBlocksFailure(targetAbs);
+            return null;
+        }
+
+        /// <summary>DW-112 — the SINGLE producer of the "that faction file already exists, pick another id" located
+        /// error, shared by <see cref="TryFinish"/>'s target-exists pre-check and by
+        /// <see cref="TryClassifyTargetCollision"/>'s post-move re-read, so the two can never word the same fact
+        /// differently. Names the <c>id</c> field, which <see cref="StepForError"/> routes to
+        /// <see cref="FactionDefinerStep.NameColor"/> — the step holding the control that fixes it.</summary>
+        private static FactionDefinerFinishResult TargetFileExistsFailure(string targetAbs) =>
+            FactionDefinerFinishResult.Failure(new (string, string)[]
+            {
+                ("id", $"a faction file already exists at '{targetAbs}' — choose a different id " +
+                       "(an existing faction file is never overwritten)."),
+            });
+
+        /// <summary>DW-112 — the destination NAME is taken by a directory. Same remedy as
+        /// <see cref="TargetFileExistsFailure"/> (choose a different id) and the same <c>id</c> field, but worded
+        /// accurately: nothing is being overwritten and there is no existing faction file to preserve. Only reachable
+        /// after the move, since <see cref="File.Exists"/> reports false for a directory.</summary>
+        private static FactionDefinerFinishResult TargetDirectoryBlocksFailure(string targetAbs) =>
+            FactionDefinerFinishResult.Failure(new (string, string)[]
+            {
+                ("id", $"a folder already exists at '{targetAbs}', so the faction file cannot be written there — " +
+                       "choose a different id."),
+            });
 
         /// <summary>
         /// Assemble the Finish-write JSON for a brand-new faction file: a fresh top-level <see cref="JsonObject"/>
