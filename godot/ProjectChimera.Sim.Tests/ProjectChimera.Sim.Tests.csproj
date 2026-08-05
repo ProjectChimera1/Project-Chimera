@@ -64,6 +64,14 @@
          fog-visibility dot gate — included as a single file (src/UI is not globbed by SimSources.props) so both
          minimap fog decisions are Tier-1 testable against a real FogOfWarSystem. Presentation-side, never hashed. -->
     <Compile Include="..\src\UI\MinimapFogPolicy.cs" LinkBase="Sim\UI" />
+    <!-- DW-363: the Story-7.8 custom-UI read-rail value formatters (int→string / Fixed→m:ss / progress fraction).
+         Pure/Godot-free (System.Globalization + Core.Fixed + Dsl.DslValueType) but it lives under src/UI, which
+         SimSources.props does NOT glob — so its non-obvious branching (Fixed-as-seconds vs Int-as-ticks, the
+         ticksPerSecond>0 guard, the negative→0:00 clamp, the max<=0 divide-by-zero guard, the [0,1] clamp) had
+         zero coverage. Included HERE, not in SimSources.props, deliberately: it is presentation-side and uses
+         double / Fixed.ToFloat, which belong outside the determinism analyzer set (the UnderAttackThrottle /
+         SelectionSubgroups / MinimapFogPolicy precedent above). Presentation-only — never folded into any hash. -->
+    <Compile Include="..\src\UI\WidgetFormat.cs" LinkBase="Sim\UI" />
   </ItemGroup>
 
   <!-- Story 9.12: the SHARED C#<->TS hero-profile validation oracle. Embedded (read via manifest stream, like the
