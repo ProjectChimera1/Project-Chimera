@@ -196,8 +196,17 @@ jobs:
   # tree from the committed package-lock.json that fails loudly on lock-file drift instead of silently floating.
   # `tsc --noEmit` runs too because vitest TRANSPILES without typechecking (and the esbuild deploy bundle also
   # skips typechecking) — this step is the only type gate the TS validator has anywhere.
+  #
+  # DW-606 — `npm run build` runs here as well, because typecheck + vitest do NOT prove the thing that actually
+  # ships. What Nakama loads is the esbuild BUNDLE (`build/index.js`, mounted into /nakama/data/modules by
+  # docker-compose.yml); tsc and vitest both resolve modules their own way and never produce it, so a change that
+  # typechecks and passes vitest could still fail to bundle — and a forgotten build is fail-closed for every player
+  # (the entrypoint hard-exits when build/index.js is absent, see docs/server-deploy/README.md). Building in CI
+  # makes that break loud here instead of at `docker compose up`. The output is gitignored and thrown away with the
+  # runner — this step proves the bundle CAN be produced, it does not publish it.
   # Wiring is guarded Tier-1-side by NakamaTsValidatorCiGateGuardTests (the 1.10a convention: structure asserted
-  # as tests on every `dotnet test`, so deleting this job — or de-vitesting `npm test` — goes red locally too).
+  # as tests on every `dotnet test`, so deleting this job — or de-vitesting `npm test`, or drifting the build
+  # script off the es2017/cjs goja target — goes red locally too).
   nakama-ts-validator-gate:
     runs-on: ubuntu-latest
     defaults:
@@ -222,3 +231,14 @@ jobs:
 
       - name: TS validator vitest suite (shared-oracle parity — fails the build on any validation.ts/main.ts regression)
         run: npm test
+
+      - name: Deploy bundle (esbuild → build/index.js — the artifact Nakama actually loads; DW-606)
+        # The es2017/cjs/platform=node flags that keep the bundle loadable by Nakama's goja runtime live in the
+        # package.json build script and are pinned Tier-1-side (NakamaTsValidatorCiGateGuardTests), so this step
+        # stays a plain `npm run build` — do not inline the flags here, or the two would drift apart.
+        run: npm run build
+
+      - name: Assert the bundle was actually emitted (package.json `main` / the docker-compose module mount)
+        # Cheap backstop for an --outfile drift that still exits 0: docker-compose mounts ./nakama-modules/build
+        # into /nakama/data/modules, so a bundle written anywhere else is a bundle that never deploys.
+        run: test -s build/index.js
