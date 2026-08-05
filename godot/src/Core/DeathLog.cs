@@ -22,8 +22,10 @@ namespace ProjectChimera.Core
     /// </summary>
     public sealed class DeathLog
     {
-        /// <summary>Max deaths recorded per tick (the <c>DeathFeed</c> cap; also sizes the director's base-event
-        /// headroom for multi-death slots).</summary>
+        /// <summary>Max deaths recorded per tick; also sizes the director's base-event headroom for multi-death slots.
+        /// Historically chosen to match the <c>DeathFeed</c> ring, which DW-616 has since made lossless (its drops were
+        /// checksum-visible via hero XP); this log keeps its cap because its own overflow is covered by the director's
+        /// flags-diff fallback described above — it is NOT a mirror of the feed any more.</summary>
         public const int CAPACITY = 256;
 
         private readonly int[] _victim     = new int[CAPACITY];
