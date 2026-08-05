@@ -138,5 +138,26 @@ namespace ProjectChimera.Dsl
         /// (<c>TryEnqueueExternalDslEvent</c> range-rejects it). 0xFE00 = 65024.
         /// </summary>
         public const int RequeueRailBase = 0xFE00;
+
+        /// <summary>
+        /// DW-545 — the RESERVED queue-code BASE of the CUSTOM-occurrence re-queue rail: the DW-349 rail's
+        /// custom-event sibling (recorded owner decision: "extend the re-queue rail to custom occurrences", so a
+        /// custom event gets the same edge-parity a one-shot base occurrence already has). A same-tick work-list
+        /// occurrence the drain's fuel halt abandoned MID-DISPATCH — some subscribers served, the rest not — is
+        /// persisted as <c>CustomRequeueRailBase + resumeExec * <see cref="MaxCustomEvents"/> + eventIndex</c>:
+        /// the registry index and the RESUME exec (the first UNSERVED subscriber) share the code lane, leaving
+        /// raiser = the occurrence's raiser slot and P0..P3 = the full declared payload on their own lanes, so an
+        /// event declaring the full <see cref="MaxEventParams"/> persists losslessly (the DW-349 rail's
+        /// P3-as-target trick has no free slot on a custom occurrence). Redelivery resumes the subscriber scan at
+        /// <c>resumeExec</c>, so a subscriber already served on the drop tick can never double-fire. An occurrence
+        /// the halt never STARTED needs no rail code at all — it persists under its PLAIN registry index as an
+        /// ordinary next-tick occurrence (the canonical encoding for <c>resumeExec == 0</c>).
+        ///
+        /// This is the TOP rail: the packed range is open-ended (bounded only by the loaded trigger count), so it
+        /// is placed far above <see cref="PlayerChatRailCode"/> (0xFF00) and <see cref="RequeueRailBase"/>
+        /// (0xFE00) and any future reserved sentinel must stay BELOW it. Never accepted from the external wire
+        /// (<c>TryEnqueueExternalDslEvent</c> range-rejects it). 0x100000 = 1048576.
+        /// </summary>
+        public const int CustomRequeueRailBase = 0x100000;
     }
 }
