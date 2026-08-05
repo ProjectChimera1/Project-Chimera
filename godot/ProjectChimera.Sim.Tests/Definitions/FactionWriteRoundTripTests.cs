@@ -711,6 +711,156 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Equal(new[] { "armor_up", "speed_up" }, b.AvailableResearch);
         }
 
+        // ── DW-82: prerequisites' OWN round-trip, proven by the SAME body that proves available_research's ─────
+        //
+        //    Story 4.8 shipped available_research with the claim that it "round-trips exactly like prerequisites",
+        //    but only available_research was ever asserted (the four tests above) — prerequisites' writer behaviour
+        //    was unproven by any test, so the parity claim rested on reading the code ("both call PutStringArray")
+        //    rather than on a shared assertion that would catch the two diverging. The two fields reach the writer
+        //    through DIFFERENT methods — prerequisites is inherited from UnitDefinition and written by ApplyFields,
+        //    available_research is BuildingDefinition-only and written by ApplyBuildingFields — so "same helper
+        //    today" is exactly the kind of coupling that silently breaks. These theories drive BOTH keys through
+        //    one shared body: every behaviour asserted for one is asserted for the other, by construction.
+
+        private const string PrereqKey = "prerequisites";
+        private const string ResearchKey = "available_research";
+
+        /// <summary>Set whichever of the two building string-array fields <paramref name="key"/> names, so one
+        /// theory body can exercise both through their real (different) writer paths.</summary>
+        private static void SetBuildingArray(BuildingDefinition b, string key, string[] value)
+        {
+            if (key == PrereqKey) b.Prerequisites = value;
+            else b.AvailableResearch = value;
+        }
+
+        private static string[] GetBuildingArray(BuildingDefinition b, string key) =>
+            key == PrereqKey ? b.Prerequisites : b.AvailableResearch;
+
+        [Theory]
+        [InlineData(PrereqKey)]
+        [InlineData(ResearchKey)]
+        public void SyncFactionBuildings_AuthoredStringArrayField_RoundTrips(string key)
+        {
+            FactionDefinition f = Parse(Faction);
+            SetBuildingArray(f.GetBuilding("barracks")!, key, new[] { "command_center" });
+
+            string outJson = FactionWriter.SyncFactionBuildings(Faction, f.Buildings);
+
+            Assert.Contains($"\"{key}\"", BuildingJson(outJson, "barracks"));
+            FactionDefinition reloaded = Parse(outJson);
+            Assert.Equal(new[] { "command_center" }, GetBuildingArray(reloaded.GetBuilding("barracks")!, key));
+        }
+
+        [Theory]
+        [InlineData(PrereqKey)]
+        [InlineData(ResearchKey)]
+        public void SyncFactionBuildings_OmittedStringArrayField_IsNotWritten(string key)
+        {
+            // Neither key is authored on barracks; editing an unrelated field must not balloon either one in —
+            // both default to an empty array, and an absent key is effectively empty, so nothing is written.
+            FactionDefinition f = Parse(Faction);
+            f.GetBuilding("barracks")!.Hp = 850f;   // touch a different field
+            string outJson = FactionWriter.SyncFactionBuildings(Faction, f.Buildings);
+
+            Assert.DoesNotContain($"\"{key}\"", BuildingJson(outJson, "barracks"));
+        }
+
+        [Theory]
+        [InlineData(PrereqKey)]
+        [InlineData(ResearchKey)]
+        public void SyncFactionBuildings_ClearedStringArrayField_WritesExplicitEmptyArray(string key)
+        {
+            // Both fields default to [] (PutStringArray defaultsNull: false), so clearing an authored list writes an
+            // explicit [] rather than dropping the key — the shared discipline that keeps "authored none" distinct
+            // from "never authored" for BOTH fields.
+            FactionDefinition authoredModel = Parse(Faction);
+            SetBuildingArray(authoredModel.GetBuilding("barracks")!, key, new[] { "command_center" });
+            string authored = FactionWriter.SyncFactionBuildings(Faction, authoredModel.Buildings);
+            Assert.Contains($"\"{key}\"", BuildingJson(authored, "barracks"));
+
+            FactionDefinition clearedModel = Parse(authored);
+            SetBuildingArray(clearedModel.GetBuilding("barracks")!, key, System.Array.Empty<string>());
+            string cleared = FactionWriter.SyncFactionBuildings(authored, clearedModel.Buildings);
+
+            JsonObject clearedNode = JsonNode.Parse(BuildingJson(cleared, "barracks"))!.AsObject();
+            Assert.True(clearedNode[key] is JsonArray);        // key kept, not dropped…
+            Assert.Empty(clearedNode[key]!.AsArray());          // …as an explicit empty array
+            Assert.Empty(GetBuildingArray(Parse(cleared).GetBuilding("barracks")!, key));
+        }
+
+        [Theory]
+        [InlineData(PrereqKey)]
+        [InlineData(ResearchKey)]
+        public void PatchFactionBuildingJson_Update_AuthoredStringArrayField_RoundTrips(string key)
+        {
+            BuildingDefinition edited = Parse(Faction).GetBuilding("barracks")!;
+            SetBuildingArray(edited, key, new[] { "r1", "r2" });
+
+            string outJson = FactionWriter.PatchFactionBuildingJson(Faction,
+                new BuildingEdit { Kind = BuildingEditKind.Update, TargetId = "barracks", Def = edited });
+
+            FactionDefinition reloaded = Parse(outJson);
+            Assert.Equal(new[] { "r1", "r2" }, GetBuildingArray(reloaded.GetBuilding("barracks")!, key));
+            // Untouched fields preserved (the reconcile is surgical, not a wholesale rewrite).
+            Assert.Equal(800f, reloaded.GetBuilding("barracks")!.Hp);
+        }
+
+        [Theory]
+        [InlineData(PrereqKey)]
+        [InlineData(ResearchKey)]
+        public void PatchFactionBuildingJson_Create_WritesStringArrayField(string key)
+        {
+            var fresh = new BuildingDefinition
+            {
+                Id = "lab", Category = "Structure", Hp = 300f,
+                ConstructionTime = 10f, SupplyBonus = 0, ProducesCategory = "None",
+            };
+            SetBuildingArray(fresh, key, new[] { "armor_up", "speed_up" });
+
+            string outJson = FactionWriter.PatchFactionBuildingJson(Faction,
+                new BuildingEdit { Kind = BuildingEditKind.Create, Def = fresh });
+
+            Assert.Equal(new[] { "armor_up", "speed_up" },
+                GetBuildingArray(Parse(outJson).GetBuilding("lab")!, key));
+        }
+
+        [Theory]
+        [InlineData(PrereqKey)]
+        [InlineData(ResearchKey)]
+        public void SerializeBuildingClean_AuthoredStringArrayField_IsEmitted_AndReParses(string key)
+        {
+            // The raw-JSON escape hatch is the third writer surface (SerializeBuildingClean → ApplyBuildingFields);
+            // both fields must survive it identically too.
+            BuildingDefinition b = Parse(Faction).GetBuilding("barracks")!;
+            b.ConstructionTime = 10f; b.SupplyBonus = 0; b.ProducesCategory = "None";
+            SetBuildingArray(b, key, new[] { "command_center" });
+
+            string json = FactionWriter.SerializeBuildingClean(b);
+            Assert.Contains($"\"{key}\"", json);
+            var parsed = JsonSerializer.Deserialize<BuildingDefinition>(json, FactionDefinition.JsonOptions);
+            Assert.Equal(new[] { "command_center" }, GetBuildingArray(parsed!, key));
+        }
+
+        [Fact]
+        public void SyncFactionBuildings_BothStringArrayFields_EmitIdenticalShape_AndDoNotDisturbEachOther()
+        {
+            // The parity claim itself, as one assertion: given the SAME authored value, the two keys must serialize
+            // to the SAME JSON token — and authoring both on one building must not make either clobber the other.
+            FactionDefinition f = Parse(Faction);
+            BuildingDefinition barracks = f.GetBuilding("barracks")!;
+            barracks.Prerequisites = new[] { "command_center", "depot" };
+            barracks.AvailableResearch = new[] { "command_center", "depot" };
+
+            string outJson = FactionWriter.SyncFactionBuildings(Faction, f.Buildings);
+            JsonObject b = JsonNode.Parse(BuildingJson(outJson, "barracks"))!.AsObject();
+
+            Assert.Equal(b[PrereqKey]!.ToJsonString(), b[ResearchKey]!.ToJsonString());
+
+            BuildingDefinition reloaded = Parse(outJson).GetBuilding("barracks")!;
+            Assert.Equal(new[] { "command_center", "depot" }, reloaded.Prerequisites);
+            Assert.Equal(new[] { "command_center", "depot" }, reloaded.AvailableResearch);
+        }
+
         // ── DW-55: a building's hp is now ALWAYS serialized (it is required) — even at the 100 default, so the
         //    written file always reloads. Unlike a unit, whose default hp is omitted. ──
 
