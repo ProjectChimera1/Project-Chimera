@@ -163,6 +163,12 @@ namespace ProjectChimera.Combat
                     continue;
                 }
 
+                // ── DW-645 GUARD ANCHOR: BEGIN combatant command switch ──────────────────────────────────────
+                // Every command that PERSISTS as a CommandState (UnitCommandTraits.PersistsAsCommandState) must have
+                // its OWN case label in this block. `default:` below is NOT a routing decision for them — it exists
+                // only for values that can never legitimately be stored here. CombatCommandSwitchCompletenessTests
+                // reads the labels between these anchors and fails if a persisting command is missing one, so the
+                // DW-206 defect (Build inheriting idle auto-combat by omission) cannot recur on a future member.
                 switch (world.CommandState[i])
                 {
                     case UnitCommand.Move:
@@ -209,10 +215,26 @@ namespace ProjectChimera.Combat
                         TickFollowCombat(world, i, dt);
                         break;
 
-                    default: // Idle (and the never-persisted wire-only commands, which never reach a CommandState)
+                    case UnitCommand.Idle:
+                        // DW-645: Idle is the resting state EVERY invalid/expired order reverts to, so it is by far
+                        // the most-travelled arm — yet before this it was spelled `default:`, which is what let Build
+                        // (DW-206) reach idle auto-combat by omission and would have let the next persisting command
+                        // do the same. Idle now routes explicitly and `default:` routes nothing that persists.
+                        TickIdleCombat(world, i, dt);
+                        break;
+
+                    default:
+                        // Only values that never legitimately persist can arrive here: a wire-only/consumed command
+                        // (OrderApplier rewrites or returns before storing one), or an out-of-enum-range byte from a
+                        // corrupted save (SaveGameState restores CommandState with a raw int cast). Idle is the
+                        // fail-safe disposal for both — the same behaviour this arm has always had, deliberately NOT
+                        // a throw: crashing the tick on a corrupt byte is worse than resting the unit, and the
+                        // completeness guard already makes an un-cased PERSISTING command a build-time-loud test
+                        // failure rather than a silent runtime one.
                         TickIdleCombat(world, i, dt);
                         break;
                 }
+                // ── DW-645 GUARD ANCHOR: END combatant command switch ────────────────────────────────────────
             }
         }
 
@@ -234,8 +256,27 @@ namespace ProjectChimera.Combat
         // That is what keeps the committed goldens — whose zero-damage units are all Idle or Move — unmoved.
         private void TickNonCombatant(EntityWorld world, int i, Fixed dt)
         {
+            // ── DW-645 GUARD ANCHOR: BEGIN non-combatant command switch ──────────────────────────────────────
+            // The same completeness rule as the combatant switch, for the same reason from the other side. This
+            // router has no `default:` at all, so an un-cased command is silently INERT — which is precisely the
+            // DW-242 defect (a non-combatant parked in an order no system could advance). Every persisting command
+            // therefore names itself here too: the movement-bearing ones route, the rest join the explicit no-op
+            // group below so "nothing happens" is a decision on the record instead of an omission.
             switch (world.CommandState[i])
             {
+                case UnitCommand.Idle:
+                case UnitCommand.Move:
+                case UnitCommand.Stop:
+                case UnitCommand.HoldPosition:
+                case UnitCommand.Build:
+                case UnitCommand.PickupItem:
+                    // Deliberately INERT (DW-645 makes the pre-existing fall-through explicit; byte-identical).
+                    // Each is either a stable resting/stationary state with no combat half to run for a unit that
+                    // cannot deal damage (Idle / Stop / HoldPosition), or an order another system owns end-to-end
+                    // (Move + MovementSystem, Build + BuildingSystem, PickupItem + ItemSystem). None of them can
+                    // strand the unit the way DW-242's un-advanceable AttackMove/Patrol/Follow did.
+                    break;
+
                 case UnitCommand.AttackMove:
                     // Walk the goal leg only, never acquire. ResumeAttackMove normalizes to Idle on arrival, so an
                     // AI-owned non-combatant returns to the wave pool instead of leaking out of it forever (DW-202).
@@ -266,6 +307,7 @@ namespace ProjectChimera.Combat
                     world.Flags[i]        &= ~(EntityFlags.Moving | EntityFlags.Attacking);
                     break;
             }
+            // ── DW-645 GUARD ANCHOR: END non-combatant command switch ────────────────────────────────────────
         }
 
         // ── Idle ──────────────────────────────────────────────────────────────────
