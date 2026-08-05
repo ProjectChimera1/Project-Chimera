@@ -159,17 +159,34 @@ namespace ProjectChimera.Core.Definitions
         }
 
         /// <summary>
-        /// Map one <see cref="FactionValidator"/>-located (or target-exists) error to the wizard step it belongs to.
-        /// A few field paths are unambiguous (<c>color</c>/<c>id</c> → Name &amp; Color, <c>ai_preset</c> → AI
-        /// Preset, <c>units</c> → Roster). The rest (<c>buildings</c>, <c>prerequisites</c>, <c>cost</c>,
-        /// <c>mesh_path</c>, <c>research</c>, and the building-only required fields <c>hp</c>/
-        /// <c>construction_time</c>/<c>supply_bonus</c>/<c>produces_category</c>) are shared between a unit (Roster)
-        /// and a building (Buildings &amp; Tech) — disambiguated by sniffing the message's leading
-        /// <c>"unit '"</c>/<c>"building '"</c> kind label, the shared wording convention <see
-        /// cref="TechTreeValidator"/>/<see cref="ResourceCostValidator"/>/<see cref="BuildingDefinitionValidator"/>
-        /// all use. Falls back to Buildings &amp; Tech when neither prefix matches (a faction-level structural
-        /// message, e.g. a null list, or a research entry — research lives in the combined Buildings &amp; Tech
-        /// step per this story's spec).
+        /// Map one <see cref="FactionValidator"/>-located (or target-exists / raw-JSON parse) error to the wizard step
+        /// it belongs to. Most field paths are unambiguous (<c>color</c>/<c>id</c> → Name &amp; Color,
+        /// <c>ai_preset</c>/<c>signature_mechanic*</c> → AI Preset, <c>units</c>/<c>hero_unit_id</c> → Roster,
+        /// <c>starting_ore</c>/<c>starting_crystal</c> → Starting Conditions, <c>raw_json</c> → Name &amp; Color).
+        /// The rest (<c>buildings</c>, <c>prerequisites</c>, <c>cost</c>, <c>mesh_path</c>, <c>research</c>, and the
+        /// building-only required fields <c>hp</c>/<c>construction_time</c>/<c>supply_bonus</c>/
+        /// <c>produces_category</c>) are shared between a unit (Roster) and a building (Buildings &amp; Tech) —
+        /// disambiguated by sniffing the message's leading <c>"unit '"</c>/<c>"building '"</c> kind label, the shared
+        /// wording convention <see cref="TechTreeValidator"/>/<see cref="ResourceCostValidator"/>/<see
+        /// cref="BuildingDefinitionValidator"/> all use. Falls back to Buildings &amp; Tech when neither prefix
+        /// matches (a faction-level structural message, e.g. a null list, or a research entry — research lives in the
+        /// combined Buildings &amp; Tech step per this story's spec).
+        ///
+        /// <para><b>DW-114/DW-116 (step-route hardening).</b> Every field path any error-producing surface can name is
+        /// now EXPLICIT here rather than relying on the Buildings &amp; Tech sniff-default, which has no UI for any of
+        /// them. That default is a fallback for genuinely-ambiguous shared paths, not a place for a known field to
+        /// land: a creator sent to Buildings &amp; Tech for a negative <c>starting_ore</c> sees no offending control at
+        /// all. <c>starting_ore</c>/<c>starting_crystal</c> became LIVE (not latent) once
+        /// <see cref="FactionValidator.Validate"/> gained DW-115's finite-and-non-negative check — they are the two
+        /// controls the Starting Conditions step actually renders, so that is where the remedy is. The remaining
+        /// additions are still unreachable today (no validator emits them) and are pre-wired so a later check cannot
+        /// silently misroute: <c>signature_mechanic</c>/<c>signature_mechanic_display</c> join the already-routed
+        /// <c>signature_mechanic_effect_id</c> at AI Preset, the faction-config-level step that hosts the other
+        /// descriptor fields; <c>raw_json</c> (a <see cref="TryFinishFromRawJson"/> parse failure) maps to Name &amp;
+        /// Color, the wizard's first step — Advanced mode has no step tabs to jump to and
+        /// <c>FactionDefinerPanel.OnFinishPressed</c> deliberately skips the jump there, so this exists purely so any
+        /// FUTURE consumer of <see cref="FactionDefinerFinishResult.Step"/> (logging, an error-label step chip, a
+        /// different UI surface) reads a defensible step instead of a misleading Buildings &amp; Tech.</para>
         /// </summary>
         public static FactionDefinerStep StepForError(string fieldPath, string message)
         {
@@ -180,10 +197,18 @@ namespace ProjectChimera.Core.Definitions
                 case "ai_preset": return FactionDefinerStep.AiPreset;
                 case "units": return FactionDefinerStep.Roster;
                 // DW-106 / DW-114: a hero is a roster unit — the Roster step is where the remedy lives (pick/unpick
-                // the referenced unit). A signature_mechanic_effect_id is not editable in any Simple step; route it to
+                // the referenced unit). A signature_mechanic_* field is not editable in any Simple step; route it to
                 // AI Preset, a defensible faction-config-level default (per DW-114's routing note).
                 case "hero_unit_id": return FactionDefinerStep.Roster;
+                case "signature_mechanic": return FactionDefinerStep.AiPreset;
+                case "signature_mechanic_display": return FactionDefinerStep.AiPreset;
                 case "signature_mechanic_effect_id": return FactionDefinerStep.AiPreset;
+                // DW-114/DW-115: the two economy fields the Starting Conditions step renders as editable inputs.
+                case "starting_ore": return FactionDefinerStep.StartingConditions;
+                case "starting_crystal": return FactionDefinerStep.StartingConditions;
+                // DW-116: a raw-JSON parse failure names no wizard field at all — the whole document is wrong. Name &
+                // Color (the first step) is the defensible landing spot; Advanced mode itself never reads Step.
+                case "raw_json": return FactionDefinerStep.NameColor;
             }
             if (!string.IsNullOrEmpty(message) && message.StartsWith("unit '", StringComparison.Ordinal))
                 return FactionDefinerStep.Roster;

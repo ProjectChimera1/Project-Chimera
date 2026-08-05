@@ -119,10 +119,97 @@ namespace ProjectChimera.Sim.Tests.Definitions
         // DW-106 / DW-114: a hero is a roster unit → Roster; a signature effect id is a faction-config default → AI Preset.
         [InlineData("hero_unit_id", "faction 'x'.hero_unit_id: names unit 'ghost' which is not in this faction's roster.", FactionDefinerStep.Roster)]
         [InlineData("signature_mechanic_effect_id", "faction 'x'.signature_mechanic_effect_id: 'no_such_effect' does not resolve to any loaded ability.", FactionDefinerStep.AiPreset)]
+        // DW-114: the two economy fields the Starting Conditions step renders (LIVE since DW-115's finite/non-negative
+        // check) and the remaining signature_mechanic* descriptor paths; DW-116: the raw-JSON parse-failure path.
+        // Without the explicit cases every one of these lands on the BuildingsTech sniff-default, which has no UI for
+        // any of them.
+        [InlineData("starting_ore", "faction 'x'.starting_ore: must be a finite value >= 0 (found -5).", FactionDefinerStep.StartingConditions)]
+        [InlineData("starting_crystal", "faction 'x'.starting_crystal: must be a finite value >= 0 (found NaN).", FactionDefinerStep.StartingConditions)]
+        [InlineData("signature_mechanic", "faction 'x'.signature_mechanic: must be authored.", FactionDefinerStep.AiPreset)]
+        [InlineData("signature_mechanic_display", "faction 'x'.signature_mechanic_display: must be authored.", FactionDefinerStep.AiPreset)]
+        [InlineData("raw_json", "could not parse JSON: '{' is an invalid start of a property name.", FactionDefinerStep.NameColor)]
         public void StepForError_MapsFieldPathAndMessageKindLabel_ToExpectedStep(
             string fieldPath, string message, FactionDefinerStep expected)
         {
             Assert.Equal(expected, FactionDefinerWizardCore.StepForError(fieldPath, message));
+        }
+
+        [Fact]
+        public void StepForError_UnknownFieldPath_StillFallsBackToBuildingsTech()
+        {
+            // The DW-114/DW-116 additions must NOT turn the shared-path sniff-default into a per-path whitelist: a
+            // faction-level structural message (or a research entry) with no "unit '" prefix still lands on
+            // Buildings & Tech, which is where research lives.
+            Assert.Equal(FactionDefinerStep.BuildingsTech,
+                FactionDefinerWizardCore.StepForError("research", "faction 'x'.research: duplicate research id 'armor'."));
+        }
+
+        // ── DW-114 / DW-116: the routing observed end-to-end through a real Finish attempt ─────────────────────
+
+        [Theory]
+        [InlineData(-5f, 0f, "starting_ore")]
+        [InlineData(200f, -1f, "starting_crystal")]
+        [InlineData(float.NaN, 0f, "starting_ore")]
+        [InlineData(200f, float.PositiveInfinity, "starting_crystal")]
+        public void TryFinish_InvalidStartingResource_BlocksAndRoutesToStartingConditionsStep_NoFileWritten(
+            float ore, float crystal, string expectedFieldPath)
+        {
+            // DW-114 is LIVE, not latent: FactionValidator.Validate emits located starting_ore/starting_crystal errors
+            // (DW-115), and before the StepForError cases existed the wizard jumped the creator to Buildings & Tech —
+            // a step with no ore/crystal control at all. The remedy is the Starting Conditions step's two NumInputs.
+            string dir = MakeTempDir();
+            try
+            {
+                FactionPresetPool pool = ScanRealAlphaBeta();
+                FactionDefinition def = NewDraft("dw114_starting_resource_test");
+                Pick(def, pool, unitIds: new[] { "worker", "infantry" }, buildingIds: new[] { "command_center" });
+                def.StartingOre = ore;
+                def.StartingCrystal = crystal;
+
+                FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinish(def, dir);
+
+                Assert.False(result.Ok);
+                Assert.Single(result.Errors);   // exactly the economy error — nothing else about this draft is invalid
+                Assert.Equal(expectedFieldPath, result.Errors[0].FieldPath);
+                Assert.Equal(FactionDefinerStep.StartingConditions, result.Step);
+                Assert.Empty(Directory.GetFiles(dir, "*_faction.json*", SearchOption.AllDirectories));
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void TryFinishFromRawJson_MalformedJson_RoutesToNameColorStep_NotBuildingsTech()
+        {
+            // DW-116: the parse-failure error's ("raw_json", …) field path must map to a defensible step for any
+            // consumer of result.Step. FactionDefinerPanel skips the jump in Advanced mode today, so this is the only
+            // surface that can observe the mapping — Buildings & Tech would be actively misleading.
+            string dir = MakeTempDir();
+            try
+            {
+                FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinishFromRawJson("{ not valid json !!", dir);
+
+                Assert.False(result.Ok);
+                Assert.Contains(result.Errors, e => e.FieldPath == "raw_json");
+                Assert.Equal(FactionDefinerStep.NameColor, result.Step);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void TryFinishFromRawJson_LiteralNullJson_RoutesToNameColorStep_NotBuildingsTech()
+        {
+            // DW-116, second raw_json producer: the "JSON parsed to no faction object" branch (the literal `null`)
+            // shares the raw_json field path and must route identically.
+            string dir = MakeTempDir();
+            try
+            {
+                FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinishFromRawJson("null", dir);
+
+                Assert.False(result.Ok);
+                Assert.Contains(result.Errors, e => e.FieldPath == "raw_json");
+                Assert.Equal(FactionDefinerStep.NameColor, result.Step);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
         }
 
         // ── TryFinish ────────────────────────────────────────────────────────────────────────────────────────
