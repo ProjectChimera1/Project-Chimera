@@ -282,22 +282,59 @@ namespace ProjectChimera.Core.Definitions
         /// — the roster-completeness checks (missing <c>mesh_path</c>, missing required roles) are a legitimate
         /// mid-edit state that <see cref="BuildingCardPanel"/>/<see cref="UnitCardPanel"/>'s Save self-check (which
         /// also calls this method) must never reject; see <c>FactionValidator</c>'s own docs.
+        ///
+        /// <para><b>DW-62 — a malformed JSON VALUE now fails the same way a malformed CONTENT value does.</b> Every
+        /// rejection this method makes is a located <see cref="System.InvalidOperationException"/> whose message is
+        /// the aggregate <c>errors</c> list joined by newlines — except, until DW-62, a parse failure. A bad value
+        /// for ANY field (<c>"cost": {"ore": null}</c> against the non-nullable
+        /// <c>Dictionary&lt;string,int&gt;</c> value type, <c>"hp": "abc"</c>, a truncated document, an unterminated
+        /// string) escaped as a raw <see cref="JsonException"/> — a DIFFERENT exception type than every validator
+        /// below throws with, so a caller that handled a content rejection did not handle a parse failure. That one
+        /// hole is now folded into the SAME aggregate channel: same exception type, same located message shape, with
+        /// the offending file named and System.Text.Json's own <c>Path</c>/<c>LineNumber</c>/<c>BytePositionInLine</c>
+        /// carried through verbatim. The original <see cref="JsonException"/> is preserved as
+        /// <see cref="System.Exception.InnerException"/> so nothing is lost.</para>
         /// </summary>
         public static FactionDefinition LoadFromFile(string absolutePath)
         {
             string json = File.ReadAllText(absolutePath);
-            FactionDefinition def = JsonSerializer.Deserialize<FactionDefinition>(json, JsonOptions)
-                                     ?? new FactionDefinition();
 
             var errors = new List<string>();
-            FactionValidationResult result = FactionValidator.Validate(def);
-            if (!result.Ok)
-                foreach ((string _, string message) in result.Errors)
-                    errors.Add(message);
-            if (errors.Count > 0)
-                throw new System.InvalidOperationException(string.Join("\n", errors));
+            FactionDefinition? def = null;
+            JsonException? parseFailure = null;
 
-            return def;
+            // DW-62: the ONLY exception folded here is JsonException — a CONTENT fault, which is exactly what the
+            // aggregate errors channel reports. An I/O fault from File.ReadAllText above is deliberately left alone:
+            // "this file is unreadable/absent" is not a content error and must not masquerade as one.
+            try
+            {
+                def = JsonSerializer.Deserialize<FactionDefinition>(json, JsonOptions);
+            }
+            catch (JsonException ex)
+            {
+                parseFailure = ex;
+                errors.Add($"{absolutePath}: malformed faction JSON — {ex.Message}");
+            }
+
+            // A parse failure leaves nothing meaningful to validate: running FactionValidator over a
+            // default-constructed shell would append a pile of unrelated "missing id"-class errors that bury the one
+            // line naming the real fault. Validate ONLY when the document actually parsed.
+            if (parseFailure == null)
+            {
+                // A literal `null` document deserializes to null — unchanged pre-DW-62 behavior: it becomes an empty
+                // definition and is then rejected by the validator below, not by the parse guard above.
+                def ??= new FactionDefinition();
+
+                FactionValidationResult result = FactionValidator.Validate(def);
+                if (!result.Ok)
+                    foreach ((string _, string message) in result.Errors)
+                        errors.Add(message);
+            }
+
+            if (errors.Count > 0)
+                throw new System.InvalidOperationException(string.Join("\n", errors), parseFailure);
+
+            return def!;
         }
 
         /// <summary>
