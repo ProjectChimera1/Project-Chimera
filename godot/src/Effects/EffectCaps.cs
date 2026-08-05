@@ -16,11 +16,11 @@ namespace ProjectChimera.Effects
     /// the fold against an independently hand-rolled byte stream AND that the number of caps declared here equals
     /// the number folded, so a new-but-unfolded cap fails Tier-1 rather than shipping silently.</para>
     ///
-    /// <para>Historical note: <see cref="MaxSpawnCount"/> and <see cref="MaxPersistentPeriods"/> were originally
-    /// named-but-unused placeholders. Both now have real enforcers — <c>MaxSpawnCount</c> bounds
-    /// <c>spawn_unit.count</c> in <c>ScenarioValidator</c>/<c>DslLoopGate</c> and clamps it at runtime in
-    /// <c>ScenarioDirector</c>; <c>MaxPersistentPeriods</c> caps a <c>PersistentEffect</c>'s scheduled pulses in
-    /// <c>ModifierStore</c>. Nothing here is "reserved" any more.</para>
+    /// <para><b>Every cap below names its own enforcer.</b> Each member doc states where the bound is actually
+    /// applied — load-time validator, runtime clamp, or buffer size — so a reader never has to guess whether a
+    /// constant is live. Keep it that way when adding one: a cap whose doc describes no enforcer is either
+    /// unenforced (a bug) or its enforcer is undocumented (doc debt). <c>EffectCapsDocHygieneTests</c> guards
+    /// this file against the specific rot that produced DW-535.</para>
     /// </summary>
     public static class EffectCaps
     {
@@ -36,15 +36,26 @@ namespace ProjectChimera.Effects
         public const int MaxSequenceChildren = 8;
 
         /// <summary>
-        /// Maximum number of targets a single <c>SearchAreaEffect</c> fans its child out to (runtime fan-out cap,
-        /// applied after the ascending-id sort/filter). The dominant contributor to the work-stack peak.
+        /// Maximum number of targets a single <c>SearchAreaEffect</c> fans its child out to (runtime fan-out cap).
+        /// Enforced by <c>SearchAreaEffect.FindTargets</c>, which applies it by TRUNCATING the already-ascending,
+        /// already-matching id run the spatial query returned — the target predicate runs inside the query, so
+        /// every id this could truncate is a genuine match. The dominant contributor to the work-stack peak.
         /// </summary>
         public const int MaxSearchTargets = 64;
 
         /// <summary>
-        /// Size of the executor's reusable hit buffer — the most entities a single <c>QueryRadius</c> may return
-        /// before filtering. Equal to <see cref="MaxSearchTargets"/> today, but named distinctly because they are
-        /// conceptually different limits (buffer capacity vs post-filter fan-out cap).
+        /// Size of the executor's reusable hit buffer — and therefore the WIDTH OF THE SELECTION WINDOW, not a
+        /// pre-filter scratch capacity. <c>SpatialHash.QueryRadiusLowestIds</c> admits an entity to the buffer only
+        /// if it already passes the target predicate, and once the buffer is full it evicts the largest id it holds
+        /// rather than dropping the new candidate — so the buffer ends up holding the globally lowest N MATCHING
+        /// ids in the whole radius, where N is this cap.
+        ///
+        /// <para><b>Consequence for anyone editing this value.</b> A SearchArea's effective fan-out is
+        /// <c>min(MaxHitsPerSearch, MaxSearchTargets)</c> lowest-id matches, so lowering this below
+        /// <see cref="MaxSearchTargets"/> silently narrows WHICH entities an area effect hits — it does not merely
+        /// shrink a scratch array. Equal to <see cref="MaxSearchTargets"/> today, and still named distinctly because
+        /// the two bound different stages: how many matches the query may RETAIN, versus how many the executor may
+        /// fan out to. The selection contract is executable in <c>SearchAreaSelectionTests</c>.</para>
         /// </summary>
         public const int MaxHitsPerSearch = 64;
 
@@ -66,10 +77,21 @@ namespace ProjectChimera.Effects
         public const int MaxEffectFrames =
             (MaxEffectDepth - 1) * (MaxSearchTargets - 1) + MaxSearchTargets;
 
-        /// <summary>Reserved (Story 2.x): max units a single spawn leaf may create. Named now to forbid a bare literal later.</summary>
+        /// <summary>
+        /// Maximum units a single spawn action may create. Enforced at LOAD — <c>ScenarioValidator</c> and
+        /// <c>DslLoopGate</c> both reject a <c>spawn_unit</c> whose <c>count</c> falls outside <c>1..</c>this — and
+        /// again at RUNTIME as a seatbelt, where <c>ScenarioDirector.ExecuteLeaf</c> clamps the count it hands to
+        /// <c>OnSpawnUnit</c> (Story 7.6 retired the bare literal 50 both places).
+        /// </summary>
         public const int MaxSpawnCount = 64;
 
-        /// <summary>Reserved (Story 2.2b): max periodic ticks a <c>PersistentEffect</c> may schedule. Named now to forbid a bare literal later.</summary>
+        /// <summary>
+        /// Maximum periodic pulses a <c>PersistentEffect</c> may have SCHEDULED AT ONCE. <c>ModifierStore</c>
+        /// enforces it: <c>InstallPersistent</c> clamps the authored <c>period_count</c> to this, and the per-slot
+        /// period schedule is armed to it. This bounds the schedule WIDTH, not a modifier's lifetime — a modifier
+        /// that outlives the window is re-armed in place by <c>Advance</c>, so a duration far past 256 keeps pulsing
+        /// (see <c>ModifierPeriodSemanticsTests</c> / <c>LifelongHotTests</c>).
+        /// </summary>
         public const int MaxPersistentPeriods = 256;
 
         /// <summary>
