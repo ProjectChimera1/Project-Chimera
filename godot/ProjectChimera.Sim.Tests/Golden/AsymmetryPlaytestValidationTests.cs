@@ -106,9 +106,49 @@ namespace ProjectChimera.Sim.Tests.Golden
                 $"Could not locate resources/data/{sub} above {AppContext.BaseDirectory}");
         }
 
+        /// <summary>
+        /// Shipped-roster floor for the REAL ability registry: 10 files lived under <c>resources/data/abilities/</c>
+        /// when this guard was written (DW-536, the same floor DW-107 pinned in
+        /// <see cref="ProjectChimera.Sim.Tests.Effects.SignatureMechanicRealContentTests"/>).
+        /// <see cref="AbilityRegistry.LoadFromDirectory"/> SILENTLY excludes any file that fails
+        /// <c>AbilityValidator</c>, and no callback can ever fire for a file that was deleted outright — so without
+        /// a count floor a bad roster edit shrinks the registry and every "real content" test in this class keeps
+        /// passing against less-than-shipped content. Revise this floor only on a DELIBERATE shipped-roster change.
+        /// </summary>
+        private const int MIN_SHIPPED_ABILITY_COUNT = 10;
+
+        /// <summary>
+        /// DW-536 — the guarded ability-registry load <see cref="LoadRealContent"/> uses. Fails LOUD on BOTH
+        /// silent-shrink paths: a shipped file that fails <c>AbilityValidator</c> (via <c>onSkipped</c>, previously
+        /// left at its default <c>null</c> here) and a shipped file that disappeared entirely (via
+        /// <paramref name="minAbilityCount"/>, which a skip callback can never see).
+        ///
+        /// Factored out of <see cref="LoadRealContent"/> rather than inlined so the guard itself is directly
+        /// exercisable against a synthetic directory (see the two <c>AbilityRegistryGuard_*</c> facts below) —
+        /// against the real shipped directory it can only ever be observed NOT firing, which is exactly how the
+        /// unguarded load stayed green while claiming to prove real-content coverage.
+        /// </summary>
+        private static AbilityRegistry LoadGuardedAbilityRegistry(string abilitiesDir, int minAbilityCount)
+        {
+            var skippedAbilityFiles = new List<string>();
+            AbilityRegistry registry = AbilityRegistry.LoadFromDirectory(abilitiesDir, skippedAbilityFiles.Add);
+            Assert.True(skippedAbilityFiles.Count == 0,
+                $"shipped ability file(s) failed validation and were silently excluded from the registry: {string.Join(", ", skippedAbilityFiles)}");
+            Assert.True(registry.Count >= minAbilityCount,
+                $"real ability registry holds {registry.Count} abilities, below the shipped floor of {minAbilityCount} — shipped content shrank (deleted/moved file?); revise MIN_SHIPPED_ABILITY_COUNT only on a deliberate roster change.");
+            return registry;
+        }
+
+        /// <summary>
+        /// Loads the REAL shipped alpha/beta rosters + the REAL <see cref="AbilityRegistry"/>, then resolves every
+        /// roster unit's abilities against it. DW-536: the registry load now routes through
+        /// <see cref="LoadGuardedAbilityRegistry"/>, so a future ability-JSON edit that breaks validation (or a
+        /// deleted ability file) fails this class LOUDLY instead of quietly shrinking the content every FR-18/FR-20
+        /// assertion below is measured against.
+        /// </summary>
         private static (FactionDefinition alpha, FactionDefinition beta, AbilityRegistry registry) LoadRealContent()
         {
-            AbilityRegistry registry = AbilityRegistry.LoadFromDirectory(ResolveDataDir("abilities"));
+            AbilityRegistry registry = LoadGuardedAbilityRegistry(ResolveDataDir("abilities"), MIN_SHIPPED_ABILITY_COUNT);
             FactionDefinition alpha = FactionDefinition.LoadFromFile(Path.Combine(ResolveDataDir("factions"), "alpha_faction.json"));
             FactionDefinition beta  = FactionDefinition.LoadFromFile(Path.Combine(ResolveDataDir("factions"), "beta_faction.json"));
             foreach (UnitDefinition u in alpha.Units) u.ResolveAbilities(registry);
@@ -528,5 +568,95 @@ namespace ProjectChimera.Sim.Tests.Golden
 
         private static string DescribeComposition(Dictionary<UnitCategory, int> counts) =>
             string.Join(", ", counts.OrderBy(kv => kv.Key).Select(kv => $"{kv.Key}={kv.Value}"));
+
+        // ── DW-536 hardening teeth — the silent-shrink seam LoadRealContent now guards ───────────────────────
+
+        /// <summary>Create an isolated synthetic ability directory seeded with <paramref name="validFileNames"/>
+        /// copied byte-for-byte from the REAL shipped set (so "valid" means what the shipped validator says, never
+        /// a hand-written stand-in). Caller deletes it.</summary>
+        private static string NewSyntheticAbilityDir(params string[] validFileNames)
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "chimera_dw536_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            foreach (string name in validFileNames)
+                File.Copy(Path.Combine(ResolveDataDir("abilities"), name), Path.Combine(dir, name));
+            return dir;
+        }
+
+        /// <summary>
+        /// DW-536 red-test #1 — the onSkipped half. A validation-broken ability file is SILENTLY excluded by
+        /// <see cref="AbilityRegistry.LoadFromDirectory"/> when <c>onSkipped</c> is left at its default (the exact
+        /// shape <see cref="LoadRealContent"/> shipped with), so an unguarded real-content load keeps passing
+        /// against quietly-reduced content. Asserts the unguarded call is indeed silent, then that
+        /// <see cref="LoadGuardedAbilityRegistry"/> throws and names the offending file. Drop the skip assert from
+        /// the guard and this fails.
+        /// </summary>
+        [Fact]
+        public void AbilityRegistryGuard_FailsLoud_WhenAShippedAbilityFileFailsValidation()
+        {
+            string dir = NewSyntheticAbilityDir("spike_transmutation.json");
+            try
+            {
+                // "on_death" is outside the closed PassiveActivation set — AbilityValidator rejects it.
+                File.WriteAllText(Path.Combine(dir, "broken_probe.json"),
+                    "{ \"id\": \"broken_probe\", \"activation\": \"on_death\" }");
+
+                AbilityRegistry silent = AbilityRegistry.LoadFromDirectory(dir); // onSkipped defaulted — the DW-536 trap
+                Assert.Equal(1, silent.Count);                                   // the broken file vanished with no signal
+                Assert.Equal(-1, silent.IndexOf("broken_probe"));
+
+                var thrown = Assert.ThrowsAny<Xunit.Sdk.XunitException>(
+                    () => LoadGuardedAbilityRegistry(dir, minAbilityCount: 1));
+                Assert.Contains("broken_probe.json", thrown.Message);
+            }
+            finally
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+        }
+
+        /// <summary>
+        /// DW-536 red-test #2 — the count-floor half, which covers the case <c>onSkipped</c> can NEVER see: a
+        /// shipped ability file deleted or moved outright. Every remaining file still validates, so the skip
+        /// channel stays silent and only the floor can catch the shrink. Drop the floor assert from the guard and
+        /// this fails.
+        /// </summary>
+        [Fact]
+        public void AbilityRegistryGuard_FailsLoud_WhenTheShippedAbilityRosterShrinks()
+        {
+            string dir = NewSyntheticAbilityDir("spike_transmutation.json", "furnace_trickle.json");
+            try
+            {
+                var skipped = new List<string>();
+                Assert.Equal(2, AbilityRegistry.LoadFromDirectory(dir, skipped.Add).Count);
+                Assert.Empty(skipped); // nothing failed validation — the skip channel cannot see a deleted file
+
+                var thrown = Assert.ThrowsAny<Xunit.Sdk.XunitException>(
+                    () => LoadGuardedAbilityRegistry(dir, MIN_SHIPPED_ABILITY_COUNT));
+                Assert.Contains("below the shipped floor", thrown.Message);
+            }
+            finally
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+        }
+
+        /// <summary>
+        /// DW-536 named guard: every test in this class routes through <see cref="LoadRealContent"/>'s skip/floor
+        /// asserts, but this fact exists so a shipped-content shrink fails under a name that says exactly that
+        /// instead of surfacing first as a confusing AI-behavior or mechanic failure — and it pins the two
+        /// signature ability ids this class actually drives (<c>furnace_trickle</c> via beta's forgehand
+        /// self-passive, <c>spike_transmutation</c> via the alpha scripted cast) as present in the REAL registry.
+        /// </summary>
+        [Fact]
+        public void LoadRealContent_ShippedAbilityRoster_LoadsCompletely()
+        {
+            var (_, _, registry) = LoadRealContent(); // fails loud inside on any skip or a sub-floor count
+
+            Assert.True(registry.Count >= MIN_SHIPPED_ABILITY_COUNT,
+                $"registry.Count {registry.Count} fell below the shipped floor {MIN_SHIPPED_ABILITY_COUNT}.");
+            Assert.True(registry.IndexOf("furnace_trickle") >= 0, "shipped furnace_trickle is missing from the real registry.");
+            Assert.True(registry.IndexOf("spike_transmutation") >= 0, "shipped spike_transmutation is missing from the real registry.");
+        }
     }
 }
