@@ -736,18 +736,28 @@ namespace ProjectChimera.Core
         // the folded Flags/alive state already covers divergence transitively. Golden-neutral: generation starts at 0,
         // so PackRef(id) == id for every never-recycled entity.
         //
-        // NOT persisted by SaveGameState (unlike BuildingStore.Generation, which backs packed refs stored in folded,
-        // persisted arrays like CommandTarget): the ONLY cross-tick holder of a packed ENTITY ref today is
-        // WinConditionSystem's apply-time _leaderRef, which the SP load path re-packs during its fresh re-apply
-        // (ClearForReset zeroes generations; apply-time spawns append at generation 0), and a resolved leader's death
-        // latches its folded WinStateStore verdict on the same tick it dies — so no save boundary can separate a
-        // bumped generation from its already-persisted consequence. If a future story stores packed ENTITY refs in
-        // persisted state, this array must join the SaveGameState entity lanes.
+        // PERSISTED by SaveGameState as an entity lane (DW-581), joining the already-persisted BuildingStore /
+        // HeroStore / ItemStore generations. The generation IS the ABA-safety of a packed ref, so a save boundary that
+        // dropped it resumed the world with every slot back at generation 0 — a stale packed ref then resolved against
+        // whatever now occupies the slot, the exact retarget PackRef exists to prevent. That was harmless only by
+        // construction (the one cross-tick holder of a packed ENTITY ref was WinConditionSystem's apply-time
+        // _leaderRef, which the load path re-packs at generation 0 during its fresh re-apply — matching a live leader,
+        // whose slot is necessarily generation 0 — and a resolved leader's death latches its folded WinStateStore
+        // verdict on the same tick it dies). Persisting the lane retires that argument instead of resting on it, so a
+        // future story MAY store a packed entity ref in persisted or folded state. NOTE that this array is the one
+        // per-slot field Create() does NOT re-default on the fresh-append path (it relies on "generation 0 past the
+        // high-water mark"), so the restore overlay must be TOTAL — see SaveGameState.RestoreEntities.
         public readonly int[] Generation;
 
         /// <summary>Bit width of the id (slot) half of a packed entity reference — <see cref="MAX_ENTITIES"/> (4096)
         /// is exactly <c>1 &lt;&lt; 12</c>, so every id fits in the low 12 bits and the generation occupies the rest.</summary>
         public const int REF_SLOT_BITS = 12;
+
+        /// <summary>DW-581 — the largest <see cref="Generation"/> value <see cref="PackRef"/> can encode and
+        /// <see cref="TryResolveRef"/> read back: anything larger shifts into the sign bit, so a live entity's own
+        /// freshly-packed ref would stop resolving. Unreachable in the sim (a slot would have to be recycled 2^19
+        /// times in one match), but it is the fail-closed bound the persisted generation lane is validated against.</summary>
+        public const int MAX_PACKABLE_GENERATION = int.MaxValue >> REF_SLOT_BITS;
         private const int REF_SLOT_MASK = (1 << REF_SLOT_BITS) - 1;
 
         private int _nextId;
