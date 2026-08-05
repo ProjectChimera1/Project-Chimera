@@ -31,6 +31,12 @@ const NAMES = OPTS.bundleNames ?? []
 const MODEL = OPTS.model ?? 'opus'          // fleet-wide model for every agent in this run
 const BASELINE = OPTS.baselineTests ?? 3834 // Tier-1 pass count on master at launch; grows as merges land
 const BASE = OPTS.baseSha ?? ''             // pre-run master SHA; anchors the final review diff range
+// Where merge/ledger/review run. Defaults to the main checkout (the original behaviour). Pass a
+// dedicated integration worktree to keep the burn-down off the working tree the human is using —
+// that isolation is why this option exists, and merging into a non-master integration branch is
+// also what the auto-mode safety classifier will accept (2026-08-05: it refused merge-to-master).
+const INTEG = OPTS.integrationPath ?? 'D:/Projects/Project_Chimera'
+const INTEG_BRANCH = OPTS.integrationBranch ?? 'master'
 
 if (!NAMES.length) {
   log('No bundleNames passed. Read .claude/workflows/dw-worklist.json and pass a subset via args.')
@@ -92,7 +98,7 @@ BUNDLE: ${name}
 
 1. Read ${WORKLIST}. Find the object in \`waves[].bundles[]\` whose \`name\` is exactly "${name}".
    That gives you its \`dw_ids\`, its \`intent\` (the cohesive goal), and the \`files\` its entries name.
-2. Read D:/Projects/Project_Chimera/_bmad-output/implementation-artifacts/deferred-work.md and find
+2. Read ${INTEG}/_bmad-output/implementation-artifacts/deferred-work.md and find
    each \`### <DW-id>:\` block for your ids. The \`reason:\` line is the actual defect. Some entries
    carry \`decision:\` lines — a recorded human decision OVERRIDES your own judgement about scope.
 3. Read D:/Projects/Project_Chimera/.bmad-loop/decisions.json. If any of your DW ids appears there,
@@ -111,7 +117,7 @@ BUNDLE: ${name}
    success=false, and explain in blockedReason. The same applies to CanonicalModelHash and
    StartStateHash.
 8. Gate — BOTH must pass, run them yourself, do not assume. Use RELATIVE paths from your worktree
-   root — you are gating YOUR checkout, not the main one at D:/Projects/Project_Chimera:
+   root — you are gating YOUR OWN worktree, never the shared integration checkout at ${INTEG}:
      dotnet build godot/godot.csproj
      dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj
    The suite baseline at launch is ${BASELINE} passing / 0 failing / 1 skipped; your additions only
@@ -140,8 +146,10 @@ the ledger. Your final message is the structured result, not prose for a human.
 `
 
 const mergePrompt = (r) => `
-Merge ONE completed deferred-work bundle into the working branch of the MAIN checkout at
-D:/Projects/Project_Chimera. You are NOT in a worktree — you are on the real branch.
+Merge ONE completed deferred-work bundle into the shared INTEGRATION checkout at
+${INTEG}, which is on branch \`${INTEG_BRANCH}\`. This is NOT a per-bundle worktree — it is the one
+place every bundle in this run lands, so leave it on that branch and never switch it. Run every git
+and dotnet command below from ${INTEG}.
 
 BUNDLE : ${r.bundle}
 BRANCH : ${r.branch}
@@ -162,7 +170,7 @@ WHAT   : ${r.summary}
    safety net from step 3 — re-read the merged result against BOTH parents before committing.
    NEVER use \`git stash\` — the stack is shared across worktrees and holds real unmerged work.
 3. After a clean merge, re-run the FULL suite:
-     dotnet test D:/Projects/Project_Chimera/godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj
+     dotnet test ${INTEG}/godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj
    Baseline ${BASELINE} passing / 0 failing / 1 skipped at launch, and it only grows as merges
    land. A LONE failure of CanonicalModelHashPerfTests…StaysUnderTheRegressionCeiling that passes
    on an isolated --filter re-run is the documented CPU-contention flake — treat as green and note
@@ -173,8 +181,9 @@ WHAT   : ${r.summary}
 `
 
 const ledgerPrompt = (rs) => `
-Close the deferred-work entries for bundles that merged cleanly. You are in the MAIN checkout at
-D:/Projects/Project_Chimera. This is bookkeeping — do NOT change any production code.
+Close the deferred-work entries for bundles that merged cleanly. Work in the INTEGRATION checkout at
+${INTEG} (branch \`${INTEG_BRANCH}\`) — run every command from there, and commit there. This is
+bookkeeping — do NOT change any production code.
 
 MERGED THIS CHUNK:
 ${rs.map((r) => `  - ${r.bundle}: ${(r.dwResolved || r.dwIds).join(', ')} — ${r.summary}`).join('\n')}
@@ -270,7 +279,8 @@ if (!OPTS.skipReview && allMerged.length) {
 
   const found = (await parallel(LENSES.map(([key, brief]) => () =>
     agent(
-      `Adversarially review the merged deferred-work burn-down in D:/Projects/Project_Chimera.\n\n` +
+      `Adversarially review the merged deferred-work burn-down in ${INTEG} (branch ${INTEG_BRANCH}) — ` +
+      `run every git command from there.\n\n` +
       `DIFF: \`git diff ${range}\` (${allMerged.length} merged bundles).\n` +
       `Start from \`git log --first-parent --oneline ${range}\` and review EACH merge's diff ` +
       `individually — at this bundle count one flat diff buries defects. Spend extra care on files ` +
@@ -299,8 +309,9 @@ if (!OPTS.skipReview && allMerged.length) {
       `Triage these review findings from the Chimera deferred-work burn-down, then FILE them.\n\n` +
       `${JSON.stringify(flat, null, 1)}\n\n` +
       `1. Drop duplicates (several lenses may report one defect) and anything you cannot confirm by reading the code.\n` +
+      `   Work in the INTEGRATION checkout at ${INTEG} (branch ${INTEG_BRANCH}); commit there.\n` +
       `2. FIX the high-severity confirmed defects directly. After each fix run the full Tier-1 suite\n` +
-      `   (dotnet test D:/Projects/Project_Chimera/godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj);\n` +
+      `   (dotnet test ${INTEG}/godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj);\n` +
       `   it must stay green. Commit as \`fix(sweep): <what> — post-merge review\`.\n` +
       `3. File every confirmed medium/low as a canonical deferred-work entry (### DW-<n>: heading + status: open +\n` +
       `   origin/location/reason lines), numbered from the current highest id. The format is load-bearing.\n` +

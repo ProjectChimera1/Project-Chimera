@@ -1,0 +1,754 @@
+{
+ "generated": "2026-08-05",
+ "parent": "dw-worklist-v2.json",
+ "note": "wave 2 split into 4 sequential sub-runs; relaunch each with baseSha=HEAD at that moment",
+ "deferred_to_golden_batch": [
+  "multifaction-golden-header",
+  "unit-def-reapply-hardening",
+  "combat-noncombatant-routing"
+ ],
+ "waves": [
+  {
+   "name": "wave2-sub1",
+   "bundles": [
+    {
+     "name": "effective-attack-damage-clamp",
+     "dw_ids": [
+      "DW-643"
+     ],
+     "intent": "Re-clamp EffectiveAttackDamage to Fixed.Max(Fixed.Zero, ...) on the SaveGameState restore path (SaveGameState.cs:649), which reconstructs it from raw ints bypassing ModifierSystem's clamp (:90). This keeps CombatSystem's `== Fixed.Zero` non-combatant test and AiOpponentSystem's `> Fixed.Zero` conscriptable test true complements so the two systems can't disagree about a unit loaded with a negative value; optionally unify the predicate spelling.",
+     "files": [
+      "godot/src/Core/Persistence/SaveGameState.cs",
+      "godot/src/Combat/CombatSystem.cs",
+      "godot/src/AI/AiOpponentSystem.cs"
+     ]
+    },
+    {
+     "name": "reserved-device-name-guard",
+     "dw_ids": [
+      "DW-528"
+     ],
+     "intent": "Wire DW-454's IsReservedDeviceName gate into the faction wizard's free-text filename path (FactionDefinerWizardCore.cs:330, which builds `{id}_faction.json` via Path.Combine), so reserved-basename safety is explicit rather than incidental on the `_faction` suffix and survives a future refactor that shortens or parameterizes that suffix.",
+     "files": [
+      "godot/src/Core/Definitions/FactionDefinerWizardCore.cs",
+      "godot/src/Core/Definitions/UnitDefinitionValidator.cs"
+     ]
+    },
+    {
+     "name": "canonicalmodelhash-perf",
+     "dw_ids": [
+      "DW-356"
+     ],
+     "intent": "Reuse the TriggerGraphJson that ScenarioDirector.LoadScenario already parses instead of re-parsing each node into a transient JsonDocument inside TriggerGraph.FromJson/NodeBaseJsonConverter during the v8 CanonicalModelHash cold compute (~77ms of a ~96ms pathological 4000-node worst case). Not a live stall (MainScene.cs:479-480 computes the wire hash once at apply and caches it), so this is a pure cold-path optimization.",
+     "files": [
+      "godot/src/Core/Definitions/CanonicalModelHash.cs",
+      "godot/src/Dsl/TriggerGraph.cs",
+      "godot/src/Core/ScenarioDirector.cs"
+     ]
+    },
+    {
+     "name": "json-options-choke-point",
+     "dw_ids": [
+      "DW-523",
+      "DW-524",
+      "DW-526"
+     ],
+     "intent": "Replace the six hand-declared private `static readonly JsonSerializerOptions Opt` replicas in the scenario Tier-1 tests (ObjectiveSerializationTests, ScenarioDataRegionsTests, CustomUiSerializationTests, CustomUiButtonSerializationTests, ScenarioItemRoundTripTests, ScenarioVariableRoundTripTests) with the production ContentJson.ScenarioOptions, so the tests pin the same fail-closed (allowIntegerValues:false), WidgetBaseJsonConverter, WriteIndented posture the loader actually uses. Derive ItemWriter.Options (ItemWriter.cs:19) and DslJson.Options (DslJson.cs:31) from ContentJson's shared Base()/posture builders instead of hand-copying the converter list, adding each file's extra converters (DslJson's NodeBaseJsonConverter etc.) on top, so a converter added at the ContentJson choke point reaches both content postures. Route LLMService's per-call ad-hoc JsonSerializerOptions (LLMService.cs ~:258, ~:571, ~:965) through a single shared, fail-closed, converter-complete options object (derived from ContentJson's strict posture) so every LLM-output parse path carries the FixedJsonConverter \u2014 closing the :965 site that registers none and cannot read Fixed-typed fields.",
+     "files": [
+      "godot/ProjectChimera.Sim.Tests/Definitions/ObjectiveSerializationTests.cs",
+      "godot/ProjectChimera.Sim.Tests/Definitions/ScenarioDataRegionsTests.cs",
+      "godot/ProjectChimera.Sim.Tests/Definitions/CustomUiSerializationTests.cs",
+      "godot/ProjectChimera.Sim.Tests/Definitions/CustomUiButtonSerializationTests.cs",
+      "godot/ProjectChimera.Sim.Tests/Definitions/ScenarioItemRoundTripTests.cs",
+      "godot/ProjectChimera.Sim.Tests/Definitions/ScenarioVariableRoundTripTests.cs",
+      "godot/src/Core/Definitions/ItemWriter.cs",
+      "godot/src/Core/Definitions/ContentJson.cs",
+      "godot/src/Dsl/DslJson.cs",
+      "godot/src/AI/LLMService.cs"
+     ]
+    },
+    {
+     "name": "factiondefinition-loader-hardening",
+     "dw_ids": [
+      "DW-62"
+     ],
+     "intent": "Wrap FactionDefinition.LoadFromFile's JsonSerializer.Deserialize (line ~245) in try/catch so a malformed JSON value yields a located, aggregated error consistent with the ResourceCost/TechTree/BuildingDefinition validators instead of a raw unhandled JsonException.",
+     "files": [
+      "godot/src/Core/Definitions/FactionDefinition.cs"
+     ]
+    },
+    {
+     "name": "itemsystem-modifier-death-audit",
+     "dw_ids": [
+      "DW-489"
+     ],
+     "intent": "DW-325 gave ModifierStore.Apply/RemoveByModifierId a 'target may be Destroy+recycled on return' post-condition; only the 3 internal ApplyStatDeltas callers were guarded. Audit the external callers: ItemSystem.ApplyItemStatModifier (ItemSystem.cs:349) returns Apply's true as claim-success without checking host death, and RemoveByModifierId (UseItem :255 / DropOne :296) is now lethal so a re-entrant DropAll->DropOne on an in-flight slot can emit a duplicate ItemDropped and equip/claim a corpse. Add post-Apply/Remove IsAlive checks at these sites and distinguish 'installed & alive' from 'installed & host died'.",
+     "files": [
+      "godot/src/Combat/ItemSystem.cs",
+      "godot/src/Effects/EffectExecutor.cs",
+      "godot/src/Effects/ApplyModifierEffect.cs"
+     ]
+    },
+    {
+     "name": "research-refusal-diagnostics",
+     "dw_ids": [
+      "DW-624"
+     ],
+     "intent": "Add a per-match aggregated diagnostic for the future-spawn research catch-up path (ResearchSystem.ApplyCompletedResearch, wired to EntityWorld.OnUnitDefinitionApplied) so refused research installs get designer-friendly research-name attribution without per-spawn spam. Accumulate refusals per match and emit one aggregate line at match end rather than per spawn.",
+     "files": [
+      "godot/src/Economy/ResearchSystem.cs",
+      "godot/src/Core/Sim/SimulationHost.cs"
+     ]
+    },
+    {
+     "name": "modifier-store-hardening",
+     "dw_ids": [
+      "DW-662"
+     ],
+     "intent": "Add a target-alive guard alongside the host-alive bail in ModifierStore.RunEffect (:269): when a period effect resolves to a target other than its host, skip if that target is dead, so a future SpatialHash-threaded AoE period can't corrupt CompactSlot/_count (the DW-267 class). Golden-neutral today (RunEffect builds EffectContext with spatial:null, so host==target always).",
+     "files": [
+      "godot/src/Effects/ModifierStore.cs"
+     ]
+    },
+    {
+     "name": "skirmish-scenario-remap",
+     "dw_ids": [
+      "DW-665"
+     ],
+     "intent": "In SkirmishSetupToScenario, remap trigger-action unit ids through SkirmishRosterMap.MapUnitId instead of copying them verbatim (`UnitId = a.UnitId` at :359) \u2014 and rewrite base triggers on the identity-remap path (:161-165) \u2014 so a cross-faction skirmish launch doesn't feed an unresolvable spawn_unit unit_id into DW-240's fail-closed ScenarioValidator gate (:840, :941-944) and reject the whole map.",
+     "files": [
+      "godot/src/Core/Skirmish/SkirmishSetupToScenario.cs",
+      "godot/src/Core/Skirmish/SkirmishRosterMap.cs",
+      "godot/src/Core/Definitions/ScenarioValidator.cs"
+     ]
+    },
+    {
+     "name": "server-checksum-accept-window",
+     "dw_ids": [
+      "DW-511"
+     ],
+     "intent": "Add a far-future ACCEPT_WINDOW-style guard to ServerChecksumCollector.Record (:115-133) so a client cannot evict honest in-flight comparison windows with implausibly-far-future checksum ticks. Must NOT be a naive copy of MergedTickBuilder's ACCEPT_WINDOW: _resolvedThrough starts at -1 while real checksum ticks start at the checksum interval, so the window must not reject the first legitimate report. Confirmed: Record has monotonic _resolvedThrough drop but no far-future acceptance bound.",
+     "files": [
+      "godot/src/Multiplayer/Server/ServerChecksumCollector.cs",
+      "godot/src/Multiplayer/Server/MergedTickBuilder.cs"
+     ]
+    },
+    {
+     "name": "contentpackager-atomic-and-symmetry",
+     "dw_ids": [
+      "DW-560"
+     ],
+     "intent": "Make ContentPackager.Pack's output write atomic: write the new export to a temp path and only rename over outputZipPath on success, instead of File.Delete(outputZipPath) up front then ZipArchiveMode.Create (~line 240). A throw mid-write (a non-hashed source \u2014 screenshot, faction file, thumbnail \u2014 deleted/locked between enumeration and the write loop) currently destroys the creator's previous export and leaves a partial zip. Same non-atomic family as DW-421, on Pack's OUTPUT.",
+     "files": [
+      "godot/src/Core/Definitions/ContentPackager.cs"
+     ]
+    },
+    {
+     "name": "ability-validator-polarity-lint",
+     "dw_ids": [
+      "DW-618"
+     ],
+     "intent": "Add a WARNING-channel lint to AbilityValidator that cross-checks a granted modifier's StatusFlags against its target filter, using the existing ModifierPolarity classification (HarmfulStatus = Stunned|Rooted|Silenced|Disarmed), and warns when an Ally-filtered SearchArea->ApplyModifier grants a HarmfulStatus (the self-stunning Guardian Aura class the DW-266 content fix patched but left the authoring hole open for).",
+     "files": [
+      "godot/src/Core/Definitions/AbilityValidator.cs",
+      "godot/src/UI/ModifierPolarity.cs",
+      "godot/SimSources.props"
+     ]
+    },
+    {
+     "name": "phaseorder-test-hardening",
+     "dw_ids": [
+      "DW-233"
+     ],
+     "intent": "Add a duplicate-canonical-name assert (~3 lines, Tier-1) to PhaseOrderTest so concrete-phase Name drift or duplicated phase names is caught; optionally a Tier-2 GdUnit4 companion that instantiates the real 40 phases. Value rose with the phase count growing to 40.",
+     "files": [
+      "godot/ProjectChimera.Sim.Tests/Bootstrap/PhaseOrderTest.cs"
+     ]
+    },
+    {
+     "name": "scenario-load-fail-closed",
+     "dw_ids": [
+      "DW-533"
+     ],
+     "intent": "Make ScenarioSerializer.LoadFromFile honour the ==null 'parse-failed' contract its two production callers (ScenarioLoadPhase.cs:88-94, MainScene.cs:2796-2798) still code to: wrap the now fail-closed (allowIntegerValues:false) deserialize in a try/catch that returns null on a malformed/numeric-enum scenario, so a bad file takes the fallback path instead of aborting boot with an uncaught exception.",
+     "files": [
+      "godot/src/Core/Definitions/ScenarioSerializer.cs"
+     ]
+    },
+    {
+     "name": "hash-pin-comment-cleanup",
+     "dw_ids": [
+      "DW-583"
+     ],
+     "intent": "In CanonicalModelHashTests.cs (and CanonicalModelHashPathabilityTests.cs / CanonicalModelHashPropsWaterTests.cs), either bring each AlgoVersion bump-log comment current to the pinned value 14 in one sweep or delete the partial history so a reader skimming for the current version is not briefly misled.",
+     "files": [
+      "godot/ProjectChimera.Sim.Tests/Validation/CanonicalModelHashTests.cs",
+      "godot/ProjectChimera.Sim.Tests/Validation/CanonicalModelHashPathabilityTests.cs",
+      "godot/ProjectChimera.Sim.Tests/Validation/CanonicalModelHashPropsWaterTests.cs"
+     ]
+    },
+    {
+     "name": "nakama-ci-esbuild-gate",
+     "dw_ids": [
+      "DW-606"
+     ],
+     "intent": "Add an `npm run build` (esbuild) step to the nakama-ts-validator-gate job in .github/workflows/determinism-gate.yml (which today runs only tsc --noEmit + vitest), so a change that typechecks and passes vitest but breaks the esbuild bundle or drifts from the es2017/cjs goja target fails CI; optionally add a guard assertion mirroring NakamaTsValidatorCiGateGuardTests.",
+     "files": [
+      ".github/workflows/determinism-gate.yml",
+      "docs/server-deploy/nakama-modules/package.json",
+      "godot/ProjectChimera.Sim.Tests/Meta/NakamaTsValidatorCiGateGuardTests.cs"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "wave2-sub2",
+   "bundles": [
+    {
+     "name": "navigation-position-writer-guard",
+     "dw_ids": [
+      "DW-648"
+     ],
+     "intent": "Audit every direct writer of EntityWorld.Position (snap-to-waypoint, teleport-style effects, flow-field/path consumers) and route the ones that represent MOVEMENT through a shared checked-step helper that applies PathabilityGrid.IsBlockedOnSegmentOutside, so the swept rejection is not MovementSystem-only. Leave authored/scenario placement to the ScenarioValidator path. Golden-neutral on valid maps.",
+     "files": [
+      "godot/src/Navigation/MovementSystem.cs",
+      "godot/src/Navigation/PathabilityGrid.cs",
+      "godot/src/Combat/ProjectileSystem.cs",
+      "godot/src/Core/EntityWorld.cs",
+      "godot/src/Core/Persistence/SaveGameState.cs"
+     ]
+    },
+    {
+     "name": "deathlog-persistence-guard",
+     "dw_ids": [
+      "DW-551"
+     ],
+     "intent": "Add a persistence-side assert in SaveGameState capture that the per-tick DeathLog is empty at save time (saves are taken at tick boundaries after UpdateSnapshots wipes it, so it must be empty), turning the silent coupling into a fail-fast guard should a future mid-tick save path ever capture the log non-empty. No behavior change today; purely a defensive assert.",
+     "files": [
+      "godot/src/Core/Persistence/SaveGameState.cs",
+      "godot/src/Core/DeathLog.cs"
+     ]
+    },
+    {
+     "name": "factiondefiner-steproute-hardening",
+     "dw_ids": [
+      "DW-114",
+      "DW-116"
+     ],
+     "intent": "Add explicit StepForError switch cases for the signature_mechanic*/hero_unit_id/starting_ore/starting_crystal field paths in FactionDefinerWizardCore so that if FactionValidator is ever extended to emit them, the located error routes to a sensible step instead of silently defaulting to BuildingsTech. Add a raw_json case to FactionDefinerWizardCore.StepForError so a TryFinishFromRawJson parse-failure maps to a correct step instead of the BuildingsTech sniff-default, for any future caller that consumes result.Step (fix alongside DW-114).",
+     "files": [
+      "godot/src/Core/Definitions/FactionDefinerWizardCore.cs"
+     ]
+    },
+    {
+     "name": "ai-alliance-awareness",
+     "dw_ids": [
+      "DW-439",
+      "DW-445"
+     ],
+     "intent": "Thread AllianceStore into AiOpponentSystem and make its target/raze/threat classification alliance-aware. Its hostile test (`f == AI_FACTION || f == Faction.Neutral`, e.g. cs:578) never consults AllianceStore.AreAllied, so in a teamed match the AI marches on and orders attacks against an allied faction (which combat now correctly rejects, stranding the AI at Idle). Same fix as DW-439: make AiOpponentSystem.FindNearestEnemyBuilding (~cs:462) and DoRazeBuildings (~cs:436) alliance-aware via AllianceStore.AreAllied instead of only skipping `f == AI_FACTION || f == Faction.Neutral`, so a teamed AI does not perpetually order AttackBuilding/attack onto its ally and stall at Idle.",
+     "files": [
+      "godot/src/AI/AiOpponentSystem.cs",
+      "godot/src/Core/Sim/SimulationHost.cs"
+     ]
+    },
+    {
+     "name": "llm-scenario-validation-hardening",
+     "dw_ids": [
+      "DW-542",
+      "DW-547",
+      "DW-627"
+     ],
+     "intent": "In LLMService.ValidateScenario passes 4/7, add a range check that every unit's u.Slot and building's b.Slot references an index within [0, PlayerSlots.Length) (i.e. a declared player slot), rejecting out-of-range placement refs at the LLM gate so the AI-gen UX no longer promises a scenario the ScenarioValidator loader will refuse. Verified present: pass 2 (lines 606-614) validates player_slot DECLARATION indices only; no equivalent guard exists for unit/building Slot placement refs. Route LLMService.ValidateScenario's pass-1 deserialize (line 571, currently an ad-hoc JsonSerializerOptions with PropertyNameCaseInsensitive + bare FixedJsonConverter + lenient syntax) through the shared ContentJson.ScenarioOptions used by file loads (DW-274 posture), so the AI-gen parse posture \u2014 enum handling, unknown-key behavior, converter order \u2014 cannot drift from what the loader produces. Preserve the intentional lenient-syntax (AllowTrailingCommas / comment-skip) for model output if ScenarioOptions is stricter, by cloning ScenarioOptions and layering only the syntax leniency. In LLMService.ValidateScenario (:287-294), replace the private 4-member shadow BuildingType enum (:443, missing Aviary) with the same two-vocabulary resolution the DW-170 ScenarioValidator uses (real BuildingType enum name + authored faction-qualified DefinitionId) so AI-generated scenarios accept custom buildings and the built-in Aviary. Coordinate merge with the scenario-type-registry (DW-371) work on the same file.",
+     "files": [
+      "godot/src/AI/LLMService.cs",
+      "godot/src/Core/Definitions/ContentJson.cs"
+     ]
+    },
+    {
+     "name": "modifierstore-death-attribution",
+     "dw_ids": [
+      "DW-490",
+      "DW-492"
+     ],
+     "intent": "Thread the modifier's _casterFaction[slot] into ApplyStatDeltas and pass it (plus the DeathFeed argument every other lethal path passes) to the DamageResolver.KillEntity call at ModifierStore.cs:760, so an ability-driven lethal -MaxHealth debuff credits its real caster for scoring/hero XP instead of hardcoding Faction.Neutral with the feed omitted. Confirmed still present: line 760 passes Faction.Neutral, _events, _stats with no deaths/DeathFeed arg. Run the same ceiling-collapse (EffectiveMaxHealth==0) death/clamp check on the RestoreSlot (save-load) re-accumulation path (ModifierStore.cs:658) and the ModifierSystem Tick dirty-recompute path that ApplyStatDeltas already enforces, so a loaded or externally-dirtied unit at ceiling 0 cannot reconstitute as a living zombie. Confirmed: RestoreSlot accumulates without recomputing and is documented deliberately non-lethal (line 723).",
+     "files": [
+      "godot/src/Effects/ModifierStore.cs",
+      "godot/src/Effects/ModifierSystem.cs",
+      "godot/src/Combat/DamageResolver.cs"
+     ]
+    },
+    {
+     "name": "effect-caps-doc",
+     "dw_ids": [
+      "DW-535"
+     ],
+     "intent": "Fix the doc contradictions reintroduced by merge order in EffectCaps.cs: reconcile line 23 ('Nothing here is reserved any more') with the still-'Reserved' member docs at :69/:72, and update the three comments (EffectCaps.cs:40, :45-46, EffectExecutor.cs:103) that still describe the SearchArea pipeline searcharea-target-selection-correctness deleted. Pure doc normalization, no behaviour change.",
+     "files": [
+      "godot/src/Effects/EffectCaps.cs",
+      "godot/src/Effects/EffectExecutor.cs"
+     ]
+    },
+    {
+     "name": "faction-definition-null-guard",
+     "dw_ids": [
+      "DW-629"
+     ],
+     "intent": "Mirror DW-103's guard in FactionDefinition.GetBuilding (:94-99): if Buildings is null return null, and skip null elements (b != null && b.Id == id), matching the hardened GetUnit/GetResearch siblings. Confirmed still unguarded at line 96 while GetUnit at 104 already has the guard.",
+     "files": [
+      "godot/src/Core/Definitions/FactionDefinition.cs"
+     ]
+    },
+    {
+     "name": "modifier-authoring-bounds",
+     "dw_ids": [
+      "DW-650"
+     ],
+     "intent": "Adopt the public Modifier.CheckAuthoringBounds() (the DW-488 MaxStacks x delta-magnitude cap, Modifier.cs:129) at the three non-ability Modifier minters that bypass AbilityValidator: ItemSystem.ApplyItemStatModifier (:339, via ItemDefinitionValidator), HeroXpSystem level-growth (:338), and ResearchSystem.BuildCumulativeModifier (:368) \u2014 one adoption line each \u2014 so an authored item/research/hero curve can't feed an unbounded delta into the same 8-slot accumulator.",
+     "files": [
+      "godot/src/Effects/Modifier.cs",
+      "godot/src/Combat/ItemSystem.cs",
+      "godot/src/Combat/HeroXpSystem.cs",
+      "godot/src/Economy/ResearchSystem.cs",
+      "godot/src/Core/Definitions/ItemDefinitionValidator.cs"
+     ]
+    },
+    {
+     "name": "triggergraph-determinism-hardening",
+     "dw_ids": [
+      "DW-337"
+     ],
+     "intent": "Replace ExecEdge/DataEdge.GetHashCode's process-seed-randomized HashCode.Combine with a deterministic hash (and/or add a code comment forbidding enumeration of hash-based edge sets), pre-empting the latent determinism trap before Story 7.3+ graph editing/dedup enumerates a HashSet/Dictionary of edges. Safe today (all ordering goes through IComparable.CompareTo) but cheap to close.",
+     "files": [
+      "godot/src/Dsl/GraphEdge.cs",
+      "godot/src/Dsl/TriggerGraph.cs"
+     ]
+    },
+    {
+     "name": "dsl-node-port-arity",
+     "dw_ids": [
+      "DW-578"
+     ],
+     "intent": "In NodePortCatalog's ExprCallNode case, curate rendered operand ports by builtin arity so a zero-arity state-read builtin (e.g. unit_count_tag) does not draw wireable operand ports a/b, surfacing the arity rule in the editor instead of only at compile time via the badge.",
+     "files": [
+      "godot/src/Dsl/NodePortCatalog.cs",
+      "godot/src/Dsl/NodeFieldCatalog.cs"
+     ]
+    },
+    {
+     "name": "faction-roundtrip-tests",
+     "dw_ids": [
+      "DW-82"
+     ],
+     "intent": "Add a BuildingDefinition.Prerequisites round-trip test in FactionWriteRoundTripTests.cs alongside the existing AvailableResearch assertion, giving Story 4.8's parity claim a shared, comparable check.",
+     "files": [
+      "godot/ProjectChimera.Sim.Tests/Definitions/FactionWriteRoundTripTests.cs"
+     ]
+    },
+    {
+     "name": "abilitydraft-deadcode",
+     "dw_ids": [
+      "DW-297"
+     ],
+     "intent": "DraftNode.Depth()/SearchAreaDepth() are referenced only by AbilityDraftTests; production re-derives depth via TreeCtx/CountNodes. Either delete both methods (and their tests) or pin their semantics against EffectCaps.MaxEffectDepth by making production use them.",
+     "files": [
+      "godot/src/Core/Definitions/AbilityDraft.cs",
+      "godot/ProjectChimera.Sim.Tests/Definitions/AbilityDraftTests.cs"
+     ]
+    },
+    {
+     "name": "real-content-test-hardening",
+     "dw_ids": [
+      "DW-536"
+     ],
+     "intent": "Harden AsymmetryPlaytestValidationTests.LoadRealContent (line 111) the same way DW-107 fixed SignatureMechanicRealContentTests: pass a non-null onSkipped and add an AbilityRegistry count floor so a future ability JSON edit that breaks AbilityValidator can't silently shrink the registry and let the test pass against quietly-reduced content.",
+     "files": [
+      "godot/ProjectChimera.Sim.Tests/Golden/AsymmetryPlaytestValidationTests.cs"
+     ]
+    },
+    {
+     "name": "store-clear-completeness-cleanup",
+     "dw_ids": [
+      "DW-584"
+     ],
+     "intent": "Remove the now-redundant `_enabled` allowlist entry (and DW-197 note) from StoreClearCompletenessTests' TriggerEnabledCase: DW-197 landed (TriggerEnabledStore.Clear now Array.Clears the whole buffer and IsEnabled bounds out-of-range to false), so the sweep can pin the strengthened contract instead of exempting it.",
+     "files": [
+      "godot/ProjectChimera.Sim.Tests/Sim/StoreClearCompletenessTests.cs"
+     ]
+    },
+    {
+     "name": "research-apply-parity",
+     "dw_ids": [
+      "DW-626"
+     ],
+     "intent": "Add a SOURCE PIN (the LockstepManager_ForwardsResearch_AtEveryApplySite pattern from DW-86) covering the OFFLINE/F5 apply site: CommandCardSystem.cs:953 IssueResearchCommand and :969 IssueCancelResearchCommand must keep passing research: to OrderApplier.Apply, so a dropped arg can't silently make offline research a no-op while online+replay still apply it. Godot-coupled file (src/UI) excluded from Tier-1, so pin via source pattern, not an executable test.",
+     "files": [
+      "godot/ProjectChimera.Sim.Tests/Multiplayer/CommandApplyParityTests.cs"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "wave2-sub3",
+   "bundles": [
+    {
+     "name": "savegame-generation-persistence",
+     "dw_ids": [
+      "DW-581"
+     ],
+     "intent": "Add a save lane for EntityWorld.Generation to SaveGameState (EA enum + CaptureEntities/RestoreEntities), mirroring the already-persisted BuildingStore.Generation, so a bumped per-slot recycle generation survives a save/load boundary rather than relying on the current apply-time gen-0 re-pack invariant.",
+     "files": [
+      "godot/src/Core/Persistence/SaveGameState.cs",
+      "godot/src/Core/EntityWorld.cs"
+     ]
+    },
+    {
+     "name": "trigger-graph-validation",
+     "dw_ids": [
+      "DW-628"
+     ],
+     "intent": "Add a building_type gate to GraphStructureGate.cs mirroring the flat gate's UnknownBuildingTypeInCondition_IsRejected_NotSilentlyInert check: validate EventNode.BuildingType / ConditionNode.BuildingType in the trigger_graph channel against the same enum-name + authored DefinitionId vocabularies so a typo'd/dropped building ref in a raw-IR graph is rejected instead of loading clean and staying permanently inert.",
+     "files": [
+      "godot/src/Dsl/GraphStructureGate.cs",
+      "godot/src/Core/Definitions/ScenarioValidator.cs",
+      "godot/src/Core/ScenarioDirector.cs"
+     ]
+    },
+    {
+     "name": "llmservice-mapprompt-slots",
+     "dw_ids": [
+      "DW-372"
+     ],
+     "intent": "Finish the map-clamp parameterization for non-2-slot scenarios: parameterize the SCHEMA and EXAMPLE blocks of BuildMapSystemPrompt (godot/src/AI/LLMService.cs ~688-722, still hardcoding two player_slots) to MinPlayerSlots so a MinPlayerSlots>2 caller isn't told 'at least 4' while shown 2; generalize FactionJsonResolver so slots >=1 don't all collapse to Slot1FactionJson; and add lower-bound guards on MinPlayerSlots/MaxCombatUnitsPerSlot.",
+     "files": [
+      "godot/src/AI/LLMService.cs",
+      "godot/src/AI/ScenarioTypeRegistry.cs"
+     ]
+    },
+    {
+     "name": "combat-alliance-idrecycle",
+     "dw_ids": [
+      "DW-444",
+      "DW-446"
+     ],
+     "intent": "Add an AreAllied(owner, victim) recheck to ProjectileSystem's primary/direct-hit delivery path (currently re-checks only IsAlive at impact, ~cs:96), mirroring the ApplySplash guard (cs:203), so a primary target whose entity id is recycled into an allied entity between projectile spawn and impact is not damaged. Make CombatSystem.ValidateOrClearTarget (~cs:649) recheck alliance/faction on a HELD auto-acquired AttackTarget, not just !IsAlive, so a target whose entity id is recycled into an allied (or same-faction) unit between ticks is dropped instead of fired on for a tick \u2014 Story 9.14 added allied-exclusion only at acquisition, leaving the retained-target path unguarded.",
+     "files": [
+      "godot/src/Combat/ProjectileSystem.cs",
+      "godot/src/Combat/CombatSystem.cs"
+     ]
+    },
+    {
+     "name": "faction-wizard-mesh-path-routing",
+     "dw_ids": [
+      "DW-505"
+     ],
+     "intent": "Fix the FactionValidator.ValidateComplete mesh_path message so a missing UNIT mesh_path routes to the Roster step: either drop the \"faction '<id>'.\" prefix that defeats FactionDefinerWizardCore.StepForError's \"unit '\" startswith match, or teach StepForError the produced shape. Correct the false-green FactionDefinerWizardTests.cs:116-117 theory rows to assert the message the validator actually emits. All three files exist and are Godot-free.",
+     "files": [
+      "godot/src/Core/Definitions/FactionValidator.cs",
+      "godot/src/Core/Definitions/FactionDefinerWizardCore.cs",
+      "godot/ProjectChimera.Sim.Tests/Definitions/FactionDefinerWizardTests.cs"
+     ]
+    },
+    {
+     "name": "gathering-worker-lifecycle",
+     "dw_ids": [
+      "DW-520",
+      "DW-532"
+     ],
+     "intent": "In BuildingSystem.ClearWorkerBuild (line 1089), preserve a carrying worker's delivery instead of forcing GatherState.Idle: when world.CarryAmount[workerId] > 0, restore GatherState.MovingToBase (or bank the carry) so an interrupted-mid-carry worker finishes the delivery rather than dropping a full load and re-seeking a node. Resolve the emergent DW-148 x DW-207 interaction: a worker confined by MovementSystem.IsBlockedOutside (MovementSystem.cs:163-174) can stall forever in TickMovingToResource (GatheringSystem.cs:124-143) while holding a gather-slot reservation, re-opening the folded-capacity leak. Release the gather slot (or give up the reservation) when a MovingToResource worker is confined/cannot reach its node, so a stranded worker never permanently consumes a node's MaxGatherers slot.",
+     "files": [
+      "godot/src/Economy/BuildingSystem.cs",
+      "godot/src/Economy/GatheringSystem.cs",
+      "godot/src/Navigation/MovementSystem.cs"
+     ]
+    },
+    {
+     "name": "loader-duplicate-key-fail-closed",
+     "dw_ids": [
+      "DW-537"
+     ],
+     "intent": "Apply DW-227's reusable RejectDuplicateKeys raw-JsonDocument pass to UnitDefinition.Cost (UnitDefinition.cs:80) and ResearchDefinition.Cost (ResearchDefinition.cs:77), both Dictionary<string,int> DTO properties, so a duplicated resource key in a cost block fails closed with a diagnostic instead of silently last-wins.",
+     "files": [
+      "godot/src/Core/Definitions/UnitDefinition.cs",
+      "godot/src/Core/Definitions/ResearchDefinition.cs",
+      "godot/src/Core/Definitions/FactionDefinition.cs",
+      "godot/src/Combat/DamageTable.cs"
+     ]
+    },
+    {
+     "name": "ai-opponent-scoring",
+     "dw_ids": [
+      "DW-644"
+     ],
+     "intent": "In AiOpponentSystem, make ScoreRazeBuildings gate on the count of Structure-CAPABLE free units (the same AttackDomain.Structure filter DoRazeBuildings applies at :556), not raw AvailableCombatUnits. Add a structure-capable-available count to AiSnapshot/BuildSnapshot so an AI whose free units are all air-only/anti-unit-only scores raze 0 and falls through to BuildBarracks etc. instead of pinning 0.90 on an unexecutable raze.",
+     "files": [
+      "godot/src/AI/AiOpponentSystem.cs"
+     ]
+    },
+    {
+     "name": "docs-normalization",
+     "dw_ids": [
+      "DW-663"
+     ],
+     "intent": "Refresh the ModifierStore.cs:33-42 Re-entrancy <para>: drop the stale '2.2b' version framing and accurately describe the current state \u2014 all three phases use direct-target leaves and the Story 2.3 content validator fence keeps install-leaves off the executor. The DW-324 doc sweep named this line but closed with it still stale.",
+     "files": [
+      "godot/src/Effects/ModifierStore.cs"
+     ]
+    },
+    {
+     "name": "playercount-metatest-alias",
+     "dw_ids": [
+      "DW-513"
+     ],
+     "intent": "Extend the NoHardcodedPlayerCountTests scan (:66-67,:103-107) so its regex recognizes symbolic references (e.g. = PlayerCountPolicy.MpSeatCeiling), not just literal `const int <name> = (2|4|8|9)`, so ServerChecksumCollector.MaxSlots (:22) can alias the ceiling instead of a hardcoded 4 without the vacuous-pass allowlist-found assertion failing. Confirmed: MaxSlots=4 literal with a doc comment explaining the empirically-reverted alias attempt.",
+     "files": [
+      "godot/ProjectChimera.Sim.Tests/Meta/NoHardcodedPlayerCountTests.cs",
+      "godot/src/Multiplayer/Server/ServerChecksumCollector.cs",
+      "godot/src/Multiplayer/PlayerCountPolicy.cs"
+     ]
+    },
+    {
+     "name": "dsl-bounds-cap",
+     "dw_ids": [
+      "DW-579"
+     ],
+     "intent": "Add a DslBounds.MaxRandomChoiceBranches cap enforced in NodeBaseJsonConverter.ReadIntArray (and the mirrored field-level Set) so a raw-IR RandomChoiceNode cannot carry an arbitrarily long weights array that renders unbounded branch ports; keep parse and inspector in agreement.",
+     "files": [
+      "godot/src/Dsl/DslBounds.cs",
+      "godot/src/Dsl/NodeBaseJsonConverter.cs",
+      "godot/src/Dsl/NodeFieldCatalog.cs"
+     ]
+    },
+    {
+     "name": "widgetformat-tests",
+     "dw_ids": [
+      "DW-363"
+     ],
+     "intent": "Add unit coverage for godot/src/UI/WidgetFormat.cs (MmSs Fixed-as-seconds vs Int-as-ticks + ticksPerSecond division + negative->0:00 clamp; Fraction divide-by-zero guard + [0,1] clamp; Number Fixed 16.16 trimmed decimal). The logic is pure/Godot-free even though it lives in src/UI which ProjectChimera.Sim.Tests does not reference; include the source in the Tier-1 test compile so its non-obvious branching is regression-netted.",
+     "files": [
+      "godot/SimSources.props",
+      "godot/ProjectChimera.Sim.Tests/UI/WidgetFormatTests.cs"
+     ]
+    },
+    {
+     "name": "test-reflection-probe-migration",
+     "dw_ids": [
+      "DW-501"
+     ],
+     "intent": "Migrate the two surviving null-forgiving reflection sites \u2014 NodeKindsLockstepTests.cs:94 (GetField(\"_triggerEventTypes\", F)!) and TriggerGraphLiveLoweringTests.cs:34 (GetField(\"_execs\", ...)!) \u2014 to the same-assembly ProjectChimera.Sim.Tests.Golden.ReflectionProbe helper DW-218 introduced, so a field rename yields an actionable diagnostic instead of an opaque NullReferenceException. Both sites confirmed present.",
+     "files": [
+      "godot/ProjectChimera.Sim.Tests/Dsl/NodeKindsLockstepTests.cs",
+      "godot/ProjectChimera.Sim.Tests/Dsl/TriggerGraphLiveLoweringTests.cs"
+     ]
+    },
+    {
+     "name": "recursive-graph-walk-iterative",
+     "dw_ids": [
+      "DW-573",
+      "DW-574"
+     ],
+     "intent": "Convert ResearchValidator.Visit's recursive prerequisite cycle-DFS to the explicit-stack form DW-59 applied to TechTreeValidator (heap-allocated frames plus a mirrored path list), so a thousands-deep authored research chain cannot overflow the stack during load. Add a deep-chain regression test. Convert TechTreeLayout.TierOf to an explicit-stack (or memoized iterative longest-path) walk keeping the existing visiting cycle guard, so a deep authored prerequisite chain cannot overflow the stack during tech-tree panel layout. Add a deep-chain regression test.",
+     "files": [
+      "godot/src/Core/Definitions/ResearchValidator.cs",
+      "godot/src/Core/Definitions/TechTreeLayout.cs"
+     ]
+    },
+    {
+     "name": "llm-provider-messaging",
+     "dw_ids": [
+      "DW-589"
+     ],
+     "intent": "Extend the DW-370 honest-UX fix to the cloud arm of LlmProviderFactory: when a cloud provider (anthropic/openrouter) has a base-URL override pointing at a non-allowlisted host, return/voice a pinned-host allowlist-rejection message instead of the misleading 'no AI provider is configured', and update the BaseUrlOverride test expectation accordingly.",
+     "files": [
+      "godot/src/AI/Providers/LlmProviderFactory.cs",
+      "godot/src/AI/Providers/AiAvailability.cs",
+      "godot/ProjectChimera.Sim.Tests/AI/LlmProviderFactoryTests.cs"
+     ]
+    },
+    {
+     "name": "resource-store-negative-cost",
+     "dw_ids": [
+      "DW-642"
+     ],
+     "intent": "Reject cost < 0 inside ResourceStore.SpendOre (:126-131) and SpendCrystal (:145-150) so a negative authored cost cannot ADD resources (CanAffordOre(faction,-5) is trivially true). Fixing the shared primitive protects every caller (BuildingSystem train/build/shop, BuyItemCommand, ReviveHeroCommand, AiOpponentSystem), not just the DW-283-hardened ability path; resources are SimChecksum-folded so this is a money-printer, not just a validation gap. Confirmed no cost<0 guard present.",
+     "files": [
+      "godot/src/Core/ResourceStore.cs"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "wave2-sub4",
+   "bundles": [
+    {
+     "name": "persistence-completeness-guard",
+     "dw_ids": [
+      "DW-519"
+     ],
+     "intent": "Add a reflection-driven completeness test for the SAVE path (mirroring EntityWorldClearCompletenessTests) that reflects over EntityWorld's per-entity arrays and asserts each is either round-tripped by SaveGameState or on an explicit allowlist of deliberately-transient fields (e.g. GateClosedTicks), so a future array that must persist can't ship green if forgotten.",
+     "files": [
+      "godot/ProjectChimera.Sim.Tests/Persistence/SaveLoadTests.cs",
+      "godot/src/Core/Persistence/SaveGameState.cs",
+      "godot/src/Core/Sim/EntityWorld.cs"
+     ]
+    },
+    {
+     "name": "factiondefiner-wizard-hardening",
+     "dw_ids": [
+      "DW-112"
+     ],
+     "intent": "In FactionDefinerWizardCore.TryFinish, catch the File.Move(overwrite:false) collision (IOException) specifically and surface the same friendly \"already exists, choose a different id\" message on the id field as the earlier File.Exists check, closing the TOCTOU UX inconsistency (lines ~351/366).",
+     "files": [
+      "godot/src/Core/Definitions/FactionDefinerWizardCore.cs"
+     ]
+    },
+    {
+     "name": "llmservice-lifecycle",
+     "dw_ids": [
+      "DW-375"
+     ],
+     "intent": "Make LLMService IDisposable and dispose its owned HttpClient/HttpClientHandler (8.3 http:null path) plus the per-call _cts/_mapCts CancellationTokenSources; today each Generate press reassigns a CTS without disposing the prior one and the service has no Dispose. Low impact (long-lived bootstrap singleton) but a bounded leak.",
+     "files": [
+      "godot/src/AI/LLMService.cs"
+     ]
+    },
+    {
+     "name": "editor-snapshot-hardening",
+     "dw_ids": [
+      "DW-54"
+     ],
+     "intent": "Make UnitSnapshot/RestoreUnit resilient to a def being reloaded/replaced in place during a long editor session \u2014 capture the resolved AbilityIndices (or revalidate resolution) at restore time instead of assuming the pinned UnitDefinition reference stays alive and unmutated.",
+     "files": [
+      "godot/src/Core/UnitSnapshot.cs",
+      "godot/src/Core/EntityWorld.cs"
+     ]
+    },
+    {
+     "name": "scenario-team-validation",
+     "dw_ids": [
+      "DW-442"
+     ],
+     "intent": "Add Team validation to ScenarioValidator's player-slots loop (currently validates Slot/ore/coords/uniqueness but never Team) and surface author-facing feedback for the degenerate cases: all active slots on one team (combat excludes everyone \u2192 hung match), a duplicated .Slot, an out-of-range team member silently dropped by AllianceSeeder.ComputeTeamIds, and an inert team-of-one.",
+     "files": [
+      "godot/src/Core/Definitions/ScenarioValidator.cs",
+      "godot/src/Core/AllianceSeeder.cs"
+     ]
+    },
+    {
+     "name": "effect-radius-cap",
+     "dw_ids": [
+      "DW-534"
+     ],
+     "intent": "Add an authored-radius upper bound in AbilityValidator/EffectBounds so a wide-radius SearchArea can't make SpatialHash.QueryRadiusLowestIds (SpatialHash.cs:276-306) scan every entity in a huge radius on the 30Hz lockstep path. The unbounded scan is required by the global-lowest-ids contract, so the cost ceiling must come from a validation-time radius cap (consistent with existing EffectBounds caps), not from an in-scan bound.",
+     "files": [
+      "godot/src/Effects/EffectCaps.cs",
+      "godot/src/Effects/EffectBounds.cs",
+      "godot/src/Core/Definitions/AbilityValidator.cs",
+      "godot/src/Core/Definitions/RulesetHash.cs"
+     ]
+    },
+    {
+     "name": "scenario-director-doc-comment-cleanup",
+     "dw_ids": [
+      "DW-587"
+     ],
+     "intent": "Fix the stale BuildDeclMap doc comment at ScenarioDirector.cs:712-714: since the 7.7 reconciliation, LoadScenario passes requireUnique:true unconditionally and CompileExpressionPrograms arms on anyExpr only, so no call site arms requireUnique on loop-construct presence. Update the prose to match (behaviour is already strictly stricter and safe).",
+     "files": [
+      "godot/src/Core/ScenarioDirector.cs"
+     ]
+    },
+    {
+     "name": "combat-command-switch-completeness",
+     "dw_ids": [
+      "DW-645"
+     ],
+     "intent": "Add a completeness guard so every UnitCommand value that PERSISTS as a CommandState has an explicit arm in CombatSystem.Tick's switch rather than silently inheriting TickIdleCombat via `default:`. Implement as a red-test enumerating the persisting subset (or a switch that throws/asserts on an un-cased persisting command), closing the DW-206 defect CLASS.",
+     "files": [
+      "godot/src/Combat/CombatSystem.cs",
+      "godot/src/Core/UnitCommand.cs",
+      "godot/tests/"
+     ]
+    },
+    {
+     "name": "contentpackager-roundtrip-tests",
+     "dw_ids": [
+      "DW-156"
+     ],
+     "intent": "Add a ContentPackager .chimera.zip round-trip test covering props/cameras/water (pack then import, assert the ScenarioData survives) so the exact AC 'package/import' surface is exercised, not just the one-level-lower ScenarioSerializer JSON round-trip that ScenarioDataPropsCamerasWaterTests covers today.",
+     "files": [
+      "godot/src/Core/Definitions/ContentPackager.cs",
+      "godot/ProjectChimera.Sim.Tests/Definitions/ContentPackagerPropsCamerasWaterRoundTripTests.cs"
+     ]
+    },
+    {
+     "name": "definition-validator-degenerate-stats",
+     "dw_ids": [
+      "DW-527"
+     ],
+     "intent": "Reject hp=0 for units in UnitDefinitionValidator (the CheckStat(\"hp\", def.Hp) at line 236 uses the [0,32768) bound, inclusive of 0), matching BuildingDefinitionValidator's hp<=0 reject and the DW-491/DW-489 zero-ceiling-is-lethal decision. Because BuildingDefinitionValidator reuses the unit gate on top of its own HpAuthored check, route hp through a positive-lower-bound check (like CheckStatPositive) without double-badging buildings.",
+     "files": [
+      "godot/src/Core/Definitions/UnitDefinitionValidator.cs",
+      "godot/src/Core/Definitions/BuildingDefinitionValidator.cs",
+      "godot/ProjectChimera.Sim.Tests/Definitions/DefinitionValidatorStrictBoundsTests.cs"
+     ]
+    },
+    {
+     "name": "status-effect-action-gating",
+     "dw_ids": [
+      "DW-619"
+     ],
+     "intent": "In GatheringSystem's gather-progress accrual and BuildingSystem's construction-progress accrual, read StatusFlagsOf and skip the CarryAmount/build-progress increment when the worker is Stunned or Rooted, mirroring the DW-266 MovementSystem gate so a stun fully lands on the economy. Read-only status check; do not restructure the gather-state array (leave the DW-78 fold alone).",
+     "files": [
+      "godot/src/Economy/GatheringSystem.cs",
+      "godot/src/Economy/BuildingSystem.cs"
+     ]
+    },
+    {
+     "name": "match-agreement-hash-coverage",
+     "dw_ids": [
+      "DW-443"
+     ],
+     "intent": "Add a test asserting that EVERY match-start/peer-agreement start-state gate compares MatchAgreementHash (which folds Team) rather than CanonicalModelHash alone (which deliberately excludes Team), so a team-only disagreement between peers cannot slip past a gate \u2192 divergent AllianceStore seeds \u2192 tick-0 desync. HandshakeGate/ServerLobbyPolicy.CheckStartStateAgreement already use the agreement hash; this closes the coverage gap.",
+     "files": [
+      "godot/ProjectChimera.Sim.Tests/",
+      "godot/src/Multiplayer/HandshakeGate.cs",
+      "godot/src/Multiplayer/ReadyPacketRouting.cs",
+      "godot/src/Multiplayer/Server/ServerLobbyPolicy.cs"
+     ]
+    },
+    {
+     "name": "server-pathability-grid",
+     "dw_ids": [
+      "DW-508"
+     ],
+     "intent": "In ServerBootstrap.Build, construct and inject the union blocked-cell grid via the shared Godot-free ScenarioApplier.BuildPathabilityGrid recipe (and SetElevationGrid where needed) before/around the Apply call at line 85, so the headless/server sim has the same blocked cells the client's ScenarioLoadPhase injects and MovementSystem's rejection is not a server-side no-op. Confirmed: ServerBootstrap has no SetPathabilityGrid/SetElevationGrid call. Changes server start state/tick behaviour so it needs a determinism-reviewed slice.",
+     "files": [
+      "godot/src/Core/Sim/ServerBootstrap.cs",
+      "godot/src/Core/Sim/ScenarioApplier.cs"
+     ]
+    },
+    {
+     "name": "meta-test-regex",
+     "dw_ids": [
+      "DW-582"
+     ],
+     "intent": "Tighten NoHardcodedPlayerCountTests' source-scan regex so `= (2|4|8|9)` does not match a leading small literal followed by `*` (a sized-buffer const like `X = 2 * OTHER_CONST`), eliminating the RingCapacity-class false positive that forced literal-last reordering.",
+     "files": [
+      "godot/ProjectChimera.Sim.Tests/Meta/NoHardcodedPlayerCountTests.cs"
+     ]
+    },
+    {
+     "name": "replay-recorder-fail-loud",
+     "dw_ids": [
+      "DW-604"
+     ],
+     "intent": "Replace the silent per-tick order clamp in ReplayRecorder.RecordTick (line 159: `if (count > TickCommandPacket.MAX_ORDERS) count = TickCommandPacket.MAX_ORDERS;`) with a thrown InvalidOperationException, matching the adjacent DW-432 sub-bundle-overflow guard, so the one component whose invariant is 'never silently drop' fails loud instead of truncating a >MAX_ORDERS sub-bundle.",
+     "files": [
+      "godot/src/Multiplayer/ReplayRecorder.cs",
+      "godot/ProjectChimera.Sim.Tests/Sim/"
+     ]
+    }
+   ]
+  }
+ ]
+}
