@@ -1376,6 +1376,15 @@ namespace ProjectChimera.Core
                     _expiredTimers.Clear();
                     _vars.TimerTickAndCollectExpired(_expiredTimers);
                     _eventQueue.Clear();
+                    // DW-551 — the LAST transient rail on this path, and the one that was missing. The per-tick
+                    // DeathLog's only other wipe point is UpdateSnapshots, which the early-out skips: without this a
+                    // trigger-less scenario ACCUMULATES combat death records across ticks until CAPACITY, so "the log
+                    // is empty at the tick boundary" (the invariant DeathLog's own docs state, and the one
+                    // SaveGameState.CaptureFrom now asserts) held only for scenarios that own at least one trigger.
+                    // Inert for behaviour: CollectEvents — the log's single reader — is skipped on this path, and a
+                    // trigger-less scenario can have no unit_dies subscriber at all. Inert for determinism: the log is
+                    // NOT folded into SimChecksum, so no golden and no checksum moves.
+                    world.DeathLog.Clear();
                     return;
                 }
 

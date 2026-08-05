@@ -214,6 +214,7 @@ namespace ProjectChimera.Core.Persistence
         /// by the canonical walk throws (the <c>modifier descriptor round-trip needs a content-model change</c> Block-If).</summary>
         public static SaveGameState CaptureFrom(SimulationHost host, CanonicalEffectDescriptorTable table)
         {
+            AssertDeathLogDrained(host.World);
             var s = new SaveGameState { Tick = host.CurrentTick, RngState = host.World.Rng.State };
             s.CaptureEntities(host.World);
             s.CaptureBuildings(host.Buildings);
@@ -234,6 +235,34 @@ namespace ProjectChimera.Core.Persistence
             s.CaptureAi(host.Ai);
             s.Stats = host.MatchStats.CaptureCounters();
             return s;
+        }
+
+        /// <summary>
+        /// DW-551 — the persistence side of the transient <see cref="DeathLog"/> coupling, as a FAIL-FAST guard.
+        ///
+        /// <para><see cref="SaveGameState"/> deliberately does not persist the per-tick death log: a save is taken
+        /// BETWEEN sim ticks, and by then the <c>ScenarioDirector</c> — which runs last in the tick — has already
+        /// wiped the log (in <c>UpdateSnapshots</c>, or on its trigger-less early-out), so there is provably nothing
+        /// to carry. That correctness rests entirely on WHERE the capture is called from, which nothing in the type
+        /// system enforces. Should a future save path ever capture MID-tick, the silent cost would be this tick's
+        /// <c>unit_dies</c> attribution — deaths already logged but not yet collected simply vanish across the save,
+        /// and the loss is invisible (the restored world looks complete; only trigger events are missing).</para>
+        ///
+        /// <para>So assert the premise instead of documenting it. A non-empty log at capture time means the caller is
+        /// NOT at a tick boundary; the fix is to add the log to capture/restore, never to drop the records. Throws
+        /// rather than silently proceeding, matching the fail-closed posture of the descriptor round-trip checks
+        /// (<see cref="CaptureModifiers"/>) — a save that cannot be faithfully represented is not written. Unreachable
+        /// today: every caller (the in-match save issue path and the tests) captures between ticks.</para>
+        /// </summary>
+        private static void AssertDeathLogDrained(EntityWorld world)
+        {
+            int pending = world.DeathLog.Count;
+            if (pending != 0)
+                throw new InvalidOperationException(
+                    $"SP save: the per-tick DeathLog still holds {pending} undrained record(s) at capture time, so this " +
+                    "capture is not at a tick boundary. SaveGameState does not persist the log (it is provably empty " +
+                    "between ticks), so this tick's unit_dies attribution would be lost across the save — add the " +
+                    "DeathLog to CaptureFrom/RestoreInto before introducing a mid-tick save path.");
         }
 
         private void CaptureEntities(EntityWorld w)
