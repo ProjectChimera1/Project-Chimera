@@ -30,8 +30,22 @@ namespace ProjectChimera.Sim.Tests.Validation
     /// (3) the COLD one-time max-caps compute stays under a generous REGRESSION ceiling
     /// (<see cref="ColdRegressionCeilingMillis"/>) so the worst case is bounded and visible, not buried behind the memo.
     /// The cold ceiling is a regression guard on a one-time LOAD cost (~96 ms on the dev box for the all-caps ceiling
-    /// no real scenario approaches), NOT the "low tens of ms" claim — tightening it below the warm budget means
-    /// sharing LoadScenario's single parse or a streaming <c>Utf8JsonReader</c> converter, tracked as deferred work.</para>
+    /// no real scenario approaches), NOT the "low tens of ms" claim.</para>
+    ///
+    /// <para><b>DW-356 (cold-path attribution, measured — read before re-chasing this).</b> The cold cost is
+    /// <see cref="TriggerGraph.FromJson"/> almost entirely (~21 of ~23 ms on a quiet dev box for this fixture; the
+    /// fold itself is the ~4 ms the warm path measures). Inside the parse the dominant term was REPEATED per-field
+    /// property lookups — <c>JsonElement.TryGetProperty(string)</c> transcodes its name and re-walks the node's
+    /// property list on every call — which <c>NodeBaseJsonConverter</c>'s single-pass <c>NodeScan</c> replaced
+    /// (~26.3 → ~21.0 ms parse, ~29.7 → ~23.0 ms cold compute here; a much larger share under the CPU contention
+    /// that produced the ~96 ms figure, because the removed work is transcode-bound). The two closures the ledger
+    /// proposed are BOTH dead ends and were measured as such: (a) the per-node transient <c>JsonDocument</c> is not
+    /// the cost — all ~4000 <c>JsonDocument.ParseValue</c> calls together measure ~7 ms, while ONE whole-payload
+    /// <c>JsonDocument.Parse</c> of the same bytes measures ~21 ms, so "stream the whole document instead" is
+    /// strictly slower; and (b) sharing <c>ScenarioDirector.LoadScenario</c>'s parsed graph is UNSAFE —
+    /// <c>TriggerGraph.Merge</c> rewrites the merged-in graph's node ids (and trigger-control targets) IN PLACE, so
+    /// a shared cached graph would be mutated out from under the hash fold. Any further tightening has to come from
+    /// the node-construction/field-decode path, not from either of those.</para>
     /// </summary>
     public class CanonicalModelHashPerfTests
     {
@@ -216,8 +230,9 @@ namespace ProjectChimera.Sim.Tests.Validation
                 $"Cold median-of-{Runs} Compute+StartStateHash {coldMedian:F2} ms exceeds the " +
                 $"{ColdRegressionCeilingMillis * CeilingScale:F0} ms (= {ColdRegressionCeilingMillis} ms " +
                 $"x{CeilingScale:0.##}) one-time-load regression ceiling. The handshake compares a cached " +
-                "hash and never recomputes (MainScene.cs:479); if this must drop, share LoadScenario's graph parse " +
-                "or stream the converter (deferred work) rather than loosening the ceiling.");
+                "hash and never recomputes (MainScene.cs:479); if this must drop, attack the node-construction / " +
+                "field-decode path rather than loosening the ceiling — see the DW-356 attribution on this class for " +
+                "why sharing LoadScenario's parse and whole-document streaming are both dead ends.");
 
             // The memo must demonstrably collapse the cold parse — this is what keeps MainScene's precompute + the
             // handshake's cached compare cheap, and it is why the warm path meets the low-tens-of-ms budget.
