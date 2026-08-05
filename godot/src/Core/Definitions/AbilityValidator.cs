@@ -25,13 +25,27 @@ namespace ProjectChimera.Core.Definitions
     /// <para><b>DW-278 — the non-fatal WARNING channel.</b> Everything above is fail-closed: a violation rejects the
     /// ability. But the 2.2b/2.5b footgun class is <i>valid, authorable and INERT</i> — content that loads, runs, and
     /// quietly does nothing (or not what the author wrote). Rejecting it would break existing content and overreach the
-    /// gate, so <see cref="CollectModifierWarnings"/> / <see cref="CollectPersistentWarnings"/> ride along on the SAME
+    /// gate, so <see cref="CollectModifierDiagnostics"/> / <see cref="CollectPersistentDiagnostics"/> ride along on the SAME
     /// iterative walk and emit located <see cref="AbilityValidationResult.Warnings"/> instead — <see cref="AbilityValidationResult.Ok"/>
     /// stays true and the token is still minted. Warnings are collected only on the path to a PASS (a rejected graph
     /// was not walked to completion, so its warnings would be arbitrary), and the hard passive rules take precedence:
     /// where <see cref="ValidatePassiveShape"/> already REJECTS a shape (a while_alive Persistent with
     /// <c>period_ticks</c>/<c>period_count</c> ≤ 0, a lifelong with no period, an aura's 0-duration grant) the result
     /// fails and no warning is reported — so the same defect is never double-reported.</para>
+    ///
+    /// <para><b>DW-504 — the period MISMATCH is a hard reject (owner decision, 2026-08-04).</b> DW-278's remit was to
+    /// make the asymmetry visible, not to finish the rule, and it left one class diagnosed-but-shippable: a
+    /// <c>period_ticks</c>/<c>period_effect</c> MISMATCH — a declared period that provably cannot pulse, or a
+    /// <c>period_ticks</c> with nothing to pulse. A while_alive Persistent has always been REJECTED for it
+    /// (<see cref="ValidatePassiveShape"/>); a Modifier anywhere, and a Persistent on an active/aura/on_hit ability,
+    /// were only warned, so an author who ignored the warning still shipped an inert period. Those three cases are now
+    /// hard rejects everywhere — see <see cref="CollectModifierDiagnostics"/> / <see cref="CollectPersistentDiagnostics"/>,
+    /// which route them into a fatal list instead of <c>Warnings</c>. This was taken deliberately while it is FREE: no
+    /// shipped ability carries the shape, so nothing in <c>resources/data/abilities</c> moves.
+    /// Precedence is unchanged — the promoted rejects are reported only AFTER <see cref="ValidatePassiveShape"/> has had
+    /// its say, so a while_alive Persistent still fails with its own activation-specific message and the same defect is
+    /// still never double-reported. The remaining warnings (0-duration modifier, non-scaling stacked period, phaseless
+    /// Persistent, <c>period_count</c> ≤ 0, ignored <c>lifelong</c>) stay non-fatal.</para>
     ///
     /// AR-13 ("a random effect requires SimRng") is OWNED here and discharged by RESERVATION: the 2.1 vocabulary has
     /// no random leaf, so a random kind is unauthorable today (rejected as unknown by the converter); the mature
@@ -130,9 +144,10 @@ namespace ProjectChimera.Core.Definitions
                 return Fail(id, "effect", bounds.Error!);
 
             // ── (e)+(f) One iterative walk: total-work caps (AC4) + re-entrancy / period-shape (AC5), and riding along
-            //    on the same walk, the DW-278 non-fatal inert-content warnings. ──
+            //    on the same walk, the DW-278 non-fatal inert-content warnings PLUS the DW-504 period-mismatch rejects. ──
             var warnings = new List<(string FieldPath, string Message)>();
-            string? walkError = WalkGraph(id, root, warnings);
+            var periodShapeErrors = new List<string>();
+            string? walkError = WalkGraph(id, root, warnings, periodShapeErrors);
             if (walkError is not null)
                 return AbilityValidationResult.Fail(walkError);
 
@@ -143,6 +158,13 @@ namespace ProjectChimera.Core.Definitions
                 if (shapeError is not null)
                     return AbilityValidationResult.Fail(shapeError);
             }
+
+            // ── (h) DW-504: the promoted period_ticks/period_effect MISMATCH rejects. Reported LAST so the
+            //    activation-specific while_alive messages in (g) keep precedence over the generic ones collected on the
+            //    walk — the same defect is reported once, by the most specific rule that owns it. Only the first is
+            //    surfaced (the result carries a single located error); walk order is deterministic for a given graph. ──
+            if (periodShapeErrors.Count > 0)
+                return AbilityValidationResult.Fail(periodShapeErrors[0]);
 
             // ── Success: mint the proof-of-validation token (the codebase's SECOND `new Validated<`; the sole-minter
             //    source scan allow-lists {ScenarioValidator.cs, AbilityValidator.cs}). Warnings (if any) ride the PASS. ──
@@ -161,12 +183,16 @@ namespace ProjectChimera.Core.Definitions
         /// an install-leaf there would re-enter the dedicated executor and clobber its shared work-stack).
         /// <para>DW-278: the walk also appends the non-fatal inert-content warnings for every Modifier / Persistent
         /// descriptor it visits into <paramref name="warnings"/>. The caller DISCARDS them when this returns an error.</para>
+        /// <para>DW-504: the period_ticks/period_effect MISMATCH cases are appended to <paramref name="periodShapeErrors"/>
+        /// instead — FATAL, but not returned inline, because the caller reports them only after
+        /// <see cref="ValidatePassiveShape"/> so the activation-specific while_alive message keeps precedence.</para>
         /// <para>DW-488: every <c>ApplyModifierEffect</c>'s descriptor is additionally run through
         /// <see cref="Modifier.CheckAuthoringBounds"/> — a FATAL bound on <c>|delta| × max_stacks</c> (and on
         /// <c>max_stacks</c> itself), because a modifier over that bound can wrap <c>ModifierSystem</c>'s int stat
         /// accumulator negative, which DW-28's saturating read cannot recover.</para>
         /// </summary>
-        private static string? WalkGraph(string id, EffectNode root, List<(string FieldPath, string Message)> warnings)
+        private static string? WalkGraph(string id, EffectNode root, List<(string FieldPath, string Message)> warnings,
+                                         List<string> periodShapeErrors)
         {
             var stack = new Stack<WalkFrame>();
             stack.Push(new WalkFrame(root, "effect", searchAreaDepth: 0, inPersistentPhase: false, inPersistentPeriod: false));
@@ -205,8 +231,9 @@ namespace ProjectChimera.Core.Definitions
                         if (am.Modifier?.PeriodEffect is not null)
                             stack.Push(new WalkFrame(am.Modifier.PeriodEffect, $"{f.Path}.modifier.period_effect",
                                 f.SearchAreaDepth, inPersistentPhase: true, inPersistentPeriod: true));
-                        // DW-278: non-fatal diagnostics for this modifier descriptor (nothing here rejects).
-                        if (am.Modifier is not null) CollectModifierWarnings(id, f.Path, am.Modifier, warnings);
+                        // DW-278 warnings + DW-504 period-mismatch rejects for this modifier descriptor.
+                        if (am.Modifier is not null)
+                            CollectModifierDiagnostics(id, f.Path, am.Modifier, warnings, periodShapeErrors);
                         break;
 
                     case PersistentEffect p:
@@ -221,8 +248,8 @@ namespace ProjectChimera.Core.Definitions
                             stack.Push(new WalkFrame(p.PeriodEffect, $"{f.Path}.period_effect", f.SearchAreaDepth, true, true));
                         if (p.ExpireEffect is not null)
                             stack.Push(new WalkFrame(p.ExpireEffect, $"{f.Path}.expire_effect", f.SearchAreaDepth, true, false));
-                        // DW-278: non-fatal diagnostics for this persistent descriptor (nothing here rejects).
-                        CollectPersistentWarnings(id, f.Path, p, warnings);
+                        // DW-278 warnings + DW-504 period-mismatch rejects for this persistent descriptor.
+                        CollectPersistentDiagnostics(id, f.Path, p, warnings, periodShapeErrors);
                         break;
 
                     case SearchAreaEffect s:
@@ -263,20 +290,28 @@ namespace ProjectChimera.Core.Definitions
             return null;
         }
 
-        // ── DW-278: non-fatal warning collectors ──
+        // ── DW-278 warning collectors + the DW-504 period-mismatch rejects that ride the same walk ──
 
         /// <summary>
-        /// DW-278: the <see cref="Modifier"/> half of the non-fatal warning channel — the authorable-but-inert /
-        /// surprising-semantics cases the 2.2b + 2.5b reviews surfaced. Every one of these LOADS and RUNS; none is an
-        /// error, so each appends a located warning and nothing more:
+        /// The <see cref="Modifier"/> half of the ride-along diagnostics — the authorable-but-inert /
+        /// surprising-semantics cases the 2.2b + 2.5b reviews surfaced.
+        /// <para><b>DW-504 — FATAL (appended to <paramref name="periodShapeErrors"/>):</b> the two
+        /// <c>period_ticks</c>/<c>period_effect</c> MISMATCHES. Both are contradictions the author cannot have meant,
+        /// and neither has a runtime reading that does what the JSON says, so they are rejected rather than warned
+        /// (matching the while_alive Persistent rule in <see cref="ValidatePassiveShape"/>, which has always rejected
+        /// the first of them):</para>
+        /// <list type="bullet">
+        /// <item>a <c>period_effect</c> with <c>period_ticks &lt;= 0</c> — <c>ModifierStore.HasPeriod</c> is false, so
+        ///   the pulse NEVER fires (the modifier still grants its stat deltas: validated, half-dead content, which is
+        ///   exactly what makes it invisible).</item>
+        /// <item><c>period_ticks &gt; 0</c> with NO <c>period_effect</c> — the period is silently ignored.</item>
+        /// </list>
+        /// <para><b>DW-278 — non-fatal (appended to <paramref name="warnings"/>):</b> the cases that LOAD, RUN and have
+        /// a defensible authored reading, so rejecting them would overreach the gate:</para>
         /// <list type="bullet">
         /// <item><c>duration_ticks: 0</c> — the DW-270 semantics gap. It is a ONE-TICK modifier, not an instantaneous
         ///   one (the store stores 0 verbatim, then <c>Advance</c> takes it to −1 and expires it), so an author who
         ///   wrote 0 meaning "apply once and be done" gets a full tick of stat bonus they did not ask for.</item>
-        /// <item>a <c>period_effect</c> with <c>period_ticks &lt;= 0</c> — <c>ModifierStore.HasPeriod</c> is false, so
-        ///   the pulse NEVER fires (the modifier still grants its stat deltas: validated, half-dead content). The
-        ///   while_alive Persistent sibling is a hard reject; a modifier's is not, so it needs this.</item>
-        /// <item><c>period_ticks &gt; 0</c> with NO <c>period_effect</c> — the period is silently ignored.</item>
         /// <item>a STACKING periodic modifier — the stat deltas scale per stack (<c>Apply</c> re-adds them) but the
         ///   period fires ONCE per boundary regardless of <c>_stackCount</c>, so a "stacking DoT" does not scale its
         ///   damage. The non-scaling-stacked-DoT footgun.</item>
@@ -284,8 +319,9 @@ namespace ProjectChimera.Core.Definitions
         /// (The 2.2b &gt;256-pulse truncation is NOT warned about — DW-271 fixed it in <c>ModifierStore.Advance</c>,
         /// which now re-arms a still-active modifier's pulse budget, so a long periodic modifier is no longer inert.)
         /// </summary>
-        private static void CollectModifierWarnings(string id, string path, Modifier mod,
-                                                    List<(string FieldPath, string Message)> warnings)
+        private static void CollectModifierDiagnostics(string id, string path, Modifier mod,
+                                                       List<(string FieldPath, string Message)> warnings,
+                                                       List<string> periodShapeErrors)
         {
             string modPath = $"{path}.modifier";
 
@@ -294,12 +330,14 @@ namespace ProjectChimera.Core.Definitions
                     "duration_ticks 0 is NOT instantaneous — the modifier installs, holds its stat deltas/status for one full tick, then expires. Use a direct heal/damage/direct_hp_delta leaf for a true one-shot, duration_ticks > 0 for a timed buff, or < 0 for permanent.");
 
             bool hasPeriodEffect = mod.PeriodEffect is not null;
+            // DW-504: promoted from a warning to a hard reject.
             if (hasPeriodEffect && mod.PeriodTicks <= 0)
-                Warn(warnings, id, $"{modPath}.period_ticks",
-                    $"the modifier declares a period_effect but period_ticks={mod.PeriodTicks} (must be > 0), so the periodic pulse never fires — only its stat deltas apply.");
+                Reject(periodShapeErrors, id, $"{modPath}.period_ticks",
+                    $"the modifier declares a period_effect but period_ticks={mod.PeriodTicks} (must be > 0), so the periodic pulse never fires — only its stat deltas would apply. Set period_ticks > 0, or remove the period_effect.");
+            // DW-504: promoted from a warning to a hard reject.
             if (!hasPeriodEffect && mod.PeriodTicks > 0)
-                Warn(warnings, id, $"{modPath}.period_ticks",
-                    $"period_ticks={mod.PeriodTicks} is ignored — the modifier declares no period_effect to pulse.");
+                Reject(periodShapeErrors, id, $"{modPath}.period_ticks",
+                    $"period_ticks={mod.PeriodTicks} is ignored — the modifier declares no period_effect to pulse. Add a period_effect, or set period_ticks to 0.");
 
             if (hasPeriodEffect && mod.PeriodTicks > 0 && mod.Stacking == StackRule.Stack && mod.MaxStacks > 1)
                 Warn(warnings, id, $"{modPath}.period_effect",
@@ -307,21 +345,28 @@ namespace ProjectChimera.Core.Definitions
         }
 
         /// <summary>
-        /// DW-278: the <see cref="PersistentEffect"/> half of the warning channel. These mirror the hard while_alive
-        /// rules in <see cref="ValidatePassiveShape"/>, which is exactly why they are warnings HERE: on an ACTIVE
-        /// (or aura / on_hit) ability the same shapes are completely ungated today and silently do nothing.
+        /// The <see cref="PersistentEffect"/> half. These mirror the hard while_alive rules in
+        /// <see cref="ValidatePassiveShape"/>, which is why they exist at all: on an ACTIVE (or aura / on_hit) ability
+        /// the same shapes were completely ungated.
+        /// <para><b>DW-504 — FATAL (appended to <paramref name="periodShapeErrors"/>):</b></para>
+        /// <list type="bullet">
+        /// <item>a <c>period_effect</c> with <c>period_ticks &lt;= 0</c> — <c>HasPeriod</c> false ⇒ never pulses, and a
+        ///   period-only persistent is then expired on its first <c>Advance</c>. A while_alive passive has always been
+        ///   rejected for this; an active-ability Persistent now is too, so the rule no longer depends on activation.</item>
+        /// </list>
+        /// <para><b>DW-278 — non-fatal (appended to <paramref name="warnings"/>):</b></para>
         /// <list type="bullet">
         /// <item>no phase at all (<c>initial</c>/<c>period</c>/<c>expire</c> all null) — the install is a pure no-op.</item>
-        /// <item>a <c>period_effect</c> with <c>period_ticks &lt;= 0</c> — <c>HasPeriod</c> false ⇒ never pulses, and a
-        ///   period-only persistent is then expired on its first <c>Advance</c>.</item>
         /// <item>a <c>period_effect</c> with <c>period_count &lt;= 0</c> and NOT lifelong — <c>InstallPersistent</c>
         ///   writes <c>_periodsRemaining = 0</c>, so it expires before its first pulse. A <c>lifelong</c> one is exempt:
-        ///   its expiry-path re-arm refills the budget on tick 1, so it pulses correctly.</item>
+        ///   its expiry-path re-arm refills the budget on tick 1, so it pulses correctly. (Out of DW-504's scope, which
+        ///   named the period_ticks cases only — this one keeps a live non-inert reading via the lifelong exemption.)</item>
         /// <item><c>lifelong</c> with no <c>period_effect</c> — the flag only re-arms a periodic pulse, so it does nothing.</item>
         /// </list>
         /// </summary>
-        private static void CollectPersistentWarnings(string id, string path, PersistentEffect p,
-                                                      List<(string FieldPath, string Message)> warnings)
+        private static void CollectPersistentDiagnostics(string id, string path, PersistentEffect p,
+                                                         List<(string FieldPath, string Message)> warnings,
+                                                         List<string> periodShapeErrors)
         {
             if (p.InitialEffect is null && p.PeriodEffect is null && p.ExpireEffect is null)
             {
@@ -331,9 +376,10 @@ namespace ProjectChimera.Core.Definitions
             }
 
             bool hasPeriodEffect = p.PeriodEffect is not null;
+            // DW-504: promoted from a warning to a hard reject (the while_alive rule, now activation-independent).
             if (hasPeriodEffect && p.PeriodTicks <= 0)
-                Warn(warnings, id, $"{path}.period_ticks",
-                    $"the persistent effect declares a period_effect but period_ticks={p.PeriodTicks} (must be > 0), so the periodic pulse never fires.");
+                Reject(periodShapeErrors, id, $"{path}.period_ticks",
+                    $"the persistent effect declares a period_effect but period_ticks={p.PeriodTicks} (must be > 0), so the periodic pulse never fires. Set period_ticks > 0, or remove the period_effect.");
             if (hasPeriodEffect && p.PeriodCount <= 0 && !p.Lifelong)
                 Warn(warnings, id, $"{path}.period_count",
                     $"the persistent effect declares a period_effect but period_count={p.PeriodCount} (must be > 0), so it expires before its first pulse.");
@@ -345,6 +391,11 @@ namespace ProjectChimera.Core.Definitions
         /// <summary>Append one located non-fatal warning (same <c>"ability '&lt;id&gt;'.&lt;path&gt;: &lt;reason&gt;"</c> shape as an error).</summary>
         private static void Warn(List<(string FieldPath, string Message)> warnings, string id, string path, string reason) =>
             warnings.Add((path, Located(id, path, reason)));
+
+        /// <summary>DW-504: append one located FATAL period-shape error, deferred so <see cref="ValidatePassiveShape"/>
+        /// reports first (the caller surfaces only <c>[0]</c> — the validator's contract is a single located error).</summary>
+        private static void Reject(List<string> errors, string id, string path, string reason) =>
+            errors.Add(Located(id, path, reason));
 
         // ── Located-error helpers ──
 
@@ -365,6 +416,10 @@ namespace ProjectChimera.Core.Definitions
         ///   • while_alive ⇒ a PERMANENT <c>ApplyModifier</c> (duration_ticks &lt; 0) OR a <c>Persistent</c> with ≥ 1
         ///     phase, and (when a <c>period_effect</c> is present) both <c>period_ticks &gt; 0</c> AND
         ///     <c>period_count &gt; 0</c> (closes 2.5b deferred #1/#2 + the period_count sibling at the validator).
+        /// <para>DW-504: the <c>period_ticks &gt; 0</c> half is no longer while_alive-only — it is now a hard reject for
+        /// every Modifier and every Persistent, wherever they appear (see <see cref="CollectModifierDiagnostics"/> /
+        /// <see cref="CollectPersistentDiagnostics"/>). This branch is KEPT so a while_alive passive still fails with the
+        /// message that names its activation; it runs first, so the generic reject never shadows it.</para>
         /// </summary>
         private static string? ValidatePassiveShape(string id, PassiveActivation activation, EffectNode root)
         {
