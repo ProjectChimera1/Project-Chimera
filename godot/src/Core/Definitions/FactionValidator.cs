@@ -269,19 +269,29 @@ namespace ProjectChimera.Core.Definitions
             // `?? new List<>()` guards a null list; an individual null element is skipped (not dereferenced) —
             // unlike Validate's building loop, nothing downstream here delegates to a null-tolerant sub-validator,
             // so this loop must guard itself.
+            //
+            // DW-505: these two are the only ITEM-level errors this faction-level validator emits, so they use
+            // LocatedItem ("unit '<id>'.mesh_path: …"), NOT the faction-level Located ("faction '<id>'.mesh_path: …").
+            // The kind label has to LEAD: FactionDefinerWizardCore.StepForError disambiguates a shared field path by
+            // sniffing a leading "unit '"/"building '" — the same wording convention MeshAssetLint,
+            // UnitDefinitionValidator, BuildingDefinitionValidator, TechTreeValidator and ResourceCostValidator all
+            // emit — so the previous `faction '<id>'.mesh_path: unit '<id>' is missing…` shape defeated the sniff and
+            // sent an author with a missing UNIT mesh_path to the Buildings & Tech step, which has no roster control
+            // at all. The faction id is preserved in the tail, so no diagnostic detail is lost, and this now agrees
+            // with MeshAssetLint's sibling dangling-path message on the very same mesh_path axis.
             foreach (UnitDefinition u in def.Units ?? new List<UnitDefinition>())
             {
                 if (u is null) continue;
                 if (string.IsNullOrWhiteSpace(u.MeshPath))
-                    errors.Add(("mesh_path", Located(id, "mesh_path",
-                        $"unit '{u.Id}' is missing mesh_path (required for a complete/playable faction).")));
+                    errors.Add(("mesh_path", LocatedItem("unit", u.Id ?? "", "mesh_path",
+                        $"must be authored (required for a complete/playable faction '{id}').")));
             }
             foreach (BuildingDefinition b in def.Buildings ?? new List<BuildingDefinition>())
             {
                 if (b is null) continue;
                 if (string.IsNullOrWhiteSpace(b.MeshPath))
-                    errors.Add(("mesh_path", Located(id, "mesh_path",
-                        $"building '{b.Id}' is missing mesh_path (required for a complete/playable faction).")));
+                    errors.Add(("mesh_path", LocatedItem("building", b.Id ?? "", "mesh_path",
+                        $"must be authored (required for a complete/playable faction '{id}').")));
             }
 
             // ── Missing required roles: Worker present AND >=1 of Melee/Ranged/Siege/Air present ────
@@ -338,8 +348,18 @@ namespace ProjectChimera.Core.Definitions
         }
 
         /// <summary>The located error idiom — names the faction id + field path + reason, mirroring
-        /// <see cref="BuildingDefinitionValidator"/>'s <c>Located</c>.</summary>
+        /// <see cref="BuildingDefinitionValidator"/>'s <c>Located</c>. For a FACTION-level fault only; an error about
+        /// one roster item uses <see cref="LocatedItem"/> so the item kind label leads (DW-505).</summary>
         private static string Located(string id, string path, string reason) =>
             $"faction '{id}'.{path}: {reason}";
+
+        /// <summary>The ITEM-level located error idiom — <c>"{kind} '{id}'.{path}: {reason}"</c>, the shape
+        /// <see cref="MeshAssetLint"/>/<see cref="UnitDefinitionValidator"/>/<see cref="BuildingDefinitionValidator"/>/
+        /// <see cref="TechTreeValidator"/>/<see cref="ResourceCostValidator"/> all emit and the shape
+        /// <see cref="FactionDefinerWizardCore.StepForError"/> routes on. Use this — never <see cref="Located"/> — for
+        /// any error whose subject is a single unit/building rather than the faction as a whole, so the wizard jumps
+        /// the author to the step that actually owns the offending item (DW-505).</summary>
+        private static string LocatedItem(string kind, string itemId, string path, string reason) =>
+            $"{kind} '{itemId}'.{path}: {reason}";
     }
 }

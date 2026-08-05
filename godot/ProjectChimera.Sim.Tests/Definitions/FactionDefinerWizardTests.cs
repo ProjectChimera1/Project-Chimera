@@ -113,8 +113,18 @@ namespace ProjectChimera.Sim.Tests.Definitions
         [InlineData("prerequisites", "building 'aviary'.prerequisites: references unknown building id 'siege_workshop'.", FactionDefinerStep.BuildingsTech)]
         [InlineData("cost", "unit 'grunt'.cost: references unknown resource id 'gold'.", FactionDefinerStep.Roster)]
         [InlineData("cost", "building 'barracks'.cost: references unknown resource id 'gold'.", FactionDefinerStep.BuildingsTech)]
-        [InlineData("mesh_path", "unit 'grunt' is missing mesh_path (required for a complete/playable faction).", FactionDefinerStep.Roster)]
-        [InlineData("mesh_path", "building 'barracks' is missing mesh_path (required for a complete/playable faction).", FactionDefinerStep.BuildingsTech)]
+        // DW-505: these two rows used to pass a message NO producer emits (the un-prefixed "unit 'grunt' is missing
+        // mesh_path…"), so they were green while the real ValidateComplete message — which carried a faction-located
+        // prefix — mis-routed. They now carry the shape FactionValidator.ValidateComplete actually emits; the
+        // MeshAssetLint sibling shape (identical, different reason) is covered in MeshPathResolutionTests, and
+        // MeshPathBlankRoutesToStepOwningTheItem below re-derives both from the live validator so they cannot drift
+        // apart again.
+        [InlineData("mesh_path", "unit 'grunt'.mesh_path: must be authored (required for a complete/playable faction 'x').", FactionDefinerStep.Roster)]
+        [InlineData("mesh_path", "building 'barracks'.mesh_path: must be authored (required for a complete/playable faction 'x').", FactionDefinerStep.BuildingsTech)]
+        // DW-505: the pre-fix shape must ALSO route correctly now — StepForError strips a faction-located prefix
+        // before sniffing the kind label, so no future faction-level producer can silently re-open the mis-route.
+        [InlineData("mesh_path", "faction 'x'.mesh_path: unit 'grunt' is missing mesh_path (required for a complete/playable faction).", FactionDefinerStep.Roster)]
+        [InlineData("mesh_path", "faction 'x'.mesh_path: building 'barracks' is missing mesh_path (required for a complete/playable faction).", FactionDefinerStep.BuildingsTech)]
         [InlineData("hp", "building 'barracks'.hp: must be a positive value.", FactionDefinerStep.BuildingsTech)]
         // DW-106 / DW-114: a hero is a roster unit → Roster; a signature effect id is a faction-config default → AI Preset.
         [InlineData("hero_unit_id", "faction 'x'.hero_unit_id: names unit 'ghost' which is not in this faction's roster.", FactionDefinerStep.Roster)]
@@ -142,6 +152,116 @@ namespace ProjectChimera.Sim.Tests.Definitions
             // Buildings & Tech, which is where research lives.
             Assert.Equal(FactionDefinerStep.BuildingsTech,
                 FactionDefinerWizardCore.StepForError("research", "faction 'x'.research: duplicate research id 'armor'."));
+        }
+
+        [Fact]
+        public void StepForError_FactionLevelStructuralMessages_StillFallBackToBuildingsTech_AfterPrefixStripping()
+        {
+            // DW-505 guard: stripping the "faction '<id>'.<field>: " prefix before the kind-label sniff must not turn
+            // FACTION-level reasons into roster hits. None of these names a unit or building as its subject, so every
+            // one still lands on the Buildings & Tech fallback exactly as before the strip existed.
+            Assert.Equal(FactionDefinerStep.BuildingsTech,
+                FactionDefinerWizardCore.StepForError("buildings", "faction 'x'.buildings: buildings list is null."));
+            Assert.Equal(FactionDefinerStep.BuildingsTech,
+                FactionDefinerWizardCore.StepForError("buildings",
+                    "faction 'x'.buildings: duplicate building id 'barracks' (another building already uses this id)."));
+            Assert.Equal(FactionDefinerStep.BuildingsTech,
+                FactionDefinerWizardCore.StepForError("research",
+                    "faction 'x'.research: research id 'armor' collides with a building id (ids must be unique across buildings and research)."));
+
+            // Degenerate/adversarial inputs never throw — a malformed or truncated prefix simply fails to strip.
+            Assert.Equal(FactionDefinerStep.BuildingsTech, FactionDefinerWizardCore.StepForError("mesh_path", null!));
+            Assert.Equal(FactionDefinerStep.BuildingsTech, FactionDefinerWizardCore.StepForError("mesh_path", ""));
+            Assert.Equal(FactionDefinerStep.BuildingsTech, FactionDefinerWizardCore.StepForError("mesh_path", "faction 'x"));
+            Assert.Equal(FactionDefinerStep.BuildingsTech, FactionDefinerWizardCore.StepForError("mesh_path", "faction 'x'.mesh_path"));
+        }
+
+        // ── DW-505: the mesh_path kind label re-derived from the LIVE validator, never a hand-typed string ─────
+
+        [Theory]
+        [InlineData(true, FactionDefinerStep.Roster)]
+        [InlineData(false, FactionDefinerStep.BuildingsTech)]
+        public void ValidateCompleteMeshPathError_RoutesToTheStepOwningTheItem(bool blankTheUnit, FactionDefinerStep expected)
+        {
+            // The regression this pins: the theory rows above once asserted a message shape NO producer emitted, so
+            // they stayed green while the message FactionValidator really emits ("faction 'x'.mesh_path: unit '…' is
+            // missing mesh_path…") pushed the kind label off the front and mis-routed every missing UNIT mesh_path to
+            // Buildings & Tech. Taking the message straight off ValidateComplete makes the assertion impossible to
+            // satisfy with a message the validator does not actually produce.
+            FactionPresetPool pool = ScanRealAlphaBeta();
+            FactionDefinition def = NewDraft("dw505_mesh_path_routing");
+            Pick(def, pool, unitIds: new[] { "worker", "infantry" }, buildingIds: new[] { "command_center" });
+            if (blankTheUnit) def.Units[1].MeshPath = null;   // infantry: a roster item -> the Roster step
+            else def.Buildings[0].MeshPath = "";              // command_center: a build item -> Buildings & Tech
+
+            FactionValidationResult result = FactionValidator.ValidateComplete(def);
+
+            (string FieldPath, string Message) error =
+                Assert.Single(result.Errors, e => e.FieldPath == "mesh_path");
+            Assert.Equal(expected, FactionDefinerWizardCore.StepForError(error.FieldPath, error.Message));
+        }
+
+        [Fact]
+        public void ValidateCompleteMeshPathError_UsesTheSameKindLabelShapeAsMeshAssetLint()
+        {
+            // DW-505: the two producers on the mesh_path axis (this blank-value check and MeshAssetLint's
+            // dangling-file check) must speak one shape, or the wizard routes correctly for one and not the other.
+            // Both are "{kind} '{id}'.mesh_path: {reason}" — the leading-kind-label convention StepForError sniffs.
+            FactionPresetPool pool = ScanRealAlphaBeta();
+            FactionDefinition def = NewDraft("dw505_shape_parity");
+            Pick(def, pool, unitIds: new[] { "worker", "infantry" }, buildingIds: new[] { "command_center" });
+            def.Units[0].MeshPath = null;
+            def.Buildings[0].MeshPath = "   ";   // whitespace-only counts as blank
+
+            IReadOnlyList<(string FieldPath, string Message)> blanks = FactionValidator.ValidateComplete(def).Errors;
+            Assert.Contains(blanks, e => e.FieldPath == "mesh_path"
+                && e.Message.StartsWith("unit 'worker'.mesh_path:", StringComparison.Ordinal));
+            Assert.Contains(blanks, e => e.FieldPath == "mesh_path"
+                && e.Message.StartsWith("building 'command_center'.mesh_path:", StringComparison.Ordinal));
+
+            // The faction id survives the reshaping — the message still says which faction is incomplete.
+            Assert.All(blanks.Where(e => e.FieldPath == "mesh_path"),
+                e => Assert.Contains("dw505_shape_parity", e.Message));
+
+            // Same leading shape as the sibling lint on the same field path.
+            FactionDefinition dangling = NewDraft("dw505_shape_parity");
+            Pick(dangling, ScanRealAlphaBeta(), unitIds: new[] { "worker" }, buildingIds: new[] { "command_center" });
+            dangling.Units[0].MeshPath = "res://missing.glb";
+            dangling.Buildings[0].MeshPath = "res://missing_too.glb";
+            IReadOnlyList<(string FieldPath, string Message)> lint =
+                MeshAssetLint.FindMissingMeshFiles(dangling, _ => false);
+            Assert.Contains(lint, e => e.Message.StartsWith("unit 'worker'.mesh_path:", StringComparison.Ordinal));
+            Assert.Contains(lint, e => e.Message.StartsWith("building 'command_center'.mesh_path:", StringComparison.Ordinal));
+        }
+
+        [Theory]
+        [InlineData(true, FactionDefinerStep.Roster)]
+        [InlineData(false, FactionDefinerStep.BuildingsTech)]
+        public void TryFinish_BlankMeshPath_BlocksAndRoutesToTheStepOwningTheItem_NoFileWritten(
+            bool blankTheUnit, FactionDefinerStep expected)
+        {
+            // DW-505 end-to-end: the live UX defect was only observable through the real Finish path, where
+            // FactionDefinerFinishResult.Failure feeds errors[0] into StepForError and the panel jumps there. Before
+            // the fix a creator who forgot a UNIT mesh_path was dropped on Buildings & Tech, which renders no roster
+            // control — the remedy is the Roster step's mesh field.
+            string dir = MakeTempDir();
+            try
+            {
+                FactionPresetPool pool = ScanRealAlphaBeta();
+                FactionDefinition def = NewDraft("dw505_finish_routing");
+                Pick(def, pool, unitIds: new[] { "worker", "infantry" }, buildingIds: new[] { "command_center" });
+                if (blankTheUnit) def.Units[1].MeshPath = "";
+                else def.Buildings[0].MeshPath = null;
+
+                FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinish(def, dir);
+
+                Assert.False(result.Ok);
+                Assert.Single(result.Errors);   // exactly the mesh_path error — nothing else about this draft is invalid
+                Assert.Equal("mesh_path", result.Errors[0].FieldPath);
+                Assert.Equal(expected, result.Step);
+                Assert.Empty(Directory.GetFiles(dir, "*_faction.json*", SearchOption.AllDirectories));
+            }
+            finally { Directory.Delete(dir, recursive: true); }
         }
 
         // ── DW-114 / DW-116: the routing observed end-to-end through a real Finish attempt ─────────────────────
