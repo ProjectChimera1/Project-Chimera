@@ -287,6 +287,22 @@ namespace ProjectChimera.AI
             /// number and <see cref="ScoreExpandSupply"/> must not read its magnitude.</summary>
             public bool SupplyGatingEnabled;
             public int  AvailableCombatUnits; // Idle or Stop — not under orders, conscriptable into a wave
+            /// <summary>
+            /// DW-644 — the subset of <see cref="AvailableCombatUnits"/> that can actually EXECUTE a raze order:
+            /// conscriptable AND <see cref="AttackDomain.Structure"/>-capable, the exact pair of tests
+            /// <see cref="DoRazeBuildings"/> applies before it issues an <see cref="UnitCommand.AttackBuilding"/>.
+            ///
+            /// <para><see cref="ScoreRazeBuildings"/> reads THIS, not the raw availability count. Scoring on the raw
+            /// count let an AI whose free units are all air-only / anti-unit-only pin RazeBuildings at 0.90 every tick
+            /// while the dispatcher skipped every one of them — an indefinite no-op that ALSO starved BuildBarracks
+            /// (0.85) and the whole tech chain, all of which score below 0.90, so the AI stopped producing entirely.</para>
+            ///
+            /// <para>Always equal to <see cref="AvailableCombatUnits"/> for any unit with the unauthored default
+            /// <see cref="AttackDomain.All"/> — i.e. every shipped scenario and every golden, since no faction JSON
+            /// authors <c>attack_domains</c>. The divergence needs an authored restriction (or a save-restore overlay),
+            /// so no recorded checksum sequence moves.</para>
+            /// </summary>
+            public int  AvailableRazeCapableUnits;
             public bool EnemyThreatRemains;   // Story 2.13 — any alive enemy (non-Neutral) combat unit still defends
             public bool EnemyBuildingExists;  // Story 2.13 — any alive enemy (non-Neutral) building left to raze
             public bool HasLiveCommandCenter; // Story 2.13 review — AI owns a live CommandCenter (a base); the fence
@@ -379,7 +395,11 @@ namespace ProjectChimera.AI
                         snap.EnemyThreatRemains = true;
                     continue;
                 }
-                if (IsConscriptable(world, i)) snap.AvailableCombatUnits++;
+                if (!IsConscriptable(world, i)) continue;
+                snap.AvailableCombatUnits++;
+                // DW-644: the raze-capable subset, counted with the SAME predicate DoRazeBuildings filters on, so the
+                // count that gates a raze wave and the units that wave actually orders can never disagree.
+                if (CanRazeStructures(world, i)) snap.AvailableRazeCapableUnits++;
             }
 
             snap.CanAffordCC       = _resources.CanAffordOre(AI_FACTION, COST_CC);
@@ -421,6 +441,23 @@ namespace ProjectChimera.AI
             && world.GatherState[i] == GatherState.Inactive
             && world.CanDealDamage(i)   // DW-202/DW-643 — a non-combatant is not a wave unit
             && (world.CommandState[i] == UnitCommand.Idle || world.CommandState[i] == UnitCommand.Stop);
+
+        /// <summary>
+        /// DW-644 — the SINGLE "can this unit actually carry out a raze order?" test, shared by
+        /// <see cref="BuildSnapshot"/>'s <see cref="AiSnapshot.AvailableRazeCapableUnits"/> count and the
+        /// <see cref="DoRazeBuildings"/> dispatcher, so the strength the scorer measures is the strength the wave
+        /// actually fields.
+        ///
+        /// A unit whose authored <c>attack_domains</c> exclude <see cref="AttackDomain.Structure"/> can never damage a
+        /// building: <c>CombatSystem.TickAttackBuildingCombat</c> rejects its <see cref="UnitCommand.AttackBuilding"/>
+        /// order outright (CombatSystem.cs:436) and reverts it to Idle, and
+        /// <c>CombatSystem.FindNearestEnemyBuildingInRange</c> never auto-acquires one for it either. This is the same
+        /// bit test both of those sites spell, so all three agree by construction.
+        ///
+        /// Pure integer bit-AND on an authored, UNFOLDED field — no <c>Fixed</c>, no float, nothing hashed.
+        /// </summary>
+        private static bool CanRazeStructures(EntityWorld world, int i) =>
+            (world.AttackDomainOf[i] & AttackDomain.Structure) != AttackDomain.None;
 
         // ── Scoring ───────────────────────────────────────────────────────────
         //
@@ -543,22 +580,38 @@ namespace ProjectChimera.AI
         /// (GoldenScenario/MultiFactionScenario give Player2 NO base) never do, so they stay INERT and
         /// byte-identical (determinism fence, AC6.1). AiActiveScenario is unaffected (it has a barracks + a full
         /// wave → it razes via the >= threshold path above, never this branch).
+        ///
+        /// <para><b>DW-644 — both bars count RAZE-CAPABLE units, not raw availability.</b> They used to read
+        /// <see cref="AiSnapshot.AvailableCombatUnits"/> while <see cref="DoRazeBuildings"/> then skipped every unit
+        /// whose <see cref="AttackDomain"/> lacks <see cref="AttackDomain.Structure"/>. An AI whose free units were all
+        /// air-only or anti-unit-only therefore scored 0.90 here every single tick and issued ZERO orders — an
+        /// indefinite no-op that also out-bid <see cref="ScoreBuildBarracks"/> (0.85) and the entire tech chain, so the
+        /// AI stopped producing as well and could never grow a force that COULD raze. Measuring the wave in units that
+        /// can actually hit a structure makes an unexecutable raze score 0 and lets the AI fall through to building.
+        /// Same family as DW-202 (which fixed the zero-damage half of the count/dispatch mismatch), and the shared
+        /// <see cref="CanRazeStructures"/> predicate is what keeps the two halves from drifting apart again.</para>
+        ///
+        /// <para>Golden-neutral: <c>attack_domains</c> is unauthored everywhere in shipped content, so
+        /// <see cref="AttackDomain.All"/> is every unit's value and the two counts are identical in every golden.</para>
         /// </summary>
         private float ScoreRazeBuildings(in AiSnapshot s)
         {
             if (s.EnemyThreatRemains)   return 0f; // fight live defenders first — never tunnel-vision a building
             if (!s.EnemyBuildingExists) return 0f; // nothing left to raze
 
-            // Full-strength raze wave — commit at ATTACK strength (same bar as ScoreLaunchAttack). The starved core
-            // goldens hold 3 < the Normal threshold of 5, so they never reach this line.
-            if (s.AvailableCombatUnits >= _attackThreshold) return 0.90f;
+            // Full-strength raze wave — commit at ATTACK strength (same bar as ScoreLaunchAttack), measured in units
+            // that can actually damage a structure (DW-644). The starved core goldens hold 3 < the Normal threshold
+            // of 5, so they never reach this line.
+            if (s.AvailableRazeCapableUnits >= _attackThreshold) return 0.90f;
 
             // Below-threshold STALL-BREAKER (Story 2.13 review, Alec): a remnant below the wave threshold, with NO
             // production building and no ore to build one → the AI can never grow back to a full wave, so it commits
             // its remnant to raze rather than stall forever (the >= threshold gate alone leaves this exact case
             // hanging). FENCE-SAFE via the live-CommandCenter gate: a real base always has its CC, but the starved
             // cross-platform goldens (Player2 has no base) never satisfy it → they stay INERT / byte-identical.
-            if (s.AvailableCombatUnits > 0
+            // DW-644: "a remnant" means a remnant that can RAZE — an all-air-only remnant commits nothing, so pinning
+            // 0.90 on it merely froze the AI here instead of letting it fall through.
+            if (s.AvailableRazeCapableUnits > 0
                 && s.HasLiveCommandCenter
                 && !s.HasLiveBarracks && !s.HasLiveArcheryRange && !s.HasLiveSiegeWorkshop
                 && !s.CanAffordBarracks && !s.CanAffordArchery && !s.CanAffordSiege)
@@ -751,7 +804,9 @@ namespace ProjectChimera.AI
                 if (!IsConscriptable(world, i)) continue; // DW-202 — same bar BuildSnapshot counted
                 // Prefer Structure-capable units; one that cannot hit structures would just self-revert via the
                 // AttackBuilding guard, so skip it and leave it available (default AttackDomain is All).
-                if ((world.AttackDomainOf[i] & AttackDomain.Structure) == AttackDomain.None) continue;
+                // DW-644: the SHARED predicate — the same one BuildSnapshot counts AvailableRazeCapableUnits with,
+                // which is the count ScoreRazeBuildings gates on, so scorer and dispatcher can never disagree again.
+                if (!CanRazeStructures(world, i)) continue;
 
                 int b = FindNearestEnemyBuilding(world.Position[i], allyFocused);
                 if (b < 0) continue; // no enemy base left for this unit to raze
