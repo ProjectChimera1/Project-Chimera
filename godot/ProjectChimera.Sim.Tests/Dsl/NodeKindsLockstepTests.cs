@@ -5,6 +5,7 @@ using ProjectChimera.Combat;            // DamageType
 using ProjectChimera.Core;              // Fixed
 using ProjectChimera.Dsl;
 using ProjectChimera.Effects;           // DamageEffect
+using ProjectChimera.Sim.Tests.Golden;  // DW-501 — ReflectionProbe (null-CHECKED white-box lookups)
 using Xunit;
 
 namespace ProjectChimera.Sim.Tests.Dsl
@@ -87,16 +88,55 @@ namespace ProjectChimera.Sim.Tests.Dsl
             // The validator's private vocabulary fields must ALIAS the NodeKinds arrays (same object, not a copy):
             // a re-introduced hand-kept string list would pass a value-equality check today and silently drift on
             // the next vocabulary extension — reference identity cannot.
-            var t = typeof(ProjectChimera.Core.Definitions.ScenarioValidator);
-            const System.Reflection.BindingFlags F =
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
-
-            Assert.Same(NodeKinds.EventTypes,      t.GetField("_triggerEventTypes", F)!.GetValue(null));
-            Assert.Same(NodeKinds.ConditionTypes,  t.GetField("_conditionTypes", F)!.GetValue(null));
-            Assert.Same(NodeKinds.FlatActionTypes, t.GetField("_actionTypes", F)!.GetValue(null));
+            //
+            // DW-501: the four lookups below go through ReflectionProbe (null-CHECKED), never the old
+            // `t.GetField("_x", F)!.GetValue(null)` idiom. That `!` did nothing at runtime, so RENAMING a validator
+            // vocabulary field turned this test into an opaque NullReferenceException on line 94 — no owner type,
+            // no member name, no hint that the test (not the validator) had gone stale.
+            Assert.Same(NodeKinds.EventTypes,      Vocabulary("_triggerEventTypes"));
+            Assert.Same(NodeKinds.ConditionTypes,  Vocabulary("_conditionTypes"));
+            Assert.Same(NodeKinds.FlatActionTypes, Vocabulary("_actionTypes"));
             // Story 7.7 review follow-up: the comparison-operator vocabulary is unified too — the flat gate's
             // _operators aliases NodeKinds.Operators (the same set NodeBaseJsonConverter enforces at graph parse).
-            Assert.Same(NodeKinds.Operators,       t.GetField("_operators", F)!.GetValue(null));
+            Assert.Same(NodeKinds.Operators,       Vocabulary("_operators"));
+        }
+
+        /// <summary>
+        /// DW-501 — one validator vocabulary table, read through the null-checked probe. A renamed or retyped field
+        /// fails here with a diagnostic naming <c>ScenarioValidator</c> and the member, instead of an NRE at the
+        /// <see cref="Assert.Same(object, object)"/> call site.
+        /// </summary>
+        private static string[] Vocabulary(string fieldName)
+        {
+            System.Type validator = typeof(ProjectChimera.Core.Definitions.ScenarioValidator);
+            return ReflectionProbe.ReadStatic<string[]>(ReflectionProbe.StaticField(validator, fieldName));
+        }
+
+        [Fact]
+        public void ProbingARenamedVocabularyField_FailsWithAnActionableDiagnostic_NotAnOpaqueNre() // DW-501
+        {
+            // The regression teeth for the migration above: the value of ScenarioValidator_ConsumesNodeKinds_ByReference
+            // rests entirely on a rename producing an ACTIONABLE failure. Restore the `GetField(...)!` idiom and the
+            // failure mode silently reverts to a NullReferenceException that names nothing.
+            System.Type validator = typeof(ProjectChimera.Core.Definitions.ScenarioValidator);
+
+            var renamed = Assert.Throws<System.InvalidOperationException>(
+                () => ReflectionProbe.StaticField(validator, "_triggerEventTypes_RENAMED"));
+            Assert.Contains("ScenarioValidator", renamed.Message);          // names the OWNER...
+            Assert.Contains("_triggerEventTypes_RENAMED", renamed.Message); // ...and the MEMBER
+
+            // A static probe pointed at an INSTANCE field is the other stale-probe shape (the vocabulary moving off
+            // the type's shared state). GetValue(null) would throw a bare TargetException naming neither.
+            System.Reflection.FieldInfo instanceField =
+                ReflectionProbe.Field(typeof(ProjectChimera.Core.ScenarioDirector), "_execs");
+            var mistyped = Assert.Throws<System.InvalidOperationException>(
+                () => ReflectionProbe.ReadStatic<string[]>(instanceField));
+            Assert.Contains("_execs", mistyped.Message);
+
+            // Not vacuous: the real members still resolve, so the negative half above is not passing because the
+            // probe rejects everything.
+            Assert.NotNull(Vocabulary("_triggerEventTypes"));
+            Assert.NotNull(Vocabulary("_operators"));
         }
 
         [Fact]
