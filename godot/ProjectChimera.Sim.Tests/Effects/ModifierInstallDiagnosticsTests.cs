@@ -296,25 +296,31 @@ namespace ProjectChimera.Sim.Tests.Effects
             ResearchHarness h = BuildResearch(sink);
 
             // Two living Player1 units whose rings are ALREADY full (items + passives + earlier researches, modelled
-            // here as 8 distinct permanent modifiers each) — the exact DW-83 scenario.
+            // here as 8 distinct permanent modifiers each) — the exact DW-83 scenario — plus a THIRD unit with room.
+            // The third unit is what keeps this a PARTIAL refusal: since DW-623, a completion that reaches NOBODY is
+            // voided and refunded instead of banked, so a two-of-two starved army would no longer exercise this
+            // "completed anyway, but N units lost the bonus" line (see ResearchSystemTests' DW-623 coverage).
             int a = Unit(h.World), b = Unit(h.World);
             FillRing(h.Modifiers, a);
             for (int k = 0; k < EffectCaps.MaxModifiersPerEntity; k++)
                 Assert.True(h.Modifiers.Apply(b, PermanentAtk(200 + k), b, Faction.Player1));
+            int c = Unit(h.World); // room in its ring — one real recipient
             sink.Warns.Clear();
 
             Assert.True(h.Sys.StartResearchCommand(h.LabId, Faction.Player1, researchIndex: 0));
             h.Sys.Tick(h.World, Fixed.Zero); // TimeTicks 1 → completes this tick
 
-            // The research DID complete (the level was paid for and banked)…
+            // The research DID complete (the level was paid for and banked, and unit c received it)…
             Assert.Equal(1, h.Research.CompletedLevels[(int)Faction.Player1][0]);
-            // …but neither unit could receive its permanent bonus.
+            Assert.Equal(Fixed.FromInt(2), h.World.EffectiveArmor[c]);
+            // …but neither starved unit could receive its permanent bonus.
             Assert.Equal(2, h.Modifiers.RefusedInstallCount);
 
             string research = Assert.Single(sink.Warns, w => w.Contains("[ResearchSystem]"));
             Assert.Contains("armor_up", research);
             Assert.Contains("level 1", research);
             Assert.Contains("2 living unit(s)", research);
+            Assert.Contains("DW-83", research); // the partial-refusal tail, not the DW-623 voided one
         }
 
         [Fact]
@@ -332,6 +338,35 @@ namespace ProjectChimera.Sim.Tests.Effects
             Assert.Equal(1, h.Modifiers.CountAt(a));   // the cumulative research modifier landed
             Assert.Equal(0, h.Modifiers.RefusedInstallCount);
             Assert.Empty(sink.Warns);
+        }
+
+        [Fact]
+        public void ResearchCompletion_RefusedByEveryUnit_WarnsThatTheLevelWasVoidedAndRefunded()
+        {
+            // DW-623: when the refused count equals the eligible army, the aggregate line must say so — the DW-83
+            // tail ("those units keep the research's cost but not its effect") is no longer true once the completion
+            // is voided and the spend credited back, and a log that still said it would mislead the designer acting
+            // on it. Behavioural coverage of the void itself lives in ResearchSystemTests.
+            var sink = new RecordingSink();
+            ResearchHarness h = BuildResearch(sink);
+            int a = Unit(h.World);
+            FillRing(h.Modifiers, a);
+            sink.Warns.Clear();
+            int oreBeforeStart = h.Resources.Ore[(int)Faction.Player1].ToInt();
+
+            Assert.True(h.Sys.StartResearchCommand(h.LabId, Faction.Player1, researchIndex: 0));
+            h.Sys.Tick(h.World, Fixed.Zero);
+
+            Assert.Equal(0, h.Research.CompletedLevels[(int)Faction.Player1][0]); // un-banked
+            Assert.Equal(oreBeforeStart, h.Resources.Ore[(int)Faction.Player1].ToInt()); // refunded
+            Assert.Equal(1, h.Modifiers.RefusedInstallCount);
+
+            string research = Assert.Single(sink.Warns, w => w.Contains("[ResearchSystem]"));
+            Assert.Contains("armor_up", research);
+            Assert.Contains("1 living unit(s)", research);
+            Assert.Contains("VOIDED", research);
+            Assert.Contains("DW-623", research);
+            Assert.DoesNotContain("keep the research's cost", research); // the DW-83 partial tail must not fire here
         }
     }
 }
