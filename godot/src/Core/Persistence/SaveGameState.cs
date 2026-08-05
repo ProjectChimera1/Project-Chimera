@@ -646,7 +646,19 @@ namespace ProjectChimera.Core.Persistence
                 w.FactionOf[i] = (Faction)fac[i];
                 w.MoveTarget[i] = new FixedVec3(Fixed.FromRaw(mtx[i]), Fixed.FromRaw(mty[i]), Fixed.FromRaw(mtz[i]));
                 w.AttackTarget[i] = at[i]; w.AttackCooldown[i] = Fixed.FromRaw(ac[i]); w.AttackRange[i] = Fixed.FromRaw(ar[i]);
-                w.BaseAttackDamage[i] = Fixed.FromRaw(bad[i]); w.EffectiveAttackDamage[i] = Fixed.FromRaw(ead[i]);
+                // DW-643: EffectiveAttackDamage is re-applied through ModifierSystem's ZERO-FLOOR, not copied raw.
+                // This overlay is the one writer of that field which does not go through
+                // ModifierSystem.RecomputeEntity's `Fixed.Max(Fixed.Zero, …)` — it rebuilds the SoA from raw ints, so
+                // a corrupt/tampered/older-build blob could land a NEGATIVE value that nothing downstream re-clamps
+                // (the restore runs no tick, and a modifier-free entity is never recomputed). A negative there is
+                // worse than wrong, it is INCONSISTENT: CombatSystem's non-combatant test and AiOpponentSystem's
+                // conscriptable test partition the roster only over non-negative damage, so the two systems would
+                // classify one unit two different ways. Base is copied raw and deliberately NOT floored: it is the
+                // authored source ModifierSystem re-derives Effective from, and the validator already bounds it to
+                // [0, 32768) at load, so flooring it here would only mask a corrupt blob at a different field.
+                // A well-formed save is non-negative, so this is a no-op on one and no golden moves.
+                w.BaseAttackDamage[i] = Fixed.FromRaw(bad[i]);
+                w.EffectiveAttackDamage[i] = Fixed.Max(Fixed.Zero, Fixed.FromRaw(ead[i]));
                 w.BaseArmor[i] = Fixed.FromRaw(bar[i]); w.EffectiveArmor[i] = Fixed.FromRaw(ear[i]);
                 w.AttackSpeed[i] = Fixed.FromRaw(asp[i]); w.Energy[i] = Fixed.FromRaw(en[i]); w.MaxEnergy[i] = Fixed.FromRaw(men[i]);
                 w.StatusFlagsOf[i] = (StatusFlags)sf[i]; w.DamageTypeOf[i] = (DamageType)dt[i]; w.ArmorTypeOf[i] = (ArmorType)art[i];
