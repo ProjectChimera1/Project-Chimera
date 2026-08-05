@@ -543,13 +543,26 @@ namespace ProjectChimera.Dsl
             return $"'{value}' is not one of: {string.Join(", ", choices)}.";
         }
 
+        /// <summary>DW-579 — the qualified NAME of the random_choice branch cap, for the field-level reject message
+        /// (nameof-built, so a rename cannot leave a stale string behind).</summary>
+        private const string BranchCapName =
+            nameof(EventBounds) + "." + nameof(EventBounds.MaxRandomChoiceBranches);
+
         /// <summary>random_choice weights: comma-separated non-negative ints; empty clears (the factory default —
-        /// the load gate badges an empty/zero-total set located, keeping the work-in-progress posture).</summary>
+        /// the load gate badges an empty/zero-total set located, keeping the work-in-progress posture).
+        ///
+        /// <para>DW-579 — LENGTH-capped against the SAME <see cref="EventBounds.MaxRandomChoiceBranches"/> the
+        /// parser enforces, so this seam keeps its core guarantee (an accepted inspector value always survives the
+        /// canonical serialize→re-parse round-trip) and the inspector can never grow the node's rendered branch
+        /// ports past what a reload of the saved graph would accept. Checked BEFORE any mutation — an over-cap
+        /// list leaves the node untouched, like every other field-level reject.</para></summary>
         private static string? SetWeights(RandomChoiceNode rc, string input)
         {
             string t = input.Trim();
             if (t.Length == 0) { rc.Weights = Array.Empty<int>(); return null; }
             string[] parts = t.Split(',');
+            if (parts.Length > EventBounds.MaxRandomChoiceBranches)
+                return $"{parts.Length} branches exceed the {BranchCapName}={EventBounds.MaxRandomChoiceBranches} cap.";
             var result = new int[parts.Length];
             for (int i = 0; i < parts.Length; i++)
             {

@@ -287,6 +287,14 @@ namespace ProjectChimera.Dsl
                 // ── Story 7.13 — the weighted container + the three trigger-control leaves (inverses of Read) ──
 
                 case RandomChoiceNode rc:
+                    // DW-579 — Write stays the EXACT inverse of Read: an over-cap node (only reachable by
+                    // building one in code — both authoring entrances cap it) must not be emitted as JSON the
+                    // parser would then reject, the persist-then-cannot-load class. Unreachable from content;
+                    // this is the symmetry guard, mirroring the custom_event empty-name serialize reject above.
+                    if (rc.Weights.Length > EventBounds.MaxRandomChoiceBranches)
+                        throw new JsonException(
+                            $"Cannot serialize random_choice node {rc.Id}: {rc.Weights.Length} branches exceed the " +
+                            $"{BranchCapName}={EventBounds.MaxRandomChoiceBranches} cap (it would not re-parse).");
                     writer.WriteString("kind", NodeKinds.RandomChoice);
                     writer.WritePropertyName("weights");
                     writer.WriteStartArray();
@@ -343,6 +351,12 @@ namespace ProjectChimera.Dsl
 
         /// <summary>Story 7.7 — the per-node verbatim annotation property (allow-listed on every kind).</summary>
         private const string EditorProperty = "_editor";
+
+        /// <summary>DW-579 — the qualified NAME of the random_choice branch cap, for the located parse reject
+        /// (built from <c>nameof</c> so a rename cannot leave a stale string behind, and a compile-time constant
+        /// so the success path allocates nothing).</summary>
+        private const string BranchCapName =
+            nameof(EventBounds) + "." + nameof(EventBounds.MaxRandomChoiceBranches);
 
         // ── Node dispatch (read) ─────────────────────────────────────────────────
 
@@ -668,7 +682,13 @@ namespace ProjectChimera.Dsl
                 RejectUnknownProperties(s, path, "id", "kind", "weights");
                 // 'weights' is REQUIRED — a random_choice with no weights array can never draw a branch (a
                 // zero-total/empty node rejects at the load gate, but a missing array is a parse-level malform).
-                return new RandomChoiceNode { Id = ReadId(s, path), Weights = ReadIntArray(s, "weights", path) };
+                // DW-579 — and LENGTH-capped here, at the raw-IR entrance: the array maps one-to-one onto rendered
+                // branch ports, so an uncapped parse let a hand-authored file drive unbounded editor fan-out.
+                return new RandomChoiceNode
+                {
+                    Id      = ReadId(s, path),
+                    Weights = ReadIntArray(s, "weights", path, EventBounds.MaxRandomChoiceBranches, BranchCapName),
+                };
             }
 
             if (kind == NodeKinds.EnableTrigger)
@@ -768,14 +788,23 @@ namespace ProjectChimera.Dsl
         }
 
         /// <summary>Story 7.13 — read a REQUIRED JSON array of 32-bit integers (random_choice weights). A missing
-        /// property, a non-array value, or a non-integer element is a located reject (fail-closed).</summary>
-        private static int[] ReadIntArray(in NodeScan s, string prop, string path)
+        /// property, a non-array value, or a non-integer element is a located reject (fail-closed).
+        ///
+        /// <para>DW-579 — LENGTH-CAPPED: <paramref name="maxLength"/> is checked against the array's DECLARED
+        /// length before the result buffer is allocated or a single element is read, so a hostile raw-IR file can
+        /// never make the parser materialise (nor the T3 canvas render, via the weight-derived branch ports) an
+        /// arbitrarily wide node. <paramref name="capName"/> names the constant in the reject, the
+        /// <c>MaxEditorBagBytes</c> style — the caller passes the SAME constant the load gate enforces, so parse
+        /// and gate agree by construction.</para></summary>
+        private static int[] ReadIntArray(in NodeScan s, string prop, string path, int maxLength, string capName)
         {
             if (!s.TryGet(prop, out JsonElement el))
                 throw new JsonException($"{path}.{prop}: required (an integer array).");
             if (el.ValueKind != JsonValueKind.Array)
                 throw new JsonException($"{path}.{prop}: must be an integer array, got {el.ValueKind}.");
             int n = el.GetArrayLength();
+            if (n > maxLength)
+                throw new JsonException($"{path}.{prop}: {n} entries exceed the {capName}={maxLength} cap.");
             var result = new int[n];
             int i = 0;
             foreach (JsonElement item in el.EnumerateArray())
