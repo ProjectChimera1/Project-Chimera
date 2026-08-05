@@ -13,7 +13,8 @@ namespace ProjectChimera.AI.Providers
     /// id, so a key stored for one provider is never sent to another's endpoint — DW-368), and enforces the pinned
     /// host allowlist BEFORE any adapter is built. Emits the
     /// synchronous unavailable states (<see cref="AiAvailability.NoProvider"/>/<see cref="AiAvailability.NoKey"/>/
-    /// <see cref="AiAvailability.HostRestricted"/>) rather than throwing. Godot-free / unit-testable.
+    /// <see cref="AiAvailability.HostRestricted"/>/<see cref="AiAvailability.HostNotAllowlisted"/>) rather than
+    /// throwing. Godot-free / unit-testable.
     /// </summary>
     public static class LlmProviderFactory
     {
@@ -22,10 +23,11 @@ namespace ProjectChimera.AI.Providers
         /// synchronous-unavailable case returns <c>false</c> with <paramref name="provider"/> null and
         /// <paramref name="failure"/> set to the reason:
         /// <list type="bullet">
-        ///   <item><see cref="AiAvailability.NoProvider"/> — unknown provider id, an un-parseable base URL, or a
-        ///         cloud provider on a non-pinned host</item>
+        ///   <item><see cref="AiAvailability.NoProvider"/> — unknown provider id or an un-parseable base URL</item>
         ///   <item><see cref="AiAvailability.HostRestricted"/> — ollama with a well-formed but non-loopback base URL
         ///         (DW-370: the loopback-only restriction is kept and named in the message)</item>
+        ///   <item><see cref="AiAvailability.HostNotAllowlisted"/> — a cloud provider with a well-formed base URL on a
+        ///         non-pinned host (DW-589: the pinned-host policy is kept and named in the message)</item>
         ///   <item><see cref="AiAvailability.NoKey"/> — a cloud provider with no stored key</item>
         /// </list>
         /// NEVER falls back to another provider.</summary>
@@ -77,10 +79,16 @@ namespace ProjectChimera.AI.Providers
                 // DW-370 (recorded decision): the loopback-only ollama policy is KEPT, but a well-formed ollama config
                 // rejected solely for a non-loopback host (e.g. a LAN-hosted Ollama at http://192.168.1.5:11434) is
                 // classified HostRestricted so the unavailable message names the restriction instead of the misleading
-                // "no provider configured". Cloud providers on a non-pinned host remain NoProvider.
+                // "no provider configured".
+                // DW-589: the cloud arm of the same honest-UX class. A cloud provider (anthropic/openrouter) whose
+                // base-URL override points at a non-pinned host (a typo, or tampering) was ALSO voiced as "no AI
+                // provider is configured", sending the creator to fix the provider picker rather than the base URL
+                // that is actually wrong. It is now HostNotAllowlisted, whose copy names the pinned hosts. The
+                // security policy is unchanged — LlmHostAllowlist.IsAllowed still rejects exactly what it rejected,
+                // pre-flight, with no request sent; only the classification of that refusal is honest now.
                 failure = string.Equals(providerId, "ollama", StringComparison.Ordinal)
                     ? AiAvailability.HostRestricted
-                    : AiAvailability.NoProvider;
+                    : AiAvailability.HostNotAllowlisted;
                 return false;
             }
 

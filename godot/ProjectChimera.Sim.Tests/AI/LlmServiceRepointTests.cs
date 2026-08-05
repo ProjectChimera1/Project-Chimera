@@ -183,6 +183,27 @@ namespace ProjectChimera.Sim.Tests.AI
         }
 
         [Fact]
+        public void GenerateTrigger_CloudNonPinnedHost_ShortCircuits_HostNotAllowlistedMessage_NoRequest()
+        {
+            // DW-589 (the cloud half of DW-370's honest-UX class): a cloud provider whose base URL points off the
+            // pinned allowlist short-circuits the generate path with the HostNotAllowlisted message — which NAMES the
+            // pinned hosts — instead of the misleading "no AI provider is configured", and still sends nothing (and no
+            // API key) to the disallowed host.
+            var stub = StubHttpMessageHandler.Ok(AnthropicBody(ValidTriggerJson));
+            var svc = new LLMService(
+                () => Settings("anthropic", baseUrl: "https://evil.example.com"),
+                new FakeSecretStore("sk-x"), new HttpClient(stub));
+
+            var (trigger, error) = RunTrigger(svc);
+
+            Assert.Null(trigger);
+            Assert.Equal(AiAvailabilityMessages.Describe(AiAvailability.HostNotAllowlisted), error);
+            Assert.NotEqual(AiAvailabilityMessages.Describe(AiAvailability.NoProvider), error);
+            Assert.Contains(LlmHostAllowlist.AnthropicHost, error!, StringComparison.Ordinal); // the policy is named
+            Assert.Equal(0, stub.CallCount);
+        }
+
+        [Fact]
         public void GenerateScenario_NoKey_ShortCircuits_FourStateMessage_NoRequest()
         {
             var stub = StubHttpMessageHandler.Ok(AnthropicBody(ValidScenarioJson));

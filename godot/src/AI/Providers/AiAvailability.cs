@@ -4,7 +4,8 @@ namespace ProjectChimera.AI.Providers
 {
     /// <summary>
     /// Story 8.2 — the unavailable states plus healthy, the single classification every AI panel and the
-    /// Settings Test-connection action render. <see cref="NoProvider"/>/<see cref="NoKey"/>/<see cref="HostRestricted"/>
+    /// Settings Test-connection action render. <see cref="NoProvider"/>/<see cref="NoKey"/>/<see cref="HostRestricted"/>/
+    /// <see cref="HostNotAllowlisted"/>
     /// are config-derived and computed synchronously (cheap enough for panel-open);
     /// <see cref="Unreachable"/>/<see cref="FailedValidation"/> require a network round-trip (Test-connection or a
     /// failed generate). In every unavailable state the editor stays fully usable manually — only the AI affordance
@@ -32,6 +33,14 @@ namespace ProjectChimera.AI.Providers
         /// loopback-only policy is KEPT, but the rejection is voiced as this state so the unavailable message can NAME
         /// the restriction instead of the misleading "no provider configured". Config-derived, synchronous.</summary>
         HostRestricted,
+
+        /// <summary>A CLOUD provider (anthropic / openrouter) is configured with a well-formed base URL whose host is
+        /// not the one pinned for it — e.g. a typo'd or tampered <c>https://evil.example.com</c>. DW-589 (the cloud
+        /// half of the DW-370 honest-UX class): the pinned-host policy is KEPT exactly as-is — this only changes how
+        /// the refusal is VOICED, so a bad base URL names the allowlist rejection instead of claiming no provider is
+        /// configured and sending the creator to edit the wrong field. Config-derived, synchronous, no network call.
+        /// Distinct from <see cref="HostRestricted"/>, which is ollama's loopback-only refusal.</summary>
+        HostNotAllowlisted,
     }
 
     /// <summary>
@@ -41,6 +50,14 @@ namespace ProjectChimera.AI.Providers
     /// </summary>
     public static class AiAvailabilityMessages
     {
+        /// <summary>DW-589 — the pinned-host rejection copy, composed from
+        /// <see cref="LlmHostAllowlist.PinnedCloudHosts"/> so it can never drift from the enforced allowlist (a host
+        /// added to the policy is named here automatically). Built once; the set is static.</summary>
+        private static readonly string HostNotAllowlistedMessage =
+            "Commander, that base URL host is not on the pinned allowlist. A cloud provider may only be reached at "
+            + string.Join(" or ", LlmHostAllowlist.PinnedCloudHosts)
+            + " — correct the base URL in Settings › AI Provider.";
+
         /// <summary>The creator-facing message for <paramref name="state"/> — distinct and non-empty per state.</summary>
         public static string Describe(AiAvailability state) => state switch
         {
@@ -56,6 +73,8 @@ namespace ProjectChimera.AI.Providers
                 "Commander, the AI provider answered but the response failed validation. Verify the key, model, and base URL.",
             AiAvailability.HostRestricted =>
                 "Commander, Ollama is loopback-only — a LAN or remote host is not supported. Point the base URL at localhost / 127.0.0.1 in Settings › AI Provider.",
+            AiAvailability.HostNotAllowlisted =>
+                HostNotAllowlistedMessage,
             _ =>
                 "Commander, AI availability is unknown. Run Test connection in Settings › AI Provider.",
         };
