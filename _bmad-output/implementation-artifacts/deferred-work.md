@@ -4240,7 +4240,8 @@ origin: workflow burn-down run, 2026-08-03
 location: godot/src/Core/Definitions/ScenarioValidator.cs — graph semantic pass `case ActionNode ga:` (~lines 896-916) vs the flat pass `if (a.Type == "spawn_unit")` (~lines 776-795)
 severity: medium
 reason: The flat channel runs CheckCoordFixed (±map_bounds) and CheckNotBlocked (painted blocked cell) on every spawn_unit action; the graph channel's ActionNode case runs only the faction and count gates. A graph-authored spawn_unit can therefore place a unit outside map bounds or onto a blocked cell that the byte-identical flat trigger is rejected for — a channel-parity gap in the gate, related to but distinct from DW-148 (slope-derived blind spot) and DW-158 (extent ceiling). Closing it could reject existing graph content, so it belongs in its own bundle with its own decision; DW-240 (unvalidated spawn_unit.unit_id) is adjacent and may want to land with it.
-status: open
+status: done 2026-08-05
+resolution: resolved by burn-down bundle scenario-validator-hardening
 decision: 2026-08-04 Add the bounds + blocked-cell gates to the graph channel — Call CheckCoordFixed and CheckNotBlocked in the ScenarioValidator graph ActionNode spawn_unit case so both channels enforce identical spawn placement gates.
 
 ### DW-510: The enforcement half of DW-148 is still missing: no path fails closed (or tells the author) when a spawn sits on a slope-derived blocked cell
@@ -5302,7 +5303,8 @@ origin: workflow burn-down run, 2026-08-04
 location: godot/src/Core/Definitions/ScenarioValidator.cs:384-395 (pre-placed units) + godot/src/Core/Bootstrap/Phases/ScenarioLoadPhase.cs:315-330
 severity: medium
 reason: By design (DW-240's stated intent) but never given a recorded human decision - decisions.json carries no DW-240 entry. Two concrete paths can now hit a full reject where they previously lost one entity: (1) SlotFactionResolver runs UnitTagValidator.ValidateAndDropUnits AFTER load, so a shipped unit carrying an unknown tag is DROPPED from the roster and a scenario naming it now fails the gate and boots the fallback map instead of merely missing that unit; (2) ScenarioApplier.WorkerIdForSlot (ScenarioApplier.cs:508-515) falls back to the literal id 'worker' when a threaded faction declares no Worker-category unit, so the fallback MIRROR could itself be rejected and ScenarioLoadPhase.ApplyFallbackThroughApplier would then apply NOTHING (empty world). Neither is reachable with the shipped alpha/beta factions (both tag-clean and Worker-complete, and FactionValidator.ValidateComplete guarantees a Worker for any selectable faction), so nothing regresses today. Closure = a recorded decision on the fail-closed posture plus hardening WorkerIdForSlot's degenerate fallback.
-status: open
+status: done 2026-08-05
+resolution: resolved by burn-down bundle scenario-validator-hardening
 decision: 2026-08-05 Revert to drop-one for the two named paths — Downgrade the pre-placed unit_id gate from whole-scenario reject to a per-entity drop (with a warning) for the tag-dropped-unit and missing-WorkerId-fallback cases, keeping fail-closed only for genuinely malformed references.
 
 ### DW-653: ScenarioItem.item_id has the same unvalidated-dangling-reference shape DW-240 just closed for unit_id
