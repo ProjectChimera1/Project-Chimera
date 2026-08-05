@@ -391,9 +391,25 @@ namespace ProjectChimera.Core.Definitions
                 // Same owner-def amnesty as the Story 6.8 building-type gate: when no faction defs are threaded (the
                 // default — every legacy caller/test) or the owner slot resolves to no def, there is nothing to
                 // resolve against and the check is a no-op, byte-identical to the pre-DW-240 gate.
-                if (!IsKnownUnitId(u.UnitId, OwnerFactionDef(slotFactionDefs, u.Slot)))
+                // DW-652 (recorded decision, 2026-08-05): the fail-closed posture above is RIGHT for a dangling
+                // reference and WRONG for a reference the author never got wrong. Two concrete paths reach an
+                // unresolvable id with a blameless map, and both used to cost the WHOLE scenario (the fallback map
+                // boots instead of the authored one — strictly worse than losing one entity):
+                //   (1) TAG-DROPPED UNIT — UnitTagValidator.ValidateAndDropUnits runs on the loaded faction BEFORE this
+                //       gate (SlotFactionResolver / ServerBootstrap / MainScene) and REMOVES any unit carrying an
+                //       unknown tag. The map named a unit its faction really does declare; the engine deleted it.
+                //   (2) The fallback mirror's worker id — hardened at the source (ScenarioApplier.WorkerIdForSlot now
+                //       resolves an id that is actually in the roster, or omits the row), so the mirror can no longer
+                //       name an unresolvable unit and can no longer be rejected into an EMPTY WORLD.
+                // Case (1) is downgraded HERE to the per-entity drop the applier already performs (def == null ⇒ warn +
+                // skip that unit, the rest of the scenario loads). Everything else — a blank id, a typo, a
+                // cross-faction id — is a genuinely malformed reference and still fails closed exactly as DW-240
+                // specified. The distinction is only decidable because the tag validator records what it removed.
+                FactionDefinition? unitOwnerDef = OwnerFactionDef(slotFactionDefs, u.Slot);
+                if (!IsKnownUnitId(u.UnitId, unitOwnerDef)
+                    && !unitOwnerDef!.WasUnitDroppedForInvalidTag(u.UnitId))
                     return ValidationResult.Fail(UnknownUnitIdError($"scenario.units[{i}].unit_id", u.UnitId,
-                        OwnerFactionDef(slotFactionDefs, u.Slot), u.Slot));
+                        unitOwnerDef, u.Slot));
             }
 
             // ── Regions (Story 6.4) — fail-closed well-formedness so a malformed/cheat region can never reach the
@@ -936,6 +952,24 @@ namespace ProjectChimera.Core.Definitions
                             if (ga.Kind == "spawn_unit" && (ga.Count < 1 || ga.Count > EffectCaps.MaxSpawnCount))
                                 return ValidationResult.Fail(
                                     $"{gp}.count={ga.Count} is out of range 1..EffectCaps.MaxSpawnCount={EffectCaps.MaxSpawnCount}.");
+                            // DW-509 — the graph channel gets the SAME spawn PLACEMENT gates as the flat pass. Both
+                            // channels merge into ONE execution walk and both land on the identical
+                            // ScenarioDelegateBinder.OnSpawnUnit → ScenarioApplier.SpawnUnitAt write, so a byte-identical
+                            // spawn authored in the graph IR must be accepted/rejected byte-identically: a coordinate
+                            // outside ±map_bounds is the same authoring error in either channel (and, past
+                            // MapSizes.MaxHalfExtent, the same grid-aliasing lie the map_bounds ceiling closes), and a
+                            // spawn onto a blocked cell of the AUTHORED union (painted ∪ blocking prop / water footprint)
+                            // places a unit where none can legally stand. Same order + same helpers as the flat
+                            // `a.Type == "spawn_unit"` arm above, so the first-fail message is identical apart from the
+                            // node-located path prefix. Cheap no-op for every other action kind and for a null grid.
+                            if (ga.Kind == "spawn_unit")
+                            {
+                                string? gce = CheckCoordFixed($"{gp}.x", ga.X, bounds)
+                                           ?? CheckCoordFixed($"{gp}.z", ga.Z, bounds);
+                                if (gce != null) return ValidationResult.Fail(gce);
+                                string? gbe = CheckNotBlocked(gp, "spawn_unit position", ga.X, ga.Z, painted);
+                                if (gbe != null) return ValidationResult.Fail(gbe);
+                            }
                             // DW-240 — the graph channel gets the SAME unknown-unit_id gate as the flat pass (both
                             // channels merge into one execution walk and hit the identical OnSpawnUnit resolution).
                             if (ga.Kind == "spawn_unit"
