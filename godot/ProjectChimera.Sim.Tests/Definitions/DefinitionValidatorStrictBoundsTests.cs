@@ -26,6 +26,12 @@ namespace ProjectChimera.Sim.Tests.Definitions
     /// "Save failed" with no field badge and no way to save. Now rejected on BOTH item surfaces and on the sibling
     /// unit/building gate, and the shared id minter can no longer hand back a reserved id.</para>
     ///
+    /// <para><b>DW-528.</b> DW-454's helper compares a WHOLE id, which only fits a caller that uses the id verbatim as
+    /// the file basename. The faction wizard decorates it (<c>&lt;id&gt;_faction.json</c>), and Win32 reserves the
+    /// segment before the FIRST dot — so the decoration makes a bare <c>con</c> harmless while an id of <c>con.x</c>
+    /// still resolves to the CON device. <c>IsReservedDeviceFileName</c> is the filename-level companion that gets
+    /// both cases right; its faction-wizard wiring is covered in <c>FactionDefinerWizardTests</c>.</para>
+    ///
     /// <para><b>Determinism.</b> These are authoring-time REJECT rules only: no stat value, quantization, or SoA write
     /// changes, so no <c>SimChecksum</c>/<c>ContentHash</c>/<c>StartStateHash</c> input moves. The shipped factions
     /// authored none of the newly-rejected values (proved by <see cref="ShippedNonCombatantPosture_StaysValid"/>'s
@@ -315,6 +321,58 @@ namespace ProjectChimera.Sim.Tests.Definitions
             BuildingValidationResult r = BuildingDefinitionValidator.Validate(def);
             Assert.False(r.Ok);
             Assert.Contains("building 'nul'", r.Errors.First(e => e.FieldPath == "id").Message);
+        }
+
+        // ── DW-528: the FILENAME-level companion, for callers that decorate an id before the write ─────────────────
+
+        [Theory]
+        // The bare device, and the shapes a decorating caller actually produces.
+        [InlineData("nul")]
+        [InlineData("con.json")]
+        [InlineData("con.json.tmp")]           // Win32 matches the segment before the FIRST dot, not "name minus ext"
+        [InlineData("com1.json")]
+        [InlineData("lpt9.a.b.c")]
+        [InlineData("CON.JSON")]               // case-insensitive
+        [InlineData("nul.x_faction.json")]     // the live faction-wizard hole: id "nul.x" + the "_faction.json" suffix
+        [InlineData("con.")]                   // trailing dot stripped before the device compare
+        [InlineData("con .json")]              // trailing space stripped too
+        [InlineData("dir/con.json")]           // only the LAST path component is matched
+        [InlineData("dir\\con.json")]          // '\' split explicitly so the verdict is the same on Linux
+        public void ReservedDeviceFileName_IsRecognised(string fileName)
+        {
+            Assert.True(UnitDefinitionValidator.IsReservedDeviceFileName(fileName), fileName);
+        }
+
+        [Theory]
+        [InlineData("con_faction.json")]       // the decoration is what makes it safe — must NOT be over-rejected
+        [InlineData("con_faction.json.tmp")]
+        [InlineData("console.json")]
+        [InlineData("con_2.json")]
+        [InlineData("nullify.json")]
+        [InlineData("com0.json")]              // not a reserved device
+        [InlineData("lpt0.json")]
+        [InlineData("acon.json")]              // merely ENDS with a device name
+        [InlineData("dir/con_faction.json")]
+        [InlineData("grunt.json")]
+        [InlineData(".json")]                  // empty leading segment
+        [InlineData("")]
+        [InlineData(null)]
+        public void NonReservedDeviceFileName_IsNotFlagged(string? fileName)
+        {
+            Assert.False(UnitDefinitionValidator.IsReservedDeviceFileName(fileName), fileName ?? "<null>");
+        }
+
+        [Fact]
+        public void ReservedDeviceFileName_AgreesWithIsReservedDeviceName_OnAnUndecoratedName()
+        {
+            // The two helpers are one convention: an undecorated basename must get the same verdict from both, or a
+            // caller that switches between them silently changes behavior.
+            foreach (object[] row in ReservedNames())
+            {
+                var id = (string)row[0];
+                Assert.True(UnitDefinitionValidator.IsReservedDeviceName(id), id);
+                Assert.True(UnitDefinitionValidator.IsReservedDeviceFileName(id), id);
+            }
         }
 
         [Fact]

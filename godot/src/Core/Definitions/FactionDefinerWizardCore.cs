@@ -93,6 +93,18 @@ namespace ProjectChimera.Core.Definitions
         private static readonly JsonSerializerOptions IndentedOptions = new() { WriteIndented = true };
 
         /// <summary>
+        /// The suffix+extension a Finish-written faction file gets: <c>&lt;id&gt;_faction.json</c>. Named (DW-528)
+        /// rather than inlined so the one seam this entry is about — the decoration between a free-text id and the
+        /// name that hits the filesystem — is a single obvious edit point. Shortening, parameterizing or dropping it
+        /// needs NO change to the reserved-device guard in <see cref="TryFinish"/>: that guard inspects the assembled
+        /// file name, so it re-derives the right verdict from whatever this becomes.
+        /// <para>Must stay consistent with the <c>"*_faction.json"</c> discovery globs a written file is later found
+        /// by (<see cref="FactionDefinition"/>'s directory load and <c>SkirmishCatalog</c>) — a file this wizard
+        /// writes under a name those globs miss would save successfully and then be invisible.</para>
+        /// </summary>
+        public const string FactionFileSuffix = "_faction.json";
+
+        /// <summary>
         /// Scan the given absolute faction-JSON paths (alpha/beta today — Story 5.5's "Epics 2-4 content" pool) for
         /// the Roster / Buildings &amp; Tech preset pools. A path that fails to load (missing file, invalid JSON) is
         /// skipped defensively — never throws; the pool is a picker convenience surface, not a load-time gate. Every
@@ -296,6 +308,16 @@ namespace ProjectChimera.Core.Definitions
         /// is derived from <paramref name="factionsDirAbsolute"/> by walking up to the enclosing <c>project.godot</c>,
         /// and when there is no such project tree on disk (an exported build, a unit test's bare temp directory) the
         /// lint is skipped rather than rejecting every path it cannot resolve.</para>
+        ///
+        /// <para><b>DW-528: the reserved-device-basename guard.</b> The id is free text and this method is where it
+        /// becomes a file name, so alongside the path-separator/traversal reject the assembled
+        /// <c>&lt;id&gt;<see cref="FactionFileSuffix"/></c> is run through
+        /// <see cref="UnitDefinitionValidator.IsReservedDeviceFileName"/> — the same DW-454 convention the unit,
+        /// building and item id gates enforce. Checked on the assembled NAME (not the bare id) because Win32 reserves
+        /// only the segment before the first <c>'.'</c>: that both spares an id the suffix already makes safe
+        /// (<c>con</c> → <c>con_faction.json</c>, an ordinary file) and catches one it does not (<c>con.x</c> →
+        /// <c>con.x_faction.json</c>, the CON device). A portability gate — see the inline comment for what modern
+        /// Windows builds actually enforce.</para>
         /// </summary>
         public static FactionDefinerFinishResult TryFinish(FactionDefinition def, string factionsDirAbsolute,
             AbilityRegistry? abilityRegistry = null, Func<string, bool>? meshExists = null)
@@ -347,7 +369,42 @@ namespace ProjectChimera.Core.Definitions
                 });
             }
 
-            string targetAbs = Path.Combine(factionsDirAbsolute, $"{id}_faction.json");
+            // The single place the free-text id becomes a file name. Built into a local FIRST so the reserved-device
+            // guard below inspects the exact name that is about to be written, not a reconstruction of it.
+            string fileName = $"{id}{FactionFileSuffix}";
+
+            // DW-528: wire DW-454's reserved-device-basename convention (the one the unit/building/item id validators
+            // already enforce) into this free-text filename path, so the safety here is EXPLICIT rather than an
+            // accident of the "_faction" suffix.
+            //
+            // Checked on the ASSEMBLED fileName, not on the bare id, because Win32 reserves only the leading segment
+            // — everything before the FIRST '.' ("NUL.tar.gz is equivalent to NUL", Naming Files/Paths/Namespaces).
+            // That distinction is the whole point: today's suffix makes a bare "con" harmless (`con_faction.json` is
+            // an ordinary file, and refusing it would be a gratuitous restriction), while an id of "con.x" or "nul."
+            // is NOT harmless — it passes the separator/traversal guard above ('.' is a legal filename char and there
+            // is no "..") and still assembles a reserved leading segment. Reading the assembled name also means this
+            // guard stays correct with no further edit if FactionFileSuffix is ever shortened, parameterized or
+            // dropped. The sibling ".tmp" write needs no separate check: it shares this name's leading segment.
+            //
+            // Scope, measured rather than assumed: whether the filesystem itself REFUSES such a name depends on the
+            // Windows build — this project's dev machine (Win11 26200) creates `con.json` happily, from .NET and from
+            // cmd.exe alike, so DW-454's "the write throws an opaque Save failed" symptom is not observable there.
+            // The reject is therefore a PORTABILITY gate, not a local crash fix: a faction file whose basename is a
+            // DOS device is still unopenable by every Windows build and third-party tool that does enforce the
+            // reservation, and authored content is meant to be shared. Authoring-time reject only — nothing folded
+            // into SimChecksum/ContentHash/StartStateHash moves.
+            if (UnitDefinitionValidator.IsReservedDeviceFileName(fileName))
+            {
+                return FactionDefinerFinishResult.Failure(new (string, string)[]
+                {
+                    ("id", $"faction id '{id}' makes the file '{fileName}', whose basename is a Windows reserved " +
+                           $"device name ({UnitDefinitionValidator.ReservedPipeList}) — Windows matches everything " +
+                           "before the first '.', and systems that enforce the reservation cannot open such a file, " +
+                           "so rename before saving."),
+                });
+            }
+
+            string targetAbs = Path.Combine(factionsDirAbsolute, fileName);
             if (File.Exists(targetAbs))
             {
                 return FactionDefinerFinishResult.Failure(new (string, string)[]

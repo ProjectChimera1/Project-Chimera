@@ -277,6 +277,110 @@ namespace ProjectChimera.Sim.Tests.Definitions
             finally { Directory.Delete(dir, recursive: true); }
         }
 
+        // ── DW-528: reserved Windows device basename on the free-text filename path ───────────────────────────
+
+        [Theory]
+        [InlineData("con.x")]     // -> "con.x_faction.json" -> Win32 matches the segment before the FIRST dot => CON
+        [InlineData("nul.")]      // -> "nul._faction.json"                                                   => NUL
+        [InlineData("com1.a")]    // -> "com1.a_faction.json"                                                 => COM1
+        [InlineData("LPT9.x")]    // case-insensitive                                                         => LPT9
+        public void TryFinish_ReservedDeviceBasenameId_BlocksNamingIdField_WritesNothing(string reservedId)
+        {
+            // RED without the fix (measured): a '.' is a legal filename char and there is no "..", so the
+            // separator/traversal guard passes the id straight through, and Finish reports SUCCESS having written a
+            // faction file whose leading segment is a Win32 device name (Win32 matches everything before the FIRST
+            // dot — "NUL.tar.gz is equivalent to NUL"). Whether the local filesystem refuses that name depends on the
+            // Windows build (this dev machine's Win11 26200 does not), which is exactly why the guard has to be a
+            // validation rule rather than a caught IO error: the file saves here and is unopenable elsewhere.
+            string dir = MakeTempDir();
+            try
+            {
+                FactionPresetPool pool = ScanRealAlphaBeta();
+                FactionDefinition def = NewDraft(reservedId);
+                Pick(def, pool, unitIds: new[] { "worker", "infantry" }, buildingIds: new[] { "command_center" });
+
+                FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinish(def, dir);
+
+                Assert.False(result.Ok);
+                (string FieldPath, string Message) err =
+                    Assert.Single(result.Errors, e => e.FieldPath == "id");
+                Assert.Contains("reserved", err.Message, StringComparison.OrdinalIgnoreCase);
+                Assert.DoesNotContain("save failed", err.Message, StringComparison.OrdinalIgnoreCase);
+                Assert.Equal(FactionDefinerStep.NameColor, result.Step);
+
+                // Blocked BEFORE any write — no faction file and no stray .tmp anywhere under the temp dir.
+                Assert.Empty(Directory.GetFiles(dir, "*", SearchOption.AllDirectories));
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Theory]
+        [InlineData("con")]       // -> "con_faction.json": an ORDINARY file — the suffix is what makes it safe
+        [InlineData("nul")]
+        [InlineData("com1")]
+        public void TryFinish_BareReservedWordId_StillSaves_BecauseTheSuffixMakesTheBasenameSafe(string bareId)
+        {
+            // The other half of the guard's contract, and the reason it inspects the ASSEMBLED name rather than the
+            // bare id: a blunt id-level check (DW-454's whole-id helper) would refuse these for no filesystem reason.
+            string dir = MakeTempDir();
+            try
+            {
+                FactionPresetPool pool = ScanRealAlphaBeta();
+                FactionDefinition def = NewDraft(bareId);
+                Pick(def, pool, unitIds: new[] { "worker", "infantry" }, buildingIds: new[] { "command_center" });
+
+                FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinish(def, dir);
+
+                Assert.True(result.Ok, string.Join(" | ", result.Errors.Select(e => e.Message)));
+                Assert.Equal(Path.Combine(dir, bareId + "_faction.json"), result.WrittenPath);
+                Assert.True(File.Exists(result.WrittenPath));
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void TryFinishFromRawJson_ReservedDeviceBasenameId_IsBlockedByTheSameGate()
+        {
+            // The Advanced raw-JSON pane delegates to TryFinish, so it must inherit the guard — a creator who pastes
+            // the id instead of typing it in the Name & Color step gets the same located reject, not "save failed:".
+            string dir = MakeTempDir();
+            try
+            {
+                string json = BuildValidRawFactionJson("aux.raw");
+
+                FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinishFromRawJson(json, dir);
+
+                Assert.False(result.Ok);
+                Assert.Contains(result.Errors, e => e.FieldPath == "id"
+                                                    && e.Message.Contains("reserved", StringComparison.OrdinalIgnoreCase));
+                Assert.Empty(Directory.GetFiles(dir, "*", SearchOption.AllDirectories));
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void FactionFileSuffix_MatchesTheDiscoveryGlobAWrittenFileIsFoundBy()
+        {
+            // The suffix is now a named constant so the reserved-device guard re-derives itself if it is ever changed
+            // (DW-528). Tie it to the "*_faction.json" discovery convention: a wizard-written file under a name the
+            // loader's glob misses would save successfully and then be invisible in every faction picker.
+            Assert.Equal("_faction.json", FactionDefinerWizardCore.FactionFileSuffix);
+
+            string dir = MakeTempDir();
+            try
+            {
+                FactionPresetPool pool = ScanRealAlphaBeta();
+                FactionDefinition def = NewDraft("discoverable");
+                Pick(def, pool, unitIds: new[] { "worker", "infantry" }, buildingIds: new[] { "command_center" });
+
+                FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinish(def, dir);
+
+                Assert.True(result.Ok);
+                Assert.Contains(Directory.GetFiles(dir, "*_faction.json"), f => f == result.WrittenPath);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
         // ── ClearStaleHeroReference (Story 5.6, Spec Change Log review pass 1) ─────────────────────────────────
 
         [Fact]
