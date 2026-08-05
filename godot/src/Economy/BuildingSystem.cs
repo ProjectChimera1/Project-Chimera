@@ -1106,12 +1106,39 @@ namespace ProjectChimera.Economy
             }
         }
 
-        /// <summary>Clear the Build command on a worker and resume gathering.</summary>
-        private static void ClearWorkerBuild(EntityWorld world, int workerId)
+        /// <summary>
+        /// Clear the Build command on a worker and resume the gather loop.
+        ///
+        /// <para>DW-520 — a worker interrupted MID-CARRY finishes its DELIVERY. Forcing <see cref="GatherState.Idle"/>
+        /// regardless of <see cref="EntityWorld.CarryAmount"/> sent a worker that was walking a load home when the build
+        /// order landed back out to a node instead: <c>TickIdle</c> re-reserves one of that node's
+        /// <c>MaxGatherers</c> slots, the worker walks the whole way there, gathers NOTHING (a full carry leaves
+        /// <c>canCarry == 0</c>), and only then turns round and banks the load it was already carrying — a wasted round
+        /// trip per interrupted worker, and a slot needlessly taken from a worker that could have used it. Routing a
+        /// non-empty carry straight back to <see cref="GatherState.MovingToBase"/> resumes the leg that was in flight;
+        /// the deposit itself is unchanged (<c>TickMovingToBase</c> credits by the carried
+        /// <see cref="EntityWorld.CarryResourceType"/>, which survived the interrupt).</para>
+        ///
+        /// <para>The base position and <see cref="EntityFlags.Moving"/> are set here for the same reason
+        /// <c>GatheringSystem.SetMoveToBase</c> sets them: the Build order overwrote <c>MoveTarget</c> with the build
+        /// site, so the resumed leg needs its destination back. Nothing folded into <c>SimChecksum</c> is read or
+        /// written by the choice itself, and no recorded golden issues a Build order at all.</para>
+        /// </summary>
+        private void ClearWorkerBuild(EntityWorld world, int workerId)
         {
             world.CommandState[workerId] = UnitCommand.Idle;
             world.BuildTarget[workerId]  = -1;
-            // Resume the gather loop; GatheringSystem will assign a node next tick.
+
+            if (world.CarryAmount[workerId] > Fixed.Zero)
+            {
+                // DW-520: still holding a load — finish the delivery that the build order interrupted.
+                world.MoveTarget[workerId]  = _resources.FactionBase[(int)world.FactionOf[workerId]];
+                world.Flags[workerId]      |= EntityFlags.Moving;
+                world.GatherState[workerId] = GatherState.MovingToBase;
+                return;
+            }
+
+            // Empty-handed — resume the gather loop; GatheringSystem will assign a node next tick.
             world.GatherState[workerId]  = GatherState.Idle;
         }
 
