@@ -431,6 +431,78 @@ namespace ProjectChimera.Core.Definitions
 
         /// <summary>Finite &amp; in [0, <paramref name="max"/>) — a float stat with a tighter-than-<see cref="Range"/> ceiling
         /// (Story 3.13 hero runtime fields whose downstream squaring/stacking would overflow Fixed at the generic Range).</summary>
+        // ── DW-650: the hero per-level growth bound (DW-488's rule, adopted at the hero minter) ──────────────────
+
+        /// <summary>Which of <see cref="ProjectChimera.Effects.Modifier"/>'s four stat deltas a given hero
+        /// <c>*_per_level</c> field feeds in <c>HeroXpSystem.ReconcileGrowth</c>'s growth descriptor. Move speed is
+        /// absent by design — there is no move-speed growth channel (Story 3.13 scope).</summary>
+        private const int GrowthMaxHealth = 0, GrowthAttackDamage = 1, GrowthArmor = 2;
+
+        /// <summary>
+        /// DW-650 — the WORST-CASE number of growth stacks a hero with this <c>max_level</c> can ever carry.
+        /// <c>HeroXpSystem.ReconcileGrowth</c> applies <c>desired = Level-1</c> stacks and <c>AdvanceLevels</c> caps
+        /// <c>Level</c> at the hero's <c>max_level</c>, so the true ceiling is <c>max_level - 1</c> — NOT the descriptor's
+        /// <c>MaxStacks</c> (<c>HeroXpSystem.MaxGrowthStacks</c> = 99), which is the store-side cap for the whole
+        /// authorable level range. Bounding against the hero's OWN level ceiling keeps the check exact: a
+        /// <c>max_level: 2</c> hero really can only ever hold one stack, so a large per-level delta on it is safe and
+        /// must not be rejected. Clamped into <c>[1, MaxGrowthStacks]</c> so an out-of-range <c>max_level</c> (already
+        /// badged on its own field above) can never produce a degenerate probe.
+        /// </summary>
+        private static int HeroGrowthStacks(int maxLevel)
+        {
+            int stacks = maxLevel - 1;
+            if (stacks < 1) return 1;
+            return stacks > ProjectChimera.Combat.HeroXpSystem.MaxGrowthStacks
+                ? ProjectChimera.Combat.HeroXpSystem.MaxGrowthStacks
+                : stacks;
+        }
+
+        /// <summary>
+        /// DW-650 — validate one hero <c>*_per_level</c> growth delta: the pre-existing coarse
+        /// <see cref="HeroStatGrowthMax"/> range cap first, and — only when that passed — DW-488's shared authoring
+        /// bound (<c>Modifier.CheckAuthoringBounds</c>) applied to the EXACT descriptor
+        /// <c>HeroXpSystem.ReconcileGrowth</c> mints from this field.
+        ///
+        /// <para><b>Why this is not covered by <see cref="HeroStatGrowthMax"/>.</b> That cap (256) was derived from a
+        /// DIFFERENT ceiling — keeping <c>99 × delta</c> inside the 16.16 <c>Fixed</c> integer range (~32768). DW-488's
+        /// bound is much tighter (<c>Modifier.MaxStatDeltaTotalRaw</c> ≈ 4096 stat units) because
+        /// <c>ModifierSystem.AccumulateBonus</c> sums up to <c>EffectCaps.MaxModifiersPerEntity</c> (8) modifier
+        /// contributions into ONE wrapping int accumulator, and DW-28's saturating read cannot recover a value that
+        /// already wrapped. A max-level-100 hero authored at <c>health_per_level: 256</c> passes the coarse cap today and
+        /// contributes 25344 stat units (≈1.66e9 raw) from a single modifier id — over three quarters of
+        /// <c>int.MaxValue</c> on its own, so a couple of ordinary items or researches alongside it wrap the accumulator
+        /// negative and (since DW-325/DW-491) can collapse the hero's own MaxHealth ceiling to 0 and kill it. Growth
+        /// mints its Modifier directly and never reaches <c>AbilityValidator</c>, which is exactly the DW-650 gap.</para>
+        ///
+        /// <para>One badge per field (D-9): when the coarse cap already reported this field, the bound is not also
+        /// reported — the tighter, more actionable message wins.</para>
+        /// </summary>
+        private static void CheckHeroGrowth(List<(string, string)> errors, string kind, string id, string path,
+                                            float v, int growthStacks, int deltaSlot)
+        {
+            int before = errors.Count;
+            CheckStatMax(errors, kind, id, path, v, HeroStatGrowthMax);
+            if (errors.Count != before) return; // already badged (non-finite / negative / over the coarse cap)
+
+            Fixed d = Fixed.FromFloat(v);
+            var probe = new ProjectChimera.Effects.Modifier(
+                ProjectChimera.Combat.HeroXpSystem.HeroGrowthModifierId,
+                durationTicks: -1,                                  // permanent, exactly as ReconcileGrowth mints it
+                ProjectChimera.Effects.StackRule.Stack,
+                maxStacks: growthStacks,
+                maxHealthDelta:    deltaSlot == GrowthMaxHealth    ? d : Fixed.Zero,
+                attackDamageDelta: deltaSlot == GrowthAttackDamage ? d : Fixed.Zero,
+                moveSpeedDelta:    Fixed.Zero,                      // no move-speed growth channel
+                status: ProjectChimera.Effects.StatusFlags.None,
+                periodEffect: null,
+                periodTicks: 0,
+                armorDelta:        deltaSlot == GrowthArmor        ? d : Fixed.Zero);
+
+            (string Field, string Reason)? overBound = probe.CheckAuthoringBounds();
+            if (overBound is not null)
+                errors.Add((path, Located(kind, id, path, overBound.Value.Reason)));
+        }
+
         private static void CheckStatMax(List<(string, string)> errors, string kind, string id, string path, float v, float max)
         {
             if (!float.IsFinite(v) || v < 0f || v >= max)
@@ -537,9 +609,12 @@ namespace ProjectChimera.Core.Definitions
             // downstream squaring/stacking cannot overflow 16.16 Fixed (the pre-3.13 CheckStat allowed up to 32767, which
             // r*r and 99× overflow — reviewer-found).
             CheckStatMax(errors, kind, id, "hero.xp_share_radius", h.XpShareRadius, HeroShareRadiusMax);
-            CheckStatMax(errors, kind, id, "hero.health_per_level", h.HealthPerLevel, HeroStatGrowthMax);
-            CheckStatMax(errors, kind, id, "hero.damage_per_level", h.DamagePerLevel, HeroStatGrowthMax);
-            CheckStatMax(errors, kind, id, "hero.armor_per_level", h.ArmorPerLevel, HeroStatGrowthMax);
+            // DW-650: each *_per_level ALSO goes through DW-488's shared accumulator bound, applied to the exact growth
+            // descriptor HeroXpSystem.ReconcileGrowth mints from these three fields. See CheckHeroGrowth.
+            int growthStacks = HeroGrowthStacks(h.MaxLevel);
+            CheckHeroGrowth(errors, kind, id, "hero.health_per_level", h.HealthPerLevel, growthStacks, GrowthMaxHealth);
+            CheckHeroGrowth(errors, kind, id, "hero.damage_per_level", h.DamagePerLevel, growthStacks, GrowthAttackDamage);
+            CheckHeroGrowth(errors, kind, id, "hero.armor_per_level", h.ArmorPerLevel, growthStacks, GrowthArmor);
 
             // Ability slots — a SET-but-undefined ref is rejected; an empty (null/"") slot is valid (not authored yet).
             // Skip the ref lookup when there is no registry to validate against (mirrors the abilities[] guard).

@@ -493,19 +493,50 @@ namespace ProjectChimera.Economy
         /// (permanent), <see cref="StackRule.Refresh"/>, <c>MaxStacks: 1</c> (ONE cumulative slot per research, never
         /// stacked per level). Shared by <see cref="CompleteResearch"/> (apply to every currently alive unit) and
         /// <see cref="ApplyCompletedResearch"/> (future-spawn catch-up), both via <see cref="ApplyCumulativeModifier"/>.
+        ///
+        /// <para><b>DW-650</b> — every delta goes out through <see cref="BoundedDelta"/> so the minted descriptor always
+        /// satisfies DW-488's <see cref="Modifier.CheckAuthoringBounds"/>. Research is the one Modifier minter whose
+        /// magnitude is NOT authored: it is a running sum <see cref="SaturatingAdd"/> accumulates across a repeatable
+        /// ladder, so no load-time content gate can bound it — the bound has to be applied where the modifier is built.
+        /// </para>
         /// </summary>
         private Modifier BuildCumulativeModifier(int f, int researchIndex) => new Modifier(
             ResearchModifierId(researchIndex),
             durationTicks: -1,
             StackRule.Refresh,
             maxStacks: 1,
-            maxHealthDelta:    _research.CumulativeMaxHealthDelta[f][researchIndex],
-            attackDamageDelta: _research.CumulativeAttackDamageDelta[f][researchIndex],
-            moveSpeedDelta:    _research.CumulativeMoveSpeedDelta[f][researchIndex],
+            maxHealthDelta:    BoundedDelta(_research.CumulativeMaxHealthDelta[f][researchIndex]),
+            attackDamageDelta: BoundedDelta(_research.CumulativeAttackDamageDelta[f][researchIndex]),
+            moveSpeedDelta:    BoundedDelta(_research.CumulativeMoveSpeedDelta[f][researchIndex]),
             status: StatusFlags.None,
             periodEffect: null,
             periodTicks: 0,
-            armorDelta: _research.CumulativeArmorDelta[f][researchIndex]);
+            armorDelta:        BoundedDelta(_research.CumulativeArmorDelta[f][researchIndex]));
+
+        /// <summary>
+        /// DW-650 — clamp one cumulative research total into DW-488's per-modifier authoring bound
+        /// (±<see cref="Modifier.MaxStatDeltaTotalRaw"/>, ≈4096 stat units) as the modifier is built.
+        ///
+        /// <para><b>Why the clamp is here and not on the stored total.</b> <see cref="SaturatingAdd"/> deliberately
+        /// saturates the BANKED cumulative at the full 16.16 <see cref="Fixed"/> range so the DW-623 void/rollback
+        /// snapshot stays exact and the persisted/checksummed value keeps its established meaning. But a research's
+        /// modifier feeds the same 8-slot <c>ModifierSystem.AccumulateBonus</c> int accumulator every other minter does,
+        /// and <see cref="Effects.EffectCaps.MaxModifiersPerEntity"/> researches each contributing a Fixed-ceiling delta
+        /// sum to ~8 × <c>int.MaxValue</c> — which WRAPS NEGATIVE, and DW-28's saturating <c>Base + Σbonus</c> read
+        /// cannot recover an already-wrapped value (its own docstring says so). Clamping the CONTRIBUTION keeps the
+        /// worst case at <c>MaxModifiersPerEntity × MaxStatDeltaTotalRaw</c> ≤ <c>int.MaxValue</c> — un-wrappable by
+        /// construction, exactly as DW-488 intended.</para>
+        ///
+        /// <para>Deterministic and <see cref="Fixed"/>-only (pure raw-int compare, no float, no branch on wall-clock).
+        /// Inert for anything a designer would actually ship: it engages only past ≈4096 accumulated stat units, and no
+        /// shipped research authors a modifier delta at all.</para>
+        /// </summary>
+        private static Fixed BoundedDelta(Fixed cumulative)
+        {
+            if (cumulative.Raw >  Modifier.MaxStatDeltaTotalRaw) return Fixed.FromRaw( Modifier.MaxStatDeltaTotalRaw);
+            if (cumulative.Raw < -Modifier.MaxStatDeltaTotalRaw) return Fixed.FromRaw(-Modifier.MaxStatDeltaTotalRaw);
+            return cumulative;
+        }
 
         // ── Future-spawn catch-up ────────────────────────────────────────────────
 
