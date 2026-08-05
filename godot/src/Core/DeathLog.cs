@@ -12,9 +12,13 @@ namespace ProjectChimera.Core
     /// per-slot <c>_prevFlags</c> Alive-diff (which merges a same-tick die→recycle→die on one slot into a single
     /// event carrying only the last killer's attribution — or loses the death entirely when the recycled occupant is
     /// still alive at collect time), the log surfaces EVERY combat death with its own attribution. The director wipes
-    /// it in <c>UpdateSnapshots</c> (the flags-snapshot horizon), so it is EMPTY at the checksum boundary → NOT
-    /// folded into <see cref="SimChecksum"/> (the <c>DeathFeed</c>/<c>CombatEventQueue</c> posture; in director-less
-    /// sims nothing reads it and the cap makes it inert). Pure C#, integer-only SoA — no Godot, no float.</para>
+    /// it in <c>UpdateSnapshots</c> (the flags-snapshot horizon) — and, since DW-551, on its trigger-less early-out
+    /// too, which skips <c>UpdateSnapshots</c> and so used to let a trigger-less scenario ACCUMULATE records across
+    /// ticks. The two wipe points together make "EMPTY at the tick boundary" a UNIVERSAL invariant for any
+    /// director-driven sim — which is what lets the log stay OUT of <see cref="SimChecksum"/> (the
+    /// <c>DeathFeed</c>/<c>CombatEventQueue</c> posture) and out of <c>SaveGameState</c>, whose <c>CaptureFrom</c> now
+    /// ASSERTS the log is drained instead of trusting every caller to be between ticks. In director-less sims nothing
+    /// reads it and the cap makes it inert. Pure C#, integer-only SoA — no Godot, no float.</para>
     ///
     /// <para>Capacity overflow deterministically drops the record (identical on every peer); the director then falls
     /// back to the per-slot flags diff for that slot — i.e. exactly the pre-log behavior. A dropped record only ever
@@ -59,7 +63,8 @@ namespace ProjectChimera.Core
         }
 
         /// <summary>Reset so the next tick starts fresh (called by <c>ScenarioDirector.UpdateSnapshots</c> — the
-        /// flags-snapshot horizon — and by <see cref="EntityWorld.Clear"/>).</summary>
+        /// flags-snapshot horizon — by the director's trigger-less early-out (DW-551), and by
+        /// <see cref="EntityWorld.Clear"/>).</summary>
         public void Clear() => _count = 0;
     }
 }
