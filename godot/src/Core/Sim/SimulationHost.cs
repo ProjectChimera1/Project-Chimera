@@ -361,6 +361,11 @@ namespace ProjectChimera.Core.Sim
         /// </summary>
         public void ClearForReset()
         {
+            // DW-624: report the ENDING match's aggregated future-spawn research-catch-up refusals before anything is
+            // re-minted. This is the host's per-match teardown (every Play→Edit toggle / re-launch reaches it), so it
+            // is both the "match end" flush and the zeroing that keeps the tally per-match. Diagnostics only — it
+            // reads/clears unfolded counters and routes through the injected sink, so the reset stays byte-identical.
+            FlushMatchDiagnostics();
             World.Clear();          // entity SoA + free-list + RNG re-seed (also zeroes AbilityCooldownTicks / StatusFlagsOf)
             Nodes.Clear();
             Resources.Clear();
@@ -389,6 +394,22 @@ namespace ProjectChimera.Core.Sim
             _ai.ResetForMatch();    // Story 3.10 — AI per-match decision state is not in any store; reset it too or the next Play desyncs
             _loop.ResetTick();      // CurrentTick + LastChecksum → 0 (checksum store wiring untouched)
         }
+
+        /// <summary>
+        /// DW-624 — flush the per-match diagnostic AGGREGATES the sim accumulates but deliberately does not log at
+        /// the point of occurrence. Today that is <see cref="ResearchSystem"/>'s future-spawn catch-up refusal tally:
+        /// <c>ApplyCompletedResearch</c> is wired to <see cref="EntityWorld.OnUnitDefinitionApplied"/>, so it fires
+        /// once PER SPAWN (training, scenario placement, hero respawn, editor restore) and an inline warn there would
+        /// be per-spawn spam — a 200-unit scenario load with full modifier rings would emit 200 lines. The refusals
+        /// accumulate per faction + per research instead and surface here as ONE line each.
+        ///
+        /// <para>Called by <see cref="ClearForReset"/> (the per-match teardown) so a tally is never silently
+        /// discarded, and public so a bootstrap can flush explicitly at end-of-match or right after a bulk scenario
+        /// load. Idempotent and silent when nothing was refused. Diagnostics only: reads and zeroes unfolded
+        /// counters, mutates no sim array and pushes no event, so a run that calls it is byte-identical to one that
+        /// does not. Returns the number of refusals reported.</para>
+        /// </summary>
+        public int FlushMatchDiagnostics() => ResearchSys.FlushSpawnCatchUpDiagnostics();
 
         /// <summary>
         /// Story 3.14 — the respawn hook HeroXpSystem calls when a revival countdown completes. Routes to the
