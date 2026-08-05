@@ -1044,6 +1044,21 @@ namespace ProjectChimera.Core.Definitions
                     }
                 }
 
+                // ── DW-628 — the graph channel's BUILDING-REF gate, the last per-leaf rule the flat pass had and
+                //    this channel did not. An event/condition node naming a building that resolves in NEITHER
+                //    vocabulary (a BuildingType enum name, or an authored building id in the faction the node
+                //    itself names) is the same silently-inert authoring error the flat arms reject: a typo'd
+                //    building_completed ref index-encodes an id no placed building carries, and a building_exists
+                //    ref matches nothing — forever, with no load error. Runs AFTER the per-node loop so an
+                //    out-of-range faction slot (which would null the owner def and downgrade the message to
+                //    "unknown building") is reported as the faction error it actually is. The rule itself lives in
+                //    GraphStructureGate beside the other whole-graph rulebooks and calls the SAME
+                //    IsKnownBuildingType/OwnerFactionDef pair the flat arms above use — one vocabulary by
+                //    construction, threaded with the same per-slot faction defs. ──
+                string? graphBuildingErr = GraphStructureGate.CheckBuildingRefs(parsedGraph, slotFactionDefs);
+                if (graphBuildingErr != null)
+                    return ValidationResult.Fail($"scenario.trigger_graph {graphBuildingErr}");
+
                 // ── Story 7.4 — expression consumer edges: run the ExprCompiler (the full load-time rulebook:
                 //    strict typing, literal-zero divisor, undeclared/mis-scoped variables, TriggerLocal-in-condition,
                 //    ref-typed reads, missing/forked operand edges, wire-type = inferred type, ExprBounds caps) for

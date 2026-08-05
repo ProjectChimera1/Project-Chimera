@@ -1,6 +1,7 @@
 #nullable enable
 using System.Collections.Generic;
 using System.Linq;
+using ProjectChimera.Core.Definitions; // DW-628 — FactionDefinition + the ONE building-ref vocabulary (ScenarioValidator)
 
 namespace ProjectChimera.Dsl
 {
@@ -215,6 +216,60 @@ namespace ProjectChimera.Dsl
                         if (color[e.Dst] == 0) stack.Push((e.Dst, false));
                     }
                 }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// DW-628 — the trigger_graph channel's BUILDING-REF gate: the exact silently-inert class the flat gate's
+        /// <c>UnknownBuildingTypeInCondition_IsRejected_NotSilentlyInert</c> check exists to prevent, which the graph
+        /// channel had no equivalent for. Every <see cref="EventNode"/> / <see cref="ConditionNode"/> carrying a
+        /// non-empty <c>building_type</c> is resolved against the SAME TWO vocabularies the flat gate and the runtime
+        /// use — a legacy <see cref="ProjectChimera.Core.Definitions.BuildingType"/> enum NAME, or an authored
+        /// building-def id in the faction the node itself names — by calling the ONE shared predicate
+        /// (<c>ScenarioValidator.IsKnownBuildingType</c> resolved through <c>ScenarioValidator.OwnerFactionDef</c>,
+        /// the same pair the DW-170 flat arms and the DW-627 LLM generation gate call). Without this a typo'd or
+        /// dropped ref in a raw-IR graph loaded CLEAN and stayed permanently inert: <c>building_completed</c> would
+        /// index-encode an id no placed building ever carries and <c>building_exists</c> would match nothing, forever.
+        ///
+        /// <para>The node's own <c>faction</c> slot IS the qualifier (a completion occurrence only ever matches its
+        /// own builder slot; an exists scan only ever looks at the faction it names) — identical to the flat arms.
+        /// With no <paramref name="slotFactionDefs"/> threaded the resolution stays enum-name-only, byte-identical to
+        /// the flat channel's behavior in the same situation.</para>
+        ///
+        /// <para>Returns the first located error in ASCENDING NODE ID order (deterministic first-fail, the module
+        /// convention), or null when every ref resolves. Pure, Godot-free, float-free. Kept SEPARATE from
+        /// <see cref="Check"/> because it is the only graph rule needing content defs: <see cref="Check"/> is also the
+        /// <c>ScenarioDirector.LoadScenario</c> backstop, which holds no faction defs, and running an enum-only
+        /// resolution there would reject exactly the authored-id graphs DW-170 exists to enable. The flat channel's
+        /// building gate is likewise validator-only, so channel parity is preserved by this placement.</para>
+        /// </summary>
+        public static string? CheckBuildingRefs(
+            TriggerGraph graph,
+            IReadOnlyList<FactionDefinition?>? slotFactionDefs)
+        {
+            if (graph is null) return null; // a null graph is Check's located reject, not this pass's business
+
+            foreach (NodeBase n in graph.Nodes.Where(x => x != null).OrderBy(x => x.Id))
+            {
+                string? buildingType;
+                int faction;
+                string what;
+                switch (n)
+                {
+                    case EventNode e:     buildingType = e.BuildingType; faction = e.Faction; what = "event";     break;
+                    case ConditionNode c: buildingType = c.BuildingType; faction = c.Faction; what = "condition"; break;
+                    default: continue;
+                }
+                // Mirrors the flat arms exactly: an ABSENT ref is "no building filter" (every building matches), so
+                // only a NON-empty ref is resolved — on any kind, not just building_completed/building_exists, since
+                // the converter's per-kind allow-lists admit building_type on the whole event/condition kind sets.
+                if (string.IsNullOrEmpty(buildingType)) continue;
+                if (ScenarioValidator.IsKnownBuildingType(
+                        buildingType, ScenarioValidator.OwnerFactionDef(slotFactionDefs, faction)))
+                    continue;
+                return $"{what} node {n.Id}.building_type='{buildingType}' is not a known BuildingType enum name " +
+                       $"or an authored building id in faction slot {faction}.";
             }
             return null;
         }
