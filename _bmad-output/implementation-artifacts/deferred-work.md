@@ -410,7 +410,8 @@ origin: migrated from legacy ledger ("Deferred from: follow-up review of story-3
 source_spec: `_bmad-output/implementation-artifacts/spec-3-15-item-inventory-sim-pickups-slots-stat-effects-charges.md`
 location: n/a
 reason: summary: `ItemSystem.OnEntityDestroyed` early-returns (dropping nothing) if `_heroes.TryResolveRef(HeroIndex[entityId], …)` fails, so a PERMANENT (non-revivable) hero removal that tears down the `HeroStore` row BEFORE the `EntityWorld` entity would orphan the carried items (left `Held = true` with a dead `CarrierHeroSlot`, unreachable — a later `PickupItem` sees `Held` and voids). evidence: The death-drop's correctness silently depends on an un-asserted teardown order (entity destroyed while the hero row is still Alive). Every current path keeps the row for revival (the tests only exercise `world.Destroy(e)` / lethal `DamageResolver` with the row alive), so this is latent — not reachable until a permanent hero-removal path exists. Closure: when permanent hero removal lands, assert/guarantee the entity `Destroy` (and its `OnDestroy` drop) precedes the `HeroStore.Destroy(slot)`, or drop items keyed off the entity independently of the row resolve. Flagged by the Blind Hunter review layer (F4).
-status: open
+status: done 2026-08-05
+resolution: resolved by sweep bundle dw-itemsystem-teardown-hardening
 decision: 2026-07-28 correct-course — keep open, latent; trigger = a permanent (non-revivable) hero-removal path
 
 ### DW-44: In `SelectionSystem`, a right-click within `PICK_RADIUS` of a ground item issues `PickupItem` to only the first hero in a mixed selection and `return`s, so the other N selected units receive no move order at all (and it takes priority over an attack-move onto a nearby enemy) — "my army randomly stops moving near an item."
