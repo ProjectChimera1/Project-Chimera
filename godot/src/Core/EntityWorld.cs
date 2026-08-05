@@ -1281,6 +1281,33 @@ namespace ProjectChimera.Core
             id >= 0 && id < _nextId && (Flags[id] & EntityFlags.Alive) != 0;
 
         /// <summary>
+        /// DW-643 — the SINGLE "can this unit deal damage?" test, so the two systems that partition the roster on it
+        /// can never disagree about the same unit.
+        ///
+        /// <para><see cref="ProjectChimera.Combat.CombatSystem"/> excludes a NON-combatant from every acquisition /
+        /// engagement path and <see cref="ProjectChimera.AI.AiOpponentSystem"/> refuses to conscript one into a wave.
+        /// Those two used to be spelled differently — <c>== Fixed.Zero</c> vs <c>&gt; Fixed.Zero</c> — which are exact
+        /// complements ONLY while <see cref="EffectiveAttackDamage"/> is non-negative. That held by accident, resting
+        /// on <see cref="ProjectChimera.Effects.ModifierSystem.RecomputeEntity"/>'s zero-floor, which the SoA-direct
+        /// writers (notably the save-restore overlay) do not run. Under a negative value the old pair CONTRADICTED:
+        /// combat saw a combatant (negative != zero) while the AI saw a non-combatant. Routing both through this pair
+        /// makes the partition structural, so a future unclamped writer can produce a wrong classification but never
+        /// two DIFFERENT ones.</para>
+        ///
+        /// <para>Bounds-guarded like <see cref="IsAlive"/>, with no liveness term of its own (every caller already
+        /// gates on <see cref="IsAlive"/>) — the stat, not the entity, is what this answers.</para>
+        /// </summary>
+        public bool CanDealDamage(int id) =>
+            id >= 0 && id < MAX_ENTITIES && EffectiveAttackDamage[id] > Fixed.Zero;
+
+        /// <summary>
+        /// The exact complement of <see cref="CanDealDamage"/> (DW-643): a unit that cannot deal damage, so combat
+        /// routes it through the movement-only path instead of any engagement branch. Out-of-range ids answer
+        /// <c>true</c> — the conservative side, matching <see cref="CanDealDamage"/>'s <c>false</c>.
+        /// </summary>
+        public bool IsNonCombatant(int id) => !CanDealDamage(id);
+
+        /// <summary>
         /// DW-184 (the Story 2.13 AC3.4 pattern, applied to entities) — pack a live entity id into a
         /// generation-stamped CROSS-TICK reference <c>(Generation[id] &lt;&lt; 12) | id</c> (id 0–4095 = low
         /// <see cref="REF_SLOT_BITS"/> bits; generation = the upper bits). A holder that carries an entity id across

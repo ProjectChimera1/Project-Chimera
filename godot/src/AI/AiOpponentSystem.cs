@@ -300,7 +300,7 @@ namespace ProjectChimera.AI
                     // Story 2.13 (AC1.5) — a live enemy defender (non-Neutral, non-gatherer, damage-bearing). While
                     // ANY remains, the AI fights the army rather than tunnel-visioning a building past live defenders.
                     if (uf != Faction.Neutral && world.GatherState[i] == GatherState.Inactive
-                        && world.EffectiveAttackDamage[i] > Fixed.Zero)
+                        && world.CanDealDamage(i))   // DW-643 — the shared predicate, complement of CombatSystem's
                         snap.EnemyThreatRemains = true;
                     continue;
                 }
@@ -331,14 +331,20 @@ namespace ProjectChimera.AI
         /// under-strength wave. Worse, before Story 15.4 flipping one to AttackMove LEAKED it permanently: a
         /// non-combatant received no combat tick at all, so nothing ever moved it back to Idle/Stop and it was
         /// never counted again. Reachable via a trigger <c>spawn_unit</c> of a zero-damage authored unit into the
-        /// AI slot. Same <c>&gt; Fixed.Zero</c> test the enemy-defender branch of <see cref="BuildSnapshot"/> uses
-        /// (ModifierSystem clamps EffectiveAttackDamage at zero, so the two are exact complements).
+        /// AI slot. Same <see cref="EntityWorld.CanDealDamage"/> test the enemy-defender branch of
+        /// <see cref="BuildSnapshot"/> uses.
+        ///
+        /// DW-643: that damage-bearing term is now the SHARED <see cref="EntityWorld.CanDealDamage"/> predicate, whose
+        /// complement <see cref="EntityWorld.IsNonCombatant"/> is what CombatSystem's non-combatant gate asks. The two
+        /// used to be spelled independently (<c>&gt; Fixed.Zero</c> here, <c>== Fixed.Zero</c> there) and were exact
+        /// complements only because ModifierSystem floors the stat at zero — which the save-restore overlay bypassed,
+        /// so a negative value loaded from a save made the two systems disagree about one unit.
         /// </summary>
         private static bool IsConscriptable(EntityWorld world, int i) =>
             world.IsAlive(i)
             && world.FactionOf[i]   == AI_FACTION
             && world.GatherState[i] == GatherState.Inactive
-            && world.EffectiveAttackDamage[i] > Fixed.Zero   // DW-202 — a non-combatant is not a wave unit
+            && world.CanDealDamage(i)   // DW-202/DW-643 — a non-combatant is not a wave unit
             && (world.CommandState[i] == UnitCommand.Idle || world.CommandState[i] == UnitCommand.Stop);
 
         // ── Scoring ───────────────────────────────────────────────────────────

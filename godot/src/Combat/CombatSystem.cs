@@ -152,7 +152,12 @@ namespace ProjectChimera.Combat
                 // AttackMove/Patrol/Follow/AttackTarget/AttackBuilding sat inert forever with no system able to
                 // advance or normalize the order (and, when AI-owned, leaked permanently out of the wave pool,
                 // which only re-counts Idle/Stop units — DW-202).
-                if (world.EffectiveAttackDamage[i] == Fixed.Zero) // non-combatant
+                // DW-643: asked through the SHARED EntityWorld predicate rather than a local `== Fixed.Zero`. That
+                // spelling and AiOpponentSystem's `> Fixed.Zero` conscriptable test were complements only while the
+                // stat stayed non-negative; a negative value made this branch call the unit a COMBATANT while the AI
+                // called it a non-combatant. Behaviour is unchanged for every non-negative value (which is all of
+                // them: the validator bounds authored damage at [0, …) and every writer now floors at zero).
+                if (world.IsNonCombatant(i)) // non-combatant
                 {
                     TickNonCombatant(world, i, dt);
                     continue;
