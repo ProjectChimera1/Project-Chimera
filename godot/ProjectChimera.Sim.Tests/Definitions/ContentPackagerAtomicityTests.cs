@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using ProjectChimera.Core.Definitions;
 using Xunit;
@@ -8,13 +9,16 @@ using Xunit;
 namespace ProjectChimera.Sim.Tests.Definitions
 {
     /// <summary>
-    /// DW-421 / DW-423 — the ContentPackager write-safety contracts:
+    /// DW-421 / DW-423 / DW-560 — the ContentPackager write-safety contracts:
     /// (1) RewriteManifest is ATOMIC: a failure anywhere in the rewrite (serialize, staging, or the zip commit)
     ///     leaves the shipped .chimera.zip byte-identical and readable — the old in-place delete-then-write left a
     ///     manifest-less, permanently unreadable package when a throw unwound the ZipArchiveMode.Update session.
     /// (2) Pack hashes and writes ONE byte snapshot per integrity-hashed source (scenario/terrain/asset): a source
     ///     file mutated between hash computation and archive writing can no longer produce a package whose recorded
     ///     hashes disagree with its own bytes (which failed the package's OWN Unpack).
+    /// (3) Pack's OUTPUT is ATOMIC: a throw mid-write leaves any pre-existing export at the output path
+    ///     byte-identical and readable, with no partial zip and no staging residue — the old shape deleted the
+    ///     previous export up front and wrote straight into ZipArchiveMode.Create.
     /// </summary>
     public class ContentPackagerAtomicityTests
     {
@@ -168,6 +172,116 @@ namespace ProjectChimera.Sim.Tests.Definitions
                 Assert.Equal(scenOriginal,   File.ReadAllBytes(result.ScenarioPath));
                 Assert.Equal(regionOriginal, File.ReadAllBytes(result.TerrainFiles.Single()));
                 Assert.Equal(assetOriginal,  File.ReadAllBytes(result.AssetFiles.Single()));
+            }
+            finally { Directory.Delete(work, recursive: true); }
+        }
+
+        // ── DW-560: Pack output atomicity ────────────────────────────────────────
+
+        [Fact]
+        public void Pack_ThrowMidWrite_LeavesPreviousExportIntact() // DW-560
+        {
+            string work = NewTempDir();
+            try
+            {
+                string scen = WriteScenario(work);
+                string zip  = Path.Combine(work, "map.chimera.zip");
+
+                // The creator's PREVIOUS export — the thing the old delete-then-Create shape destroyed.
+                ContentPackager.Pack(scen, zip, new ContentPackager.PackOptions { DisplayName = "Shipped v1" });
+                byte[] originalZipBytes = File.ReadAllBytes(zip);
+
+                // A NON-hashed source (screenshot) that is still re-read inside the write loop. Deleting it in the
+                // post-hash window is the real-world failure DW-560 names: enumeration saw the file, the write loop
+                // no longer finds it, and the throw lands long after the old export would already have been deleted.
+                string shot = Path.Combine(work, "shot.png");
+                File.WriteAllBytes(shot, new byte[] { 8, 9, 10 });
+
+                ContentPackager.PackTestHookAfterHash = () => File.Delete(shot);
+                try
+                {
+                    Assert.Throws<FileNotFoundException>(() => ContentPackager.Pack(scen, zip,
+                        new ContentPackager.PackOptions
+                        {
+                            DisplayName = "Doomed v2",
+                            ScreenshotPaths = new() { shot },
+                        }));
+                }
+                finally { ContentPackager.PackTestHookAfterHash = null; }
+
+                // Pre-fix: the previous export is GONE (or a partial zip). Post-fix: byte-identical and readable.
+                Assert.True(File.Exists(zip));
+                Assert.Equal(originalZipBytes, File.ReadAllBytes(zip));
+                var reread = ContentPackager.ReadManifest(zip);
+                Assert.NotNull(reread);
+                Assert.Equal("Shipped v1", reread!.DisplayName);
+
+                // The failed export left no staging residue beside the output.
+                Assert.Empty(Directory.GetFiles(work, "*.pack.tmp"));
+            }
+            finally { Directory.Delete(work, recursive: true); }
+        }
+
+        [Fact]
+        public void Pack_StagingFailure_LeavesPreviousExportIntact() // DW-560
+        {
+            string work = NewTempDir();
+            try
+            {
+                string scen = WriteScenario(work);
+                string zip  = Path.Combine(work, "map.chimera.zip");
+                ContentPackager.Pack(scen, zip, new ContentPackager.PackOptions { DisplayName = "Shipped v1" });
+                byte[] originalZipBytes = File.ReadAllBytes(zip);
+
+                // Squat a DIRECTORY on the temp-sibling name so the staged write fails. This pins the staging
+                // MECHANISM itself: Pack must never open the output path for writing, so a write-side failure
+                // still leaves the previous export byte-identical. (An in-place Pack succeeds here and fails this
+                // test — deliberately: writing in place is exactly what DW-560 closed.)
+                Directory.CreateDirectory(zip + ".pack.tmp");
+
+                Assert.ThrowsAny<Exception>(() => ContentPackager.Pack(scen, zip,
+                    new ContentPackager.PackOptions { DisplayName = "Doomed v2" }));
+
+                Assert.Equal(originalZipBytes, File.ReadAllBytes(zip));
+                var reread = ContentPackager.ReadManifest(zip);
+                Assert.NotNull(reread);
+                Assert.Equal("Shipped v1", reread!.DisplayName); // no half-applied re-export
+            }
+            finally { Directory.Delete(work, recursive: true); }
+        }
+
+        [Fact]
+        public void Pack_Success_ReplacesPreviousExportWholesaleAndLeavesNoResidue() // DW-560
+        {
+            string work = NewTempDir();
+            try
+            {
+                string scen = WriteScenario(work);
+                string zip  = Path.Combine(work, "map.chimera.zip");
+
+                // v1 carries a faction file; v2 does not. Staging must publish a FRESH archive (Create semantics),
+                // never an Update over the previous export — a stale entry surviving the re-export would be a
+                // package shipping content its own manifest does not list.
+                string faction = Path.Combine(work, "rebels.json");
+                File.WriteAllText(faction, "{\"id\":\"rebels\"}");
+                ContentPackager.Pack(scen, zip, new ContentPackager.PackOptions
+                {
+                    DisplayName  = "Shipped v1",
+                    FactionPaths = new() { faction },
+                });
+                Assert.Single(ContentPackager.ReadManifest(zip)!.FactionFiles);
+
+                ContentPackager.Pack(scen, zip, new ContentPackager.PackOptions { DisplayName = "Shipped v2" });
+
+                var reread = ContentPackager.ReadManifest(zip);
+                Assert.NotNull(reread);
+                Assert.Equal("Shipped v2", reread!.DisplayName);
+                Assert.Empty(reread.FactionFiles);
+                using (var archive = ZipFile.OpenRead(zip))
+                    Assert.Null(archive.GetEntry("factions/rebels.json")); // no stale entry carried over
+
+                Assert.Empty(Directory.GetFiles(work, "*.pack.tmp")); // staged copy renamed, not leaked
+                Assert.True(File.Exists(ContentPackager.Unpack(zip, Path.Combine(work, "extract")).ScenarioPath));
             }
             finally { Directory.Delete(work, recursive: true); }
         }
