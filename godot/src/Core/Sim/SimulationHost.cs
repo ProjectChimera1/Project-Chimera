@@ -316,7 +316,10 @@ namespace ProjectChimera.Core.Sim
                 ItemSys,                                                                  // [10] ItemSystem       (Combat, FR-64)
                 new SupplySystem(Resources),                                              // [11] SupplySystem      (Economy)
                 Fog,                                                                      // [12] FogOfWarSystem    (Core)
-                _ai = new AiOpponentSystem(Buildings, Resources, BuildSys, aiLevel),      // [13] AI opponent (plays Player2)
+                // DW-439/DW-445: Alliances threaded in so the AI's target/raze/threat classification is team-aware —
+                // without it a teamed AI ordered attacks onto its own ally, combat's Story-9.14 allied guard rejected
+                // them, and its whole force reverted to Idle every tick. Null/FFA ⇒ byte-identical to pre-fix.
+                _ai = new AiOpponentSystem(Buildings, Resources, BuildSys, aiLevel, Alliances), // [13] AI opponent (plays Player2)
                 // ── Story 7.11 win-condition evaluator. Immediately AFTER AiOpponentSystem (so it sees post-death
                 //    alive counts) and immediately BEFORE ScenarioDirector (so the director's OnVictory escape hatch
                 //    still runs last). Reads final entity/building state, writes the folded WinStateStore verdict. ──

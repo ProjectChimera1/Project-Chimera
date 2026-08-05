@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using ProjectChimera.Core;
@@ -29,6 +30,10 @@ namespace ProjectChimera.AI
         // ── Constants ─────────────────────────────────────────────────────────
 
         private const Faction AI_FACTION = Faction.Player2;
+
+        /// <summary>DW-439/DW-445 — the fixed per-faction slot span the <see cref="AllianceStore"/> mask is sized to
+        /// (indices 0-8; 0 = Neutral). Only used by <see cref="HasTeammate"/>'s 8-compare scan, never per-entity.</summary>
+        private const int FACTION_SLOT_COUNT = FactionRegistry.SLOT_DEFINITIONS_SIZE;
 
         // Ore costs — must match EntityPlacer.BUILDING_COSTS and faction JSON.
         private static readonly Fixed COST_CC       = Fixed.FromFloat(150f);
@@ -110,6 +115,16 @@ namespace ProjectChimera.AI
         private readonly ResourceStore  _resources;
         private readonly BuildingSystem _buildSys;
 
+        /// <summary>
+        /// DW-439 / DW-445 — the sim-owned team mask (Story 7.12 / 9.14), threaded in so the AI's hostility test
+        /// asks the SAME question <c>CombatSystem</c>/<c>ProjectileSystem</c>/<c>SpatialHash</c> ask. OPTIONAL: a
+        /// null store means "no mask" and <see cref="IsHostile"/> degenerates to the pre-fix
+        /// <c>f != AI_FACTION &amp;&amp; f != Faction.Neutral</c> test, so every existing caller (and every golden)
+        /// stays byte-identical. The FFA default (<c>TeamId[f]==f</c>) is likewise byte-identical, because
+        /// <see cref="AllianceStore.AreAllied"/> is false for every pair of DISTINCT factions under it.
+        /// </summary>
+        private readonly AllianceStore? _alliances;
+
         // ── Tracked state ─────────────────────────────────────────────────────
 
         /// <summary>IDs of all AI-owned production buildings (Barracks / ArcheryRange / SiegeWorkshop).</summary>
@@ -124,11 +139,15 @@ namespace ProjectChimera.AI
 
         public AiOpponentSystem(BuildingStore buildings, ResourceStore resources,
                                 BuildingSystem buildSys,
-                                AiDifficulty difficulty = AiDifficulty.Normal)
+                                AiDifficulty difficulty = AiDifficulty.Normal,
+                                AllianceStore? alliances = null)
         {
             _buildings = buildings;
             _resources = resources;
             _buildSys  = buildSys;
+            // DW-439/DW-445 — optional team mask. null (or the FFA default) ⇒ the pre-fix hostility test exactly,
+            // so no shipped scenario, test fixture or golden changes behavior.
+            _alliances = alliances;
 
             // DW-125: read the curve from the shared DifficultyProfile above rather than inlining the tuple here,
             // so the values the tests reference and the values this instance runs on are literally the same ones.
@@ -208,6 +227,56 @@ namespace ProjectChimera.AI
             ExecuteBestAction(snap, world);
         }
 
+        // ── Alliance awareness (DW-439 / DW-445) ──────────────────────────────
+
+        /// <summary>
+        /// The SINGLE "is <paramref name="f"/> an ENEMY of the AI?" test — shared by the snapshot's threat and
+        /// raze-target classification, the building picker, and the wave's march destination, so those four sites can
+        /// never disagree about who the enemy is.
+        ///
+        /// <para><b>The defect this closes (DW-439 / DW-445).</b> The AI used to spell hostility as
+        /// <c>f != AI_FACTION &amp;&amp; f != Faction.Neutral</c> at each site independently and never consulted the
+        /// <see cref="AllianceStore"/>. In a teamed match (an AI on a team with a player — WC3's most-played
+        /// "2 players + 2 computers" setup) that made an ALLIED faction a target: the AI ordered
+        /// <see cref="UnitCommand.AttackBuilding"/> onto its ally's base, <c>CombatSystem.TickAttackBuildingCombat</c>'s
+        /// Story-9.14 allied guard (<c>CombatSystem.cs:435</c>) rejected the order and reverted the unit to Idle, the AI
+        /// re-issued the identical order the next tick, and its whole force sat at Idle forever instead of engaging the
+        /// real enemy. The mirror-image half also stalled it: an ALLIED unit counted as a live "enemy defender", so
+        /// <see cref="ScoreRazeBuildings"/> never committed a raze while any teammate unit was alive.</para>
+        ///
+        /// <para><b>Golden-neutral.</b> A null store, or the FFA default (<c>TeamId[f]==f</c>), makes
+        /// <see cref="AllianceStore.AreAllied"/> false for every pair of distinct factions — so this returns exactly
+        /// what the old inline test returned. Neutral is never hostile (unchanged), and a faction is always allied with
+        /// itself, so <c>AI_FACTION</c> is never hostile either.</para>
+        ///
+        /// <para>CONSTRAINT (recorded with the decision): this makes SINGLE-PLAYER skirmish correct. It does NOT unblock
+        /// teamed AI in lockstep MP — the scorer still runs on <c>float</c> (D2), which stays gated on the
+        /// float→Fixed migration (DW-204 / Story 10.11).</para>
+        /// </summary>
+        private bool IsHostile(Faction f)
+        {
+            if (f == AI_FACTION || f == Faction.Neutral) return false;
+            return _alliances == null || !_alliances.AreAllied(AI_FACTION, f);
+        }
+
+        /// <summary>
+        /// True iff the AI shares a team with at least one OTHER faction — the cheap gate that keeps the ally-aware
+        /// target-priority path (<see cref="BuildAllyFocusMask"/>) out of every FFA tick entirely. Eight integer
+        /// compares over the fixed 9-slot mask; no allocation, no per-entity work, and provably false under a null
+        /// store or the FFA default, so an FFA/golden tick never even allocates the mask.
+        /// </summary>
+        private bool HasTeammate()
+        {
+            if (_alliances == null) return false;
+            for (int f = 0; f < FACTION_SLOT_COUNT; f++)
+            {
+                var faction = (Faction)f;
+                if (faction == AI_FACTION || faction == Faction.Neutral) continue;
+                if (_alliances.AreAllied(AI_FACTION, faction)) return true;
+            }
+            return false;
+        }
+
         // ── Snapshot ──────────────────────────────────────────────────────────
 
         private struct AiSnapshot
@@ -261,7 +330,10 @@ namespace ProjectChimera.AI
                 Faction bf = _buildings.FactionOf[i];
                 if (bf != AI_FACTION)
                 {
-                    if (bf != Faction.Neutral) snap.EnemyBuildingExists = true; // a real enemy base — a raze target
+                    // DW-439: a real ENEMY base — a raze target. An ALLIED faction's base is not one; counting it here
+                    // made ScoreRazeBuildings commit a wave that FindNearestEnemyBuilding could then find no target
+                    // for, re-choosing RazeBuildings every tick and doing nothing (a permanent decision stall).
+                    if (IsHostile(bf)) snap.EnemyBuildingExists = true;
                     continue;
                 }
                 bool complete = !_buildings.IsUnderConstruction(i);
@@ -297,9 +369,12 @@ namespace ProjectChimera.AI
                 Faction uf = world.FactionOf[i];
                 if (uf != AI_FACTION)
                 {
-                    // Story 2.13 (AC1.5) — a live enemy defender (non-Neutral, non-gatherer, damage-bearing). While
+                    // Story 2.13 (AC1.5) — a live enemy defender (hostile, non-gatherer, damage-bearing). While
                     // ANY remains, the AI fights the army rather than tunnel-visioning a building past live defenders.
-                    if (uf != Faction.Neutral && world.GatherState[i] == GatherState.Inactive
+                    // DW-439: an ALLIED unit is not a defender to fight. Counting one kept EnemyThreatRemains latched
+                    // for as long as any teammate unit drew breath, so a teamed AI never reached the raze fallback and
+                    // a DestroyAllBuildings match with an AI on the team could not conclude.
+                    if (IsHostile(uf) && world.GatherState[i] == GatherState.Inactive
                         && world.CanDealDamage(i))   // DW-643 — the shared predicate, complement of CombatSystem's
                         snap.EnemyThreatRemains = true;
                     continue;
@@ -573,15 +648,87 @@ namespace ProjectChimera.AI
 
         private void DoLaunchAttack(EntityWorld world)
         {
+            // DW-439 — the march DESTINATION has to be hostile ground. The hardcoded P1_BASE is only the enemy's base
+            // while Player1 IS the enemy; on a team with Player1 the wave marched straight into its ally's base and
+            // stood there (combat correctly refuses to fire on an ally) while the real enemy went untouched.
+            if (!TryResolveWaveDestination(world, out FixedVec3 dest))
+            {
+                // Teamed AI with nothing hostile left to march on. Burn the cooldown anyway so the (still positive)
+                // attack score stops out-bidding the tech/production actions every tick on an order it cannot issue.
+                _attackCooldown = _attackCooldownMax;
+                return;
+            }
+
             int hwm = world.HighWaterMark;
             for (int i = 0; i < hwm; i++)
             {
                 if (!IsConscriptable(world, i)) continue; // DW-202 — same bar BuildSnapshot counted
                 world.CommandState[i] = UnitCommand.AttackMove;
-                world.CommandGoal[i]  = P1_BASE;
-                world.MoveTarget[i]   = P1_BASE;
+                world.CommandGoal[i]  = dest;
+                world.MoveTarget[i]   = dest;
             }
             _attackCooldown = _attackCooldownMax;
+        }
+
+        /// <summary>
+        /// DW-439 — where this wave marches.
+        ///
+        /// <para>While Player1 is HOSTILE (every FFA match, every golden, every existing fixture) this is the
+        /// unchanged hardcoded <see cref="P1_BASE"/> — byte-for-byte the pre-fix behavior, so no recorded checksum
+        /// sequence moves. The alternative branch is reachable ONLY when the mask puts Player1 on the AI's team, which
+        /// no shipped scenario and no golden does.</para>
+        ///
+        /// <para>On a team with Player1 the wave instead marches at the nearest HOSTILE structure to its own vanguard
+        /// (the lowest-id conscript — an ascending-id pick, so the choice is deterministic), falling back to the
+        /// nearest hostile UNIT when every enemy structure is already down but its army is not. With neither, there is
+        /// nothing to attack and the caller skips the wave rather than marching onto an ally.</para>
+        /// </summary>
+        private bool TryResolveWaveDestination(EntityWorld world, out FixedVec3 dest)
+        {
+            if (IsHostile(Faction.Player1)) { dest = P1_BASE; return true; } // unchanged FFA/default path
+
+            dest = default;
+
+            // The wave's vanguard: the lowest-id conscript (ascending scan ⇒ deterministic). ScoreLaunchAttack only
+            // fires above the availability threshold, so a miss here is defensive.
+            int anchor = -1;
+            int hwm    = world.HighWaterMark;
+            for (int i = 0; i < hwm; i++)
+                if (IsConscriptable(world, i)) { anchor = i; break; }
+            if (anchor < 0) return false;
+
+            FixedVec3 from = world.Position[anchor];
+
+            // Same DW-445 ally-focus preference the raze picker applies, so the wave rallies on a structure the team
+            // is not already working on rather than piling onto the ally's current siege.
+            int b = FindNearestEnemyBuilding(from, BuildAllyFocusMask(world));
+            if (b >= 0) { dest = _buildings.Position[b]; return true; }
+
+            int u = FindNearestEnemyUnit(world, from);
+            if (u >= 0) { dest = world.Position[u]; return true; }
+
+            return false;
+        }
+
+        /// <summary>
+        /// DW-439 — nearest alive HOSTILE unit to <paramref name="from"/> by <see cref="Fixed"/> squared distance,
+        /// ascending-id tie-break; -1 if none. Only consulted by <see cref="TryResolveWaveDestination"/>'s teamed
+        /// branch (unreachable in FFA), and deliberately NOT filtered by <c>CanDealDamage</c>: an enemy base defended
+        /// only by workers is still somewhere worth marching.
+        /// </summary>
+        private int FindNearestEnemyUnit(EntityWorld world, FixedVec3 from)
+        {
+            int   best    = -1;
+            Fixed bestSqr = Fixed.Zero;
+            int   hwm     = world.HighWaterMark;
+            for (int i = 0; i < hwm; i++)
+            {
+                if (!world.IsAlive(i)) continue;
+                if (!IsHostile(world.FactionOf[i])) continue;
+                Fixed sqrDist = FixedVec3.SqrDistance(from, world.Position[i]);
+                if (best < 0 || sqrDist < bestSqr) { best = i; bestSqr = sqrDist; } // strict < ⇒ ascending-id tie-break
+            }
+            return best;
         }
 
         /// <summary>
@@ -594,6 +741,10 @@ namespace ProjectChimera.AI
         /// </summary>
         private void DoRazeBuildings(EntityWorld world)
         {
+            // DW-445 (the "modern execution" half of the recorded decision) — computed ONCE per raze action, and only
+            // in a teamed match: null in FFA, so this whole path is free and byte-identical there.
+            bool[]? allyFocused = BuildAllyFocusMask(world);
+
             int hwm = world.HighWaterMark;
             for (int i = 0; i < hwm; i++)
             {
@@ -602,7 +753,7 @@ namespace ProjectChimera.AI
                 // AttackBuilding guard, so skip it and leave it available (default AttackDomain is All).
                 if ((world.AttackDomainOf[i] & AttackDomain.Structure) == AttackDomain.None) continue;
 
-                int b = FindNearestEnemyBuilding(world.Position[i]);
+                int b = FindNearestEnemyBuilding(world.Position[i], allyFocused);
                 if (b < 0) continue; // no enemy base left for this unit to raze
                 world.CommandState[i]  = UnitCommand.AttackBuilding;
                 world.CommandTarget[i] = _buildings.PackRef(b); // Story 2.13 D-3: packed building ref (golden-neutral at gen 0)
@@ -611,22 +762,75 @@ namespace ProjectChimera.AI
         }
 
         /// <summary>
-        /// Story 2.13 — nearest alive ENEMY (non-AI, non-Neutral) building to <paramref name="from"/>, by
-        /// <see cref="Fixed"/> squared distance, ascending-id tie-break; -1 if none.
+        /// Story 2.13 — nearest alive ENEMY building to <paramref name="from"/>, by <see cref="Fixed"/> squared
+        /// distance, ascending-id tie-break; -1 if none. DW-439/DW-445: "enemy" is now <see cref="IsHostile"/>, so an
+        /// ALLIED faction's base is never returned (it used to be, and the order was then rejected by combat's allied
+        /// guard, reverting the unit to Idle every tick).
+        ///
+        /// <para>DW-445's optional ALLY-FOCUS de-duplication rides the same scan: when
+        /// <paramref name="allyFocused"/> is non-null (a teamed match only), a structure a teammate is already
+        /// force-attacking is de-prioritized, so the team razes two buildings in parallel instead of stacking on one.
+        /// It is a PREFERENCE, never a filter — if every remaining hostile structure is already ally-focused the
+        /// nearest one is returned anyway, so this can never strand the AI with "no target" (the exact failure mode
+        /// DW-445 is about).</para>
         /// </summary>
-        private int FindNearestEnemyBuilding(FixedVec3 from)
+        private int FindNearestEnemyBuilding(FixedVec3 from, bool[]? allyFocused)
         {
-            int   best    = -1;
-            Fixed bestSqr = Fixed.Zero;
+            int   best        = -1;  // nearest hostile building, ally-focused or not — the guaranteed fallback
+            Fixed bestSqr     = Fixed.Zero;
+            int   bestFree    = -1;  // nearest hostile building NO teammate is already working on
+            Fixed bestFreeSqr = Fixed.Zero;
+
             for (int b = 0; b < _buildings.Count; b++)
             {
                 if (!_buildings.Alive[b]) continue;
-                Faction f = _buildings.FactionOf[b];
-                if (f == AI_FACTION || f == Faction.Neutral) continue;
+                if (!IsHostile(_buildings.FactionOf[b])) continue;
                 Fixed sqrDist = FixedVec3.SqrDistance(from, _buildings.Position[b]);
                 if (best < 0 || sqrDist < bestSqr) { best = b; bestSqr = sqrDist; } // strict < ⇒ ascending-id tie-break
+
+                if (allyFocused == null) continue;                                  // FFA — no preference pass at all
+                if (b < allyFocused.Length && allyFocused[b]) continue;              // a teammate already razes this one
+                if (bestFree < 0 || sqrDist < bestFreeSqr) { bestFree = b; bestFreeSqr = sqrDist; }
             }
-            return best;
+
+            return bestFree >= 0 ? bestFree : best;
+        }
+
+        /// <summary>
+        /// DW-445 — mark every building slot a TEAMMATE unit (allied, but not the AI's own faction) is currently
+        /// force-attacking, so <see cref="FindNearestEnemyBuilding(FixedVec3, bool[])"/> can prefer a structure the
+        /// team is not already chewing on. Returns null when the AI has no teammate — i.e. in EVERY FFA match, every
+        /// golden and every existing fixture — which is both the byte-identical fast path and the reason this
+        /// allocates nothing there.
+        ///
+        /// <para>The AI's OWN units are deliberately excluded: their focus is what keeps a wave concentrated, and
+        /// de-duplicating against it would scatter one AI's army across a whole base. Scans ascending id and resolves
+        /// the packed <see cref="EntityWorld.CommandTarget"/> ref through <c>TryResolveRef</c>, so a stale ref to a
+        /// recycled slot marks nothing.</para>
+        /// </summary>
+        private bool[]? BuildAllyFocusMask(EntityWorld world)
+        {
+            if (!HasTeammate()) return null;
+
+            int count = _buildings.Count;
+            if (count <= 0) return null;
+
+            // One small allocation per raze ACTION (not per tick, and never in FFA) — the raze fallback is a
+            // terminal, low-frequency decision, so this stays off every hot path.
+            var focused = new bool[count];
+
+            int hwm = world.HighWaterMark;
+            for (int i = 0; i < hwm; i++)
+            {
+                if (!world.IsAlive(i)) continue;
+                Faction f = world.FactionOf[i];
+                if (f == AI_FACTION || f == Faction.Neutral) continue;
+                if (_alliances == null || !_alliances.AreAllied(AI_FACTION, f)) continue; // not a teammate
+                if (world.CommandState[i] != UnitCommand.AttackBuilding) continue;
+                if (_buildings.TryResolveRef(world.CommandTarget[i], out int b) && b < count) focused[b] = true;
+            }
+
+            return focused;
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────

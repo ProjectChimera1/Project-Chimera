@@ -545,7 +545,10 @@ namespace ProjectChimera.Sim.Tests.Sim
                 Allowlist = new[]
                 {
                     // Host-lifetime wiring (readonly ctor deps, shared between fresh and dirty).
-                    "_buildings", "_resources", "_buildSys",
+                    // DW-439/DW-445: _alliances joined them — the team mask is a host-lifetime dependency the AI
+                    // READS and never owns (SimulationHost.ClearForReset resets the store itself via
+                    // Alliances.Clear(), which AlliancesCase already sweeps), exactly like FogCase's _alliances.
+                    "_buildings", "_resources", "_buildSys", "_alliances",
                     // Readonly difficulty-derived config — "Difficulty weights are readonly and intentionally
                     // preserved" (ResetForMatch doc); both instances derive identical values from the same level.
                     "_aggressionWeight", "_techWeight", "_attackThreshold", "_attackCooldownMax",
