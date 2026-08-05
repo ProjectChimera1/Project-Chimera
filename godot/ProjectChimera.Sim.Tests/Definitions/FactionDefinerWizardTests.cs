@@ -459,6 +459,146 @@ namespace ProjectChimera.Sim.Tests.Definitions
             finally { Directory.Delete(dir, recursive: true); }
         }
 
+        // ── DW-112: the File.Exists pre-check → File.Move(overwrite:false) TOCTOU window ───────────────────────
+        //
+        // The pre-check above and the atomic move are two separate observations of the same fact. A destination the
+        // pre-check did not see — created between the two by a second wizard session or an external tool, or simply
+        // invisible to File.Exists because it is a DIRECTORY — used to fall through to the generic
+        // "save failed: {ex.Message}" branch, handing the creator the raw OS string "Cannot create a file when that
+        // file already exists." for exactly the situation the pre-check words helpfully. The move now classifies its
+        // own failure and reuses the pre-check's located `id` error.
+
+        [Fact]
+        public void TryFinish_TargetNameTakenByDirectory_ReportsFriendlyIdError_NotRawSaveFailed()
+        {
+            // RED without the fix (measured on this machine, Win11 26200): File.Exists returns FALSE for a directory,
+            // so the pre-check waves it through, the .tmp is written and self-checks fine, and only
+            // File.Move(overwrite:false) fails — with an IOException the old generic catch surfaced verbatim as
+            // "save failed: Cannot create a file when that file already exists." on the id field.
+            //
+            // This is the one arm of the DW-112 window a single-threaded test can stage end-to-end, so it is what
+            // pins the wiring from TryFinish's catch into TryClassifyTargetCollision. The concurrent-FILE arm needs a
+            // target that materialises strictly between the two observations, which no in-process test can order —
+            // it is pinned directly against the classifier below.
+            string dir = MakeTempDir();
+            try
+            {
+                string targetAbs = Path.Combine(dir, "blocked_faction.json");
+                Directory.CreateDirectory(targetAbs);   // the destination NAME is taken, by a folder
+
+                FactionPresetPool pool = ScanRealAlphaBeta();
+                FactionDefinition def = NewDraft("blocked");
+                Pick(def, pool, unitIds: new[] { "worker", "infantry" }, buildingIds: new[] { "command_center" });
+
+                FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinish(def, dir);
+
+                Assert.False(result.Ok);
+                (string FieldPath, string Message) err = Assert.Single(result.Errors, e => e.FieldPath == "id");
+                Assert.Contains("already exists", err.Message, StringComparison.Ordinal);
+                Assert.Contains("choose a different id", err.Message, StringComparison.Ordinal);
+                Assert.DoesNotContain("save failed", err.Message, StringComparison.OrdinalIgnoreCase);
+                Assert.Equal(FactionDefinerStep.NameColor, result.Step);
+
+                Assert.True(Directory.Exists(targetAbs));                  // the blocking folder is left alone
+                Assert.False(File.Exists(targetAbs + ".tmp"));             // the failed write leaves no stray .tmp
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void TryClassifyTargetCollision_TargetFileAppearedAfterThePreCheck_ReusesTheExactPreCheckMessage()
+        {
+            // The concurrent-FILE arm — the literal TOCTOU DW-112 names. Driven at the classifier because the window
+            // it describes (target absent at the pre-check, present at the move) cannot be staged from inside the
+            // single call it spans. Asserts message IDENTITY, not just "contains 'already exists'": the whole point
+            // of the entry is that a creator sees the SAME friendly sentence whichever observation catches the
+            // collision, so the two wordings must be produced by one builder and are pinned here against the real
+            // pre-check output for the same path.
+            string dir = MakeTempDir();
+            try
+            {
+                string targetAbs = Path.Combine(dir, "raced_faction.json");
+                File.WriteAllText(targetAbs, "SENTINEL-DO-NOT-OVERWRITE");
+
+                // The message the PRE-CHECK arm produces for this exact path, read off a real TryFinish run.
+                FactionPresetPool pool = ScanRealAlphaBeta();
+                FactionDefinition def = NewDraft("raced");
+                Pick(def, pool, unitIds: new[] { "worker", "infantry" }, buildingIds: new[] { "command_center" });
+                FactionDefinerFinishResult preCheck = FactionDefinerWizardCore.TryFinish(def, dir);
+                Assert.False(preCheck.Ok);
+                string preCheckMessage = Assert.Single(preCheck.Errors, e => e.FieldPath == "id").Message;
+
+                // The message the POST-MOVE arm produces for the same path, given the IOException an
+                // overwrite:false move raises when the destination is occupied.
+                FactionDefinerFinishResult? raced = FactionDefinerWizardCore.TryClassifyTargetCollision(
+                    new IOException("Cannot create a file when that file already exists."), targetAbs);
+
+                Assert.NotNull(raced);
+                Assert.False(raced!.Value.Ok);
+                Assert.Equal(FactionDefinerStep.NameColor, raced.Value.Step);
+                Assert.Equal(preCheckMessage,
+                    Assert.Single(raced.Value.Errors, e => e.FieldPath == "id").Message);
+
+                // A move can also fail with UnauthorizedAccessException; same classification.
+                Assert.NotNull(FactionDefinerWizardCore.TryClassifyTargetCollision(
+                    new UnauthorizedAccessException("denied"), targetAbs));
+
+                Assert.Equal("SENTINEL-DO-NOT-OVERWRITE", File.ReadAllText(targetAbs));   // classification reads only
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void TryClassifyTargetCollision_FreeTargetOrUnrelatedFailure_ReturnsNull_SoSaveFailedStands()
+        {
+            // The classifier must not dress every write failure up as a collision — a full disk or a locked .tmp is
+            // not "choose a different id", and telling the creator it is would be a worse lie than the raw OS string
+            // DW-112 replaces.
+            string dir = MakeTempDir();
+            try
+            {
+                string freeTarget = Path.Combine(dir, "nothing_here_faction.json");
+
+                // Right exception family, but nothing occupies the destination -> not a collision.
+                Assert.Null(FactionDefinerWizardCore.TryClassifyTargetCollision(
+                    new IOException("There is not enough space on the disk."), freeTarget));
+
+                // Destination occupied, but the failure is not one a filesystem move raises -> not a collision.
+                File.WriteAllText(freeTarget, "x");
+                Assert.Null(FactionDefinerWizardCore.TryClassifyTargetCollision(
+                    new InvalidOperationException("something else entirely"), freeTarget));
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void TryFinish_WriteFailsBeforeTheMove_StillReportsSaveFailed_NotACollision()
+        {
+            // Companion guard to the two above: the DW-112 re-read is scoped to the MOVE. A serialize/write/self-check
+            // failure keeps reporting its own reason, because that reason is the truthful account of what went wrong.
+            // Staged by taking the .tmp NAME with a directory, which makes File.WriteAllText throw
+            // UnauthorizedAccessException while the real target is still free.
+            string dir = MakeTempDir();
+            try
+            {
+                string targetAbs = Path.Combine(dir, "tmp_blocked_faction.json");
+                Directory.CreateDirectory(targetAbs + ".tmp");
+
+                FactionPresetPool pool = ScanRealAlphaBeta();
+                FactionDefinition def = NewDraft("tmp_blocked");
+                Pick(def, pool, unitIds: new[] { "worker", "infantry" }, buildingIds: new[] { "command_center" });
+
+                FactionDefinerFinishResult result = FactionDefinerWizardCore.TryFinish(def, dir);
+
+                Assert.False(result.Ok);
+                (string FieldPath, string Message) err = Assert.Single(result.Errors, e => e.FieldPath == "id");
+                Assert.Contains("save failed", err.Message, StringComparison.Ordinal);
+                Assert.DoesNotContain("choose a different id", err.Message, StringComparison.Ordinal);
+                Assert.False(File.Exists(targetAbs));   // and nothing was written to the target
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
         [Theory]
         [InlineData("../evil")]
         [InlineData("sub/dir")]
