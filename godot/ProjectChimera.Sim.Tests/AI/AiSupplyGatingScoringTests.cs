@@ -77,20 +77,29 @@ namespace ProjectChimera.Sim.Tests.AI
         }
 
         /// <summary>
-        /// The expansion is DEPRIORITIZED, not skipped. A hard "return 0 when ungated" would also permanently close
-        /// the <c>ScoreBuildSecondBarracks</c> gate (it requires the expansion CommandCenter), costing an
-        /// ungated-scenario AI its second production building forever. With a Barracks already up (so no build/tech
-        /// action scores) the one-shot expansion must still be committed.
+        /// DW-636 — the expansion is now SKIPPED outright when gating is disabled, not merely deprioritized.
+        ///
+        /// DW-63 could only DEPRIORITIZE it (a flat 0.25) because the expansion CommandCenter was also the gate
+        /// <c>ScoreBuildSecondBarracks</c> read, so a hard 0 would have permanently closed that gate and cost an
+        /// ungated-scenario AI its second production building forever. DW-636 re-gated the second Barracks on
+        /// ore/army demand, so that constraint is gone — and with it the last reason to spend 150 ore on +10 to a
+        /// cap nothing enforces. This is the case that used to build one: a Barracks already up (no build/tech
+        /// action scores) and ample ore, so pre-DW-636 the 0.25 expansion was the only thing above the 0.01
+        /// do-nothing floor and the AI committed it.
+        ///
+        /// <see cref="AiSecondBarracksDemandTests.UngatedSupply_StillReachesASecondBarracks_WithoutAnExpansion"/>
+        /// is the other half: what the 0.25 was protecting is still delivered, via demand instead.
         /// </summary>
         [Fact]
-        public void UngatedSupply_StillCommitsTheExpansion_OnceNothingElseScores()
+        public void UngatedSupply_SkipsTheExpansionEntirely()
         {
             Fixture f = NewFixture(supplyGatingEnabled: false, preplaceAiBarracks: true);
             f.Resources.SupplyUsed[AI_SLOT] = 500;
 
             f.Ai.Tick(f.World, SimulationLoop.FixedDt);
 
-            Assert.Equal(1, CountAiBuildings(f.Buildings, BuildingType.CommandCenter));
+            Assert.Equal(0, CountAiBuildings(f.Buildings, BuildingType.CommandCenter));
+            Assert.Equal(AmpleOre, f.Resources.Ore[AI_SLOT]); // and the 150 ore stays banked for real production
         }
 
         // ── Fixture ───────────────────────────────────────────────────────────

@@ -42,23 +42,17 @@ namespace ProjectChimera.AI
         private const int SUPPLY_LOW      = 4;
 
         /// <summary>
-        /// DW-63 — the flat, headroom-INDEPENDENT expansion score used when the scenario disables supply gating
-        /// (<see cref="ResourceStore.SupplyGatingEnabled"/> is <c>false</c>).
+        /// DW-636 — the ORE-SURPLUS bar a SECOND Barracks must clear: enough banked ore to pay for the Barracks
+        /// AND still fund a further production cycle's worth of orders at the same price.
         ///
-        /// With gating off nothing ever blocks training, so <c>SupplyUsed</c> climbs unboundedly past
-        /// <c>SupplyCap</c> and <c>SupplyHeadroom</c> saturates to a deeply-negative magnitude that carries no
-        /// information — the ladder below would then report a permanent "critical" 0.95 and pin the AI's single
-        /// highest priority on expanding a cap nobody enforces, starving Barracks/tech/attack/raze for as long as
-        /// it can afford a CommandCenter.
+        /// This is the "production, not income, is the bottleneck" test. Ore piling up past what a single running
+        /// queue can spend is the real demand signal for doubling production; ore that merely covers the Barracks
+        /// itself means the AI is ORE-limited, and a second queue would just idle beside the first.
         ///
-        /// Deliberately DEPRIORITIZED rather than skipped outright: the expansion CommandCenter is also the gate
-        /// <see cref="ScoreBuildSecondBarracks"/> reads, so returning a hard 0 would permanently cost an
-        /// ungated-scenario AI its second production building. This value is strictly below every other action's
-        /// lowest positive score (the weakest is Easy's <c>0.60 * 0.50 = 0.30</c> siege) and strictly above
-        /// <see cref="ExecuteBestAction"/>'s 0.01 do-nothing floor, so the one-shot expansion still gets committed
-        /// once nothing more useful is available, and never before.
+        /// Derived from <see cref="COST_BARRACKS"/> (declared above — static field initializers run in declaration
+        /// order) so a Barracks-cost retune moves the demand bar with it instead of silently drifting.
         /// </summary>
-        private const float EXPAND_SUPPLY_UNGATED = 0.25f;
+        private static readonly Fixed SECOND_BARRACKS_ORE_SURPLUS = COST_BARRACKS + COST_BARRACKS;
 
         // Placement positions for AI-built structures (clustered near the P2 base).
         private static readonly FixedVec3 POS_BARRACKS_1   = new(Fixed.FromFloat( 36f), Fixed.Zero, Fixed.FromFloat(  6f));
@@ -235,12 +229,18 @@ namespace ProjectChimera.AI
             public bool HasCompleteArcheryRange;
             public bool HasLiveSiegeWorkshop;
             public bool HasCompleteSiegeWorkshop;
-            public bool HasSecondBarracks;       // two or more complete Barracks
-            public bool HasCCExpansion;          // supply expansion CC alive
+            /// <summary>DW-636 — AI-owned Barracks that are ALIVE, whether complete or still a construction site.
+            /// <see cref="ScoreBuildSecondBarracks"/> gates on this rather than on a complete-only count: a
+            /// complete-only test lets the AI re-enter the build action on every tick while its second Barracks is
+            /// still going up, stacking duplicates on the same tile for as long as it can afford them.</summary>
+            public int  LiveBarracksCount;
             public bool CanAffordCC;
             public bool CanAffordBarracks;
             public bool CanAffordArchery;
             public bool CanAffordSiege;
+            /// <summary>DW-636 — ore banked at or above <see cref="SECOND_BARRACKS_ORE_SURPLUS"/>: the
+            /// production-demand signal that replaced the second Barracks' old supply-expansion gate.</summary>
+            public bool HasOreSurplusForSecondBarracks;
         }
 
         private AiSnapshot BuildSnapshot(EntityWorld world)
@@ -255,7 +255,6 @@ namespace ProjectChimera.AI
             snap.SupplyGatingEnabled = _resources.SupplyGatingEnabled;
 
             // Scan buildings for tech coverage (and, Story 2.13, whether any enemy base remains to raze).
-            int barracksComplete = 0;
             for (int i = 0; i < _buildings.Count; i++)
             {
                 if (!_buildings.Alive[i]) continue;
@@ -273,7 +272,8 @@ namespace ProjectChimera.AI
                         break;
                     case BuildingType.Barracks:
                         snap.HasLiveBarracks = true;
-                        if (complete) { snap.HasCompleteBarracks = true; barracksComplete++; }
+                        snap.LiveBarracksCount++;                 // DW-636 — complete OR under construction
+                        if (complete) snap.HasCompleteBarracks = true;
                         break;
                     case BuildingType.ArcheryRange:
                         snap.HasLiveArcheryRange = true;
@@ -285,8 +285,6 @@ namespace ProjectChimera.AI
                         break;
                 }
             }
-            snap.HasSecondBarracks = barracksComplete >= 2;
-            snap.HasCCExpansion    = _cmdCenterExpId >= 0 && _buildings.TryResolveRef(_cmdCenterExpId, out _); // Story 2.13: packed ref
 
             // Count P2 COMBAT units (non-workers, damage-bearing) available for a wave.
             // Freshly trained units hold position (Stop) at the spawn point;
@@ -313,6 +311,10 @@ namespace ProjectChimera.AI
             snap.CanAffordBarracks  = _resources.CanAffordOre(AI_FACTION, COST_BARRACKS);
             snap.CanAffordArchery  = _resources.CanAffordOre(AI_FACTION, COST_ARCHERY);
             snap.CanAffordSiege    = _resources.CanAffordOre(AI_FACTION, COST_SIEGE);
+            // DW-636: the ore-SURPLUS read that replaced the second Barracks' supply-expansion gate. Same
+            // CanAffordOre comparator as the rows above (Fixed, no float), just at a higher bar.
+            snap.HasOreSurplusForSecondBarracks =
+                _resources.CanAffordOre(AI_FACTION, SECOND_BARRACKS_ORE_SURPLUS);
 
             return snap;
         }
@@ -351,14 +353,24 @@ namespace ProjectChimera.AI
         /// DW-63: the headroom ladder below is only meaningful while the supply gate is actually ENFORCED. When a
         /// scenario authors <c>supply.enabled:false</c> the gate never blocks training, <c>SupplyUsed</c> runs away
         /// past <c>SupplyCap</c>, and the headroom saturates deeply negative — permanently pinning the ladder's
-        /// worst tier (0.95) on an action whose payoff (a bigger cap) nobody enforces. So the ungated case bypasses
-        /// the ladder entirely for a single flat <see cref="EXPAND_SUPPLY_UNGATED"/> score.
+        /// worst tier (0.95) on an action whose payoff (a bigger cap) nobody enforces.
+        ///
+        /// DW-636 (the "revisit" half of the recorded decision): the ungated case now SKIPS the expansion outright
+        /// instead of taking DW-63's deprioritized-but-still-committed 0.25. DW-63 could not skip it, because the
+        /// expansion CommandCenter was also the gate <see cref="ScoreBuildSecondBarracks"/> read — a hard 0 would
+        /// have permanently cost an ungated-scenario AI its second production building. That coupling is gone, and
+        /// with it the last reason to buy a 150-ore building whose ONLY remaining payoff is +10 to a cap nothing
+        /// enforces (it is neither a drop-off nor a producer — see DW-637). The 150 ore is better left for
+        /// production the AI can actually use.
+        ///
+        /// Golden-neutral: this branch is reachable only when a scenario authors <c>supply.enabled:false</c>, and
+        /// no shipped scenario or golden does (<c>SupplyConfig.Resolve(null)</c> yields <c>enabled:true</c>).
         /// </summary>
         private float ScoreExpandSupply(in AiSnapshot s)
         {
             if (_cmdCenterExpId >= 0) return 0f; // already committed (building or built)
             if (!s.CanAffordCC) return 0f;
-            if (!s.SupplyGatingEnabled) return EXPAND_SUPPLY_UNGATED; // DW-63 — headroom carries no information here
+            if (!s.SupplyGatingEnabled) return 0f; // DW-636 — an unenforced cap is not worth 150 ore
             if (s.SupplyHeadroom <= SUPPLY_CRITICAL) return 0.95f;
             if (s.SupplyHeadroom <= SUPPLY_TIGHT)    return 0.80f;
             if (s.SupplyHeadroom <= SUPPLY_LOW)      return 0.55f;
@@ -388,11 +400,40 @@ namespace ProjectChimera.AI
             return 0.60f * _techWeight;
         }
 
+        /// <summary>
+        /// Score a SECOND Barracks — doubling unit production.
+        ///
+        /// DW-636: this used to be gated on the supply-expansion CommandCenter (<c>if (!s.HasCCExpansion) return
+        /// 0f;</c>), wiring an economic/production decision to a supply device — the AI could double production
+        /// only after committing a CommandCenter whose real payoff is +10 supply. The gate is now genuine
+        /// production DEMAND, in the order the cheapest test comes first:
+        ///
+        ///   • <see cref="AiSnapshot.LiveBarracksCount"/> &lt; 2 — not already doubled, AND no second Barracks
+        ///     already going up. Counting LIVE (not complete) Barracks is what stops the AI re-entering this
+        ///     action every tick while its second Barracks is a construction site, stacking duplicate Barracks on
+        ///     the same <see cref="POS_BARRACKS_2"/> tile for as long as it can afford them.
+        ///   • A COMPLETE first Barracks — a queue that is not yet running cannot be saturated, so there is no
+        ///     production bottleneck to relieve yet.
+        ///   • An ORE SURPLUS past <see cref="SECOND_BARRACKS_ORE_SURPLUS"/> — merely affording the Barracks means
+        ///     the AI is income-limited; ore banking up beyond what one queue spends is the production-limited
+        ///     signal that actually justifies a second queue.
+        ///   • ARMY DEMAND — an available force already at the decisive size <see cref="ScoreLaunchAttack"/> tops
+        ///     its ratio out at (<c>_attackThreshold * 2</c>) does not need more production, it needs to attack.
+        ///
+        /// Score value unchanged at 0.50 (the recorded decision replaces the GATE, not the tuning weight).
+        ///
+        /// Golden-neutral: every AI-bearing golden either starves the AI of ore (GoldenScenario /
+        /// MultiFactionScenario give Player2 0 ore ⇒ <c>CanAffordBarracks</c> false) or never completes a first
+        /// Barracks inside its horizon (AiActiveScenario builds one on tick 1 with a 10s construction timer and
+        /// runs exactly 300 ticks = 10s, so <c>HasCompleteBarracks</c> is false for the whole recording).
+        /// </summary>
         private float ScoreBuildSecondBarracks(in AiSnapshot s)
         {
-            if (s.HasSecondBarracks)     return 0f;
-            if (!s.HasCCExpansion)       return 0f; // double production only after supply expands
-            if (!s.CanAffordBarracks)    return 0f;
+            if (s.LiveBarracksCount >= 2) return 0f; // already doubled, or the second is already going up
+            if (!s.HasCompleteBarracks)   return 0f; // no running queue yet ⇒ nothing to be saturated
+            if (!s.CanAffordBarracks)     return 0f;
+            if (!s.HasOreSurplusForSecondBarracks) return 0f; // ore-limited, not production-limited
+            if (s.AvailableCombatUnits >= _attackThreshold * 2) return 0f; // army already decisive — attack instead
             return 0.50f;
         }
 
