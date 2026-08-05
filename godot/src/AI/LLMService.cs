@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -66,18 +67,59 @@ namespace ProjectChimera.AI
         //    the promised populator: <see cref="ScenarioTypeRegistry.Apply"/> writes all three (plus
         //    <see cref="ScenarioType"/>) from a selected type's trusted preset. ──
 
+        // ── DW-372 — lower-bound guards on the two integer clamps ─────────────────────────────────────────────
+        //
+        // Story 8.3 shipped both as bare auto-properties, so nonsense values were accepted in silence:
+        //   • MinPlayerSlots = 0 admitted a scenario declaring an EMPTY player_slots array — it satisfied
+        //     "0 slots >= 0", skipped the DW-373 index loop entirely, and (with no units/buildings to fail the
+        //     DW-542 reference check) validated clean, even though every downstream faction/spawn path assumes at
+        //     least one player.
+        //   • MaxCombatUnitsPerSlot < 0 produced the nonsense reject message "…(max -1)" and made the prompt ask
+        //     for "at most -1 combat units".
+        // Both are CLAMPED ON SET rather than checked at the point of use, so the prompt and the gate can only ever
+        // read the SAME effective number — the prompt/gate divergence class this whole entry exists to close.
+
+        /// <summary>DW-372: the floor for <see cref="MinPlayerSlots"/>. A scenario with no player slot at all is not
+        /// authorable, so one player slot is the effective minimum however the caller sets the clamp.</summary>
+        public const int MinPlayerSlotsFloor = 1;
+
+        /// <summary>DW-372: the floor for <see cref="MaxCombatUnitsPerSlot"/>. Zero is a MEANINGFUL cap ("no
+        /// pre-placed combat units at all"); anything below it is not.</summary>
+        public const int MaxCombatUnitsPerSlotFloor = 0;
+
+        private int _minPlayerSlots        = 2;
+        private int _maxCombatUnitsPerSlot = 6;
+
         /// <summary>Story 8.3: the minimum number of player slots a valid scenario must declare. RTS default 2;
-        /// <see cref="ValidateScenario"/> rejects fewer. Trusted (never read from the scenario file).</summary>
-        public int MinPlayerSlots { get; set; } = 2;
+        /// <see cref="ValidateScenario"/> rejects fewer. Trusted (never read from the scenario file).
+        /// DW-372: clamped on set into [<see cref="MinPlayerSlotsFloor"/>, <see cref="FactionRegistry.PLAYER_COUNT"/>]
+        /// — below the floor an empty player_slots array validates clean; above the sim's player ceiling the floor is
+        /// unsatisfiable by any loadable scenario (<see cref="ScenarioValidator"/> rejects a slot index ≥
+        /// PLAYER_COUNT), so every generation would be rejected no matter what the model returned.</summary>
+        public int MinPlayerSlots
+        {
+            get => _minPlayerSlots;
+            set => _minPlayerSlots =
+                  value < MinPlayerSlotsFloor          ? MinPlayerSlotsFloor
+                : value > FactionRegistry.PLAYER_COUNT ? FactionRegistry.PLAYER_COUNT
+                : value;
+        }
 
         /// <summary>Story 8.3: the maximum pre-placed combat (non-worker) units allowed per faction slot. RTS default
-        /// 6; <see cref="ValidateScenario"/> rejects more. Trusted (never read from the scenario file).</summary>
-        public int MaxCombatUnitsPerSlot { get; set; } = 6;
+        /// 6; <see cref="ValidateScenario"/> rejects more. Trusted (never read from the scenario file).
+        /// DW-372: clamped on set to at least <see cref="MaxCombatUnitsPerSlotFloor"/>.</summary>
+        public int MaxCombatUnitsPerSlot
+        {
+            get => _maxCombatUnitsPerSlot;
+            set => _maxCombatUnitsPerSlot =
+                value < MaxCombatUnitsPerSlotFloor ? MaxCombatUnitsPerSlotFloor : value;
+        }
 
-        /// <summary>Story 8.3: the TRUSTED per-slot faction-JSON resolver. NULL ⇒ the RTS default (slot 0 →
-        /// <see cref="Slot0FactionJson"/>, every other slot → <see cref="Slot1FactionJson"/>) — identical to today.
-        /// A non-RTS caller supplies its own trusted mapping. <see cref="ValidateScenario"/> OVERWRITES each slot's
-        /// hallucinated <c>faction_json</c> from this resolver, so the untrusted file never dictates the path.</summary>
+        /// <summary>Story 8.3: the TRUSTED per-slot faction-JSON resolver. NULL ⇒ the built-in default described on
+        /// <see cref="ResolveFactionJson"/> (even slots → <see cref="Slot0FactionJson"/>, odd slots →
+        /// <see cref="Slot1FactionJson"/> since DW-372 made it total). A caller wanting a different mapping supplies
+        /// its own trusted one. <see cref="ValidateScenario"/> OVERWRITES each slot's hallucinated
+        /// <c>faction_json</c> from this resolver, so the untrusted file never dictates the path.</summary>
         public Func<int, string>? FactionJsonResolver { get; set; }
 
         /// <summary>DW-371: the scenario type this context's clamps were populated for, set by
@@ -100,11 +142,19 @@ namespace ProjectChimera.AI
         public IReadOnlyList<FactionDefinition?>? SlotFactionDefs { get; set; }
 
         /// <summary>Resolve the trusted faction-JSON path for the given 0-based <paramref name="slot"/>, honoring
-        /// <see cref="FactionJsonResolver"/> when set else the RTS slot-0/slot-1 default mapping.</summary>
+        /// <see cref="FactionJsonResolver"/> when set else the built-in default mapping.
+        ///
+        /// DW-372 — the default is now TOTAL: it ALTERNATES (even slot → <see cref="Slot0FactionJson"/>, odd slot →
+        /// <see cref="Slot1FactionJson"/>) instead of the original <c>slot == 0 ? Slot0 : Slot1</c>, which silently
+        /// collapsed slots 1, 2, 3 … onto ONE faction. That collapse was invisible while nothing could declare more
+        /// than two slots, but a caller relaxing <see cref="MinPlayerSlots"/> without supplying a resolver turned a
+        /// 4-slot map into a 1-vs-3 with no warning. The two mappings AGREE on slots 0 and 1, so every two-slot
+        /// scenario — i.e. every scenario any shipping caller produces — resolves exactly as it always did; only
+        /// slots ≥ 2, which were previously wrong, change.</summary>
         public string ResolveFactionJson(int slot)
             => FactionJsonResolver != null
                 ? FactionJsonResolver(slot)
-                : (slot == 0 ? Slot0FactionJson : Slot1FactionJson);
+                : (slot % 2 == 0 ? Slot0FactionJson : Slot1FactionJson);
     }
 
     /// <summary>
@@ -753,10 +803,114 @@ play_sound      — sound_id (string)");
 
         // ── Map system prompt ─────────────────────────────────────────────────
 
+        /// <summary>
+        /// DW-372 — how many player slots the map prompt's SCHEMA and EXAMPLE blocks render. NEVER fewer than the
+        /// <see cref="MapGeneratorContext.MinPlayerSlots"/> floor the PLACEMENT RULES state and
+        /// <see cref="ValidateScenario"/> enforces. Before this, both blocks hardcoded exactly two slots, so a caller
+        /// raising the floor to 4 told the model "at least 4 player slots" while showing it a 2-slot schema AND a
+        /// 2-slot example — the model copies the worked example, emits 2, and the gate rejects EVERY generation.
+        /// Two is the floor of the RENDERING (not of the clamp): a 2-slot example satisfies any floor ≤ 2, so the
+        /// prompts of every shipped scenario type stay byte-for-byte what they have always been.
+        /// </summary>
+        internal static int PromptSlotCount(MapGeneratorContext ctx) => Math.Max(2, ctx.MinPlayerSlots);
+
+        /// <summary>
+        /// DW-372 — the example base position for 0-based <paramref name="slot"/> of <paramref name="slotCount"/>, on
+        /// a ring of radius <paramref name="radius"/> starting due WEST and walking counter-clockwise. Chosen so the
+        /// two-slot case is exactly the historical (-45, 0) / (+45, 0) pair while N &gt; 2 spreads the bases evenly
+        /// (the symmetry every non-RTS scenario type's guidance asks for). Integer coordinates only — the prompt must
+        /// never carry a locale-dependent decimal separator.
+        /// </summary>
+        private static (int X, int Z) PromptBase(int slot, int slotCount, int radius)
+        {
+            double angle = Math.PI + slot * (2.0 * Math.PI / slotCount);
+            return ((int)Math.Round(radius * Math.Cos(angle)), (int)Math.Round(radius * Math.Sin(angle)));
+        }
+
+        /// <summary>
+        /// DW-372 — the two example worker positions for a slot whose base is (<paramref name="baseX"/>,
+        /// <paramref name="baseZ"/>): <paramref name="offset"/> world units inboard (toward the map centre), then
+        /// ±offset along the perpendicular. Returned in ascending (Z, then X) order, which reproduces the historical
+        /// (-42,-3), (-42,3), (42,-3), (42,3) block exactly for the two-slot ring.
+        /// </summary>
+        private static (int X, int Z)[] PromptWorkers(int baseX, int baseZ, int offset)
+        {
+            double len = Math.Sqrt((double)baseX * baseX + (double)baseZ * baseZ);
+            double ux  = len > 0 ? -baseX / len : 1.0;   // unit vector: base → map centre
+            double uz  = len > 0 ? -baseZ / len : 0.0;
+            double cx  = baseX + ux * offset;
+            double cz  = baseZ + uz * offset;
+            // Perpendicular of (ux, uz) is (-uz, ux).
+            var a = ((int)Math.Round(cx - uz * offset), (int)Math.Round(cz + ux * offset));
+            var b = ((int)Math.Round(cx + uz * offset), (int)Math.Round(cz - ux * offset));
+            bool aFirst = a.Item2 < b.Item2 || (a.Item2 == b.Item2 && a.Item1 <= b.Item1);
+            return aFirst ? new[] { a, b } : new[] { b, a };
+        }
+
         // Story 8.3: internal (not private) so the Tier-1 clamp test can assert the prompt reflects the SAME clamp
         // values ValidateScenario gates against (min player slots + max combat units per slot).
         internal static string BuildMapSystemPrompt(MapGeneratorContext ctx)
         {
+            // ── DW-372 — ONE slot count and ONE ring geometry drive every slot-shaped block below: the schema's
+            //    player_slots rows and its "slot": 0|1 choice lists, the placement-rule base hints, and the example's
+            //    player_slots / CommandCenters / workers. The request therefore cannot contradict itself about how
+            //    many players the map has, which is what made a raised MinPlayerSlots unusable. The two-slot
+            //    rendering is byte-for-byte the hand-written text it replaces, so no shipping prompt moves.
+            int slotCount = PromptSlotCount(ctx);
+            // Historical radius is 45 on the default ±120 bounds; deriving it keeps the whole ring inside a caller's
+            // tighter bounds instead of emitting an example that fails the prompt's own position rule.
+            int radius    = Math.Max(1, (int)Math.Round(Math.Min(45.0, ctx.MapBounds * 0.375)));
+            int workerOff = Math.Max(1, Math.Min(3, radius));
+
+            var bases = new (int X, int Z)[slotCount];
+            for (int s = 0; s < slotCount; s++) bases[s] = PromptBase(s, slotCount, radius);
+
+            var schemaSlotRows      = new List<string>(slotCount);
+            var exampleSlotRows     = new List<string>(slotCount);
+            var exampleBuildingRows = new List<string>(slotCount);
+            var exampleUnitRows     = new List<string>(slotCount * 2);
+            var baseHints           = new StringBuilder();
+
+            for (int s = 0; s < slotCount; s++)
+            {
+                (int bx, int bz) = bases[s];
+                string tail  = s == slotCount - 1 ? "" : ",";
+                // The prompt names the SAME per-slot faction path ValidateScenario will force onto the slot, so a
+                // non-default resolver (free-for-all / sandbox) is visible to the model instead of being silently
+                // rewritten after generation.
+                string fjson = ctx.ResolveFactionJson(s);
+
+                schemaSlotRows.Add(string.Format(CultureInfo.InvariantCulture,
+                    "    {{ \"slot\": {0}, \"faction_json\": \"{1}\", \"start_ore\": 200.0, " +
+                    "\"base_x\": {2,5:0.0}, \"base_z\": {3:0.0} }}{4}", s, fjson, bx, bz, tail));
+
+                exampleSlotRows.Add(string.Format(CultureInfo.InvariantCulture,
+                    "    {{ \"slot\": {0}, \"faction_json\": \"{1}\", \"start_ore\": 200, " +
+                    "\"base_x\": {2,3}, \"base_z\": {3} }}{4}", s, fjson, bx, bz, tail));
+
+                exampleBuildingRows.Add(string.Format(CultureInfo.InvariantCulture,
+                    "    {{ \"type\": \"CommandCenter\", \"slot\": {0}, \"x\": {1,3}, \"z\": {2}, " +
+                    "\"pre_built\": true }}{3}", s, bx, bz, tail));
+
+                foreach ((int wx, int wz) in PromptWorkers(bx, bz, workerOff))
+                    exampleUnitRows.Add(string.Format(CultureInfo.InvariantCulture,
+                        "    {{ \"unit_id\": \"worker\", \"slot\": {0}, \"x\": {1,3}, \"z\": {2,2} }},", s, wx, wz));
+
+                baseHints.AppendFormat(CultureInfo.InvariantCulture,
+                    " Player {0} (slot {1}): base near X={2}, Z={3}.", s + 1, s, bx, bz);
+            }
+            // The last unit row closes its JSON array — drop the trailing comma the loop appends unconditionally.
+            exampleUnitRows[^1] = exampleUnitRows[^1].TrimEnd(',');
+
+            // Joined with a bare "\n", NEVER Environment.NewLine: these blocks are spliced INTO verbatim string
+            // literals whose newlines come from this source file, so the emitted prompt stays byte-identical on every
+            // platform instead of drifting with the host's line ending.
+            string schemaSlots      = string.Join("\n", schemaSlotRows);
+            string exampleSlots     = string.Join("\n", exampleSlotRows);
+            string exampleBuildings = string.Join("\n", exampleBuildingRows);
+            string exampleUnits     = string.Join("\n", exampleUnitRows);
+            string slotChoices      = string.Join("|", Enumerable.Range(0, slotCount));
+
             var sb = new StringBuilder();
             sb.AppendLine(
                 "You are a scenario designer for Project Chimera, a real-time strategy game.");
@@ -771,17 +925,16 @@ play_sound      — sound_id (string)");
   ""map_bounds"": 120.0,
   ""win_condition"": ""DestroyAllBuildings"" | ""EliminateAllUnits"",
   ""player_slots"": [
-    {{ ""slot"": 0, ""faction_json"": ""{ctx.Slot0FactionJson}"", ""start_ore"": 200.0, ""base_x"": -45.0, ""base_z"": 0.0 }},
-    {{ ""slot"": 1, ""faction_json"": ""{ctx.Slot1FactionJson}"", ""start_ore"": 200.0, ""base_x"":  45.0, ""base_z"": 0.0 }}
+{schemaSlots}
   ],
   ""resource_nodes"": [
     {{ ""x"": float, ""z"": float, ""supply"": 400.0, ""rate"": 5.0, ""max_gatherers"": 4 }}
   ],
   ""buildings"": [
-    {{ ""type"": {BuildingTypeChoices}, ""slot"": 0|1, ""x"": float, ""z"": float, ""pre_built"": true }}
+    {{ ""type"": {BuildingTypeChoices}, ""slot"": {slotChoices}, ""x"": float, ""z"": float, ""pre_built"": true }}
   ],
   ""units"": [
-    {{ ""unit_id"": ""string"", ""slot"": 0|1, ""x"": float, ""z"": float }}
+    {{ ""unit_id"": ""string"", ""slot"": {slotChoices}, ""x"": float, ""z"": float }}
   ],
   ""triggers"": []
 }}");
@@ -789,7 +942,9 @@ play_sound      — sound_id (string)");
             sb.AppendLine("=== PLACEMENT RULES ===");
             sb.AppendLine($"- All x/z positions MUST be within ±{ctx.MapBounds} world units.");
             // Story 8.3: reflect the SAME min-player-slots clamp ValidateScenario gates against (RTS default 2).
-            sb.AppendLine($"- Provide at least {ctx.MinPlayerSlots} player slots. Player 1 (slot 0): base near X=-45, Z=0. Player 2 (slot 1): base near X=45, Z=0.");
+            // DW-372: the per-player base hints are generated from the SAME ring the schema/example render, so a
+            // raised floor names every slot instead of only the historical two.
+            sb.AppendLine($"- Provide at least {ctx.MinPlayerSlots} player slots.{baseHints}");
             sb.AppendLine("- Each slot MUST have a CommandCenter (pre_built=true) at its base position.");
             sb.AppendLine("- Ore nodes must be spaced at least 15 units apart from every other ore node.");
             sb.AppendLine("- Use 4–12 resource nodes. Supply 200–2000, rate 3–10.");
@@ -820,8 +975,7 @@ play_sound      — sound_id (string)");
   ""map_bounds"": 120,
   ""win_condition"": ""DestroyAllBuildings"",
   ""player_slots"": [
-    {{ ""slot"": 0, ""faction_json"": ""{ctx.Slot0FactionJson}"", ""start_ore"": 200, ""base_x"": -45, ""base_z"": 0 }},
-    {{ ""slot"": 1, ""faction_json"": ""{ctx.Slot1FactionJson}"", ""start_ore"": 200, ""base_x"":  45, ""base_z"": 0 }}
+{exampleSlots}
   ],
   ""resource_nodes"": [
     {{ ""x"": -25, ""z"":  15, ""supply"": 600, ""rate"": 5, ""max_gatherers"": 4 }},
@@ -831,14 +985,10 @@ play_sound      — sound_id (string)");
     {{ ""x"":  25, ""z"": -15, ""supply"": 600, ""rate"": 5, ""max_gatherers"": 4 }}
   ],
   ""buildings"": [
-    {{ ""type"": ""CommandCenter"", ""slot"": 0, ""x"": -45, ""z"": 0, ""pre_built"": true }},
-    {{ ""type"": ""CommandCenter"", ""slot"": 1, ""x"":  45, ""z"": 0, ""pre_built"": true }}
+{exampleBuildings}
   ],
   ""units"": [
-    {{ ""unit_id"": ""worker"", ""slot"": 0, ""x"": -42, ""z"": -3 }},
-    {{ ""unit_id"": ""worker"", ""slot"": 0, ""x"": -42, ""z"":  3 }},
-    {{ ""unit_id"": ""worker"", ""slot"": 1, ""x"":  42, ""z"": -3 }},
-    {{ ""unit_id"": ""worker"", ""slot"": 1, ""x"":  42, ""z"":  3 }}
+{exampleUnits}
   ],
   ""triggers"": []
 }}");
