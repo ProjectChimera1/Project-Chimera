@@ -6,11 +6,18 @@ namespace ProjectChimera.Core.Definitions
 {
     /// <summary>
     /// The single declaration site for every content <see cref="JsonSerializerOptions"/> in the project (Story 2.3,
-    /// AC6 / AR-22 — the architecture's <c>ContentJson</c> single-choke-point). Three postures share ONE base:
+    /// AC6 / AR-22 — the architecture's <c>ContentJson</c> single-choke-point). Four postures share ONE base:
     ///
     ///   • <see cref="Options"/>        — STRICT: abilities / items / LLM ability drafts.
     ///   • <see cref="ScenarioOptions"/> — the scenario file format (<see cref="ScenarioSerializer"/>).
     ///   • <see cref="LenientOptions"/>  — the faction/unit loader (<see cref="FactionDefinition.JsonOptions"/>).
+    ///   • <see cref="ModelOutputOptions"/> — untrusted LLM output (<c>ProjectChimera.AI.LLMService</c>), DW-526.
+    ///
+    /// <para>Two more postures live OUTSIDE this file because they are the strict posture PLUS a write/graph delta,
+    /// and both DERIVE from <see cref="NewStrict"/> rather than hand-copying its converter list (DW-524):
+    /// <see cref="ItemWriter.Options"/> (strict + indentation + omit-defaults) and <c>ProjectChimera.Dsl.DslJson.Options</c>
+    /// (strict + indentation + the trigger-IR node/edge converters). A converter added to <see cref="BuildStrict"/>
+    /// therefore reaches every one of them.</para>
     ///
     /// <para>
     /// DW-274 (Story 15.6): <see cref="ScenarioSerializer"/> and <see cref="FactionDefinition"/> used to declare
@@ -55,6 +62,23 @@ namespace ProjectChimera.Core.Definitions
             AllowTrailingCommas = true,
         };
 
+        /// <summary>
+        /// DW-524 — a FRESH, still-mutable copy of the shared authoring <see cref="Base"/> posture, for a content
+        /// posture that must live in its own file (a writer, or one carrying a foreign converter set). The caller
+        /// OWNS the returned object: mutate it, then publish it as a <c>static readonly</c>. Never returns a shared
+        /// instance — a <see cref="JsonSerializerOptions"/> becomes read-only on first use.
+        /// </summary>
+        public static JsonSerializerOptions NewBase() => Base();
+
+        /// <summary>
+        /// DW-524 — a FRESH, still-mutable copy of the STRICT posture (<see cref="Options"/>'s exact settings and
+        /// converter ORDER: enum → Fixed → effect node, plus <c>Disallow</c>). This is the derivation seam that
+        /// keeps <see cref="ItemWriter.Options"/> and <c>DslJson.Options</c> from hand-copying the converter list:
+        /// a converter added in <see cref="BuildStrict"/> reaches them the next time they build. The caller OWNS the
+        /// returned object (see <see cref="NewBase"/>).
+        /// </summary>
+        public static JsonSerializerOptions NewStrict() => BuildStrict();
+
         /// <summary>The sole options object for ability / item (de)serialization — the STRICT posture (Disallow +
         /// Fixed + effect graph + name-only enums). Static readonly — one shared, thread-safe instance.</summary>
         public static readonly JsonSerializerOptions Options = BuildStrict();
@@ -93,6 +117,38 @@ namespace ProjectChimera.Core.Definitions
         /// </summary>
         public static readonly JsonSerializerOptions LenientOptions = Base();
 
+        /// <summary>
+        /// DW-526 — the sole options object for parsing UNTRUSTED MODEL OUTPUT (<c>LLMService.Validate</c>,
+        /// <c>ValidateScenario</c>, <c>ValidateBalanceReport</c>). Before it, each of those three sites built its own
+        /// <see cref="JsonSerializerOptions"/> PER CALL, off this choke point, with a different converter set — and the
+        /// balance-report site registered NO <see cref="FixedJsonConverter"/> at all, so that path could not read a
+        /// <see cref="ProjectChimera.Core.Fixed"/>-typed field the way the rest of the pipeline does. LLM output is the
+        /// least trustworthy input in the project (it lands in draft units/abilities/heroes/factions, generated maps and
+        /// balance reports), so it is the LAST place a hand-rolled option set belongs.
+        ///
+        /// <para>Derived from <see cref="NewStrict"/> — same converters, same order — with exactly two documented
+        /// deltas, each load-bearing:</para>
+        ///   • <c>PropertyNameCaseInsensitive</c> — a model is not a JSON serializer; it capitalizes at random. This
+        ///     widens NAME matching only, never a value.
+        ///   • NO <c>UnmappedMemberHandling.Disallow</c> (explicitly <c>Skip</c>) — the draft-parse posture DW-526 asks
+        ///     for is unmapped-TOLERANT, matching <see cref="ScenarioOptions"/> rather than <see cref="Options"/>: the
+        ///     generated artifact is a scenario/report that the (forward-compat, non-Disallow) loaders must be able to
+        ///     read back, so rejecting a stray key here would make generation stricter than the format it targets and
+        ///     throw away a whole paid generation over a key the load path ignores. Every CONTENT decision is still made
+        ///     by the validators' located passes downstream — leniency here widens the SYNTAX accepted, never the values
+        ///     trusted. (Ability drafts are deliberately NOT on this posture: they parse through <see cref="Options"/>,
+        ///     because an ability is authored against a closed POCO where a typo'd field IS the error to report.)
+        ///
+        /// <para>Everything fail-closed about the strict posture survives: enums by NAME only (a numeric enum is
+        /// rejected, no silent miscode), the <see cref="FixedJsonConverter"/> quantization boundary (NaN/±Inf/over-range
+        /// rejected before any generated number can reach the sim), comment/trailing-comma tolerance from
+        /// <see cref="Base"/> (a model's two most common syntax deviations), and the closed-registry effect converter.
+        /// Deliberately NO <see cref="WidgetBaseJsonConverter"/>: no LLM prompt authors a custom-UI tree and no
+        /// validator pass gates one, so a model-emitted <c>custom_ui</c> stays a hard parse reject rather than an
+        /// ungated widget graph.</para>
+        /// </summary>
+        public static readonly JsonSerializerOptions ModelOutputOptions = BuildModelOutput();
+
         /// <summary>Build <see cref="Options"/>: the shared base plus the strict ability/item posture. Converter ORDER
         /// is significant (first match wins) and is preserved verbatim from the pre-DW-274 declaration.</summary>
         private static JsonSerializerOptions BuildStrict()
@@ -119,6 +175,18 @@ namespace ProjectChimera.Core.Definitions
             o.Converters.Add(new JsonStringEnumConverter(namingPolicy: null, allowIntegerValues: false));
             o.Converters.Add(new FixedJsonConverter());
             o.Converters.Add(new WidgetBaseJsonConverter());
+            return o;
+        }
+
+        /// <summary>Build <see cref="ModelOutputOptions"/> (DW-526): the STRICT posture verbatim — same converters, same
+        /// order — plus case-insensitive property matching, minus <c>Disallow</c>. See that field's docs for why each
+        /// delta is there.</summary>
+        private static JsonSerializerOptions BuildModelOutput()
+        {
+            JsonSerializerOptions o = BuildStrict();
+            o.PropertyNameCaseInsensitive = true;
+            // Explicit, not inherited-by-omission: the unmapped-tolerant half of the draft posture is a DECISION.
+            o.UnmappedMemberHandling = JsonUnmappedMemberHandling.Skip;
             return o;
         }
     }

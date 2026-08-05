@@ -250,12 +250,13 @@ namespace ProjectChimera.AI
         public static (TriggerDefinition? trigger, string? error) Validate(
             string json, ScenarioContext context)
         {
-            // Pass 1 — schema.
+            // Pass 1 — schema. DW-526: the shared untrusted-model-output posture (see ContentJson.ModelOutputOptions),
+            // NOT a per-call hand-rolled option set — same Fixed quantization boundary, same name-only enum
+            // fail-closed, same syntax tolerance as every other LLM parse path in this file.
             TriggerDefinition trigger;
             try
             {
-                trigger = JsonSerializer.Deserialize<TriggerDefinition>(json,
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true, Converters = { new FixedJsonConverter() } })
+                trigger = JsonSerializer.Deserialize<TriggerDefinition>(json, ContentJson.ModelOutputOptions)
                     ?? throw new InvalidOperationException("Deserialised to null.");
             }
             catch (Exception ex)
@@ -568,17 +569,16 @@ play_sound      — sound_id (string)");
                 // collection (the per-collection gates all run post-parse). Over-cap → the guard's JsonException is
                 // caught below and surfaced as the pass-1 validation error.
                 ScenarioSerializer.GuardScenarioInputSize(Encoding.UTF8.GetByteCount(json), "generated scenario");
-                scenario = JsonSerializer.Deserialize<ScenarioData>(json, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true,
-                    Converters = { new FixedJsonConverter() },
-                    // A model is not a JSON serializer: trailing commas and // comments are its two most common
-                    // deviations and both are pure syntax, so rejecting them throws away a whole (paid) generation
-                    // over nothing. Everything about the CONTENT is still decided by passes 2-7 below — being
-                    // lenient here widens the syntax accepted, never the values trusted.
-                    AllowTrailingCommas = true,
-                    ReadCommentHandling = JsonCommentHandling.Skip,
-                }) ?? throw new InvalidOperationException("Deserialised to null.");
+                // DW-526: the shared untrusted-model-output posture (ContentJson.ModelOutputOptions), replacing the
+                // per-call option set that used to be built here. It carries the same leniency this site always
+                // documented — a model is not a JSON serializer: trailing commas and // comments are its two most
+                // common deviations and both are pure syntax, so rejecting them throws away a whole (paid) generation
+                // over nothing. Everything about the CONTENT is still decided by passes 2-7 below; being lenient there
+                // widens the syntax accepted, never the values trusted. What it ADDS over the old inline set is the
+                // name-only enum boundary (a numeric enum now fails closed instead of silently resolving to whichever
+                // member holds that ordinal — the same tightening DW-274 gave the scenario FILE format).
+                scenario = JsonSerializer.Deserialize<ScenarioData>(json, ContentJson.ModelOutputOptions)
+                    ?? throw new InvalidOperationException("Deserialised to null.");
             }
             catch (JsonException jex)
             {
@@ -961,8 +961,10 @@ play_sound      — sound_id (string)");
             BalanceReport report;
             try
             {
-                report = JsonSerializer.Deserialize<BalanceReport>(json,
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                // DW-526: this site used to build a per-call option set that registered NO converters at all — so it
+                // was the ONE model-output parse path that could not read a Fixed-typed field, and it rejected the
+                // trailing commas / // comments every other LLM path tolerates. Now on the shared posture.
+                report = JsonSerializer.Deserialize<BalanceReport>(json, ContentJson.ModelOutputOptions)
                     ?? throw new InvalidOperationException("Deserialised to null.");
             }
             catch (Exception ex)
