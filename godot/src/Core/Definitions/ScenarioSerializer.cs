@@ -64,21 +64,66 @@ namespace ProjectChimera.Core.Definitions
 
         /// <summary>
         /// Load a <see cref="ScenarioData"/> from a JSON file on disk.
-        /// Returns null if the file does not exist (or if the JSON is the literal <c>null</c>). A MALFORMED file
-        /// propagates the <see cref="JsonException"/> to the caller — fail-closed, located: a scenario that cannot be
-        /// parsed must never be mistaken for "no scenario here". (DW-274 doc correction: this method never caught
-        /// parse failures; the old "or fails to parse" wording described behavior it did not have.) An OVER-CAP file
-        /// (&gt; <see cref="MaxScenarioFileBytes"/>) throws the same way via <see cref="GuardScenarioInputSize"/>,
-        /// checked against the on-disk length BEFORE the file is even read (DW-366).
+        ///
+        /// <para>
+        /// Returns null whenever NO scenario model can be produced: the file does not exist, its JSON is the literal
+        /// <c>null</c>, or its content is MALFORMED — bad syntax, a numeric enum (<c>"win_condition": 0</c>) now that
+        /// the scenario posture is <c>allowIntegerValues:false</c>, a non-finite/over-range 16.16 number, an unknown
+        /// widget <c>kind</c>. DW-533: that null-on-parse-failure contract is exactly what both production callers
+        /// already code to — <c>ScenarioLoadPhase.LoadAndApplyScenario</c> ("Scenario not found or failed to parse …
+        /// using defaults" → the VALIDATED fallback mirror) and <c>MainScene.BuildHeadlessServerSimHost</c>
+        /// ("missing/parse-failed" → relay + quorum only). DW-274 tightened the enum boundary WITHOUT updating those
+        /// callers, so a hand-edited or externally generated <c>user://</c> map used to throw past
+        /// <c>ScenePhaseRunner.Run</c> and abort <c>_Ready</c> mid-phase with a half-initialised scene. It now
+        /// degrades to the fallback path instead.
+        /// </para>
+        ///
+        /// <para>
+        /// This is still FAIL-CLOSED where fail-closed matters: a partially-parsed or numerically-miscoded model is
+        /// never returned and never reaches the sim — the caller substitutes validated fallback content. What changed
+        /// is only the CHANNEL (null instead of an escaping exception). The located reason is not lost: use the
+        /// <c>LoadFromFile(path, out string? parseError)</c> overload to recover it (file path + the parser's property
+        /// path / line); the one-argument form discards it.
+        /// </para>
+        ///
+        /// <para>
+        /// An OVER-CAP file (&gt; <see cref="MaxScenarioFileBytes"/>) still THROWS via
+        /// <see cref="GuardScenarioInputSize"/>, checked against the on-disk length BEFORE the file is even read
+        /// (DW-366). That guard bounds HOSTILE input rather than reporting authoring breakage, it runs before any
+        /// allocation, and it is deliberately outside the parse-failure contract below.
+        /// </para>
         /// </summary>
-        public static ScenarioData? LoadFromFile(string absolutePath)
+        public static ScenarioData? LoadFromFile(string absolutePath) => LoadFromFile(absolutePath, out _);
+
+        /// <summary>
+        /// <see cref="LoadFromFile(string)"/> with the LOCATED parse-failure reason surfaced (DW-533).
+        /// <paramref name="parseError"/> is non-null ONLY when the file existed and its content failed to parse — null
+        /// both on success and on a missing file — so <c>result == null &amp;&amp; parseError != null</c> is precisely
+        /// the "this file is broken" case worth logging, distinct from "no scenario here".
+        /// </summary>
+        public static ScenarioData? LoadFromFile(string absolutePath, out string? parseError)
         {
+            parseError = null;
             if (!File.Exists(absolutePath)) return null;
             // DW-366 — upstream size guard: check the on-disk length BEFORE reading, so an over-cap file never
-            // allocates its string, let alone its parsed collections.
+            // allocates its string, let alone its parsed collections. Deliberately OUTSIDE the try below (see the
+            // XML doc): an over-cap file keeps throwing.
             GuardScenarioInputSize(new FileInfo(absolutePath).Length, absolutePath);
             string json = File.ReadAllText(absolutePath);
-            return JsonSerializer.Deserialize<ScenarioData>(json, ContentJson.ScenarioOptions);
+            try
+            {
+                return JsonSerializer.Deserialize<ScenarioData>(json, ContentJson.ScenarioOptions);
+            }
+            catch (JsonException e)
+            {
+                // DW-533 — map a parse failure onto the null/fallback contract both production callers code to.
+                // EVERY scenario-posture rejection reports as a JsonException (System.Text.Json's own syntax/enum
+                // errors, FixedJsonConverter's finite/range checks, WidgetBaseJsonConverter's closed-kind and
+                // field-shape gates), so this single catch covers the whole malformed-CONTENT surface while a
+                // code-level fault (e.g. a NotSupportedException from a broken type model) still propagates loudly.
+                parseError = $"{absolutePath}: {e.Message}";
+                return null;
+            }
         }
 
         /// <summary>
