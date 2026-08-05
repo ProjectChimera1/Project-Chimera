@@ -93,7 +93,18 @@ namespace ProjectChimera.Combat
                 }
                 else
                 {
-                    targetAlive = world.IsAlive(targetId);
+                    // DW-444: a live SLOT is not by itself a valid primary target. Entity ids are RECYCLED
+                    // (EntityWorld keeps a LIFO free list), so between this shell's spawn and its impact the slot can
+                    // be re-allocated to a brand-new unit — including one of the owner's OWN units or an ALLIED
+                    // faction's (a teammate training into a freed enemy slot in a 2v2). Mirror ApplySplash's
+                    // own-faction + AreAllied guard here, via the SAME shared friend test, so the primary and splash
+                    // halves of one impact can never disagree about who is friendly. A friendly occupant is treated
+                    // exactly like "the target died in flight": stop tracking it, coast to the last known position and
+                    // drop harmlessly (no damage, no impact event, no splash) — which is what the original target
+                    // dying without a recycle already does. Null mask / FFA ⇒ only the same-faction term applies;
+                    // Neutral is never allied so it stays a legal target. No recorded golden recycles a slot into a
+                    // friendly under an in-flight shell, so no checksum moves.
+                    targetAlive = world.IsAlive(targetId) && !IsFriendlyToOwner(world, _store.Owner[i], targetId);
                     if (targetAlive)
                     {
                         _store.LastKnownPos[i] = world.Position[targetId];
@@ -181,6 +192,22 @@ namespace ProjectChimera.Combat
         }
 
         /// <summary>
+        /// DW-444 — the SINGLE "is this entity friendly to the shell's owner?" test: true for the owner's OWN faction
+        /// and for any ALLIED faction. Shared by the primary-target validity check in <see cref="Tick"/> and by
+        /// <see cref="ApplySplash"/>, so one impact can never damage on one path what it spares on the other.
+        /// A null / FFA alliance mask reduces this to the same-faction term (byte-identical to pre-Story-9.14);
+        /// <see cref="Faction.Neutral"/> is never allied to a player faction, so it stays a legal target on both paths.
+        /// <para>The caller MUST have established that <paramref name="victim"/> is a live entity id (this indexes
+        /// <c>world.FactionOf</c> without a bounds check, exactly like the rest of the damage-delivery path).</para>
+        /// </summary>
+        private bool IsFriendlyToOwner(EntityWorld world, Faction owner, int victim)
+        {
+            Faction victimFaction = world.FactionOf[victim];
+            if (victimFaction == owner) return true;
+            return _alliances != null && _alliances.AreAllied(owner, victimFaction);
+        }
+
+        /// <summary>
         /// Deals splash damage to all enemies of the projectile owner within <paramref name="radius"/>
         /// of the hit position, excluding the primary target (already hit by <see cref="ApplyHit"/>).
         /// </summary>
@@ -197,10 +224,10 @@ namespace ProjectChimera.Combat
             {
                 if (i == primaryTarget) continue;
                 if ((world.Flags[i] & EntityFlags.Alive) == 0) continue;
-                if (world.FactionOf[i] == owner) continue; // don't splash friendlies
-                // Story 9.14: don't splash ALLIED factions either (null/FFA ⇒ no-op; Neutral is never allied so it
-                // still takes splash — AreAllied(owner, Neutral)==false).
-                if (_alliances != null && _alliances.AreAllied(owner, world.FactionOf[i])) continue;
+                // Don't splash friendlies — the owner's own faction, and (Story 9.14) any ALLIED faction. DW-444
+                // routed both through the shared IsFriendlyToOwner test that the primary-hit validity check also
+                // uses (null/FFA ⇒ same-faction only; Neutral is never allied so it still takes splash).
+                if (IsFriendlyToOwner(world, owner, i)) continue;
 
                 Fixed distSqr = FixedVec3.SqrDistance(hitPos, world.Position[i]);
                 if (distSqr > radiusSqr) continue;

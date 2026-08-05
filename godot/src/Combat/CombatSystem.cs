@@ -649,12 +649,31 @@ namespace ProjectChimera.Combat
         }
 
         /// <summary>
-        /// Returns the current AttackTarget if still alive, or clears it and returns -1.
+        /// Returns the current AttackTarget if it is still a LEGAL target, or clears it and returns -1.
+        ///
+        /// <para>DW-446 — "still legal" is not the same as "still alive". Entity ids are RECYCLED (EntityWorld keeps a
+        /// LIFO free list), so between two ticks the slot a unit is holding as its auto-acquired target can be
+        /// re-allocated to a brand-new unit of MY OWN faction or of an ALLIED one (a teammate training into a freed
+        /// enemy slot in a 2v2). Acquisition already excludes both (<see cref="SpatialHash.FindNearestEnemy"/>) and the
+        /// per-tick FORCED paths re-check both every tick (<see cref="TickAttackTargetCombat"/>,
+        /// <see cref="TickAttackBuildingCombat"/>) — Story 9.14 simply never guarded the RETAINED path, so the
+        /// attacker would fire on the now-friendly occupant for a tick, violating "an ally is never auto-attacked".
+        /// Clearing here hands the caller straight back to <c>FindNearestEnemy</c>, which re-acquires a legal target in
+        /// the same tick, so there is no stutter.</para>
+        ///
+        /// <para>The same-faction term is unconditional (that recycle-into-friendly gap pre-dates alliances — see the
+        /// force-fire guard's comment); the allied term is a no-op under a null / FFA mask. Every recorded golden holds
+        /// only cross-faction targets acquired through the allied-aware pickers, so no checksum moves.</para>
         /// </summary>
-        private static int ValidateOrClearTarget(EntityWorld world, int id)
+        private int ValidateOrClearTarget(EntityWorld world, int id)
         {
             int target = world.AttackTarget[id];
-            if (target >= 0 && !world.IsAlive(target))
+            if (target < 0) return target;
+
+            // IsAlive comes FIRST and short-circuits, so a stale/out-of-range id never indexes FactionOf.
+            if (!world.IsAlive(target)
+                || world.FactionOf[target] == world.FactionOf[id]
+                || (_alliances != null && _alliances.AreAllied(world.FactionOf[id], world.FactionOf[target])))
             {
                 world.AttackTarget[id] = -1;
                 world.Flags[id]       &= ~EntityFlags.Attacking;
