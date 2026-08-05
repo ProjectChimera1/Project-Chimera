@@ -334,6 +334,14 @@ namespace ProjectChimera.Core.Definitions
                 // definition and is then rejected by the validator below, not by the parse guard above.
                 def ??= new FactionDefinition();
 
+                // DW-537: the RAW duplicate-key pass, ahead of the model-level validators. A repeated key inside a
+                // `cost` block binds last-wins in System.Text.Json, and the deserialized model cannot see the
+                // collision (one repeated key still yields one dictionary entry) — so this is the only place the
+                // fault is visible. Located exactly like the DW-62 parse line (file-prefixed), and aggregated into
+                // the SAME errors channel every content check throws with. See CostDuplicateKeyGuard.
+                foreach (string duplicate in CostDuplicateKeyGuard.Scan(json))
+                    errors.Add($"{absolutePath}: {duplicate}");
+
                 FactionValidationResult result = FactionValidator.Validate(def);
                 if (!result.Ok)
                     foreach ((string _, string message) in result.Errors)
@@ -417,10 +425,14 @@ namespace ProjectChimera.Core.Definitions
             foreach (string file in files.OrderBy(f => f, System.StringComparer.Ordinal))
             {
                 string fileName = Path.GetFileName(file);
+                string text;
                 FactionDefinition? def;
                 try
                 {
-                    def = JsonSerializer.Deserialize<FactionDefinition>(File.ReadAllText(file), JsonOptions);
+                    // The raw text is hoisted into a local (still INSIDE the try, so an I/O fault keeps taking the
+                    // never-throws onExcluded path) because the DW-537 duplicate-key pass below re-walks it.
+                    text = File.ReadAllText(file);
+                    def = JsonSerializer.Deserialize<FactionDefinition>(text, JsonOptions);
                 }
                 catch (System.Exception ex)
                 {
@@ -431,6 +443,16 @@ namespace ProjectChimera.Core.Definitions
                 if (def is null)
                 {
                     onExcluded?.Invoke(fileName, "deserialized to null");
+                    continue;
+                }
+
+                // DW-537: the SAME raw duplicate-key pass LoadFromFile runs. Without it, a faction whose cost block
+                // silently last-wins would list here as SELECTABLE while the load gate rejects it — the exact
+                // selectable-but-not-launchable split DW-327 closed for the signature-mechanic check above.
+                IReadOnlyList<string> costDuplicates = CostDuplicateKeyGuard.Scan(text);
+                if (costDuplicates.Count > 0)
+                {
+                    onExcluded?.Invoke(fileName, costDuplicates[0]);
                     continue;
                 }
 
