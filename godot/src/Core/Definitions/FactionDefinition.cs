@@ -134,11 +134,20 @@ namespace ProjectChimera.Core.Definitions
 
         // ── Lookup helpers ──────────────────────────────────────────────────────
 
-        /// <summary>Find a building definition by ID, or null if not found.</summary>
+        /// <summary>Find a building definition by ID, or null if not found. A null <see cref="Buildings"/> list
+        /// (malformed JSON <c>"buildings": null</c> — the property is settable, so a JSON null overwrites the
+        /// <c>= new()</c> default) OR a null element inside it is skipped, never an NRE (DW-629 — mirrors the
+        /// <see cref="GetUnit"/>/<see cref="GetResearch"/> siblings hardened by DW-103, which this getter was
+        /// missed by). Callers reached this shape through any path that does not run
+        /// <see cref="FactionValidator.Validate"/>'s structural pre-check first — a direct
+        /// <see cref="JsonSerializer"/> deserialize, or a hand-built definition in a test/tool — and
+        /// <c>NavigationPhase.FindBuilding</c> carries a caller-side <c>Buildings == null</c> workaround that this
+        /// guard makes redundant.</summary>
         public BuildingDefinition? GetBuilding(string id)
         {
+            if (Buildings == null) return null;   // DW-629: malformed JSON "buildings": null — never an NRE
             foreach (var b in Buildings)
-                if (b.Id == id) return b;
+                if (b != null && b.Id == id) return b;   // DW-629: null element skipped
             return null;
         }
 
