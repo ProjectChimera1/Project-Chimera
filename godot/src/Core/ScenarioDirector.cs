@@ -111,7 +111,12 @@ namespace ProjectChimera.Core
         // triggers can never double-fire. Polled kinds (thresholds) re-emit every tick and never ride the rail.
         // The transient decode buffer below mirrors the player_chat rail posture: filled by the tick-start
         // dequeue, drained into the base buffer by CollectEvents, EMPTY at the checksum boundary → NOT folded
-        // (the folded persistence is the DslEventQueue rows themselves). ──
+        // (the folded persistence is the DslEventQueue rows themselves).
+        //
+        // DW-545 adds the rail's CUSTOM-occurrence sibling (EventBounds.CustomRequeueRailBase): a same-tick
+        // work-list occurrence the drain's fuel halt abandoned persists too, resuming its subscriber scan where
+        // the halt stopped it. It needs no decode buffer — the tick-start dequeue seeds it straight back into the
+        // work list, which is where a custom occurrence lives anyway. ──
 
         /// <summary>DW-349 — the redeliverable one-shot (edge) base-event kinds, in RAIL-ORDINAL order (the
         /// queue code is <c>EventBounds.RequeueRailBase + index</c>). Interned literals — no per-tick strings.</summary>
@@ -1420,15 +1425,29 @@ namespace ProjectChimera.Core
                         continue;
                     }
 
+                    // DW-545 — a CUSTOM re-queue-rail entry is a same-tick occurrence the drain's fuel halt
+                    // abandoned MID-DISPATCH: its code packs (resume exec, registry index) so the occurrence's
+                    // raiser and full P0..P3 payload keep their own lanes. It seeds the work list exactly like a
+                    // plain occurrence, except it carries the RESUME position, so redelivery skips the
+                    // subscribers already served on the drop tick. An occurrence the halt never STARTED rides its
+                    // PLAIN registry index (resume 0 — indistinguishable from an ordinary next-tick raise).
+                    int custIndex = code, resumeExec = -1;
+                    if (code >= EventBounds.CustomRequeueRailBase)
+                    {
+                        int off    = code - EventBounds.CustomRequeueRailBase;
+                        custIndex  = off % EventBounds.MaxCustomEvents;
+                        resumeExec = off / EventBounds.MaxCustomEvents;
+                    }
+
                     if (_workCount >= _workList.Length) continue; // custom work-list full → drop-newest (existing seatbelt)
                     ref FiredEvent ev = ref _workList[_workCount++];
                     ev.Type        = CustomEventType;
-                    ev.CustomIndex = code;
+                    ev.CustomIndex = custIndex;
                     ev.Slot        = _eventQueue.RaiserAt(i);
                     ev.Numeric     = 0;
                     ev.Data        = null;
                     ev.DataId      = null; // DW-170 — no building ref on a custom occurrence (slots are reused)
-                    ev.TargetExec  = -1; // DW-349 — custom occurrences are never target-restricted
+                    ev.TargetExec  = resumeExec; // DW-545 — ≥ 0 = resume the subscriber scan at that exec (−1 = from the top)
                     ev.P0 = _eventQueue.ParamAt(i, 0);
                     ev.P1 = _eventQueue.ParamAt(i, 1);
                     ev.P2 = _eventQueue.ParamAt(i, 2);
@@ -1738,8 +1757,9 @@ namespace ProjectChimera.Core
             for (int idx = 0; idx < _execs.Count; idx++)
             {
                 // Story 7.6 — the fuel seatbelt halts the SWEEP at a whole-trigger boundary: the in-flight
-                // trigger completed (it charged past the budget mid-run, untorn), and every remaining trigger
-                // skips this tick and simply re-evaluates next tick — identically on every peer. DW-349: that
+                // trigger completed (it charged past the budget mid-run, untorn — DW-543 bounds that overshoot
+                // to ONE dispatch even for a per-occurrence trigger), and every remaining trigger skips this
+                // tick and simply re-evaluates next tick — identically on every peer. DW-349: that
                 // "re-evaluates next tick" only reaches POLLED events by itself — one-shot EDGE occurrences the
                 // skipped tail would have matched are PERSISTED onto the DslEventQueue re-queue rail first
                 // (targeted per skipped trigger), so they redeliver instead of vanishing.
@@ -1774,6 +1794,21 @@ namespace ProjectChimera.Core
                     for (int e = 0; e < _baseEventCount; e++)
                     {
                         if (_triggerFired[idx] || _triggerCooldown[idx] > 0) break;
+                        // DW-543 (recorded owner decision: "halt at occurrence granularity") — the fuel seatbelt
+                        // also bounds the PER-OCCURRENCE loop. Pre-DW-543 it was only checked at the sweep's
+                        // per-trigger boundary, so a param-reading trigger that exhausted the budget mid-loop kept
+                        // dispatching its remaining matching occurrences that tick — each a full FireTrigger —
+                        // stretching the documented whole-trigger boundary across N occurrences and making the
+                        // per-tick ceiling less honest than it reads. Now the in-flight DISPATCH completes untorn
+                        // (exactly the sweep's rule) and the rest of this trigger's occurrences halt. Nothing is
+                        // lost: the DW-349 rail persists the unconsumed EDGE ones targeted at this trigger (the
+                        // batched-suppression arm's shape), and the sweep's own top-of-loop check then persists
+                        // the skipped tail — polled thresholds re-emit next tick by construction.
+                        if (_loopState.FuelExhausted)
+                        {
+                            RequeueEdgeEventsFor(idx, ex, fromEvent: e);
+                            break;
+                        }
                         // Story 7.6 parity (merge review): a batched row ACTIVATED by an earlier same-tick
                         // occurrence suppresses the remaining occurrences — the drain's per-dispatch re-check;
                         // without it a second occurrence re-fires the chain and re-activates the row, clobbering
@@ -1978,7 +2013,7 @@ namespace ProjectChimera.Core
             ev.Numeric     = 0;
             ev.Data        = null;
             ev.DataId      = null; // DW-170 — a custom occurrence carries no building ref (slots are reused)
-            ev.TargetExec  = -1; // DW-349 — custom occurrences are never target-restricted (buffer slots are reused)
+            ev.TargetExec  = -1; // DW-545 — a FRESH raise scans every subscriber (only a redelivered occurrence resumes); written unconditionally because buffer slots are reused
             ev.P0 = paramCount > 0 ? paramRaws[0] : 0;
             ev.P1 = paramCount > 1 ? paramRaws[1] : 0;
             ev.P2 = paramCount > 2 ? paramRaws[2] : 0;
@@ -1991,10 +2026,21 @@ namespace ProjectChimera.Core
         /// in the precomputed total order, gates re-checked per dispatch. Handlers never nest — a raise executed
         /// during a dispatch APPENDS and defers to this loop (flat, deterministic, bounded by the load-proven DAG;
         /// <c>_vars.Enter/Exit</c> wraps each dispatch exactly as the base sweep does). Story 7.6 gates apply per
-        /// dispatch too: a trigger whose batched row is draining is suppressed, and fuel exhaustion ABANDONS the
-        /// entire remaining drain this tick (deterministic — the consumed fuel folds into SimChecksum; dropped
-        /// same-tick work items are the same accepted-loss class as the fuel-skipped sweep; already-enqueued
+        /// dispatch too: a trigger whose batched row is draining is suppressed, and fuel exhaustion halts the
+        /// whole drain for this tick (deterministic — the consumed fuel folds into SimChecksum; already-enqueued
         /// NEXT-tick events are unaffected and dispatch next tick after ResetFuel).
+        ///
+        /// DW-545 (recorded owner decision: "extend the re-queue rail to custom occurrences") — that halt no
+        /// longer ABANDONS the remaining same-tick work: every unconsumed occurrence is PERSISTED onto the
+        /// DW-349 re-queue rail, so a custom occurrence has the same edge-parity as a one-shot base occurrence.
+        /// The occurrence the halt caught mid-dispatch persists with a RESUME exec (the first unserved
+        /// subscriber), so the subscribers already served this tick can never double-fire; every work item the
+        /// halt never started persists under its plain registry index. Cascade bound (the decision's second
+        /// half): persistence DEFERS, it never amplifies — each abandoned occurrence yields at most ONE queue
+        /// row, redelivered next tick as a root occurrence whose transitive same-tick cost the load-time
+        /// EventBounds.MaxCascadeOps proof already bounds, and the queue's own MaxNextTickEventQueue drop-newest
+        /// seatbelt caps how many roots can persist (so a permanently starved tick re-queues a bounded, and
+        /// identical-on-every-peer, set rather than growing without limit).
         /// </summary>
         private void DrainWorkList(EntityWorld world)
         {
@@ -2005,11 +2051,24 @@ namespace ProjectChimera.Core
                 if (evIndex < 0 || evIndex >= _eventParamCounts.Length) continue; // defensive (load gate makes this unreachable)
                 int pc = _eventParamCounts[evIndex];
 
-                for (int idx = 0; idx < _execs.Count; idx++)
+                // DW-545 — a REDELIVERED occurrence resumes the subscriber scan where the fuel halt stopped it
+                // (TargetExec ≥ 0); a fresh occurrence (−1) scans from the first exec exactly as it always did.
+                int resumeFrom = _workList[cur].TargetExec;
+                if (resumeFrom < 0) resumeFrom = 0;
+
+                for (int idx = resumeFrom; idx < _execs.Count; idx++)
                 {
-                    // Story 7.6 — the fuel seatbelt, checked per dispatch: exhaustion drops every remaining
-                    // same-tick work item for this tick (whole-drain halt, identical on every peer).
-                    if (_loopState.FuelExhausted) { _frameCount = 0; return; }
+                    // Story 7.6 — the fuel seatbelt, checked per dispatch: the in-flight dispatch completed
+                    // untorn and the drain halts here for this tick (identical on every peer). DW-545 — the
+                    // unconsumed remainder is persisted rather than dropped: THIS occurrence targeted at the
+                    // first unserved subscriber, then every work item the halt never started.
+                    if (_loopState.FuelExhausted)
+                    {
+                        RequeueCustomOccurrence(in _workList[cur], evIndex, idx);
+                        RequeueUnstartedWorkItems();
+                        _frameCount = 0;
+                        return;
+                    }
 
                     if (idx >= _subscribedEvent.Length || _subscribedEvent[idx] != evIndex) continue;
                     TriggerGraph.TriggerExec ex = _execs[idx];
@@ -2033,6 +2092,49 @@ namespace ProjectChimera.Core
                 }
             }
             _frameCount = 0;
+        }
+
+        /// <summary>
+        /// DW-545 — persist ONE fuel-abandoned custom occurrence onto the re-queue rail. <paramref name="resumeExec"/>
+        /// is the subscriber-scan position the halt stopped at: 0 (nothing dispatched yet) persists under the
+        /// occurrence's PLAIN registry index — a byte-identical ordinary next-tick occurrence, so the common case
+        /// adds no new code shape to the folded queue — while a partially-dispatched occurrence rides
+        /// <c>CustomRequeueRailBase + resumeExec × MaxCustomEvents + eventIndex</c>, which is what lets redelivery
+        /// resume at the first UNSERVED subscriber instead of re-firing the ones already served this tick. The
+        /// raiser slot and the FULL P0..P3 payload keep their own queue lanes, so an event declaring the maximum
+        /// param count persists losslessly. A full queue drops newest — the documented, peer-identical
+        /// <see cref="DslEventQueue"/> seatbelt (the queue folds into SimChecksum, so an identical drop is safe).
+        /// </summary>
+        private void RequeueCustomOccurrence(in FiredEvent f, int eventIndex, int resumeExec)
+        {
+            if ((uint)eventIndex >= (uint)EventBounds.MaxCustomEvents) return; // defensive (the load gate bounds it)
+            if (resumeExec < 0) resumeExec = 0;
+            if (resumeExec >= _execs.Count) return; // every subscriber already scanned — nothing left to serve
+            long code = resumeExec == 0
+                ? eventIndex // canonical: an unstarted occurrence needs no rail code
+                : (long)EventBounds.CustomRequeueRailBase
+                  + (long)resumeExec * EventBounds.MaxCustomEvents + eventIndex;
+            if (code > int.MaxValue) return; // unreachable for loaded content — a deterministic drop, never a throw
+            _requeueScratch[0] = f.P0;
+            _requeueScratch[1] = f.P1;
+            _requeueScratch[2] = f.P2;
+            _requeueScratch[3] = f.P3;
+            _eventQueue.Enqueue((int)code, f.Slot, _requeueScratch, EventBounds.MaxEventParams);
+        }
+
+        /// <summary>DW-545 — persist every same-tick work item the fuel halt never STARTED. They were dispatched
+        /// to no subscriber at all, so they redeliver from the top of the scan next tick and no double-fire is
+        /// possible; a redelivered item still waiting its turn keeps the resume position it arrived with.
+        /// Enqueue order is the drain's own FIFO order, so the folded queue is identical on every peer.</summary>
+        private void RequeueUnstartedWorkItems()
+        {
+            for (int w = _workHead; w < _workCount; w++)
+            {
+                ref FiredEvent f = ref _workList[w];
+                if ((uint)f.CustomIndex >= (uint)_eventParamCounts.Length) continue; // defensive (load gate)
+                RequeueCustomOccurrence(in f, f.CustomIndex, f.TargetExec);
+            }
+            _workHead = _workCount; // consumed onto the rail — nothing is left abandoned
         }
 
         /// <summary>
@@ -2827,7 +2929,10 @@ namespace ProjectChimera.Core
             // load-built index table — nothing references it, so nothing can match on it).
             public string? DataId;
             public int     CustomIndex; // custom-event registry index (-1 = a built-in event)
-            public int     TargetExec;  // DW-349: -1 = every trigger may match; >= 0 = a REDELIVERED occurrence visible to that exec alone
+            // DW-349 on a BASE occurrence: -1 = every trigger may match; >= 0 = a REDELIVERED occurrence visible to
+            // that exec ALONE. DW-545 on a CUSTOM occurrence: -1 = scan every subscriber; >= 0 = a REDELIVERED
+            // occurrence that RESUMES the subscriber scan there (the drain's fuel halt already served the ones below).
+            public int     TargetExec;
             public int     P0, P1, P2, P3; // Story 7.5 payload raws (EventBounds.MaxEventParams slots)
         }
     }
