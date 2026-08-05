@@ -114,8 +114,10 @@ namespace ProjectChimera.Core.Definitions
             "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
         };
 
-        /// <summary>The pipe-list form of <see cref="_reservedBasenames"/> for the located reject message (built once).</summary>
-        private const string ReservedPipeList = "con|prn|aux|nul|com1-com9|lpt1-lpt9";
+        /// <summary>The pipe-list form of <see cref="_reservedBasenames"/> for the located reject message (built once).
+        /// Public since DW-528 so every surface that rejects a reserved basename quotes the SAME human-readable list
+        /// instead of hand-copying it (the divergent-hand-maintained-table problem).</summary>
+        public const string ReservedPipeList = "con|prn|aux|nul|com1-com9|lpt1-lpt9";
 
 
         /// <summary>
@@ -625,6 +627,53 @@ namespace ProjectChimera.Core.Definitions
                 if (string.Equals(id, _reservedBasenames[i], System.StringComparison.OrdinalIgnoreCase)) return true;
             return false;
         }
+
+        /// <summary>
+        /// DW-528 — the FILENAME-level companion to <see cref="IsReservedDeviceName"/>, for the callers that do not
+        /// use a free-text id verbatim as the file basename but DECORATE it (a prefix/suffix/extension) before the
+        /// write: true when <paramref name="fileName"/> would land on a Win32 reserved device.
+        ///
+        /// <para>Win32 resolves the reservation against the LAST path component's LEADING segment — everything before
+        /// the FIRST <c>'.'</c>, with trailing dots and spaces stripped — not against the whole name and not against
+        /// "name minus its last extension" (<i>"NUL.txt and NUL.tar.gz are both equivalent to NUL"</i>, Naming Files,
+        /// Paths, and Namespaces). So <c>con.json</c>, <c>con.json.tmp</c> and <c>nul.x_faction.json</c> all name the
+        /// device, while <c>con_faction.json</c> and <c>console.json</c> are ordinary files. Checking the ASSEMBLED
+        /// name rather than the raw id is what keeps a DECORATING caller correct: it neither over-rejects an id that
+        /// its own decoration already makes safe, nor stays silently safe-by-accident if that decoration is later
+        /// shortened, parameterized or dropped.</para>
+        ///
+        /// <para>A PORTABILITY gate, not a local crash guard. Enforcement varies by Windows build — this project's
+        /// dev machine (Win11 26200) creates <c>con.json</c> without complaint from .NET and from <c>cmd.exe</c>
+        /// alike, so DW-454's "the write throws an opaque Save failed" symptom is not reproducible there. The reject
+        /// still earns its place: authored content is meant to be shared, and a file whose basename is a DOS device
+        /// stays unopenable on every Windows build and third-party tool that does enforce the reservation.</para>
+        ///
+        /// <para>Splits on BOTH <c>'/'</c> and <c>'\'</c> explicitly rather than using <c>Path.GetFileName</c>, whose
+        /// separator set is platform-dependent (<c>'\'</c> is an ordinary character on Linux) — the hazard is a
+        /// property of the Windows TARGET, so the verdict must not depend on the authoring host. Godot-free pure
+        /// string comparison, homed beside <see cref="IsReservedDeviceName"/> so there is one convention, not two.</para>
+        /// </summary>
+        public static bool IsReservedDeviceFileName(string? fileName)
+        {
+            if (string.IsNullOrEmpty(fileName)) return false;
+
+            int lastSep = fileName.LastIndexOfAny(_pathSeparators);
+            string leaf = lastSep >= 0 ? fileName.Substring(lastSep + 1) : fileName;
+
+            int firstDot = leaf.IndexOf('.');
+            string basename = firstDot >= 0 ? leaf.Substring(0, firstDot) : leaf;
+
+            // Win32 strips trailing dots and spaces before the device compare, so "con " and "con." are both CON.
+            // Only the SPACE trim can fire after the split above (the leading segment cannot contain a '.'); the '.'
+            // is listed anyway so this line states the whole Win32 rule and stays correct if the split ever changes.
+            basename = basename.TrimEnd(' ', '.');
+
+            return IsReservedDeviceName(basename);
+        }
+
+        /// <summary>Both path separators, checked explicitly by <see cref="IsReservedDeviceFileName"/> so its verdict
+        /// is identical on Windows and Linux (see that method's doc).</summary>
+        private static readonly char[] _pathSeparators = { '/', '\\' };
 
         /// <summary>
         /// Sanitize <paramref name="baseId"/> and, if it already appears in <paramref name="existingIds"/>, suffix it
