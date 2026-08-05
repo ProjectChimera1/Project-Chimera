@@ -297,6 +297,14 @@ namespace ProjectChimera.Economy
             }
             ResearchLevel level = rdef.Levels[levelIdx];
 
+            // DW-623: snapshot the four running cumulative totals BEFORE this level folds into them, so a
+            // fully-refused completion can be rolled back EXACTLY. Subtracting the level's delta back off would NOT
+            // be an inverse — SaturatingAdd clamps at the Fixed ceiling, and a clamped add is not invertible.
+            Fixed prevMaxHealthDelta    = _research.CumulativeMaxHealthDelta[f][researchIndex];
+            Fixed prevAttackDamageDelta = _research.CumulativeAttackDamageDelta[f][researchIndex];
+            Fixed prevMoveSpeedDelta    = _research.CumulativeMoveSpeedDelta[f][researchIndex];
+            Fixed prevArmorDelta        = _research.CumulativeArmorDelta[f][researchIndex];
+
             // Increment the completed-level count and accumulate this level's delta into the running cumulative
             // Fixed total — the single load-boundary quantization this story owns (each INDIVIDUAL level's value
             // already range-validated in [-32768, 32768) by 4.8's ResearchValidator). The RUNNING SUM across many
@@ -314,36 +322,105 @@ namespace ProjectChimera.Economy
 
             // Apply to every currently alive unit of this faction — mirrors SupplySystem.Tick's ascending-id loop.
             int hwm = world.HighWaterMark;
-            int refusedUnits = 0; // DW-83: units whose full modifier ring dropped this completion's permanent buff
+            int eligibleUnits = 0; // DW-623: living faction units this completion actually tried to buff
+            int refusedUnits = 0;  // DW-83: units whose full modifier ring dropped this completion's permanent buff
             for (int id = 0; id < hwm; id++)
             {
                 if ((world.Flags[id] & EntityFlags.Alive) == 0) continue;
                 if (world.FactionOf[id] != faction) continue;
+                eligibleUnits++;
                 // DW-85: living-army completion must NOT burst-heal — preserve current Health across the
                 // remove-then-reapply while the MaxHealth ceiling grows.
                 if (!ApplyCumulativeModifier(world, id, faction, f, researchIndex, preserveCurrentHealth: true))
                     refusedUnits++;
             }
 
-            // DW-83: ONE aggregated line per completion (never one per unit — a completion can sweep a 200-unit
-            // army). Research is the producer the ledger flagged: each completed research owns its OWN permanent
-            // modifier id, so a unit already carrying items + a self-passive + earlier researches can silently lose
-            // an EARNED, PAID-FOR upgrade. Named by research id + level so a designer can act on it. The per-unit
-            // spawn-catch-up path (ApplyCompletedResearch) deliberately stays on ModifierStore's own THROTTLED warn
-            // — it fires per spawn, so an aggregate there would be per-spawn spam.
-            if (refusedUnits > 0)
-                _log?.Warn($"[ResearchSystem] '{rdef.Id}' level {levelIdx + 1} ({faction}) completed, but its permanent " +
-                           $"bonus was DROPPED on {refusedUnits} living unit(s): their {EffectCaps.MaxModifiersPerEntity}-slot " +
-                           "modifier ring was already full (items + hero growth + self-passives + earlier researches). " +
-                           "Those units keep the research's cost but not its effect — raise the cap or reduce the " +
-                           "per-unit modifier load (DW-83).");
+            // DW-623 (owner ruling 2026-08-05, the design decision DW-83's diagnostic-only bundle deliberately left
+            // open): "refund the spend when zero units received the modifier". The cost is spent at Start and the
+            // level is banked BEFORE this loop, so a fully-starved army — every living unit already at the
+            // EffectCaps.MaxModifiersPerEntity ceiling — used to leave the faction poorer with no effect and no
+            // refund. When EVERY eligible unit refused, the completion is VOIDED instead: the level is un-banked,
+            // the cumulative deltas roll back to their pre-completion snapshot, and the level's cost is credited
+            // back. The faction returns to idle either way, so the player can free ring slots and re-start it.
+            //
+            // Two guards keep the ruling from voiding completions that DID deliver something:
+            //   • eligibleUnits > 0 — an EMPTY army is not a refusal. Nothing was dropped, and the banked level is
+            //     genuinely received by every FUTURE spawn through ApplyCompletedResearch's catch-up (which reads
+            //     CompletedLevels > 0). Refunding here would make research impossible for an army-less faction.
+            //   • the cumulative modifier must carry a payload — a research with no (or a net-zero) ResearchModifierDelta
+            //     is a TECH GATE, not an upgrade: its whole value is the banked level that PrerequisitesMet reads.
+            //     A ring refusal costs such a research nothing, so voiding it would break tech unlocks for a starved
+            //     army — a worse defect than the one being fixed.
+            bool nobodyReceivedIt = eligibleUnits > 0 && refusedUnits == eligibleUnits
+                                    && CumulativeCarriesPayload(f, researchIndex);
 
-            _events?.Push(CombatEventType.ResearchComplete, _research.StartedAtPosition[f], faction); // Story 11.4: stamp the actor faction for the local-only completion cue
+            if (nobodyReceivedIt)
+            {
+                _research.CompletedLevels[f][researchIndex]             = levelIdx;
+                _research.CumulativeMaxHealthDelta[f][researchIndex]    = prevMaxHealthDelta;
+                _research.CumulativeAttackDamageDelta[f][researchIndex] = prevAttackDamageDelta;
+                _research.CumulativeMoveSpeedDelta[f][researchIndex]    = prevMoveSpeedDelta;
+                _research.CumulativeArmorDelta[f][researchIndex]        = prevArmorDelta;
+                // Refund exactly what StartResearchCommand spent: the same level's Cost dictionary, re-resolved from
+                // the same levelIdx (nothing can move CompletedLevels between Start and Complete — one order per
+                // faction). Mirrors BuildingSystem.BuyItemCommand's "refund atomically → net zero" + Deny shape.
+                _resources.Add(faction, level.Cost ?? EmptyCost);
+                // No living unit could have LOST a prior instance of this research's modifier here: a refusal only
+                // ever happens on a FRESH install into a full ring, and ApplyCumulativeModifier's RemoveByModifierId
+                // would have freed a slot for any unit that already carried it (making its re-apply succeed). So
+                // "every eligible unit refused" implies none of them held it — the rollback leaves no residue.
+                _log?.Warn(RefusalWarn(rdef, levelIdx, faction, refusedUnits) +
+                           "That was EVERY eligible living unit, so the completion is VOIDED: the level is NOT banked " +
+                           "and its cost has been refunded (DW-623). Raise the cap or reduce the per-unit modifier " +
+                           "load before re-starting it.");
+                // Presentation: a voided completion is a rejected outcome, not a ResearchComplete — pushing the
+                // success cue would play "research complete" for a level the faction never gained. InventoryFull is
+                // the established modifier-cap denial reason (ItemSystem's modifier-capped pickup reject uses it).
+                Deny(_research.StartedAtPosition[f], faction, DenialReason.InventoryFull);
+            }
+            else
+            {
+                // DW-83: ONE aggregated line per completion (never one per unit — a completion can sweep a 200-unit
+                // army). Research is the producer the ledger flagged: each completed research owns its OWN permanent
+                // modifier id, so a unit already carrying items + a self-passive + earlier researches can silently lose
+                // an EARNED, PAID-FOR upgrade. Named by research id + level so a designer can act on it. The per-unit
+                // spawn-catch-up path (ApplyCompletedResearch) deliberately stays on ModifierStore's own THROTTLED warn
+                // — it fires per spawn, so an aggregate there would be per-spawn spam.
+                if (refusedUnits > 0)
+                    _log?.Warn(RefusalWarn(rdef, levelIdx, faction, refusedUnits) +
+                               "Those units keep the research's cost but not its effect — raise the cap or reduce the " +
+                               "per-unit modifier load (DW-83).");
 
-            // Idle — a subsequent Start begins the NEXT level with that level's own cost/time.
+                _events?.Push(CombatEventType.ResearchComplete, _research.StartedAtPosition[f], faction); // Story 11.4: stamp the actor faction for the local-only completion cue
+            }
+
+            // Idle — a subsequent Start begins the NEXT level with that level's own cost/time (or, on a voided
+            // completion, re-attempts THIS level).
             _research.InProgressIndex[f] = -1;
             _research.RemainingTicks[f]  = 0;
         }
+
+        /// <summary>Shared head of both ring-full completion warns (DW-83's partial-refusal line and DW-623's voided
+        /// line) — names the research, the level, the faction, and how many living units dropped the bonus.</summary>
+        private static string RefusalWarn(ResearchDefinition rdef, int levelIdx, Faction faction, int refusedUnits) =>
+            $"[ResearchSystem] '{rdef.Id}' level {levelIdx + 1} ({faction}) completed, but its permanent " +
+            $"bonus was DROPPED on {refusedUnits} living unit(s): their {EffectCaps.MaxModifiersPerEntity}-slot " +
+            "modifier ring was already full (items + hero growth + self-passives + earlier researches). ";
+
+        /// <summary>
+        /// DW-623: true iff faction-index <paramref name="f"/>'s research at <paramref name="researchIndex"/> has a
+        /// non-zero cumulative stat payload — i.e. the permanent modifier this completion installs actually delivers
+        /// something, so a unit that refuses it genuinely loses value. The four <c>Cumulative*Delta</c> totals ARE the
+        /// whole payload: <see cref="BuildCumulativeModifier"/> hard-codes <see cref="StatusFlags.None"/>, a null
+        /// period effect and period 0. A research with no authored <see cref="ResearchModifierDelta"/> (or a ladder
+        /// that nets back to zero) is a prerequisite gate whose value is the banked level itself — never voided.
+        /// Compared on <see cref="Fixed.Raw"/> so this is an exact integer test, never a float epsilon.
+        /// </summary>
+        private bool CumulativeCarriesPayload(int f, int researchIndex) =>
+            _research.CumulativeMaxHealthDelta[f][researchIndex].Raw    != 0 ||
+            _research.CumulativeAttackDamageDelta[f][researchIndex].Raw != 0 ||
+            _research.CumulativeMoveSpeedDelta[f][researchIndex].Raw    != 0 ||
+            _research.CumulativeArmorDelta[f][researchIndex].Raw        != 0;
 
         /// <summary>
         /// Install/refresh entity <paramref name="id"/>'s ONE cumulative modifier slot for faction-index

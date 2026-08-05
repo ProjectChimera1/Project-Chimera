@@ -802,10 +802,205 @@ namespace ProjectChimera.Sim.Tests.Economy
             Assert.Equal(-1, h.Research.InProgressIndex[(int)Faction.Player8]); // resolved at slot 8 (order cleared)
         }
 
+        // ── DW-623: a completion NO living unit could receive is voided and refunded ──────────────────────
+        // Owner ruling 2026-08-05. Cost is spent at Start and the level banked BEFORE the application loop, so a
+        // fully-starved army (every living unit at the EffectCaps.MaxModifiersPerEntity ceiling) used to leave the
+        // faction poorer with no effect and no refund. Now: refused == eligible (and the research actually carries a
+        // payload) ⇒ un-bank the level, roll the cumulative deltas back, credit the cost.
+
+        [Fact]
+        public void Complete_EveryLivingUnitRefusesTheModifier_VoidsTheLevelAndRefundsTheSpend()
+        {
+            var h = Build();
+            int a = Unit(h), b = Unit(h);
+            FillRing(h.Modifiers, a);
+            FillRing(h.Modifiers, b, idBase: 200);
+            int oreBeforeStart = Ore(h);
+
+            Assert.True(h.Sys.StartResearchCommand(h.LabId, Faction.Player1, ArmorUpIdx));
+            Assert.Equal(oreBeforeStart - 100, Ore(h)); // Start still spends up front — the refund is the completion's job
+            for (int i = 0; i < 3; i++) h.Sys.Tick(h.World, Fixed.Zero);
+
+            // The level is NOT banked and the spend is fully returned (pre-fix: 1 level banked, 100 ore gone).
+            Assert.Equal(0, h.Research.CompletedLevels[(int)Faction.Player1][ArmorUpIdx]);
+            Assert.Equal(oreBeforeStart, Ore(h));
+            Assert.Equal(Fixed.Zero, h.Research.CumulativeArmorDelta[(int)Faction.Player1][ArmorUpIdx]);
+            // Neither starved unit gained anything, and the order returned to idle so it can be re-started.
+            Assert.Equal(Fixed.Zero, h.World.EffectiveArmor[a]);
+            Assert.Equal(Fixed.Zero, h.World.EffectiveArmor[b]);
+            Assert.Equal(-1, h.Research.InProgressIndex[(int)Faction.Player1]);
+            // A voided completion is a rejected outcome — never the ResearchComplete success cue.
+            Assert.False(HasResearchComplete(h));
+            Assert.True(HasOrderDenied(h, DenialReason.InventoryFull));
+        }
+
+        [Fact]
+        public void Complete_VoidedByFullRings_NextStartRePaysTheSameLevelsOwnCostAndTime()
+        {
+            // The un-banked level must be re-attemptable at ITS price, not silently advance the ladder.
+            var h = Build();
+            FillRing(h.Modifiers, Unit(h));
+
+            Assert.True(h.Sys.StartResearchCommand(h.LabId, Faction.Player1, ArmorUpIdx));
+            for (int i = 0; i < 3; i++) h.Sys.Tick(h.World, Fixed.Zero); // voided
+            int oreAfterVoid = Ore(h);
+
+            Assert.True(h.Sys.StartResearchCommand(h.LabId, Faction.Player1, ArmorUpIdx));
+            Assert.Equal(oreAfterVoid - 100, Ore(h)); // level 0's OWN cost again (pre-fix this would be level 1's 200)
+            Assert.Equal(3, h.Research.RemainingTicks[(int)Faction.Player1]); // level 0's OWN time
+        }
+
+        [Fact]
+        public void Complete_PartialRefusal_StillBanksTheLevelAndKeepsTheSpend()
+        {
+            // Negative control: ONE recipient is enough. The ruling voids only a completion nobody received.
+            var h = Build();
+            int starved = Unit(h);
+            FillRing(h.Modifiers, starved);
+            int recipient = Unit(h);
+            int oreBeforeStart = Ore(h);
+
+            Assert.True(h.Sys.StartResearchCommand(h.LabId, Faction.Player1, ArmorUpIdx));
+            for (int i = 0; i < 3; i++) h.Sys.Tick(h.World, Fixed.Zero);
+
+            Assert.Equal(1, h.Research.CompletedLevels[(int)Faction.Player1][ArmorUpIdx]);
+            Assert.Equal(oreBeforeStart - 100, Ore(h)); // NOT refunded
+            Assert.Equal(Fixed.FromInt(2), h.World.EffectiveArmor[recipient]);
+            Assert.Equal(Fixed.Zero, h.World.EffectiveArmor[starved]);
+            Assert.True(HasResearchComplete(h));
+        }
+
+        [Fact]
+        public void Complete_WithNoLivingUnits_StillBanksTheLevelAndDoesNotRefund()
+        {
+            // An EMPTY army is not a refusal: nothing was dropped, and every FUTURE spawn genuinely receives the
+            // banked level through the catch-up hook. Refunding here would make research impossible for an
+            // army-less faction — the eligibleUnits > 0 guard.
+            var h = Build();
+            int oreBeforeStart = Ore(h);
+
+            Assert.True(h.Sys.StartResearchCommand(h.LabId, Faction.Player1, ArmorUpIdx));
+            for (int i = 0; i < 3; i++) h.Sys.Tick(h.World, Fixed.Zero);
+
+            Assert.Equal(1, h.Research.CompletedLevels[(int)Faction.Player1][ArmorUpIdx]);
+            Assert.Equal(oreBeforeStart - 100, Ore(h));
+            Assert.True(HasResearchComplete(h));
+
+            int newUnit = Unit(h);
+            h.Sys.ApplyCompletedResearch(h.World, newUnit);
+            Assert.Equal(Fixed.FromInt(2), h.World.EffectiveArmor[newUnit]); // it WAS received, just later
+        }
+
+        [Fact]
+        public void Complete_TechGateWithNoModifierPayload_StillBanksOnFullRings()
+        {
+            // A research with no authored ResearchModifierDelta ("gated") is a PREREQUISITE gate: its whole value is
+            // the banked level PrerequisitesMet reads, so a ring refusal costs it nothing. Voiding it would break
+            // tech unlocks for a starved army — the payload guard.
+            var h = Build();
+            int req = h.Buildings.Create(FixedVec3.Zero, Faction.Player1, BuildingType.Custom, buildingId: "req_building");
+            h.Buildings.ConstructionTimer[req] = Fixed.Zero;
+            FillRing(h.Modifiers, Unit(h));
+            int oreBeforeStart = Ore(h);
+
+            Assert.True(h.Sys.StartResearchCommand(h.LabId, Faction.Player1, GatedIdx));
+            h.Sys.Tick(h.World, Fixed.Zero); // TimeTicks 1
+
+            Assert.Equal(1, h.Research.CompletedLevels[(int)Faction.Player1][GatedIdx]); // the unlock stands
+            Assert.Equal(oreBeforeStart - 10, Ore(h));                                   // and is NOT refunded
+            Assert.True(HasResearchComplete(h));
+        }
+
+        [Fact]
+        public void Complete_VoidedOnALaterLevel_RollsBackTheCumulativeDelta_NotJustTheLevelCount()
+        {
+            // Level 0 banks against an empty army (cumulative armor 2). Level 1 is then refused by the only living
+            // unit → voided. Both the level COUNT and the cumulative TOTAL must return to their level-0 values, or a
+            // later spawn would inherit a paid-for-then-refunded bonus.
+            var h = Build();
+            Assert.True(h.Sys.StartResearchCommand(h.LabId, Faction.Player1, ArmorUpIdx));
+            for (int i = 0; i < 3; i++) h.Sys.Tick(h.World, Fixed.Zero);
+            Assert.Equal(Fixed.FromInt(2), h.Research.CumulativeArmorDelta[(int)Faction.Player1][ArmorUpIdx]);
+
+            // A unit that spawned AFTER level 0 and never got the catch-up: it holds no research slot, so its full
+            // ring genuinely refuses the level-1 install.
+            FillRing(h.Modifiers, Unit(h));
+            int oreBeforeLevel1 = Ore(h);
+
+            Assert.True(h.Sys.StartResearchCommand(h.LabId, Faction.Player1, ArmorUpIdx));
+            Assert.Equal(oreBeforeLevel1 - 200, Ore(h));
+            for (int i = 0; i < 2; i++) h.Sys.Tick(h.World, Fixed.Zero);
+
+            Assert.Equal(1, h.Research.CompletedLevels[(int)Faction.Player1][ArmorUpIdx]);
+            Assert.Equal(Fixed.FromInt(2), h.Research.CumulativeArmorDelta[(int)Faction.Player1][ArmorUpIdx]); // not 5
+            Assert.Equal(oreBeforeLevel1, Ore(h));
+
+            int fresh = Unit(h);
+            h.Sys.ApplyCompletedResearch(h.World, fresh);
+            Assert.Equal(Fixed.FromInt(2), h.World.EffectiveArmor[fresh]); // level 0 only
+        }
+
+        [Fact]
+        public void Complete_VoidedAfterASaturatedAdd_RestoresTheExactPreCompletionCumulative()
+        {
+            // Why the rollback SNAPSHOTS instead of subtracting the level's delta back off: SaturatingAdd clamps at
+            // the Fixed ceiling, and a clamped add has no inverse. "overflow_test" level 0 = +20000 armor, level 1 =
+            // +20000 → saturated. A subtract-based rollback of the voided level 1 would leave MaxValue - 20000
+            // (~12768), silently mutating a research the player was refunded for.
+            var h = Build();
+            Assert.True(h.Sys.StartResearchCommand(h.LabId, Faction.Player1, OverflowIdx));
+            h.Sys.Tick(h.World, Fixed.Zero);
+            Fixed afterLevel0 = h.Research.CumulativeArmorDelta[(int)Faction.Player1][OverflowIdx];
+            Assert.Equal(Fixed.FromInt(20000), afterLevel0);
+
+            FillRing(h.Modifiers, Unit(h));
+            Assert.True(h.Sys.StartResearchCommand(h.LabId, Faction.Player1, OverflowIdx));
+            h.Sys.Tick(h.World, Fixed.Zero); // level 1 refused by the only unit → voided
+
+            Assert.Equal(1, h.Research.CompletedLevels[(int)Faction.Player1][OverflowIdx]);
+            Assert.Equal(afterLevel0, h.Research.CumulativeArmorDelta[(int)Faction.Player1][OverflowIdx]);
+        }
+
+        // ── Helpers ───────────────────────────────────────────────────────────
+
+        private static int Unit(Harness h) =>
+            h.World.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+
+        /// <summary>Occupy ALL <see cref="EffectCaps.MaxModifiersPerEntity"/> slots of <paramref name="id"/>'s ring
+        /// with distinct permanent +1-attack modifiers — the starved unit of DW-83/DW-623 (items + hero growth +
+        /// self-passives + earlier researches), modelled with the cheapest thing that occupies a slot. Distinct
+        /// <paramref name="idBase"/> per unit so two starved units never share modifier ids.</summary>
+        private static void FillRing(ModifierStore store, int id, int idBase = 100)
+        {
+            for (int k = 0; k < EffectCaps.MaxModifiersPerEntity; k++)
+                Assert.True(store.Apply(id, new Modifier(idBase + k, durationTicks: -1, StackRule.Refresh, maxStacks: 1,
+                                                         Fixed.Zero, Fixed.FromInt(1), Fixed.Zero, StatusFlags.None, null, 0),
+                                        id, Faction.Player1),
+                            "Filling the ring must ACCEPT every install up to the cap.");
+            Assert.Equal(EffectCaps.MaxModifiersPerEntity, store.CountAt(id));
+        }
+
         private static bool HasOrderDenied(Harness h)
         {
             for (int i = 0; i < h.Events.Count; i++)
                 if (h.Events.Get(i).Type == CombatEventType.OrderDenied) return true;
+            return false;
+        }
+
+        private static bool HasOrderDenied(Harness h, DenialReason reason)
+        {
+            for (int i = 0; i < h.Events.Count; i++)
+            {
+                CombatEvent e = h.Events.Get(i);
+                if (e.Type == CombatEventType.OrderDenied && e.Reason == reason) return true;
+            }
+            return false;
+        }
+
+        private static bool HasResearchComplete(Harness h)
+        {
+            for (int i = 0; i < h.Events.Count; i++)
+                if (h.Events.Get(i).Type == CombatEventType.ResearchComplete) return true;
             return false;
         }
     }
