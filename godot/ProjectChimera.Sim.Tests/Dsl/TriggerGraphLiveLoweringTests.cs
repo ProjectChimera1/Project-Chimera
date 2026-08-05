@@ -6,6 +6,7 @@ using System.Reflection;
 using ProjectChimera.Core;              // Fixed
 using ProjectChimera.Core.Definitions;  // TriggerDefinition, ScenarioData
 using ProjectChimera.Economy;           // BuildingStore, ResourceStore
+using ProjectChimera.Sim.Tests.Golden;  // DW-501 — ReflectionProbe (null-CHECKED white-box lookups)
 using Xunit;
 
 namespace ProjectChimera.Sim.Tests.Dsl
@@ -31,8 +32,13 @@ namespace ProjectChimera.Sim.Tests.Dsl
             // Drives the wired graph walk (FromFlat(...).BuildExecutionOrder()) inside the real LoadScenario.
             director.LoadScenario(scenario);
 
-            FieldInfo field = typeof(ScenarioDirector).GetField("_execs", BindingFlags.NonPublic | BindingFlags.Instance)!;
-            var execs = (IEnumerable<TriggerGraph.TriggerExec>)field.GetValue(director)!;
+            // DW-501: the execution view is private, so this is a white-box probe BY NAME — routed through the
+            // null-CHECKED ReflectionProbe rather than the old `GetField("_execs", …)!` idiom. That `!` suppressed
+            // only the compiler warning: renaming _execs (or changing its type) produced a NullReferenceException /
+            // InvalidCastException on this line naming neither ScenarioDirector nor the field, so the failure read
+            // as a lowering regression when the test had simply gone stale.
+            FieldInfo field = ReflectionProbe.Field(typeof(ScenarioDirector), "_execs");
+            var execs = ReflectionProbe.Read<IEnumerable<TriggerGraph.TriggerExec>>(field, director);
 
             // Reconstruct the flat triggers from the execution view. The view is in EXECUTION order (Priority desc,
             // node-id asc); re-sort by ascending trigger node-id (== declaration order for a FromFlat graph) so it

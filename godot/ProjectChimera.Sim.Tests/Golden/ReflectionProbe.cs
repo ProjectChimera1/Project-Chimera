@@ -20,10 +20,20 @@ namespace ProjectChimera.Sim.Tests.Golden
     internal static class ReflectionProbe
     {
         private const BindingFlags NonPublicInstance = BindingFlags.NonPublic | BindingFlags.Instance;
+        private const BindingFlags NonPublicStatic   = BindingFlags.NonPublic | BindingFlags.Static;
 
         /// <summary>A non-public instance field, or a named failure naming owner + member.</summary>
         public static FieldInfo Field(Type owner, string name)
             => owner.GetField(name, NonPublicInstance) ?? throw Missing(owner, "non-public instance field", name);
+
+        /// <summary>
+        /// DW-501 — a non-public STATIC field, or a named failure naming owner + member. The static half of
+        /// <see cref="Field"/>: white-box tests that pin a type's private *shared* state (e.g. a validator's
+        /// vocabulary tables, which must ALIAS the registry arrays rather than copy them) probe by name too, and
+        /// a rename there was the same opaque <see cref="NullReferenceException"/>.
+        /// </summary>
+        public static FieldInfo StaticField(Type owner, string name)
+            => owner.GetField(name, NonPublicStatic) ?? throw Missing(owner, "non-public static field", name);
 
         /// <summary>A public instance field (e.g. a nested payload struct's members), or a named failure.</summary>
         public static FieldInfo PublicField(Type owner, string name)
@@ -59,6 +69,21 @@ namespace ProjectChimera.Sim.Tests.Golden
                     $"Reflection probe: {Describe(field.DeclaringType)}.{field.Name} is {Describe(raw.GetType())}, " +
                     $"not the expected {Describe(typeof(T))} — the field's type changed; update this test's probe.");
             return typed;
+        }
+
+        /// <summary>
+        /// DW-501 — read a STATIC <paramref name="field"/> as <typeparamref name="T"/>. Rejects an instance field up
+        /// front: <c>FieldInfo.GetValue(null)</c> on one throws a bare <see cref="TargetException"/> that names
+        /// neither the field nor the mistake, which is the very diagnostic gap this probe exists to close.
+        /// </summary>
+        public static T ReadStatic<T>(FieldInfo field)
+        {
+            if (!field.IsStatic)
+                throw new InvalidOperationException(
+                    $"Reflection probe: {Describe(field.DeclaringType)}.{field.Name} is an INSTANCE field, not a " +
+                    "static one — the member changed shape. Read it with Read<T>(field, instance) instead, or " +
+                    "re-point this probe at whatever now holds the shared state.");
+            return Read<T>(field, instance: null);
         }
 
         /// <summary>Read element <paramref name="index"/> of a reflected array, with a named failure on a null slot.</summary>
