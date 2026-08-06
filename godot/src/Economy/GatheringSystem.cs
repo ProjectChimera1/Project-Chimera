@@ -253,13 +253,21 @@ namespace ProjectChimera.Economy
         /// <para><b>The stall test.</b> The probe is the SHARED <see cref="CheckedStep.Resolve"/> the movement
         /// integrator itself uses, applied to the seek step <c>MovementSystem</c> will take this very tick
         /// (<c>GatheringSystem</c> runs immediately before it): direction to the node × <see cref="EntityWorld.EffectiveMoveSpeed"/>
-        /// × <paramref name="dt"/>. A result equal to the CURRENT position is the helper's HARD STOP — the full step and
-        /// both wall-slide axes were all rejected — which is the only outcome that makes the leg unwinnable. It is
-        /// deliberately CONSERVATIVE: the sweep rejects at the first foreign blocked cell, so a step that is hard-stopped
-        /// at this length is hard-stopped at every length in that direction, and the arrive-slowdown / separation terms
-        /// this probe omits can only make the real step SHORTER. A worker still shuffling inside its own blocked cell
-        /// (permitted by DW-148's confinement) is therefore correctly seen as making ground until it is pinned against
-        /// the cell boundary.</para>
+        /// × <paramref name="dt"/>. A result equal to the CURRENT position <b>on a step that has LENGTH</b> is the
+        /// helper's HARD STOP — the full step and both wall-slide axes were all rejected — which is the only outcome
+        /// that makes the leg unwinnable. It is deliberately CONSERVATIVE: the sweep rejects at the first foreign
+        /// blocked cell, so a step that is hard-stopped at this length is hard-stopped at every length in that
+        /// direction, and the arrive-slowdown / separation terms this probe omits can only make the real step SHORTER.
+        /// A worker still shuffling inside its own blocked cell (permitted by DW-148's confinement) is therefore
+        /// correctly seen as making ground until it is pinned against the cell boundary.</para>
+        ///
+        /// <para><b>DW-803 — the length qualifier is load-bearing.</b> <see cref="CheckedStep.Resolve"/> returns the
+        /// ORIGIN both when the mover may not move and when it never asked to, so a ZERO-LENGTH probe reads as a hard
+        /// stop no matter what the grid holds (a degenerate segment short-circuits the sweep to "not blocked" and
+        /// <c>Resolve</c> returns from its first branch). Anything that zeroes <see cref="EntityWorld.EffectiveMoveSpeed"/>
+        /// — a snare item or granted modifier, floored at zero by <c>ModifierSystem.RecomputeEntity</c> — therefore made
+        /// a worker on completely CLEAR ground yield its reservation. The explicit zero-step guard below SKIPS the probe
+        /// on such a tick, leaving the streak untouched in both directions.</para>
         ///
         /// <para><b>Why the reservation is yielded rather than the worker re-idled.</b> Re-idling churns: nothing makes
         /// <see cref="FindBestNode"/> reachability-aware, so the very next <see cref="TickIdle"/> re-picks the same
@@ -280,6 +288,25 @@ namespace ProjectChimera.Economy
 
             FixedVec3 pos     = world.Position[id];
             FixedVec3 desired = pos + (_nodes.Position[node] - pos).Normalized() * world.EffectiveMoveSpeed[id] * dt;
+
+            // DW-803 — a ZERO-LENGTH step is NOT the grid's hard stop, and the probe below cannot tell the two apart.
+            // CheckedStep.Resolve answers "you may not move" and "you did not ask to move" with the SAME value (the
+            // origin): a degenerate segment gives PathabilityGrid.IsBlockedOnSegmentOutside col == colEnd and
+            // row == rowEnd, its walk loop never runs, it returns false, and Resolve returns `desired` from its FIRST
+            // not-blocked branch — the hard-stop return is never reached. Reading that as "every sweep was rejected"
+            // made a worker on CLEAR ground surrender its folded AssignedGatherers reservation the moment anything
+            // zeroed its speed (ModifierSystem.RecomputeEntity floors EffectiveMoveSpeed at zero, and a snare item
+            // well inside ItemDefinitionValidator.MAX_MOVE_SPEED_DELTA gets there), handing a 1-cap node to a rival
+            // faction while this worker was still targeting it.
+            //
+            // The test is on the COMPUTED STEP, deliberately not on `speed == Fixed.Zero`: the same degenerate reading
+            // fires for any speed small enough that direction × speed × dt truncates to Fixed zero.
+            //
+            // SKIP, don't reset. A zero-length step is NO EVIDENCE either way, so the streak is left exactly as it is:
+            // advancing it is the defect, and clearing it would let a repeating snare reset a genuinely confined
+            // worker's window forever and disarm DW-532 outright.
+            if (desired == pos) return;
+
             if (CheckedStep.Resolve(grid, pos, desired) != pos)
             {
                 world.GatherWalkStallTicks[id] = 0; // made ground — the streak is CONSECUTIVE, exactly like DW-80's
