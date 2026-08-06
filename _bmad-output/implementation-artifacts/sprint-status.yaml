@@ -278,7 +278,7 @@ development_status:
   epic-15: in-progress
   15-1-mp-reconnect-v1-command-log-rejoin-fast-forward-catch-up-fr-79-dw-2: backlog
   15-2-map-size-determinism-unification-raw-heightmap-read-dw-160-dw-146-dw-162: done
-  15-3-status-effects-become-real-modifier-period-honesty: backlog
+  15-3-status-effects-become-real-modifier-period-honesty: done
   # RETIRED 2026-08-06: 15-4, 15-5, 15-6, 15-7, 15-8, 15-9 (thematic sweep containers) — see the
   #   RE-SHAPED block below. Scope unchanged; it now lives ONLY in deferred-work.md.
   15-10-scenario-settings-panel-new-scenario-empty-canvas-flow-dw-126-dw-127: backlog
