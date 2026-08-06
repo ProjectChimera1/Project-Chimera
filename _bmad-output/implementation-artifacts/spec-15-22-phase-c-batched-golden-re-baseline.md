@@ -42,9 +42,19 @@ gates that do not move with the hash:
 marker**, not a fold change — the first entry in that constant's history that is. Without it a Phase-B
 golden and a Phase-C golden both stamp `checksum_algo_version: 23` while holding different bytes, and
 nothing distinguishes them. Record that explicitly in the v24 doc entry, because every prior entry
-documents a fold and a reader will otherwise assume this one does too. Note `SimChecksum.AlgoVersion`
-has **no `godot/src` consumer** — it is not in the MP handshake (that is `RulesetHash` +
-`CanonicalModelHash.AlgoVersion`), so the bump is a labelling act with test-pin consequences only.
+documents a fold and a reader will otherwise assume this one does too.
+
+> **CORRECTED 2026-08-06, post-run — see DW-874.** This spec originally claimed `SimChecksum.AlgoVersion`
+> has **no** `godot/src` consumer and that the bump was therefore a pure labelling act. **That is false,
+> and the claim was carried into the v24 doc entry before the review sweep caught it.**
+> `SaveGameFile.cs:68` stamps it into every `.chsav` header and `:121` hard-rejects on mismatch before
+> the body is parsed, so the bump makes every pre-Phase-C save permanently unloadable. It is correctly
+> *not* in the MP handshake (that is `RulesetHash` + `CanonicalModelHash.AlgoVersion`) — the error was
+> the word "no". Root cause: the grep that established it was truncated by `head -20`, which cut the
+> `godot/src` hits off after the test-assembly ones. **Read a grep's tail before concluding an absence.**
+> Practical cost here is zero — no shipped saves exist, and the DW-548 review fix independently bumped
+> `SaveGameFile.FormatVersion` 2 → 3 — but the design question DW-874 raises is real: a pure re-record
+> marker arguably should not share a constant with the one save-loading gates on.
 
 ## Membership — 17 entries closed
 
