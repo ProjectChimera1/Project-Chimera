@@ -319,7 +319,19 @@ development_status:
   #   generated container the loop can never complete permanently corrupts `bmad-loop status`.
   #   ADDED: 15-22, the Phase C batched re-baseline (14 bounded corrections + DW-837 + 3 riders).
   #   RESULT: 21 keys -> 11 (10 actionable backlog + 1 done record). 11 retired, 1 added.
+  # ── SPEC'D 2026-08-06: 15-22's membership settled at 17 entries closed, not 18.
+  #   spec-15-22-phase-c-batched-golden-re-baseline.md. Three corrections to the correct-course package,
+  #   all ruled by Alec on 2026-08-06:
+  #   - DW-512 and DW-647 already carried a recorded `decision: keep current behaviour` (2026-08-04/05).
+  #     Re-confirmed WITH THE WINDOW OPEN and closed as done with no code change — they were counted
+  #     among the "14 bounded corrections" but implementing them would have fought a recorded decision.
+  #   - DW-775 LEAVES the batch -> new story 15-23. Even its narrow form adds NEW FOLDED STATE, which
+  #     would turn Phase C from a value-only re-record into a fold change and invalidate the
+  #     SimChecksumCoverageGuardTest known-state pin the window uses as its proof of honesty.
+  #   - DW-838's open ruling answered: DELETE the live-CommandCenter term (not negate it).
+  #   So 15-22 = 12 code corrections + 3 riders + 2 decision-held closures = 17 entries.
   15-22-phase-c-batched-golden-re-baseline: backlog
+  15-23-generation-validated-entity-references-dw-775: backlog
   epic-15-retrospective: optional
 
 action_items:

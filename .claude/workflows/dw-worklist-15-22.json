@@ -1,0 +1,145 @@
+{
+  "generated_for": "Story 15-22 — Phase C batched golden re-baseline (SimChecksum AlgoVersion 23 -> 24)",
+  "spec": "_bmad-output/implementation-artifacts/spec-15-22-phase-c-batched-golden-re-baseline.md",
+  "baseline_revision": "b5bcb1b1",
+  "baseline_tests": "6050 passed / 0 failed / 1 skipped (Windows, verified 2026-08-06)",
+  "mode": "rebaseline — every bundle here MOVES SimChecksum goldens by design. Bundles must leave goldens RED and must NOT re-record, must NOT bump AlgoVersion, must NOT edit any *.golden.txt payload. A single serial Re-record phase does all of that ONCE after every bundle has merged.",
+  "fold_invariant": "NO bundle in this batch may add, remove, or reorder anything SimChecksum folds. Every fix changes folded VALUES only. SimChecksumCoverageGuardTest's pinned known-state hash must stay unchanged — if it moves, the fold changed and that is a hard stop.",
+  "godot_free_count": 10,
+  "godot_coupled_count": 0,
+  "waves": [
+    {
+      "wave": 1,
+      "bundles": [
+        {
+          "name": "unitdies-emission-horizon",
+          "dw_ids": ["DW-548", "DW-549", "DW-674"],
+          "intent": "Close the unit_dies emission horizon end to end. (548) Surface trigger-phase kills to the unit_dies source on the FOLLOWING tick — today a run_effect damage kill executed by a trigger is invisible to unit_dies because CollectEvents runs before EvaluateTriggers/DrainWorkList and UpdateSnapshots records the kill dead before the next collect; update the pinning test UnitDiesDeathLogTests.TriggerPhaseKill_NeverSurfacesAsUnitDies_AndNeverGhostsAfterRecycle to assert the new behaviour. (549) Loosen the _prevFlags-alive gate in CollectEvents so a slot that was never previously alive still emits — that is what currently swallows a trigger-phase kill at T followed by recycle+die at T+1. (674) Give DeathLog the lossless-growth treatment DW-616 applied to DeathFeed instead of the deterministic drop at CAPACITY=256; a dropped record is a FOLDED consequence because DeathLog is the primary unit_dies source and unit_dies triggers mutate folded sim state. Add a Tier-1 regression proving a >256-death tick surfaces every death. RULING (spec §Rulings): grow it — do not merely pin the flags-diff fallback equivalence, which the entry itself admits breaks for the same-tick die-recycle-die slot the log exists to cover.",
+          "files": [
+            "godot/src/Core/ScenarioDirector.cs",
+            "godot/src/Core/DeathLog.cs",
+            "godot/ProjectChimera.Sim.Tests/Core/UnitDiesDeathLogTests.cs"
+          ]
+        },
+        {
+          "name": "flowfield-building-footprint",
+          "dw_ids": ["DW-570"],
+          "intent": "The sim-side flow-field obstacle layer stamps EVERY building as a fixed 3x3 cells (BUILDING_HALF_CELLS = 1, ~6x6 world units) regardless of its real footprint, while the navmesh layer already derives footprints from the definition (DW-169). Built-in buildings vary 4-7 units and custom footprints are def-derived, so NavigationServer paths route around a large building's true extent while flow-field-steered units only avoid 6x6 — units clip or crowd large buildings. Change MarkBuildingCells to compute per-building half-cell extents from the same BuildingNavFootprint policy the navmesh derivation uses. Recorded decision 2026-08-04. This alters MovementSystem trajectories -> Position -> SimChecksum, which is expected in this window.",
+          "files": [
+            "godot/src/Navigation/FlowFieldSystem.cs",
+            "godot/src/Navigation/NavObstacleManager.cs"
+          ]
+        },
+        {
+          "name": "production-destroy-refund",
+          "dw_ids": ["DW-658"],
+          "intent": "BuildingStore.Destroy only flips Alive[id] and pushes the free-list entry: the depth-5 ProductionQueue slots and the head ProductionTimer are zeroed solely on the next Create of that slot. Two consequences — a producer razed mid-training silently forfeits every paid-for queued order with no refund (WC3 refunds them, and CancelTrainCommand already holds the exact re-resolve-from-def refund machinery), and the dead slot's stale queue bytes plus timer stay in the SimChecksum fold (which runs 0..Count with no Alive filter) until the slot is recycled. Fix: refund the queued orders via the CancelTrainCommand re-resolve-from-def path and zero the queue slots + timer immediately in Destroy. Recorded decision 2026-08-05. DO NOT instead add an Alive filter to the checksum fold — that would change the folded SET and is a hard stop for this window. DW-478's QueuedSupply already skips dead buildings, so supply reservation is unaffected.",
+          "files": [
+            "godot/src/Core/BuildingStore.cs",
+            "godot/src/Core/SimChecksum.cs",
+            "godot/src/Economy/ProductionSystem.cs"
+          ]
+        },
+        {
+          "name": "modifier-effective-stat-remirror",
+          "dw_ids": ["DW-659"],
+          "intent": "EntityWorld.ApplyUnitDefinition re-mirrors BaseAttackDamage/BaseArmor into EffectiveAttackDamage/EffectiveArmor, discarding every installed modifier's contribution, and ModifierSystem.Tick only recomputes entities something DIRTIED — so a unit carrying a research/item/aura modifier and NO self-passive silently loses the bonus on a live re-apply until an unrelated apply/remove re-dirties it. DW-300 fixed only the guarded self-passive path. The general fix is one more line in SimulationHost: wire Modifiers.RecomputeEffectiveStats as a third OnUnitDefinitionApplied subscriber. WATCH THIS ONE: it fires on every def-based spawn, so it is the single member of this batch that could perturb the re-baseline differential guard's gather-free control. With no modifiers installed the recompute is Base + 0 and must be byte-identical; if the control moves, that is a real finding about a spawn path setting Effective* before the mapper — report it, do not paper over it.",
+          "files": [
+            "godot/src/Core/EntityWorld.cs",
+            "godot/src/Effects/ModifierSystem.cs",
+            "godot/src/Effects/ModifierStore.cs",
+            "godot/src/Core/Sim/SimulationHost.cs"
+          ]
+        }
+      ]
+    },
+    {
+      "wave": 2,
+      "bundles": [
+        {
+          "name": "deathfeed-drain-invariant",
+          "dw_ids": ["DW-766"],
+          "intent": "DeathFeed.cs's type doc and SimChecksum.cs:198/:601 all cite the feed being 'provably drained' as the reason it is excluded from the checksum fold. That is false: ModifierStore (threaded with the shared DeathFeed by DW-490) is reachable from ItemSystem at index [10], AFTER HeroXpSystem at [9] drains and Clear()s it, and ScenarioDirector at [15] also holds _deaths — so a ceiling-collapse kill during an item pickup leaves Count == 1 at the checksum boundary with the XP credit landing one tick late, and the residue feeds HeroStore.Xp/Level which ARE folded. RULING (spec §Rulings): make the invariant TRUE rather than weakening the claim. Drain after the LAST producer (past index [15], not merely past ItemSystem), still crediting the residue in the SAME tick so hero XP does not land late, and add an end-of-tick assertion so a future producer registered past the drain fails loudly instead of silently re-opening the hole. Moves folded HeroStore.Xp timing — expected in this window. Do NOT fold DeathFeed; that would change the folded set and is a hard stop.",
+          "files": [
+            "godot/src/Core/Sim/SimulationHost.cs",
+            "godot/src/Heroes/HeroXpSystem.cs",
+            "godot/src/Core/DeathFeed.cs",
+            "godot/src/Core/SimChecksum.cs",
+            "godot/src/Combat/DamageResolver.cs"
+          ]
+        },
+        {
+          "name": "research-empty-modifier-skip",
+          "dw_ids": ["DW-678"],
+          "intent": "A pure tech-gate research (the harness's 'gated' entry, and any authored research whose levels omit modifier_delta or whose deltas net to zero) builds an all-zero Modifier in CompleteResearch/BuildCumulativeModifier and installs it into EVERY living unit's ring AND every future spawn — burning 1 of the 8 EffectCaps.MaxModifiersPerEntity slots for exactly zero effect, actively worsening the starvation DW-83/DW-623/DW-625 are about. RULING (spec §Rulings): skip the install entirely when the built modifier is all-zero. There is no design trade-off — an empty modifier has no observable effect other than consuming the slot. Changes ModifierStore contents for already-shipped content, so goldens move; that is what this window is for.",
+          "files": [
+            "godot/src/Economy/ResearchSystem.cs",
+            "godot/src/Effects/ModifierStore.cs",
+            "godot/src/Effects/Modifier.cs"
+          ]
+        },
+        {
+          "name": "gather-walk-stall-zero-step",
+          "dw_ids": ["DW-803"],
+          "intent": "GatheringSystem.TickWalkStall builds desired = pos + dir.Normalized() * EffectiveMoveSpeed * dt and treats CheckedStep.Resolve(grid, pos, desired) == pos as proof of the grid's HARD STOP. That inference is false when the step LENGTH is zero: with EffectiveMoveSpeed == 0 the probe is desired == pos, the degenerate segment test returns false, and Resolve returns from its FIRST not-blocked branch — never reaching the hard-stop return. CONFIRMED by a throwaway Tier-1 probe: a worker on clear ground snared to speed 0 (reachable through validated content — ItemDefinitionValidator.MAX_MOVE_SPEED_DELTA is 50 while every shipped unit's speed is <= 6.5, and RecomputeEntity floors at zero) latches SLOT_YIELDED after WALK_STALL_GRACE_TICKS and drives the SimChecksum-folded ResourceNodeStore.AssignedGatherers from 1 to 0, letting a rival faction claim the node it is still targeting. Fix: guard on the COMPUTED STEP, not on speed == 0 — the same degenerate reading fires for any speed whose speed*dt truncates to Fixed zero. Add a Tier-1 regression pinning that a zero-speed worker on clear ground keeps its reservation.",
+          "files": [
+            "godot/src/Economy/GatheringSystem.cs",
+            "godot/src/Navigation/CheckedStep.cs"
+          ]
+        },
+        {
+          "name": "combat-order-preservation",
+          "dw_ids": ["DW-664"],
+          "intent": "CombatSystem.TickNonCombatant's AttackTarget/AttackBuilding arm writes CommandState=Idle, CommandTarget=-1, AttackTarget=-1 and clears Moving|Attacking — its comment assumes the entry condition is a permanent authoring property, but the :155 gate reads the EFFECTIVE stat, which ModifierSystem.RecomputeEntity zero-FLOORS. So any modifier with attack_damage_delta <= -BaseAttackDamage (authorable: Modifier.CheckDelta takes |delta|, and DW-488 bounds only |delta| x max_stacks) lands a LIVE combatant in that arm: force-attack an enemy, take a temporary debuff, and the order is wiped — on expiry the unit stands Idle and TickIdleCombat re-acquires the NEAREST enemy, not the one the player picked. Pre-DW-242's bare `continue` mutated nothing, so the order survived intact. This also contradicts the disposition the DW-266 status-flags bundle landed in the same merge range (Disarmed = 'still acquires and chases but can never land a hit', order preserved) and MovementSystem's stated rule that a debuff PAUSES a queued order rather than CANCELLING it. Fix: gate the Idle normalization on a PERMANENT non-combatant (BaseAttackDamage == Fixed.Zero) so a debuffed combatant keeps its order and resumes on expiry.",
+          "files": [
+            "godot/src/Combat/CombatSystem.cs",
+            "godot/src/Effects/ModifierSystem.cs"
+          ]
+        }
+      ]
+    },
+    {
+      "wave": 3,
+      "bundles": [
+        {
+          "name": "win-and-ai-dead-guards",
+          "dw_ids": ["DW-837", "DW-838"],
+          "intent": "Two dead guards surfaced by the Phase B sweep and deliberately deferred to this window, both now RULED BY ALEC. (837) WinConditionSystem.SymmetricLoss's default: arm returns false whenever _factions.ActiveCount < 3, so the general `return !FactionAlive(world, f);` never executes in a 1v1 — a 2-player Assassination / LandmarkDestruction / TimedSurvival match where the defender destroys every enemy unit AND building simply never ends. DECISION (Alec, correct-course 2026-08-06): TOTAL WIPEOUT ALWAYS LOSES, ANY FACTION COUNT — delete the ActiveCount < 3 guard entirely. This deliberately overrides the recorded Story 7.11 OtherFaction-parity concern, which was a design argument, not a golden-preservation one. Consistent with DW-188's KotH fallback, which carries no ActiveCount guard for exactly this reason. (838) AiOpponentSystem.ScoreRazeBuildings' below-threshold stall-breaker requires s.HasLiveCommandCenter — inverting its own purpose, since an AI whose CC is destroyed is strictly LESS able to grow back and is the case the stall-breaker exists for. DECISION (Alec, 2026-08-06): DELETE the live-CommandCenter term. Any AI below the attack threshold with raze-capable units commits to razing; a CC alone cannot rebuild without income, so the removal — not a negation — is the fix that covers every stalled case. The in-code comment calls the term a golden-stability fence for the starved cross-platform goldens (Player2 has no base); those goldens have no raze-capable units either, so they should stay inert regardless — VERIFY that empirically rather than assuming it.",
+          "files": [
+            "godot/src/Core/WinConditionSystem.cs",
+            "godot/src/AI/AiOpponentSystem.cs"
+          ]
+        },
+        {
+          "name": "golden-window-riders",
+          "dw_ids": ["DW-514", "DW-554", "DW-839"],
+          "intent": "Three in-window riders that touch golden files or shipped content but are NOT sim corrections. They must land BEFORE the serial Re-record phase. (514) alpha_map_01.json — the shipped default map — carries committed editor-drag residue in its slot bases (base_x -38.88743 / base_z 0.047416687 and 38.93686 / -1.5269203: asymmetric sub-unit float noise, the signature of a MoveStartPosition drag saved into a shipped map) and fields an extra `mage` at slot 0 that ScenarioApplier.BuildFallbackMirror does not, so the fallback boot and the default map are no longer the same scenario. Recorded decision 2026-08-04: reset the slot bases to symmetric authored values and reconcile the roster. This moves CanonicalModelHash — a DIFFERENT mechanism from the SimChecksum bump; it is the ONLY entry in this batch permitted to move that family. (554) MultiFactionGoldenTests.MfHeader (and the committed golden's own header line) instructs re-baselining with --filter FullyQualifiedName~MultiFaction, which now ALSO matches MultiFactionExpansionTests — so an intentional N=4 re-record silently re-records the N=8 golden committed for DW-387, destroying the independent cross-process pin. Narrow both to ~MultiFactionGolden. This is a comment/header edit; it does not move a golden, and it MUST land before the record run or the record run itself destroys the N=8 pin. (839) AiActiveScenario.cs:118-119's header comment claims 'No P1 units -> the P2 wave marches to the AI's hardcoded P1_BASE with nothing to fight', but with a P1 CommandCenter present and no P1 units, EnemyThreatRemains is false and EnemyBuildingExists is true, so ScoreRazeBuildings wins at 0.90 and the AI runs DoRazeBuildings — it never launches a wave. Correct the comment to describe the raze path. Free.",
+          "files": [
+            "godot/resources/data/scenarios/alpha_map_01.json",
+            "godot/src/Builder/ScenarioApplier.cs",
+            "godot/ProjectChimera.Sim.Tests/Golden/MultiFactionGoldenTests.cs",
+            "godot/ProjectChimera.Sim.Tests/Golden/golden-multifaction.golden.txt",
+            "godot/ProjectChimera.Sim.Tests/Golden/AiActiveScenario.cs"
+          ]
+        }
+      ]
+    }
+  ],
+  "closed_without_code": [
+    {
+      "dw_id": "DW-512",
+      "reason": "Recorded decision 2026-08-04 'Keep byte-identical (deterministic, not a desync — only a fairness nicety)' RE-CONFIRMED by Alec 2026-08-06 with the re-record window open, so it was not held for cost reasons. Close status: done with a decision-held resolution. No code change."
+    },
+    {
+      "dw_id": "DW-647",
+      "reason": "Recorded decision 2026-08-05 'Keep current all-or-nothing slide' RE-CONFIRMED by Alec 2026-08-06 with the window open. Changing wall-slide is a game-feel change wanting a playtest, not a correction batch. Close status: done with a decision-held resolution. No code change."
+    }
+  ],
+  "re_homed": [
+    {
+      "dw_id": "DW-775",
+      "to": "Story 15-23 (generation-validated entity references)",
+      "reason": "Ruled out of Phase C by Alec 2026-08-06. Its own text says the close-out 'needs its own bundle, not a bolt-on', and even the narrow version (a generation stamp beside the two held ids) adds NEW FOLDED STATE — which would turn Phase C from a value-only re-record into a genuine fold change and invalidate the SimChecksumCoverageGuardTest gate this window relies on. Behaviour stays pinned by HeldAutoTarget_RecycledIntoAnotherEnemy_KeepsFiring and Projectile_PrimaryTargetRecycledIntoAnotherEnemy_StillDetonates."
+    }
+  ]
+}

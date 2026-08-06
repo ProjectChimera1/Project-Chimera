@@ -4303,8 +4303,9 @@ origin: workflow burn-down run, 2026-08-03
 location: godot/src/Navigation/MovementSystem.cs:46,100 (_neighborBuffer = new int[32], SEPARATION_QUERY_RADIUS = 2.0) -> godot/src/Navigation/SpatialHash.cs QueryRadius
 severity: medium
 reason: The unfiltered SpatialHash.QueryRadius keeps the first 32 neighbours in cell-scan order, so in a crowd denser than 32 units inside a 2.0 radius (the 500-2000-entity target is well past that) WHICH neighbours push a unit is decided by grid geometry rather than any defined rule. It is deterministic across peers (same grid, same positions) so it is NOT a desync — it is a steering-quality/fairness issue. Deliberately left byte-identical by the searcharea-target-selection-correctness bundle because separation output flows into Position, a SimChecksum input, so re-ruling the truncation or raising the buffer moves every movement golden (formation-separation, ai-active, the merged-N goldens) — that needs its own deliberate re-baseline story, which the burn-down brief forbids. The pure API to consume already exists: SpatialHash.QueryRadiusLowestIds<TFilter>, and both QueryRadius overloads now carry a doc note pointing callers at it.
-status: open
-goldens: moves — bounded sim correction. Rides Story 15.22 (Phase C batched re-baseline, AlgoVersion 23->24).
+status: done 2026-08-06
+resolution: closed with NO CODE CHANGE by Story 15.22 (Phase C). The 2026-08-04 decision to keep the separation query byte-identical was RE-CONFIRMED by Alec on 2026-08-06 with the re-record window open — i.e. it was held on its merits, not deferred again because a re-baseline was expensive. The truncation is deterministic across peers so it is a crowd-fairness nicety rather than a desync, and re-ruling unit steering is a game-feel change wanting a playtest, not a correction batch. SpatialHash.QueryRadiusLowestIds<TFilter> remains available for a future caller that wants the defined rule.
+goldens: none — decision held; behaviour is unchanged so no golden moves.
 decision: 2026-08-04 Keep byte-identical (deterministic, not a desync — only a fairness nicety)
 
 ### DW-513: NoHardcodedPlayerCountTests' vacuous-pass guard structurally forbids the aliasing its own allowlist implies
@@ -5350,8 +5351,9 @@ origin: workflow burn-down run, 2026-08-04
 location: godot/src/Navigation/MovementSystem.cs - the blocked-cell rejection block
 severity: low
 reason: When the full step is rejected the unit either keeps a whole single-axis move or holds position entirely; it never advances PARTIALLY up to the blocked cell boundary, so a fast unit can stop up to one full step short of a wall it should be able to close on (visible as units bunching a body-length off cliffs and painted walls). Pre-existing behaviour - DW-147 only asked for the crossing TEST to become swept, not for the response to change - and changing the retained displacement WOULD move Position and therefore SimChecksum, i.e. a deliberate golden re-baseline. Closure needs its own story with the re-record budget attached.
-status: open
-goldens: moves — bounded sim correction. Rides Story 15.22 (Phase C batched re-baseline, AlgoVersion 23->24).
+status: done 2026-08-06
+resolution: closed with NO CODE CHANGE by Story 15.22 (Phase C). The 2026-08-05 decision to keep the all-or-nothing wall slide was RE-CONFIRMED by Alec on 2026-08-06 with the re-record window open, so it was held on its merits rather than deferred for cost. Clipping the retained displacement to the wall face changes how movement FEELS at every wall in the game; that belongs behind a playtest, not inside a batch of correctness fixes.
+goldens: none — decision held; behaviour is unchanged so no golden moves.
 decision: 2026-08-05 Keep current all-or-nothing slide
 
 ### DW-648: The swept blocked-cell rejection covers only MovementSystem - any other writer of EntityWorld.Position bypasses both the old endpoint check and the new sweep
@@ -6267,7 +6269,8 @@ location: godot/src/Combat/CombatSystem.cs ValidateOrClearTarget (~cs:668) and g
 severity: medium
 reason: After the DW-444/DW-446 fix a recycled slot is dropped only when the new occupant is friendly or allied. A slot recycled into a DIFFERENT ENEMY faction is still silently inherited: the attacker keeps firing and the in-flight shell still detonates on a unit nobody aimed at. DW-446's own text calls this pre-existing and scopes it out, so the bundle deliberately preserved the behaviour and pinned it with two explicit tests (HeldAutoTarget_RecycledIntoAnotherEnemy_KeepsFiring, Projectile_PrimaryTargetRecycledIntoAnotherEnemy_StillDetonates) so any future change to it is a conscious one. Closure = a generation-validated entity ref mirroring what DW-184 already built for buildings: EntityWorld.Generation[] exists and is bumped on every recycled Create, and DW-581 has now persisted it, so a PackRef/TryResolveRef pair for entity space would close the whole class at once (AttackTarget, CommandTarget, ProjectileStore.TargetId, and every other SoA field holding a raw entity id across ticks). Cross-cutting with real checksum and persistence blast radius - it needs its own bundle, not a bolt-on.
 status: open
-goldens: moves — bounded sim correction. Rides Story 15.22 (Phase C batched re-baseline, AlgoVersion 23->24).
+goldens: moves — but NOT in Phase C. Re-homed to Story 15.23; the fix adds folded state, so it re-records at the end of its own story per the 2026-08-06 batch rule.
+decision: 2026-08-06 (Alec) — OUT of the Story 15.22 Phase C batch, re-homed to its own story 15.23. The batch rule takes bounded corrections only, and this is not one: even the narrow version (a generation stamp stored beside the two held ids) adds NEW FOLDED SIM STATE, which would turn Phase C from a value-only re-record into a genuine fold change and invalidate the SimChecksumCoverageGuardTest known-state pin that window relies on as its proof. The full close-out — a PackRef/TryResolveRef pair over entity space, closing AttackTarget, CommandTarget, ProjectileStore.TargetId and every other cross-tick raw entity id at once — is a build with real checksum and persistence blast radius, exactly what this entry's own text says needs its own bundle. Behaviour stays pinned meanwhile by HeldAutoTarget_RecycledIntoAnotherEnemy_KeepsFiring and Projectile_PrimaryTargetRecycledIntoAnotherEnemy_StillDetonates.
 
 ### DW-776: StepForError has no explicit case for the reachable `faction` field path, so a null-draft error lands on the Buildings & Tech sniff-default
 origin: workflow burn-down run, 2026-08-05
