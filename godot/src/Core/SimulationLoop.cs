@@ -74,6 +74,10 @@ namespace ProjectChimera.Core
         private AllianceStore?   _checksumAlliances; // Story 7.12: folds the per-faction team-id mask (null ≡ default FFA)
         private TriggerEnabledStore? _checksumTriggerEnabled; // Story 7.13: folds the per-exec trigger-enabled mask (null = SKIP)
 
+        // DW-766 — the transient death feed whose EMPTINESS at the tick boundary is the stated reason it is excluded
+        // from the fold. Null (legacy/test loops that own no feed) ⇒ the invariant is not checked.
+        private Combat.DeathFeed? _boundaryDeaths;
+
         public SimulationLoop(EntityWorld world, params ISimSystem[] systems)
         {
             World = world;
@@ -107,6 +111,40 @@ namespace ProjectChimera.Core
             _checksumWinState  = winState;  // Story 7.11 — folds the win-condition runtime state (null ≡ empty)
             _checksumAlliances = alliances; // Story 7.12 — folds the per-faction team-id mask (null ≡ default FFA)
             _checksumTriggerEnabled = triggerEnabled; // Story 7.13 — folds the per-exec trigger-enabled mask (null = SKIP)
+        }
+
+        /// <summary>
+        /// DW-766 — arm the END-OF-TICK invariant on the transient <see cref="Combat.DeathFeed"/>: after EVERY system
+        /// has ticked and before the checksum is taken, the feed must hold zero records. That emptiness is precisely
+        /// what <c>DeathFeed</c>'s type doc and <see cref="SimChecksum"/>'s v18 note + DslEventQueue fold-site comment
+        /// cite as the reason the feed is excluded from the fold, so it is checked here — at the boundary the claim is
+        /// about — rather than trusted.
+        ///
+        /// <para><c>DeathFeedDrainSystem</c>, registered last in the tick order, is what makes it hold. This check is
+        /// the tripwire for the failure mode DW-766 describes: a future producer registered PAST that drain (or a drain
+        /// that stops running) silently re-opens a hole in the desync detector — folded <c>HeroStore.Xp</c> moving off
+        /// unhashed residue. Failing loudly at the offending tick is the only way that surfaces before it ships.</para>
+        ///
+        /// <para>Call once after construction (SimulationHost does). O(1) per tick — one integer compare — and it
+        /// mutates nothing, so an armed loop is byte-identical to an unarmed one.</para>
+        /// </summary>
+        public void EnableTickBoundaryInvariants(Combat.DeathFeed deaths) => _boundaryDeaths = deaths;
+
+        /// <summary>
+        /// DW-766 — verify the tick-boundary invariant (see <see cref="EnableTickBoundaryInvariants"/>) and throw with
+        /// the diagnosis if it is broken. Unarmed loops skip it.
+        /// </summary>
+        private void AssertTickBoundaryInvariants()
+        {
+            if (_boundaryDeaths == null) return;
+            int residue = _boundaryDeaths.Count;
+            if (residue == 0) return;
+            throw new InvalidOperationException(
+                $"DW-766: {residue} DeathFeed record(s) survived to the tick boundary (tick {CurrentTick}). The feed is " +
+                "excluded from SimChecksum ONLY because it is empty here, and its records feed the folded " +
+                "HeroStore.Xp/Level — so this is mutable state outside the desync detector. A death was pushed after " +
+                "DeathFeedDrainSystem ran: register every producer BEFORE it in SimulationHost's tick order (it must " +
+                "stay last), or drain the new producer explicitly.");
         }
 
         /// <summary>
@@ -150,6 +188,8 @@ namespace ProjectChimera.Core
             for (int i = 0; i < _systems.Length; i++)
                 _systems[i].Tick(World, FixedDt);
 
+            AssertTickBoundaryInvariants(); // DW-766 — the DeathFeed must be empty here (the fold-exclusion premise)
+
             CurrentTick++;
             InterpolationAlpha = 0f;
 
@@ -184,6 +224,8 @@ namespace ProjectChimera.Core
                 {
                     _systems[i].Tick(World, FixedDt);
                 }
+
+                AssertTickBoundaryInvariants(); // DW-766 — the DeathFeed must be empty here (the fold-exclusion premise)
 
                 _accumulator -= DT_SECONDS;
                 CurrentTick++;

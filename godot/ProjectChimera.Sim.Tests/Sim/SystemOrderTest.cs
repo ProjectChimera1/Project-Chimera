@@ -13,7 +13,8 @@ using Xunit;
 namespace ProjectChimera.Sim.Tests.Sim
 {
     /// <summary>
-    /// Pins the canonical 16-system tick order that <see cref="SimulationHost"/> owns (Story 1.8a / AR-6;
+    /// Pins the canonical 17-system tick order that <see cref="SimulationHost"/> owns (Story 1.8a / AR-6;
+    /// DW-766 appended <see cref="DeathFeedDrainSystem"/> at index 16, past the LAST <c>DeathFeed</c> producer;
     /// <c>WinConditionSystem</c> was inserted at index 14 in Story 7.11, after <c>AiOpponentSystem</c> and immediately
     /// before <c>ScenarioDirector</c>;
     /// <c>ModifierSystem</c> filled the AR-9 slot in Story 2.2a; <c>AbilityCastSystem</c> was inserted at index 3 in
@@ -53,7 +54,8 @@ namespace ProjectChimera.Sim.Tests.Sim
             typeof(FogOfWarSystem),    // [12]
             typeof(AiOpponentSystem),  // [13]
             typeof(WinConditionSystem),// [14] ← Story 7.11 win-condition evaluator, after AI / before ScenarioDirector
-            typeof(ScenarioDirector),  // [15]  runs LAST
+            typeof(ScenarioDirector),  // [15]  the LAST DeathFeed producer (run_effect graphs kill through its EffectContext)
+            typeof(DeathFeedDrainSystem), // [16] ← DW-766 end-of-tick DeathFeed drain — runs LAST, past every producer
         };
 
         /// <summary>
@@ -67,13 +69,42 @@ namespace ProjectChimera.Sim.Tests.Sim
             new FactionDefinition());
 
         [Fact]
-        public void Systems_AreTheSixteenCanonicalSystems_InExactOrder()
+        public void Systems_AreTheSeventeenCanonicalSystems_InExactOrder()
         {
             IReadOnlyList<ISimSystem> systems = BuildHost().Systems;
 
             Assert.Equal(ExpectedOrder.Length, systems.Count);
             for (int i = 0; i < ExpectedOrder.Length; i++)
                 Assert.Equal(ExpectedOrder[i], systems[i].GetType());
+        }
+
+        /// <summary>
+        /// DW-766 — the drain's whole correctness argument is its POSITION: it must run strictly after every system
+        /// that can reach <c>DamageResolver.KillEntity</c>, which includes <see cref="ScenarioDirector"/> (its
+        /// <c>run_effect</c> graphs execute against an <c>EffectContext</c> holding the shared feed) and
+        /// <see cref="ItemSystem"/> (its pickup reaches the store's ceiling-collapse kill). Pinned separately from the
+        /// exact-order list above so the INTENT — "last, past every producer" — survives a future insertion that
+        /// legitimately shifts the indices.
+        /// </summary>
+        [Fact]
+        public void DeathFeedDrain_RunsLast_StrictlyAfterEveryDeathFeedProducer()
+        {
+            IReadOnlyList<ISimSystem> systems = BuildHost().Systems;
+
+            int drainIdx = -1, directorIdx = -1, itemIdx = -1, heroXpIdx = -1;
+            for (int i = 0; i < systems.Count; i++)
+            {
+                if (systems[i] is DeathFeedDrainSystem) drainIdx    = i;
+                if (systems[i] is ScenarioDirector)     directorIdx = i;
+                if (systems[i] is ItemSystem)           itemIdx     = i;
+                if (systems[i] is HeroXpSystem)         heroXpIdx   = i;
+            }
+
+            Assert.True(drainIdx >= 0, "DeathFeedDrainSystem must be registered (DW-766 end-of-tick drain).");
+            Assert.Equal(systems.Count - 1, drainIdx);          // LAST — nothing may push after it
+            Assert.True(directorIdx < drainIdx, "ScenarioDirector (run_effect kills) must run before the drain.");
+            Assert.True(itemIdx     < drainIdx, "ItemSystem (ceiling-collapse pickup kills) must run before the drain.");
+            Assert.True(heroXpIdx   < drainIdx, "HeroXpSystem's own drain must run before the residue drain.");
         }
 
         [Fact]

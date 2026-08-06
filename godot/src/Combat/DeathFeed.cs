@@ -23,11 +23,29 @@ namespace ProjectChimera.Combat
 
     /// <summary>
     /// A host-owned, per-tick TRANSIENT buffer of unit deaths (Story 3.13, D-1). <c>DamageResolver.KillEntity</c>
-    /// pushes a <see cref="DeathRecord"/> at the single death choke point; <see cref="HeroXpSystem"/> (index 8, after
+    /// pushes a <see cref="DeathRecord"/> at the single death choke point; <see cref="HeroXpSystem"/> (index 9, after
     /// combat + projectiles) drains it each tick, credits every hostile hero in range, and <see cref="Clear"/>s it.
     ///
     /// <para>Drained + cleared every tick, so it is EMPTY at the checksum boundary → NOT folded into
     /// <see cref="SimChecksum"/> (exactly like <see cref="CombatEventQueue"/>).  Pure C# — no Godot dependency.</para>
+    ///
+    /// <para><b>DW-766 — that emptiness is ENFORCED, not assumed.</b> The claim above was false as written, because
+    /// index [9] is not the last producer: DW-490 threaded this same feed into <see cref="Effects.ModifierStore"/>,
+    /// whose DW-325 ceiling-collapse kill is reachable from <c>ItemSystem</c> at [10] (a net-negative
+    /// <c>max_health_delta</c> item collapsing its claimant's ceiling during a pickup), and <c>ScenarioDirector</c> at
+    /// [15] holds the feed in the <c>EffectContext</c> its <c>run_effect</c> graphs execute against. Either one left
+    /// <see cref="Count"/> at 1 when the checksum was taken, with the residue's XP — which feeds the FOLDED
+    /// <c>HeroStore.Xp</c>/<c>Level</c> — landing a tick late: mutable state outside the desync detector. Two things
+    /// now make the invariant true rather than merely stated:
+    /// <list type="number">
+    /// <item><c>DeathFeedDrainSystem</c> at index [16], registered past the LAST producer, credits the residue in the
+    ///   SAME tick (through <see cref="HeroXpSystem.DrainResidue"/>) and clears the feed.</item>
+    /// <item><c>SimulationLoop</c> asserts <see cref="Count"/> == 0 at the tick boundary — immediately after the whole
+    ///   system array, before the checksum — so a future producer registered past the drain fails LOUDLY instead of
+    ///   silently re-opening the hole.</item>
+    /// </list>
+    /// The fold set is unchanged: this feed is still NOT hashed, and must not become hashed — the fix is that the
+    /// premise for excluding it now holds.</para>
     ///
     /// <para><b>DW-616 — lossless, not capped.</b> This used to be a flat 256-slot ring that silently dropped every
     /// death past the cap, mirroring the pre-DW-469 <see cref="CombatEventQueue"/>. That mirror was wrong: unlike the

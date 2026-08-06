@@ -646,6 +646,12 @@ namespace ProjectChimera.Sim.Tests.Sim
                     "_checksumHeroes", "_checksumItems", "_checksumNodes", "_checksumResearch", "_checksumVars",
                     "_checksumLoopState", "_checksumDslEvents", "_checksumWinState", "_checksumAlliances",
                     "_checksumTriggerEnabled",
+                    // DW-766: the tick-boundary DeathFeed invariant's feed ref joins them — the SAME host-lifetime
+                    // wiring shape as the EnableChecksums refs above (armed once by SimulationHost, never owned by the
+                    // loop). Its CONTENT is per-match state, and SimulationHost.ClearForReset empties the feed itself
+                    // via _deathFeed.Clear() — swept by the `_deathFeed.Clear() — DeathFeed` case above; re-nulling
+                    // the reference here would disarm the invariant for the rest of the host's life.
+                    "_boundaryDeaths",
                     // Caller config (SimulationHost exposes it as a pass-through property); a reset preserves it —
                     // every reset test relies on ChecksumInterval=1 surviving ClearForReset.
                     ClearCompletenessSweep.BackingField("ChecksumInterval"),
