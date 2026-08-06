@@ -32,10 +32,20 @@ namespace ProjectChimera.Sim.Tests.Definitions
     /// still resolves to the CON device. <c>IsReservedDeviceFileName</c> is the filename-level companion that gets
     /// both cases right; its faction-wizard wiring is covered in <c>FactionDefinerWizardTests</c>.</para>
     ///
+    /// <para><b>DW-527.</b> <c>hp</c> is the FOURTH degenerate-at-zero stat: the unit gate ran it through the same
+    /// inclusive-of-zero <c>CheckStat</c> bound, so a 0-hp unit was authorable — it spawns ALIVE at 0 HP with a zero
+    /// health ceiling, can never be healed (<c>ModifierStore</c> clamps Health into <c>[0, EffectiveMaxHealth]</c>) and
+    /// dies to the first point of damage. Buildings were protected by <see cref="BuildingDefinitionValidator"/>'s own
+    /// <c>hp &lt;= 0</c> branch — but since that validator ALSO reuses the unit gate, a negative/NaN building hp badged
+    /// one control twice, which is why closing this meant reconciling the two hp checks into a single rule (the shared
+    /// gate owns the value; the building side keeps only its <c>HpAuthored</c> presence check) rather than just
+    /// tightening the bound.</para>
+    ///
     /// <para><b>Determinism.</b> These are authoring-time REJECT rules only: no stat value, quantization, or SoA write
     /// changes, so no <c>SimChecksum</c>/<c>ContentHash</c>/<c>StartStateHash</c> input moves. The shipped factions
     /// authored none of the newly-rejected values (proved by <see cref="ShippedNonCombatantPosture_StaysValid"/>'s
-    /// zero-damage/zero-interval case, the only zero any shipped entity authors for these fields).</para>
+    /// zero-damage/zero-interval case, the only zero any shipped entity authors for these fields, and by
+    /// <see cref="ShippedBuildingAndUnitPostures_StayValid_UnderTheHpRule"/> for hp).</para>
     /// </summary>
     public class DefinitionValidatorStrictBoundsTests
     {
@@ -382,6 +392,175 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.True(Run(ValidUnit()).Ok);
             Assert.True(new ItemDefinitionValidator().Validate(
                 new ItemDefinition { Id = "ring", Charges = 0, MaxHealthDelta = Fixed.FromInt(50) }).Ok);
+        }
+
+        // ── DW-527: hp — the FOURTH degenerate-at-zero stat, and the reconciliation of the two hp rules ─────────────
+        //
+        // The unit gate ran hp through the generic CheckStat ([0, 32768), INCLUSIVE of 0) while
+        // BuildingDefinitionValidator rejected hp <= 0 on its own — so a 0-hp UNIT was authorable, and (because the
+        // building validator reuses the unit gate on top of its own check) a negative/NaN building hp badged the same
+        // control TWICE. Both halves are now one rule, owned by the shared gate; the building side keeps only its
+        // HpAuthored PRESENCE check, which the shared gate cannot express.
+
+        private static BuildingDefinition ValidBuilding() => new BuildingDefinition
+        {
+            Id = "barracks", DisplayName = "Barracks", Category = "Structure",
+            Hp = 400f, ConstructionTime = 20f, SupplyBonus = 0, ProducesCategory = "Melee",
+            AttackDamage = 0f, AttackSpeed = 0f, AttackRange = 0f, Speed = 0f, VisionRange = 0f, TrainTime = 0f,
+            Supply = 0,
+        };
+
+        [Fact]
+        public void ZeroHp_OnUnit_IsRejected()
+        {
+            // RED without the fix: CheckStat's [0, Range) admitted 0, so a unit could be saved with a zero health
+            // ceiling — EntityWorld.Create seeds Health/BaseMaxHealth/EffectiveMaxHealth from it, the entity spawns
+            // ALIVE at 0 HP, and ModifierStore's clamp into [0, EffectiveMaxHealth] = [0, 0] means it can never be
+            // healed back above zero.
+            var def = ValidUnit(); def.Hp = 0f;
+            AssertSingleErrorOn(Run(def), "hp", "grunt");
+        }
+
+        [Theory]
+        [InlineData(-1f)]
+        [InlineData(float.NaN)]
+        [InlineData(float.PositiveInfinity)]
+        [InlineData(32768f)]   // == the 16.16 ceiling (exclusive)
+        public void NonFiniteOrOutOfRangeHp_IsStillRejected_ExactlyOnce(float value)
+        {
+            // The strictly-positive helper must keep the pre-existing finite/upper-bound teeth, not replace them — and
+            // a value that fails BOTH the old and the new bound still badges the one control once.
+            var def = ValidUnit(); def.Hp = value;
+            AssertSingleErrorOn(Run(def), "hp", "grunt");
+        }
+
+        [Fact]
+        public void SmallPositiveHp_IsValid()
+        {
+            // The bound is strictly positive, NOT "at least 1" — a deliberately fragile 1-HP (or sub-1-HP) unit stays
+            // authorable, so this closes the degenerate case without narrowing the design space.
+            var def = ValidUnit(); def.Hp = 0.25f;
+            UnitValidationResult r = Run(def);
+            Assert.True(r.Ok, string.Join(" | ", r.Errors.Select(e => e.Message)));
+        }
+
+        [Fact]
+        public void ZeroHp_BlocksTheBalanceApplyPath_AndLeavesTargetUntouched()
+        {
+            // RED without the fix: "hp" is in BalanceSuggestionApplier's tunable vocabulary and TryApply gates the
+            // proposal through this very validator, so a suggested hp of 0 was ONE CLICK away from being committed —
+            // the same originating shape as DW-380 (which came out of the Story 8.5 review).
+            var target = ValidUnit();
+            var (candidate, err) = ProjectChimera.AI.BalanceSuggestionApplier.TryApply(target, "hp", 0d, null);
+
+            Assert.Null(candidate);
+            Assert.NotNull(err);
+            Assert.Contains("hp", err!);
+            Assert.Equal(100f, target.Hp);   // a rejected apply never mutates the original
+        }
+
+        [Fact]
+        public void ZeroHp_OnBuilding_IsStillRejected_KindedBuilding()
+        {
+            // The building-side value rule was DELETED (the shared gate owns it now) — this proves that deletion lost
+            // nothing: an authored hp of 0 is still refused, and the message still names the BUILDING, not a "unit".
+            BuildingDefinition def = ValidBuilding(); def.Hp = 0f;
+            BuildingValidationResult r = BuildingDefinitionValidator.Validate(def);
+            Assert.False(r.Ok);
+            List<(string FieldPath, string Message)> hits = r.Errors.Where(e => e.FieldPath == "hp").ToList();
+            Assert.True(hits.Count == 1, $"expected exactly ONE 'hp' error, got {hits.Count}");
+            Assert.Contains("building 'barracks'", hits[0].Message);
+        }
+
+        [Theory]
+        [InlineData(-5f)]
+        [InlineData(float.NaN)]
+        [InlineData(float.PositiveInfinity)]
+        public void NonPositiveOrNonFiniteBuildingHp_ReportsExactlyOneBadge_NotTwo(float value)
+        {
+            // RED without the fix — and red for a reason that pre-dates DW-527's own defect: the building validator's
+            // local `!IsFinite(Hp) || Hp <= 0f` branch AND the reused unit gate's generic [0, Range) CheckStat both
+            // fired on a negative/NaN hp, so one control received TWO located errors. That is the doubled per-field
+            // badge (D-9) — the exact reason the ledger says the two hp checks "cannot both fire without doubling the
+            // badge" and had to be reconciled into one rule before hp could be tightened.
+            BuildingDefinition def = ValidBuilding(); def.Hp = value;
+            BuildingValidationResult r = BuildingDefinitionValidator.Validate(def);
+            List<(string FieldPath, string Message)> hits = r.Errors.Where(e => e.FieldPath == "hp").ToList();
+            Assert.True(hits.Count == 1,
+                $"expected exactly ONE 'hp' error (a doubled badge is a bug), got {hits.Count}: " +
+                string.Join(" | ", hits.Select(e => e.Message)));
+        }
+
+        [Fact]
+        public void OverRangeBuildingHp_IsStillRejected_ExactlyOnce()
+        {
+            // The deleted local branch only ever looked at `<= 0`, so the 16.16-ceiling half of the building's hp
+            // coverage always came from the reused unit gate. Pinned here so the deletion is provably a de-duplication
+            // and not a narrowing: an over-range building hp is still exactly one located error.
+            BuildingDefinition def = ValidBuilding(); def.Hp = 32768f;
+            BuildingValidationResult r = BuildingDefinitionValidator.Validate(def);
+            List<(string FieldPath, string Message)> hits = r.Errors.Where(e => e.FieldPath == "hp").ToList();
+            Assert.True(hits.Count == 1, $"expected exactly ONE 'hp' error, got {hits.Count}");
+            Assert.Contains("building 'barracks'", hits[0].Message);
+        }
+
+        [Fact]
+        public void UnauthoredBuildingHp_StillReportsExactlyOneRequiredBadge()
+        {
+            // DW-55's presence rule is the one hp rule the shared gate cannot express, so it stayed on the building
+            // side. Positive control that the merge guard did not swallow it AND that the shared rule (which sees the
+            // inherited 100f default and passes) does not double it.
+            var def = new BuildingDefinition
+            {
+                Id = "barracks", DisplayName = "Barracks", Category = "Structure",
+                ConstructionTime = 20f, SupplyBonus = 0, ProducesCategory = "Melee",
+                AttackDamage = 0f, AttackSpeed = 0f, AttackRange = 0f, Speed = 0f, VisionRange = 0f, TrainTime = 0f,
+                Supply = 0,
+            };
+            Assert.False(def.HpAuthored);
+
+            BuildingValidationResult r = BuildingDefinitionValidator.Validate(def);
+            List<(string FieldPath, string Message)> hits = r.Errors.Where(e => e.FieldPath == "hp").ToList();
+            Assert.True(hits.Count == 1, $"expected exactly ONE 'hp' error, got {hits.Count}");
+            Assert.Contains("required", hits[0].Message);
+        }
+
+        [Fact]
+        public void UnauthoredBuildingHp_WrittenNonPositiveThroughTheBaseReference_StillBadgesOnce()
+        {
+            // The merge guard's own case: BuildingDefinition's `new`-shadow setter is non-virtual, so a write through a
+            // UnitDefinition-typed reference sets the value WITHOUT flagging HpAuthored. Such a def satisfies the
+            // presence rule's reject AND the shared value rule's reject at once — the guard keeps the more actionable
+            // "required but missing" badge and suppresses the second, so "exactly one hp error" is a property of the
+            // merge rather than an accident of the 100f default.
+            var def = new BuildingDefinition
+            {
+                Id = "barracks", DisplayName = "Barracks", Category = "Structure",
+                ConstructionTime = 20f, SupplyBonus = 0, ProducesCategory = "Melee",
+                AttackDamage = 0f, AttackSpeed = 0f, AttackRange = 0f, Speed = 0f, VisionRange = 0f, TrainTime = 0f,
+                Supply = 0,
+            };
+            ((UnitDefinition)def).Hp = 0f;
+            Assert.False(def.HpAuthored);
+            Assert.Equal(0f, def.Hp);
+
+            BuildingValidationResult r = BuildingDefinitionValidator.Validate(def);
+            List<(string FieldPath, string Message)> hits = r.Errors.Where(e => e.FieldPath == "hp").ToList();
+            Assert.True(hits.Count == 1,
+                $"expected exactly ONE 'hp' error, got {hits.Count}: " + string.Join(" | ", hits.Select(e => e.Message)));
+            Assert.Contains("required", hits[0].Message);
+        }
+
+        [Fact]
+        public void ShippedBuildingAndUnitPostures_StayValid_UnderTheHpRule()
+        {
+            // Positive control against a false positive on real content: every shipped unit and building authors a
+            // positive hp (alpha_faction.json / beta_faction.json range from 55 to 500), so the tightened bound rejects
+            // none of it — including the zero-damage/zero-interval non-combatant posture DW-380 had to preserve.
+            Assert.True(BuildingDefinitionValidator.Validate(ValidBuilding()).Ok);
+
+            var unit = ValidUnit(); unit.Hp = 55f;   // the smallest hp any shipped unit authors
+            Assert.True(Run(unit).Ok);
         }
     }
 }
