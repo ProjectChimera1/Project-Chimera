@@ -159,6 +159,16 @@ namespace ProjectChimera.Sim.Tests.Sim
                     // so seed one non-null stock (as a shop placement would) for the fill to overwrite.
                     dirty.ShopStock[0] = new[] { "potion" };
                 },
+                Allowlist = new[]
+                {
+                    // DW-658 — ctor-lifetime WIRING, not match state (the _startingOre precedent above). BuildingSystem
+                    // installs this destroy-time production-refund callback ONCE in its constructor, and
+                    // SimulationHost.ClearForReset clears the STORES in place without ever reconstructing BuildingSystem
+                    // — so a Clear() that dropped the hook would silently disable the raze refund from the second Play
+                    // onward. Deliberately preserved; ProductionDestroyRefundTests.TheRefundHookSurvivesTheEditPlayReset
+                    // is the positive pin that the preservation is real and not just exempted here.
+                    "_onDestroyRefund",
+                },
             };
         }
 
