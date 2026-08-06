@@ -130,6 +130,24 @@ namespace ProjectChimera.Core
         // PackRef(slot) == slot for every never-recycled building ⇒ existing folded CommandTarget/wire values unchanged.
         public readonly int[] Generation = new int[MAX_BUILDINGS];
 
+        // ── Destroy-time production teardown hook (DW-658) ─────────────────────
+        /// <summary>
+        /// DW-658 — optional callback invoked by <see cref="Destroy"/> with the dying building's id, BEFORE its
+        /// production queue is zeroed, so the owning <c>BuildingSystem</c> can refund the razed producer's
+        /// already-paid-for queued orders (it holds the <see cref="ResourceStore"/> + faction definitions this pure
+        /// data store deliberately does not). UNFOLDED wiring, never sim state — a store with no hook (a golden
+        /// fixture, the editor's captured undo store, a bare unit-test store) still tears the queue down exactly
+        /// the same way, it just credits nobody. The teardown is therefore NEVER conditional on the wiring.
+        /// </summary>
+        private System.Action<int> _onDestroyRefund;
+
+        /// <summary>
+        /// DW-658 — wire the destroy-time production-refund callback (see <see cref="_onDestroyRefund"/>). Called
+        /// once by <c>BuildingSystem</c>'s constructor; a later call REPLACES the hook (never chains), so two
+        /// systems sharing one store can only ever refund once. Pass <c>null</c> to clear it.
+        /// </summary>
+        public void SetProductionRefundHook(System.Action<int> hook) => _onDestroyRefund = hook;
+
         public BuildingStore()
         {
             Alive                = new bool[MAX_BUILDINGS];
@@ -351,13 +369,35 @@ namespace ProjectChimera.Core
             _freeCount = n;
         }
 
-        /// <summary>Destroy a building — marks the slot dead and returns it to the free-list for reuse (Story 2.13, AC3.1).</summary>
+        /// <summary>
+        /// Destroy a building — marks the slot dead, tears its production queue down, and returns it to the
+        /// free-list for reuse (Story 2.13, AC3.1).
+        ///
+        /// <para>DW-658 — the queue teardown happens HERE, not lazily on the next <see cref="Create"/> of this slot.
+        /// Before the fix, <c>Destroy</c> flipped <see cref="Alive"/> and pushed the free-list entry and nothing
+        /// else: the depth-<see cref="QUEUE_DEPTH"/> <see cref="ProductionQueue"/> row and the head
+        /// <see cref="ProductionTimer"/> stayed populated until the slot was recycled. Two defects followed.
+        /// (1) A producer razed mid-training silently FORFEITED every paid-for queued order with no refund; WC3
+        /// refunds them, so the hook above credits them back first (100%, re-resolved from the unit definition —
+        /// the same path <c>BuildingSystem.CancelTrainCommand</c> takes). (2) The dead slot's stale queue bytes and
+        /// timer stayed in the <see cref="SimChecksum"/> fold, which runs <c>0..Count</c> with NO Alive filter, so
+        /// the folded state carried phantom orders for a building that no longer exists. Zeroing here fixes both
+        /// WITHOUT touching the folded SET (the same fields are still hashed, at the same offsets — only their
+        /// values change), which is why an Alive filter in the fold was explicitly NOT the chosen fix.</para>
+        /// </summary>
         public void Destroy(int id)
         {
             // Bounds + double-free guard (mirrors ProjectileStore.Destroy): never push a slot onto the free-list twice,
             // which would hand the same slot to two future Create() calls and corrupt the store.
             if (id < 0 || id >= Count || !Alive[id]) return;
             Alive[id] = false;
+            // DW-658 — refund the razed producer's paid-for orders BEFORE the slots are cleared (the hook reads them).
+            // Alive is already false, so the callback can never re-enter Destroy for this slot; FactionOf/ProductionQueue
+            // are untouched by the flip, so the hook still sees exactly who paid and for what.
+            _onDestroyRefund?.Invoke(id);
+            // Then tear the queue down immediately — every slot, plus the head timer (mirrors the Create() reset).
+            { int q0 = id * QUEUE_DEPTH; for (int k = 0; k < QUEUE_DEPTH; k++) ProductionQueue[q0 + k] = 0; }
+            ProductionTimer[id] = Fixed.Zero;
             _freeList[_freeCount++] = id;
         }
 

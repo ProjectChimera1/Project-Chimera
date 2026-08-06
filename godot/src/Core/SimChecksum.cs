@@ -466,6 +466,12 @@ namespace ProjectChimera.Core
                 // QUEUE_DEPTH slots row-major (ascending slot) so a peer divergence in ANY slot — head or waiting —
                 // desyncs detectably, PLUS the head ProductionTimer (.Raw), which drives when the head completes and
                 // was itself never folded. All byte/Fixed.Raw → cross-platform safe.
+                //
+                // DW-658 — this loop runs 0..Count with NO Alive filter, by design (the fold SET must stay stable and
+                // slot-aligned). A DEAD slot therefore still contributes its queue bytes + timer. That used to mean a
+                // razed producer's phantom orders stayed hashed until the slot was recycled; BuildingStore.Destroy now
+                // zeroes the row and the timer at the moment of death, so a dead slot folds a clean zero run instead.
+                // The fix is in Destroy, NOT here — adding an Alive filter would change what is hashed, not its value.
                 int qBase = i * BuildingStore.QUEUE_DEPTH;
                 for (int k = 0; k < BuildingStore.QUEUE_DEPTH; k++)
                     hash = Mix(hash, buildings.ProductionQueue[qBase + k]);

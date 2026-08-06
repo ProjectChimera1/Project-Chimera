@@ -147,6 +147,11 @@ namespace ProjectChimera.Economy
             _factions  = new FactionDefinition?[FactionRegistry.FACTION_ARRAY_SIZE]; // 9: Neutral + Player1..Player8
             _factions[(int)Faction.Player1] = p1Faction;
             _factions[(int)Faction.Player2] = p2Faction;
+            // DW-658: BuildingStore.Destroy tears a razed producer's queue down itself, but it is a pure data store
+            // with no ResourceStore and no faction definitions — so it calls back HERE to refund the paid-for orders
+            // first. Wired last, after _buildings/_resources/_factions are set, so the callback can never fire against
+            // a half-built system. Assignment (not chaining): two systems over one store refund at most once.
+            _buildings.SetProductionRefundHook(RefundRazedProductionQueue);
         }
 
         private FactionDefinition? GetFactionDef(Faction faction)
@@ -734,13 +739,7 @@ namespace ProjectChimera.Economy
             // Refund 100% of the slot's cost, re-resolved from the stored encoded unit index (never the cost paid — the
             // slot stores only the index). A fallback-sentinel (empty-category) slot spent the ore-only fallback cost at
             // enqueue, so it refunds the identical ore-only fallback map — symmetric and deterministic.
-            var cost = ResolveQueuedCost(faction, q);
-            if (cost.Count > 0)
-            {
-                var refund = new Dictionary<string, int>(cost.Count);
-                foreach (var (key, amount) in cost) refund[key] = amount * TRAIN_CANCEL_REFUND_FRACTION;
-                _resources.Add(faction, refund);
-            }
+            RefundQueuedSlot(faction, q);
 
             // Remove the slot and shift the tail down one (a pure array move — waiting slots carry no running timer).
             for (int k = slot; k < BuildingStore.QUEUE_DEPTH - 1; k++)
@@ -757,6 +756,50 @@ namespace ProjectChimera.Economy
                     : Fixed.Zero;
             }
             return true;
+        }
+
+        /// <summary>
+        /// Story 11.6 / DW-658 — credit back <see cref="TRAIN_CANCEL_REFUND_FRACTION"/> (100%) of ONE occupied queue
+        /// slot's cost to <paramref name="faction"/>. The cost is RE-RESOLVED from the unit definition by the slot's
+        /// stored encoded index (<see cref="ResolveQueuedCost"/>) rather than remembered from enqueue — the slot
+        /// stores only the index — so the refund is identical on every peer and in replay. An empty-category
+        /// fallback-sentinel slot spent the ore-only fallback cost at enqueue and refunds that same map. An empty
+        /// slot (<paramref name="q"/> == 0) credits nothing.
+        ///
+        /// <para>The SINGLE refund site: <see cref="CancelTrainCommand"/> (one slot, player-initiated) and
+        /// <see cref="RefundRazedProductionQueue"/> (every slot, the producer was razed) both go through here so the
+        /// two can never drift into refunding different amounts for the same order.</para>
+        /// </summary>
+        private void RefundQueuedSlot(Faction faction, byte q)
+        {
+            if (q == 0) return;
+            var cost = ResolveQueuedCost(faction, q);
+            if (cost.Count == 0) return;
+            var refund = new Dictionary<string, int>(cost.Count);
+            foreach (var (key, amount) in cost) refund[key] = amount * TRAIN_CANCEL_REFUND_FRACTION;
+            _resources.Add(faction, refund);
+        }
+
+        /// <summary>
+        /// DW-658 — refund EVERY paid-for order still sitting in building <paramref name="buildingId"/>'s production
+        /// queue because the building was just razed. Wired into <see cref="BuildingStore.Destroy"/> as its refund
+        /// hook (see the constructor) and called with <c>Alive[buildingId]</c> already false but the queue still
+        /// intact — so this method must NOT gate on Alive, and it must never write the queue (the store zeroes it
+        /// immediately after this returns).
+        ///
+        /// <para>WC3 model, and the same 100% rate a manual cancel gets: raze-your-own-barracks and cancel-then-lose-
+        /// the-barracks must not pay out differently. Head (in-progress) and waiting slots alike refund — the head's
+        /// elapsed training time buys nothing back, exactly as cancelling the head discards its progress. Slots are
+        /// walked in ASCENDING order for a deterministic credit sequence; supply needs no release because
+        /// <see cref="QueuedSupply"/> already skips dead buildings and is re-derived per gate call (DW-478).</para>
+        /// </summary>
+        private void RefundRazedProductionQueue(int buildingId)
+        {
+            if (buildingId < 0 || buildingId >= _buildings.Count) return;
+            Faction faction = _buildings.FactionOf[buildingId];
+            int head = _buildings.HeadIndex(buildingId);
+            for (int k = 0; k < BuildingStore.QUEUE_DEPTH; k++)   // ascending slot — deterministic credit order
+                RefundQueuedSlot(faction, _buildings.ProductionQueue[head + k]);
         }
 
         /// <summary>Story 11.6: shift building <paramref name="buildingId"/>'s queue down one after the head completed —
