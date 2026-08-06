@@ -726,20 +726,21 @@ namespace ProjectChimera.AI
         /// <summary>
         /// DW-439 — where this wave marches.
         ///
-        /// <para>While Player1 is HOSTILE (every FFA match, every golden, every existing fixture) this is the
-        /// unchanged hardcoded <see cref="P1_BASE"/> — byte-for-byte the pre-fix behavior, so no recorded checksum
-        /// sequence moves. The alternative branch is reachable ONLY when the mask puts Player1 on the AI's team, which
-        /// no shipped scenario and no golden does.</para>
+        /// <para>The wave marches at the nearest HOSTILE structure to its own vanguard (the lowest-id conscript —
+        /// an ascending-id pick, so the choice is deterministic), falling back to the nearest hostile UNIT when
+        /// every enemy structure is already down but its army is not. With neither, there is nothing to attack and
+        /// the caller skips the wave rather than marching onto an ally.</para>
         ///
-        /// <para>On a team with Player1 the wave instead marches at the nearest HOSTILE structure to its own vanguard
-        /// (the lowest-id conscript — an ascending-id pick, so the choice is deterministic), falling back to the
-        /// nearest hostile UNIT when every enemy structure is already down but its army is not. With neither, there is
-        /// nothing to attack and the caller skips the wave rather than marching onto an ally.</para>
+        /// <para><b>DW-783 / DW-738 (Phase B re-baseline).</b> This method used to short-circuit with
+        /// <c>if (IsHostile(Faction.Player1)) { dest = P1_BASE; return true; }</c>, which is EVERY free-for-all
+        /// match — so the general resolution below was dead in every shipped scenario and every wave marched at the
+        /// hardcoded <see cref="P1_BASE"/> (−45, 0, 0) regardless of the map actually loaded. The short-circuit was
+        /// kept deliberately (its own doc said so) because deleting it moves recorded checksum sequences, which the
+        /// burn-down forbade. This IS that deliberate re-baseline, so the guard is gone and the correct path now
+        /// runs everywhere. <see cref="P1_BASE"/> survives only as the AI's own-base heuristic elsewhere.</para>
         /// </summary>
         private bool TryResolveWaveDestination(EntityWorld world, out FixedVec3 dest)
         {
-            if (IsHostile(Faction.Player1)) { dest = P1_BASE; return true; } // unchanged FFA/default path
-
             dest = default;
 
             // The wave's vanguard: the lowest-id conscript (ascending scan ⇒ deterministic). ScoreLaunchAttack only
@@ -765,9 +766,12 @@ namespace ProjectChimera.AI
 
         /// <summary>
         /// DW-439 — nearest alive HOSTILE unit to <paramref name="from"/> by <see cref="Fixed"/> squared distance,
-        /// ascending-id tie-break; -1 if none. Only consulted by <see cref="TryResolveWaveDestination"/>'s teamed
-        /// branch (unreachable in FFA), and deliberately NOT filtered by <c>CanDealDamage</c>: an enemy base defended
-        /// only by workers is still somewhere worth marching.
+        /// ascending-id tie-break; -1 if none. Consulted by <see cref="TryResolveWaveDestination"/> (in EVERY match
+        /// since DW-783 removed the FFA short-circuit), and deliberately NOT filtered by <c>CanDealDamage</c>: an
+        /// enemy base defended only by workers is still somewhere worth marching.
+        /// DW-764: the ranking is only correct because <see cref="FixedVec3.SqrDistance"/> now accumulates in
+        /// <c>long</c> and saturates — before that fix a hostile past ~181 units wrapped NEGATIVE and won the
+        /// argmin, so the wave picked the FARTHEST enemy.
         /// </summary>
         private int FindNearestEnemyUnit(EntityWorld world, FixedVec3 from)
         {

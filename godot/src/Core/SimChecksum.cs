@@ -252,8 +252,19 @@ namespace ProjectChimera.Core
         ///        producer moves by its real queue/timer state; a producer-less scenario moves purely by the added
         ///        QUEUE_DEPTH×Mix(0) + Mix(0)-timer per building — the story's ONE scheduled re-baseline of ALL per-tick
         ///        goldens.
+        ///   v23 — DW-78 (Phase B re-baseline batch): fold the per-worker gather state machine —
+        ///        <c>GatherState</c>, <c>GatherTarget</c>, <c>CarryAmount</c> (.Raw), <c>CarryResourceType</c>, and
+        ///        DW-80's <c>GateClosedTicks</c> — for the FIRST TIME. GatheringSystem mutates all five mid-match,
+        ///        so a divergent carried load or gather phase is peer-divergent sim truth; today it only surfaces
+        ///        transitively via Ore/Crystal at deposit, many ticks after the divergence.
+        ///        BOUNDED, unlike every other per-entity block here: an entity at the full gatherer-inactive
+        ///        default (Inactive / -1 / 0 / 0) folds ZERO Mix calls — the v21 TriggerEnabledStore no-op-absent
+        ///        posture, NOT the null≡empty→Mix(0) convention. An UNCONDITIONAL fold would move EVERY scenario
+        ///        (GatherTarget defaults to -1; Mix(-1) is not a no-op) and would leave the re-baseline
+        ///        differential guard with no unperturbed scenario to use as a control; bounded, only scenarios
+        ///        that actually gather move. All byte/int/Fixed.Raw → cross-platform safe.
         /// </summary>
-        public const int AlgoVersion = 22;
+        public const int AlgoVersion = 23;
 
         /// <summary>
         /// Compute a full-state checksum for desync detection.
@@ -399,6 +410,37 @@ namespace ProjectChimera.Core
                     hash = Mix(hash, world.OrderQueueCmd[oqBase + s]);
                     hash = Mix(hash, world.OrderQueueTargetX[oqBase + s]);
                     hash = Mix(hash, world.OrderQueueTargetZ[oqBase + s]);
+                }
+
+                // ── Worker gather state (v23, DW-78) — BOUNDED fold, the v21 TriggerEnabledStore posture ──
+                // GatheringSystem's per-worker state machine mutates GatherState/GatherTarget/CarryAmount/
+                // CarryResourceType mid-match (and GateClosedTicks drives the DW-80 re-idle at the grace
+                // threshold), so a peer whose worker carries a different load or sits in a different gather
+                // phase must desync detectably — today it can diverge silently until the divergence surfaces
+                // transitively via Ore/Crystal on deposit, many ticks later.
+                //
+                // BOUNDED, deliberately: an entity at the full gatherer-inactive default folds ZERO Mix calls
+                // (NOT the null≡empty→Mix(0) convention the stores use). Every non-worker unit — and every
+                // worker between trips — is at that default, so a scenario with no active gather state hashes
+                // BYTE-IDENTICALLY to its pre-fold (v22) sequence. This is the v21 TriggerEnabledStore
+                // precedent, and it is what keeps a clean no-perturbation control arm CONSTRUCTIBLE for the
+                // re-baseline differential guard: an unconditional fold would move every scenario (GatherTarget
+                // defaults to -1 and Mix(-1) is not a no-op), leaving the guard no unperturbed scenario to point at.
+                //
+                // GateClosedTicks folds in the SAME bump (checksum-fold-timing rule): DW-80 made it genuinely
+                // mutable mid-match sim truth that changes behaviour, and it is only ever non-zero while
+                // Gathering, so it costs no additional blast radius and avoids a second re-baseline later.
+                // All byte/int/Fixed.Raw → cross-platform safe.
+                GatherState gState = world.GatherState[i];
+                int gTarget = world.GatherTarget[i];
+                if (gState != GatherState.Inactive || gTarget >= 0 || world.CarryAmount[i].Raw != 0
+                    || world.GateClosedTicks[i] != 0)
+                {
+                    hash = Mix(hash, (int)gState);
+                    hash = Mix(hash, gTarget);
+                    hash = Mix(hash, world.CarryAmount[i].Raw);
+                    hash = Mix(hash, (int)world.CarryResourceType[i]);
+                    hash = Mix(hash, world.GateClosedTicks[i]);
                 }
             }
 

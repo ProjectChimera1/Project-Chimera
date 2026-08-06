@@ -172,22 +172,37 @@ namespace ProjectChimera.Sim.Tests.AI
                 "ally-focus preference was never exercised");
         }
 
-        // ── The FFA fence: the branch that must NOT move ──────────────────────────────────────────────────────
+        // ── FFA: the destination is COMPUTED, not hardcoded ───────────────────────────────────────────────────
 
         /// <summary>
-        /// The determinism fence for this bundle. Under FFA (every shipped scenario, every golden) Player1 is still
-        /// hostile, so the wave must still march to the unchanged hardcoded <see cref="AiOpponentSystem.P1_BASE"/> —
-        /// not to a newly-computed nearest-enemy destination, which would move every AI-bearing golden. Fails loudly
-        /// if the alliance-aware destination logic ever leaks out of its teamed branch.
+        /// DW-783 / DW-738 (Phase B re-baseline) — REPLACES <c>FfaAi_StillMarchesOnTheHardcodedP1Base</c>, which
+        /// pinned the defect as if it were the contract.
+        ///
+        /// <para>Until this batch, <c>TryResolveWaveDestination</c> short-circuited to the hardcoded
+        /// <see cref="AiOpponentSystem.P1_BASE"/> (−45, 0, 0) whenever Player1 was hostile — i.e. in every FFA match —
+        /// so the alliance-aware resolution below it was dead code everywhere. That constant happens to be slot 0's
+        /// CommandCenter on the ONE shipped map (alpha_map_01), which is why it looked correct; on every other map,
+        /// and on anything a creator authors, the AI's army marched at empty ground.</para>
+        ///
+        /// <para>The wave must now march at the enemy's ACTUAL base, wherever it is. This fixture deliberately puts
+        /// the hostile base somewhere that is NOT P1_BASE, so a regression back to the constant fails loudly.</para>
         /// </summary>
         [Fact]
-        public void FfaAi_StillMarchesOnTheHardcodedP1Base()
+        public void FfaAi_MarchesOnTheEnemysActualBase_NotAHardcodedConstant()
         {
             SimulationHost host = NewHost();
             PlaceBase(host, Faction.Player2, x: 45, z: 0);
             PlaceWave(host, Faction.Player2, NormalAttackThreshold, x: 40);
-            // No enemy buildings at all → ScoreRazeBuildings is 0 and LaunchAttack is the winning action.
-            // The alliance mask is left at its FFA default — exactly what every golden runs on.
+
+            // The hostile target, placed well away from the hardcoded P1_BASE so the two are distinguishable.
+            // A hostile UNIT, deliberately not a base: a hostile BUILDING makes EnemyBuildingExists true, which
+            // wins ScoreRazeBuildings at 0.90 and routes the AI down DoRazeBuildings (AttackBuilding at a
+            // CommandTarget) instead of DoLaunchAttack — a different code path than the one under test here.
+            // A live enemy unit sets EnemyThreatRemains, which zeroes the raze score and leaves the wave as the
+            // winning action, so TryResolveWaveDestination's unit fallback is what resolves the destination.
+            int target = PlaceWave(host, Faction.Player1, count: 1, x: -30, z: 20);
+            FixedVec3 expected = host.World.Position[target]; // read back — never re-derive PlaceWave's z offset
+            Assert.NotEqual(AiOpponentSystem.P1_BASE, expected); // the fixture is only meaningful if these differ
 
             host.StepOnce();
 
@@ -196,12 +211,36 @@ namespace ProjectChimera.Sim.Tests.AI
             {
                 if (!host.World.IsAlive(i) || host.World.FactionOf[i] != Faction.Player2) continue;
                 Assert.Equal(UnitCommand.AttackMove, host.World.CommandState[i]);
-                Assert.Equal(AiOpponentSystem.P1_BASE, host.World.CommandGoal[i]);
-                Assert.Equal(AiOpponentSystem.P1_BASE, host.World.MoveTarget[i]);
+                Assert.Equal(expected, host.World.CommandGoal[i]);
+                Assert.Equal(expected, host.World.MoveTarget[i]);
                 marching++;
             }
 
             Assert.Equal(NormalAttackThreshold, marching);
+        }
+
+        /// <summary>
+        /// DW-783 — the other half of removing the hardcoded fallback: with NOTHING hostile alive anywhere, the AI
+        /// must decline the wave rather than march its army at a constant. <c>DoLaunchAttack</c> burns the cooldown
+        /// so the (still positive) attack score stops out-bidding tech/production every tick on an order it cannot
+        /// issue. This is not reachable in a live match — a faction with no buildings AND no units has already lost —
+        /// but it pins the contract so the constant cannot creep back in as a "safe default".
+        /// </summary>
+        [Fact]
+        public void FfaAi_WithNothingHostileAlive_DeclinesTheWaveInsteadOfMarchingAtAConstant()
+        {
+            SimulationHost host = NewHost();
+            PlaceBase(host, Faction.Player2, x: 45, z: 0);
+            PlaceWave(host, Faction.Player2, NormalAttackThreshold, x: 40);
+            // Deliberately NO Player1 entities of any kind.
+
+            host.StepOnce();
+
+            for (int i = 0; i < host.World.HighWaterMark; i++)
+            {
+                if (!host.World.IsAlive(i) || host.World.FactionOf[i] != Faction.Player2) continue;
+                Assert.NotEqual(UnitCommand.AttackMove, host.World.CommandState[i]);
+            }
         }
 
         // ── Fixture helpers ───────────────────────────────────────────────────────────────────────────────────

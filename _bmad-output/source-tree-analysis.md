@@ -5,10 +5,7 @@
 ```
 Project_Chimera/
 ├── CLAUDE.md                     # L1 router — project instructions for AI
-├── CONTEXT.md                    # Session briefing
-├── STATUS.md                     # GDD implementation tracker
-├── LEARNINGS.md                  # Accumulated Godot/C# knowledge
-├── Snapshot.md                   # Current state, in-progress work, smoke tests
+├── Snapshot.md                   # Session briefing AND implementation tracker (newest dated block wins)
 ├── Project_Chimera_GDD.md        # Full Game Design Document (intent / source of truth)
 ├── Testme.md
 ├── docs/                         # Operational docs

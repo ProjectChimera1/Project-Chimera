@@ -97,7 +97,8 @@ namespace ProjectChimera.Sim.Tests.AI
         public void DecisiveIdleArmy_LaunchesTheWaveInsteadOfDoublingProduction()
         {
             Fixture f = NewFixture(ore: 500, completeBarracks: 1,
-                                   difficulty: AiDifficulty.Easy, idleCombatUnits: 16);
+                                   difficulty: AiDifficulty.Easy, idleCombatUnits: 16,
+                                   hostileTarget: true); // DW-783: the wave needs a real destination
 
             f.Ai.Tick(f.World, SimulationLoop.FixedDt);
 
@@ -196,7 +197,8 @@ namespace ProjectChimera.Sim.Tests.AI
                                           bool blockTechChain = false,
                                           bool supplyGatingEnabled = true,
                                           AiDifficulty difficulty = AiDifficulty.Normal,
-                                          int idleCombatUnits = 0)
+                                          int idleCombatUnits = 0,
+                                          bool hostileTarget = false)
         {
             var world     = new EntityWorld();
             var buildings = new BuildingStore();
@@ -231,6 +233,16 @@ namespace ProjectChimera.Sim.Tests.AI
                                      Faction.Player2, Fixed.FromInt(80), Fixed.FromInt(3));
                 world.EffectiveAttackDamage[u] = Fixed.FromInt(6);
             }
+
+            // DW-783 — something hostile for a launched wave to march AT. Opt-in, because only the wave-launching
+            // test needs it: the build-decision tests are about scoring, not destinations. Before this batch the
+            // wave destination was the hardcoded P1_BASE in every FFA match, so a wave could launch into a world
+            // containing no enemy at all; it is now computed from the nearest hostile structure (else unit), and
+            // without a target the wave correctly declines. Placed opposite the P2 army so it is a destination
+            // only, never an engagement.
+            if (hostileTarget)
+                world.Create(new FixedVec3(Fixed.FromInt(-40), Fixed.Zero, Fixed.Zero),
+                             Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
 
             var buildSys = new BuildingSystem(buildings, resources);
             var ai       = new AiOpponentSystem(buildings, resources, buildSys, difficulty);

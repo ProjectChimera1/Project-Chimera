@@ -1,6 +1,6 @@
 # Project Chimera — modifier-active golden-checksum baseline (Story 2.2b, AC2/AC3) — CROSS-PLATFORM SAFE (integer/Fixed only).
 # Format: "<tick> <hashHex8>" per line — tick decimal, hash 8 uppercase hex digits (no 0x).
-# checksum_algo_version: 22
+# checksum_algo_version: 23
 # Pins the SimChecksum (v6) sequence for ModifierScenario.Build() (four stationary P1 units driven through a fixed apply/refresh/stack/ignore/DoT/HoT/Energy schedule; Player2 empty so the AI no-ops) stepped via StepOnce at ChecksumInterval=1. First golden with ACTIVE ModifierStore state. All hashed fields are integer/Fixed → byte-identical Win↔Linux; NOT Windows-gated, compared on both CI legs.
 # Samples: 300 (one line per sim tick).
 # Re-baseline (intentional behavior change only): set CHIMERA_GOLDEN_RECORD=1, run `dotnet test --filter FullyQualifiedName~ModifierGolden`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit.

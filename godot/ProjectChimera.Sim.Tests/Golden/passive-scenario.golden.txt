@@ -1,6 +1,6 @@
 # Project Chimera — passive-active golden-checksum baseline (Story 2.6, AC4) — CROSS-PLATFORM SAFE (integer/Fixed only).
 # Format: "<tick> <hashHex8>" per line — tick decimal, hash 8 uppercase hex digits (no 0x).
-# checksum_algo_version: 22
+# checksum_algo_version: 23
 # Pins the SimChecksum (v8) sequence for PassiveScenario.Build() (an aura owner grants +5 armor to an armored ally each tick; a Neutral on-hit attacker melee-strikes that ally [base + on-hit Magic, both armor-reduced]; a self-regen unit heals via a while-alive Persistent HoT) stepped via StepOnce at ChecksumInterval=1. First golden exercising all three passive drivers AND the v8 EffectiveArmor fold with a non-zero armor value. Attacker is Neutral + Player2 empty so the AI no-ops → all hashed fields integer/Fixed → byte-identical Win↔Linux; NOT Windows-gated, compared on both CI legs.
 # Samples: 300 (one line per sim tick).
 # Re-baseline (intentional behavior change only): set CHIMERA_GOLDEN_RECORD=1, run `dotnet test --filter FullyQualifiedName~PassiveGolden`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit.

@@ -391,19 +391,22 @@ namespace ProjectChimera.Economy
                 // point the sweep clears it and the EXISTING nearest-node logic picks the node beside the rally point —
                 // no new gather state, no rally-to-resource targeting (the recorded MINIMAL shape).
                 //
-                // WORKER-ONLY, both lines, and deliberately so:
-                //   • RallyMovePending has exactly one reader (GatheringSystem, which only ticks gatherers), so a combat
-                //     unit's flag would be write-only state that nothing ever clears.
-                //   • EntityFlags.Moving is what actually makes MovementSystem walk the unit; this branch never set it,
-                //     so a rallied unit has never physically walked to its rally in the SIM (presentation only steers
-                //     units it holds a flow field / nav path for, which a trained unit has neither of). Without it the
-                //     gather sweep would stand down forever and the worker would never gather at all — strictly worse
-                //     than the pre-fix state. Setting it for a COMBAT unit too would be the wider (correct) fix, but
-                //     that path IS golden-covered — ShiftQueueScenario trains a Melee grunt from a rallied Barracks —
-                //     so it would move a recorded checksum and belongs in a deliberate re-baseline, not here.
+                // DW-680 (Phase B re-baseline) — EntityFlags.Moving is what actually makes MovementSystem walk the
+                // unit, and it used to be fenced inside the isWorker branch below. So a rallied COMBAT unit got a
+                // movement ORDER it could never act on: it stood at the building forever, and because its
+                // CommandState was Move, CombatSystem skipped it too. Setting a rally on a Barracks / Archery Range /
+                // Siege Workshop did nothing at all. The narrow fence was deliberate — DW-634's own comment recorded
+                // that the wider fix "IS golden-covered (ShiftQueueScenario trains a Melee grunt from a rallied
+                // Barracks) so it would move a recorded checksum and belongs in a deliberate re-baseline, not here."
+                // This IS that re-baseline, so the flag is hoisted to every trained unit.
+                world.Flags[id] |= EntityFlags.Moving;
+
+                // RallyMovePending stays WORKER-ONLY, and deliberately so: it has exactly one reader
+                // (GatheringSystem, which only ticks gatherers), so a combat unit's flag would be write-only state
+                // that nothing ever clears. Its job is to make the idle-gather sweep stand down until the worker
+                // reaches the rally, so the EXISTING nearest-node logic then picks the node beside the rally point.
                 if (isWorker)
                 {
-                    world.Flags[id]           |= EntityFlags.Moving;
                     world.RallyMovePending[id] = true;
                 }
             }

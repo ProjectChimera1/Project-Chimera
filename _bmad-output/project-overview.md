@@ -43,7 +43,7 @@ See [data-models.md](./data-models.md) for the JSON schemas and [development-gui
 - **In progress / needs testing:** Utility AI, adaptive input delay (RTT-negotiated), LLM trigger system, AI map generator.
 - **Remaining toward 1.0:** audio drop-in, mod.io inspector setup, LAN P2P checksum test, Iron Pact art (external), terrain texture painting, balance-analysis tooling, performance pass, Linux export.
 
-For the live, detailed status and smoke-test checklists, see [`Snapshot.md`](../Snapshot.md) and [`STATUS.md`](../STATUS.md).
+For the live, detailed status and smoke-test checklists, see [`Snapshot.md`](../Snapshot.md); for known defects see [`deferred-work.md`](./implementation-artifacts/deferred-work.md).
 
 ## Map of Systems (by folder)
 

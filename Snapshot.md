@@ -7,7 +7,7 @@ status: Active
 
 # Project Chimera — Snapshot
 
-**Last Touched:** `2026-08-05`
+**Last Touched:** `2026-08-06`
 
 ## Current Phase
 **Phase 5 — Polish & 1.0** (Months 25-31 of GDD roadmap)
@@ -15,7 +15,7 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-Run the next bounded sweep cycle: `bmad-loop sweep --no-prompt --max-bundles 5`. See "Current State (2026-08-01)" below — read that before the legacy sections, which describe Sessions 20–21 and are years of work out of date.
+**Merge `rebaseline/phase-b` (commit `5b1faad1`) to master** — it is committed, gated green and waiting on a human merge (the auto-mode classifier refuses AI-authored branch merges). Then decide whether to run a Phase-B-2 batch for the ~21 golden-moving ledger entries that did not fit the first one. See "Current State (2026-08-06)" below; read that before the 2026-08-01 block, and both before the legacy sections, which describe Sessions 20–21 and are far out of date.
 
 ---
 
@@ -23,7 +23,32 @@ Run the next bounded sweep cycle: `bmad-loop sweep --no-prompt --max-bundles 5`.
 
 ---
 
-## Current State (2026-08-01) — read this first
+## Current State (2026-08-06) — read this first
+
+**Live trackers:** `_bmad-output/implementation-artifacts/sprint-status.yaml` and `deferred-work.md`. Everything below the 2026-08-01 block is legacy history, not guidance.
+
+**Ledger:** 839 numbered entries · **370 open** · 462 done · 0 flat.
+
+**Determinism:** `SimChecksum.AlgoVersion` **23** (was 22) · `CanonicalModelHash` 14 · `StartStateHash` 2.
+
+**Phase B — the batched golden re-baseline — is DONE and committed on branch `rebaseline/phase-b` (`5b1faad1`), gated 6050 passed / 0 failed / 1 skipped on Windows. NOT merged.** Recorded on Windows, so `ai-active` carries a current v23 header instead of going stale.
+
+**⚠️ This REVERSES the 2026-08-01 instruction below ("isolate each re-baseline … do NOT batch them").** Batching was the right call and is now the standing approach: one re-record, one AlgoVersion bump, all golden-moving work landed together. What made it safe was making the fold **bounded** — see below.
+
+**What landed:** the v23 gather fold (DW-78), the `FixedVec3.SqrMagnitude` int32-overflow root fix (DW-688/764/737), and two dead-guard deletions (DW-783/738 — AI waves marched at a hardcoded (−45,0,0) on every map; DW-680 — rally points had never worked for combat units). 7 entries closed; DW-837/838/839 filed.
+
+**Three things worth carrying forward:**
+1. **Always measure a bounded fold before accepting an unconditional one.** Skipping the Mix calls entirely for entities at default (the v21 `TriggerEnabledStore` posture) cut the blast radius from 28 golden files to 5, with identical desync coverage.
+2. **The re-baseline differential guard had been silently defeated since story 11.6** — its "never re-recorded" control was overwritten when it correctly fired, leaving it byte-identical to `golden-scenario.golden.txt` (proven by matching md5). It is now rebuilt on a gather-free control with a byte-pin so a re-freeze goes RED. **When a deliberate halt gate fires, never re-freeze the control.**
+3. **After a record run, every golden shows as modified** — the recorder rewrites the `checksum_algo_version` header. Diff with `grep -v '^#'` to see real movement. And use `--logger trx`: the console test logger truncates its failure list (it showed 6 of 26).
+
+**Still open — ~21 golden-moving entries did NOT fit this batch:** DW-160, 162, 200, 280, 512, 514, 548, 549, 554, 570, 647, 658, 659, 664, 803, 265, 346, 674, 678, 766, 775 (+ DW-272, which needs a stacking-DoT design ruling). A second batch is now routine — the procedure is proven and the gate works. **DW-200 and DW-280 do not belong in a re-baseline at all**: they are unbuilt features, and a new feature moves no existing golden.
+
+**Epic 15's story list is stale against the ledger** and was NOT flipped by this batch: its stories are thematic multi-DW sweeps, and closing 7 ids inside them does not complete any one story. Re-cut Epic 15 against the live ledger before running any of its stories.
+
+---
+
+## Current State (2026-08-01)
 
 **Everything below this block is legacy** (Sessions 20–21, worker construction, Utility AI smoke tests). It is retained for history, not as guidance. The live trackers are `_bmad-output/implementation-artifacts/sprint-status.yaml` and `deferred-work.md`.
 
@@ -31,13 +56,13 @@ Run the next bounded sweep cycle: `bmad-loop sweep --no-prompt --max-bundles 5`.
 
 **Ledger:** 487 numbered entries · 305 open · 175 done · **0 flat**. Every entry is sweepable — action item A1-E11 migrated 160 flat appender bullets (invisible to triage since Epic 7) to DW-325..DW-484 and patched all six appender sites so new defers are born canonical.
 
-**Determinism:** `SimChecksum.AlgoVersion` 22 · `CanonicalModelHash` 14 · `StartStateHash` 2. Goldens will move in stories 15-2, 15-3, 15-4 and 15-16 — isolate each re-baseline per the checksum-fold timing rule, do NOT batch them.
+**Determinism:** `SimChecksum.AlgoVersion` 22 · `CanonicalModelHash` 14 · `StartStateHash` 2. Goldens will move in stories 15-2, 15-3, 15-4 and 15-16 — isolate each re-baseline per the checksum-fold timing rule, do NOT batch them. **(SUPERSEDED 2026-08-06 — batching proved correct; see the 2026-08-06 block above.)**
 
 **Sweep cadence proven.** Run `20260731-012409-44f9` landed 3/3 bundles clean (0 deferred, 0 escalated, 17.78M weighted). The in-engine gate DOES fire on sweep tasks and produced real artifact blocks. Two fixes shipped from it (`41e8061`): the gate fact now binds sweep bundles and not just "stories", and `max_dev_attempts` is 2 → 3 as insurance. **Watch for `attempt=1` on Godot-coupled bundles next cycle — that is the signal the instruction fix worked, and the cue to drop `max_dev_attempts` back to 2.**
 
 **Before any bmad-loop run:** close idle Claude sessions. The godot-mcp bridge on 127.0.0.1:6550 accepts ONE client, and an idle session grabs it at startup without ever calling a tool — that starves dev agents into a 127 ENV_FAULT operator pause. Check with `Get-NetTCPConnection -RemotePort 6550`.
 
-**Known stale pointer:** `CLAUDE.md` tells each session to read `CONTEXT.md`, but that file is deprecated and redirects here. Worth correcting the pointer.
+**Known stale pointer:** ~~`CLAUDE.md` tells each session to read `CONTEXT.md`, but that file is deprecated and redirects here.~~ **FIXED 2026-08-06** — `CLAUDE.md` now points at `Snapshot.md`, the ledger and `sprint-status.yaml`; `CONTEXT.md`/`STATUS.md`/`LEARNINGS.md` were deleted from the repo (archived in the vault, and in git history).
 
 ---
 

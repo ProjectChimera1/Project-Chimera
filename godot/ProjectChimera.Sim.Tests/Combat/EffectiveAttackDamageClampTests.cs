@@ -127,6 +127,13 @@ namespace ProjectChimera.Sim.Tests.Combat
                                                         damageTable: null, aiLevel: AiDifficulty.Normal);
             EntityWorld w = host.World;
 
+            // DW-783 — something hostile for the wave to march AT. Before this batch the destination was the
+            // hardcoded P1_BASE in every FFA match, so this fixture could launch a wave into a world holding no
+            // enemy at all; the destination is now computed from the nearest hostile structure (else unit), so
+            // without a target the wave correctly declines and the exclusion assertion below is never exercised.
+            // Placed far from the wave so it is a destination only, never an engagement.
+            w.Create(V(-40, 0), Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+
             // A full real wave (so the wave DOES launch and the assertion is about exclusion, not inertia) plus one
             // negative-damage unit sitting with it.
             int threshold = AiOpponentSystem.DifficultyProfile(AiDifficulty.Normal).AttackThreshold;

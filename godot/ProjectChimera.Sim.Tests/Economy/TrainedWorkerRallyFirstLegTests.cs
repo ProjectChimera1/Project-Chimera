@@ -246,15 +246,24 @@ namespace ProjectChimera.Sim.Tests.Economy
             Assert.Equal(home, h.World.GatherTarget[w]);
         }
 
-        // ── Boundary 2: a rallied COMBAT unit is untouched (the golden-safety edge) ────────────────────────
+        // ── Boundary 2: a rallied COMBAT unit WALKS, but carries no gather-side pending flag ───────────────
 
+        /// <summary>
+        /// DW-680 (Phase B re-baseline) — REPLACES <c>TrainedCombatUnit_WithARally_GetsNeitherThePendingFlagNorThe
+        /// MovingFlag</c>, which pinned the defect as if it were the contract.
+        ///
+        /// <para><see cref="EntityFlags.Moving"/> is what actually makes MovementSystem walk a unit, and DW-634
+        /// fenced it inside its worker-only branch to keep ShiftQueueScenario's recorded golden byte-identical. The
+        /// consequence was that a rally point did nothing at all for combat units: they spawned, held a Move command
+        /// they could never act on, and were skipped by CombatSystem because their CommandState was Move. DW-634's
+        /// own comment recorded that the wider fix "belongs in a deliberate re-baseline" — this is it.</para>
+        ///
+        /// <para><c>RallyMovePending</c> stays worker-only by design: its only reader is GatheringSystem, which never
+        /// ticks a non-gatherer, so on a combat unit it would be write-only state nothing ever clears.</para>
+        /// </summary>
         [Fact]
-        public void TrainedCombatUnit_WithARally_GetsNeitherThePendingFlagNorTheMovingFlag()
+        public void TrainedCombatUnit_WithARally_WalksToIt_ButCarriesNoPendingFlag()
         {
-            // ShiftQueueScenario's recorded golden trains a Melee grunt from a rallied Barracks. The fix is
-            // WORKER-ONLY precisely so that path stays byte-identical: no RallyMovePending (GatheringSystem never
-            // ticks a non-gatherer, so nothing would ever clear it) and no Moving flag (which would make
-            // MovementSystem walk the grunt and move the recorded checksum — a deliberate re-baseline, not this fix).
             var h = NewHarness();
             int b = h.BuildSys.PlaceBuildingDirect(BuildingType.Barracks, Faction.Player1, HallPos, preBuilt: true);
             Assert.True(h.BuildSys.SetRallyCommand(b, Faction.Player1, RallyPos.X, RallyPos.Z));
@@ -263,9 +272,9 @@ namespace ProjectChimera.Sim.Tests.Economy
 
             Assert.Equal(UnitCategory.Melee, h.World.CategoryOf[u]);
             Assert.Equal(GatherState.Inactive, h.World.GatherState[u]);
-            Assert.False(h.World.RallyMovePending[u]);
-            Assert.Equal(EntityFlags.None, h.World.Flags[u] & EntityFlags.Moving);
-            Assert.Equal(UnitCommand.Move, h.World.CommandState[u]);          // the rally command itself is unchanged
+            Assert.False(h.World.RallyMovePending[u]);                        // worker-only, unchanged
+            Assert.Equal(EntityFlags.Moving, h.World.Flags[u] & EntityFlags.Moving); // DW-680: it now actually walks
+            Assert.Equal(UnitCommand.Move, h.World.CommandState[u]);
             Assert.Equal(RallyPos.X.Raw, h.World.MoveTarget[u].X.Raw);
         }
 

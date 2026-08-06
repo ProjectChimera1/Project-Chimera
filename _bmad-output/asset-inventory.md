@@ -39,7 +39,7 @@ godot/resources/
 
 Units are drawn with **`MultiMeshInstance3D`** (two MultiMesh nodes per faction for team colors), not per-unit `MeshInstance3D`. A single shared mesh (placeholder box or loaded GLB) is instanced across all units of a faction. See [architecture.md](./architecture.md) §10.
 
-## Open Asset Work (from `Snapshot.md` / `STATUS.md`)
+## Open Asset Work (from `Snapshot.md`)
 
 - **P0.3 Iron Pact art** — 8 GLBs to replace box placeholders (external work; AI art tool TBD: Hunyuan3D vs Tripo).
 - **Audio drop-in** — `.ogg` SFX into the audio folder (AudioManager already wired).
