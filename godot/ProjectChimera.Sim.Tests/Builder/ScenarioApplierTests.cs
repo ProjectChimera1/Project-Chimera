@@ -700,6 +700,10 @@ namespace ProjectChimera.Sim.Tests.Builder
             {
                 new ScenarioUnit { UnitId = "leader", Slot = 0, X =  10f, Z = 0f }, // authored index 0
                 new ScenarioUnit { UnitId = "decoy",  Slot = 0, X = -10f, Z = 0f }, // authored index 1
+                // DW-837: P2 needs a live asset — total wipeout now loses at every faction count, so an asset-less
+                // P2 would latch LOST at grace end and hand P1 the match before the leader is destroyed. Canonical
+                // order is Slot-ascending, so this slot-1 unit lands at entity id 2 and the id 0/1 pins below hold.
+                new ScenarioUnit { UnitId = "decoy",  Slot = 1, X =  30f, Z = 0f }, // authored index 2
             };
             s.Buildings = System.Array.Empty<ScenarioBuilding>();
             s.WinConditionSpec = new WinConditionSpec { Preset = WinPresetKind.Assassination, LeaderUnitIndex = 0 };
@@ -708,7 +712,7 @@ namespace ProjectChimera.Sim.Tests.Builder
             Assert.True(r.Ok, r.Error);
             applier.Apply(r.Value);
 
-            Assert.Equal(2, host.World.AliveCount);
+            Assert.Equal(3, host.World.AliveCount);
             // Canonical spawn order put decoy FIRST (id 0) and leader SECOND (id 1) — proving the reorder is real.
             Assert.Equal(new FixedVec3(Fixed.FromFloat(-10f), Fixed.Zero, Fixed.Zero), host.World.Position[0]); // decoy
             Assert.Equal(new FixedVec3(Fixed.FromFloat( 10f), Fixed.Zero, Fixed.Zero), host.World.Position[1]); // leader = authored[0]
