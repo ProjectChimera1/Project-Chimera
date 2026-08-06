@@ -118,8 +118,20 @@ namespace ProjectChimera.Core.Persistence
                 int simAlgo   = r.ReadInt32();
                 int modelAlgo = r.ReadInt32();
                 int startAlgo = r.ReadInt32();
+                // Fail-closed BY DESIGN — decision DW-874 (Alec, 2026-08-06). These three constants gate save
+                // LOADING, so any of them moving rejects the save even when its own body format is untouched.
+                // That includes a pure golden re-record marker (the v23 -> v24 bump was exactly that: the fold
+                // was byte-for-byte identical and SimChecksumCoverageGuardTest's known-state hash never moved).
+                // Deliberately NOT split into a separate save-only world-format constant: while the sim still
+                // changes every epic, a save that silently RESUMES under corrected combat/AI rules is a worse
+                // and far harder-to-diagnose failure than one that cleanly refuses to open. Revisit before 1.0
+                // ships to players, when re-records stop being routine. Do not "fix" this by loosening the gate.
+                // The message names the actual version pairs rather than claiming the format changed, because
+                // on a re-record bump it has not — only the folded values have.
                 if (simAlgo != SimChecksum.AlgoVersion || modelAlgo != CanonicalModelHash.AlgoVersion || startAlgo != StartStateHash.AlgoVersion)
-                    throw new InvalidDataException($"Save '{ctx}': made by a different game version (simulation format changed) — it can no longer be loaded.");
+                    throw new InvalidDataException(
+                        $"Save '{ctx}': made by a different simulation build (save: sim v{simAlgo}, model v{modelAlgo}, start v{startAlgo}; " +
+                        $"this build: sim v{SimChecksum.AlgoVersion}, model v{CanonicalModelHash.AlgoVersion}, start v{StartStateHash.AlgoVersion}) — it can no longer be loaded.");
 
                 header = new SaveGameHeaderData
                 {

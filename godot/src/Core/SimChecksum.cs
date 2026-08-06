@@ -300,8 +300,11 @@ namespace ProjectChimera.Core
         ///        makes every save written by an older build permanently unloadable. It is correctly NOT part of the
         ///        MP handshake (that is RulesetHash + CanonicalModelHash.AlgoVersion); the error was the word "no".
         ///        Costless here (no shipped saves, and the DW-548 fix independently moved SaveGameFile.FormatVersion
-        ///        2 -> 3), but budget for it on the next bump. DW-874 carries the open design question: whether a
-        ///        re-record generation marker should be a separate constant from the one save loading gates on.
+        ///        2 -> 3), but budget for it on EVERY future bump: a re-record marker breaks saves exactly as hard
+        ///        as a real fold change does. DW-874 ANSWERED (Alec, 2026-08-06): keep ONE constant and stay
+        ///        fail-closed — a re-record marker does NOT get a separate save-only world-format version, because
+        ///        a save that silently resumes under corrected sim behaviour is worse than one that refuses to
+        ///        open. Rationale and the revisit-before-1.0 condition live at SaveGameFile.Read's version gate.
         /// </summary>
         public const int AlgoVersion = 24;
 
