@@ -23,8 +23,13 @@ namespace ProjectChimera.Sim.Tests.Golden
     ///   • P1 — a gathering worker (drives Ore[P1]) + a melee unit + a CommandCenter + a Barracks left under
     ///     construction. This is what makes the golden DYNAMIC (ore, entity health/position, and the building
     ///     construction timer all evolve every tick).
-    ///   • P2 — three fodder, 0 ore, no production building. Identical recipe to 1.2: the AI plays Player2 and
-    ///     stays quiet (3 units &lt; its attack threshold, and it can afford nothing).
+    ///   • P2 — three fodder, 0 ore, no production building. Identical recipe to 1.2: the AI plays Player2 and can
+    ///     afford nothing (3 units &lt; its attack threshold). DW-838 post-merge review: "stays quiet" is no longer
+    ///     exact — once P1's melee dies, <c>EnemyThreatRemains</c> flips false and the remnant takes the
+    ///     below-threshold raze stall-breaker, which is the tick-281 drift this golden now records. The starvation
+    ///     still matters, for a narrower reason: it keeps every float-ARITHMETIC scoring branch UNREACHABLE, so the
+    ///     committed sequence stays comparable on both legs of the 1.10c gate. Asserted by
+    ///     <c>MultiFactionAiFenceTests</c> — do not weaken the three starvation terms without reading it.
     ///   • P3 / P4 — one inert unit each, far out, with a DISTINCT constant ore balance. Their ore never moves
     ///     but IS hashed (the point of the span proof); their health is stable so the AC3 perturbation lands
     ///     cleanly (see the inert-unit note on <see cref="PopulateScenario"/>).
@@ -120,8 +125,9 @@ namespace ProjectChimera.Sim.Tests.Golden
             world.MoveTarget[p1Melee]   = new FixedVec3(Fixed.FromInt(10), Fixed.Zero, Fixed.Zero);
             world.Flags[p1Melee]       |= EntityFlags.Moving; // REQUIRED for MovementSystem to move it
 
-            // ── P2 fodder (3 units): 0 ore + NO production building keeps the AI quiet (same recipe as 1.2:
-            //    3 < the Normal attack threshold of 5, and it can afford nothing). They fight P1 every tick. ──
+            // ── P2 fodder (3 units): 0 ore + NO production building keeps the AI below every float-arithmetic
+            //    scoring branch (same recipe as 1.2: 3 < the Normal attack threshold of 5, and it can afford
+            //    nothing) — NOT inert, since DW-838 (see the class doc). They fight P1 every tick. ──
             CreateP2Fodder(world, new FixedVec3(Fixed.FromInt(10), Fixed.Zero, Fixed.Zero));
             CreateP2Fodder(world, new FixedVec3(Fixed.FromInt(11), Fixed.Zero, Fixed.FromInt(3)));
             CreateP2Fodder(world, new FixedVec3(Fixed.FromInt(11), Fixed.Zero, Fixed.FromInt(-3)));

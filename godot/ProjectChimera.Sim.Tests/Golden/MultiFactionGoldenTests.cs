@@ -11,6 +11,12 @@ namespace ProjectChimera.Sim.Tests.Golden
     /// <see cref="MultiFactionScenario"/> through the SAME engine, proving the registry's active-faction span
     /// path is byte-deterministic in-process, reproduces a golden recorded by a prior process, and that a
     /// one-tick perturbation of a faction-3 entity's Fixed health is detected AND located.
+    ///
+    /// <para><b>DW-838 (post-merge review, 2026-08-06).</b> Like <see cref="MultiFactionExpansionTests"/> this class
+    /// is NOT OS-gated, so its committed golden is compared on the Linux leg of the 1.10c gate as well — and since
+    /// DW-838 the starved Player2 remnant razes from tick 281 rather than staying inert. The bytes remain safe
+    /// because P2 can never reach a float-ARITHMETIC scoring branch, a precondition <c>MultiFactionAiFenceTests</c>
+    /// now asserts every run rather than leaving it to the scenario doc.</para>
     /// </summary>
     public class MultiFactionGoldenTests
     {

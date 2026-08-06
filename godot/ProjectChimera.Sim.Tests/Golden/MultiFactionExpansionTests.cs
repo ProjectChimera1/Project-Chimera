@@ -21,6 +21,16 @@ namespace ProjectChimera.Sim.Tests.Golden
     /// tripwire is neutralized by the usual layers (FormatGolden emits '\n' + UTF-8 no BOM, godot/.gitattributes
     /// eol=lf, ParseGolden tolerates '\r') plus the CrossPlatformGoldenGuardTests LF-only byte sweep.
     ///
+    /// <para><b>DW-838 (post-merge review, 2026-08-06) — the float-AI fence is a TEST now, not a claim.</b> This
+    /// class is NOT OS-gated (unlike <see cref="AiActiveGoldenTests"/>, which returns early off Windows because the
+    /// AI scorer is float debt), so the committed bytes below are compared on the Linux leg too. Since DW-838 the
+    /// starved P2 remnant DOES act inside the horizon — it razes from tick 281, which is the drift the Phase-C
+    /// re-record captured — so the old "the scorer stays inert" justification no longer holds. What holds is
+    /// narrower and now enforced: with P2 ore-less, base-less and below the attack threshold, every float-ARITHMETIC
+    /// branch of the scorer is unreachable, so its decisions are compile-time constants and the sequence stays
+    /// reproducible on both legs. <c>MultiFactionAiFenceTests</c> asserts that precondition every run — if it goes
+    /// red, this golden must be OS-gated or the scenario re-starved BEFORE the bytes are trusted again.</para>
+    ///
     /// If any of these tests diverge, a static/shared mutable-state leak or a genuine nondeterminism broke —
     /// fix it, never paper over it, and NEVER re-record the golden to make a red run green.
     /// </summary>
@@ -33,7 +43,7 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// record mode would ALSO rewrite the Story 1.3a N=4 golden.</summary>
         private static readonly GoldenChecksumReplay.GoldenHeader Mf8Header = new(
             "8-faction expansion golden-checksum baseline (Story 9.2 / DW-387)",
-            "Pins the SimChecksum sequence for MultiFaction8Scenario.Build() (8 active factions via FactionRegistry(8); Player2 starved so the float AI scorer stays inert — integer/Fixed-only, cross-platform safe) stepped via StepOnce at ChecksumInterval=1.",
+            "Pins the SimChecksum sequence for MultiFaction8Scenario.Build() (8 active factions via FactionRegistry(8); Player2 starved so no float-ARITHMETIC AI branch is reachable — its DW-838 raze from tick 281 is constant-scored, so this stays cross-platform safe; fence asserted by MultiFactionAiFenceTests) stepped via StepOnce at ChecksumInterval=1.",
             $"set {GoldenChecksumReplay.RecordEnvVar}=1, run `dotnet test --filter FullyQualifiedName~MultiFactionExpansion`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit.");
 
         /// <summary>N=3: two fresh 3-faction builds, identical inputs, must produce byte-identical checksums.</summary>

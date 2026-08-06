@@ -613,9 +613,16 @@ namespace ProjectChimera.AI
             // it excluded the single case the stall-breaker exists for: an AI whose CC is already destroyed is
             // strictly LESS able to grow back than one that still has it. A CC alone cannot rebuild without income
             // either — the ore/production terms below are the real "can never grow back" test — so the term is
-            // REMOVED, not negated, and every stalled remnant now commits. The fence it was doing double duty as is
-            // not needed: the starved goldens' fodder is scored here only once no enemy defender remains, and their
-            // sequences were re-verified against this branch rather than assumed inert.
+            // REMOVED, not negated, and every stalled remnant now commits.
+            //
+            // POST-MERGE REVIEW (2026-08-06) — about the fence it was doing double duty as. Removing it DOES wake the
+            // AI inside the two cross-platform MultiFaction goldens (both drift from tick 281, once P1's last combat
+            // unit dies), so the scenario docs' "the float scorer stays inert" is no longer the reason those goldens
+            // are safe to compare across Windows and Linux. The reason is narrower: a starved P2 cannot reach ANY
+            // float-arithmetic branch of this scorer — ScoreLaunchAttack's division needs the attack threshold and
+            // the tech scorers' `* _techWeight` needs a complete production building — so every score it can produce
+            // is a compile-time constant and only exact IEEE comparisons run. That precondition is now pinned by
+            // MultiFactionAiFenceTests; if it ever goes red those goldens need an OS gate before they are trusted.
             // DW-644: "a remnant" means a remnant that can RAZE — an all-air-only remnant commits nothing, so pinning
             // 0.90 on it merely froze the AI here instead of letting it fall through.
             if (s.AvailableRazeCapableUnits > 0
