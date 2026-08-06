@@ -94,7 +94,7 @@ namespace ProjectChimera.Sim.Tests.Definitions
         public void AlgoVersions_Unchanged()
         {
             Assert.Equal(14, CanonicalModelHash.AlgoVersion); // bump history: CanonicalModelHash.AlgoVersion's XML doc
-            Assert.Equal(23, SimChecksum.AlgoVersion); // v23 = DW-78 bounded worker-gather-state fold (GatherState/GatherTarget/CarryAmount/CarryResourceType/GateClosedTicks)
+            Assert.Equal(24, SimChecksum.AlgoVersion);
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
 

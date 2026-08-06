@@ -1,6 +1,6 @@
 # Project Chimera — 8-faction expansion golden-checksum baseline (Story 9.2 / DW-387).
 # Format: "<tick> <hashHex8>" per line — tick decimal, hash 8 uppercase hex digits (no 0x).
-# checksum_algo_version: 23
+# checksum_algo_version: 24
 # Pins the SimChecksum sequence for MultiFaction8Scenario.Build() (8 active factions via FactionRegistry(8); Player2 starved so the float AI scorer stays inert — integer/Fixed-only, cross-platform safe) stepped via StepOnce at ChecksumInterval=1.
 # Samples: 300 (one line per sim tick).
 # Re-baseline (intentional behavior change only): set CHIMERA_GOLDEN_RECORD=1, run `dotnet test --filter FullyQualifiedName~MultiFactionExpansion`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit.
@@ -284,23 +284,23 @@
 278 8032B565
 279 0845E0C4
 280 DD11B6AA
-281 0731CAB9
-282 D8F28061
-283 3CB08200
-284 C9C13747
-285 CEAF912B
-286 F85D998C
-287 E8E1D95E
-288 4FAF2CF9
-289 9697221D
-290 28D9C886
-291 68B34E10
-292 2DB7E798
-293 2BABD528
-294 418DDF63
-295 5918B83C
-296 24CDE4CB
-297 FAD72694
-298 821C0D91
-299 1507E7FD
-300 DE179865
+281 313FE12D
+282 ED04FD4D
+283 627266EB
+284 9DC77B53
+285 213A247F
+286 7F4DE3B8
+287 74C09117
+288 758C6FB8
+289 BA622689
+290 642B1CF3
+291 25F8F467
+292 C0C0841D
+293 7FD25CE7
+294 211DA3EA
+295 2FD6BC39
+296 92BFAA39
+297 6449C51E
+298 B1FA03A1
+299 8968B313
+300 61B20485

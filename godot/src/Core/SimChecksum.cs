@@ -265,8 +265,39 @@ namespace ProjectChimera.Core
         ///        (GatherTarget defaults to -1; Mix(-1) is not a no-op) and would leave the re-baseline
         ///        differential guard with no unperturbed scenario to use as a control; bounded, only scenarios
         ///        that actually gather move. All byte/int/Fixed.Raw → cross-platform safe.
+        ///   v24 — Story 15-22 (Phase C re-baseline batch). READ THIS DIFFERENTLY FROM EVERY ENTRY ABOVE:
+        ///        v24 is a RE-RECORD GENERATION MARKER, NOT A FOLD CHANGE — the first entry in this history
+        ///        that is. NOTHING was added to, removed from, or reordered within the hashed set. The fold
+        ///        code is byte-for-byte the v23 fold; only the folded VALUES move, because twelve bounded
+        ///        simulation corrections landed together in one window. The bump exists solely so that a
+        ///        Phase-B golden and a Phase-C golden cannot both stamp `checksum_algo_version: 23` while
+        ///        holding different bytes — without it nothing distinguishes the two recordings.
+        ///        The twelve corrections whose value movement this version labels:
+        ///          DW-548 trigger-phase kills surface to unit_dies on the following tick (deferred death rail);
+        ///          DW-549 the _prevFlags alive gate no longer swallows a LOGGED death record;
+        ///          DW-570 the flow-field obstacle stamp derives per-building extents instead of a fixed 3x3;
+        ///          DW-658 BuildingStore.Destroy refunds the queued orders and zeroes ProductionQueue/ProductionTimer;
+        ///          DW-659 RecomputeEffectiveStats is wired as a third OnUnitDefinitionApplied subscriber;
+        ///          DW-664 TickNonCombatant's order-wipe gates on PERMANENT non-combatancy (BaseAttackDamage),
+        ///                 not the zero-floored effective stat, so a debuffed combatant keeps its order;
+        ///          DW-674 DeathLog grows losslessly instead of dropping records past 256;
+        ///          DW-678 an all-zero research modifier is no longer installed into every unit's ring;
+        ///          DW-766 the DeathFeed is genuinely drained past the LAST producer (DeathFeedDrainSystem at the
+        ///                 end of the tick order) with the residue credited in the SAME tick, and SimulationLoop
+        ///                 asserts Count == 0 at the boundary — see the v18 note, which cites that invariant;
+        ///          DW-803 the gather walk-stall probe skips a zero-LENGTH step instead of reading it as a hard stop;
+        ///          DW-837 total wipeout loses at any faction count (the ActiveCount &lt; 3 dead guard is gone);
+        ///          DW-838 a below-threshold AI remnant razes even with no live CommandCenter.
+        ///        Empirically only DW-838 moved a committed golden payload (both MultiFaction families, drift from
+        ///        tick 281); the other eleven are unreachable from any recorded scenario and moved nothing.
+        ///        The fold set being unchanged is not a claim of intent — it is pinned, by
+        ///        SimChecksumCoverageGuardTest's known-state hash (which did NOT move across this window) and by
+        ///        ReBaselineDifferentialGuardTests holding green against the UNMODIFIED frozen v22 control.
+        ///        NOTE: SimChecksum.AlgoVersion has NO consumer anywhere in godot/src — it is not part of the MP
+        ///        handshake (that is RulesetHash + CanonicalModelHash.AlgoVersion). Its only consequences are the
+        ///        golden file headers and the test pins.
         /// </summary>
-        public const int AlgoVersion = 23;
+        public const int AlgoVersion = 24;
 
         /// <summary>
         /// Compute a full-state checksum for desync detection.
