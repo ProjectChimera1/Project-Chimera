@@ -117,6 +117,41 @@ namespace ProjectChimera.Effects
         /// <summary>Period length in ticks for <see cref="PeriodEffect"/> (0 when there is none).</summary>
         public readonly int PeriodTicks;
 
+        /// <summary>
+        /// DW-678 — true iff installing this descriptor could not change ANY observable state: all four stat deltas are
+        /// exactly zero, <see cref="Status"/> is <see cref="StatusFlags.None"/>, and there is no
+        /// <see cref="PeriodEffect"/> to pulse. Such an instance still consumes one of the
+        /// <see cref="EffectCaps.MaxModifiersPerEntity"/> slots in its host's ring — and does nothing else with it.
+        ///
+        /// <para>Compared on <see cref="Fixed.Raw"/> so this is an exact integer test, never a float epsilon.
+        /// <see cref="DurationTicks"/> is deliberately NOT part of the test — a permanent all-zero modifier and a
+        /// one-tick all-zero modifier are equally inert. Neither is <see cref="PeriodTicks"/>: a period with a null
+        /// <see cref="PeriodEffect"/> schedules pulses that run nothing (<c>ModifierStore.ResetPeriodSchedule</c>
+        /// leaves the slot's period counters at rest), so it is inert too.</para>
+        ///
+        /// <para><b>A method, not a property</b> — deliberately, and for the same reason
+        /// <see cref="CheckAuthoringBounds"/> is: <c>EffectFoldCompletenessTests</c> pins this vocabulary to
+        /// public-readonly-FIELD shape so no piece of STATE can hide behind a property and escape
+        /// <c>CanonicalFold.MixModifier</c>'s handshake hash. This holds no state at all — it is a pure read of the
+        /// fields already folded — so it stays out of that shape on purpose.</para>
+        ///
+        /// <para><b>A predicate, not a policy.</b> <c>ModifierStore.Apply</c> deliberately does NOT consult this:
+        /// content-authored modifiers are observable through channels this predicate cannot see — the Story 11.5 buff
+        /// bar renders one row per installed instance, <c>SelectionSubgroupPanel</c> digests the ring by id, a save
+        /// round-trips the slot, and an ability may install a zero-stat MARKER purely so a later effect's
+        /// <c>RemoveByModifierId</c> has something to find. The one caller is <c>ResearchSystem</c>, whose cumulative
+        /// modifier is MINTED, never authored: its entire payload is the four deltas
+        /// (<c>BuildCumulativeModifier</c> hard-codes <see cref="StatusFlags.None"/>, a null period effect and period
+        /// 0), so for that one minter "all-zero" really does mean "no reason to hold a slot".</para>
+        /// </summary>
+        public bool HasNoEffect() =>
+            MaxHealthDelta.Raw    == 0 &&
+            AttackDamageDelta.Raw == 0 &&
+            MoveSpeedDelta.Raw    == 0 &&
+            ArmorDelta.Raw        == 0 &&
+            Status == StatusFlags.None &&
+            PeriodEffect == null;
+
         // ────────────────────── DW-488: content-authoring bounds on a modifier's stat contribution ──────────────────────
 
         /// <summary>
