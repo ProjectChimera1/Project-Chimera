@@ -330,7 +330,22 @@ development_status:
   #     SimChecksumCoverageGuardTest known-state pin the window uses as its proof of honesty.
   #   - DW-838's open ruling answered: DELETE the live-CommandCenter term (not negate it).
   #   So 15-22 = 12 code corrections + 3 riders + 2 decision-held closures = 17 entries.
-  15-22-phase-c-batched-golden-re-baseline: backlog
+  # ── 15-22 DONE 2026-08-06, merged to master as d973c021 (branch rebaseline/phase-c).
+  #   SimChecksum.AlgoVersion 23 -> 24. 10 bundles, 10 merged, 0 failed. 17 entries closed.
+  #   Tier-1 6050 -> 6158 passed / 0 failed / 1 skipped on Windows, re-run independently.
+  #   Both halt gates held: SimChecksumCoverageGuardTest's known-state hash unchanged at
+  #   0x32911831 (proof the window moved folded VALUES, never the fold set), and the frozen
+  #   differential control was REUSED rather than re-picked - predicted clean member-by-member
+  #   in advance and never written.
+  #   Blast radius was far smaller than the ledger claimed: all 12 corrections self-declared
+  #   golden movement, only DW-838 actually moved a payload (2 files of 31, ticks 281-300).
+  #   Treat a `goldens: moves` line as a SUSPICION, not a fact, when sizing a future window.
+  #   Post-merge review: 15 findings -> 9 confirmed, 2 high fixed in branch, DW-868..874 filed.
+  #   DW-874 is the one item needing Alec: should a pure re-record generation marker share a
+  #   constant with the one save LOADING gates on? (SaveGameFile stamps SimChecksum.AlgoVersion
+  #   and hard-rejects a mismatch, so every bump invalidates older saves - the spec's original
+  #   "no consumer" claim was false and is corrected everywhere it landed.)
+  15-22-phase-c-batched-golden-re-baseline: done
   15-23-generation-validated-entity-references-dw-775: backlog
   epic-15-retrospective: optional
 
