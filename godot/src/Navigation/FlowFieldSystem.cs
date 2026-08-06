@@ -8,8 +8,11 @@ namespace ProjectChimera.Navigation
     /// Manages the obstacle map used for flow field pathfinding and caches computed fields.
     ///
     /// Obstacle map: a bool[] (128×128) where true = impassable cell.
-    /// Building footprint: each 4×4-world-unit building marks a 3×3-cell area as blocked,
-    /// providing clearance so units path comfortably around structures.
+    /// Building footprint (DW-570): each building marks the cell rectangle its OWN footprint covers, derived
+    /// per-slot from the same nav-footprint policy the navmesh carve uses and injected as integer half-extents
+    /// via <see cref="SetBuildingFootprintSource"/>. <see cref="BUILDING_HALF_CELLS"/> is the clearance FLOOR
+    /// (a 3×3-cell stamp, right for the 4×4-world-unit building the constant was originally sized for) — with no
+    /// source wired every building stamps exactly that floor, byte-identical to the pre-DW-570 behaviour.
     ///
     /// Field cache: Dictionary keyed by goal cell index. Multiple units moving to the same
     /// destination share one field — the key advantage of flow fields over per-unit queries.
@@ -40,10 +43,29 @@ namespace ProjectChimera.Navigation
         private const int SIZE = FlowField.CELL_COUNT;
 
         /// <summary>
-        /// Half-extent (in cells) of the obstacle footprint for each building.
-        /// 1 → 3×3 cells = 6×6 world units; provides clearance around 4×4 buildings.
+        /// MINIMUM half-extent (in cells) of the obstacle footprint for a building — the clearance floor.
+        /// 1 → 3×3 cells = 6×6 world units, the right stamp for a 4×4-world-unit building (and, before DW-570,
+        /// the stamp EVERY building got regardless of size). A per-building extent from
+        /// <see cref="SetBuildingFootprintSource"/> may only grow the stamp past this floor, never shrink it.
         /// </summary>
-        private const int BUILDING_HALF_CELLS = 1;
+        public const int BUILDING_HALF_CELLS = 1;
+
+        /// <summary>
+        /// DW-570: hard cap on a single building's obstacle half-extent, in cells (32 → a 65×65-cell / 130×130-world-unit
+        /// stamp, half the grid). Content authors a raw <c>nav_footprint</c> whose only validation is "3 finite positive
+        /// values", so this bounds both the marking loop's cost and the blast radius of an absurd authored size. No real
+        /// building comes close — the largest built-in is 7 world units (half-extent 2 cells).
+        /// </summary>
+        public const int MAX_BUILDING_HALF_CELLS = 32;
+
+        /// <summary>
+        /// DW-570: per-slot obstacle half-extents, in CELLS, for the building occupying <paramref name="slot"/>.
+        /// Deliberately integer-only and slot-keyed: the resolution policy (authored <c>nav_footprint</c> > built-in
+        /// table > guarded default) lives with the presentation-side <c>BuildingNavFootprint</c> that also feeds the
+        /// navmesh carve, so both nav layers share ONE footprint source while the sim layer stays Godot-free,
+        /// float-free and deterministic.
+        /// </summary>
+        public delegate void BuildingObstacleExtents(int slot, out int halfCols, out int halfRows);
 
         /// <summary>
         /// DW-485: upper bound on the number of cached flow fields. Each field is ~192 KB
@@ -80,6 +102,12 @@ namespace ProjectChimera.Navigation
         /// </summary>
         private bool[]? _staticBlocked;
 
+        /// <summary>
+        /// DW-570: the injected per-slot footprint source (see <see cref="SetBuildingFootprintSource"/>). Null ⇒ every
+        /// building stamps the fixed <see cref="BUILDING_HALF_CELLS"/> square, byte-identical to pre-DW-570.
+        /// </summary>
+        private BuildingObstacleExtents? _extentsOf;
+
         // ── Obstacle map ──────────────────────────────────────────────────────
 
         /// <summary>
@@ -100,11 +128,31 @@ namespace ProjectChimera.Navigation
                 for (int c = 0; c < SIZE; c++)
                     if (_staticBlocked[c]) _obstacles[c] = true;
 
+            // DW-570: ascending slot order, and each slot stamps ITS OWN footprint rectangle rather than one fixed
+            // 3×3 block. Order is irrelevant to the result here (marking is idempotent OR-ing of `true`), but it is
+            // kept ascending to match the house rule and so the source is invoked in a deterministic sequence.
             for (int i = 0; i < buildings.Count; i++)
             {
                 if (!buildings.Alive[i]) continue;
-                MarkBuildingCells(buildings.Position[i], true);
+                ResolveHalfCells(i, out int halfCols, out int halfRows);
+                MarkBuildingCells(buildings.Position[i], halfCols, halfRows, true);
             }
+        }
+
+        /// <summary>
+        /// DW-570: inject the per-slot obstacle footprint source — the seam that lets the deterministic flow-field
+        /// obstacle map block each building's REAL extent instead of one fixed 3×3-cell block. Wired once at
+        /// scenario setup (NavigationPhase) with a closure over the same definition resolver the navmesh carve uses;
+        /// null restores the pre-DW-570 fixed-square stamp exactly.
+        ///
+        /// <para>Clears the field cache (every cached field was computed against the old stamps) but does NOT rebuild
+        /// the obstacle map: the caller owns that ordering, and the live wiring runs before the first
+        /// <see cref="RebuildObstacles"/>. Call it BEFORE the rebuild, or rebuild yourself after changing it.</para>
+        /// </summary>
+        public void SetBuildingFootprintSource(BuildingObstacleExtents? source)
+        {
+            _extentsOf = source;
+            ClearCache();
         }
 
         /// <summary>
@@ -123,10 +171,31 @@ namespace ProjectChimera.Navigation
         /// Mark or unmark obstacle cells for a single building centered at <paramref name="pos"/>.
         /// Pass <c>true</c> when a building is placed, <c>false</c> when it is destroyed.
         /// Automatically invalidates the field cache.
+        ///
+        /// <para>DW-570: this position-only entry point has no slot, so it cannot consult the per-slot footprint
+        /// source and stamps the <see cref="BUILDING_HALF_CELLS"/> floor. Use
+        /// <see cref="SetBuildingObstacle(int, FixedVec3, bool)"/> — or a full <see cref="RebuildObstacles"/>, which
+        /// is what the live game actually does on every building change — to get the real footprint.</para>
         /// </summary>
         public void SetBuildingObstacle(FixedVec3 pos, bool obstacle)
         {
-            MarkBuildingCells(pos, obstacle);
+            MarkBuildingCells(pos, BUILDING_HALF_CELLS, BUILDING_HALF_CELLS, obstacle);
+            ClearCache();
+        }
+
+        /// <summary>
+        /// DW-570: the slot-aware form of <see cref="SetBuildingObstacle(FixedVec3, bool)"/> — stamps the footprint
+        /// the injected source reports for <paramref name="slot"/>, so a single-building update blocks the same cells
+        /// a full <see cref="RebuildObstacles"/> would.
+        ///
+        /// <para>Unmarking (<paramref name="obstacle"/> = <c>false</c>) clears the whole rectangle unconditionally, so
+        /// it erases any overlap with a neighbouring building or the static blocked mask — the same caveat the
+        /// position-only overload always carried. Prefer <see cref="RebuildObstacles"/> for removals.</para>
+        /// </summary>
+        public void SetBuildingObstacle(int slot, FixedVec3 pos, bool obstacle)
+        {
+            ResolveHalfCells(slot, out int halfCols, out int halfRows);
+            MarkBuildingCells(pos, halfCols, halfRows, obstacle);
             ClearCache();
         }
 
@@ -215,16 +284,36 @@ namespace ProjectChimera.Navigation
         }
 
         /// <summary>
-        /// Mark a BUILDING_HALF_CELLS × 2 + 1 square of cells around the building center.
-        /// Does NOT invalidate the cache — callers are responsible for that.
+        /// DW-570: resolve building <paramref name="slot"/>'s obstacle half-extents in cells. Falls back to the
+        /// <see cref="BUILDING_HALF_CELLS"/> floor when no source is wired, and clamps whatever a wired source
+        /// returns into [<see cref="BUILDING_HALF_CELLS"/>, <see cref="MAX_BUILDING_HALF_CELLS"/>] — the sim owns
+        /// that bound, so a policy bug or absurd authored footprint can neither shrink the stamp below the legacy
+        /// clearance nor blow up the marking loop.
         /// </summary>
-        private void MarkBuildingCells(FixedVec3 pos, bool obstacle)
+        private void ResolveHalfCells(int slot, out int halfCols, out int halfRows)
+        {
+            halfCols = BUILDING_HALF_CELLS;
+            halfRows = BUILDING_HALF_CELLS;
+            if (_extentsOf == null) return;
+
+            _extentsOf(slot, out int hc, out int hr);
+            halfCols = System.Math.Clamp(hc, BUILDING_HALF_CELLS, MAX_BUILDING_HALF_CELLS);
+            halfRows = System.Math.Clamp(hr, BUILDING_HALF_CELLS, MAX_BUILDING_HALF_CELLS);
+        }
+
+        /// <summary>
+        /// Mark a (2·<paramref name="halfCols"/> + 1) × (2·<paramref name="halfRows"/> + 1) rectangle of cells around
+        /// the building center. DW-570: the extents are per-building (column half-extent from the footprint's X,
+        /// row half-extent from its Z) rather than one fixed square, so a long-and-narrow building stamps a
+        /// rectangle. Does NOT invalidate the cache — callers are responsible for that.
+        /// </summary>
+        private void MarkBuildingCells(FixedVec3 pos, int halfCols, int halfRows, bool obstacle)
         {
             FlowField.WorldToCell(pos.X, pos.Z, out int cc, out int cr);
 
-            for (int dc = -BUILDING_HALF_CELLS; dc <= BUILDING_HALF_CELLS; dc++)
+            for (int dc = -halfCols; dc <= halfCols; dc++)
             {
-                for (int dr = -BUILDING_HALF_CELLS; dr <= BUILDING_HALF_CELLS; dr++)
+                for (int dr = -halfRows; dr <= halfRows; dr++)
                 {
                     int nc = cc + dc;
                     int nr = cr + dr;
