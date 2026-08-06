@@ -30,9 +30,15 @@ namespace ProjectChimera.Core.Sim
         /// <see cref="Faction"/>); <paramref name="activeFactionCount"/> seeds the checksum's faction registry
         /// (e.g. 2 for a 1v1, matching <c>new FactionRegistry(2)</c>).
         /// </summary>
+        /// <param name="elevationGrid">DW-508: the finalized-terrain <see cref="ElevationGrid"/>, when the Godot edge
+        /// has one. Terrain sampling is Godot-side (this type stays Godot-free), so the caller hands the already-baked
+        /// Godot-free grid down exactly as the client's <c>ScenarioLoadPhase.BuildAndInjectElevationGrid</c> hands it
+        /// to the applier. <c>null</c> ⇒ flat: spawns sit at <see cref="Fixed.Zero"/> elevation and the pathability
+        /// union's SLOPE arm derives nothing (painted ∪ prop/water only) — byte-identical to the prior behaviour.</param>
         public static SimulationHost? Build(
             ScenarioData model, FactionDefinition?[] slotFactionDefs, DamageTable? damageTable,
-            ILogSink log, int activeFactionCount, AbilityRegistry? abilityRegistry = null)
+            ILogSink log, int activeFactionCount, AbilityRegistry? abilityRegistry = null,
+            ElevationGrid? elevationGrid = null)
         {
             // Story 7.1: pin InvariantCulture process-wide at the headless server's composition root — the same
             // hardening net the client applies in MainScene._EnterTree, so the server's number formatting/parsing
@@ -82,7 +88,32 @@ namespace ProjectChimera.Core.Sim
                 return null;
             }
 
-            new ScenarioApplier(host, log, slotFactionDefs).Apply(r.Value);
+            var applier = new ScenarioApplier(host, log, slotFactionDefs);
+
+            // ── DW-508: build + inject the STATIC blocked-cell grid BEFORE Apply, exactly as the client's
+            //    ScenarioLoadPhase (BuildAndInjectElevationGrid → BuildAndInjectPathabilityGrid → Apply) does.
+            //
+            //    Pre-fix the server called NEITHER setter, so on the headless leg world.Pathability stayed null:
+            //    MovementSystem's blocked-cell rejection was a server-side NO-OP while every client enforced it. On any
+            //    map with painted, blocking-prop, water or slope-derived blocked cells the arbitrating server's unit
+            //    positions — and therefore its SimChecksum — diverged from its peers' from the first tick a unit
+            //    touched a wall, i.e. the arbiter itself was the desync source.
+            //
+            //    Both legs route through the ONE shared Godot-free ScenarioApplier.BuildPathabilityGrid recipe, so
+            //    server and client can never disagree on the blocked-cell set for the same model + elevation grid
+            //    (the same structural argument that keeps boot and Edit→Play re-apply in step — DW-157). The grid is
+            //    derived from the VALIDATED model (r.Value.Value), never the raw argument, so nothing un-gated can
+            //    reach a sim store.
+            //
+            //    DETERMINISM: Resolve returns null when NOTHING is blocked, and a null grid makes both setters exact
+            //    no-ops (EntityWorld's elevation/pathability default to null already). Every golden scenario — the
+            //    in-code GoldenApplierScenario mirror and the shipped map_02_iron_crossing / alpha_map_01 JSON — carries
+            //    no painted layer, no props, no water and no slope config, so this is byte-identical there and moves no
+            //    golden, no CanonicalModelHash and no StartStateHash.
+            applier.SetElevationGrid(elevationGrid);
+            applier.SetPathabilityGrid(ScenarioApplier.BuildPathabilityGrid(r.Value.Value, elevationGrid));
+
+            applier.Apply(r.Value);
             return host;
         }
     }
