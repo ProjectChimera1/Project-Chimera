@@ -16,10 +16,12 @@ namespace ProjectChimera.UI
     /// the index of the unit's definition within its faction's Units list — the same
     /// order this bridge loads its meshes in.
     ///
-    /// Team colour: the GLB source art is flat grey with no own colour, so a single
-    /// team-coloured <c>material_override</c> (shared across all of this faction's
-    /// sub-meshes) supplies the player's identity colour. Unit silhouette distinguishes
-    /// archetypes; colour distinguishes teams.
+    /// Team colour: routed through <see cref="TeamTintMaterial"/>, which builds ONE material
+    /// per unit type. While the source art is flat grey with no albedo texture that is the
+    /// same flat team-coloured material this bridge has always used; once an asset ships with
+    /// baked texture art the same call returns a shader that tints WITHOUT erasing it (a plain
+    /// <c>material_override</c> replaces a mesh's own materials outright). Unit silhouette
+    /// distinguishes archetypes; colour distinguishes teams.
     ///
     /// One bridge per faction.
     /// </summary>
@@ -60,21 +62,17 @@ namespace ProjectChimera.UI
             _typeCount = Mathf.Max(1, units.Count);
             AllocateArrays();
 
-            // One team material shared by every sub-mesh of this faction.
-            var teamMat = new StandardMaterial3D
-            {
-                AlbedoColor = teamColor,
-                Roughness   = 0.6f,
-                Metallic    = 0.0f,
-            };
-
             var fallbackSize = new Vector3(0.6f, 1.2f, 0.6f);
             for (int t = 0; t < _typeCount; t++)
             {
                 var   def   = t < units.Count ? units[t] : null;
                 float scale = def?.MeshScale ?? 1f;
                 Mesh  mesh  = MeshLoader.LoadFromGlb(def?.MeshPath ?? "", fallbackSize, teamColor, registry);
-                _mmi[t] = BuildSubMesh(t, mesh, scale, teamMat, GroundOffsetFor(mesh, scale));
+                // Per-TYPE material, not one shared across the faction: each unit type carries its own
+                // albedo art, so a single shared material cannot supply the right texture. For untextured
+                // art TeamTintMaterial returns the identical flat material this loop used to share.
+                var mat = TeamTintMaterial.Build(mesh, teamColor, UnitRoughness, out _);
+                _mmi[t] = BuildSubMesh(t, mesh, scale, mat, GroundOffsetFor(mesh, scale));
             }
 
             _initialized = true;
@@ -115,8 +113,11 @@ namespace ProjectChimera.UI
         private static float GroundOffsetFor(Mesh mesh, float scale) =>
             -mesh.GetAabb().Position.Y * scale;
 
+        /// <summary>Surface roughness the unit team material has always shipped with.</summary>
+        private const float UnitRoughness = 0.6f;
+
         private MultiMeshInstance3D BuildSubMesh(int type, Mesh mesh, float scale,
-                                                 StandardMaterial3D? teamMat, float groundOffset)
+                                                 Material? teamMat, float groundOffset)
         {
             _scale[type]        = scale;
             _groundOffset[type] = groundOffset;

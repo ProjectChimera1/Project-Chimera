@@ -116,6 +116,11 @@
          (the MatchChatFormat precedent). Single-file include so the authorable "-N" → SendPlayerChat mapping is
          Tier-1 asserted while the overlay itself stays Godot-coupled and un-globbed. -->
     <Compile Include="$(MSBuildThisFileDirectory)src\UI\MatchChatCommands.cs"                     LinkBase="Sim\UI" />
+    <!-- Asset-texture pipeline: the Godot-free team-tint decision + blend math behind TeamTintMaterial
+         (the FactionPalette precedent). Single-file include so the load-bearing safety rule — art with no
+         albedo texture renders EXACTLY as it did under the old flat material_override — is Tier-1 asserted
+         rather than only observable in-engine, while the material construction stays Godot-coupled. -->
+    <Compile Include="$(MSBuildThisFileDirectory)src\UI\TeamTintPolicy.cs"                        LinkBase="Sim\UI" />
 
     <!-- Story 6.2: the linear editor undo/redo stack (src/CreationSuite/EditorHistory.cs) is pure C# (Action
          delegate pairs over two Stacks, no Godot types) — included as a single file so its shared-LIFO contract,
