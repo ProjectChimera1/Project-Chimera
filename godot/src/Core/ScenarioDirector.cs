@@ -240,8 +240,39 @@ namespace ProjectChimera.Core
 
         // DW-367 — scratch for the ascending-victim-id STABLE order of the per-tick KillEntity death log (the
         // unit_dies emission order: ascending slot, and same-slot records in kill order). Director-lifetime
-        // preallocation sized to the log cap — zero per-tick heap allocation on the event path (the 7.5 posture).
-        private readonly int[] _deathOrder = new int[DeathLog.CAPACITY];
+        // preallocation sized to the log's initial capacity — zero per-tick heap allocation on the event path (the
+        // 7.5 posture). DW-674 made the log lossless (it grows instead of dropping at 256) and DW-548 added the
+        // deferred rail that drains alongside it, so this scratch grows on demand too: it must be able to index
+        // EVERY record the collect will emit or the losslessness stops at the sort.
+        private int[] _deathOrder = new int[DeathLog.INITIAL_CAPACITY];
+
+        // ── DW-548 — the DEFERRED (carry-over) death rail ─────────────────────
+        // The director's OWN trigger-phase kills (a run_effect that damages a unit to death during EvaluateTriggers /
+        // DrainWorkList) land in the world DeathLog AFTER this tick's CollectEvents has already run, and
+        // UpdateSnapshots then both wiped the log and snapshotted the slot dead — so the legacy horizon made them
+        // invisible to `unit_dies` FOREVER: a scenario author subscribing unit_dies never saw the deaths their own
+        // triggers caused. DW-548's recorded decision is to surface them on the FOLLOWING tick.
+        //
+        // They are carried HERE rather than left in the DeathLog on purpose. The log's "EMPTY at the tick boundary"
+        // invariant is load-bearing twice over — it is why the log stays OUT of SimChecksum, and it is what
+        // SaveGameState.CaptureFrom asserts (DW-551) — so carrying records across the boundary inside the log would
+        // silently create unfolded cross-boundary sim state. This rail is director-owned change-detection state, the
+        // exact posture _prevFlags already has: mid-match-mutable, NOT folded, NOT serialized, re-derived (here:
+        // dropped) by ReseedChangeDetection on a save restore.
+        //
+        // Lifecycle: UpdateSnapshots moves the post-collect records here and wipes the log; the NEXT CollectEvents
+        // drains this rail alongside that tick's log and zeroes it. It therefore holds at most ONE tick's
+        // trigger-phase kills and can never ghost after a slot recycles. Grown on demand for the same
+        // no-silent-drop reason as the log itself (DW-674).
+        private int[] _carryVictim     = new int[DeathLog.INITIAL_CAPACITY];
+        private int[] _carryVictimSlot = new int[DeathLog.INITIAL_CAPACITY];
+        private int[] _carryKiller     = new int[DeathLog.INITIAL_CAPACITY];
+        private int[] _carryKillerSlot = new int[DeathLog.INITIAL_CAPACITY];
+        private int _carryCount;
+
+        // DW-548 — how many DeathLog records THIS tick's CollectEvents already consumed. Everything the log holds
+        // past this index when UpdateSnapshots runs was logged during the trigger phase and is what gets deferred.
+        private int _collectedDeaths;
 
         // The same-tick FIFO work list: seeded with the next-tick dequeue at tick start, appended by same-tick
         // raises in execution order, drained occurrence-major after the base sweep. Fixed capacity with
@@ -377,7 +408,14 @@ namespace ProjectChimera.Core
         {
             System.Array.Clear(_prevFlags, 0, _prevFlags.Length);
             System.Array.Clear(_prevBuildingDone, 0, _prevBuildingDone.Length);
+            // DW-548 — the deferred death rail is director state that no save carries (like _prevFlags), and unlike
+            // the flags it cannot be re-derived from the restored world. A restore therefore starts with NO pending
+            // trigger-phase deaths: the same "clean log, no spurious post-restore unit_dies" posture the log itself
+            // has always had. `_collectedDeaths` is zeroed first so UpdateSnapshots does not read a horizon that
+            // belongs to a tick this director is no longer in, and the rail is dropped again after.
+            _collectedDeaths = 0;
             UpdateSnapshots(world);
+            _carryCount = 0;
         }
 
         // ── Presentation-layer delegates ──────────────────────────────────────
@@ -708,8 +746,11 @@ namespace ProjectChimera.Core
             // Story 9.2 — the threshold poll now emits 2 events (resource + unit_count) per ACTIVE faction, up to
             // 2*PLAYER_COUNT at N=8; reserve that plus 1 (match_start) rather than the old compile-time `+ 5`.
             // DW-367 — a mid-tick recycled slot can now emit MORE than one unit_dies (one per logged kill), so the
-            // death term is MAX_ENTITIES (diff/fallback, one per slot) + DeathLog.CAPACITY (logged extras) headroom.
-            var baseEvents = new FiredEvent[EntityWorld.MAX_ENTITIES + DeathLog.CAPACITY + BuildingStore.MAX_BUILDINGS + timerNames.Count + (2 * FactionRegistry.PLAYER_COUNT + 1) + DslSimEventFeed.Capacity + EventBounds.MaxNextTickEventQueue];
+            // death term is MAX_ENTITIES (diff/fallback, one per slot) + DeathLog.INITIAL_CAPACITY (logged extras)
+            // headroom. DW-548/DW-674 — the deferred rail adds a second logged lane and the log no longer caps at
+            // 256, so this is the EXPECTED size, not a hard bound; AddBaseEvent grows the buffer rather than
+            // dropping (a dropped unit_dies is precisely the loss DW-674 is about).
+            var baseEvents = new FiredEvent[EntityWorld.MAX_ENTITIES + (2 * DeathLog.INITIAL_CAPACITY) + BuildingStore.MAX_BUILDINGS + timerNames.Count + (2 * FactionRegistry.PLAYER_COUNT + 1) + DslSimEventFeed.Capacity + EventBounds.MaxNextTickEventQueue];
 
             // Story 7.3: the typed/scoped variable + timer store declarations. The seconds→ticks conversion happens
             // HERE at the Core boundary (SecondsToTicks owns TICKS_PER_SECOND) so the table receives integer ticks
@@ -842,6 +883,10 @@ namespace ProjectChimera.Core
             // Snapshot initial state so the first diff doesn't generate spurious events.
             Array.Clear(_prevFlags, 0, _prevFlags.Length);
             Array.Clear(_prevBuildingDone, 0, _prevBuildingDone.Length);
+            // DW-548 — a load is a hard reset of the change-detection horizon, so the previous scenario's deferred
+            // trigger-phase deaths must not survive into it (their victim ids address a world that no longer exists).
+            _carryCount      = 0;
+            _collectedDeaths = 0;
 
             for (int i = 0; i < BuildingStore.MAX_BUILDINGS; i++)
             {
@@ -1393,6 +1438,12 @@ namespace ProjectChimera.Core
                     // trigger-less scenario can have no unit_dies subscriber at all. Inert for determinism: the log is
                     // NOT folded into SimChecksum, so no golden and no checksum moves.
                     world.DeathLog.Clear();
+                    // DW-548 — parity for the deferred rail. `_execs.Count == 0` is fixed at load, so this path can
+                    // never have produced a trigger-phase kill and the rail is provably already empty; zeroed anyway
+                    // so the rail's "at most one tick, consumed by the next collect" contract holds by construction
+                    // on every path rather than by an argument about which path can reach it.
+                    _carryCount      = 0;
+                    _collectedDeaths = 0;
                     return;
                 }
 
@@ -1557,15 +1608,21 @@ namespace ProjectChimera.Core
 
         // ── Event collection ──────────────────────────────────────────────────
 
-        /// <summary>Append one base event to the preallocated buffer (bounds-guarded drop-newest — unreachable
-        /// under the load-time sizing, kept as the fail-closed backstop). DW-349: <paramref name="targetExec"/>
+        /// <summary>Append one base event to the preallocated buffer. DW-349: <paramref name="targetExec"/>
         /// ≥ 0 marks a REDELIVERED occurrence visible to that exec alone (−1 — every fresh emission — is
-        /// unrestricted); written unconditionally because buffer slots are reused across ticks.</summary>
+        /// unrestricted); written unconditionally because buffer slots are reused across ticks.
+        ///
+        /// <para>DW-674 — this used to DROP-NEWEST past the load-time sizing. That backstop is now a GROW: making
+        /// <see cref="DeathLog"/> lossless is pointless if the buffer its records drain into silently discards
+        /// them, and a discarded <c>unit_dies</c> occurrence is a lost trigger firing, i.e. folded state. Growth is
+        /// amortized doubling with an ordered copy, so index-for-index emission order is preserved and any tick
+        /// within the (generous) load-time sizing — every tick a real match produces — never reallocates and is
+        /// byte-identical to before.</para></summary>
         private void AddBaseEvent(string type, int slot, int numeric, string? data,
                                   int p0 = 0, int p1 = 0, int p2 = 0, int p3 = 0, int targetExec = -1,
                                   string? dataId = null)
         {
-            if (_baseEventCount >= _baseEvents.Length) return; // defensive drop-newest (sizing covers worst case)
+            if (_baseEventCount >= _baseEvents.Length) GrowBaseEvents();
             ref FiredEvent ev = ref _baseEvents[_baseEventCount++];
             ev.Type = type; ev.Slot = slot; ev.Numeric = numeric; ev.Data = data;
             ev.DataId = dataId; // DW-170 — written unconditionally (buffer slots are reused across ticks)
@@ -1573,6 +1630,51 @@ namespace ProjectChimera.Core
             ev.TargetExec = targetExec;
             ev.P0 = p0; ev.P1 = p1; ev.P2 = p2; ev.P3 = p3;
         }
+
+        /// <summary>DW-674 — double the base-event buffer, preserving emission order index-for-index. Only reachable
+        /// on a tick that emits more occurrences than the load-time sizing anticipated; the grown buffer is retained,
+        /// so growth is amortized and never recurs at that size. Never folded, never serialized — a peer that grew
+        /// differently still dispatches the identical occurrence sequence.</summary>
+        private void GrowBaseEvents()
+        {
+            var grown = new FiredEvent[_baseEvents.Length == 0 ? 64 : _baseEvents.Length * 2];
+            Array.Copy(_baseEvents, grown, _baseEventCount);
+            _baseEvents = grown;
+        }
+
+        /// <summary>DW-548 — hand one post-collect (trigger-phase) death record to the deferred rail so the NEXT
+        /// tick's collect emits it. Grows on demand for the DW-674 no-silent-drop reason.</summary>
+        private void CarryDeath(int victim, int victimSlot, int killer, int killerSlot)
+        {
+            if (_carryCount == _carryVictim.Length)
+            {
+                int grown = _carryVictim.Length == 0 ? DeathLog.INITIAL_CAPACITY : _carryVictim.Length * 2;
+                GrowIntLane(ref _carryVictim,     grown, _carryCount);
+                GrowIntLane(ref _carryVictimSlot, grown, _carryCount);
+                GrowIntLane(ref _carryKiller,     grown, _carryCount);
+                GrowIntLane(ref _carryKillerSlot, grown, _carryCount);
+            }
+            _carryVictim[_carryCount]     = victim;
+            _carryVictimSlot[_carryCount] = victimSlot;
+            _carryKiller[_carryCount]     = killer;
+            _carryKillerSlot[_carryCount] = killerSlot;
+            _carryCount++;
+        }
+
+        /// <summary>Reallocate one deferred-rail lane to <paramref name="size"/>, copying the live prefix in order.</summary>
+        private static void GrowIntLane(ref int[] lane, int size, int count)
+        {
+            var next = new int[size];
+            Array.Copy(lane, next, count);
+            lane = next;
+        }
+
+        /// <summary>DW-548 — victim id of merged death record <paramref name="r"/>: indices below
+        /// <paramref name="carryCount"/> address the DEFERRED rail (last tick's trigger-phase kills, which happened
+        /// first in wall-clock order), the rest address this tick's <see cref="DeathLog"/> shifted down. That
+        /// ordering is what keeps two deaths on ONE slot emitting in kill order after the stable sort.</summary>
+        private int MergedVictimAt(DeathLog log, int carryCount, int r) =>
+            r < carryCount ? _carryVictim[r] : log.VictimAt(r - carryCount);
 
         /// <summary>Fill the preallocated base-event buffer (Story 7.5: replaces the per-tick
         /// <c>new List&lt;FiredEvent&gt;(16)</c> — zero per-tick heap allocation on the event path). Emission
@@ -1629,21 +1731,39 @@ namespace ProjectChimera.Core
             // on one slot surfaces EVERY combat death with the attribution snapshotted at ITS kill, where the old
             // flags-only diff merged them into one event carrying the last killer's credit — or lost the death
             // entirely when the recycled occupant was still alive at collect time. Emission order is preserved:
-            // ascending victim id (stable-sorted, so two deaths on one slot emit in kill order). Each logged record
-            // is gated on the victim slot having been ALIVE at the last snapshot — exactly the old diff's horizon —
-            // so first-tick kills, same-tick spawn+die, and the director's own trigger-phase kills (logged after
-            // this collect, wiped by UpdateSnapshots before the next one) stay non-emitting, byte-identical to the
-            // legacy diff. Slots with NO log record fall back to that diff unchanged (non-combat destroys — editor
-            // deletes — where the attribution SoA reads −1/−1).
+            // ascending victim id (stable-sorted, so two deaths on one slot emit in kill order).
+            //
+            // DW-548 — the drain is over the DEFERRED rail (last tick's trigger-phase kills, see the field docs)
+            // FOLLOWED BY this tick's log. Merged index space: [0, carryCount) = deferred, the rest = log. Deferred
+            // records happened FIRST in wall-clock order, so putting them first pre-sort is what makes the stable
+            // sort emit two deaths on one slot in true kill order.
+            //
+            // DW-549 — a logged record NO LONGER requires the victim slot to have been alive at the last snapshot.
+            // That `wasAlive` gate reproduced the legacy diff's horizon exactly, and it is precisely what swallowed
+            // (a) every deferred trigger-phase kill, whose slot UpdateSnapshots recorded dead at the end of the kill
+            // tick, and (b) a trigger-phase kill at T followed by recycle+die at T+1. A record in the log or on the
+            // rail IS proof the entity was alive and died, so it emits unconditionally; the record's own snapshotted
+            // victim slot / killer attribution is used, never the (possibly recycled) live SoA. Slots with NO record
+            // still fall back to the flags diff unchanged — that path NEEDS `wasAlive`, since a never-alive dead slot
+            // is indistinguishable from a never-used one (non-combat destroys — editor deletes — read −1/−1).
             DeathLog deathLog = world.DeathLog;
-            int deathCount = deathLog.Count;
+            int carryCount = _carryCount;
+            int logCount   = deathLog.Count;
+            int deathCount = carryCount + logCount;
+            if (_deathOrder.Length < deathCount) // DW-674: the log is lossless now, so this scratch must keep up
+            {
+                int size = _deathOrder.Length == 0 ? DeathLog.INITIAL_CAPACITY : _deathOrder.Length;
+                while (size < deathCount) size *= 2;
+                _deathOrder = new int[size];
+            }
             for (int k = 0; k < deathCount; k++) _deathOrder[k] = k;
             for (int k = 1; k < deathCount; k++) // stable insertion sort by victim id (tiny n; zero alloc)
             {
                 int rec = _deathOrder[k];
-                int vic = deathLog.VictimAt(rec);
+                int vic = MergedVictimAt(deathLog, carryCount, rec);
                 int j = k - 1;
-                while (j >= 0 && deathLog.VictimAt(_deathOrder[j]) > vic) { _deathOrder[j + 1] = _deathOrder[j]; j--; }
+                while (j >= 0 && MergedVictimAt(deathLog, carryCount, _deathOrder[j]) > vic)
+                { _deathOrder[j + 1] = _deathOrder[j]; j--; }
                 _deathOrder[j + 1] = rec;
             }
             int hwm = world.HighWaterMark;
@@ -1652,13 +1772,19 @@ namespace ProjectChimera.Core
             {
                 bool wasAlive = (_prevFlags[i] & EntityFlags.Alive) != 0;
                 bool logged   = false;
-                while (deathCursor < deathCount && deathLog.VictimAt(_deathOrder[deathCursor]) == i)
+                while (deathCursor < deathCount && MergedVictimAt(deathLog, carryCount, _deathOrder[deathCursor]) == i)
                 {
                     int rec = _deathOrder[deathCursor++];
                     logged = true;
-                    if (!wasAlive) continue; // outside the diff's horizon — never emitted before, never emitted now
-                    AddBaseEvent("unit_dies", deathLog.VictimSlotAt(rec), 0, null,
-                        p0: i, p1: deathLog.KillerAt(rec), p2: deathLog.KillerSlotAt(rec));
+                    if (rec < carryCount)
+                        AddBaseEvent("unit_dies", _carryVictimSlot[rec], 0, null,
+                            p0: i, p1: _carryKiller[rec], p2: _carryKillerSlot[rec]);
+                    else
+                    {
+                        int lr = rec - carryCount;
+                        AddBaseEvent("unit_dies", deathLog.VictimSlotAt(lr), 0, null,
+                            p0: i, p1: deathLog.KillerAt(lr), p2: deathLog.KillerSlotAt(lr));
+                    }
                 }
                 if (!logged && wasAlive && !world.IsAlive(i))
                 {
@@ -1667,6 +1793,13 @@ namespace ProjectChimera.Core
                         p0: i, p1: world.KillerOf[i], p2: world.KillerFactionOf[i]);
                 }
             }
+            // DW-548 — the deferred rail is CONSUMED by this collect (it can never ghost into a later tick), and the
+            // log prefix read here is the horizon UpdateSnapshots defers FROM: anything the trigger phase pushes
+            // below sits past `_collectedDeaths` and rides to the next tick. Any record whose victim id landed past
+            // HighWaterMark — only reachable if the world was Clear()ed between the kill and this collect, which
+            // also resets the director — is deterministically dropped by the loop bound, exactly as before.
+            _carryCount      = 0;
+            _collectedDeaths = logCount;
 
             // Building completions (was under construction → now done).
             for (int i = 0; i < _buildings.Count; i++)
@@ -2166,13 +2299,22 @@ namespace ProjectChimera.Core
 
         private void UpdateSnapshots(EntityWorld world)
         {
-            // DW-367: the death log's horizon IS the flags snapshot — everything logged up to here was either
-            // emitted by this tick's CollectEvents (pre-collect kills) or must never emit (the director's own
-            // trigger-phase kills, which the legacy diff never surfaced: the loop below snapshots them dead before
-            // the next collect). The single wipe point; without it a stale record could ghost-emit after the slot
-            // recycles back to alive. ReseedChangeDetection reuses this method, so a save-load restore also starts
-            // with a clean log (no spurious post-restore unit_dies — the existing snapshot-reseed rationale).
-            world.DeathLog.Clear();
+            // DW-367/DW-548: the death log's horizon IS the flags snapshot — everything logged up to
+            // `_collectedDeaths` was already emitted by this tick's CollectEvents. Everything PAST it was logged
+            // during the trigger phase (the director's own run_effect kills), and the loop below is about to
+            // snapshot those slots dead, which is exactly why the legacy diff could never surface them. DW-548 hands
+            // them to the deferred rail instead of discarding them, so the NEXT collect emits them; the log itself
+            // is still wiped here, keeping "empty at the tick boundary" true for SimChecksum and for
+            // SaveGameState.CaptureFrom's assert. The rail holds at most one tick's worth and is consumed by that
+            // next collect, so a record can never ghost-emit after the slot recycles back to alive.
+            // ReseedChangeDetection reuses this method and then drops the rail, so a save-load restore still starts
+            // with a clean slate (no spurious post-restore unit_dies — the existing snapshot-reseed rationale).
+            DeathLog log = world.DeathLog;
+            _carryCount = 0;
+            for (int k = _collectedDeaths; k < log.Count; k++)
+                CarryDeath(log.VictimAt(k), log.VictimSlotAt(k), log.KillerAt(k), log.KillerSlotAt(k));
+            _collectedDeaths = 0;
+            log.Clear();
             int hwm = world.HighWaterMark;
             for (int i = 0; i < hwm; i++)
                 _prevFlags[i] = world.Flags[i];
