@@ -62,7 +62,7 @@ Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-p
 
 **Before any bmad-loop run:** close idle Claude sessions. The godot-mcp bridge on 127.0.0.1:6550 accepts ONE client, and an idle session grabs it at startup without ever calling a tool — that starves dev agents into a 127 ENV_FAULT operator pause. Check with `Get-NetTCPConnection -RemotePort 6550`.
 
-**Known stale pointer:** `CLAUDE.md` tells each session to read `CONTEXT.md`, but that file is deprecated and redirects here. Worth correcting the pointer.
+**Known stale pointer:** ~~`CLAUDE.md` tells each session to read `CONTEXT.md`, but that file is deprecated and redirects here.~~ **FIXED 2026-08-06** — `CLAUDE.md` now points at `Snapshot.md`, the ledger and `sprint-status.yaml`; `CONTEXT.md`/`STATUS.md`/`LEARNINGS.md` were deleted from the repo (archived in the vault, and in git history).
 
 ---
 

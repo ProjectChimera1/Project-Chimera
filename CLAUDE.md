@@ -1,29 +1,35 @@
 # Project Chimera — CLAUDE.md (L1 Router)
 
 ## Identity
-Project Chimera is an RTS creation platform built in Godot 4.6.2 with C#.
+Project Chimera is an RTS creation platform built in Godot 4.6.3 with C#.
 Solo developer. AI-assisted at every layer.
 
 ## Key Files — Read These First
-- `CONTEXT.md` — Current session briefing. Read this EVERY session start.
-- `STATUS.md` — GDD implementation tracker. Check what's done, in-progress, and next.
-- `LEARNINGS.md` — Accumulated Godot/C# knowledge from past sessions.
-- `Project Chimera GDD.md` — Full Game Design Document. The source of truth.
+- `Snapshot.md` — Current session briefing AND implementation tracker. Read this EVERY session start; the newest dated "Current State" block at the top supersedes every block below it.
+- `_bmad-output/implementation-artifacts/deferred-work.md` — the deferred-work ledger (`DW-<n>` entries). The live record of known defects and what has been closed.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — epic/story status. Edit as TEXT, never round-trip it through a YAML parser (it does not strictly parse).
+- `Project_Chimera_GDD.md` — Full Game Design Document. Design INTENT; may describe targets not yet built.
+  Where it and the code disagree, the code plus `Snapshot.md` is the as-built truth.
+- Godot/C# learnings are auto-injected each session from the vault at
+  `D:\Brain\20_Reference\GameDev\godot-csharp\LEARNINGS.md` — append there, not to the repo.
 
 ## Sub-Routers
 - `godot/CLAUDE.md` — Godot-specific coding rules, architecture patterns, naming conventions.
 
 ## Architecture Summary
-- **Engine:** Godot 4.6.2 stable (.NET build)
+- **Engine:** Godot 4.6.3 stable (.NET/mono build) — bumped from 4.6.2 in story 1-1
 - **Language:** C# targeting .NET 8+
 - **Pattern:** ECS-inspired simulation (pure C# structs/arrays) + Godot scene presentation (MultiMesh)
 - **Simulation** is separated from **Presentation** — no Godot Nodes per entity in the sim layer.
 - All game data is **data-driven** via JSON definitions (units, buildings, factions, triggers).
 
 ## Session Protocol
-- **Starting a session:** User runs `/start` — Claude reads all context files and begins working.
-- **Ending a session:** User runs `/save` — Claude auto-derives all progress and updates STATUS.md and CONTEXT.md.
-- No manual context-setting required. STATUS.md determines what's next automatically.
+- **Starting a session:** User runs `/start` — Claude reads the context files above and begins working.
+- **Ending a session:** User runs `/save` — Claude auto-derives all progress and updates `Snapshot.md`
+  (add a new dated "Current State" block rather than editing an older one), the deferred-work ledger,
+  and the vault LEARNINGS file.
+- No manual context-setting required. `Snapshot.md`'s newest "Current State" block plus
+  `sprint-status.yaml` determine what's next.
 
 ## Rules
 - All C# source files go in `godot/src/` organized by system

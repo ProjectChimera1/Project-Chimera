@@ -92,8 +92,10 @@ Or use the Godot editor's build button, or the `godot_mcp` `editor` tool. A gree
 - `_bmad-output/architecture.md` — as-built architecture (this doc set).
 - `CLAUDE.md` + `godot/CLAUDE.md` — project + Godot coding rules.
 - `Project_Chimera_GDD.md` — design intent (note: may describe future targets not yet in code).
-- `Snapshot.md` / `STATUS.md` — current state and what's in progress.
-- `LEARNINGS.md` — accumulated Godot/C# pitfalls and solutions.
+- `Snapshot.md` — current state and what's in progress (newest dated block wins).
+- `_bmad-output/implementation-artifacts/deferred-work.md` — the deferred-work ledger.
+- `D:\Brain\20_Reference\GameDev\godot-csharp\LEARNINGS.md` — accumulated Godot/C# pitfalls and
+  solutions (vault-hosted, auto-injected each session).
 
 ## Deployment (dedicated server)
 

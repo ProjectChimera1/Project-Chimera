@@ -46,8 +46,9 @@
 - [`_bmad-output/project-context.md`](./project-context.md) — **critical AI rules** (determinism, layering, data-driven)
 - [`Project_Chimera_GDD.md`](../Project_Chimera_GDD.md) — full Game Design Document (source of truth)
 - [`Snapshot.md`](../Snapshot.md) — current session state, what's in progress, smoke-test checklists
-- [`STATUS.md`](../STATUS.md) — GDD implementation tracker
-- [`LEARNINGS.md`](../LEARNINGS.md) — accumulated Godot/C# knowledge
+- [`implementation-artifacts/deferred-work.md`](./implementation-artifacts/deferred-work.md) — the deferred-work ledger (`DW-<n>` entries)
+- [`implementation-artifacts/sprint-status.yaml`](./implementation-artifacts/sprint-status.yaml) — epic/story status
+- Godot/C# knowledge lives in the vault at `D:\Brain\20_Reference\GameDev\godot-csharp\LEARNINGS.md` (auto-injected each session)
 - [`docs/server-deploy/README.md`](../docs/server-deploy/README.md) — dedicated server deploy
 - [`docs/modio-setup-guide.md`](../docs/modio-setup-guide.md) — mod.io configuration
 
