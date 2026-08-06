@@ -20,10 +20,14 @@ namespace ProjectChimera.Sim.Tests.Golden
     ///
     /// STATE PREDICATE (not a hash compare), like <see cref="AiRazeTerminationTests"/>, so it runs on every OS.
     /// RED before the stall-breaker (3 units &lt; the Normal threshold of 5 → ScoreRazeBuildings returns 0 → the
-    /// AI no-ops and the base survives); GREEN after (the live-CommandCenter-gated below-threshold branch fires →
-    /// the remnant razes). The gate requires the AI to own a CommandCenter, which the base-less cross-platform
-    /// goldens' Player2 never has, so this behavior cannot wake the AI inside them (the golden suite stays
-    /// byte-identical — verified separately).
+    /// AI no-ops and the base survives); GREEN after (the below-threshold branch fires → the remnant razes).
+    ///
+    /// <para><b>DW-838 (decision 2026-08-06, Alec).</b> The branch used to ALSO require the AI to own a live
+    /// CommandCenter, sold in-code as a determinism fence (the base-less cross-platform goldens' Player2 never
+    /// satisfies it). As a gameplay rule that inverted the stall-breaker's own purpose: an AI whose CC has already
+    /// been destroyed is strictly LESS able to grow back than one that still has it, and was the single case most
+    /// in need of committing. The term is gone, and
+    /// <see cref="BaselessStarvedWinningAi_BelowThreshold_StillRazesAndConcludes"/> pins the case it excluded.</para>
     /// </summary>
     public class AiBelowThresholdRazeTests
     {
@@ -61,12 +65,48 @@ namespace ProjectChimera.Sim.Tests.Golden
         }
 
         /// <summary>
+        /// DW-838 — the case the deleted live-CommandCenter gate excluded: the SAME starved, below-threshold,
+        /// production-less, ore-less remnant, except its CommandCenter is already gone. It is strictly WORSE off
+        /// than the fixture above (it cannot even rebuild a base), so if any AI must commit its remnant it is this
+        /// one — yet the old gate scored it 0 and left it standing inert beside the last enemy structure forever.
+        ///
+        /// <para>RED before the fix: with <c>HasLiveCommandCenter</c> still in the branch this AI can never satisfy
+        /// it, <c>ScoreRazeBuildings</c> returns 0 on every tick, and the Player1 base survives the whole budget.</para>
+        /// </summary>
+        [Fact]
+        public void BaselessStarvedWinningAi_BelowThreshold_StillRazesAndConcludes()
+        {
+            GoldenHarness h = BuildStuckBelowThresholdAi(withCommandCenter: false);
+            Assert.Equal(0, CountFactionBuildings(h, Faction.Player2)); // precondition: the AI owns NO base at all
+            Assert.True(CountFactionBuildings(h, Faction.Player1) > 0,
+                "precondition: Player1 starts with a base to raze");
+            Assert.True(CountFactionUnits(h, Faction.Player2) < NormalAttackThreshold,
+                $"precondition: the AI must be BELOW the Normal attack threshold ({NormalAttackThreshold})");
+
+            int ticksToConclude = -1;
+            for (int t = 0; t < MaxTicks; t++)
+            {
+                h.Host.StepOnce();
+                if (CountFactionBuildings(h, Faction.Player1) == 0) { ticksToConclude = t; break; }
+            }
+
+            Assert.True(ticksToConclude >= 0,
+                $"A BASE-LESS below-threshold, production-less, ore-less Player2 AI did NOT conclude within " +
+                $"{MaxTicks} ticks (still {CountFactionBuildings(h, Faction.Player1)} Player1 building(s) alive). " +
+                $"The below-threshold raze stall-breaker is still gated on the AI owning a live CommandCenter " +
+                $"(DW-838), which excludes the very remnant it exists to unstick.");
+        }
+
+        /// <summary>
         /// A winning-but-stuck AI: Player2 owns a completed CommandCenter (a real base) and 3 idle combat units
         /// (&lt; the Normal threshold of 5), with ZERO ore and NO production building — so it can never train back
         /// to a full wave. Player1 is a single passive, low-HP CommandCenter with no defenders — the raze target
         /// (HP set low so the test measures the AI's DECISION, not combat tuning). No Fixed.FromFloat anywhere.
         /// </summary>
-        private static GoldenHarness BuildStuckBelowThresholdAi()
+        /// <param name="withCommandCenter">DW-838 — false builds the BASE-LESS variant (no Player2 CommandCenter),
+        /// the remnant the deleted live-CommandCenter gate used to exclude. Everything else is identical, so the
+        /// two facts differ in exactly the one bit the removed term read.</param>
+        private static GoldenHarness BuildStuckBelowThresholdAi(bool withCommandCenter = true)
         {
             var host = SimulationHost.Create(
                 NullLogSink.Instance,
@@ -81,11 +121,16 @@ namespace ProjectChimera.Sim.Tests.Golden
             BuildingStore buildings = host.Buildings;
             ResourceStore resources = host.Resources;
 
-            // ── Player2 (AI): a completed CommandCenter — its BASE, the fence discriminator — + deposit base.
-            //    Ore stays 0, so the AI can afford NO production building → genuinely stuck. ──
-            int p2cc = buildings.Create(new FixedVec3(Fixed.Zero, Fixed.Zero, Fixed.Zero),
+            // ── Player2 (AI): a completed CommandCenter — its BASE — + deposit base. Ore stays 0, so the AI can
+            //    afford NO production building → genuinely stuck. DW-838: withCommandCenter=false omits the base
+            //    entirely, which is the strictly-worse-off remnant the old live-CommandCenter gate excluded. ──
+            int p2cc = -1;
+            if (withCommandCenter)
+            {
+                p2cc = buildings.Create(new FixedVec3(Fixed.Zero, Fixed.Zero, Fixed.Zero),
                                         Faction.Player2, BuildingType.CommandCenter);
-            buildings.ConstructionTimer[p2cc] = Fixed.Zero; // complete
+                buildings.ConstructionTimer[p2cc] = Fixed.Zero; // complete
+            }
             resources.FactionBase[(int)Faction.Player2] = new FixedVec3(Fixed.Zero, Fixed.Zero, Fixed.Zero);
 
             // ── Player2 remnant: 3 idle combat units (< threshold 5). Siege damage so they raze a Fortified

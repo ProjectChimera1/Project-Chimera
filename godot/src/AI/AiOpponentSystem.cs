@@ -305,9 +305,9 @@ namespace ProjectChimera.AI
             public int  AvailableRazeCapableUnits;
             public bool EnemyThreatRemains;   // Story 2.13 — any alive enemy (non-Neutral) combat unit still defends
             public bool EnemyBuildingExists;  // Story 2.13 — any alive enemy (non-Neutral) building left to raze
-            public bool HasLiveCommandCenter; // Story 2.13 review — AI owns a live CommandCenter (a base); the fence
-                                              // discriminator for the below-threshold raze stall-breaker (real bases
-                                              // always have one; the starved cross-platform goldens' Player2 has none).
+            // DW-838 removed HasLiveCommandCenter: it existed solely as the below-threshold raze stall-breaker's
+            // gate, and once that term was deleted nothing read it. A write-only snapshot field is the same dead-
+            // guard class the removal closed, so the write in BuildSnapshot went with it.
             public bool HasLiveBarracks;
             public bool HasCompleteBarracks;
             public bool HasLiveArcheryRange;
@@ -353,11 +353,10 @@ namespace ProjectChimera.AI
                     continue;
                 }
                 bool complete = !_buildings.IsUnderConstruction(i);
+                // DW-838: no CommandCenter arm — the below-threshold raze gate that read it is gone, so recording it
+                // would only re-create a write-only field. The AI's own base is not a scoring input anywhere else.
                 switch (_buildings.Type[i])
                 {
-                    case BuildingType.CommandCenter:
-                        snap.HasLiveCommandCenter = true; // Story 2.13 review — a live AI base (below-threshold raze gate)
-                        break;
                     case BuildingType.Barracks:
                         snap.HasLiveBarracks = true;
                         snap.LiveBarracksCount++;                 // DW-636 — complete OR under construction
@@ -575,11 +574,11 @@ namespace ProjectChimera.AI
         /// Two commit bars: a FULL WAVE at/above the attack threshold (the common case), OR — Story 2.13 review
         /// (Alec) — a below-threshold STALL-BREAKER for a winning AI that is genuinely stuck (a remnant below the
         /// wave threshold, no production building and no ore to build one), so a starved-but-winning AI still
-        /// concludes instead of hanging next to the last enemy base. The stall-breaker is gated on owning a live
-        /// CommandCenter — every real faction has its base, but the deliberately-starved cross-platform goldens
-        /// (GoldenScenario/MultiFactionScenario give Player2 NO base) never do, so they stay INERT and
-        /// byte-identical (determinism fence, AC6.1). AiActiveScenario is unaffected (it has a barracks + a full
-        /// wave → it razes via the >= threshold path above, never this branch).
+        /// concludes instead of hanging next to the last enemy base. DW-838: the stall-breaker used to ALSO require
+        /// a live CommandCenter, sold as a determinism fence for the starved cross-platform goldens; that gate
+        /// excluded the base-less remnant the stall-breaker exists for, and was deleted. AiActiveScenario is
+        /// unaffected either way (it has a barracks + a full wave → it razes via the >= threshold path above,
+        /// never this branch).
         ///
         /// <para><b>DW-644 — both bars count RAZE-CAPABLE units, not raw availability.</b> They used to read
         /// <see cref="AiSnapshot.AvailableCombatUnits"/> while <see cref="DoRazeBuildings"/> then skipped every unit
@@ -607,12 +606,19 @@ namespace ProjectChimera.AI
             // Below-threshold STALL-BREAKER (Story 2.13 review, Alec): a remnant below the wave threshold, with NO
             // production building and no ore to build one → the AI can never grow back to a full wave, so it commits
             // its remnant to raze rather than stall forever (the >= threshold gate alone leaves this exact case
-            // hanging). FENCE-SAFE via the live-CommandCenter gate: a real base always has its CC, but the starved
-            // cross-platform goldens (Player2 has no base) never satisfy it → they stay INERT / byte-identical.
+            // hanging).
+            // DW-838 (decision 2026-08-06, Alec): the branch used to ALSO require `s.HasLiveCommandCenter`, which
+            // inverted its own purpose. The comment called that term a determinism FENCE (a real base always has its
+            // CC; the starved cross-platform goldens' Player2 has none → they stayed inert), but as a gameplay rule
+            // it excluded the single case the stall-breaker exists for: an AI whose CC is already destroyed is
+            // strictly LESS able to grow back than one that still has it. A CC alone cannot rebuild without income
+            // either — the ore/production terms below are the real "can never grow back" test — so the term is
+            // REMOVED, not negated, and every stalled remnant now commits. The fence it was doing double duty as is
+            // not needed: the starved goldens' fodder is scored here only once no enemy defender remains, and their
+            // sequences were re-verified against this branch rather than assumed inert.
             // DW-644: "a remnant" means a remnant that can RAZE — an all-air-only remnant commits nothing, so pinning
             // 0.90 on it merely froze the AI here instead of letting it fall through.
             if (s.AvailableRazeCapableUnits > 0
-                && s.HasLiveCommandCenter
                 && !s.HasLiveBarracks && !s.HasLiveArcheryRange && !s.HasLiveSiegeWorkshop
                 && !s.CanAffordBarracks && !s.CanAffordArchery && !s.CanAffordSiege)
                 return 0.90f;

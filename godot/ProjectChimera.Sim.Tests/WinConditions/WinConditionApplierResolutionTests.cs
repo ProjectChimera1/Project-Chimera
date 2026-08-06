@@ -64,16 +64,26 @@ namespace ProjectChimera.Sim.Tests.WinConditions
         {
             var (host, applier) = NewHostAndApplier();
             var s = BlankTwoPlayer();
-            s.Units = new[] { new ScenarioUnit { UnitId = "leader", Slot = 0, X = 0, Z = 0 } }; // P1 leader, index 0
+            s.Units = new[]
+            {
+                new ScenarioUnit { UnitId = "leader", Slot = 0, X = 0,  Z = 0 }, // P1 leader, authored index 0
+                // DW-837: P2 needs a live asset. Total wipeout now loses at every faction count, so an asset-less
+                // P2 latches LOST at grace end and P1 wins by last-team-standing before the leader is touched.
+                // Canonical spawn order is Slot-ascending, so this slot-1 unit takes entity id 1 and the leader
+                // keeps id 0 — the raw-id destroy below is unchanged.
+                new ScenarioUnit { UnitId = "leader", Slot = 1, X = 20, Z = 0 }, // P2 bystander, authored index 1
+            };
             s.WinConditionSpec = new WinConditionSpec { Preset = WinPresetKind.Assassination, LeaderUnitIndex = 0 };
 
             applier.Apply(Validate(s));
+            Assert.Equal(2, host.World.AliveCount);
+            Assert.Equal(Faction.Player1, host.World.FactionOf[0]); // precondition: id 0 really is the P1 leader
 
             // Leader alive → no resolution yet.
             TickPastGrace(host);
             Assert.Equal(0, host.WinState.WinnerFaction());
 
-            // Destroy the applier-spawned leader (entity id 0 — first and only unit). Owner P1 loses → P2 wins.
+            // Destroy the applier-spawned leader (entity id 0). Owner P1 loses → P2 wins.
             host.World.Destroy(0);
             host.WinCon.Tick(host.World, Dt);
             Assert.Equal((int)Faction.Player2, host.WinState.WinnerFaction());
@@ -85,6 +95,10 @@ namespace ProjectChimera.Sim.Tests.WinConditions
             var (host, applier) = NewHostAndApplier();
             var s = BlankTwoPlayer();
             s.Buildings = new[] { new ScenarioBuilding { Type = "CommandCenter", Slot = 0, X = 0, Z = 0 } }; // P1 landmark
+            // DW-837: give P2 a live UNIT (not a building — the landmark must stay the sole BuildingStore slot 0).
+            // Total wipeout now loses at every faction count, so an asset-less P2 would latch LOST at grace end and
+            // resolve the match by last-team-standing before the landmark is destroyed.
+            s.Units = new[] { new ScenarioUnit { UnitId = "leader", Slot = 1, X = 20, Z = 0 } };
             s.WinConditionSpec = new WinConditionSpec { Preset = WinPresetKind.LandmarkDestruction, StructureIndex = 0 };
 
             applier.Apply(Validate(s));

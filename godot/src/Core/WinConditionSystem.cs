@@ -305,10 +305,9 @@ namespace ProjectChimera.Core
 
         /// <summary>Symmetric per-faction loss predicate (grace-gated loss-by-absence). Built-in: no alive asset of
         /// the relevant kind (buildings for DestroyAllBuildings, units for EliminateAllUnits). Asymmetric presets:
-        /// total wipeout for the NON-designated factions — but ONLY in a ≥3-faction match. In a 2-faction asymmetric
-        /// match the single opponent IS the last team standing (the 7.11 <c>OtherFaction</c> parity: it wins when the
-        /// designated target dies, and is never itself wiped-eliminated); total-wipeout only DISCRIMINATES among ≥3
-        /// factions. KotH has no asset-KIND loss — it concludes by the hold-race — but carries the DW-188 guarded
+        /// total wipeout, at EVERY faction count (DW-837 — see the <c>default:</c> arm; it used to be gated to
+        /// ≥3-faction matches on a 7.11 <c>OtherFaction</c>-parity argument, which hung every 1v1 wipeout).
+        /// KotH has no asset-KIND loss — it concludes by the hold-race — but carries the DW-188 guarded
         /// elimination fallback: a faction whose team's unresolved members are ALL totally wiped (no units AND no
         /// buildings anywhere — the team can never field or train a holder again) latches LOST so
         /// <see cref="ApplyLastTeamStanding"/> resolves a mutual-annihilation match instead of hanging it forever.
@@ -339,8 +338,18 @@ namespace ProjectChimera.Core
                     if (_store.MatchTicks < GRACE_TICKS) return false;
                     return !TeamFightingAlive(world, f);
 
-                default: // TimedSurvival / Assassination / LandmarkDestruction — non-designated total wipeout
-                    if (_factions.ActiveCount < 3) return false; // 2-faction: 7.11 OtherFaction parity (no wipeout)
+                default: // TimedSurvival / Assassination / LandmarkDestruction — total wipeout, ANY faction count
+                    // DW-837 (decision 2026-08-06, Alec): TOTAL WIPEOUT ALWAYS LOSES. This arm used to open with
+                    // `if (_factions.ActiveCount < 3) return false;` for "7.11 OtherFaction parity" — the single
+                    // opponent of a 2-faction asymmetric match was never itself wiped-eliminated. That early return
+                    // made the line below UNREACHABLE in a 1v1, and with it the only path by which such a match can
+                    // resolve a wiped-out board: nothing latched LOST, so ApplyLastTeamStanding (which no-ops until
+                    // AnyLost()) never fired and the match HUNG forever — the defender could destroy every enemy
+                    // unit AND every enemy building and get no verdict. Deleting it makes a faction with no units
+                    // and no buildings lose regardless of preset or player count, which is what every OTHER path
+                    // already does: the built-in arm above carries no count guard, and DW-188 deliberately gave the
+                    // KotH fallback none for exactly this reason. The parity concern it overrides was a DESIGN
+                    // argument, not a golden-preservation one.
                     if (_store.MatchTicks < GRACE_TICKS) return false;
                     return !FactionAlive(world, f);
             }

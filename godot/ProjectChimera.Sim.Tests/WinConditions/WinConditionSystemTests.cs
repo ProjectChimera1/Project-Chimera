@@ -190,6 +190,10 @@ namespace ProjectChimera.Sim.Tests.WinConditions
         {
             var h = BuildHost();
             h.World.Create(At(0, 0), Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3)); // survivor stays alive
+            // DW-837: a live P2. Total wipeout now loses at every faction count, so an asset-less P2 would latch
+            // LOST on the first post-grace tick and P1 would win by last-team-standing — this test would still go
+            // green while no longer proving the DEADLINE win it is named for.
+            h.World.Create(At(20, 20), Faction.Player2, Fixed.FromInt(10), Fixed.FromInt(3));
             h.WinCon.Configure(new ScenarioData
             {
                 WinConditionSpec = new WinConditionSpec { Preset = WinPresetKind.TimedSurvival, FactionSlot = 0, SurviveTicks = 3 },
@@ -198,6 +202,9 @@ namespace ProjectChimera.Sim.Tests.WinConditions
             h.WinState.MatchTicks = WinConditionSystem.GRACE_TICKS - 1;
             for (int t = 0; t < 3; t++) h.WinCon.Tick(h.World, Dt); // countdown 3→0
             Assert.Equal((int)Faction.Player1, h.WinState.WinnerFaction());
+            Assert.Equal(WinStateStore.VERDICT_WON,  h.WinState.Verdict[(int)Faction.Player1]);
+            Assert.Equal(WinStateStore.VERDICT_LOST, h.WinState.Verdict[(int)Faction.Player2]);
+            Assert.Equal(0, h.WinState.SurvivalRemaining[(int)Faction.Player1]); // the win came from the deadline
         }
 
         [Fact]
@@ -282,6 +289,10 @@ namespace ProjectChimera.Sim.Tests.WinConditions
         {
             var h = BuildHost();
             int slot = h.Buildings.Create(At(-14, 0), Faction.Player1, BuildingType.CommandCenter);
+            // DW-837: P2 must own a live asset. Total wipeout now loses at EVERY faction count, so a P2 with no
+            // units and no buildings would latch LOST at grace end and hand P1 the match by last-team-standing
+            // before the landmark is ever touched — which is not what this test is pinning.
+            h.World.Create(At(5, 5), Faction.Player2, Fixed.FromInt(10), Fixed.FromInt(3)); // the winner
             var scenario = new ScenarioData
             {
                 Buildings = new[] { new ScenarioBuilding { Type = "CommandCenter", Slot = 0, X = -14, Z = 0 } },
@@ -396,6 +407,9 @@ namespace ProjectChimera.Sim.Tests.WinConditions
 
                 case "TimedSurvival":
                     h.World.Create(At(0, 0), Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3)); // survivor
+                    // DW-837: live P2 outside the fight keeps this the DEADLINE-win determinism case (an asset-less
+                    // P2 is now wiped-eliminated on the first post-grace tick and resolves it by last-team-standing).
+                    h.World.Create(At(20, 20), Faction.Player2, Fixed.FromInt(10), Fixed.FromInt(3));
                     h.WinCon.Configure(new ScenarioData
                     {
                         WinConditionSpec = new WinConditionSpec { Preset = WinPresetKind.TimedSurvival, FactionSlot = 0, SurviveTicks = 3 },
@@ -531,6 +545,7 @@ namespace ProjectChimera.Sim.Tests.WinConditions
         {
             var h = BuildHost();
             int slot = h.Buildings.Create(At(-14, 0), Faction.Player1, BuildingType.CommandCenter);
+            h.World.Create(At(5, 5), Faction.Player2, Fixed.FromInt(10), Fixed.FromInt(3)); // DW-837: keep P2 un-wiped
             var scenario = new ScenarioData
             {
                 Buildings = new[] { new ScenarioBuilding { Type = "CommandCenter", Slot = 0, X = -14, Z = 0 } },
@@ -615,6 +630,75 @@ namespace ProjectChimera.Sim.Tests.WinConditions
             Assert.Equal(0, h.WinState.SurvivalRemaining[(int)Faction.Player1]);
             Assert.Equal(WinStateStore.VERDICT_LOST, h.WinState.Verdict[(int)Faction.Player1]);
             Assert.Equal((int)Faction.Player2, h.WinState.WinnerFaction());
+        }
+
+        // ── DW-837: total wipeout loses in a 2-FACTION asymmetric match too (the arm's dead general case) ────────
+
+        /// <summary>The three asymmetric presets — every preset routed through <c>SymmetricLoss</c>'s
+        /// <c>default:</c> arm, which is where the deleted <c>ActiveCount &lt; 3</c> early return lived.</summary>
+        public static readonly object[][] AsymmetricPresets =
+        {
+            new object[] { WinPresetKind.TimedSurvival },
+            new object[] { WinPresetKind.Assassination },
+            new object[] { WinPresetKind.LandmarkDestruction },
+        };
+
+        /// <summary>
+        /// DW-837 (decision 2026-08-06, Alec — TOTAL WIPEOUT ALWAYS LOSES, ANY FACTION COUNT). The 2-faction case of
+        /// the asymmetric wipeout rule, which the deleted <c>if (_factions.ActiveCount &lt; 3) return false;</c> made
+        /// unreachable: in a 1v1 nothing could latch LOST while the designated target survived, so
+        /// <see cref="WinConditionSystem"/>'s last-team-standing pass (a no-op until <c>AnyLost()</c>) never fired
+        /// and the match HUNG — the defender could destroy every enemy unit AND every enemy building and get no
+        /// verdict at all. The whole point is the SECOND phase: while P2 keeps a single asset the match must stay
+        /// open (so this is not just "everything resolves"), and the moment P2 has neither units nor buildings it
+        /// must latch LOST and hand P1 the win. RED before the fix on the second phase for all three presets.
+        /// </summary>
+        [Theory]
+        [MemberData(nameof(AsymmetricPresets))]
+        public void AsymmetricPreset_TwoFactions_NonDesignatedTotallyWiped_LosesAndResolvesTheMatch(WinPresetKind preset)
+        {
+            var h = BuildHost();
+            Assert.Equal(2, new FactionRegistry(2).ActiveCount); // precondition: this really is the 1v1 case
+
+            // P1 owns the designated target and survives untouched throughout.
+            int p1Leader   = h.World.Create(At(-10, 0), Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+            int p1Landmark = h.Buildings.Create(At(-14, 0), Faction.Player1, BuildingType.CommandCenter);
+
+            // P2 — the NON-designated faction — starts with one unit and one building.
+            int p2Unit     = h.World.Create(At(10, 0), Faction.Player2, Fixed.FromInt(10), Fixed.FromInt(3));
+            int p2Building = h.Buildings.Create(At(14, 0), Faction.Player2, BuildingType.CommandCenter);
+
+            var scenario = new ScenarioData
+            {
+                Units     = new[] { new ScenarioUnit { UnitId = "leader", Slot = 0, X = -10, Z = 0 } },
+                Buildings = new[] { new ScenarioBuilding { Type = "CommandCenter", Slot = 0, X = -14, Z = 0 } },
+                WinConditionSpec = preset switch
+                {
+                    WinPresetKind.TimedSurvival       => new WinConditionSpec { Preset = preset, FactionSlot = 0, SurviveTicks = 100_000 },
+                    WinPresetKind.Assassination       => new WinConditionSpec { Preset = preset, LeaderUnitIndex = 0 },
+                    _                                  => new WinConditionSpec { Preset = preset, StructureIndex = 0 },
+                },
+            };
+            h.WinCon.Configure(scenario, RegionStore.Empty, new[] { p1Leader }, new[] { p1Landmark });
+
+            // Phase 1 — P2 down to its LAST asset (building gone, unit alive): still not wiped, so no verdict. This
+            // is what makes the assertion below a wipeout test rather than "any post-grace tick resolves".
+            h.Buildings.Destroy(p2Building);
+            TickPastGrace(h);
+            Assert.Equal(WinStateStore.VERDICT_NONE, h.WinState.Verdict[(int)Faction.Player2]);
+            Assert.Equal(0, h.WinState.WinnerFaction());
+            Assert.False(h.WinState.IsResolved());
+
+            // Phase 2 — the last P2 asset dies: no units AND no buildings anywhere → LOST, and P1 (the only live
+            // team, with a fully intact designated target) takes the match by last-team-standing.
+            h.World.Destroy(p2Unit);
+            h.WinCon.Tick(h.World, Dt);
+
+            Assert.Equal(WinStateStore.VERDICT_LOST, h.WinState.Verdict[(int)Faction.Player2]);
+            Assert.Equal(WinStateStore.VERDICT_WON,  h.WinState.Verdict[(int)Faction.Player1]);
+            Assert.Equal((int)Faction.Player1, h.WinState.WinnerFaction());
+            Assert.True(h.World.IsAlive(p1Leader));            // the designated leader never died…
+            Assert.True(h.Buildings.Alive[p1Landmark]);        // …and neither did the designated landmark
         }
     }
 }
