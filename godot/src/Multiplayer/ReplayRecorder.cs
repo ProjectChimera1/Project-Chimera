@@ -127,8 +127,9 @@ namespace ProjectChimera.Multiplayer
         /// Called once per faction per tick (ascending by faction id, from the single authoritative merged stream).
         /// The recorder buffers the tick's sub-bundles and flushes one <see cref="MergedTickPacket"/> frame when the
         /// tick advances (or on <see cref="Close(int,bool)"/>). Throws <see cref="InvalidOperationException"/>
-        /// (DW-432 — fail loud, never silently drop) if a single tick accumulates more than
-        /// <see cref="MergedTickPacket.MERGED_MAX_SUBBUNDLES"/> sub-bundles.
+        /// (fail loud, never silently drop) on EITHER frozen-envelope ceiling: a single tick accumulating more than
+        /// <see cref="MergedTickPacket.MERGED_MAX_SUBBUNDLES"/> sub-bundles (DW-432), or a single sub-bundle
+        /// carrying more than <see cref="TickCommandPacket.MAX_ORDERS"/> orders (DW-604).
         /// </summary>
         public void RecordTick(uint tick, Faction faction, UnitOrder[] buf, int baseIdx, int count)
         {
@@ -156,7 +157,17 @@ namespace ProjectChimera.Multiplayer
                     $"ReplayRecorder: tick {tick} accumulated more than {MergedTickPacket.MERGED_MAX_SUBBUNDLES} " +
                     "per-faction sub-bundles — refusing to silently drop orders from the recording " +
                     "(RecordTick is called once per faction per tick from the merged stream).");
-            if (count > TickCommandPacket.MAX_ORDERS) count = TickCommandPacket.MAX_ORDERS;
+            // DW-604: the SAME "never silently discard" invariant on the adjacent ceiling. The pre-fix line silently
+            // clamped `count` to MAX_ORDERS, truncating the tail of an over-long sub-bundle — the recording would
+            // then diverge from the live match at the first dropped order, with no error anywhere. Unreachable on
+            // the live path today (MergedTickPacket.TryRead rejects a sub-bundle with count > MAX_ORDERS outright,
+            // before MergedTickApplier fires the record hook), so this is a tripwire for a future caller that feeds
+            // the recorder from somewhere other than the validated merged stream — never a live branch.
+            if (count > TickCommandPacket.MAX_ORDERS)
+                throw new InvalidOperationException(
+                    $"ReplayRecorder: tick {tick} sub-bundle for faction {faction} carries {count} orders, past the " +
+                    $"frozen {TickCommandPacket.MAX_ORDERS}-order TickCommandPacket ceiling — refusing to silently " +
+                    "truncate orders out of the recording.");
 
             int slot = _bufCount;
             _bufFactions[slot]    = faction;
