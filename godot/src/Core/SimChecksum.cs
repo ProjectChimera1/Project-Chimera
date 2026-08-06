@@ -293,9 +293,15 @@ namespace ProjectChimera.Core
         ///        The fold set being unchanged is not a claim of intent — it is pinned, by
         ///        SimChecksumCoverageGuardTest's known-state hash (which did NOT move across this window) and by
         ///        ReBaselineDifferentialGuardTests holding green against the UNMODIFIED frozen v22 control.
-        ///        NOTE: SimChecksum.AlgoVersion has NO consumer anywhere in godot/src — it is not part of the MP
-        ///        handshake (that is RulesetHash + CanonicalModelHash.AlgoVersion). Its only consequences are the
-        ///        golden file headers and the test pins.
+        ///        NOTE (corrected 2026-08-06 by the post-merge review — DW-874): an earlier draft of this entry
+        ///        claimed AlgoVersion has NO consumer in godot/src and that a bump only touches golden headers and
+        ///        test pins. That is FALSE. SaveGameFile.cs:68 stamps it into every .chsav header and :121 rejects a
+        ///        mismatch before the body is parsed, so ANY bump — including a pure re-record marker like this one —
+        ///        makes every save written by an older build permanently unloadable. It is correctly NOT part of the
+        ///        MP handshake (that is RulesetHash + CanonicalModelHash.AlgoVersion); the error was the word "no".
+        ///        Costless here (no shipped saves, and the DW-548 fix independently moved SaveGameFile.FormatVersion
+        ///        2 -> 3), but budget for it on the next bump. DW-874 carries the open design question: whether a
+        ///        re-record generation marker should be a separate constant from the one save loading gates on.
         /// </summary>
         public const int AlgoVersion = 24;
 
