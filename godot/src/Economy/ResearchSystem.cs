@@ -437,6 +437,12 @@ namespace ProjectChimera.Economy
         /// period effect and period 0. A research with no authored <see cref="ResearchModifierDelta"/> (or a ladder
         /// that nets back to zero) is a prerequisite gate whose value is the banked level itself — never voided.
         /// Compared on <see cref="Fixed.Raw"/> so this is an exact integer test, never a float epsilon.
+        ///
+        /// <para>DW-678 states the SAME partition one step later, on the built descriptor
+        /// (<see cref="Modifier.HasNoEffect"/>) rather than on the stored totals, and uses it to skip the install
+        /// outright. The two agree by construction — <see cref="BoundedDelta"/> only clamps a magnitude, so it can
+        /// neither zero a non-zero total nor un-zero a zero one — and this one stays on the raw totals because it runs
+        /// once per completion for a REFUND decision and must not allocate a descriptor to answer.</para>
         /// </summary>
         private bool CumulativeCarriesPayload(int f, int researchIndex) =>
             _research.CumulativeMaxHealthDelta[f][researchIndex].Raw    != 0 ||
@@ -471,14 +477,29 @@ namespace ProjectChimera.Economy
         /// call rather than by <c>Apply</c>'s bare bool, which is ALSO false for a dead/stale target (a normal race,
         /// and reachable here: the remove step can collapse a MaxHealth ceiling and kill the host). Diagnostics only —
         /// no caller branches sim state on it.</para>
+        ///
+        /// <para><b>DW-678 empty-modifier skip.</b> A pure TECH GATE — a research whose levels author no
+        /// <see cref="ResearchLevel.ModifierDelta"/> at all, or a ladder whose deltas net back to zero — builds a
+        /// modifier with nothing in it (<see cref="Modifier.HasNoEffect"/>). Installing that used to burn one of the
+        /// <see cref="EffectCaps.MaxModifiersPerEntity"/> ring slots on EVERY living faction unit and every future
+        /// spawn for exactly zero effect, actively worsening the starvation DW-83/DW-623/DW-625 are about. It is
+        /// skipped instead. The REMOVE still runs unconditionally and must stay above the guard: a ladder that nets
+        /// back to zero (say +50 then −50 max health) has a live, non-zero instance from the earlier level that has to
+        /// come off, and skipping the remove as well would strand it forever. A tech gate's value is the banked
+        /// <see cref="ResearchStore.CompletedLevels"/> entry <see cref="PrerequisitesMet"/> reads — never the modifier
+        /// — so nothing is lost, and a skipped install can no longer be counted as a ring REFUSAL (DW-83's warn,
+        /// DW-623's void, DW-624's tally), which is correct: there was no bonus to drop.</para>
         /// </summary>
         private bool ApplyCumulativeModifier(EntityWorld world, int id, Faction faction, int f, int researchIndex, bool preserveCurrentHealth)
         {
             int modId = ResearchModifierId(researchIndex);
             Fixed healthBefore = world.Health[id];    // DW-85: snapshot to suppress the remove-then-reapply burst-heal
             int refusedBefore = _modifiers.RefusedInstallCount; // DW-83: exact ring-full attribution (see the doc above)
+            Modifier cumulative = BuildCumulativeModifier(f, researchIndex);
             _modifiers.RemoveByModifierId(id, modId); // revert the stale (smaller) delta, if any
-            _modifiers.Apply(id, BuildCumulativeModifier(f, researchIndex), casterId: id, casterFaction: faction);
+            // DW-678: install only what actually carries a payload — see the empty-modifier-skip note above.
+            if (!cumulative.HasNoEffect())
+                _modifiers.Apply(id, cumulative, casterId: id, casterFaction: faction);
             // living-army completion only; future-spawn catch-up keeps its heal. IsAlive re-checked because this
             // writes a per-entity SoA slot after Apply/Remove — mirrors ModifierStore's post-effect IsAlive guards
             // (defensive against a future lethal research period/expire effect that could recycle the host mid-apply).
