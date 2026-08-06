@@ -276,7 +276,21 @@ development_status:
   #   open and queues every other golden-moving fix behind it. Feature stories that move goldens
   #   re-record at the end of their OWN story (15-2, 15-11, 15-12, 15-14, 15-21).
   epic-15: in-progress
-  15-1-mp-reconnect-v1-command-log-rejoin-fast-forward-catch-up-fr-79-dw-2: backlog
+  # 15-1 DEFERRED 2026-08-06 (Alec) — status `blocked`, NOT `backlog`, so the engine's queue skips it.
+  #   `blocked` is outside bmad-loop's STORY_STATUSES set but load() accepts any string and only
+  #   {backlog, ready-for-dev} are ACTIONABLE, so this de-queues the story without lying about it
+  #   (the TUI renders an unknown status as `?`, dim — sprintstatus.py:27-32, widgets.py:618).
+  #   WHY: dev-auto HALTed it in planning 2026-08-06 with two code-confirmed blockers.
+  #   (1) FALSE PREMISE — there is no server-side full-match command log to re-download
+  #       (MergedTickBuilder.cs:28 RING = 64); v1 must BUILD that buffer + new PacketTypes +
+  #       PROTOCOL_VERSION 2->3 + a HandleConnect InGame branch. Corrected on DW-2's 2026-08-06
+  #       `decision:` line and in epics.md § 15.1 — read both before re-planning.
+  #   (2) UNVERIFIABLE UNATTENDED — the AC is a two-peer LAN rejoin and no reconnect harness exists;
+  #       the in-engine half needs two peers through a single-client bridge. Filed as DW-879.
+  #   To resume: Alec present, either interactively as one story or split 15-1a (Godot-free core,
+  #   Tier-1 + new loopback harness) / 15-1b (in-engine wiring + "Rejoining..." UX). Flip back to
+  #   `backlog` ONLY for the 15-1a half; the whole story cannot reach `done` unattended.
+  15-1-mp-reconnect-v1-command-log-rejoin-fast-forward-catch-up-fr-79-dw-2: blocked
   15-2-map-size-determinism-unification-raw-heightmap-read-dw-160-dw-146-dw-162: done
   15-3-status-effects-become-real-modifier-period-honesty: done
   # RETIRED 2026-08-06: 15-4, 15-5, 15-6, 15-7, 15-8, 15-9 (thematic sweep containers) — see the
