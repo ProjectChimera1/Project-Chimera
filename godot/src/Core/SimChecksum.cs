@@ -195,8 +195,10 @@ namespace ProjectChimera.Core
         ///        Loop/array-free scenarios add only leading count/fuel Mix(0) steps — behavior-neutral, covered by
         ///        this story's ONE scheduled re-baseline of ALL goldens. All int → cross-platform safe.
         ///   v18 — Story 7.5 (landed via merge): fold the new <see cref="DslEventQueue"/> — the PENDING next-tick
-        ///        custom-event raises — for the FIRST TIME. Unlike CombatEventQueue/DeathFeed (provably drained
-        ///        within the tick) the queue is live CROSS-TICK sim state: it is non-empty at the checksum boundary
+        ///        custom-event raises — for the FIRST TIME. Unlike CombatEventQueue/DeathFeed (drained within the
+        ///        tick — for the DeathFeed, enforced since DW-766 by <c>DeathFeedDrainSystem</c> at the end of the
+        ///        tick order plus <c>SimulationLoop</c>'s boundary assertion, NOT merely asserted in prose)
+        ///        the queue is live CROSS-TICK sim state: it is non-empty at the checksum boundary
         ///        whenever a raise_event with next_tick=true is awaiting its dequeue, so a peer whose pending
         ///        feedback diverges must desync detectably. Folds AFTER the DslLoopState fold and BEFORE the SimRng
         ///        fold (SimRng stays last, the standing precedent): a leading count, then per entry in enqueue order
@@ -640,8 +642,10 @@ namespace ProjectChimera.Core
 
             // ── DslEventQueue pending next-tick events (v18, Story 7.5) — after the loop-state fold, before SimRng ──
             // The FIRST-EVER fold of the cross-tick custom-event queue: a raise_event with next_tick=true is LIVE
-            // sim state at the checksum boundary (unlike CombatEventQueue/DeathFeed, which are provably drained
-            // within the tick), so a divergent pending set between peers must desync detectably. Count-prefixed in
+            // sim state at the checksum boundary (unlike CombatEventQueue/DeathFeed, which are drained within the
+            // tick — the DeathFeed's drain is ENFORCED since DW-766: DeathFeedDrainSystem runs past the last producer
+            // and SimulationLoop asserts the feed is empty right here, before this hash is taken), so a divergent
+            // pending set between peers must desync detectably. Count-prefixed in
             // enqueue order: per entry the registry event index, raiser slot, and the fixed MaxEventParams param-raw
             // stride. A null queue folds BYTE-IDENTICALLY to an empty one (a single Mix(0) count — legacy/test
             // callers only; SimulationHost always passes a real queue). All ints → cross-platform safe.
