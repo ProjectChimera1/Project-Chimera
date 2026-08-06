@@ -22,8 +22,12 @@ namespace ProjectChimera.Sim.Tests.Persistence
     /// <para>(b) <b>the premise the guard rests on</b> — "the log is empty at the tick boundary" was NOT universally
     /// true. The <c>ScenarioDirector</c>'s trigger-less early-out skips <c>UpdateSnapshots</c> (the log's only wipe
     /// point), so a scenario with zero triggers — which is exactly what the save/load harness and any trigger-free
-    /// user map is — accumulated a record per combat death, tick after tick, until <see cref="DeathLog.CAPACITY"/>.
-    /// The early-out now drains the log like every other transient rail on that path.</para>
+    /// user map is — accumulated a record per combat death, tick after tick, without bound (DW-674 has since made
+    /// the log grow rather than cap at <see cref="DeathLog.INITIAL_CAPACITY"/>, so the accumulation would no longer
+    /// even self-limit). The early-out now drains the log like every other transient rail on that path.</para>
+    ///
+    /// <para>DW-548 added the director's DEFERRED death rail for trigger-phase kills, deliberately OUTSIDE the log,
+    /// precisely so the invariant these tests pin stays true: the log is still empty at every tick boundary.</para>
     ///
     /// Godot-free, Tier-1. Nothing here folds into <c>SimChecksum</c> (the log never was folded), so no golden moves.
     /// </summary>
