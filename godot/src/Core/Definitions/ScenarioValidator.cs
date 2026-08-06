@@ -149,7 +149,18 @@ namespace ProjectChimera.Core.Definitions
                 return ValidationResult.Fail(
                     $"scenario.map_bounds={m.MapBounds} exceeds the fixed sim-grid half-extent {MapSizes.MaxHalfExtent} " +
                     "(the flow-field / fog / pathability grids are fixed at ±128, so any position beyond that aliases " +
-                    "onto an edge cell); the supported map sizes are Small 80 / Medium 120 / Large 128.");
+                    "onto an edge cell); the supported PLAYABLE sizes are Small 80 / Medium 120 / Large 128. To make a " +
+                    "map LOOK larger than it plays, keep map_bounds ≤ 128 and add a presentation-only 'border_extent' " +
+                    "(Route C): the camera and terrain render across map_bounds + border_extent while play stays ±map_bounds.");
+
+            // ── Story 15.2 (Route C): border_extent is presentation-only (camera/terrain visual scale) and is
+            //    EXCLUDED from every hash, so it has NO upper cap — a map may look arbitrarily larger than it plays.
+            //    But a NEGATIVE / NaN / Inf border is an authoring error (it would shrink the visual extent below the
+            //    playable area, or size the fallback plane degenerate), so reject it fail-closed. Default 0f passes. ──
+            if (!Finite(m.BorderExtent) || m.BorderExtent < 0f)
+                return ValidationResult.Fail(
+                    $"scenario.border_extent={m.BorderExtent} must be finite and >= 0 " +
+                    "(it is a presentation-only visual border; omit it or use 0 for no border).");
 
             float bounds = m.MapBounds;
 

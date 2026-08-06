@@ -22,6 +22,13 @@ namespace ProjectChimera.UI
         [Export] public bool EdgeScrollEnabled { get; set; } = false;
         [Export] public float ZoomStep { get; set; } = 8.0f;
 
+        /// <summary>Story 15.2 (Route C) — the PRESENTATION visual half-extent the pan clamp uses: playable
+        /// <c>map_bounds</c> + non-playable <c>border_extent</c>, so the camera can travel across a bordered map's full
+        /// visual width while the sim/placement stay pinned to ±<c>map_bounds</c>. Presentation-only: never folded into
+        /// any hash, never read by the sim. Defaults to 128 (the fixed playable ceiling — today's behaviour) until
+        /// <c>ScenarioLoadPhase</c> sets it from the loaded scenario.</summary>
+        public float VisualHalfExtent { get; set; } = 128f;
+
         /// <summary>Multiplier applied on top of PanSpeed. Set from SettingsManager.</summary>
         public float PanSpeedMultiplier  { get; set; } = 1.0f;
         /// <summary>Multiplier applied on top of ZoomStep. Set from SettingsManager.</summary>
@@ -167,11 +174,16 @@ namespace ProjectChimera.UI
         /// </summary>
         public void PanTo(Vector3 worldPos)
         {
-            const float MAP_HALF = 128f;
+            // Story 15.2 (Route C): the pan clamp now FOLLOWS the visual extent (map_bounds + border_extent), which
+            // ScenarioLoad sets, instead of a fixed ±128. This is intentionally TIGHTER than the old fixed ±128 on a
+            // sub-128 map (Small 80 / Medium 120 with no border) — the camera should not pan into off-playable void —
+            // and equals ±128 only for a Large or bordered map (The Frontier: 128 + 32 = ±160). Defaults to 128 when no
+            // scenario is loaded.
+            float half = VisualHalfExtent;
             GlobalPosition = new Vector3(
-                Mathf.Clamp(worldPos.X, -MAP_HALF, MAP_HALF),
+                Mathf.Clamp(worldPos.X, -half, half),
                 GlobalPosition.Y,
-                Mathf.Clamp(worldPos.Z, -MAP_HALF, MAP_HALF));
+                Mathf.Clamp(worldPos.Z, -half, half));
         }
 
         /// <summary>

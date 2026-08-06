@@ -203,6 +203,15 @@ namespace ProjectChimera.Core.Bootstrap
         /// <see cref="ElevationGrid.Sample"/> is a clamped integer cell lookup over the baked <see cref="Fixed"/> array.
         /// NaN/hole cells and any failure degrade to flat (Fixed.Zero) — never a crash. A null/PlaneMesh terrain leaves
         /// the grid unset (applier default ⇒ zero elevation, byte-identical to pre-feature).</para>
+        ///
+        /// <para>Story 15.2 (DW-146): each cell reads the RAW nearest heightmap texel
+        /// (<c>Terrain3DData.get_pixel(TYPE_HEIGHT, …)</c>, no interpolation) rather than <c>get_height</c>'s bilinear
+        /// blend, so the one sanctioned <see cref="Fixed.FromFloat"/> per cell quantizes a stored value that is
+        /// bit-identical across x64/ARM (elevation folds into <c>SimChecksum</c> via the per-entity <c>Elevation[]</c>
+        /// SoA). The Godot-free <see cref="ProjectChimera.Core.HeightmapCellMapping"/> picks WHICH texel each cell reads
+        /// with integer-only math. On every flat shipped map (<c>terrain_ref:""</c>) this method is not reached (the
+        /// PlaneMesh early-return above), and where it is reached over a flat region every texel is 0 — byte-identical
+        /// to the former <c>get_height</c> sampling, moving no golden.</para>
         /// </summary>
         private void BuildAndInjectElevationGrid()
         {
@@ -217,21 +226,41 @@ namespace ProjectChimera.Core.Bootstrap
 
                 // Sample a grid over the default ±128 world XZ extent at 1 world-unit/cell (256×256). The grid stores
                 // its own extent, so the sim is general over resolution; this Godot-side resolution just matches the
-                // authored region. get_height does the (allowed) load-time interpolation; the SIM never interpolates.
+                // authored region. The SIM never interpolates.
                 const int N = 256;
                 const float half = 128f;
-                const float cell = (half * 2f) / N; // = 1.0 world unit/cell
+                const float cell = (half * 2f) / N; // = 1.0 world unit/cell — the SIM grid's cell size (unchanged)
+
+                // Story 15.2 (DW-146): read RAW heightmap texels (nearest), NOT get_height's bilinear blend. The
+                // Godot-free HeightmapCellMapping chooses WHICH texel each cell reads with integer-only math; get_pixel
+                // does the raw fetch. TYPE_HEIGHT == 0 (Terrain3DRegion.MapType.TYPE_HEIGHT, verified against the
+                // Terrain3D API). The region's texel count is read from the node (defaults to the sim resolution), so on
+                // the shipped flat 256-texel region texelCol/Row == col/row and the sample positions — and thus the
+                // whole flat-map result — are byte-identical to the former cell-centre get_height sampling.
+                const int TYPE_HEIGHT = 0;
+                int regionSize = N;
+                Variant rsv = _ctx.Terrain.Get("region_size");
+                if (rsv.VariantType == Variant.Type.Int)
+                {
+                    int rs = rsv.AsInt32();
+                    if (rs > 0) regionSize = rs;
+                }
+                float texelSize = (half * 2f) / regionSize;
+
                 var heights = new Fixed[N * N];
                 bool anyNonZero = false;
 
                 for (int row = 0; row < N; row++)
                 {
-                    float wz = -half + (row + 0.5f) * cell; // cell-centre world Z
+                    int texelRow = ProjectChimera.Core.HeightmapCellMapping.CellToTexel(row, N, regionSize);
+                    float wz = -half + (texelRow + 0.5f) * texelSize; // texel-CENTRE world Z (floors unambiguously to texelRow)
                     for (int col = 0; col < N; col++)
                     {
-                        float wx = -half + (col + 0.5f) * cell; // cell-centre world X
-                        float h = data.Call("get_height", new Vector3(wx, 0f, wz)).AsSingle();
-                        if (!float.IsFinite(h)) h = 0f; // hole / NaN → flat, never a bad Fixed
+                        int texelCol = ProjectChimera.Core.HeightmapCellMapping.CellToTexel(col, N, regionSize);
+                        float wx = -half + (texelCol + 0.5f) * texelSize; // texel-CENTRE world X
+                        // get_pixel(TYPE_HEIGHT, …) returns the raw stored height in .R (Color(NaN,…) outside a region).
+                        float h = data.Call("get_pixel", TYPE_HEIGHT, new Vector3(wx, 0f, wz)).AsColor().R;
+                        if (!float.IsFinite(h)) h = 0f; // hole / NaN / outside-region → flat, never a bad Fixed
                         if (h != 0f) anyNonZero = true;
                         heights[row * N + col] = Fixed.FromFloat(h);
                     }
@@ -398,6 +427,11 @@ namespace ProjectChimera.Core.Bootstrap
         /// </summary>
         private void SetupStartPositionBridge()
         {
+            // Story 15.2 (Route C): push the camera's presentation pan-clamp extent from the resolved scenario. Runs
+            // in BOTH the applied and fallback paths (this method is the common tail). Presentation-only — no sim/hash
+            // effect; a null scenario (fallback) uses the 128 default.
+            UpdateCameraVisualExtent();
+
             // DW-163: reveal markers by DECLARED slot VALUE, not by a contiguous count. Both arrays are indexed by
             // slot value (length MAX_SLOTS) so a validator-legal non-contiguous set (e.g. {0,3}) shows markers 0 and 3
             // at their bases and hides 1 and 2 — the old count-sized array dropped the slot-3 marker at load.
@@ -437,6 +471,54 @@ namespace ProjectChimera.Core.Bootstrap
             _ctx.Scene.AddChild(startPosBridge);
             startPosBridge.Initialize(positions, present);
             _ctx.StartPosBridge = startPosBridge;
+        }
+
+        /// <summary>
+        /// Story 15.2 (Route C) — set the camera's presentation pan-clamp half-extent to the loaded scenario's
+        /// <c>map_bounds + border_extent</c> so the camera can travel across a bordered map's full VISUAL width while
+        /// the sim/placement stay pinned to ±<c>map_bounds</c>. A null scenario (missing/rejected file → fallback)
+        /// leaves the camera's 128 default. Presentation-only — never folded into any hash, never read by the sim.
+        /// </summary>
+        private void UpdateCameraVisualExtent()
+        {
+            if (_ctx.Cam == null) return;
+            _ctx.Cam.VisualHalfExtent = _ctx.Scenario is { } s ? VisualHalfExtentOf(s) : MapSizes.MaxHalfExtent;
+        }
+
+        /// <summary>Story 15.2 (Route C) — the PRESENTATION visual half-extent of a scenario: the playable
+        /// <c>map_bounds</c> plus any non-playable <c>border_extent</c> (negatives ignored). Never a sim/hash input.
+        /// Delegates to the Godot-free <see cref="ProjectChimera.UI.MapBoundsMath.VisualHalfExtent"/> so the inclusion
+        /// formula is Tier-1 testable (behavior-preserving).</summary>
+        internal static float VisualHalfExtentOf(ScenarioData s)
+            => ProjectChimera.UI.MapBoundsMath.VisualHalfExtent(s.MapBounds, s.BorderExtent);
+
+        /// <summary>
+        /// Story 15.2 (Route C) — PEEK the presentation visual half-extent (<c>map_bounds + border_extent</c>) at
+        /// boot, BEFORE this phase applies the model, for <c>TerrainPhase</c> (runtime position 5) to size the fallback
+        /// ground plane. Peeks the SAME source this phase will resolve: a pending AI/skirmish scenario first (read
+        /// only — never consumed here), else the on-disk <see cref="MainScene.ScenarioPath"/>, else the
+        /// <see cref="MapSizes.MaxHalfExtent"/> (128) default. PRESENTATION-ONLY — never a hash/sim input; any
+        /// missing-file/parse failure degrades to 128 (today's plane size). Never throws.
+        /// </summary>
+        internal static float PeekVisualHalfExtent(string? scenarioPath)
+        {
+            ScenarioData? s = PendingGeneratedScenario;
+            if (s == null && !string.IsNullOrEmpty(scenarioPath))
+            {
+                try { s = ScenarioSerializer.LoadFromFile(ProjectSettings.GlobalizePath(scenarioPath)); }
+                catch { s = null; }
+            }
+            if (s == null) return MapSizes.MaxHalfExtent;
+
+            // This runs at boot position 5, BEFORE ScenarioLoad validates (position 12), so the peeked map_bounds may
+            // be malformed (≤ 0, NaN/Inf, or above the fixed ±128 grid — the validator rejects those and boots the
+            // flat fallback). CLAMP it into (0, MaxHalfExtent] and drop a negative/non-finite border BEFORE sizing the
+            // plane, so an invalid on-disk map can never produce a degenerate or oversized ground. Every valid shipped
+            // map is unaffected (The Frontier still peeks 128 + 32 = 160).
+            float mb = s.MapBounds;
+            if (!float.IsFinite(mb) || mb <= 0f || mb > MapSizes.MaxHalfExtent) mb = MapSizes.MaxHalfExtent;
+            float be = (float.IsFinite(s.BorderExtent) && s.BorderExtent > 0f) ? s.BorderExtent : 0f;
+            return ProjectChimera.UI.MapBoundsMath.VisualHalfExtent(mb, be);
         }
     }
 }

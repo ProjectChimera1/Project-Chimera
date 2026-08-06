@@ -675,6 +675,25 @@ namespace ProjectChimera.Core.Definitions
         public float MapBounds { get; set; } = 120f;
 
         /// <summary>
+        /// Story 15.2 (Route C, DW-160/DW-146/DW-162) — the PRESENTATION-ONLY, non-playable visual border added
+        /// AROUND the ±<see cref="MapBounds"/> playable area (the WC3 playable-area-plus-boundary model). Camera pan
+        /// and the fallback ground plane render across ±(<see cref="MapBounds"/> + <c>BorderExtent</c>) so a map can
+        /// LOOK larger than it plays; placement, AI generation and trigger regions stay bounded by
+        /// <see cref="MapBounds"/> alone. The navigable sim grids (flow/fog/pathability ±128, spatial-hash ±160) are
+        /// FIXED and never derive from this value.
+        ///
+        /// COSMETIC on the exact <see cref="Author"/> basis: EXCLUDED from <see cref="CanonicalModelHash"/>,
+        /// <see cref="StartStateHash"/> AND <see cref="SimChecksum"/> (it touches no sim state — the
+        /// <see cref="CombatFeedbackProfile"/> posture), so it moves NO golden and bumps NO <c>AlgoVersion</c>.
+        /// Omit-when-default (<see cref="JsonIgnoreCondition.WhenWritingDefault"/>; 0f is the type default), so every
+        /// legacy/flat scenario with no key serializes byte-for-byte identically and re-fingerprints to the same hash.
+        /// Absent ⇒ 0 ⇒ today's behaviour exactly.
+        /// </summary>
+        [JsonPropertyName("border_extent")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public float BorderExtent { get; set; } = 0f;
+
+        /// <summary>
         /// Story 6.7 — the map author's display name. COSMETIC/authoring-only: like <see cref="DisplayName"/>/
         /// <see cref="Id"/> (the genuinely cosmetic, hash-excluded fields) it is EXCLUDED from
         /// <see cref="CanonicalModelHash"/> AND

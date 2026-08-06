@@ -68,6 +68,33 @@ namespace ProjectChimera.Sim.Tests.Navigation
         }
 
         [Fact]
+        public void RouteC_BorderExtent_NeitherDerivesNorConstrainsAnySimGrid()
+        {
+            // Story 15.2 (Route C, DW-160): border_extent is presentation-only. The fixed sim grids do not derive from
+            // map_bounds OR border_extent (they are compile-time constants), and the ONLY sim constraint the validator
+            // enforces is map_bounds <= MaxHalfExtent — a visual border is unbounded by the grids.
+            var validator = new ScenarioValidator();
+
+            // A huge visual border on a playable-ceiling map is legal: the border never touches a grid dimension.
+            var bordered = ScenarioData.CreateBlank("m", size: MapSize.Large); // map_bounds 128
+            bordered.BorderExtent = 500f;
+            var borderedResult = validator.Validate(bordered);
+            Assert.True(borderedResult.Ok, borderedResult.Error);
+
+            // map_bounds past the grid coverage still fails regardless of border_extent — the constraint is on
+            // map_bounds alone, and it is fail-closed.
+            var oversize = ScenarioData.CreateBlank("m", size: MapSize.Large);
+            oversize.MapBounds = FlowField.WORLD_HALF_INT + 1f; // 129
+            oversize.BorderExtent = 0f;
+            Assert.False(validator.Validate(oversize).Ok);
+
+            // The fixed grids are unchanged constants — equal to the pinned coverage no matter what a scenario authors.
+            Assert.Equal(FlowField.GRID_SIZE, FogOfWarSystem.GRID_SIZE);
+            Assert.Equal(FlowField.GRID_SIZE, PathabilityGrid.GRID_SIZE);
+            Assert.Equal((float)FlowField.WORLD_HALF_INT, MapSizes.MaxHalfExtent);
+        }
+
+        [Fact]
         public void SpatialHashCoverage_EnclosesTheFixedGridExtent()
         {
             // Spatial-hash covers [ORIGIN, ORIGIN + GRID_DIM*CELL_SIZE) on each axis; it must ⊇ [-128, 128].

@@ -3,6 +3,7 @@
   "display_name": "Mirror Lake",
   "terrain_ref": "",
   "map_bounds": 128.0,
+  "border_extent": 2.0,
   "win_condition": "DestroyAllBuildings",
 
   "player_slots": [

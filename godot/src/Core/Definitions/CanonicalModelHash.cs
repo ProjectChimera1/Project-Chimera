@@ -189,6 +189,11 @@ namespace ProjectChimera.Core.Definitions
 
             h = MixInt(h, AlgoVersion);                          // namespaces the hash (algo-1 was the byte-FNV)
             h = MixInt(h, Fixed.FromFloat(m.MapBounds).Raw);
+            // Story 15.2 (Route C): ScenarioData.BorderExtent is DELIBERATELY NOT folded here. It is a
+            // presentation-only visual border (camera/ground-plane extent) that touches NO sim state — the
+            // CombatFeedbackProfile posture — so folding it would false-reject bordered maps at the lobby handshake
+            // for zero sim reason. Excluded from CanonicalModelHash, StartStateHash and SimChecksum alike; AlgoVersion
+            // stays 14, no re-baseline. (Locked by BorderExtentTests' byte-identity guard.)
             h = MixStr(h, m.WinCondition.ToString());            // enum by NAME, not ordinal
             // Story 7.11 (v12): fold the win-condition PRESET spec immediately after the built-in WinCondition enum.
             // A null / None spec folds NOTHING (byte-identical to the pre-7.11 fold apart from the AlgoVersion bump —

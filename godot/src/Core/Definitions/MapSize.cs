@@ -38,7 +38,21 @@ namespace ProjectChimera.Core.Definitions
     {
         /// <summary>The maximum half-extent any supported size may use — the fixed flow/fog grid coverage
         /// (<c>FlowField.WORLD_HALF_INT</c> = 128). Duplicated as a literal here (rather than referencing the
-        /// Navigation constant) to keep this file dependency-light; the guard test asserts they agree.</summary>
+        /// Navigation constant) to keep this file dependency-light; the guard test asserts they agree.
+        ///
+        /// <para><b>±128 is the PERMANENT, deliberate PLAYABLE ceiling — this is by decision, not by accident
+        /// (Story 15.2, closing DW-160 and DW-162).</b> The four sim grids (flow-field / fog / pathability at ±128,
+        /// SpatialHash at ±160) are FIXED at compile time and are NEVER re-parameterized from <c>map_bounds</c>: their
+        /// identical dimensions are a deliberate one-grid design, and <c>ScenarioValidator</c> fails closed on
+        /// <c>map_bounds &gt; MaxHalfExtent</c> so authored content can never fall outside them (DW-160 — the "five
+        /// hardcoded grids" is the intended shape, not a gap). The exact <c>map_bounds == 128</c> boundary stays legal:
+        /// its edge-cell clamp is this documented ceiling, not an aliasing bug (DW-162).</para>
+        ///
+        /// <para>Route C (Story 15.2): a map that must LOOK larger uses the presentation-only
+        /// <c>ScenarioData.BorderExtent</c> — the camera/terrain render across <c>map_bounds + border_extent</c> while
+        /// play stays ±<c>map_bounds</c>. A wider PLAYABLE world (grids ±128→±256, "Route B") is a future determinism
+        /// story with an explicit golden re-baseline + <c>AlgoVersion</c> bump — held open, deliberately NOT this
+        /// change.</para></summary>
         public const float MaxHalfExtent = 128f;
 
         /// <summary>Every supported size, in ascending playable-extent order. The single enumeration source.</summary>

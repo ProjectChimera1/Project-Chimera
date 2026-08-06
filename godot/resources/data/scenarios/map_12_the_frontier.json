@@ -3,6 +3,7 @@
   "display_name": "The Frontier",
   "terrain_ref": "",
   "map_bounds": 128.0,
+  "border_extent": 32.0,
   "win_condition": "DestroyAllBuildings",
 
   "player_slots": [

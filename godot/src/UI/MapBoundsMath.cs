@@ -17,5 +17,16 @@ namespace ProjectChimera.UI
             float b = bounds.Value;
             return x >= -b && x <= b && z >= -b && z <= b;
         }
+
+        /// <summary>
+        /// Story 15.2 (Route C, DW-160) — the PRESENTATION visual half-extent: the playable
+        /// <paramref name="mapBounds"/> plus the non-playable <paramref name="borderExtent"/> (a negative border is
+        /// clamped away, so it can only ever add). Camera pan and the fallback ground plane render across this extent
+        /// while placement/AI/triggers stay bounded by <paramref name="mapBounds"/> alone. Pure/Godot-free so the
+        /// INCLUSION formula is Tier-1 testable (its exclusion from every hash is pinned separately by
+        /// <c>BorderExtentTests</c>); <c>ScenarioLoadPhase.VisualHalfExtentOf</c> delegates here.
+        /// </summary>
+        public static float VisualHalfExtent(float mapBounds, float borderExtent)
+            => mapBounds + (borderExtent > 0f ? borderExtent : 0f);
     }
 }

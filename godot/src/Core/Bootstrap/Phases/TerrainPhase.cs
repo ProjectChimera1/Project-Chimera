@@ -25,13 +25,21 @@ namespace ProjectChimera.Core.Bootstrap
 
             if (terrain == null)
             {
-                // Fallback: flat plane with editor-grid shader
+                // Fallback: flat plane with editor-grid shader. Story 15.2 (Route C): size it to the VISUAL extent
+                // (map_bounds + border_extent) so a bordered map's ground renders across its full on-screen width, not
+                // a fixed 256. This phase (position 5) runs before ScenarioLoad (position 12), so peek the same source
+                // it will resolve; a missing/flat scenario yields the 128 default ⇒ 256, byte-identical to before.
+                float visualHalf = ScenarioLoadPhase.PeekVisualHalfExtent(_ctx.Scene.ScenarioPath);
+                // Full plane width = (map_bounds + border_extent) * 2. PeekVisualHalfExtent already clamps a malformed
+                // extent; floor the span to a small positive minimum as belt-and-suspenders so the plane is never
+                // degenerate (a valid map — The Frontier's 320 — is unaffected).
+                float span = Mathf.Max((visualHalf + visualHalf), 1f);
                 var ground = new MeshInstance3D();
-                var plane  = new PlaneMesh { Size = new Vector2(256, 256) };
+                var plane  = new PlaneMesh { Size = new Vector2(span, span) };
                 plane.Material = new ShaderMaterial { Shader = BuildGridShader() };
                 ground.Mesh = plane;
                 _ctx.Scene.AddChild(ground);
-                GD.Print("[Terrain] Terrain3D unavailable — using flat PlaneMesh.");
+                GD.Print($"[Terrain] Terrain3D unavailable — using flat PlaneMesh ({span}×{span}).");
             }
 
             _ctx.Terrain = terrain;
