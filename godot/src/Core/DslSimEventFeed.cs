@@ -39,9 +39,10 @@ namespace ProjectChimera.Core
         /// mathematical worst case (every in-flight projectile splashing every entity ≈ 2M pushes/tick) is not
         /// preallocatable and stays behind that same seatbelt.</para>
         /// </summary>
-        public const int Capacity = EntityWorld.MAX_ENTITIES * 2; // 8192 — the entity cap, doubled (ordered literal-LAST:
-                                                                  // this is a sized buffer constant, not a player count, and
-                                                                  // `= 2` would false-positive the NoHardcodedPlayerCount scan)
+        public const int Capacity = EntityWorld.MAX_ENTITIES * 2; // 8192 — the entity cap, doubled. A sized buffer, not a
+                                                                  // player count. (The operand order was once forced: the
+                                                                  // NoHardcodedPlayerCount scan false-positived on a
+                                                                  // leading `2 *`. Fixed in DW-582 — either order is fine.)
 
         // ── The closed kind codes (index into ScenarioDirector's interned name table — no per-tick string here). ──
         /// <summary>unit_damaged occurrence code.</summary>
