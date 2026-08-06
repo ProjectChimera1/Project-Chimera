@@ -1,5 +1,6 @@
 #nullable enable
 using ProjectChimera.Core;
+using ProjectChimera.Effects;      // StatusFlags (modifier-imposed per-entity status; a value enum, same sim layer)
 using ProjectChimera.Navigation;   // CheckedStep / PathabilityGrid — the DW-532 walk-stall probe (pure Fixed, Godot-free)
 
 namespace ProjectChimera.Economy
@@ -39,6 +40,12 @@ namespace ProjectChimera.Economy
     /// node the player rallied to. Pre-fix the sweep overwrote the rally MoveTarget on the very next tick, so a rally
     /// could never direct new workers to a specific mine.
     ///
+    /// DW-619 — a <see cref="StatusFlags.Stunned"/>/<see cref="StatusFlags.Rooted"/> worker PRODUCES NOTHING. The
+    /// DW-266 status pass reached MovementSystem/CombatSystem/AbilityCastSystem but never the economy, so a stun
+    /// anchored a worker standing at its node and then let it keep mining out of that node at full rate — the stun
+    /// only half-landed. <see cref="TickGathering"/> now reads <see cref="EntityWorld.StatusFlagsOf"/> and suspends
+    /// the whole gather tick while either flag is live (see <see cref="GATHER_BLOCKING"/>).
+    ///
     /// CombatSystem skips any entity with GatherState != Inactive, so workers never
     /// auto-attack — even when their unit data carries attack damage.
     /// MovementSystem handles their physical movement via MoveTarget + Moving flag.
@@ -46,6 +53,22 @@ namespace ProjectChimera.Economy
     /// </summary>
     public class GatheringSystem : ISimSystem
     {
+        /// <summary>
+        /// DW-619 — the statuses that SUSPEND a worker's gather tick, deliberately the same pair as
+        /// <c>MovementSystem.MOVE_BLOCKING</c> (the mirror the recorded closure asks for).
+        ///
+        /// <para><see cref="StatusFlags.Stunned"/> is the headline case: fully incapacitated everywhere else in the
+        /// codebase (no move, no attack, no cast), it must not keep mining either.
+        /// <see cref="StatusFlags.Rooted"/> is included because the GATHER cycle is a MOVEMENT loop, not a standalone
+        /// action: a rooted worker is already anchored by DW-266 and can never deliver a load, so for GATHER nodes
+        /// the flag costs it nothing but a partial carry it banks the moment the root expires. The one place it
+        /// changes real production is a Streaming node, which credits IN PLACE with no delivery leg — the only way a
+        /// held worker could still feed its faction every tick. Kept as ONE named mask so the Rooted half is a
+        /// one-token revert if a later balance story decides root is "held in place, still able to act" (the reading
+        /// <c>MovementSystem</c>'s own doc comment records) all the way down to harvesting.</para>
+        /// </summary>
+        private const StatusFlags GATHER_BLOCKING = StatusFlags.Stunned | StatusFlags.Rooted;
+
         private static readonly Fixed ARRIVE_AT_NODE_SQR  = Fixed.FromFloat(1.8f) * Fixed.FromFloat(1.8f);
         private static readonly Fixed ARRIVE_AT_BASE_SQR  = Fixed.FromFloat(3.0f) * Fixed.FromFloat(3.0f);
 
@@ -274,6 +297,17 @@ namespace ProjectChimera.Economy
 
         private void TickGathering(EntityWorld world, int id, Fixed dt)
         {
+            // DW-619 — STATUS GATE (stun / root). The worker takes NO gather action this tick: no node supply drain,
+            // no CarryAmount accrual, no Streaming credit-in-place, no depletion, no DW-80 closed-gate streak and no
+            // state transition. Placed at the very top for the same reason DW-266's gate sits at the top of
+            // MovementSystem's per-entity loop body — the status is a PAUSE, not a cancel, so the worker resumes
+            // EXACTLY where it stood (same node, same reservation, same carry) the tick the modifier expires, and a
+            // status can never cost it its GatherTarget. Holding the reservation while held is correct: the worker is
+            // still parked at the node, and every release path (death, Build interrupt, depletion) still fires.
+            // Read-only — one flag test, no new state. Every recorded golden leaves StatusFlagsOf at None for every
+            // entity, so this branch is never entered there and nothing folded into SimChecksum moves.
+            if ((world.StatusFlagsOf[id] & GATHER_BLOCKING) != 0) return;
+
             int node = world.GatherTarget[id];
 
             if (node < 0 || !_nodes.Active[node])
