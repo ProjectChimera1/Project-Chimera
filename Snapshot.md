@@ -15,7 +15,7 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-**Merge `rebaseline/phase-b` (commit `5b1faad1`) to master** — it is committed, gated green and waiting on a human merge (the auto-mode classifier refuses AI-authored branch merges). Then decide whether to run a Phase-B-2 batch for the ~21 golden-moving ledger entries that did not fit the first one. See "Current State (2026-08-06)" below; read that before the 2026-08-01 block, and both before the legacy sections, which describe Sessions 20–21 and are far out of date.
+**Spec and run Story 15-22 — the Phase C batched re-baseline.** Both blocking design rulings are answered (DW-272, DW-837), all 14 corrections are Godot-free, so it routes to `chimera-dw-burndown`, not bmad-loop. Phase B is *merged* (`ac645a98`) — the older "merge `rebaseline/phase-b`" instruction here was stale and is resolved. See "Current State (2026-08-06)" below; read that before the 2026-08-01 block, and both before the legacy sections, which describe Sessions 20–21 and are far out of date.
 
 ---
 
@@ -42,9 +42,28 @@ Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-p
 2. **The re-baseline differential guard had been silently defeated since story 11.6** — its "never re-recorded" control was overwritten when it correctly fired, leaving it byte-identical to `golden-scenario.golden.txt` (proven by matching md5). It is now rebuilt on a gather-free control with a byte-pin so a re-freeze goes RED. **When a deliberate halt gate fires, never re-freeze the control.**
 3. **After a record run, every golden shows as modified** — the recorder rewrites the `checksum_algo_version` header. Diff with `grep -v '^#'` to see real movement. And use `--logger trx`: the console test logger truncates its failure list (it showed 6 of 26).
 
-**Still open — ~21 golden-moving entries did NOT fit this batch:** DW-160, 162, 200, 280, 512, 514, 548, 549, 554, 570, 647, 658, 659, 664, 803, 265, 346, 674, 678, 766, 775 (+ DW-272, which needs a stacking-DoT design ruling). A second batch is now routine — the procedure is proven and the gate works. **DW-200 and DW-280 do not belong in a re-baseline at all**: they are unbuilt features, and a new feature moves no existing golden.
+### Correct-course 2026-08-06 — Epic 15 re-shaped, Phase C packaged
 
-**Epic 15's story list is stale against the ledger** and was NOT flipped by this batch: its stories are thematic multi-DW sweeps, and closing 7 ids inside them does not complete any one story. Re-cut Epic 15 against the live ledger before running any of its stories.
+`planning-artifacts/sprint-change-proposal-2026-08-06.md`. Approved by Alec; **all artifact edits applied.**
+
+**Epic 15: 21 story keys → 11** (10 actionable + 1 done record). Eleven were thematic multi-DW **sweep containers** — a theme name plus a bundle list, no named deliverable. The burn-down executes DW bundles and closes ledger ids; it never executes stories, so nothing ever wrote to them (zero `spec-15-*.md` were ever written; six `spec-dw-*.md` were). Those eleven (15.4–15.9, 15.16–15.20) are **retired**, and `deferred-work.md` is now the single tracker for burn-down work. **Not deleted wholesale** — eight of the 21 are real feature stories (15.1/15.10/15.21 carry no DW ids *by design*) whose design content exists nowhere else. `epics.md` keeps every retired section marked SUPERSEDED, not deleted. 15.14 is **kept but re-scoped** to DW-200 alone (bundles released); 15.15 stays as a done record.
+
+**Batch rule, now standing:** a re-baseline batch takes **bounded corrections only**. You are amortising a ~10-minute re-record; coupling it to a multi-week feature build keeps the branch open and queues every other golden-moving fix behind it. **Feature stories that move goldens re-record at the end of their own story** (15.2, 15.11, 15.12, 15.14, 15.21).
+
+**Story 15-22 = Phase C**, `AlgoVersion` 23 → 24, **18 entries closed**:
+- **14 bounded corrections:** DW-512, 548, 549, 570, 647, 658, 659, 664, 674, 678, 766, 775, 803, **838**.
+- **1 answered ruling:** **DW-837 — total wipeout always loses, any faction count** (delete the `ActiveCount < 3` guard at `WinConditionSystem.cs:343`), overriding the Story 7.11 parity concern.
+- **3 in-window riders:** DW-514 (shipped-content residue → `CanonicalModelHash`), DW-554 (edits a golden, doesn't move one), DW-839 (comment fix, free).
+
+**Corrections to the old leftover list above:** **+DW-838** (Phase B filed and deferred it), **+DW-146** (the float→Fixed elevation grid — the actual determinism risk of the 15.2 trio, previously missing). **−DW-160/162** → 15.2: DW-160 changes the pathability persist format, invalidating every stored `pathability_blocked` and moving `CanonicalModelHash` *and* `StartStateHash`. **−DW-265** → 15.12/15.21 (feature build). **−DW-346** → 15.17 (fuel accounting; verify before assuming movement).
+
+**DW-272 answered — creator-authored, not an engine ruling.** Alec rejected the multiply/repeat/cap choice: creators pick the periodic-stacking mode, with a system cap as a runaway protector. The default must preserve today's non-scaling pulse byte-for-byte, so **no shipped golden moves** — it becomes a build on Story 15.12, not batch material.
+
+**New ledger field: `goldens: moves | none | verify | …`** on 26 entries. §2.4 of the proposal showed golden-moving status was unrecoverable from the ledger — querying it returned 16 entries, the session's own list had 21, and neither was derivable from the other. That is why Phase B's leftovers needed a hand reconstruction. Populate this field on any new golden-moving entry or Phase D repeats the archaeology.
+
+**Also corrected:** `sprint-status.yaml` action item **A7-E9** claimed the map-size decision was "UNDECIDED for a 3rd epic" — stale. Route C landed; `ScenarioValidator.cs:148` enforces the clamp, but `border_extent` exists nowhere in `godot/src`. True state: **decided, partially built**; the remainder is Story 15.2's scope, and 15.2 is unblocked.
+
+**`bmad-sprint-planning` must NOT regenerate `sprint-status.yaml`** — the file does not strictly parse as YAML, it carries ~270 lines of irreplaceable hand-written reconciliation and action-item state, and the 2026-08-04 mechanical `backlog`→`in-progress` flip made 15 stories invisible to the loop and had to be reverted. Hand-edit as text; verify with the read-only `bmad-sprint-status` and `bmad-loop status`.
 
 ---
 

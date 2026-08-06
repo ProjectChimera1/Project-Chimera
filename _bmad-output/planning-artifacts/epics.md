@@ -4020,6 +4020,14 @@ _Added by the approved sprint-change proposal 2026-07-28 (`sprint-change-proposa
 
 **Re-planned 2026-07-30** against sweep run `20260730-122934-d7ae` — the first triage able to see the whole ledger. Action item A1-E11 converted 160 flat appender bullets (Epics 7–11) into canonical `DW-325..DW-484` entries; they had been invisible to sweep triage since Epic 7 (upstream bmad-code-org/bmad-loop#304). The new partition over all 317 open entries produced **82 bundles / 239 ids**, 43 blocked, 7 skip, 8 already-resolved (closed with evidence), 20 decisions. Effect on this epic: 47 bundles land on stories 15.1–15.13 as written, 13 more fold into them (noted per story below), and **22 bundles covering 75 ids had no home at all** — filed here as new stories **15.14–15.20**. The MP/dedicated-server, trigger-DSL, content-packaging and AI-draft clusters are net-new epic scope, not re-labelled work. Alec answered 18 of the 20 decisions on 2026-07-30 (16 build, 2 close); each build answer is homed to a story below. Decision answers are recorded on the ledger entries but do **not** survive as bundles — an entry decided `build` re-prompts every sweep until its story runs (DW-80 was answered identically on 2026-07-16, 07-20 and 07-30), so decided entries are sequenced early.
 
+> **RE-SHAPED 2026-08-06** — `sprint-change-proposal-2026-08-06.md`, approved by Alec.
+>
+> Eleven of this epic's twenty-one stories were thematic multi-DW **sweep containers**: a theme name plus a bundle list, with no named deliverable. The burn-down executes DW bundles and closes ledger ids — it never executes stories — so nothing ever wrote to them (zero `spec-15-*.md` were written; six `spec-dw-*.md` were). **Those eleven are retired as sprint keys and `deferred-work.md` is now the single tracker for burn-down work.** Their prose is retained below and marked SUPERSEDED, not deleted, because the reasoning behind the 18 answered sweep decisions exists only here.
+>
+> **Retired (11):** §§ 15.4–15.9 and 15.16–15.20. **Kept as real stories (8):** 15.1, 15.2, 15.3, 15.10, 15.11, 15.12, 15.13, 15.21 — those with named deliverables, three of which (15.1, 15.10, 15.21) carry no DW ids *by design*. **15.14 kept but RE-SCOPED** to DW-200 alone, its five hardening bundles released to the ledger. **15.15 kept as a done record** — the one container that genuinely completed (11/11 ids closed). **Added:** § 15.22, the Phase C batched re-baseline. **Net: 21 keys → 11** (10 actionable + 1 done).
+>
+> **Batch rule established here:** a re-baseline batch takes **bounded corrections only**. The cost being amortised is a ~10-minute re-record; coupling it to a multi-week feature build keeps the branch open and queues every other golden-moving fix behind it. Feature stories that move goldens re-record at the end of their **own** story — which supersedes this epic's earlier "isolate each, do not batch" instruction in the opposite direction: batching corrections is correct, batching *builds* is not.
+
 ### Story 15.1: MP reconnect v1 — command-log rejoin + fast-forward catch-up (FR-79, DW-2)
 The server flags a dropped-then-returning peer (identity = the 9.7 slot assignment), streams the buffered match command log, and the rejoining client re-runs the content/hash gates then fast-forward-simulates to the live tick and resumes input; lobby/loading UX shows "Rejoining…"; the 9.6 freeze policy remains the in-match behavior while the seat is empty. AC gate: 2-player LAN rejoin mid-match with post-catch-up checksum agreement; a failed content gate rejects the rejoin without disturbing the live match.
 
@@ -4028,10 +4036,19 @@ Parameterize the four sim grids from one map-size truth source in lockstep; rewr
 
 _Added 2026-07-30 — the A5-E11 map-size decision (Route C, `map-size-brainstorm-brief.md` §V2–V3) landed while this story was in backlog and unblocks it:_ add `border_extent` to `ScenarioData` (visual/camera only, **excluded** from `CanonicalModelHash`), enforce `map_bounds ≤ MapSizes.MaxHalfExtent` fail-closed in `ScenarioValidator`, clamp `LLMService`'s generated-position prompt to `map_bounds`, and migrate the two out-of-ladder maps preserving their on-screen extent exactly (The Frontier 160 → 128+32, Mirror Lake 130 → 128+2). Bundle `editor-map-bounds-guards` (DW-158, DW-159) belongs here rather than 15.4 if it lands after the validator guard. **Decision DW-371 (build, 2026-07-30):** build the `ScenarioType`/GameMode registry — enum + per-type clamp preset table + Map Generator selection UI — which §V4.3 of the verdict separates from sizing as a rules-and-limits concept; this closes the second half of A7-E9 and makes 8.3's inert `MapGeneratorContext` clamps load-bearing.
 
-### Story 15.3: Status effects become real + modifier-period honesty (DW-266, DW-267, DW-270, DW-271, DW-272, DW-278, DW-323)
+### Story 15.3: Status effects become real + modifier-period honesty (DW-266, DW-267, DW-270, DW-271, DW-278, DW-323)
+
+_**DW-272 removed from this story 2026-08-06.** It was double-homed here and on 15.12. Alec's ruling (below, § 15.12) makes it an authored stacking mode — a build on 15.12's stacking surface, not a semantics correction. It lands entirely on 15.12._
+
 Combat honours Disarmed, Movement honours Rooted/Stunned, AbilityCastSystem honours Silenced, DamageResolver honours Invulnerable (golden re-baseline); lethal-period-DoT Tier-1 test; bundle `ability-composer-lifelong-round-trip` (DW-323 — composer silently strips `lifelong`); bundle `modifier-period-semantics-and-authoring-warnings` (DurationTicks=0 semantics, Modifier-path 256-pulse truncation, stacked-DoT warning, a `Warnings` channel on `AbilityValidationResult` surfaced in the 2.5 editor).
 
 _Added 2026-07-30 — **decision DW-325 (build):** a modifier that collapses `EffectiveMaxHealth` to 0 must raise death rather than pin a 0-HP-alive "zombie". Sim-behavior change on a path every `+MaxHealth` producer shares; goldens move with this story's existing StatusFlags re-baseline rather than in a separate fold._
+
+---
+
+> ### ⛔ SUPERSEDED 2026-08-06 — §§ 15.4 through 15.9
+>
+> Retired as sprint keys (sweep containers). **Scope is unchanged and now tracked solely in `deferred-work.md`.** Retained here for the decision reasoning — DW-80, DW-478, DW-327, DW-366, DW-331, DW-458, DW-170 and the rest. Before treating any section below as purely archival, confirm its `**Decision …**` text is present as a `decision:` line on the matching ledger entry; move it there if it is not.
 
 ### Story 15.4: Sim correctness sweep — combat & economy gates
 Bundles: `noncombatant-command-gate` (DW-202, DW-206, DW-242), `trained-worker-gather-init` (DW-205), `gatherer-slot-release-on-death` (DW-207 — golden re-baseline), `gather-state-checksum-fold` (DW-78 — golden re-record), `searcharea-target-selection-correctness` (DW-249, DW-250, DW-252), `projectile-convergence-clamp` (DW-25), `modifier-subsystem-robustness` (DW-28, DW-83), `gathering-closed-gate-reidle` (DW-80), `map-bounds-out-of-range-guards` (DW-158, DW-159).
@@ -4063,6 +4080,10 @@ Bundles: `ability-cast-path-hardening` (DW-283, DW-284, DW-285), `ability-editor
 
 _Added 2026-07-30:_ the 2026-07-30 partition re-cut several of these bundles slightly wider — `win-condition-elimination-and-identity` (+DW-457, DW-473), `research-system-completion` (+DW-475), `determinism-golden-coverage` (+DW-471), `ability-editor-cleanup`, `command-card-producer-surfaces` and `custom-building-render-and-footprint` — take the sweep's bundle membership as authoritative over the id lists above. **Decision DW-170 (build):** extend the trigger DSL so a custom building can be referenced with its faction context and resolved like the scenario-buildings gate, closing the wholesale-validation-failure this story's `trigger-custom-building-resolution` bundle names.
 
+> ### ⛔ END SUPERSEDED BLOCK (§§ 15.4–15.9)
+
+---
+
 ### Story 15.10: Scenario Settings panel + New-Scenario empty-canvas flow (DW-126, DW-127)
 The two recorded 2026-07-25 build decisions: a unified Scenario Settings surface (map name/author, win condition, per-slot starting resources) and a Create/New-Scenario flow originating a blank `ScenarioData` (revisits onboarding step 4 to offer starting from empty).
 
@@ -4078,7 +4099,15 @@ An authored energy-regen model (`regen_rate` on `UnitDefinition` + a regen path 
 
 *DW-264 (stacking) is smaller than the entry implies.* Three of the four modes Alec asked for **already exist** in the closed `StackRule` enum (`godot/src/Effects/Modifier.cs:7-15`) and need no new work: "additive timer / re-apply resets the duration" = `Refresh`; "single stack when not stackable" = `Ignore`; "grouped timer / all stacks expire together" = today's `Stack`, which scales deltas by `_stackCount` but shares one `_remainingTicks` (`ModifierStore.cs:151,168-177`). The only missing mode is **individual per-stack expiry**. Implement by splitting `Stack` into two explicit members — a grouped variant preserving today's behavior byte-for-byte so no shipped content changes meaning, and a new independent variant carrying per-stack `_remainingTicks` — and surface the choice in the ability editor's existing stacking dropdown. `StackRule` is a closed enum: patch **both** switches and any `(int)`-indexed arrays (enum-indexed-array touch-site rule).
 
-**Determinism:** the regen fold and the stacking fold are two separate `SimChecksum` movements. Isolate each re-baseline from the other *and* from 15.2/15.3/15.4/15.16 per the checksum-fold timing rule — do not batch them.
+**Decision DW-272 (answered 2026-08-06) — the periodic-stacking mode is CREATOR-AUTHORED, with a system cap.**
+
+> *"I want the creator to have the freedom of choosing this. We can create a cap to protect the system, but I want the user to be able to create a stackable debuff or buff in as many ways as they want."* — Alec
+
+Asked to rule between *multiply the pulse* / *run the pulse N times* / *cap it*, Alec rejected the premise that the engine should pick one. Today a 3-stack periodic effect scales its non-periodic deltas by `_stackCount` (`ModifierStore.cs:151`) but the **pulse itself does not scale** (`:320-324,536-541`). Build an **authored periodic-stacking mode** on the modifier model offering both multiply-the-pulse and repeat-the-pulse, plus a **system-level cap on the periodic contribution** as a runaway protector. Surface it in the ability editor's existing stacking dropdown alongside the `StackRule` split above — the same surface, one authoring pass.
+
+**Critical constraint:** the **default** mode must preserve today's non-scaling pulse **byte-for-byte** — the same principle already applied to the `StackRule` split, *"preserving today's behavior byte-for-byte so no shipped content changes meaning."* With that default, **no shipped content changes and no existing golden moves**; only opt-in content diverges. Validator + authoring warnings ride the existing `Warnings` channel.
+
+**Determinism:** the regen fold and the stacking fold are two separate `SimChecksum` movements, and DW-272's authored fields additionally move **`CanonicalModelHash`**. Each re-records at the end of this story per the 2026-08-06 batch rule — they are builds, not bounded corrections, so they do **not** ride § 15.22's window.
 
 ### Story 15.13: Effect vocabulary completion — Teleport + presentation leaves (DW-248)
 Build the reserved `Teleport` effect leaf and the presentation leaves (`PlayVfx`/`PlaySound`/`ShakeScreen`, checksum-neutral presentation dispatch), closing the 2.1 reserved-vocabulary carve-off.
@@ -4087,12 +4116,27 @@ Build the reserved `Teleport` effect leaf and the presentation leaves (`PlayVfx`
 
 _Stories 15.14–15.20 added 2026-07-30 from the `20260730-122934-d7ae` partition. These 22 bundles / 75 DW ids had no home in the 2026-07-28 plan because their entries were flat appender bullets invisible to triage until A1-E11 migrated them. Same execution model as 15.4–15.9: run as `bmad-loop sweep` bundle cycles, done when the bundles are committed and their entries closed._
 
-### Story 15.14: Dedicated-server & drop-path hardening
-Bundles: `dedicated-server-test-coverage` (DW-394, DW-411, DW-412, DW-418 — extract `DedicatedServer`'s Godot-free glue (fan-in, roster-freeze, classify, delegation seams) into xUnit-testable helpers, add a `SLOT_FACTION` injectivity assertion and a loopback end-to-end case), `server-rtt-and-reset-hygiene` (DW-395, DW-396, DW-398, DW-401 — seq-guard the Pong handler, normalize the ping/pong clock width to survive the 49.7-day wrap, zero `_readyHash`/`_latestSeenTick`/`_sincePing`/`_pingSeq` on match reset), `per-peer-misbehavior-handling` (DW-392, DW-393 — a per-peer misbehavior counter with throttled reject logging and per-peer disconnect, so a spoofing or over-counting *connected* peer is handled instead of stalling its tick), `dropcontroller-and-delay-recovery` (DW-399, DW-400, DW-409, DW-410 — `DropController` ACK deadline + force-commit, `DelayController` ACK timeout and recovery on disconnect, a loopback delay-change integration test), `post-drop-checksum-honesty` (DW-413, DW-414, DW-415, DW-416, DW-417 — surface INCONCLUSIVE / attestation-suspended instead of rubber-stamping PASS at the floor-1 expected count, and re-tally to HALT/DesyncAlert on a real N≥3 post-drop mismatch).
+### Story 15.14: Host-side hero identity enforcement + attested-hero deployment (DW-200)
 
-**Decision DW-200 (build, 2026-07-30) — scope note:** build the *full* host-side online-hero attestation rail plus deterministic cross-peer hero deployment, rather than the client-gate-only EA posture. The 2026-07-28 plan filed DW-200 as **post-1.0**; this decision moves it into 1.0 scope and it is the single largest item in this story — spec it separately from the five bundles above if it doesn't fit one cycle.
+**RE-SCOPED 2026-08-06** — this story is now **DW-200 alone**. The five hardening bundles it used to carry are retired to the ledger (superseded block below). This is exactly the split the 2026-07-30 scope note already anticipated: *"spec it separately from the five bundles above if it doesn't fit one cycle."*
+
+Build the **full** host-side online-hero attestation rail — `DedicatedServer` `StartGame`/`HandleReady` identity enforcement plus deterministic cross-peer deployment of the attested hero — rather than the client-gate-only EA posture. The 2026-07-28 plan filed DW-200 as post-1.0; the 2026-07-30 decision moved it into 1.0 scope.
+
+**Determinism:** an unbuilt feature moves no existing golden, because no recorded scenario exercises it. **This story does NOT wait on a re-baseline batch** and must not be folded into one; if it ends up moving a golden, it re-records at the end of its own story per the batch rule.
+
+---
+
+> ### ⛔ SUPERSEDED 2026-08-06 — Story 15.14's five hardening bundles
+>
+> Retired as sprint scope; tracked solely in `deferred-work.md`. Retained for reasoning.
+
+**Retired bundles:** `dedicated-server-test-coverage` (DW-394, DW-411, DW-412, DW-418 — extract `DedicatedServer`'s Godot-free glue (fan-in, roster-freeze, classify, delegation seams) into xUnit-testable helpers, add a `SLOT_FACTION` injectivity assertion and a loopback end-to-end case), `server-rtt-and-reset-hygiene` (DW-395, DW-396, DW-398, DW-401 — seq-guard the Pong handler, normalize the ping/pong clock width to survive the 49.7-day wrap, zero `_readyHash`/`_latestSeenTick`/`_sincePing`/`_pingSeq` on match reset), `per-peer-misbehavior-handling` (DW-392, DW-393 — a per-peer misbehavior counter with throttled reject logging and per-peer disconnect, so a spoofing or over-counting *connected* peer is handled instead of stalling its tick), `dropcontroller-and-delay-recovery` (DW-399, DW-400, DW-409, DW-410 — `DropController` ACK deadline + force-commit, `DelayController` ACK timeout and recovery on disconnect, a loopback delay-change integration test), `post-drop-checksum-honesty` (DW-413, DW-414, DW-415, DW-416, DW-417 — surface INCONCLUSIVE / attestation-suspended instead of rubber-stamping PASS at the floor-1 expected count, and re-tally to HALT/DesyncAlert on a real N≥3 post-drop mismatch).
 
 `post-drop-checksum-honesty` changes what the attestation *reports*, not what the sim computes: expect no golden movement, but it must be verified against a real N≥3 drop rather than a loopback stub, which ties it to the Epic-10 live-MP verification batch (A5-E9).
+
+> ### ⛔ END SUPERSEDED BLOCK (15.14's hardening bundles)
+
+---
 
 ### Story 15.15: MP surfaces & Godot-free MP test extraction
 Bundles: `lobbyui-and-handshake-coverage` (DW-360, DW-402, DW-419, DW-420 — extract the Godot-free `LobbyUi` version-gate and MP handshake handler logic for Tier-1 coverage, fix dedicated-path chat echo dedupe, add a spectator-vs-host Hello discriminator), `mp-godot-free-test-extraction` (DW-390, DW-447 — extract `LockstepManager`'s ring/gate/seed logic into Godot-free units, plus a headless end-to-end desync test where N independent sims compute and compare their own checksums), `nakama-ts-handler-hardening` (DW-436, DW-437, DW-438 — raw-payload and element-count guards with O(n) duplicate detection *before* the size cap, a CI vitest step in `determinism-gate.yml`, and a C#↔TS wire-format parity round-trip fixture), `mergedtick-scratch-pool` (DW-391 — caller-owned/pooled scratch buffers in `MergedTickApplier` instead of per-`Apply` allocation).
@@ -4100,6 +4144,14 @@ Bundles: `lobbyui-and-handshake-coverage` (DW-360, DW-402, DW-419, DW-420 — ex
 **Decision DW-374 (build):** wire a chat UI to `SendPlayerChat` — the `player_chat` trigger event currently has no producer and can never fire, so authored content depending on it is silently dead.
 
 The headless N-sim desync test (DW-447) is the highest-value item here: it is the first check that would catch a divergence without two physical machines, and it partially de-risks the live-verification debt carried since A5-E9.
+
+---
+
+> ### ⛔ SUPERSEDED 2026-08-06 — §§ 15.16 through 15.20
+>
+> Retired as sprint keys (sweep containers). **Scope unchanged; tracked solely in `deferred-work.md`.** Retained for the decision reasoning — DW-446, DW-343, DW-349, DW-342, DW-370, DW-382, DW-374, DW-466. Same caveat as the 15.4–15.9 block: confirm each `**Decision …**` survives as a `decision:` line on its ledger entry.
+>
+> **Note on 15.16:** its alliance-awareness work moves goldens. It is a *behavioral correction* set, so when it runs it is a candidate for a future batch window — but it was not scoped into Phase C (§ 15.22) and must not be assumed into it.
 
 ### Story 15.16: Alliance awareness in the sim + team-mode completion
 Bundles: `alliance-awareness-sim` (DW-439, DW-440, DW-444, DW-445 — thread `AllianceStore`/`AreAllied` through the sim's target selection so allies stop being treated as enemies: the `AiOpponentSystem` target/raze/threat pickers, `SelectionSystem` right-click pickers, and the projectile primary-target path), `team-mode-validation-and-vision` (DW-441, DW-442, DW-443 — a lobby/settings shared-team-vision toggle wired through `MatchLifecycleController`/`MainScene`, `ScenarioValidator` team checks, `AllianceSeeder` out-of-range diagnostics, and a match-start case).
@@ -4131,6 +4183,8 @@ This is the story that makes the ability-authoring AI-transparency vision (2.5/2
 Bundles: `hud-and-settings-polish` (DW-468, DW-469, DW-483, DW-484 — `MinimapPhase` panel anchoring/offsets, `CombatEventQueue` capacity and priority for non-hit cues, verify editor and creation-suite panels at 1.5× scale and 4K, disable the unreachable settings control), `save-load-and-serialization` (DW-465, DW-467, DW-482 — a main-menu cold-boot save-load entry point, off-thread background disk writes for save serialization, a forward-schema downgrade guard in `SettingsData.MigrateForward`).
 
 The cold-boot save-load entry point (DW-465) is a genuine 1.0 gap rather than polish: saves written by 11.3 are currently only reachable from inside a running match. **Decision DW-466 (build, 2026-07-30) is *not* in this story** — cross-machine save portability resolves to migrating `AiOpponentSystem` float→Fixed, which is **Story 10.11**; see the note in the Epic-10 section.
+
+> ### ⛔ END SUPERSEDED BLOCK (§§ 15.16–15.20)
 
 ---
 
@@ -4168,6 +4222,49 @@ The WC3 row carries the **primary-attribute** concept specifically — it is the
 **Determinism:** attributes feed effective stats, so this folds into `SimChecksum` and moves goldens; it also adds authored definition fields, so expect `CanonicalModelHash` to move. Isolate both re-baselines from Story 15.12's regen and stacking folds — this is a third and fourth distinct movement, not a batch. Sequence **after** 15.12 so the regen seam exists to plug into.
 
 **Open design questions for the story's spec pass** (do not decide these in a dev session): whether attributes apply to non-hero units or heroes only; whether attribute points are spent on level-up (WC3 auto-allocates, ARPGs let the player choose) or purely authored growth; and whether the derived-stat mapping is a closed list of targetable stats or open to any effective-stat field.
+
+---
+
+### Story 15.22: Phase C — batched golden re-baseline (added 2026-08-06)
+
+The second deliberate re-record, following the proven Phase B batch (`rebaseline/phase-b`, merged `ac645a98`, 6050 passed / 0 failed / 1 skipped on Windows). One `SimChecksum.AlgoVersion` bump 23 → 24, one re-record, **18 ledger entries closed**.
+
+**14 bounded sim corrections:**
+
+| DW | What |
+|---|---|
+| DW-512 | `MovementSystem`'s separation query has DW-249's over-cap arbitrariness — and unlike `SearchArea`, its output feeds the sim |
+| DW-548 | Trigger-phase kills never emit `unit_dies` |
+| DW-549 | Cross-tick recycle edge: a trigger-phase kill at T then recycle+die at T+1 loses the T+1 death |
+| DW-570 | Flow-field obstacle stamp is a fixed 3×3 block regardless of building footprint |
+| DW-647 | Wall-slide retains full single-axis displacement instead of clipping to the wall face |
+| DW-658 | `BuildingStore.Destroy` leaves `ProductionQueue`/`ProductionTimer` populated — and the checksum fold runs `0..Count` with no Alive filter |
+| DW-659 | A live re-`ApplyUnitDefinition` wipes `Effective*` for every entity without a self-passive |
+| DW-664 | `TickNonCombatant` destroys the attack order of a unit only *temporarily* debuffed to zero damage |
+| DW-674 | `DeathLog` drops at 256 and the overflow is trigger-visible — folded consequence, not presentation |
+| DW-678 | A zero-payload tech-gate research installs an empty modifier, burning 1 of 8 ring slots |
+| DW-766 | `ItemSystem` (index 10) produces to `DeathFeed` *after* `HeroXpSystem` (index 9) drains it |
+| DW-775 | Entity-id ABA — a slot recycled into a hostile faction — unguarded on both held-id combat paths |
+| DW-803 | The walk-stall probe reads a zero-length step as the grid's hard stop, so a speed-zeroed worker yields its gather reservation |
+| **DW-838** | `ScoreRazeBuildings`' below-threshold stall-breaker requires a **live** CommandCenter, inverting the condition it exists to handle. *Surfaced by Phase B and deliberately deferred to here.* |
+
+**1 answered ruling (moves goldens): DW-837 — total wipeout always loses, any faction count.** Drop the `ActiveCount < 3` guard at `WinConditionSystem.cs:343` entirely. A faction with no units and no buildings loses regardless of win-condition type or player count, closing the 1v1 Assassination / LandmarkDestruction / TimedSurvival match that can never end. Decision (Alec, 2026-08-06); this overrides the recorded Story 7.11 parity concern, which was a design argument rather than a golden-preservation one.
+
+**3 in-window riders** — they touch golden files or shipped content but are not sim corrections, so do them inside the window and account for them separately:
+- **DW-514** — committed editor-drag residue in shipped `alpha_map_01.json`. Changing shipped content moves **`CanonicalModelHash`**, a different mechanism from the `SimChecksum` bump.
+- **DW-554** — the N=4 multifaction golden's embedded re-baseline hint over-matches the N=8 record test. This *edits* a golden; it does not move one.
+- **DW-839** — `AiActiveScenario`'s header comment describes a wave launch that never happens. Free.
+
+**Explicitly NOT in this batch**, each with a home: DW-160/**146**/162 → 15.2 (changes the pathability persist format, invalidating every stored `pathability_blocked`; moves `CanonicalModelHash` *and* `StartStateHash`); DW-265 → 15.12/15.21; DW-272 → 15.12; DW-200 → 15.14; DW-280 → 15.11; DW-346 → 15.17 (fuel accounting — verify it does not change *which* triggers fire before assuming any movement).
+
+**Procedure — carry forward verbatim from Phase B:**
+1. **Bound the fold** so scenarios not carrying the new state stay byte-identical. Phase B cut the blast radius from 28 golden files to 5 with identical desync coverage this way. Always measure a bounded fold before accepting an unconditional one.
+2. **Re-record on Windows** so the float-AI `ai-active` golden carries a current header instead of going stale.
+3. **Diff with `grep -v '^#'`** — the recorder rewrites the `checksum_algo_version` header on *every* file, so all goldens show as modified.
+4. **Verify with `--logger trx`** — the console logger truncates its failure list (it showed 6 of 26).
+5. The reconnected re-baseline differential guard halts on a botched record. **When a deliberate halt gate fires, never re-freeze its control** — that defect hid since story 11.6.
+
+All 14 corrections are **Godot-free** → route to `chimera-dw-burndown`, not bmad-loop.
 
 ---
 

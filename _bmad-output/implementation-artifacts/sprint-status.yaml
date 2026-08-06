@@ -265,32 +265,32 @@ development_status:
   #   recorded here in prose and the story stays `backlog` until it is genuinely done.
   #   UNTOUCHED, left backlog: 15.1/15.10 (net-new builds, no bundles by design), 15.13, 15.12 (0
   #   closed), 15.11 (single id closed 2026-07-28 pre-session; its bundle never ran).
-  #   CONTRADICTION TO FLAG: the 2026-07-30 plan says GOLDENS MOVE in 15.2/15.3/15.4/15.16 and to
-  #   "isolate each per the checksum-fold timing rule; do not batch them into one re-baseline" — the
-  #   2026-08-04 session proposed the opposite (ONE batched re-record across 13 blocked entries).
-  #   Unresolved. Decide before Phase B opens.
+  #   CONTRADICTION — RESOLVED 2026-08-06. The 2026-07-30 plan said "isolate each per the checksum-fold
+  #   timing rule; do not batch them into one re-baseline"; the 2026-08-04 session proposed the opposite.
+  #   Phase B batched and PROVED it (branch rebaseline/phase-b, merged ac645a98, 6050 passed / 0 failed
+  #   / 1 skipped on Windows). BATCHING IS NOW THE STANDING APPROACH. What made it safe was BOUNDING the
+  #   fold — skipping the Mix calls entirely for entities at default cut the blast radius from 28 golden
+  #   files to 5 with identical desync coverage. The line at 15-2's entry saying otherwise is superseded.
+  #   BATCH RULE (2026-08-06): a re-baseline batch takes BOUNDED CORRECTIONS ONLY. The cost being
+  #   amortised is a ~10-minute re-record; coupling it to a multi-week feature build keeps the branch
+  #   open and queues every other golden-moving fix behind it. Feature stories that move goldens
+  #   re-record at the end of their OWN story (15-2, 15-11, 15-12, 15-14, 15-21).
   epic-15: in-progress
   15-1-mp-reconnect-v1-command-log-rejoin-fast-forward-catch-up-fr-79-dw-2: backlog
   15-2-map-size-determinism-unification-raw-heightmap-read-dw-160-dw-146-dw-162: backlog
   15-3-status-effects-become-real-modifier-period-honesty: backlog
-  15-4-sim-correctness-sweep-combat-economy-gates: backlog
-  15-5-determinism-checksum-test-hardening-sweep: backlog
-  15-6-scenario-content-pipeline-fail-closed-sweep: backlog
-  15-7-mp-bootstrap-resilience-sweep: backlog
-  15-8-creation-suite-editor-fidelity-sweep: backlog
-  15-9-ability-command-card-authoring-sweep: backlog
+  # RETIRED 2026-08-06: 15-4, 15-5, 15-6, 15-7, 15-8, 15-9 (thematic sweep containers) — see the
+  #   RE-SHAPED block below. Scope unchanged; it now lives ONLY in deferred-work.md.
   15-10-scenario-settings-panel-new-scenario-empty-canvas-flow-dw-126-dw-127: backlog
   15-11-ability-targeting-increments-ground-target-cast-ally-heal-other: backlog
   15-12-energy-stack-mechanics: backlog
   15-13-effect-vocabulary-completion-teleport-presentation-leaves: backlog
-  # 15-14..15-20 added 2026-07-30 from the 20260730-122934-d7ae partition — 22 bundles / 75 DW ids with no home in the 2026-07-28 plan. Same sweep-batch execution model as 15-4..15-9.
-  15-14-dedicated-server-drop-path-hardening: backlog
+  # 15-14..15-20 were added 2026-07-30 from the 20260730-122934-d7ae partition. 15-16..15-20 RETIRED
+  #   2026-08-06 as sweep containers; 15-14 RE-SCOPED to DW-200 alone (its five hardening bundles
+  #   released to the ledger). 15-15 kept as a done record — it is the one sweep container that
+  #   genuinely completed (11/11 ids closed).
+  15-14-host-side-hero-identity-enforcement-attested-deployment-dw-200: backlog
   15-15-mp-surfaces-godot-free-mp-test-extraction: done
-  15-16-alliance-awareness-sim-team-mode-completion: backlog
-  15-17-trigger-dsl-runtime-gate-hardening: backlog
-  15-18-content-packaging-browsing-replay-lifecycle: backlog
-  15-19-ai-draft-consolidation-llmservice-lifecycle: backlog
-  15-20-hud-settings-save-system-polish: backlog
   # 15-21 added 2026-08-03 from the DW-265 decision. NOT burn-down: no DW ids, no bundles (like 15-1 and 15-10).
   #   DW-265 asked "should energy regenerate?"; Alec answered "yes, with an Intelligence mechanic driving it" —
   #   but hero primary attributes DO NOT EXIST (HeroDefinition has only flat *_per_level; no Strength/Agility/
@@ -299,6 +299,27 @@ development_status:
   #   15-12 builds FLAT regen only and must leave a seam this story drives. SEQUENCE AFTER 15-12.
   #   Folds SimChecksum AND CanonicalModelHash — two more distinct golden movements, isolate per the fold rule.
   15-21-creator-authorable-hero-attribute-system: backlog
+  # ── RE-SHAPED 2026-08-06 (planning-artifacts/sprint-change-proposal-2026-08-06.md; Alec approved).
+  #   PROBLEM: 12 of the 21 keys were thematic multi-DW sweep CONTAINERS (a theme name + a bundle
+  #   list, no named deliverable). The burn-down executes DW bundles and closes ledger ids — it never
+  #   executes stories — so nothing ever wrote to them. Zero spec-15-*.md were ever written; 6
+  #   spec-dw-*.md were. Status only ever moved by a hand reconciliation whose story->DW join runs
+  #   through prose bundle lists the burn-down keeps re-cutting (2026-08-04 recorded that the join no
+  #   longer matches the authoritative bundle index).
+  #   DECISION: retire the 11 containers (15-4..15-9 and 15-16..15-20), and release 15-14's five
+  #   hardening bundles while KEEPING 15-14 itself, re-scoped to DW-200 alone (that split was already
+  #   anticipated at epics.md:4093). deferred-work.md is now the SINGLE tracker for burn-down work.
+  #   Stories remain only
+  #   for work with a named deliverable. NOT deleted wholesale: 8 of the 21 are real feature stories
+  #   (15-1/15-10/15-21 carry no DW ids BY DESIGN per epics.md:4174) whose design content —
+  #   the DW-264/265 scope resolution, the 15.21 ARPG attribute-preset spec, the Route-C map-size
+  #   verdict — exists nowhere else. epics.md keeps all retired prose marked SUPERSEDED, not deleted.
+  #   REJECTED ALTERNATIVE: regenerate the story list from the ledger each wave. It cannot represent
+  #   the three bundle-less stories at all, it still costs a manual re-derivation per wave, and a
+  #   generated container the loop can never complete permanently corrupts `bmad-loop status`.
+  #   ADDED: 15-22, the Phase C batched re-baseline (14 bounded corrections + DW-837 + 3 riders).
+  #   RESULT: 21 keys -> 11 (10 actionable backlog + 1 done record). 11 retired, 1 added.
+  15-22-phase-c-batched-golden-re-baseline: backlog
   epic-15-retrospective: optional
 
 action_items:
@@ -497,7 +518,7 @@ action_items:
     id: "A7-E9"
     action: "ScenarioType registry + MAP SIZE - PRODUCT DECISION. DECIDED (Alec 2026-07-26): route through a /bmad-brainstorming session, then /bmad-correct-course carrying the brainstorm verdict; Alec kicks this off in a NEW session. Driver: he has scenario ideas that may need different map sizes and wants feasibility known up front. Prep brief written at _bmad-output/planning-artifacts/map-size-brainstorm-brief.md with live-source constraints - headline: SMALLER maps are free today (map_03 already ships at 90; shipped range 90-120), LARGER maps are NOT possible without changing three hardcoded grids (FlowField 128x128 @ 2 units, PathabilityGrid 128x128, SpatialHash 32x32 @ 10 units) that pin the world to 256x256 (-128..+128) and are all determinism-critical, so growing the world moves goldens and likely bumps SimChecksum.AlgoVersion. Zero of those grids derive from map_bounds today. Also found: ScenarioValidator gates map_bounds only against the 16.16 ceiling (32768), never against WORLD_HALF_EXTENT, so an oversized map validates clean then strands units off the flow field - file as deferred work regardless of verdict."
     owner: "Alec"
-    status: "in-progress (routed but UNDECIDED for a 3rd epic; brainstorm brief written. Carried as A5-E11 with a NEW deadline: Epic 15 story 15-2 (map-size determinism unification, DW-160/146/162) touches the same three hardcoded grids, so this must be decided BEFORE 15-2 is specced)"  # Epic 11 retrospective action items — epic-11-retro-2026-07-30. Standing rule A1-E5: tracked here, never advisory-only.
+    status: "DECIDED, PARTIALLY BUILT — corrected 2026-08-06. The prose here said 'UNDECIDED for a 3rd epic'; that was STALE. Route C landed (map-size-brainstorm-brief.md V2-V3) and is recorded on story 15.2 in epics.md:4029. Code confirms a PARTIAL landing: ScenarioValidator.cs:148 enforces map_bounds > MapSizes.MaxHalfExtent fail-closed, but `border_extent` exists NOWHERE in godot/src. The remainder (border_extent on ScenarioData excluded from CanonicalModelHash, the LLMService prompt clamp, the two out-of-ladder map migrations, and the DW-371 ScenarioType/GameMode registry) is Story 15.2's scope. 15-2 is UNBLOCKED for speccing."  # Epic 11 retrospective action items — epic-11-retro-2026-07-30. Standing rule A1-E5: tracked here, never advisory-only.
   # Sharpened this retro (retro §4): an item is done when something can say NO on its behalf. Prefer a mechanism over a checklist.
   - epic: 11
     id: "A1-E11"
