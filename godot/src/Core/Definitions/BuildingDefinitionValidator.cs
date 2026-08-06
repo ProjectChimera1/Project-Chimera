@@ -55,11 +55,16 @@ namespace ProjectChimera.Core.Definitions
 
         /// <summary>
         /// Validate a single <paramref name="def"/> against its <paramref name="siblings"/> (the faction's
-        /// <c>Buildings</c> list, for the uniqueness rule — Story 4.5). Returns every located field error: the four
-        /// building-only checks (required-but-missing <c>construction_time</c>/<c>supply_bonus</c>/
-        /// <c>produces_category</c>, non-positive <c>hp</c>) PLUS every error <see cref="UnitDefinitionValidator"/>
-        /// would report for the same def kinded <c>"building"</c> (id/dup-id/enum/cost-range/…). Pure — never throws,
-        /// never logs.
+        /// <c>Buildings</c> list, for the uniqueness rule — Story 4.5). Returns every located field error: the
+        /// building-only checks (required-but-missing <c>hp</c>/<c>construction_time</c>/<c>supply_bonus</c>/
+        /// <c>produces_category</c>, plus the optional <c>command_card_producer</c>/<c>nav_footprint</c> shapes) PLUS
+        /// every error <see cref="UnitDefinitionValidator"/> would report for the same def kinded <c>"building"</c>
+        /// (id/dup-id/enum/cost-range/stat-bounds/…). Pure — never throws, never logs.
+        ///
+        /// <para><b>DW-527.</b> The non-positive-<c>hp</c> VALUE rule is no longer duplicated here — the shared unit
+        /// gate owns it (strictly positive, finite, below the 16.16 ceiling) and this validator inherits it through the
+        /// reuse below, so a bad building hp badges its control exactly ONCE (D-9). Only the <c>HpAuthored</c> PRESENCE
+        /// check, which the shared gate cannot express, stayed behind.</para>
         /// </summary>
         public static BuildingValidationResult Validate(BuildingDefinition def, IReadOnlyList<BuildingDefinition>? siblings)
         {
@@ -74,15 +79,26 @@ namespace ProjectChimera.Core.Definitions
 
             // DW-55: Hp is load-bearing once a resolved def is threaded through BuildingStore.Create
             // (BuildingSystem.PlaceBuildingDirect/QueueWorkerBuild). A building that never AUTHORED hp (it silently
-            // defaults to UnitDefinition's 100f) is now a distinct located "required but missing" error — the
+            // defaults to UnitDefinition's 100f) is a distinct located "required but missing" error — the
             // BuildingDefinition.HpAuthored presence flag (set through any Hp assignment path) tells an omitted hp
-            // apart from an authored 100. An authored-but-non-positive hp still reports the pre-existing error.
+            // apart from an authored 100.
+            //
+            // DW-527: the VALUE half of the old rule (`!IsFinite(Hp) || Hp <= 0f`) is GONE from here. It now lives in
+            // UnitDefinitionValidator's shared stat gate, which this validator already reuses below over the very same
+            // def — so keeping a local copy would emit TWO located errors keyed "hp" for one control on every
+            // non-positive / non-finite building hp (it already did, for a negative or NaN hp, because the shared gate's
+            // generic bound rejected those too), which is exactly the doubled per-field badge (D-9) DW-380 had to fix
+            // for attack_speed. Deleting it loses NO coverage: the shared rule is a strict superset — non-positive,
+            // non-finite, AND at/above the 16.16 ceiling, the last of which the old `<= 0f` branch never looked at (it
+            // was already the reused gate that caught it). What stays here is the one rule the shared gate cannot
+            // express — PRESENCE — because HpAuthored is a BuildingDefinition-only flag the unit gate knows nothing of.
+            bool hpBadged = false;
             if (!def.HpAuthored)
+            {
                 errors.Add(("hp", Located(id, "hp",
                     "is required but missing (a building's HP must be authored).")));
-            else if (!float.IsFinite(def.Hp) || def.Hp <= 0f)
-                errors.Add(("hp", Located(id, "hp",
-                    "must be a positive value (a building's HP must be authored above zero).")));
+                hpBadged = true;
+            }
 
             if (!def.ConstructionTime.HasValue)
                 errors.Add(("construction_time", Located(id, "construction_time",
@@ -121,7 +137,17 @@ namespace ProjectChimera.Core.Definitions
             UnitValidationResult unitResult = new UnitDefinitionValidator().Validate(
                 def, registry: null, behaviorRegistry: null, itemRegistry: null, siblings, kind: "building");
             foreach ((string fieldPath, string message) in unitResult.Errors)
+            {
+                // DW-527, one badge per field (D-9): a building that never AUTHORED hp is already badged above with the
+                // strictly more actionable "required but missing" message, so the shared gate's verdict on the value it
+                // merely INHERITED must not add a second badge to the same control. In every real authoring path an
+                // un-authored hp is UnitDefinition's 100f default, which the shared rule passes anyway — this guard only
+                // bites for a def whose Hp was written through a UnitDefinition-typed reference (the non-virtual `new`
+                // shadow does not flag those), and it is what makes "exactly one hp error" a property of the merge
+                // rather than an accident of the default value.
+                if (hpBadged && fieldPath == "hp") continue;
                 errors.Add((fieldPath, message));
+            }
 
             return new BuildingValidationResult(errors);
         }

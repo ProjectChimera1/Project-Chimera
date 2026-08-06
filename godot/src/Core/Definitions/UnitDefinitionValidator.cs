@@ -234,8 +234,22 @@ namespace ProjectChimera.Core.Definitions
                 errors.Add(("projectile_speed", Located(kind, id, "projectile_speed",
                     $"={def.ProjectileSpeed} must be strictly positive for a Projectile-delivery unit (authored or inferred from range).")));
 
-            // ── numeric stats: finite & [0, 32768) — the 16.16 Fixed ceiling (AC2 "out-of-range/missing stat") ──
-            CheckStat(errors, kind, id, "hp", def.Hp);
+            // ── numeric stats: finite & [0, 32768) — the 16.16 Fixed ceiling (AC2 "out-of-range/missing stat"), with
+            //    hp the one strictly-positive exception noted immediately below ──
+
+            //    hp (DW-527) is the ONE stat in this group that is STRICTLY positive — the fourth degenerate-at-zero
+            //    stat alongside the three the block further down handles, and the only one that had a matching rule on
+            //    the building side but not here. A 0 does not author a frail entity: EntityWorld.Create seeds
+            //    Health/BaseMaxHealth/EffectiveMaxHealth from this value, so the entity spawns ALIVE at 0 HP with a
+            //    zero health ceiling. It can never be healed (ModifierStore.ApplyStatDeltas re-clamps Health into
+            //    [0, EffectiveMaxHealth], which is [0, 0] here) and dies to the first point of damage — and per DW-491
+            //    the ceiling-collapse death cannot even fire on it, because that gate needs a >0 → 0 TRANSITION, so a
+            //    0-hp entity is a permanent 0-HP husk rather than a unit. Routed through CheckStatPositive HERE, in the
+            //    stat's long-standing position, rather than moved down into the DW-380 block, so the order of the
+            //    reported errors is unchanged. BuildingDefinitionValidator reuses this whole gate, so it now inherits
+            //    the value rule and keeps only its own PRESENCE (HpAuthored) check — see the D-9 note there.
+            CheckStatPositive(errors, kind, id, "hp", def.Hp,
+                "0 is a zero health ceiling rather than a frail unit — the entity spawns already at 0 HP, can never be healed (Health is clamped into [0, EffectiveMaxHealth]) and dies to the first point of damage");
             CheckStat(errors, kind, id, "speed", def.Speed);
             CheckStat(errors, kind, id, "attack_damage", def.AttackDamage);
             CheckStat(errors, kind, id, "attack_range", def.AttackRange);
@@ -262,11 +276,12 @@ namespace ProjectChimera.Core.Definitions
                 CheckStatPositive(errors, kind, id, "train_time", def.TrainTime,
                     "a queued order whose timer starts already expired is never actually trained over time — the whole production queue behind it drains at one unit per tick");
 
-            // ── DEGENERATE-AT-ZERO stats (DW-380). The generic CheckStat bound is [0, 32768) — INCLUSIVE of 0 — which
-            //    is right for every stat above (0 armor / 0 splash / 0 energy / an immobile 0-speed structure / a
-            //    0-damage non-combatant are all legitimate authoring), but WRONG for the three handled below
-            //    (collision_radius, mesh_scale, and — conditionally — attack_speed), where 0 is not a weaker value but
-            //    a broken one. Same shape as projectile_speed's rule (2): a strictly-positive lower
+            // ── DEGENERATE-AT-ZERO stats (DW-380, extended by DW-527). The generic CheckStat bound is [0, 32768) —
+            //    INCLUSIVE of 0 — which is right for every stat above (0 armor / 0 splash / 0 energy / an immobile
+            //    0-speed structure / a 0-damage non-combatant are all legitimate authoring), but WRONG for the three
+            //    handled below (collision_radius, mesh_scale, and — conditionally — attack_speed) and for hp (handled
+            //    in place above, DW-527), where 0 is not a weaker value but a broken one. Same shape as
+            //    projectile_speed's rule (2): a strictly-positive lower
             //    bound only where zero is degenerate, so both hand-authored edits AND the Story-8.5 balance-apply path
             //    (BalanceSuggestionApplier routes its proposed value through this very gate) are gated identically. ──
 
