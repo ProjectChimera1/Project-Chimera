@@ -1,6 +1,6 @@
 ---
 project: Project Chimera
-last_touched: 2026-08-01
+last_touched: 2026-08-06
 phase: Phase 5 — Polish & 1.0
 status: Active
 ---
@@ -15,7 +15,9 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-**Spec and run Story 15-22 — the Phase C batched re-baseline.** Both blocking design rulings are answered (DW-272, DW-837), all 14 corrections are Godot-free, so it routes to `chimera-dw-burndown`, not bmad-loop. Phase B is *merged* (`ac645a98`) — the older "merge `rebaseline/phase-b`" instruction here was stale and is resolved. See "Current State (2026-08-06)" below; read that before the 2026-08-01 block, and both before the legacy sections, which describe Sessions 20–21 and are far out of date.
+**Run Story 15-3 — status effects become real + modifier-period honesty** (`bmad-loop run --story 15-3`; DW-266, 267, 270, 271, 278, 323). `StatusFlags` is written by the ability system and read by *nothing*: Disarmed, Rooted, Stunned, Silenced and Invulnerable are all authorable today and all do nothing in play. **It moves goldens by design** (the StatusFlags re-baseline) and re-records at the end of its own story per the standing batch rule — do not queue it behind a batch. Decision **DW-325 is already ruled *build***: a modifier collapsing `EffectiveMaxHealth` to 0 raises death rather than pinning a 0-HP "zombie"; that rides the same re-record. It is Godot-coupled (the `Warnings` channel surfaces in the 2.5 ability editor), so it needs the in-engine gate and the MCP bridge free.
+
+Read the **2026-08-06 (later)** block below first — the earlier same-day block's numbers (AlgoVersion 23, 370 open) are superseded. Both precede the 2026-08-01 block, and all three precede the legacy sections, which describe Sessions 20–21 and are far out of date.
 
 ---
 
@@ -23,7 +25,39 @@ Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-p
 
 ---
 
-## Current State (2026-08-06) — read this first
+## Current State (2026-08-06, later) — read this first
+
+Supersedes the earlier 2026-08-06 block below, which was written *before* 15-22 and 15-2 ran. Its ledger counts and AlgoVersion are stale; its correct-course reasoning still stands.
+
+**Master is `3762bd9f`, pushed, tree clean.**
+
+**Ledger:** 878 numbered entries · **387 open** · 484 done.
+
+**Determinism:** `SimChecksum.AlgoVersion` **24** (was 23) · `CanonicalModelHash` 14 · `StartStateHash` 2.
+
+**Tier-1:** **6202 passed / 0 failed / 1 skipped** on Windows. Up from the 6158 Phase C baseline because 15-2 added ~44 tests — use 6202 as the baseline for the next run, not 6158.
+
+**Two stories closed since the earlier block:**
+- **15-22 (Phase C batched re-baseline)** — merged as `d973c021`, AlgoVersion 23→24, 17 entries closed, both halt gates held. Post-merge review filed DW-868..874.
+- **15-2 (map-size determinism unification + raw heightmap read)** — DW-160/146/162 closed. The `get_height` bilinear blend is gone (now `get_pixel` nearest). Review filed DW-875..878, all Route-C/terrain follow-ons and **all unreachable on shipped content** (every scenario is `terrain_ref:""` flat, so the sculpted path early-returns). No action until sculpted terrain ships.
+
+**DW-874 ANSWERED (Alec, this session) — keep ONE AlgoVersion constant, save gate stays fail-closed.** A pure golden re-record marker does *not* get a separate save-only world-format version; every bump remains a save-break. Reason: while the sim changes every epic, a save that silently *resumes* under corrected combat/AI rules is worse than one that refuses to open. Revisit before 1.0 ships to players. The gate's message no longer claims "simulation format changed" — it names the actual version pairs. Recorded at `SaveGameFile.Read`'s version gate and in `SimChecksum`'s v24 note.
+
+**Epic 15 position:** done = 15-2, 15-15, 15-22. Remaining backlog in file order = **15-1, 15-3, 15-10, 15-11, 15-12, 15-13, 15-14, 15-21, 15-23**. An unattended epic run starts on 15-1 (MP reconnect v1), *not* 15-3 — pass `--story 15-3` explicitly to open there. The one ordering constraint (15-12 before 15-21) is already satisfied by file order.
+
+### ⚠️ Do not run bmad-loop and `chimera-dw-burndown` concurrently without isolating them
+
+Established this session by reading both configs; not previously recorded.
+
+`.bmad-loop/policy.toml` has `isolation = "none"` and `target_branch = ""` — **bmad-loop commits directly to master, in place, in the main checkout.** `dw-burndown.workflow.js` defaults to `integrationPath = D:/Projects/Project_Chimera` and `integrationBranch = 'master'` — **the same tree and the same branch.** Run both as-is and the burn-down's merge/ledger/review phases commit under a live dev session, reproducing the known `manual recovery needed (committed work present)` false-baseline pause.
+
+To run them together, pass `integrationPath` (a dedicated worktree) + `integrationBranch` (non-master) — the option exists for exactly this, and the auto-mode safety classifier already refused merge-to-master on 2026-08-05. Also required: `baseSha` pinned (step 0 does `git reset --hard ${BASE || 'master'}`, so without it the fleet anchors to a *moving* master), `baselineTests` current, and `chunkSize` reduced to 2 — both systems run full Tier-1 suites and the 4-way chunk budget does not account for bmad-loop, which makes the `CanonicalModelHashPerf` CPU-contention flake more likely in both. Even isolated, **never let both waves move goldens** — two independent re-records converging at merge-back fights the batch rule. *Decision 2026-08-06: not worth it; Epic 15 runs on bmad-loop alone.*
+
+**The godot-mcp bridge is single-client and an idle Claude session grabs port 6550 at startup without ever calling a tool.** Confirmed again this session by parent-chain walk (`Get-NetTCPConnection -RemotePort 6550` → pid → `claude.exe`). Close or release idle sessions before any in-engine-gated run.
+
+---
+
+## Current State (2026-08-06, earlier) — superseded by the block above
 
 **Live trackers:** `_bmad-output/implementation-artifacts/sprint-status.yaml` and `deferred-work.md`. Everything below the 2026-08-01 block is legacy history, not guidance.
 
