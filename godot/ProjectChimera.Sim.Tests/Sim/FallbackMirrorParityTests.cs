@@ -1,6 +1,7 @@
 #nullable enable
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
@@ -241,14 +242,20 @@ namespace ProjectChimera.Sim.Tests.Sim
         /// <summary>
         /// DW-324 (the "optional FallbackMirror-vs-alpha_map_01 agreement test" the sweep list records, closing
         /// DW-222's accepted residual) — <c>BuildFallbackMirror</c>'s doc once claimed "keep these literal values in
-        /// sync with alpha_map_01.json" with nothing enforcing it. This asserts the agreement that IS real: the shared
-        /// economy/board seed — map bounds, win condition, per-slot start ore/crystal, the 8 resource nodes
-        /// (position/supply/rate/max-gatherers) and the 2 pre-built command centres.
+        /// sync with alpha_map_01.json" with nothing enforcing it. This asserts the shared economy/board seed: map
+        /// bounds, win condition, per-slot start ore/crystal, the 8 resource nodes (position/supply/rate/
+        /// max-gatherers) and the 2 pre-built command centres.
         ///
-        /// <para>DELIBERATELY NOT asserted: start positions and the unit roster. Those have legitimately diverged —
-        /// the shipped map's bases were moved in the editor to ±38.9 with non-zero Z and it gained a `mage` — so
-        /// asserting them would either be red on arrival or force a shipped map to be edited to satisfy a test. That
-        /// divergence is now stated in the mirror's own doc-comment instead of being implied to not exist.</para>
+        /// <para><b>DW-514 — start positions and the unit roster are now IN the pin.</b> They used to be excluded
+        /// because the shipped map had genuinely drifted: its slot bases carried editor-drag residue (±38.88743 /
+        /// ±38.93686 with non-zero Z — asymmetric sub-unit float noise, the signature of a MoveStartPosition drag
+        /// saved into a shipped map) and it fielded a slot-0 `mage` the mirror does not, so the fallback boot and the
+        /// default map were different scenarios. The recorded decision (2026-08-04) cleaned the map rather than
+        /// permanently excusing the divergence, so the exclusion is retired and the agreement is asserted in full —
+        /// re-introducing either half (a dragged start position, an extra unit on one side only) turns this red.</para>
+        ///
+        /// <para>The roster comparison uses the NO-ARGS mirror on purpose: with faction defs threaded the mirror
+        /// resolves each slot's worker id BY CATEGORY, which is a designed difference, not a drift.</para>
         /// </summary>
         [Fact]
         public void FallbackMirror_AgreesWithAlphaMap01_OnTheSharedEconomyLiterals()
@@ -295,7 +302,69 @@ namespace ProjectChimera.Sim.Tests.Sim
                 Assert.Equal(s.Z, m.Z);
                 Assert.Equal(s.PreBuilt, m.PreBuilt);
             }
+
+            // DW-514 — the two halves that used to be excused. Per-slot START POSITIONS…
+            for (int slot = 0; slot <= 1; slot++)
+            {
+                ScenarioPlayerSlot m = SlotOf(mirror, slot);
+                ScenarioPlayerSlot s = SlotOf(shipped, slot);
+                Assert.Equal(s.BaseX, m.BaseX);
+                Assert.Equal(s.BaseZ, m.BaseZ);
+            }
+
+            // …and the pre-placed unit ROSTER, compared as an order-independent multiset of (slot, id, x, z) so a
+            // re-ordered authoring does not read as a divergence but an ADDED or MOVED unit does.
+            Assert.Equal(RosterKeys(shipped), RosterKeys(mirror));
         }
+
+        /// <summary>
+        /// DW-514 — the shipped default map carries NO editor-drag residue in its slot bases. The agreement pin above
+        /// would also be satisfiable by dragging the MIRROR onto whatever the map happens to hold, so this asserts the
+        /// property that actually distinguishes authored values from residue: the two starting positions are exact,
+        /// mirror-symmetric integers on the Z=0 axis. Sub-unit float noise (the -38.88743 / 0.047416687 signature) and
+        /// an asymmetric pair both fail here.
+        /// </summary>
+        [Fact]
+        public void ShippedDefaultMap_StartPositions_AreSymmetricAuthoredValues_NotEditorDragResidue()
+        {
+            ScenarioData? shipped = ScenarioSerializer.LoadFromFile(
+                Path.Combine(ScenariosDir(), "alpha_map_01.json"));
+            Assert.NotNull(shipped);
+
+            ScenarioPlayerSlot s0 = SlotOf(shipped!, 0);
+            ScenarioPlayerSlot s1 = SlotOf(shipped!, 1);
+
+            // Exact integers — a drag writes fractions.
+            foreach (float v in new[] { s0.BaseX, s0.BaseZ, s1.BaseX, s1.BaseZ })
+                Assert.Equal(v, System.MathF.Round(v));
+
+            // Mirror-symmetric about the origin, and both on the Z axis.
+            Assert.Equal(0f, s0.BaseZ);
+            Assert.Equal(0f, s1.BaseZ);
+            Assert.Equal(-s1.BaseX, s0.BaseX);
+            Assert.NotEqual(0f, s1.BaseX); // non-vacuity: a degenerate 0/0 pair is not "symmetric authored"
+
+            // …and each base sits on that slot's own pre-built command centre, which is what makes them AUTHORED
+            // rather than merely tidy — the deposit point and the base building must be the same tile.
+            foreach (ScenarioBuilding b in shipped!.Buildings)
+            {
+                ScenarioPlayerSlot slot = SlotOf(shipped, b.Slot);
+                Assert.Equal(slot.BaseX, b.X);
+                Assert.Equal(slot.BaseZ, b.Z);
+            }
+        }
+
+        /// <summary>DW-514 — a scenario's pre-placed roster as an ORDINALLY-sorted (slot, id, x, z) key list, so the
+        /// roster comparison is order-independent and culture-independent (never <c>OrderBy(t =&gt; t)</c>, whose string
+        /// leg would be culture-sensitive).</summary>
+        private static (int Slot, string UnitId, float X, float Z)[] RosterKeys(ScenarioData s) =>
+            s.Units
+             .Select(u => (u.Slot, u.UnitId, u.X, u.Z))
+             .OrderBy(t => t.Slot)
+             .ThenBy(t => t.UnitId, System.StringComparer.Ordinal)
+             .ThenBy(t => t.X)
+             .ThenBy(t => t.Z)
+             .ToArray();
 
         /// <summary>The player slot declaring <paramref name="slot"/> (slot-keyed lookup, never array position).</summary>
         private static ScenarioPlayerSlot SlotOf(ScenarioData s, int slot)

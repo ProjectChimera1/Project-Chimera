@@ -3,7 +3,7 @@
 # checksum_algo_version: 23
 # Pins the SimChecksum sequence for MultiFactionScenario.Build() (4 active factions via FactionRegistry(4)) stepped via StepOnce at ChecksumInterval=1.
 # Samples: 300 (one line per sim tick).
-# Re-baseline (intentional behavior change only): set CHIMERA_GOLDEN_RECORD=1, run `dotnet test --filter FullyQualifiedName~MultiFaction`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit.
+# Re-baseline (intentional behavior change only): set CHIMERA_GOLDEN_RECORD=1, run `dotnet test --filter FullyQualifiedName~MultiFactionGolden`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit. NEVER widen this to ~MultiFaction — that also re-records the N=8 golden (DW-554).
 1 FCD6662E
 2 F0733D97
 3 43D50D0A

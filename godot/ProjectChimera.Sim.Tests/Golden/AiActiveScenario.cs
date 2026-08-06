@@ -13,11 +13,22 @@ namespace ProjectChimera.Sim.Tests.Golden
     /// MultiFactionScenario.cs:123-127: Player2 holds 3 combat units &lt; the Normal attack threshold of 5 and
     /// 0 ore, so <see cref="AiOpponentSystem"/> runs but no-ops deterministically). This scenario INVERTS that
     /// recipe so the AI at sim index 7 actually acts: Player2 gets 300 ore (&gt; COST_BARRACKS = 100) and a full
-    /// idle wave of 5 combat units, so on tick 1 it scores BuildBarracks (0.85) highest and builds a Barracks,
-    /// then — once it is no longer building — launches an attack with the wave.
+    /// idle wave of 5 combat units.
+    ///
+    /// <para><b>What the AI actually does here (DW-839 — corrected 2026-08-06, verified by driving the fixture, not
+    /// re-derived from the weights).</b> This doc used to claim "on tick 1 it scores BuildBarracks (0.85) highest and
+    /// builds a Barracks, then — once it is no longer building — launches an attack with the wave". Both halves were
+    /// wrong. Player1 fields a CommandCenter and NO units, so <c>EnemyThreatRemains</c> is false while
+    /// <c>EnemyBuildingExists</c> is true and <see cref="AiOpponentSystem"/> scores RAZE highest on tick 1: 0.90,
+    /// ahead of BuildBarracks (0.85) and LaunchAttack (0.65 × 5/10 = 0.325). It runs <c>DoRazeBuildings</c> — all 5
+    /// units are ordered <c>AttackBuilding</c> onto P1's CommandCenter. On tick 2 that wave is no longer AVAILABLE
+    /// (a commanded unit is not conscriptable), so the raze score falls to 0 and BuildBarracks wins: the Barracks
+    /// non-vacuity signal is real, just one tick later and for a different reason. <c>DoLaunchAttack</c> NEVER runs
+    /// in this scenario, so the golden has never pinned the wave path. Pinned by
+    /// <c>AiActiveScenarioRazePathTests</c> so this description cannot silently go stale again.</para>
     ///
     /// The AI's decisions reach <see cref="SimChecksum"/> transitively (building spawn → Alive / Health /
-    /// ConstructionTimer; ore spend → Ore; attack command → unit Position one tick later), so the recorded
+    /// ConstructionTimer; ore spend → Ore; raze command → unit Position one tick later), so the recorded
     /// per-tick checksum sequence pins the AI's behavior.
     ///
     /// CAVEAT (AC1c — the float boundary; do NOT fix here): <see cref="AiOpponentSystem"/> scores actions with
@@ -111,12 +122,18 @@ namespace ProjectChimera.Sim.Tests.Golden
             buildings.ConstructionTimer[p2cc] = Fixed.Zero; // mark complete
             resources.FactionBase[(int)Faction.Player2] = new FixedVec3(Fixed.FromInt(45), Fixed.Zero, Fixed.Zero);
 
-            // P2 ore: 300 > COST_BARRACKS (100) so ScoreBuildBarracks (0.85) wins tick 1 → the AI builds.
+            // P2 ore: 300 > COST_BARRACKS (100) so ScoreBuildBarracks (0.85) is affordable and wins on TICK 2 —
+            // tick 1 goes to the raze at 0.90 (DW-839; see the type doc). Either way the AI builds, which is the
+            // non-vacuity signal this ore exists for.
             resources.AddOre(Faction.Player2, Fixed.FromInt(300));
 
             // ── Player1: a passive, far-off base so the checksum's faction loop covers two ACTIVE factions.
-            //    No P1 units → the P2 wave marches to the AI's hardcoded P1_BASE (-45,0,0) with nothing to fight
-            //    (deterministic, combat-free). P1 takes no actions (no AI plays Player1). ──
+            //    DW-839 — what this arrangement actually exercises: a P1 CommandCenter with NO P1 units is the exact
+            //    input that makes ScoreRazeBuildings win (no defenders, a structure to raze), so the P2 wave is
+            //    ordered AttackBuilding onto THIS building and chases it at (60,60). It is NOT a LaunchAttack wave
+            //    and it never marches on the AI's hardcoded P1_BASE (-45,0,0). Still deterministic and combat-free:
+            //    5 units at speed 3 cannot cross the ~28 units to (60,60) inside the 300-tick (10s) horizon, so
+            //    nothing ever enters weapons range and no damage is dealt. P1 takes no actions (no AI plays P1). ──
             int p1cc = buildings.Create(new FixedVec3(Fixed.FromInt(60), Fixed.Zero, Fixed.FromInt(60)),
                                         Faction.Player1, BuildingType.CommandCenter);
             buildings.ConstructionTimer[p1cc] = Fixed.Zero; // mark complete

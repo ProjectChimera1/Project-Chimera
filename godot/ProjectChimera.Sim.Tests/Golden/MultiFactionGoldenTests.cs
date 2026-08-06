@@ -17,20 +17,30 @@ namespace ProjectChimera.Sim.Tests.Golden
         private const string GoldenFile = "golden-multifaction.golden.txt";
 
         /// <summary>Header so the multi-faction golden self-identifies as Story 1.3a (not the default Story 1.2 /
-        /// GoldenScenario text), and so its embedded re-baseline recipe names the MultiFaction filter — running
-        /// ALL Golden tests in record mode would also rewrite the 1.2 golden.</summary>
+        /// GoldenScenario text), and so its embedded re-baseline recipe names a filter that records THIS golden and
+        /// nothing else — running ALL Golden tests in record mode would also rewrite the 1.2 golden.
+        ///
+        /// <para><b>DW-554 — the filter is <c>~MultiFactionGolden</c>, never the bare <c>~MultiFaction</c>.</b> The
+        /// Story 1.3a original said <c>~MultiFaction</c>, which was unambiguous until DW-387 added
+        /// <see cref="MultiFactionExpansionTests"/> — a substring filter then ALSO matches that class, whose record
+        /// test rewrites <c>golden-multifaction8.golden.txt</c>. Following the old recipe to re-baseline this N=4
+        /// golden would therefore silently re-record the N=8 golden as well, destroying the independent cross-process
+        /// pin DW-387 exists to provide, with nothing in the run output saying so. The narrowed filter still selects
+        /// every test in this class (their FQNs contain "MultiFactionGoldenTests") and selects nothing in that one;
+        /// <c>MultiFactionRebaselineFilterTests</c> asserts both halves so the recipe cannot silently re-widen.</para></summary>
         private static readonly GoldenChecksumReplay.GoldenHeader MfHeader = new(
             "multi-faction golden-checksum baseline (Story 1.3a)",
             "Pins the SimChecksum sequence for MultiFactionScenario.Build() (4 active factions via FactionRegistry(4)) stepped via StepOnce at ChecksumInterval=1.",
-            $"set {GoldenChecksumReplay.RecordEnvVar}=1, run `dotnet test --filter FullyQualifiedName~MultiFaction`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit.");
+            $"set {GoldenChecksumReplay.RecordEnvVar}=1, run `dotnet test --filter FullyQualifiedName~MultiFactionGolden`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit. NEVER widen this to ~MultiFaction — that also re-records the N=8 golden (DW-554).");
 
         /// <summary>
         /// Records the multi-faction golden and, in re-baseline mode (CHIMERA_GOLDEN_RECORD=1), writes it to
         /// the source file under Golden/. In normal mode it does NOT write — it verifies the harness emits the
         /// expected number of samples and that the sequence actually evolves over time.
         ///
-        /// Re-baseline (intentional behavior change only):
-        ///   PowerShell: $env:CHIMERA_GOLDEN_RECORD=1; dotnet test godot/ProjectChimera.Sim.Tests --filter FullyQualifiedName~MultiFaction; Remove-Item Env:\CHIMERA_GOLDEN_RECORD
+        /// Re-baseline (intentional behavior change only) — DW-554: the filter must stay ~MultiFactionGolden; the bare
+        /// ~MultiFaction also matches MultiFactionExpansionTests and would re-record the N=8 golden too:
+        ///   PowerShell: $env:CHIMERA_GOLDEN_RECORD=1; dotnet test godot/ProjectChimera.Sim.Tests --filter FullyQualifiedName~MultiFactionGolden; Remove-Item Env:\CHIMERA_GOLDEN_RECORD
         ///   then: dotnet build (refreshes the embedded copy); git add the golden; commit.
         /// </summary>
         [Fact]
