@@ -31,7 +31,7 @@ namespace ProjectChimera.Sim.Tests.Meta
     /// scenario <c>schema_version</c> is added so it cannot land outside this consistency surface.
     ///
     /// NOTE: <see cref="SimChecksum.AlgoVersion"/> is ALSO canonically pinned (with a known-state hash) by
-    /// <c>SimChecksumCoverageGuardTest.KnownWorldState_ProducesPinnedV9Hash</c>. It is repeated here for a complete
+    /// <c>SimChecksumCoverageGuardTest.KnownWorldState_ProducesPinnedV24Hash</c>. It is repeated here for a complete
     /// single-view registry; a deliberate bump must update BOTH guards (and re-baseline the goldens) in one commit.
     ///
     /// All five stamps are reachable from this Godot-free Tier-1 assembly: <c>src/Core/**</c> (SimChecksum,
@@ -45,6 +45,12 @@ namespace ProjectChimera.Sim.Tests.Meta
         //    same commit as the source change — that edit is the "did the siblings + goldens move too?" checkpoint.
 
         /// <summary>Runtime desync-checksum algorithm version. Bump ⇒ re-baseline ALL goldens (same commit).
+        /// v24 (Story 15-22, Phase C): a RE-RECORD GENERATION MARKER, NOT a fold change — the only entry in this
+        /// list that is. Nothing was added to, removed from, or reordered within the hashed set; twelve bounded
+        /// simulation corrections (DW-548/549/570/658/659/664/674/678/766/803/837/838) moved folded VALUES only,
+        /// and the bump exists so a Phase-B and a Phase-C recording cannot both stamp checksum_algo_version 23
+        /// while holding different bytes. The full per-version history — including v21/v22/v23, which this
+        /// summary predates — lives ONCE on SimChecksum.AlgoVersion's own XML doc; that is authoritative.
         /// v20 (Story 7.12): first-ever fold of the AllianceStore — the sim-owned per-faction team-id mask that
         /// generalizes win resolution to N-faction, team-aware last-team-standing. One team-id Mix per ACTIVE faction
         /// (ascending), immediately AFTER the WinStateStore block and before SimRng. Every existing golden is FFA
@@ -83,7 +89,7 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// (D-1). v8 (Story 2.6): folded per-entity EffectiveArmor (the buffable armor stat). v7 (Story 2.4a): folded
         /// per-entity AbilityCooldownTicks (count-driven). v6 (Story 2.2b): Effective* / Energy / StatusFlagsOf +
         /// the ModifierStore instance state.</summary>
-        private const int ExpectedSimChecksumAlgoVersion = 23;
+        private const int ExpectedSimChecksumAlgoVersion = 24;
 
         /// <summary>Load-time canonical start-state hash algorithm version (lobby handshake value).
         /// v3 (Story 2.9b follow-up): folded ScenarioPlayerSlot.StartCrystal (sim-affecting per-slot start-state).

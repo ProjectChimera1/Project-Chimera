@@ -195,8 +195,10 @@ namespace ProjectChimera.Core
         ///        Loop/array-free scenarios add only leading count/fuel Mix(0) steps — behavior-neutral, covered by
         ///        this story's ONE scheduled re-baseline of ALL goldens. All int → cross-platform safe.
         ///   v18 — Story 7.5 (landed via merge): fold the new <see cref="DslEventQueue"/> — the PENDING next-tick
-        ///        custom-event raises — for the FIRST TIME. Unlike CombatEventQueue/DeathFeed (provably drained
-        ///        within the tick) the queue is live CROSS-TICK sim state: it is non-empty at the checksum boundary
+        ///        custom-event raises — for the FIRST TIME. Unlike CombatEventQueue/DeathFeed (drained within the
+        ///        tick — for the DeathFeed, enforced since DW-766 by <c>DeathFeedDrainSystem</c> at the end of the
+        ///        tick order plus <c>SimulationLoop</c>'s boundary assertion, NOT merely asserted in prose)
+        ///        the queue is live CROSS-TICK sim state: it is non-empty at the checksum boundary
         ///        whenever a raise_event with next_tick=true is awaiting its dequeue, so a peer whose pending
         ///        feedback diverges must desync detectably. Folds AFTER the DslLoopState fold and BEFORE the SimRng
         ///        fold (SimRng stays last, the standing precedent): a leading count, then per entry in enqueue order
@@ -263,8 +265,45 @@ namespace ProjectChimera.Core
         ///        (GatherTarget defaults to -1; Mix(-1) is not a no-op) and would leave the re-baseline
         ///        differential guard with no unperturbed scenario to use as a control; bounded, only scenarios
         ///        that actually gather move. All byte/int/Fixed.Raw → cross-platform safe.
+        ///   v24 — Story 15-22 (Phase C re-baseline batch). READ THIS DIFFERENTLY FROM EVERY ENTRY ABOVE:
+        ///        v24 is a RE-RECORD GENERATION MARKER, NOT A FOLD CHANGE — the first entry in this history
+        ///        that is. NOTHING was added to, removed from, or reordered within the hashed set. The fold
+        ///        code is byte-for-byte the v23 fold; only the folded VALUES move, because twelve bounded
+        ///        simulation corrections landed together in one window. The bump exists solely so that a
+        ///        Phase-B golden and a Phase-C golden cannot both stamp `checksum_algo_version: 23` while
+        ///        holding different bytes — without it nothing distinguishes the two recordings.
+        ///        The twelve corrections whose value movement this version labels:
+        ///          DW-548 trigger-phase kills surface to unit_dies on the following tick (deferred death rail);
+        ///          DW-549 the _prevFlags alive gate no longer swallows a LOGGED death record;
+        ///          DW-570 the flow-field obstacle stamp derives per-building extents instead of a fixed 3x3;
+        ///          DW-658 BuildingStore.Destroy refunds the queued orders and zeroes ProductionQueue/ProductionTimer;
+        ///          DW-659 RecomputeEffectiveStats is wired as a third OnUnitDefinitionApplied subscriber;
+        ///          DW-664 TickNonCombatant's order-wipe gates on PERMANENT non-combatancy (BaseAttackDamage),
+        ///                 not the zero-floored effective stat, so a debuffed combatant keeps its order;
+        ///          DW-674 DeathLog grows losslessly instead of dropping records past 256;
+        ///          DW-678 an all-zero research modifier is no longer installed into every unit's ring;
+        ///          DW-766 the DeathFeed is genuinely drained past the LAST producer (DeathFeedDrainSystem at the
+        ///                 end of the tick order) with the residue credited in the SAME tick, and SimulationLoop
+        ///                 asserts Count == 0 at the boundary — see the v18 note, which cites that invariant;
+        ///          DW-803 the gather walk-stall probe skips a zero-LENGTH step instead of reading it as a hard stop;
+        ///          DW-837 total wipeout loses at any faction count (the ActiveCount &lt; 3 dead guard is gone);
+        ///          DW-838 a below-threshold AI remnant razes even with no live CommandCenter.
+        ///        Empirically only DW-838 moved a committed golden payload (both MultiFaction families, drift from
+        ///        tick 281); the other eleven are unreachable from any recorded scenario and moved nothing.
+        ///        The fold set being unchanged is not a claim of intent — it is pinned, by
+        ///        SimChecksumCoverageGuardTest's known-state hash (which did NOT move across this window) and by
+        ///        ReBaselineDifferentialGuardTests holding green against the UNMODIFIED frozen v22 control.
+        ///        NOTE (corrected 2026-08-06 by the post-merge review — DW-874): an earlier draft of this entry
+        ///        claimed AlgoVersion has NO consumer in godot/src and that a bump only touches golden headers and
+        ///        test pins. That is FALSE. SaveGameFile.cs:68 stamps it into every .chsav header and :121 rejects a
+        ///        mismatch before the body is parsed, so ANY bump — including a pure re-record marker like this one —
+        ///        makes every save written by an older build permanently unloadable. It is correctly NOT part of the
+        ///        MP handshake (that is RulesetHash + CanonicalModelHash.AlgoVersion); the error was the word "no".
+        ///        Costless here (no shipped saves, and the DW-548 fix independently moved SaveGameFile.FormatVersion
+        ///        2 -> 3), but budget for it on the next bump. DW-874 carries the open design question: whether a
+        ///        re-record generation marker should be a separate constant from the one save loading gates on.
         /// </summary>
-        public const int AlgoVersion = 23;
+        public const int AlgoVersion = 24;
 
         /// <summary>
         /// Compute a full-state checksum for desync detection.
@@ -466,6 +505,12 @@ namespace ProjectChimera.Core
                 // QUEUE_DEPTH slots row-major (ascending slot) so a peer divergence in ANY slot — head or waiting —
                 // desyncs detectably, PLUS the head ProductionTimer (.Raw), which drives when the head completes and
                 // was itself never folded. All byte/Fixed.Raw → cross-platform safe.
+                //
+                // DW-658 — this loop runs 0..Count with NO Alive filter, by design (the fold SET must stay stable and
+                // slot-aligned). A DEAD slot therefore still contributes its queue bytes + timer. That used to mean a
+                // razed producer's phantom orders stayed hashed until the slot was recycled; BuildingStore.Destroy now
+                // zeroes the row and the timer at the moment of death, so a dead slot folds a clean zero run instead.
+                // The fix is in Destroy, NOT here — adding an Alive filter would change what is hashed, not its value.
                 int qBase = i * BuildingStore.QUEUE_DEPTH;
                 for (int k = 0; k < BuildingStore.QUEUE_DEPTH; k++)
                     hash = Mix(hash, buildings.ProductionQueue[qBase + k]);
@@ -640,8 +685,10 @@ namespace ProjectChimera.Core
 
             // ── DslEventQueue pending next-tick events (v18, Story 7.5) — after the loop-state fold, before SimRng ──
             // The FIRST-EVER fold of the cross-tick custom-event queue: a raise_event with next_tick=true is LIVE
-            // sim state at the checksum boundary (unlike CombatEventQueue/DeathFeed, which are provably drained
-            // within the tick), so a divergent pending set between peers must desync detectably. Count-prefixed in
+            // sim state at the checksum boundary (unlike CombatEventQueue/DeathFeed, which are drained within the
+            // tick — the DeathFeed's drain is ENFORCED since DW-766: DeathFeedDrainSystem runs past the last producer
+            // and SimulationLoop asserts the feed is empty right here, before this hash is taken), so a divergent
+            // pending set between peers must desync detectably. Count-prefixed in
             // enqueue order: per entry the registry event index, raiser slot, and the fixed MaxEventParams param-raw
             // stride. A null queue folds BYTE-IDENTICALLY to an empty one (a single Mix(0) count — legacy/test
             // callers only; SimulationHost always passes a real queue). All ints → cross-platform safe.

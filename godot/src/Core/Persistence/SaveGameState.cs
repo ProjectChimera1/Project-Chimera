@@ -114,6 +114,14 @@ namespace ProjectChimera.Core.Persistence
         public int[] DirFired = Array.Empty<int>();     // 0/1 per exec
         public int[] DirCooldown = Array.Empty<int>();
         public int   DirFirstTick;
+        // DW-548 (post-merge review fix) — the DEFERRED trigger-phase death rail: four parallel lanes, one entry per
+        // pending unit_dies occurrence. Almost always empty; non-empty exactly at the boundary AFTER a director
+        // run_effect killed something. Not folded into SimChecksum (it never was) and not re-derivable from the
+        // restored world — dropping it lost a whole unit_dies occurrence, and those mutate FOLDED state.
+        public int[] DirCarryVictim = Array.Empty<int>();
+        public int[] DirCarryVictimSlot = Array.Empty<int>();
+        public int[] DirCarryKiller = Array.Empty<int>();
+        public int[] DirCarryKillerSlot = Array.Empty<int>();
 
         // ── DslVarTable ──
         public DslVarTable.Snapshot DslVars = new();
@@ -258,6 +266,11 @@ namespace ProjectChimera.Core.Persistence
         /// rather than silently proceeding, matching the fail-closed posture of the descriptor round-trip checks
         /// (<see cref="CaptureModifiers"/>) — a save that cannot be faithfully represented is not written. Unreachable
         /// today: every caller (the in-match save issue path and the tests) captures between ticks.</para>
+        ///
+        /// <para><b>Scope, DW-548 (post-merge review fix).</b> This guard covers the LOG only. The director's deferred
+        /// trigger-phase death RAIL is non-empty at this very boundary by design, so a green assert here was never
+        /// evidence that no <c>unit_dies</c> record is pending — the rail is captured explicitly in
+        /// <see cref="CaptureDirector"/> instead. Do not read this assert as "no death state is in flight".</para>
         /// </summary>
         private static void AssertDeathLogDrained(EntityWorld world)
         {
@@ -575,6 +588,10 @@ namespace ProjectChimera.Core.Persistence
             for (int i = 0; i < fired.Length; i++) DirFired[i] = fired[i] ? 1 : 0;
             DirCooldown = cd;
             DirFirstTick = d.CaptureFirstTick() ? 1 : 0;
+            // DW-548 (post-merge review fix): the deferred trigger-phase death rail rides along. AssertDeathLogDrained
+            // proves the LOG is empty at this boundary; it says nothing about this rail, which is non-empty by design
+            // for exactly one tick after a director-caused kill.
+            d.CaptureCarriedDeaths(out DirCarryVictim, out DirCarryVictimSlot, out DirCarryKiller, out DirCarryKillerSlot);
         }
 
         private void CaptureLoopState(DslLoopState l)
@@ -951,6 +968,11 @@ namespace ProjectChimera.Core.Persistence
             // or the first resumed tick emits a spurious building_completed / unit_dies edge for every divergence,
             // re-firing non-run_once triggers into folded state. Must stay AFTER RestoreEntities/RestoreBuildings.
             d.ReseedChangeDetection(w);
+
+            // DW-548 (post-merge review fix): and AFTER the reseed — it deliberately leaves the rail empty, so the
+            // saved rail goes back last. Order is load-bearing; reversing these two lines silently drops the rail
+            // again, which is the whole defect.
+            d.RestoreCarriedDeaths(DirCarryVictim, DirCarryVictimSlot, DirCarryKiller, DirCarryKillerSlot);
         }
 
         private void RestoreLoopState(DslLoopState l)
@@ -1028,7 +1050,14 @@ namespace ProjectChimera.Core.Persistence
                     b.Write(e.TicksUntilPeriod); b.Write(e.PeriodsRemaining); b.Write(e.StackCount); b.Write(e.CasterId); b.Write(e.CasterFaction);
                 }
             });
-            Frame(w, Tag.Director, b => { WI(b, DirFired); WI(b, DirCooldown); b.Write(DirFirstTick); });
+            Frame(w, Tag.Director, b =>
+            {
+                WI(b, DirFired); WI(b, DirCooldown); b.Write(DirFirstTick);
+                // DW-548 (post-merge review fix) — appended to the Director frame, which is why SaveGameFile.FormatVersion
+                // moved to 3: a v2 body has no rail lanes here and must fail at the header with the accurate
+                // "older game version" message rather than as a truncated section.
+                WI(b, DirCarryVictim); WI(b, DirCarryVictimSlot); WI(b, DirCarryKiller); WI(b, DirCarryKillerSlot);
+            });
             Frame(w, Tag.DslVars, b =>
             {
                 WS(b, DslVars.GlobalNames); WI(b, DslVars.GlobalTypes); WI(b, DslVars.GlobalRaw0); WI(b, DslVars.GlobalRaw1);
@@ -1218,6 +1247,14 @@ namespace ProjectChimera.Core.Persistence
 
             // ── Director ──
             if (DirCooldown == null || DirFired == null) Fail("director runtime arrays null.");
+            // DW-548 (post-merge review fix): the deferred death rail is four PARALLEL lanes read by index, so a
+            // cardinality mismatch would misattribute a unit_dies occurrence (wrong killer/slot) rather than crash —
+            // reject it here, before RestoreInto seats it. Length 0 is the normal case.
+            if (DirCarryVictim == null || DirCarryVictimSlot == null || DirCarryKiller == null || DirCarryKillerSlot == null)
+                Fail("director deferred-death rail arrays null.");
+            else if (DirCarryVictimSlot.Length != DirCarryVictim.Length || DirCarryKiller.Length != DirCarryVictim.Length
+                     || DirCarryKillerSlot.Length != DirCarryVictim.Length)
+                Fail("director deferred-death rail lane length mismatch.");
         }
 
         private void RequireLen(EA e, int want, Action<string> fail) { if (Ent[(int)e].Length != want) fail($"entity lane {e} length {Ent[(int)e].Length} != {want}."); }
@@ -1256,7 +1293,11 @@ namespace ProjectChimera.Core.Persistence
                         };
                     break;
                 }
-                case Tag.Director: DirFired = RI(b); DirCooldown = RI(b); DirFirstTick = b.ReadInt32(); break;
+                case Tag.Director:
+                    DirFired = RI(b); DirCooldown = RI(b); DirFirstTick = b.ReadInt32();
+                    // DW-548 (post-merge review fix) — the deferred death rail, appended in format v3.
+                    DirCarryVictim = RI(b); DirCarryVictimSlot = RI(b); DirCarryKiller = RI(b); DirCarryKillerSlot = RI(b);
+                    break;
                 case Tag.DslVars:
                     DslVars = new DslVarTable.Snapshot
                     {

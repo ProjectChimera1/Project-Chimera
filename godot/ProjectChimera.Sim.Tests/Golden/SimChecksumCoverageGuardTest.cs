@@ -18,7 +18,7 @@ namespace ProjectChimera.Sim.Tests.Golden
     ///      mutation. If a future story adds a public per-faction array to ResourceStore but forgets to fold it
     ///      into the checksum, mutating that array leaves the hash unchanged and this test FAILS, naming the
     ///      uncovered field. This proves *actual* coverage instead of a hand-maintained list that silently drifts.
-    ///   2. <see cref="KnownWorldState_ProducesPinnedV11Hash"/> — a snapshot/tripwire: a hand-built fixed world
+    ///   2. <see cref="KnownWorldState_ProducesPinnedV24Hash"/> — a snapshot/tripwire: a hand-built fixed world
     ///      hashes to a committed constant. Any unintended change to the algorithm (reordering mixes, adding or
     ///      dropping a field) moves the constant and turns this red, forcing a conscious re-pin + AlgoVersion bump.
     ///
@@ -109,27 +109,31 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// hash still moves.)
         /// </summary>
         [Fact]
-        public void KnownWorldState_ProducesPinnedV23Hash()
+        public void KnownWorldState_ProducesPinnedV24Hash()
         {
-            // Algorithm version must be exactly 23 (DW-78's bounded worker-gather-state fold at v23, on top of
-            // 11.6's production-queue + head-timer fold at v22). If this fails, the const below is stale.
-            Assert.Equal(23, SimChecksum.AlgoVersion);
+            // Algorithm version must be exactly 24 (Story 15-22 Phase C's RE-RECORD GENERATION MARKER — a bump
+            // with NO fold change at all, on top of DW-78's bounded worker-gather-state fold at v23 and 11.6's
+            // production-queue + head-timer fold at v22). If this fails, the const below is stale.
+            Assert.Equal(24, SimChecksum.AlgoVersion);
 
             uint actual = ComputeKnownStateHash();
 
-            // ── Pinned v23 hash for the fixed world built by ComputeKnownStateHash() ──────────────────────────
+            // ── Pinned v24 hash for the fixed world built by ComputeKnownStateHash() ──────────────────────────
             // An intentional SimChecksum algorithm change must update this value AND bump SimChecksum.AlgoVersion.
-            // DW-78's v23 fold is BOUNDED (an entity at the gatherer-inactive default folds ZERO Mix calls), so
-            // whether this pin moves depends entirely on whether the known-state world holds a live gatherer —
-            // unlike v22, which moved it unconditionally via the per-building queue stride. The known-state world
-            // holds NO gatherer, so the value below is DELIBERATELY UNCHANGED from v22: byte-identical across a
-            // version bump is the fold's whole point, and this pin is the cheapest standing proof of it. If a future
-            // edit gives the known-state world a worker, this pin MUST move — and it moving for that reason is
-            // correct, not a regression.
-            const uint ExpectedV23Hash = 0x32911831; // unchanged from v22 — verified gatherer-free (bounded fold no-op)
-            Assert.True(actual == ExpectedV23Hash,
-                $"Known-state v23 checksum changed: expected 0x{ExpectedV23Hash:X8}, actual 0x{actual:X8}. " +
-                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV23Hash to 0x{actual:X8} and bump " +
+            // The value below is DELIBERATELY UNCHANGED across two consecutive bumps now, for two DIFFERENT reasons,
+            // and both are load-bearing:
+            //   v22→v23: DW-78's fold is BOUNDED (an entity at the gatherer-inactive default folds ZERO Mix calls)
+            //            and the known-state world holds NO gatherer, so the added fold was a no-op here. If a
+            //            future edit gives that world a worker, this pin MUST move — correctly, not as a regression.
+            //   v23→v24: Phase C changed NO fold whatsoever — twelve bounded corrections moved folded VALUES only.
+            //            This pin is the instrument that PROVES that claim: the known world state is hand-built and
+            //            touches none of the twelve code paths, so if v24 had quietly added/removed/reordered a
+            //            folded field, this hash would have moved. It did not. Do not "re-pin to make it pass" —
+            //            that would destroy the only standing evidence the Phase C fold set is intact.
+            const uint ExpectedV24Hash = 0x32911831; // unchanged since v22 — see the two reasons above
+            Assert.True(actual == ExpectedV24Hash,
+                $"Known-state v24 checksum changed: expected 0x{ExpectedV24Hash:X8}, actual 0x{actual:X8}. " +
+                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV24Hash to 0x{actual:X8} and bump " +
                 $"SimChecksum.AlgoVersion. If not, you broke the deterministic checksum — investigate.");
         }
 

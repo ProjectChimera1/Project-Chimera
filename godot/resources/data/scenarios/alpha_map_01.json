@@ -10,16 +10,16 @@
       "faction_json": "res://resources/data/factions/alpha_faction.json",
       "start_ore": 200,
       "start_crystal": 100,
-      "base_x": -38.88743,
-      "base_z": 0.047416687
+      "base_x": -45,
+      "base_z": 0
     },
     {
       "slot": 1,
       "faction_json": "res://resources/data/factions/alpha_faction.json",
       "start_ore": 200,
       "start_crystal": 100,
-      "base_x": 38.93686,
-      "base_z": -1.5269203
+      "base_x": 45,
+      "base_z": 0
     }
   ],
   "resource_nodes": [
@@ -148,12 +148,6 @@
       "slot": 0,
       "x": -42,
       "z": 3
-    },
-    {
-      "unit_id": "mage",
-      "slot": 0,
-      "x": -40,
-      "z": 0
     },
     {
       "unit_id": "worker",

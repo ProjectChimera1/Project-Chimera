@@ -14,7 +14,8 @@ namespace ProjectChimera.Core.Sim
 {
     /// <summary>
     /// Net-new, Godot-free composition root for the simulation (Story 1.8a / AR-6). It owns the SoA stores,
-    /// the canonical 16-system tick order (Story 7.11 inserted <c>WinConditionSystem</c> at index 14, after
+    /// the canonical 17-system tick order (DW-766 appended <c>DeathFeedDrainSystem</c> at index 16 — past the LAST
+    /// <c>DeathFeed</c> producer, so the feed is genuinely empty at the checksum boundary; Story 7.11 inserted <c>WinConditionSystem</c> at index 14, after
     /// <c>AiOpponentSystem</c> and immediately before <c>ScenarioDirector</c>; Story 3.13 inserted
     /// <c>HeroXpSystem</c> at index 9, after
     /// <c>ProjectileSystem</c>; Story 3.15 inserted <c>ItemSystem</c> at index 10; Story 4.9 inserted
@@ -41,8 +42,11 @@ namespace ProjectChimera.Core.Sim
         private readonly AiOpponentSystem _ai;
 
         // Story 3.13 — the host-owned transient death feed. Combat + projectile impacts push victim deaths here; the
-        // HeroXpSystem (index 8) drains + clears it each tick. Per-tick transient (empty at checksum time → NOT folded);
+        // HeroXpSystem (index 9) drains + clears it each tick. Per-tick transient (empty at checksum time → NOT folded);
         // ClearForReset empties it (like CombatEvents).
+        // DW-766: index [9] is NOT the last drain — the store's ceiling-collapse kill is reachable from ItemSystem [10]
+        // and the director [15] holds the feed too, so DeathFeedDrainSystem at [16] credits + clears the residue and the
+        // loop asserts Count == 0 at the tick boundary.
         private readonly DeathFeed _deathFeed;
 
         // Story 3.14 — the resolved revival rule (float→Fixed at the load boundary). Owned here and shared BY REFERENCE
@@ -270,11 +274,29 @@ namespace ProjectChimera.Core.Sim
             // Story 4.9 — future-spawn catch-up: every future spawn of a faction with a completed research (training,
             // scenario placement, hero respawn, editor restore/placement) also picks up its cumulative modifier(s).
             World.OnUnitDefinitionApplied += id => ResearchSys.ApplyCompletedResearch(World, id);
+            // DW-659 — the effective-stat RE-MIRROR repair, wired THIRD (after both installers, so it observes every
+            // modifier they just applied). ApplyUnitDefinition re-mirrors Base*→Effective* for AttackDamage/Armor,
+            // discarding every installed modifier's contribution, and ModifierSystem.Tick only recomputes entities
+            // something DIRTIED — so a unit carrying a research / item / aura modifier and NO self-passive silently
+            // lost the bonus on a live in-place re-apply (upgrade / morph / tech re-map / editor restore) until an
+            // unrelated apply/remove happened to re-dirty it. DW-300 repaired only the guarded self-passive path
+            // (InstallSelfPassive's duplicate-skip); this closes the general case for every def-based caller.
+            // NO-OP on a genuine spawn: a fresh/recycled slot's accumulators are zero (ClearEntity wipes them on
+            // destroy), so the recompute is Effective = max(0, Base + 0) — byte-identical to the mirror the mapper
+            // just wrote, for the two stats it writes AND for MaxHealth/MoveSpeed which it does not touch. One
+            // closure alloc at construction (never per-tick), symmetric with the two subscriptions above.
+            World.OnUnitDefinitionApplied += id => Modifiers.RecomputeEffectiveStats(id);
 
-            // ── The canonical 16-system tick order (Story 7.11 inserted WinConditionSystem at index 14, after AI /
+            // DW-766: hoisted out of the array literal below so the end-of-tick DeathFeedDrainSystem at index [16] can
+            // hold the SAME instance (the credit rule lives in exactly one place). Its ctor only assigns fields — it
+            // subscribes to nothing — so constructing it before its neighbours changes no observable ordering.
+            var heroXp = new HeroXpSystem(Heroes, Modifiers, _deathFeed, Buildings, _revivalRuntime, ReviveSpawn, CombatEvents);
+
+            // ── The canonical 17-system tick order (Story 7.11 inserted WinConditionSystem at index 14, after AI /
             //    before ScenarioDirector; Story 2.12 inserted OrderQueueSystem at index 3; Story 3.13
             //    inserted HeroXpSystem at index 9 [now 9, was 8]; Story 4.9 inserted ResearchSystem at index 1,
-            //    immediately after BuildingSystem, shifting GatheringSystem and everything after down by one). The
+            //    immediately after BuildingSystem, shifting GatheringSystem and everything after down by one;
+            //    DW-766 appended DeathFeedDrainSystem at index 16, after the LAST DeathFeed producer). The
             //    registration order IS the determinism contract; SystemOrderTest FAILS on any reorder/add/remove. ──
             _systems = new ISimSystem[]
             {
@@ -311,7 +333,7 @@ namespace ProjectChimera.Core.Sim
                 //    level → reconciles growth via the folded ModifierStore. Clears the feed at end-of-tick. ──
                 // Story 3.14: also drives hero death-detection, the revival countdown, and respawn (via the shared spawn
                 // hook + the resolved revival rule + BuildingStore); announcements ride CombatEvents.
-                new HeroXpSystem(Heroes, Modifiers, _deathFeed, Buildings, _revivalRuntime, ReviveSpawn, CombatEvents), // [9] HeroXpSystem (Combat, FR-7)
+                heroXp,                                                                   // [9] HeroXpSystem (Combat, FR-7)
                 // ── Story 3.15 item / inventory. AFTER the combat/projectile/hero-XP cluster: death-drops
                 //    happen synchronously at KillEntity (via the OnDestroy hook, during the combat/projectile indices) and
                 //    hero respawn happens in HeroXpSystem, so a revived hero is already empty when this resolves pickups.
@@ -327,7 +349,15 @@ namespace ProjectChimera.Core.Sim
                 //    alive counts) and immediately BEFORE ScenarioDirector (so the director's OnVictory escape hatch
                 //    still runs last). Reads final entity/building state, writes the folded WinStateStore verdict. ──
                 WinCon,                                                                   // [14] WinConditionSystem (Core, FR-win)
-                ScenarioDirector,                                                         // [15] ScenarioDirector — runs LAST
+                ScenarioDirector,                                                         // [15] ScenarioDirector — the LAST producer
+                // ── DW-766 end-of-tick DeathFeed drain. Registered LAST, past every producer: the store's DW-325
+                //    ceiling-collapse kill is reachable from ItemSystem [10] and ScenarioDirector [15] holds the feed in
+                //    its run_effect EffectContext, so HeroXpSystem's own [9] Clear could not make the feed empty at the
+                //    checksum boundary — the premise DeathFeed/SimChecksum both state as the reason it is not folded.
+                //    Credits the residue in the SAME tick (folded hero XP no longer lands late) and clears. ANY future
+                //    system that can kill must be registered BEFORE this one; the loop's tick-boundary assertion
+                //    (EnableTickBoundaryInvariants, armed below) fails loudly if one is not. ──
+                new DeathFeedDrainSystem(heroXp),                                          // [16] DeathFeedDrainSystem — runs LAST
             };
 
             // ── Story 7.13 — wire the transient sim-event feed to its four PRODUCERS (all tick before the director,
@@ -343,12 +373,16 @@ namespace ProjectChimera.Core.Sim
             ((HeroXpSystem)_systems[9]).SetDslSimEvents(DslSimEvents);
 
             _loop = new SimulationLoop(World, _systems);
+            // DW-766 — arm the end-of-tick invariant: after every system has ticked, the transient DeathFeed must be
+            // empty (that emptiness is the ONLY reason it is excluded from the fold below). DeathFeedDrainSystem at
+            // index [16] is what makes it hold; this is the tripwire for a producer registered past it.
+            _loop.EnableTickBoundaryInvariants(_deathFeed);
             _loop.EnableChecksums(Buildings, Resources, checksumFactions, Modifiers, Heroes, Items, Nodes, Research, Vars, LoopState, DslEvents, WinState, Alliances, TriggerEnabled); // fold modifier state (v6) + ability cooldowns (v7) + mutable HeroStore (v11) + ItemStore/inventory (v12) + ResourceNodeStore (v13) + ResearchStore (v14) + DslVarTable (v16) + DslLoopState (v17) + DslEventQueue (v18) + WinStateStore (v19) + AllianceStore (v20) + TriggerEnabledStore (v21)
 
             // The sim spine's only host-side log in 1.8a: a one-shot construction diagnostic through the
             // injected seam. NullLogSink no-ops it (tests/server → zero effect on the golden); GodotLogSink
             // prints it for MainScene. NEVER a per-tick log (D6).
-            _log.Info("[SimulationHost] Sim spine constructed (16 systems; ResearchSystem at index 1, OrderQueueSystem at index 4, AbilityCastSystem at index 5, ModifierSystem at index 6, HeroXpSystem at index 9, ItemSystem at index 10, WinConditionSystem at index 14).");
+            _log.Info("[SimulationHost] Sim spine constructed (17 systems; ResearchSystem at index 1, OrderQueueSystem at index 4, AbilityCastSystem at index 5, ModifierSystem at index 6, HeroXpSystem at index 9, ItemSystem at index 10, WinConditionSystem at index 14, DeathFeedDrainSystem at index 16).");
         }
 
         /// <summary>
@@ -467,5 +501,13 @@ namespace ProjectChimera.Core.Sim
         /// the Tier-1 test assembly (and the game assembly), so the test sees this without InternalsVisibleTo.
         /// </summary>
         internal IReadOnlyList<ISimSystem> Systems => _systems;
+
+        /// <summary>
+        /// DW-766 — the transient death feed, for the drain-invariant regression tests only (the same internal posture
+        /// as <see cref="Systems"/>: the sim source compiles INTO the Tier-1 assembly, so no InternalsVisibleTo is
+        /// needed). Nothing in the game reads it through the host — the producers and the drain hold the reference
+        /// directly — so exposing it adds no coupling and mutates nothing.
+        /// </summary>
+        internal DeathFeed Deaths => _deathFeed;
     }
 }

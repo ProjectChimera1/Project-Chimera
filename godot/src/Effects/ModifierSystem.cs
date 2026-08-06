@@ -22,7 +22,16 @@ namespace ProjectChimera.Effects
     /// a debuff can never drive damage/maxhealth/speed negative (a negative effective damage would HEAL through
     /// <c>DamageResolver</c>'s matrix; a negative speed would reverse movement; a negative maxhealth would invert the
     /// Health clamp). "Cannot attack" is modeled by <see cref="StatusFlags.Disarmed"/> — read by <c>CombatSystem</c>'s
-    /// damage choke points since DW-266 — never by a sub-zero stat.</para>
+    /// damage choke points since DW-266 — never by a sub-zero stat.
+    ///
+    /// <para><b>DW-664 — the floor is INDISTINGUISHABLE from an authored zero, so nothing may make an irreversible
+    /// decision from it.</b> A debuff with <c>AttackDamageDelta &lt;= -BaseAttackDamage</c> (authorable:
+    /// <c>Modifier.CheckDelta</c> bounds <c>|delta|</c>) drives <c>EffectiveAttackDamage</c> to exactly the same
+    /// <see cref="Fixed.Zero"/> a worker is authored with, so every reader of the effective stat sees a live
+    /// combatant as a non-combatant for the debuff's duration. That is correct for per-tick ROUTING and wrong for
+    /// anything permanent: <c>CombatSystem.TickNonCombatant</c> used to CANCEL a force-attack order on it. Ask
+    /// <c>EntityWorld.IsPermanentNonCombatant</c> (the authored <c>BaseAttackDamage</c>) for that class of
+    /// decision — this floor is a clamp, not a classification.</para>
     ///
     /// <para><b>Determinism (why the dirty flag + bonuses are private and UNHASHED).</b> They are a transient
     /// recompute optimisation, not sim truth: the recompute is idempotent (<c>Effective = Base + bonus</c> regardless

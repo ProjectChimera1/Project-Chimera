@@ -19,9 +19,19 @@ namespace ProjectChimera.Sim.Tests.Golden
     /// the Story 1.10c Windows↔Linux gate verify. That imposes the same determinism fence as the other
     /// cross-platform goldens (GoldenScenario / MultiFactionScenario): Player2 — the faction
     /// <see cref="ProjectChimera.AI.AiOpponentSystem"/> plays — is STARVED (0 ore, no base, 3 fodder &lt; the
-    /// attack threshold of 5), so the AI's float utility scorer stays inert and the recorded sequence is
-    /// integer/Fixed-only. Giving P2 ore here would let the float scorer build (ScoreBuildBarracks fires at
+    /// attack threshold of 5). Giving P2 ore here would let the float scorer build (ScoreBuildBarracks fires at
     /// ≥100 ore) and would silently turn this into a same-machine-only golden like ai-active.
+    ///
+    /// <para><b>DW-838 (post-merge review, 2026-08-06) — what that fence does and does NOT mean.</b> This doc used
+    /// to say the starvation keeps the scorer INERT. That stopped being true when DW-838 removed
+    /// <c>ScoreRazeBuildings</c>' <c>HasLiveCommandCenter</c> term: from tick 281, once P1's last combat unit dies
+    /// and <c>EnemyThreatRemains</c> flips false, P2's remnant takes the below-threshold stall-breaker and issues
+    /// AttackBuilding orders — that IS the tick-281 drift the Phase-C re-record captured. The golden is still safe
+    /// on both legs, but for a narrower reason: starvation keeps every float-ARITHMETIC branch UNREACHABLE
+    /// (ScoreLaunchAttack's division needs the threshold; the tech scorers' <c>* _techWeight</c> needs a complete
+    /// production building), so every score P2 can produce is a compile-time constant and the only float operations
+    /// executed are exact IEEE comparisons. That precondition is now asserted every run by
+    /// <c>MultiFactionAiFenceTests</c> instead of being asserted here in prose.</para>
     /// </summary>
     public static class MultiFaction8Scenario
     {
@@ -108,10 +118,11 @@ namespace ProjectChimera.Sim.Tests.Golden
             // ── DISTINCT starting ore for every active faction EXCEPT Player2 — writes slot 8, the highest
             //    newly-backed index, proving no OOB against the resized [9] arrays. Player2 stays at 0 ON
             //    PURPOSE (DW-387): P2 is the AI faction, and the cross-platform-golden fence requires the AI
-            //    starved (0 ore + no production building + 3 fodder < the attack threshold of 5) so its float
-            //    utility scorer never acts — same recipe as GoldenScenario / MultiFactionScenario. 120 ore here
-            //    previously let ScoreBuildBarracks (cost 100) fire on tick 1, folding a float-scored decision
-            //    into the sequence, which is exactly what the committed cross-process golden must not encode. ──
+            //    starved (0 ore + no production building + 3 fodder < the attack threshold of 5) — same recipe as
+            //    GoldenScenario / MultiFactionScenario. 120 ore here previously let ScoreBuildBarracks (cost 100)
+            //    fire on tick 1. DW-838 post-merge review: the fence is NOT "the scorer never acts" (since DW-838
+            //    the remnant does raze, from tick 281) — it is "no float ARITHMETIC branch is reachable", which is
+            //    what these three starvation terms buy and what MultiFactionAiFenceTests asserts every run. ──
             resources.AddOre(Faction.Player1, Fixed.FromInt(200));
             resources.AddOre(Faction.Player3, Fixed.FromInt(150));
             resources.AddOre(Faction.Player4, Fixed.FromInt(75));

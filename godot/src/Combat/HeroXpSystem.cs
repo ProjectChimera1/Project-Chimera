@@ -7,7 +7,7 @@ using ProjectChimera.Effects; // ModifierStore / Modifier / StackRule (permanent
 namespace ProjectChimera.Combat
 {
     /// <summary>
-    /// Story 3.13 — the deterministic hero XP / leveling / stat-growth runtime. Runs at tick index 8 (AFTER
+    /// Story 3.13 — the deterministic hero XP / leveling / stat-growth runtime. Runs at tick index 9 (AFTER
     /// <see cref="CombatSystem"/> + <see cref="ProjectileSystem"/> have recorded deaths into the <see cref="DeathFeed"/>).
     /// Each tick:
     ///   1. <b>Credit</b>: drain the <see cref="DeathFeed"/> in recorded order; for each death, for each live hero in
@@ -20,12 +20,22 @@ namespace ProjectChimera.Combat
     ///   3. <b>Grow</b>: reconcile per-level stat growth — desired stacks = <c>Level-1</c> — applying the delta through the
     ///      FOLDED <see cref="ModifierStore.Apply"/> (permanent, <see cref="StackRule.Stack"/>), then set
     ///      <see cref="HeroStore.GrowthStacksApplied"/>. Covers both mid-match level-ups and deploy-at-level-N catch-up.
-    /// Finally <see cref="DeathFeed.Clear"/> the feed (so it is empty at the checksum boundary — NOT folded).
+    /// Finally <see cref="DeathFeed.Clear"/> the feed.
     ///
     /// <para>Determinism: <see cref="Fixed"/> (16.16) only, no <c>float</c>/<c>Mathf</c>/RNG/wall-clock; deaths in recorded
     /// order, heroes in <see cref="HeroStore.FoldOrder"/>. Growth NEVER goes through the unfolded
     /// <c>ModifierSystem.AccumulateBonus</c> — only the folded <see cref="ModifierStore.Apply"/> (bypassing the store
     /// would mutate unhashed sim truth → desync).</para>
+    ///
+    /// <para><b>DW-766 — the drain is NOT the last word on the feed.</b> This system sits at index [9], but the
+    /// <see cref="DeathFeed"/> has producers AFTER it: <c>ItemSystem</c> at [10] reaches
+    /// <see cref="ModifierStore.Apply"/>, whose DW-325 ceiling-collapse kill pushes a record (DW-490 threaded the shared
+    /// feed into the store), and <c>ScenarioDirector</c> at [15] holds the feed in its <c>run_effect</c>
+    /// <c>EffectContext</c>. So this <see cref="Tick"/>'s <see cref="DeathFeed.Clear"/> could NOT make the feed empty at
+    /// the checksum boundary, falsifying the "provably drained ⇒ not folded" premise that
+    /// <see cref="DeathFeed"/>/<see cref="SimChecksum"/> both state, and landing the residue's hero XP a tick late.
+    /// <see cref="DrainResidue"/> closes it: a second, credit-only pass run by <see cref="DeathFeedDrainSystem"/> AFTER
+    /// the last producer.</para>
     /// </summary>
     public sealed class HeroXpSystem : ISimSystem
     {
@@ -80,6 +90,87 @@ namespace ProjectChimera.Combat
             int[] order = _heroes.FoldOrder(); // ascending HeroId — the deterministic hero iteration order
 
             // ── 1. Credit XP for each recorded death, to every hostile hero in range ──────────────────────────────
+            CreditRecordedDeaths(world, order);
+
+            // ── 2 + 3 (+ Story 3.14 death/countdown/respawn). Advance levels + reconcile growth for on-field heroes; run
+            //           the revival state machine for the rest. Runs even with no deaths so the deploy-at-level-N growth
+            //           catch-up applies on the first tick. ────────────────────────────────────────────────────────────
+            for (int oi = 0; oi < order.Length; oi++)
+            {
+                int slot = order[oi];
+                bool live = IsLiveLinkedHero(world, slot, _heroes.EntityId[slot]);
+
+                // Story 3.14: the revival state machine is active only when a RevivalRuleRuntime is wired (the pre-3.14
+                // XP-only callers pass none → the store stays inert and behaves exactly as Story 3.13).
+                if (_revival != null)
+                {
+                    // (a) DEATH DETECTION — an on-field hero whose entity just died (link stale) transitions off-field.
+                    if (_heroes.Alive3_14[slot] && !live) { HandleHeroDeath(slot); continue; }
+                    // (b) A fallen hero: run the revival countdown (only when awaiting AND a revive was ordered).
+                    if (!_heroes.Alive3_14[slot])
+                    {
+                        if (_heroes.AwaitingRevival[slot] && _heroes.RevivalLink[slot] != HeroStore.REVIVAL_NONE)
+                            TickRevivalCountdown(world, slot, dt);
+                        continue;
+                    }
+                }
+                else if (!live)
+                {
+                    // Pre-3.14 behaviour: a hero whose entity is dead / link-stale must NOT keep leveling from banked XP.
+                    continue;
+                }
+
+                // On-field & live: level + reconcile growth (ReconcileGrowth re-checks the live link internally).
+                AdvanceLevels(world, slot, _heroes.EntityId[slot]);
+                ReconcileGrowth(world, slot);
+            }
+
+            // ── Feed is per-tick transient: clear the records this pass consumed. Producers registered AFTER this
+            //    system (ItemSystem [10], ScenarioDirector [15]) can still push afterwards — DrainResidue, run past
+            //    the last producer by DeathFeedDrainSystem, is what actually makes the feed empty at the checksum
+            //    boundary (DW-766). ──
+            _deaths.Clear();
+        }
+
+        /// <summary>
+        /// DW-766 — the SECOND, credit-only drain pass, run by <see cref="DeathFeedDrainSystem"/> AFTER the last
+        /// <see cref="DeathFeed"/> producer (past <c>ScenarioDirector</c> at index [15], not merely past
+        /// <c>ItemSystem</c> at [10]). Credits every record pushed after this system's own <see cref="Tick"/> to the
+        /// hostile heroes in range — through the SAME <see cref="CreditRecordedDeaths"/> implementation, never a second
+        /// copy of the rule — and then <see cref="DeathFeed.Clear"/>s the feed, so it is genuinely EMPTY at the checksum
+        /// boundary. That is the invariant <see cref="DeathFeed"/> and <see cref="SimChecksum"/> both cite as the reason
+        /// the feed is excluded from the fold; before this pass the claim was false for an
+        /// <c>ItemSystem</c>-driven ceiling collapse or a director <c>run_effect</c> kill.
+        ///
+        /// <para><b>Credit only — level/growth deliberately stay at index [9] next tick.</b> Running
+        /// <see cref="AdvanceLevels"/>/<see cref="ReconcileGrowth"/> here would (a) re-enter
+        /// <see cref="ModifierStore.Apply"/> AFTER the feed was cleared, whose own ceiling-collapse kill would push a
+        /// NEW record and re-open the very hole this closes, and (b) raise <c>hero_level</c> into the transient
+        /// <c>DslSimEventFeed</c> after <c>ScenarioDirector</c> already drained and cleared it — breaking that feed's
+        /// identical empty-at-the-boundary posture. Banking the XP is what the ruling requires ("hero XP must not land
+        /// a tick late"); the level advance lands at [9] on the next tick, exactly when it did before this fix, and the
+        /// credit-only pass writes nothing but the already-folded <see cref="HeroStore.Xp"/>.</para>
+        ///
+        /// <para>A tick with no residue is a strict no-op (the early return), so every tick whose deaths were all
+        /// recorded before index [9] — which is every recorded golden — is bit-identical to the pre-fix runtime.</para>
+        /// </summary>
+        public void DrainResidue(EntityWorld world)
+        {
+            if (_deaths.Count == 0) return; // no post-[9] producer fired this tick → strict no-op
+
+            CreditRecordedDeaths(world, _heroes.FoldOrder());
+            _deaths.Clear();
+        }
+
+        /// <summary>
+        /// The single XP-credit implementation (Story 3.13 step 1), shared by <see cref="Tick"/> and
+        /// <see cref="DrainResidue"/>: drain the <see cref="DeathFeed"/> in recorded order and, for each death, credit
+        /// every live link-valid hero in <paramref name="order"/> on a hostile faction, in range and below its max
+        /// level. Writes ONLY <see cref="HeroStore.Xp"/> — no modifier install, no event push — so it can never itself
+        /// produce a death record.
+        /// </summary>
+        private void CreditRecordedDeaths(EntityWorld world, int[] order)
+        {
             int deaths = _deaths.Count;
             for (int d = 0; d < deaths; d++)
             {
@@ -129,42 +220,6 @@ namespace ProjectChimera.Combat
                     _heroes.Xp[slot] = Fixed.FromRaw((int)sum);
                 }
             }
-
-            // ── 2 + 3 (+ Story 3.14 death/countdown/respawn). Advance levels + reconcile growth for on-field heroes; run
-            //           the revival state machine for the rest. Runs even with no deaths so the deploy-at-level-N growth
-            //           catch-up applies on the first tick. ────────────────────────────────────────────────────────────
-            for (int oi = 0; oi < order.Length; oi++)
-            {
-                int slot = order[oi];
-                bool live = IsLiveLinkedHero(world, slot, _heroes.EntityId[slot]);
-
-                // Story 3.14: the revival state machine is active only when a RevivalRuleRuntime is wired (the pre-3.14
-                // XP-only callers pass none → the store stays inert and behaves exactly as Story 3.13).
-                if (_revival != null)
-                {
-                    // (a) DEATH DETECTION — an on-field hero whose entity just died (link stale) transitions off-field.
-                    if (_heroes.Alive3_14[slot] && !live) { HandleHeroDeath(slot); continue; }
-                    // (b) A fallen hero: run the revival countdown (only when awaiting AND a revive was ordered).
-                    if (!_heroes.Alive3_14[slot])
-                    {
-                        if (_heroes.AwaitingRevival[slot] && _heroes.RevivalLink[slot] != HeroStore.REVIVAL_NONE)
-                            TickRevivalCountdown(world, slot, dt);
-                        continue;
-                    }
-                }
-                else if (!live)
-                {
-                    // Pre-3.14 behaviour: a hero whose entity is dead / link-stale must NOT keep leveling from banked XP.
-                    continue;
-                }
-
-                // On-field & live: level + reconcile growth (ReconcileGrowth re-checks the live link internally).
-                AdvanceLevels(world, slot, _heroes.EntityId[slot]);
-                ReconcileGrowth(world, slot);
-            }
-
-            // ── Feed is per-tick transient: clear so it is empty at the checksum boundary (NOT folded). ──
-            _deaths.Clear();
         }
 
         /// <summary>Story 3.14: an on-field hero's entity has died. Transition the PERSISTED row (never recycled) into

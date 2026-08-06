@@ -1,6 +1,6 @@
 # Project Chimera — golden-checksum replay baseline (Story 1.2).
 # Format: "<tick> <hashHex8>" per line — tick decimal, hash 8 uppercase hex digits (no 0x).
-# checksum_algo_version: 23
+# checksum_algo_version: 24
 # Pins today's SimChecksum sequence for GoldenScenario.Build() stepped via StepOnce at ChecksumInterval=1.
 # Samples: 300 (one line per sim tick).
 # Re-baseline (intentional behavior change only): set CHIMERA_GOLDEN_RECORD=1, run `dotnet test --filter FullyQualifiedName~GoldenChecksumReplay`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit.

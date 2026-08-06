@@ -83,6 +83,15 @@ namespace ProjectChimera.Core.Bootstrap
             _ctx.FlowFieldSys    = flowFieldSys;
             _ctx.FlowFieldBridge = flowFieldBridge;
 
+            // DW-570: feed the flow-field obstacle stamp the SAME BuildingNavFootprint policy NavObstacleManager
+            // bakes the navmesh with (same ResolveBuildingDef closure, below), so a large building no longer has
+            // NavigationServer paths routing around its true extent while flow-field-steered units only avoid a
+            // fixed 6×6 box. Wired HERE, before the FlowFieldInit phase's first RebuildObstacles, because the
+            // source is consulted during that rebuild; the closure reads _ctx at CALL time, so it does not matter
+            // that ScenarioLoad has not populated SlotFactionDefs yet.
+            flowFieldSys.SetBuildingFootprintSource(
+                BuildingNavFootprint.ObstacleExtentSource(_ctx.Buildings, ResolveBuildingDef));
+
             // NavObstacleManager watches BuildingStore and rebakes on any change. Kept on the context so
             // TerrainBrush can call MarkDirty() after sculpting.
             // DW-169: the definition resolver + asset registry let it derive a building's footprint from its def

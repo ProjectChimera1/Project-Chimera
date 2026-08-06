@@ -53,6 +53,17 @@ namespace ProjectChimera.Navigation
         /// <para>X is tried before Z unconditionally; that fixed order (not "the longer axis", not "the axis with more
         /// clearance") is what makes the outcome independent of the caller and identical on every lockstep peer and
         /// same-seed replay.</para>
+        ///
+        /// <para><b>DW-803 — the RETURN VALUE IS NOT A BLOCKED-PROBE.</b> This method answers "where may the mover
+        /// stand", not "was the mover blocked", and those two questions have the same answer for different reasons: a
+        /// return of <paramref name="from"/> means hard stop (case 4) when the step had LENGTH, but means "nothing was
+        /// asked" when <paramref name="desired"/> equals <paramref name="from"/> — a degenerate segment has
+        /// <c>col == colEnd</c> and <c>row == rowEnd</c>, so <see cref="PathabilityGrid.IsBlockedOnSegmentOutside"/>'s
+        /// walk loop never runs, it reports NOT blocked, and case 2 returns immediately without the grid being
+        /// consulted at all (this holds even when <paramref name="from"/> is itself inside a wall). Any caller that
+        /// infers "blocked" from <c>Resolve(...) == from</c> MUST therefore exclude the zero-length step first —
+        /// <c>GatheringSystem.TickWalkStall</c> did not, and surrendered a folded gather reservation every time a snare
+        /// zeroed a worker's move speed on clear ground.</para>
         /// </summary>
         /// <param name="pathability">The resolved blocked-cell grid, or <c>null</c> on a flat/legacy map.</param>
         /// <param name="from">The mover's position BEFORE the step (the sweep origin and the hard-stop fallback).</param>

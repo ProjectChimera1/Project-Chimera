@@ -447,17 +447,27 @@ namespace ProjectChimera.Core.Sim
         /// <c>Apply(Validate(BuildFallbackMirror()).Value)</c> — one writer path, one token type — with behavior
         /// parity to the legacy writer pinned by <c>FallbackMirrorParityTests</c> (SimChecksum + key world facts).
         ///
-        /// <para><b>Relationship to alpha_map_01.json (DW-222 / DW-324 — corrected 2026-08-03).</b> This model was
-        /// SEEDED from that map, but "keep these literals in sync with alpha_map_01.json" is no longer the contract and
-        /// was never enforced: the shipped map has legitimately drifted (its start positions were moved in the editor to
-        /// ±38.9 with non-zero Z, and it gained a `mage` unit). This is an INDEPENDENT, always-valid safety net, not a
-        /// copy of a shipped map. What IS pinned as agreeing — by
-        /// <c>FallbackMirrorParityTests.FallbackMirror_AgreesWithAlphaMap01_OnTheSharedEconomyLiterals</c> — is the
-        /// economy/board seed both are expected to share: map bounds, win condition, per-slot start ore/crystal, the 8
-        /// resource nodes, and the 2 pre-built command centres. Start positions and the unit roster are DELIBERATELY
-        /// excluded from that pin (already divergent, and the mirror's own values are pinned separately by
+        /// <para><b>Relationship to alpha_map_01.json (DW-222 / DW-324 / DW-514 — reconciled 2026-08-06).</b> This model
+        /// was SEEDED from that map and the two had DRIFTED apart: the shipped map's start positions carried editor-drag
+        /// residue (asymmetric sub-unit float noise at ±38.9 with non-zero Z) and it had gained a slot-0 `mage`, so the
+        /// fallback boot and the default map described DIFFERENT starting states — "the game is always playable" and
+        /// "the default map" exercised different scenarios. DW-514's recorded decision (2026-08-04) cleaned the map:
+        /// its bases are back at the symmetric authored ±45 / 0 (the same tiles its own pre-built command centres sit
+        /// on) and the extra mage is gone, so the two now describe the SAME scenario again.
+        ///
+        /// This is still an INDEPENDENT, always-valid safety net rather than a generated copy of a shipped map — the
+        /// mirror must keep validating even if that map is edited or deleted — but the agreement is now ASSERTED, not
+        /// assumed: <c>FallbackMirrorParityTests.FallbackMirror_AgreesWithAlphaMap01_OnTheSharedEconomyLiterals</c>
+        /// pins map bounds, win condition, per-slot start ore/crystal, the 8 resource nodes, the 2 pre-built command
+        /// centres, AND (DW-514) the per-slot start positions and the pre-placed unit roster. Editing either side
+        /// alone turns Tier-1 red. The mirror's own base literals are additionally pinned by
         /// <c>FallbackMirror_StartPositions_MatchTheScenarioLoadPhaseMarkerFallback</c>, which is what
-        /// <c>ScenarioLoadPhase</c>'s marker fallback duplicates).</para>
+        /// <c>ScenarioLoadPhase</c>'s marker fallback duplicates.
+        ///
+        /// One deliberate asymmetry remains and is NOT a drift: the mirror resolves each slot's worker unit_id BY
+        /// CATEGORY from the threaded faction defs (see <see cref="WorkerIdForSlot"/>), so with a custom faction its
+        /// ids differ from the map's literal <c>"worker"</c>. The roster pin therefore compares the NO-ARGS mirror,
+        /// which is the conventional-id baseline both shipped factions satisfy.</para>
         /// </summary>
         /// <param name="slotFactionDefs">Optional (review follow-up) — the per-slot resolved faction defs (indexed
         /// by <c>(int)Faction</c>, the same length-5 array the applier holds). When threaded, each slot's worker

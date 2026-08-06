@@ -23,6 +23,14 @@ namespace ProjectChimera.Sim.Tests.Skirmish
     /// AND cross-faction. Conclusion recorded 2026-08-04: the Godot-free chain preserves all 3 slot-0 units at every
     /// stage, so any recurrence of the in-engine symptom is in the Godot-coupled layer (or was transient) — and any
     /// FUTURE sim-side drop of an authored unit turns this red instead of needing an engine drive to notice.
+    ///
+    /// <para><b>DW-514 (2026-08-06).</b> That slot-0 mage is no longer in the shipped map: reconciling
+    /// <c>alpha_map_01</c> with <c>ScenarioApplier.BuildFallbackMirror</c> dropped it (and cleaned the dragged slot
+    /// bases), so the map now authors two workers per slot, symmetrically. The assertions here are therefore DERIVED
+    /// from the authored map instead of hardcoding "3 and 2" — the property under test was never the number 3, it was
+    /// "every authored unit reaches Play at its authored spot", which is now checked per-position and stays honest
+    /// across future authoring changes. The non-vacuity fence in <c>AssertAuthoredArmyIsIntact</c> is what stops a
+    /// derived expectation from degenerating into a test of nothing.</para>
     /// </summary>
     public class SkirmishLaunchSpawnParityTests
     {
@@ -96,34 +104,53 @@ namespace ProjectChimera.Sim.Tests.Skirmish
             return list;
         }
 
+        /// <summary>The authored rows for <paramref name="slot"/> as an ordinally-sorted (x, z) key list.</summary>
+        private static (float X, float Z)[] AuthoredSpots(ScenarioData built, int slot) =>
+            built.Units.Where(u => u.Slot == slot).Select(u => (u.X, u.Z))
+                 .OrderBy(t => t.X).ThenBy(t => t.Z).ToArray();
+
+        /// <summary>The alive entities of <paramref name="f"/> as the same ordinally-sorted (x, z) key list.</summary>
+        private static (float X, float Z)[] AliveSpots(SimulationHost host, Faction f) =>
+            AliveOf(host, f).Select(u => (u.X, u.Z))
+                 .OrderBy(t => t.X).ThenBy(t => t.Z).ToArray();
+
+        /// <summary>
+        /// THE DW-463 property: every unit the map authors for a start position is alive at exactly that position.
+        /// Derived from the authored source-with-numbers rather than hardcoded counts — DW-514 reconciled the shipped
+        /// roster with <c>BuildFallbackMirror</c> (the asymmetric slot-0 mage was dropped), and a hardcoded expectation
+        /// has to be hand-edited on every authoring change, which is precisely how a REAL drop gets normalized away
+        /// instead of caught. Non-vacuous: each slot must author at least one unit.
+        /// </summary>
+        private static void AssertAuthoredArmyIsIntact(LaunchResult launch)
+        {
+            foreach (int slot in new[] { 0, 1 })
+            {
+                (float X, float Z)[] authored = AuthoredSpots(launch.Built, slot);
+                Assert.NotEmpty(authored); // non-vacuity fence — an empty roster must never satisfy this
+                Assert.Equal(authored, AliveSpots(launch.Host, (Faction)(slot + 1)));
+            }
+        }
+
         [Fact]
         public void SameFactionLaunch_SpawnsEveryAuthoredUnit_ThroughApplyResetAndTicks()
         {
             LaunchResult launch = Launch("alpha");
 
-            // The shipped map authors 3 units for start position 0 (worker/worker/MAGE) and 2 for position 1 —
-            // assert against the authored source-with-numbers, not a screenshot impression.
-            Assert.Equal(3, launch.Built.Units.Count(u => u.Slot == 0));
-            Assert.Equal(2, launch.Built.Units.Count(u => u.Slot == 1));
-            Assert.Contains(launch.Built.Units, u => u.UnitId == "mage" && u.Slot == 0);
-
-            // Boot apply: all 3 + 2 spawn (the mage at x=-40,z=0 included).
-            Assert.Equal(3, AliveOf(launch.Host, Faction.Player1).Count);
-            Assert.Equal(2, AliveOf(launch.Host, Faction.Player2).Count);
-            Assert.Contains(AliveOf(launch.Host, Faction.Player1), u => u.X == -40f && u.Z == 0f);
+            // Boot apply: every authored unit of both slots spawns, at its authored spot.
+            AssertAuthoredArmyIsIntact(launch);
 
             // Play entry (the ResetToAuthoredStart spine): ClearForReset + re-apply — nothing may be lost.
             launch.Host.ClearForReset();
             launch.Applier.Apply(launch.Validated);
-            Assert.Equal(3, AliveOf(launch.Host, Faction.Player1).Count);
-            Assert.Equal(2, AliveOf(launch.Host, Faction.Player2).Count);
-            Assert.Contains(AliveOf(launch.Host, Faction.Player1), u => u.X == -40f && u.Z == 0f);
+            AssertAuthoredArmyIsIntact(launch);
 
-            // Live ticks: no tick-0/1 system may despawn an authored starting unit.
+            // Live ticks: no tick-0/1 system may despawn an authored starting unit. (Counts only — a tick may
+            // legitimately nudge a position via steering.)
             launch.Host.StepOnce();
             launch.Host.StepOnce();
-            Assert.Equal(3, AliveOf(launch.Host, Faction.Player1).Count);
-            Assert.Equal(2, AliveOf(launch.Host, Faction.Player2).Count);
+            foreach (int slot in new[] { 0, 1 })
+                Assert.Equal(launch.Built.Units.Count(u => u.Slot == slot),
+                             AliveOf(launch.Host, (Faction)(slot + 1)).Count);
         }
 
         [Fact]
@@ -131,21 +158,19 @@ namespace ProjectChimera.Sim.Tests.Skirmish
         {
             LaunchResult launch = Launch("beta");
 
-            // P2 chose beta: the 2 authored alpha workers remap to beta's Worker-role unit — still 2 units, and
-            // P1's slot-0 army (incl. the mage) is untouched by the other slot's remap.
-            Assert.Equal(3, launch.Built.Units.Count(u => u.Slot == 0));
-            Assert.Equal(2, launch.Built.Units.Count(u => u.Slot == 1));
+            // P2 chose beta: its authored alpha workers remap to beta's Worker-role unit — same count, same spots,
+            // and P1's slot-0 army is untouched by the other slot's remap.
             Assert.All(launch.Built.Units.Where(u => u.Slot == 1), u => Assert.Equal("forgehand", u.UnitId));
-
-            Assert.Equal(3, AliveOf(launch.Host, Faction.Player1).Count);
-            Assert.Equal(2, AliveOf(launch.Host, Faction.Player2).Count);
+            Assert.All(launch.Built.Units.Where(u => u.Slot == 0), u => Assert.Equal("worker", u.UnitId));
+            AssertAuthoredArmyIsIntact(launch);
 
             launch.Host.ClearForReset();
             launch.Applier.Apply(launch.Validated);
             launch.Host.StepOnce();
             launch.Host.StepOnce();
-            Assert.Equal(3, AliveOf(launch.Host, Faction.Player1).Count);
-            Assert.Equal(2, AliveOf(launch.Host, Faction.Player2).Count);
+            foreach (int slot in new[] { 0, 1 })
+                Assert.Equal(launch.Built.Units.Count(u => u.Slot == slot),
+                             AliveOf(launch.Host, (Faction)(slot + 1)).Count);
         }
     }
 }
