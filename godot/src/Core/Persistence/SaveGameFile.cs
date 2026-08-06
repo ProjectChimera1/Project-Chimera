@@ -39,8 +39,12 @@ namespace ProjectChimera.Core.Persistence
         /// without this bump it would parse and then be rejected by <c>SaveGameState.Validate</c> as a CORRUPT save
         /// ("entity lane count mismatch") and would still be listed as readable by <c>SaveGameHeader</c> — the bump
         /// makes an older save fail with the accurate "made by an older game version" message, at the header, before
-        /// the body is read.</para></summary>
-        public const ushort FormatVersion = 2;
+        /// the body is read.</para>
+        /// <para>v3 (DW-548, post-merge review fix): the Director section gained the four deferred trigger-phase
+        /// death-rail lanes. A v2 body ends the Director frame after <c>DirFirstTick</c>, so without this bump it
+        /// would fail as a TRUNCATED SECTION — technically fail-closed, but with a "corrupt save" message for a save
+        /// that is merely older. Same reasoning as v2.</para></summary>
+        public const ushort FormatVersion = 3;
 
         /// <summary>Max player slots in a persisted launch record — a fail-closed corruption bound on the slot count.</summary>
         public const int MaxSlots = 64;

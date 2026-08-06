@@ -256,9 +256,18 @@ namespace ProjectChimera.Core
         // They are carried HERE rather than left in the DeathLog on purpose. The log's "EMPTY at the tick boundary"
         // invariant is load-bearing twice over — it is why the log stays OUT of SimChecksum, and it is what
         // SaveGameState.CaptureFrom asserts (DW-551) — so carrying records across the boundary inside the log would
-        // silently create unfolded cross-boundary sim state. This rail is director-owned change-detection state, the
-        // exact posture _prevFlags already has: mid-match-mutable, NOT folded, NOT serialized, re-derived (here:
-        // dropped) by ReseedChangeDetection on a save restore.
+        // silently create unfolded cross-boundary sim state. This rail is director-owned change-detection state with
+        // the posture _prevFlags has in every respect but one: mid-match-mutable and NOT folded — but, unlike
+        // _prevFlags, it CANNOT be re-derived from the restored world, so it IS serialized (Director section).
+        //
+        // POST-MERGE REVIEW FIX (2026-08-06) — it originally was not, and ReseedChangeDetection dropped it on
+        // restore. That made this the one buffer in the tick deliberately NON-EMPTY across the checksum boundary
+        // while being neither hashed nor saved: exactly the combination DW-766's tick-boundary invariant was added
+        // to forbid. A trigger-phase kill on tick T plus an in-match save at the T/T+1 boundary — the boundary
+        // SaveGameState.CaptureFrom's AssertDeathLogDrained explicitly PERMITS, because the log is empty there while
+        // this rail is not — silently lost that unit_dies occurrence on resume, and unit_dies subscribers mutate
+        // FOLDED state (DSL vars, run_effect damage, spawns), so the restored run diverged from the uninterrupted
+        // one. See CaptureCarriedDeaths / RestoreCarriedDeaths.
         //
         // Lifecycle: UpdateSnapshots moves the post-collect records here and wipes the log; the NEXT CollectEvents
         // drains this rail alongside that tick's log and zeroes it. It therefore holds at most ONE tick's
@@ -387,6 +396,49 @@ namespace ProjectChimera.Core
         }
 
         /// <summary>
+        /// DW-548 (post-merge review fix) capture: the DEFERRED trigger-phase death rail's live prefix, as four
+        /// parallel lanes of <see cref="CarriedDeathCount"/> entries. Unlike <see cref="_prevFlags"/> this state is
+        /// NOT re-derivable from the restored world — the victims are already dead in it and their killer attribution
+        /// is gone — so a save that omitted it dropped a whole <c>unit_dies</c> occurrence on resume. Fresh copies.
+        /// </summary>
+        public void CaptureCarriedDeaths(out int[] victim, out int[] victimSlot, out int[] killer, out int[] killerSlot)
+        {
+            victim     = Prefix(_carryVictim,     _carryCount);
+            victimSlot = Prefix(_carryVictimSlot, _carryCount);
+            killer     = Prefix(_carryKiller,     _carryCount);
+            killerSlot = Prefix(_carryKillerSlot, _carryCount);
+        }
+
+        /// <summary>How many deferred trigger-phase deaths the rail currently holds (0 at every boundary but the one
+        /// following a director-caused kill). Exposed so the save layer and its guards can see the real state.</summary>
+        public int CarriedDeathCount => _carryCount;
+
+        private static int[] Prefix(int[] lane, int count)
+        {
+            var copy = new int[count];
+            System.Array.Copy(lane, copy, count);
+            return copy;
+        }
+
+        /// <summary>
+        /// DW-548 (post-merge review fix) restore: re-seat the deferred death rail from a save. MUST be called AFTER
+        /// <see cref="ReseedChangeDetection"/>, which deliberately zeroes the rail (it re-runs
+        /// <see cref="UpdateSnapshots"/>, whose own carry step would otherwise re-derive a bogus rail from the
+        /// restored world's — empty — log). Lane lengths must agree; the save layer validates that before calling.
+        /// </summary>
+        public void RestoreCarriedDeaths(int[] victim, int[] victimSlot, int[] killer, int[] killerSlot)
+        {
+            _carryCount = 0;
+            if (victim == null || victimSlot == null || killer == null || killerSlot == null) return;
+            int n = victim.Length;
+            if (victimSlot.Length != n || killer.Length != n || killerSlot.Length != n)
+                throw new System.InvalidOperationException(
+                    "SP load: the deferred death rail's lanes have mismatched lengths — refusing to restore a rail " +
+                    "that would emit misattributed unit_dies events.");
+            for (int k = 0; k < n; k++) CarryDeath(victim[k], victimSlot[k], killer[k], killerSlot[k]);
+        }
+
+        /// <summary>
         /// Story 11.3 (SP load) — review fix: re-seed the change-detection snapshots from the RESTORED world/buildings.
         ///
         /// <para><see cref="_prevFlags"/> and <see cref="_prevBuildingDone"/> are mid-match-mutable but are NOT
@@ -408,11 +460,14 @@ namespace ProjectChimera.Core
         {
             System.Array.Clear(_prevFlags, 0, _prevFlags.Length);
             System.Array.Clear(_prevBuildingDone, 0, _prevBuildingDone.Length);
-            // DW-548 — the deferred death rail is director state that no save carries (like _prevFlags), and unlike
-            // the flags it cannot be re-derived from the restored world. A restore therefore starts with NO pending
-            // trigger-phase deaths: the same "clean log, no spurious post-restore unit_dies" posture the log itself
-            // has always had. `_collectedDeaths` is zeroed first so UpdateSnapshots does not read a horizon that
-            // belongs to a tick this director is no longer in, and the rail is dropped again after.
+            // DW-548 — the deferred death rail cannot be re-derived from the restored world, so this method LEAVES IT
+            // EMPTY and the save layer re-seats the saved one immediately after, via RestoreCarriedDeaths (post-merge
+            // review fix; it used to be dropped outright, silently losing a pending unit_dies occurrence and with it
+            // every folded mutation that occurrence would have driven). `_collectedDeaths` is zeroed first so
+            // UpdateSnapshots does not read a horizon belonging to a tick this director is no longer in, and the rail
+            // this method's own UpdateSnapshots call would derive from the restored world is discarded after — only
+            // the SAVED rail is authoritative. A caller with no saved rail (a fresh LoadScenario) gets the historical
+            // clean-slate posture unchanged.
             _collectedDeaths = 0;
             UpdateSnapshots(world);
             _carryCount = 0;
