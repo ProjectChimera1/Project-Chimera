@@ -66,6 +66,82 @@ namespace ProjectChimera.Core
     }
 
     /// <summary>
+    /// DW-645 — the EXECUTABLE half of the <see cref="UnitCommand"/> doc comments above: does this command PERSIST
+    /// as an entity's <see cref="EntityWorld.CommandState"/>, or is it a fire-and-forget wire INTENT that is consumed
+    /// at apply time and never stored?
+    ///
+    /// <para><b>Why this exists.</b> The two kinds look identical on the wire but have completely different downstream
+    /// obligations. A command that persists becomes a per-tick control state, so EVERY system that switches on
+    /// <c>CommandState</c> — above all <c>CombatSystem.Tick</c> — must give it an explicit arm. A command that does not
+    /// persist is handled once by <c>OrderApplier</c> and no per-tick router ever sees it. DW-206 was exactly the
+    /// failure of that distinction: <see cref="UnitCommand.Build"/> persisted but had no arm in <c>CombatSystem</c>, so
+    /// it silently inherited idle auto-combat through the switch's <c>default:</c> and a building worker chased
+    /// enemies. Fixing that one member closed the INSTANCE; this classification plus the guards that consume it close
+    /// the CLASS — a newly appended member is unclassified here, which turns the suite red until someone decides which
+    /// kind it is, and if it persists the completeness guard then demands its explicit routing arms.</para>
+    ///
+    /// <para><b>Appending a member?</b> Add its arm below. If it PERSISTS you must also give it an explicit case in
+    /// <c>CombatSystem.Tick</c>'s command switch AND in <c>CombatSystem.TickNonCombatant</c>'s router (an intentionally
+    /// inert command joins the no-op case group there) — <c>CombatCommandSwitchCompletenessTests</c> enforces both.</para>
+    ///
+    /// <para>Classification-only: no sim state, no <see cref="SimChecksum"/> input, never called per tick.</para>
+    /// </summary>
+    public static class UnitCommandTraits
+    {
+        /// <summary>
+        /// True when <paramref name="cmd"/> is stored in <c>EntityWorld.CommandState</c> and drives per-tick behaviour;
+        /// false when it is consumed at apply time (a building order, an item action, a cast intent, or a wire-only
+        /// spelling that <c>OrderApplier</c> rewrites) and never reaches a per-tick router.
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// The value is not a declared <see cref="UnitCommand"/> member, or it is a member appended without being
+        /// classified here. The throw is the DW-645 red test: classify the new member rather than deleting it.
+        /// </exception>
+        public static bool PersistsAsCommandState(UnitCommand cmd)
+        {
+            switch (cmd)
+            {
+                // ── PERSISTING — stored in CommandState; every per-tick command router must case it explicitly ──
+                case UnitCommand.Idle:           // the resting state (also the fallback every invalid order reverts to)
+                case UnitCommand.Move:           // pure navigation
+                case UnitCommand.AttackMove:     // navigation + engage en route
+                case UnitCommand.Stop:           // stationary, engage in range
+                case UnitCommand.HoldPosition:   // stationary anchored, engage in range
+                case UnitCommand.Build:          // walking to a build site — BuildingSystem drives it (DW-206)
+                case UnitCommand.AttackTarget:   // force-attack one entity
+                case UnitCommand.AttackBuilding: // force-attack one building
+                case UnitCommand.Patrol:         // walk a waypoint ring
+                case UnitCommand.Follow:         // track a friendly
+                case UnitCommand.PickupItem:     // hero walking to a ground item — ItemSystem drives it
+                    return true;
+
+                // ── NOT PERSISTING — consumed by OrderApplier (or the system it delegates to) and never stored ──
+                case UnitCommand.PatrolAppend:   // wire-only: rewritten to Patrol before it is stored
+                case UnitCommand.CastAbility:    // intent: writes PendingCast*, restores the prior CommandState
+                case UnitCommand.Train:          // building order
+                case UnitCommand.SetRally:       // building order
+                case UnitCommand.ReviveHero:     // building order
+                case UnitCommand.UseItem:        // hero inventory action, applied immediately
+                case UnitCommand.DropItem:       // hero inventory action, applied immediately
+                case UnitCommand.BuyItem:        // shop-building order
+                case UnitCommand.StartResearch:  // building order
+                case UnitCommand.CancelResearch: // faction-wide research order
+                case UnitCommand.DslEvent:       // names a custom-event registry index, not an entity
+                case UnitCommand.Concede:        // names a faction, not an entity
+                case UnitCommand.CancelTrain:    // building order
+                    return false;
+
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(cmd), cmd,
+                        "DW-645: this UnitCommand is not classified as persisting/non-persisting. A newly appended " +
+                        "member must be added to UnitCommandTraits.PersistsAsCommandState; if it PERSISTS as a " +
+                        "CommandState it also needs explicit arms in CombatSystem.Tick's command switch and in " +
+                        "CombatSystem.TickNonCombatant, or it silently inherits idle auto-combat (the DW-206 defect).");
+            }
+        }
+    }
+
+    /// <summary>
     /// Worker/gatherer state machine. Inactive = non-gatherer (combat unit).
     /// </summary>
     public enum GatherState : byte
@@ -664,6 +740,37 @@ namespace ProjectChimera.Core
         public readonly int[]         GateClosedTicks;
 
         /// <summary>
+        /// DW-532 — the <see cref="Core.GatherState.MovingToResource"/> leg's STALL bookkeeping, in two ranges:
+        /// <list type="bullet">
+        ///   <item><c>&gt;= 0</c> — CONSECUTIVE whole ticks this worker has been unable to advance toward its reserved
+        ///         node at all (the <see cref="Pathability"/> grid hard-stops its whole step, both wall-slide axes
+        ///         included). Reset to 0 the instant it makes ground, on every fresh node assignment, on arrival, and on
+        ///         every <c>GatheringSystem.ReleaseGatherSlot</c>. While in this range the worker HOLDS one of its
+        ///         node's <c>ResourceNodeStore.AssignedGatherers</c> slots.</item>
+        ///   <item><c>&lt; 0</c> (<c>GatheringSystem.SLOT_YIELDED</c>) — the streak reached
+        ///         <c>GatheringSystem.WALK_STALL_GRACE_TICKS</c> and the worker HANDED THE RESERVATION BACK while
+        ///         staying en route. A stranded worker (spawned inside a blocked region the validator only warns about,
+        ///         then confined by DW-148) therefore stops consuming a node's capacity forever; it re-claims a slot
+        ///         only if it actually arrives, which is why it keeps walking rather than re-idling into a churn loop.</item>
+        /// </list>
+        ///
+        /// <para>Whole ticks, never dt-accumulated and never wall-clock (the <c>IncomeTicksElapsed</c> discipline), and
+        /// the stall test itself is the shared pure-<see cref="Fixed"/> <c>Navigation.CheckedStep.Resolve</c>, so it is
+        /// cross-platform-identical. NOT folded into <see cref="SimChecksum"/> and NOT persisted by
+        /// <c>SaveGameState</c> — the exact <see cref="GateClosedTicks"/> posture (only the node-side
+        /// <c>AssignedGatherers</c> is folded). RUNTIME state, NOT def-derived: defaulted in <see cref="Create"/> (the
+        /// mandatory recycle-trap reset), and NOT snapshot residue (a delete→undo restarts the window).</para>
+        ///
+        /// <para>The one KNOWN residual of not persisting it: a save taken while a worker is stranded records the node
+        /// counter WITHOUT that worker (it had yielded), but the restore re-applies the world first, so the worker comes
+        /// back at 0 — "holding" — and re-yields a second later, decrementing a slot it never took. Floor-guarded, so
+        /// the counter cannot go negative; the effect is bounded at one extra gatherer admitted to that node, versus the
+        /// permanent capacity LOSS on every map that not bounding the leg at all produced. Closing it properly means a
+        /// save lane for this array (the DW-581 family), deliberately out of scope here.</para>
+        /// </summary>
+        public readonly int[]         GatherWalkStallTicks;
+
+        /// <summary>
         /// DW-634 — TRUE while this worker still owes its production building's RALLY POINT a first leg, i.e. it was
         /// trained from a building carrying a rally point and has not yet reached it. <c>GatheringSystem.TickIdle</c>
         /// skips (does NOT re-target) a worker whose flag is set, so an explicit player rally beats the automatic
@@ -736,18 +843,28 @@ namespace ProjectChimera.Core
         // the folded Flags/alive state already covers divergence transitively. Golden-neutral: generation starts at 0,
         // so PackRef(id) == id for every never-recycled entity.
         //
-        // NOT persisted by SaveGameState (unlike BuildingStore.Generation, which backs packed refs stored in folded,
-        // persisted arrays like CommandTarget): the ONLY cross-tick holder of a packed ENTITY ref today is
-        // WinConditionSystem's apply-time _leaderRef, which the SP load path re-packs during its fresh re-apply
-        // (ClearForReset zeroes generations; apply-time spawns append at generation 0), and a resolved leader's death
-        // latches its folded WinStateStore verdict on the same tick it dies — so no save boundary can separate a
-        // bumped generation from its already-persisted consequence. If a future story stores packed ENTITY refs in
-        // persisted state, this array must join the SaveGameState entity lanes.
+        // PERSISTED by SaveGameState as an entity lane (DW-581), joining the already-persisted BuildingStore /
+        // HeroStore / ItemStore generations. The generation IS the ABA-safety of a packed ref, so a save boundary that
+        // dropped it resumed the world with every slot back at generation 0 — a stale packed ref then resolved against
+        // whatever now occupies the slot, the exact retarget PackRef exists to prevent. That was harmless only by
+        // construction (the one cross-tick holder of a packed ENTITY ref was WinConditionSystem's apply-time
+        // _leaderRef, which the load path re-packs at generation 0 during its fresh re-apply — matching a live leader,
+        // whose slot is necessarily generation 0 — and a resolved leader's death latches its folded WinStateStore
+        // verdict on the same tick it dies). Persisting the lane retires that argument instead of resting on it, so a
+        // future story MAY store a packed entity ref in persisted or folded state. NOTE that this array is the one
+        // per-slot field Create() does NOT re-default on the fresh-append path (it relies on "generation 0 past the
+        // high-water mark"), so the restore overlay must be TOTAL — see SaveGameState.RestoreEntities.
         public readonly int[] Generation;
 
         /// <summary>Bit width of the id (slot) half of a packed entity reference — <see cref="MAX_ENTITIES"/> (4096)
         /// is exactly <c>1 &lt;&lt; 12</c>, so every id fits in the low 12 bits and the generation occupies the rest.</summary>
         public const int REF_SLOT_BITS = 12;
+
+        /// <summary>DW-581 — the largest <see cref="Generation"/> value <see cref="PackRef"/> can encode and
+        /// <see cref="TryResolveRef"/> read back: anything larger shifts into the sign bit, so a live entity's own
+        /// freshly-packed ref would stop resolving. Unreachable in the sim (a slot would have to be recycled 2^19
+        /// times in one match), but it is the fail-closed bound the persisted generation lane is validated against.</summary>
+        public const int MAX_PACKABLE_GENERATION = int.MaxValue >> REF_SLOT_BITS;
         private const int REF_SLOT_MASK = (1 << REF_SLOT_BITS) - 1;
 
         private int _nextId;
@@ -832,6 +949,7 @@ namespace ProjectChimera.Core
             CarryResourceType = new ResourceKind[MAX_ENTITIES]; // Story 4.7 — defaults to Ore (0)
             CarryCapacity  = new Fixed[MAX_ENTITIES];
             GateClosedTicks = new int[MAX_ENTITIES];            // DW-80 — closed-gate streak (NOT folded; 0 == fresh, no Array.Fill needed)
+            GatherWalkStallTicks = new int[MAX_ENTITIES];       // DW-532 — MovingToResource stall streak / yielded sentinel (NOT folded; 0 == fresh)
             RallyMovePending = new bool[MAX_ENTITIES];          // DW-634 — outstanding rally first leg (NOT folded; false == fresh, no Array.Fill needed)
             BuildTarget    = new int[MAX_ENTITIES];
 
@@ -987,6 +1105,12 @@ namespace ProjectChimera.Core
             // worker early, or (worse) never, depending on the corpse. Unfolded, so this line's ONLY teeth are
             // RecycledSlot_CarriesNoPriorGateClosedStreak.
             GateClosedTicks[id] = 0;
+            // DW-532: MANDATORY recycle-reset of the walk-stall streak / yielded sentinel. A recycled slot must NEVER
+            // inherit the prior occupant's partial stall window — and, far worse, must never inherit its SLOT_YIELDED
+            // sentinel, which would make the brand-new worker's very first ReleaseGatherSlot skip a decrement it really
+            // does owe (the 1.12/1.13/2.6 SoA-recycle defect class, here leaking the counter DW-207 exists to protect).
+            // Unfolded, so this line's ONLY teeth are RecycledSlot_CarriesNoPriorWalkStallState.
+            GatherWalkStallTicks[id] = 0;
             // DW-634: MANDATORY recycle-reset of the outstanding-rally-leg flag. A recycled slot must NEVER inherit the
             // prior occupant's pending rally (the 1.12/1.13/2.6 SoA-recycle defect class) — a brand-new worker spawned
             // WITHOUT a rally would inherit a corpse's true flag and then refuse to gather until it happened to stand
@@ -1058,8 +1182,19 @@ namespace ProjectChimera.Core
         /// collision-radius clamp). Does NOT set <c>Health</c>/<c>Speed</c> (those are <see cref="Create"/> ctor
         /// args) nor <c>MeshType</c> (its faction-def index differs per caller), and does NOT touch worker gather
         /// state — callers own those. Allocation-free: value-type writes only, no LINQ/closures/boxing.
+        ///
+        /// <para><b>DW-54 — <paramref name="pinnedAbilities"/>.</b> Every field here is re-derived from
+        /// <paramref name="def"/> EXCEPT the ability slots when a caller supplies a pin. Those slots hold link-time
+        /// <c>AbilityRegistry</c> INDICES (back-filled by <see cref="UnitDefinition.ResolveAbilities"/>), not authored
+        /// data, so a def whose resolution moved/cleared since the caller captured its state must not be allowed to
+        /// silently re-write them — see <see cref="PinnedAbilityWiring"/>. Null (every spawn path) ⇒ byte-identical
+        /// pre-DW-54 behavior: the def's own resolution is used.</para>
         /// </summary>
-        public void ApplyUnitDefinition(int id, UnitDefinition def)
+        /// <param name="id">The already-<see cref="Create"/>d slot to map onto.</param>
+        /// <param name="def">The definition every mapped field is derived from.</param>
+        /// <param name="pinnedAbilities">DW-54: a previously-captured ability resolution that OVERRIDES the def's own
+        /// (see <see cref="PinnedAbilityWiring"/>). Null ⇒ derive from <paramref name="def"/> (the spawn-path default).</param>
+        public void ApplyUnitDefinition(int id, UnitDefinition def, PinnedAbilityWiring? pinnedAbilities = null)
         {
             VisionRange[id]  = Fixed.FromFloat(def.VisionRange);
             AttackRange[id]  = Fixed.FromFloat(def.AttackRange);
@@ -1116,22 +1251,55 @@ namespace ProjectChimera.Core
             // stay 0 from Create (ready). Excess ids beyond the cap were already dropped by ResolveAbilities.
             MaxEnergy[id] = Fixed.FromFloat(def.MaxEnergy);
             Energy[id]    = MaxEnergy[id];
-            byte abN = (byte)System.Math.Min(def.AbilityIndices.Length, MAX_ABILITIES_PER_UNIT);
-            AbilityCount[id] = abN;
-            int abApplyBase = id * MAX_ABILITIES_PER_UNIT;
-            for (int s = 0; s < abN; s++)
-                AbilityId[abApplyBase + s] = def.AbilityIndices[s];
-
-            // Story 2.6 (A2): the per-entity passive registration, partitioned by activation at scenario link
-            // (UnitDefinition.ResolveAbilities). Authored/peer-identical → NOT folded (the AbilityId posture).
-            AuraAbilityIndex[id]        = def.AuraAbilityIndex;
-            OnHitAbilityIndex[id]       = def.OnHitAbilityIndex;
-            SelfPassiveAbilityIndex[id] = def.SelfPassiveAbilityIndex;
+            // Story 2.6 (A2): the castable slots + the per-entity passive registration, partitioned by activation at
+            // scenario link (UnitDefinition.ResolveAbilities). Authored/peer-identical → NOT folded (the AbilityId
+            // posture; AbilityCount only bounds the v7 cooldown fold). DW-54: written from the pin when one is
+            // supplied, else from the def — a single write site either way, still BEFORE the seam below.
+            WriteAbilityWiring(id, pinnedAbilities, def);
 
             // Story 2.6: fire the spawn-install seam LAST — every field the installer reads (SelfPassiveAbilityIndex,
             // faction, position) is now set. The subscriber (wired in SimulationHost) installs a while_alive
             // self-passive exactly once per def-based spawn. Symmetric with the OnDestroy seam; A2-safe (single mapper).
             OnUnitDefinitionApplied?.Invoke(id);
+        }
+
+        /// <summary>
+        /// DW-54: the SINGLE write site for an entity's ability wiring — the castable slots (<see cref="AbilityId"/> /
+        /// <see cref="AbilityCount"/>) and the three passive registrations. Sourced from <paramref name="pinned"/> when
+        /// a caller supplies a previously-captured resolution (<see cref="RestoreUnit"/>), else from
+        /// <paramref name="def"/>'s own link-time resolution (every spawn path — byte-identical to pre-DW-54).
+        /// Always called BEFORE <see cref="OnUnitDefinitionApplied"/> fires, so the while-alive installer reads the
+        /// same <see cref="SelfPassiveAbilityIndex"/> that ends up in the SoA. Slots past the written count keep
+        /// <see cref="Create"/>'s −1 (the pre-existing contract — the count is what bounds every reader).
+        /// </summary>
+        private void WriteAbilityWiring(int id, PinnedAbilityWiring? pinned, UnitDefinition? def)
+        {
+            int abApplyBase = id * MAX_ABILITIES_PER_UNIT;
+            byte abN;
+            if (pinned != null)
+            {
+                abN = (byte)System.Math.Min(pinned.Count, MAX_ABILITIES_PER_UNIT);
+                for (int s = 0; s < abN; s++)
+                    AbilityId[abApplyBase + s] = pinned.ActiveAt(s);
+                AuraAbilityIndex[id]        = pinned.AuraIndex;
+                OnHitAbilityIndex[id]       = pinned.OnHitIndex;
+                SelfPassiveAbilityIndex[id] = pinned.SelfPassiveIndex;
+            }
+            else if (def != null)
+            {
+                // Excess ids beyond the cap were already dropped by ResolveAbilities; the Min is belt-and-braces.
+                abN = (byte)System.Math.Min(def.AbilityIndices.Length, MAX_ABILITIES_PER_UNIT);
+                for (int s = 0; s < abN; s++)
+                    AbilityId[abApplyBase + s] = def.AbilityIndices[s];
+                AuraAbilityIndex[id]        = def.AuraAbilityIndex;
+                OnHitAbilityIndex[id]       = def.OnHitAbilityIndex;
+                SelfPassiveAbilityIndex[id] = def.SelfPassiveAbilityIndex;
+            }
+            else
+            {
+                return; // Nothing to source from — leave Create's defaults (0 slots, −1 passives) untouched.
+            }
+            AbilityCount[id] = abN;
         }
 
         /// <summary>
@@ -1154,11 +1322,17 @@ namespace ProjectChimera.Core
         /// caller-owned fields the def mapper does not write (MeshType / gather state / carry capacity / supply), and
         /// the raw combat stats read ONLY by the def-less restore branch. A def-based unit needs no per-field combat
         /// capture: <see cref="RestoreUnit"/> re-derives all of it from the def through <see cref="ApplyUnitDefinition"/>.
-        /// Godot-free (Core layer) so it is reachable from a Tier-1 test. No allocation beyond the returned value.
+        /// Godot-free (Core layer) so it is reachable from a Tier-1 test.
+        ///
+        /// <para><b>DW-54:</b> the one exception to "re-derive it from the def" is the ability RESOLUTION, which is
+        /// pinned here by value (<see cref="CaptureAbilityWiring"/>) because the def is a live shared roster object an
+        /// editor session can mutate, swap, or re-resolve under a long-lived undo entry. Allocation-free except for a
+        /// unit that actually carries abilities/passives (an editor-time action, never the tick).</para>
         /// </summary>
         public UnitSnapshot SnapshotUnit(int id) => new UnitSnapshot
         {
             Def           = SourceDefinition[id],
+            Abilities     = CaptureAbilityWiring(id),
             Position      = Position[id],
             Faction       = FactionOf[id],
             // Capture the authored BASE health/speed (NOT Effective): RestoreUnit feeds these to Create (which sets
@@ -1183,6 +1357,26 @@ namespace ProjectChimera.Core
         };
 
         /// <summary>
+        /// DW-54: pin entity <paramref name="id"/>'s LIVE ability resolution (castable slots + the three passive
+        /// registrations) so <see cref="RestoreUnit"/> can replay it verbatim instead of re-deriving it from a def
+        /// whose <c>AbilityIndices</c> may since have been re-resolved, cleared, or replaced. Returns the shared
+        /// <see cref="PinnedAbilityWiring.None"/> — no allocation — for the common unit that carries neither a
+        /// castable ability nor a passive.
+        /// </summary>
+        private PinnedAbilityWiring CaptureAbilityWiring(int id)
+        {
+            int aura = AuraAbilityIndex[id], onHit = OnHitAbilityIndex[id], self = SelfPassiveAbilityIndex[id];
+            int n = AbilityCount[id];
+            if (n > MAX_ABILITIES_PER_UNIT) n = MAX_ABILITIES_PER_UNIT; // defensive; the mapper already capped it
+            if (n <= 0 && aura < 0 && onHit < 0 && self < 0) return PinnedAbilityWiring.None;
+
+            int captureBase = id * MAX_ABILITIES_PER_UNIT;
+            var active = n > 0 ? new int[n] : System.Array.Empty<int>();
+            for (int s = 0; s < n; s++) active[s] = AbilityId[captureBase + s];
+            return new PinnedAbilityWiring(active, aura, onHit, self);
+        }
+
+        /// <summary>
         /// Story 3.17: re-create an entity captured by <see cref="SnapshotUnit"/> (the editor delete→undo path).
         /// Returns the new entity id, or −1 if the world is full (graceful — no partial state). For a def-based unit
         /// every def-derived authored field (armor, passives, abilities/Energy, feedback, tags, attack domain,
@@ -1192,6 +1386,12 @@ namespace ProjectChimera.Core
         /// restored from the snapshot's raw stats (today's behavior). The caller-owned residue (MeshType / gather
         /// state / carry capacity / supply) is replayed verbatim AFTER the mapper, so worker overrides survive —
         /// identical to the <c>DoSpawnWorker</c>/<c>DoSpawnCombatUnit</c> place path.
+        ///
+        /// <para><b>DW-54:</b> the snapshot's PINNED ability resolution (<see cref="UnitSnapshot.Abilities"/>) is fed
+        /// to the mapper rather than re-derived, so an undo that lands after the def was edited in place, swapped in
+        /// the roster, or re-resolved against a different/absent registry still restores the abilities the deleted
+        /// unit actually had — instead of a changed set, or silently none. The mapper writes the pin BEFORE the
+        /// passive-install seam fires, so the installed while-alive passive always matches the SoA slot.</para>
         /// </summary>
         public int RestoreUnit(in UnitSnapshot snap)
         {
@@ -1201,8 +1401,9 @@ namespace ProjectChimera.Core
             if (snap.Def != null)
             {
                 // A2: re-derive every def-derived authored field through the single mapper (fires the passive-install
-                // seam; Destroy already cleared the old modifiers, so no double-install).
-                ApplyUnitDefinition(id, snap.Def);
+                // seam; Destroy already cleared the old modifiers, so no double-install). DW-54: the ability wiring is
+                // the one field group the mapper takes from the snapshot instead of the def.
+                ApplyUnitDefinition(id, snap.Def, snap.Abilities);
             }
             else
             {
@@ -1216,6 +1417,10 @@ namespace ProjectChimera.Core
                 ArmorTypeOf[id]           = snap.ArmorType;
                 VisionRange[id]           = snap.VisionRange;
                 SplashRadius[id]          = snap.SplashRadius;
+                // DW-54: this branch never runs the mapper, so replay the pinned wiring directly. A def-less unit can
+                // only ever have Create's empty wiring today (nothing but ApplyUnitDefinition writes those slots), so
+                // this is a no-op in practice — it exists so the two restore branches cannot drift.
+                WriteAbilityWiring(id, snap.Abilities, null);
             }
 
             // Replay the caller-owned residue verbatim (worker SupplyCost=0/GatherState/CarryCapacity + MeshType) so
@@ -1279,6 +1484,33 @@ namespace ProjectChimera.Core
         /// </summary>
         public bool IsAlive(int id) =>
             id >= 0 && id < _nextId && (Flags[id] & EntityFlags.Alive) != 0;
+
+        /// <summary>
+        /// DW-643 — the SINGLE "can this unit deal damage?" test, so the two systems that partition the roster on it
+        /// can never disagree about the same unit.
+        ///
+        /// <para><see cref="ProjectChimera.Combat.CombatSystem"/> excludes a NON-combatant from every acquisition /
+        /// engagement path and <see cref="ProjectChimera.AI.AiOpponentSystem"/> refuses to conscript one into a wave.
+        /// Those two used to be spelled differently — <c>== Fixed.Zero</c> vs <c>&gt; Fixed.Zero</c> — which are exact
+        /// complements ONLY while <see cref="EffectiveAttackDamage"/> is non-negative. That held by accident, resting
+        /// on <see cref="ProjectChimera.Effects.ModifierSystem.RecomputeEntity"/>'s zero-floor, which the SoA-direct
+        /// writers (notably the save-restore overlay) do not run. Under a negative value the old pair CONTRADICTED:
+        /// combat saw a combatant (negative != zero) while the AI saw a non-combatant. Routing both through this pair
+        /// makes the partition structural, so a future unclamped writer can produce a wrong classification but never
+        /// two DIFFERENT ones.</para>
+        ///
+        /// <para>Bounds-guarded like <see cref="IsAlive"/>, with no liveness term of its own (every caller already
+        /// gates on <see cref="IsAlive"/>) — the stat, not the entity, is what this answers.</para>
+        /// </summary>
+        public bool CanDealDamage(int id) =>
+            id >= 0 && id < MAX_ENTITIES && EffectiveAttackDamage[id] > Fixed.Zero;
+
+        /// <summary>
+        /// The exact complement of <see cref="CanDealDamage"/> (DW-643): a unit that cannot deal damage, so combat
+        /// routes it through the movement-only path instead of any engagement branch. Out-of-range ids answer
+        /// <c>true</c> — the conservative side, matching <see cref="CanDealDamage"/>'s <c>false</c>.
+        /// </summary>
+        public bool IsNonCombatant(int id) => !CanDealDamage(id);
 
         /// <summary>
         /// DW-184 (the Story 2.13 AC3.4 pattern, applied to entities) — pack a live entity id into a
@@ -1354,6 +1586,7 @@ namespace ProjectChimera.Core
             Array.Clear(HeroIndex);             Array.Clear(GatherState);           Array.Clear(GatherTarget);
             Array.Clear(CarryAmount);           Array.Clear(CarryResourceType);     Array.Clear(CarryCapacity);         Array.Clear(BuildTarget);
             Array.Clear(GateClosedTicks);       // DW-80 (0 == the fresh-ctor state)
+            Array.Clear(GatherWalkStallTicks);  // DW-532 (0 == the fresh-ctor state: no streak, reservation held)
             Array.Clear(RallyMovePending);      // DW-634 (false == the fresh-ctor state)
             Array.Clear(Generation);            // DW-184 — recycle generations restart at 0 (the fresh-ctor state)
             Array.Clear(_freeList);

@@ -761,6 +761,98 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Null(err);
         }
 
+        // ── DW-573: deep-chain stack safety (explicit-stack iterative cycle DFS) ──
+
+        /// <summary>A research entry whose only content is the one valid level every field check needs, so a
+        /// bulk-built graph contributes NO field-check errors and the assertions below can be exact.</summary>
+        private static ResearchDefinition ChainNode(string id, params string[] prereqs) =>
+            new()
+            {
+                Id = id,
+                Prerequisites = prereqs,
+                Levels = new List<ResearchLevel> { new ResearchLevel { TimeTicks = 10 } },
+            };
+
+        [Fact]
+        public void DeepResearchPrerequisiteChain_100kDeep_AcyclicFindsNoCycle_NoStackOverflow()
+        {
+            // DW-573 regression: Visit was a plain recursive DFS — the identical stack-overflow class DW-59 removed
+            // from TechTreeValidator.Visit, copied verbatim into this validator. One C# call-stack frame per depth
+            // level, so a creator-authored (or malicious-scale) research chain this deep overflowed the call stack
+            // during faction load, and a StackOverflowException kills the test host process uncatchably (this test
+            // crashes the whole run against the recursive version). The explicit-stack rewrite bounds depth by heap
+            // memory instead. r0 requires r1 requires r2 … so the FIRST list entry drives the full descent.
+            var def = new FactionDefinition();
+            const int depth = 100_000;
+            for (int i = 0; i < depth; i++)
+                def.Research.Add(ChainNode($"r{i}", i + 1 < depth ? new[] { $"r{i + 1}" } : Array.Empty<string>()));
+
+            var errors = ResearchValidator.Validate(def);
+
+            // The graph is clean, so the ONLY complaint is the per-faction count cap this deliberately blows past
+            // (structural sanity ceiling, not a cycle) — and crucially, no cycle error and no crash.
+            string capError = Assert.Single(errors);
+            Assert.Contains("exceeding", capError);
+            Assert.DoesNotContain("research cycle", capError);
+        }
+
+        [Fact]
+        public void DeepResearchPrerequisiteChain_100kDeep_CycleClosingAtTheDeepEnd_StillDetectedWithExactChainTail()
+        {
+            // The cycle sits at the BOTTOM of the chain, so the DFS must survive the full 100k-frame descent before
+            // it can even reach it — and the first-fail message must still name the exact closing pair (path-slice
+            // extraction unchanged by the DW-573 iterative rewrite). The deepest research points back at its parent:
+            // r99999 requires r99998, which is Gray on the path → "r99998 -> r99999 -> r99998".
+            var def = new FactionDefinition();
+            const int depth = 100_000;
+            for (int i = 0; i < depth; i++)
+                def.Research.Add(ChainNode($"r{i}", i + 1 < depth ? new[] { $"r{i + 1}" } : new[] { $"r{depth - 2}" }));
+
+            var errors = ResearchValidator.Validate(def);
+
+            // Cycle first (Validate appends it ahead of the count cap), then the same structural cap error.
+            Assert.Equal(2, errors.Count);
+            Assert.Equal($"research cycle: r{depth - 2} -> r{depth - 1} -> r{depth - 2}.", errors[0]);
+            Assert.Contains("exceeding", errors[1]);
+        }
+
+        [Fact]
+        public void DeepChain_MidChainSiblingBranches_TraversalOrderAndBlackSkipUnchanged()
+        {
+            // Order-preservation guard for the DW-573 rewrite: a node with TWO prerequisites must examine them in
+            // array order, fully retreating (blackening) the first subtree before descending the second, and a Black
+            // re-encounter must be skipped silently — the first cycle found in that DFS order is the ONE reported
+            // (first-fail), byte-identical message included. Well under MaxResearchPerFaction, so the cycle error
+            // stands alone.
+            var def = new FactionDefinition();
+            // root → left (clean, shared leaf) then root → right → right2 → right (the cycle the DFS reaches
+            // SECOND); leaf is re-encountered Black via right2.
+            def.Research.Add(ChainNode("root", "left", "right"));
+            def.Research.Add(ChainNode("left", "leaf"));
+            def.Research.Add(ChainNode("leaf"));
+            def.Research.Add(ChainNode("right", "right2"));
+            def.Research.Add(ChainNode("right2", "leaf", "right"));
+
+            var errors = ResearchValidator.Validate(def);
+
+            string cycle = Assert.Single(errors);
+            Assert.Equal("research cycle: right -> right2 -> right.", cycle);
+        }
+
+        [Fact]
+        public void DeepChain_BuildingPrerequisiteMidChain_StillALeaf_NoCycleThroughIt()
+        {
+            // The Research→Research edge restriction must survive the rewrite: a building id sitting in the MIDDLE
+            // of a research chain's prerequisites is a graph leaf that opens no frame, so a building shared by two
+            // research entries can never fabricate a cycle between them.
+            var def = new FactionDefinition();
+            def.Buildings.Add(new BuildingDefinition { Id = "barracks" });
+            def.Research.Add(ChainNode("a", "barracks", "b"));
+            def.Research.Add(ChainNode("b", "barracks"));
+
+            Assert.Empty(ResearchValidator.Validate(def));
+        }
+
         /// <summary>Resolve a shipped faction JSON by walking up from the test-assembly directory to
         /// <c>resources/data/factions/</c> (mirrors <c>TechTreeValidatorTests.ResolveDataPath</c>).</summary>
         private static string ResolveDataPath(string fileName)

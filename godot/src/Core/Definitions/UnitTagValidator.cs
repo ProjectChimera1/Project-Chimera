@@ -70,6 +70,10 @@ namespace ProjectChimera.Core.Definitions
         /// runs → no <c>Create</c>/<c>SpawnUnit</c> → no <c>EntityWorld</c> slot; the rest of the faction still loads.
         /// Returns the located error strings (one per dropped unit) for the caller to log with its own sink.
         ///
+        /// DW-652: each dropped id is also recorded on the faction via <see cref="FactionDefinition.NoteTagDroppedUnit"/>
+        /// so the later scenario gate can tell "the engine removed an author-declared unit" from "this id was never
+        /// declared" and degrade only the former to a per-entity drop instead of a whole-scenario reject.
+        ///
         /// Enumeration-safety: collects offenders in a FIRST read-only pass, then removes them in a SECOND pass via
         /// <c>List.RemoveAll</c> — NEVER removes inside a <c>foreach</c> over <c>faction.Units</c> (which would throw
         /// <c>InvalidOperationException</c> for mutating the list mid-enumeration). Buildings are out of scope (units-only,
@@ -81,7 +85,16 @@ namespace ProjectChimera.Core.Definitions
             // First pass: identify offenders (read-only — do NOT mutate faction.Units here).
             foreach (UnitDefinition u in faction.Units)
             {
-                if (TryFindInvalidTag(u, out string? bad)) errors.Add(Located(u.Id, bad));
+                if (TryFindInvalidTag(u, out string? bad))
+                {
+                    errors.Add(Located(u.Id, bad));
+                    // DW-652: remember WHAT was dropped, not just that something was. The scenario gate runs AFTER this
+                    // drop, so without the record a map naming an author-declared-but-dropped unit is indistinguishable
+                    // from a typo and DW-240's fail-closed unit_id rule rejects the WHOLE scenario (booting the fallback
+                    // map) instead of losing that one entity. Recorded here — where the offender is already
+                    // dereferenced — so no second null-tolerance question is introduced.
+                    faction.NoteTagDroppedUnit(u.Id);
+                }
             }
             // Second pass: drop every unit carrying an invalid tag (RemoveAll does its own safe in-place compaction —
             // it is NOT a foreach over the list, so this does not hit the mid-enumeration-mutation trap).

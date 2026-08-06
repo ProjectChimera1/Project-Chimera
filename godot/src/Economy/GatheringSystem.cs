@@ -1,5 +1,7 @@
 #nullable enable
 using ProjectChimera.Core;
+using ProjectChimera.Effects;      // StatusFlags (modifier-imposed per-entity status; a value enum, same sim layer)
+using ProjectChimera.Navigation;   // CheckedStep / PathabilityGrid — the DW-532 walk-stall probe (pure Fixed, Godot-free)
 
 namespace ProjectChimera.Economy
 {
@@ -25,12 +27,24 @@ namespace ProjectChimera.Economy
     /// forever. All four now route through the one static <see cref="ReleaseGatherSlot"/> path — the tick loop, the
     /// <see cref="EntityWorld.OnDestroy"/> subscription this system installs, and <c>BuildingSystem.QueueWorkerBuild</c>.
     ///
+    /// DW-532 closes the FIFTH way, which none of those four can reach: a worker CONFINED by blocked cells
+    /// (<c>ScenarioApplier</c> warns-and-places an authored spawn inside a blocked region; <c>MovementSystem</c> then
+    /// confines it) never leaves <see cref="GatherState.MovingToResource"/>, so it held its reservation for the whole
+    /// match. <see cref="TickWalkStall"/> bounds that leg — after <see cref="WALK_STALL_GRACE_TICKS"/> consecutive ticks
+    /// of no possible advance it yields the slot and keeps walking, re-claiming only if it ever arrives.
+    ///
     /// DW-634 — an EXPLICIT ORDER BEATS THE AUTOMATIC SWEEP. A worker trained from a building carrying a rally point
     /// spawns with <see cref="EntityWorld.RallyMovePending"/> set; <see cref="TickIdle"/> stands down (no
     /// <see cref="AssignToNode"/>) until that worker reaches its rally <see cref="EntityWorld.CommandGoal"/>, then
     /// clears the one-shot flag and resumes the unchanged nearest-node logic — which, from the rally point, picks the
     /// node the player rallied to. Pre-fix the sweep overwrote the rally MoveTarget on the very next tick, so a rally
     /// could never direct new workers to a specific mine.
+    ///
+    /// DW-619 — a <see cref="StatusFlags.Stunned"/>/<see cref="StatusFlags.Rooted"/> worker PRODUCES NOTHING. The
+    /// DW-266 status pass reached MovementSystem/CombatSystem/AbilityCastSystem but never the economy, so a stun
+    /// anchored a worker standing at its node and then let it keep mining out of that node at full rate — the stun
+    /// only half-landed. <see cref="TickGathering"/> now reads <see cref="EntityWorld.StatusFlagsOf"/> and suspends
+    /// the whole gather tick while either flag is live (see <see cref="GATHER_BLOCKING"/>).
     ///
     /// CombatSystem skips any entity with GatherState != Inactive, so workers never
     /// auto-attack — even when their unit data carries attack damage.
@@ -39,6 +53,22 @@ namespace ProjectChimera.Economy
     /// </summary>
     public class GatheringSystem : ISimSystem
     {
+        /// <summary>
+        /// DW-619 — the statuses that SUSPEND a worker's gather tick, deliberately the same pair as
+        /// <c>MovementSystem.MOVE_BLOCKING</c> (the mirror the recorded closure asks for).
+        ///
+        /// <para><see cref="StatusFlags.Stunned"/> is the headline case: fully incapacitated everywhere else in the
+        /// codebase (no move, no attack, no cast), it must not keep mining either.
+        /// <see cref="StatusFlags.Rooted"/> is included because the GATHER cycle is a MOVEMENT loop, not a standalone
+        /// action: a rooted worker is already anchored by DW-266 and can never deliver a load, so for GATHER nodes
+        /// the flag costs it nothing but a partial carry it banks the moment the root expires. The one place it
+        /// changes real production is a Streaming node, which credits IN PLACE with no delivery leg — the only way a
+        /// held worker could still feed its faction every tick. Kept as ONE named mask so the Rooted half is a
+        /// one-token revert if a later balance story decides root is "held in place, still able to act" (the reading
+        /// <c>MovementSystem</c>'s own doc comment records) all the way down to harvesting.</para>
+        /// </summary>
+        private const StatusFlags GATHER_BLOCKING = StatusFlags.Stunned | StatusFlags.Rooted;
+
         private static readonly Fixed ARRIVE_AT_NODE_SQR  = Fixed.FromFloat(1.8f) * Fixed.FromFloat(1.8f);
         private static readonly Fixed ARRIVE_AT_BASE_SQR  = Fixed.FromFloat(3.0f) * Fixed.FromFloat(3.0f);
 
@@ -56,6 +86,30 @@ namespace ProjectChimera.Economy
         /// re-acquires this very node the tick the gate reopens.</para>
         /// </summary>
         public const int STREAMING_GATE_GRACE_TICKS = SimulationLoop.TICKS_PER_SECOND;
+
+        /// <summary>
+        /// DW-532 — how many CONSECUTIVE ticks a <see cref="GatherState.MovingToResource"/> worker may be completely
+        /// unable to advance toward its reserved node before it HANDS THE GATHER SLOT BACK (while staying en route).
+        /// Whole ticks, one second at the fixed sim rate, sourced from <see cref="SimulationLoop.TICKS_PER_SECOND"/>
+        /// exactly like <see cref="STREAMING_GATE_GRACE_TICKS"/>.
+        ///
+        /// <para>The leak this bounds is the DW-148 × DW-207 interaction: <c>ScenarioApplier</c> deliberately only WARNS
+        /// about an authored spawn inside a blocked cell and places the unit anyway, while <c>MovementSystem</c> now
+        /// CONFINES such a unit — so a worker on an interior cell of a ≥3-cell-wide blocked region has its step and both
+        /// wall-slide axes rejected every tick and can never close on the node whose
+        /// <see cref="ResourceNodeStore.AssignedGatherers"/> slot <see cref="AssignToNode"/> already reserved. None of
+        /// the four release paths enumerated above can fire for it (it never leaves MovingToResource, never dies, gets
+        /// no Build order, and the DW-80 window lives past arrival), so enough stranded workers starve the node for
+        /// EVERY faction — the precise starvation DW-207 was written to eliminate.</para>
+        /// </summary>
+        public const int WALK_STALL_GRACE_TICKS = SimulationLoop.TICKS_PER_SECOND;
+
+        /// <summary>
+        /// DW-532 — the <see cref="EntityWorld.GatherWalkStallTicks"/> sentinel meaning "this worker already gave its
+        /// reservation back mid-walk". Negative so it can never be mistaken for a streak count, and so
+        /// <see cref="ReleaseGatherSlot"/> can tell a holder from a yielder without a second array.
+        /// </summary>
+        public const int SLOT_YIELDED = -1;
 
         private readonly ResourceNodeStore _nodes;
         private readonly ResourceStore     _resources;
@@ -102,7 +156,7 @@ namespace ProjectChimera.Economy
                         TickIdle(world, i);
                         break;
                     case GatherState.MovingToResource:
-                        TickMovingToResource(world, i);
+                        TickMovingToResource(world, i, dt);
                         break;
                     case GatherState.Gathering:
                         TickGathering(world, i, dt);
@@ -151,7 +205,7 @@ namespace ProjectChimera.Economy
             AssignToNode(world, id, node);
         }
 
-        private void TickMovingToResource(EntityWorld world, int id)
+        private void TickMovingToResource(EntityWorld world, int id, Fixed dt)
         {
             int node = world.GatherTarget[id];
 
@@ -164,16 +218,96 @@ namespace ProjectChimera.Economy
             }
 
             Fixed sqr = FixedVec3.SqrDistance(world.Position[id], _nodes.Position[node]);
-            if (sqr > ARRIVE_AT_NODE_SQR) return; // Still travelling
+            if (sqr > ARRIVE_AT_NODE_SQR)
+            {
+                TickWalkStall(world, id, node, dt); // DW-532 — bound the leg so a confined worker can't hold the slot forever
+                return;                             // Still travelling
+            }
 
-            // Arrived at node
+            // Arrived at node. DW-532: a worker that yielded its reservation mid-walk (confined, then freed — the grid
+            // is rebuilt on every scenario re-apply) is holding NOTHING, so it must CLAIM a slot now rather than gather
+            // off the books; the node may have filled while it was stuck, in which case it re-seeks like any worker
+            // whose node vanished. A never-stalled worker's counter is already 0 and this branch is skipped entirely.
+            if (world.GatherWalkStallTicks[id] == SLOT_YIELDED)
+            {
+                if (_nodes.AssignedGatherers[node] >= _nodes.MaxGatherers[node])
+                {
+                    ReleaseNode(world, id);   // no capacity to re-take (a no-op on the counter — it yielded already)
+                    world.GatherState[id] = GatherState.Idle;
+                    return;
+                }
+                _nodes.AssignedGatherers[node]++;
+            }
+            world.GatherWalkStallTicks[id] = 0; // the walk is over either way — no streak survives into Gathering
+
             world.Flags[id]      &= ~EntityFlags.Moving;
             world.Velocity[id]    = FixedVec3.Zero;
             world.GatherState[id] = GatherState.Gathering;
         }
 
+        /// <summary>
+        /// DW-532 — one tick of the MovingToResource stall watch: count a tick on which this worker cannot advance
+        /// toward its node AT ALL, and once the streak reaches <see cref="WALK_STALL_GRACE_TICKS"/> hand the reserved
+        /// <see cref="ResourceNodeStore.AssignedGatherers"/> slot back while leaving the worker en route.
+        ///
+        /// <para><b>The stall test.</b> The probe is the SHARED <see cref="CheckedStep.Resolve"/> the movement
+        /// integrator itself uses, applied to the seek step <c>MovementSystem</c> will take this very tick
+        /// (<c>GatheringSystem</c> runs immediately before it): direction to the node × <see cref="EntityWorld.EffectiveMoveSpeed"/>
+        /// × <paramref name="dt"/>. A result equal to the CURRENT position is the helper's HARD STOP — the full step and
+        /// both wall-slide axes were all rejected — which is the only outcome that makes the leg unwinnable. It is
+        /// deliberately CONSERVATIVE: the sweep rejects at the first foreign blocked cell, so a step that is hard-stopped
+        /// at this length is hard-stopped at every length in that direction, and the arrive-slowdown / separation terms
+        /// this probe omits can only make the real step SHORTER. A worker still shuffling inside its own blocked cell
+        /// (permitted by DW-148's confinement) is therefore correctly seen as making ground until it is pinned against
+        /// the cell boundary.</para>
+        ///
+        /// <para><b>Why the reservation is yielded rather than the worker re-idled.</b> Re-idling churns: nothing makes
+        /// <see cref="FindBestNode"/> reachability-aware, so the very next <see cref="TickIdle"/> re-picks the same
+        /// nearest node and re-claims the slot, leaving it occupied for all but one tick in every grace window — no fix
+        /// at all. Yielding is terminal for the leg and self-heals: keeping <see cref="GatherState.MovingToResource"/>
+        /// means the worker resumes and re-claims on arrival if the blocked region is ever rebuilt away.</para>
+        ///
+        /// <para><b>Determinism.</b> Gated on a grid with at least one blocked cell, so on a flat/legacy map (every
+        /// recorded golden) this method touches nothing and the folded <c>AssignedGatherers</c> cannot move. All
+        /// arithmetic is <see cref="Fixed"/>/integer through the same helper the integrator uses, so the tick it fires
+        /// on is identical on every lockstep peer and every same-seed replay.</para>
+        /// </summary>
+        private void TickWalkStall(EntityWorld world, int id, int node, Fixed dt)
+        {
+            PathabilityGrid? grid = world.Pathability;
+            if (grid == null || !grid.AnyBlocked) return;                    // flat/legacy map — an exact no-op
+            if (world.GatherWalkStallTicks[id] == SLOT_YIELDED) return;      // already handed back — nothing left to give
+
+            FixedVec3 pos     = world.Position[id];
+            FixedVec3 desired = pos + (_nodes.Position[node] - pos).Normalized() * world.EffectiveMoveSpeed[id] * dt;
+            if (CheckedStep.Resolve(grid, pos, desired) != pos)
+            {
+                world.GatherWalkStallTicks[id] = 0; // made ground — the streak is CONSECUTIVE, exactly like DW-80's
+                return;
+            }
+
+            if (++world.GatherWalkStallTicks[id] < WALK_STALL_GRACE_TICKS) return;
+
+            // Hand the slot back directly (NOT through ReleaseGatherSlot, which also clears GatherTarget — this worker
+            // keeps its target and keeps walking). Floor-guarded like every other decrement of this counter.
+            if (_nodes.Active[node] && _nodes.AssignedGatherers[node] > 0)
+                _nodes.AssignedGatherers[node]--;
+            world.GatherWalkStallTicks[id] = SLOT_YIELDED;
+        }
+
         private void TickGathering(EntityWorld world, int id, Fixed dt)
         {
+            // DW-619 — STATUS GATE (stun / root). The worker takes NO gather action this tick: no node supply drain,
+            // no CarryAmount accrual, no Streaming credit-in-place, no depletion, no DW-80 closed-gate streak and no
+            // state transition. Placed at the very top for the same reason DW-266's gate sits at the top of
+            // MovementSystem's per-entity loop body — the status is a PAUSE, not a cancel, so the worker resumes
+            // EXACTLY where it stood (same node, same reservation, same carry) the tick the modifier expires, and a
+            // status can never cost it its GatherTarget. Holding the reservation while held is correct: the worker is
+            // still parked at the node, and every release path (death, Build interrupt, depletion) still fires.
+            // Read-only — one flag test, no new state. Every recorded golden leaves StatusFlagsOf at None for every
+            // entity, so this branch is never entered there and nothing folded into SimChecksum moves.
+            if ((world.StatusFlagsOf[id] & GATHER_BLOCKING) != 0) return;
+
             int node = world.GatherTarget[id];
 
             if (node < 0 || !_nodes.Active[node])
@@ -398,6 +532,7 @@ namespace ProjectChimera.Economy
             world.GatherTarget[workerId] = nodeIdx;
             _nodes.AssignedGatherers[nodeIdx]++;
             world.GateClosedTicks[workerId] = 0; // DW-80: a fresh assignment starts a fresh closed-gate streak
+            world.GatherWalkStallTicks[workerId] = 0; // DW-532: a fresh leg starts a fresh stall streak, holding the slot just taken
             world.MoveTarget[workerId]   = _nodes.Position[nodeIdx];
             world.Flags[workerId]       |= EntityFlags.Moving;
             world.GatherState[workerId]  = GatherState.MovingToResource;
@@ -421,6 +556,11 @@ namespace ProjectChimera.Economy
         /// DOUBLE-decrement and steal a live worker's slot — the mirror-image defect. <see cref="GatherState.Idle"/>
         /// always carries GatherTarget = −1, and the <c>node &gt;= 0</c> test makes a second call idempotent.</para>
         ///
+        /// <para>DW-532 adds the one exception to "MovingToResource holds a reservation": a worker whose leg stalled out
+        /// (<see cref="EntityWorld.GatherWalkStallTicks"/> == <see cref="SLOT_YIELDED"/>) is still walking but already
+        /// handed its slot back, so releasing it again here would be the same double-decrement in a new disguise —
+        /// a stranded worker that later dies would silently evict a live worker from the node it never reached.</para>
+        ///
         /// <para>Mutates the folded <c>AssignedGatherers</c> counter, so it must stay integer-only and be reachable in
         /// the same order on every peer: <see cref="EntityWorld.Destroy"/> fires its hook synchronously, in the same
         /// deterministic sequence, before the id returns to the free list.</para>
@@ -429,10 +569,12 @@ namespace ProjectChimera.Economy
         {
             int node = world.GatherTarget[workerId];
             if (node >= 0 && HoldsGatherSlot(world.GatherState[workerId])
+                && world.GatherWalkStallTicks[workerId] != SLOT_YIELDED // DW-532: a stranded worker already gave it back
                 && nodes.Active[node] && nodes.AssignedGatherers[node] > 0)
                 nodes.AssignedGatherers[node]--;
-            world.GatherTarget[workerId]    = -1;
-            world.GateClosedTicks[workerId] = 0; // DW-80: no node, no streak
+            world.GatherTarget[workerId]         = -1;
+            world.GateClosedTicks[workerId]      = 0; // DW-80: no node, no streak
+            world.GatherWalkStallTicks[workerId] = 0; // DW-532: no node, no stall streak and nothing outstanding
         }
 
         /// <summary>DW-207 — the two <see cref="GatherState"/>s that occupy one of a node's

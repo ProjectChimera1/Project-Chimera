@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -29,6 +30,16 @@ namespace ProjectChimera.AI
 
         /// <summary>Half-width of the playable map in world units. Spawn points must be within ±Bounds.</summary>
         public float MapBounds { get; set; } = 120f;
+
+        /// <summary>
+        /// DW-627 (optional, TRUSTED) — the per-slot resolved <see cref="FactionDefinition"/>s, indexed by
+        /// <c>(int)Faction</c> = slot + 1, i.e. the SAME array shape <see cref="ScenarioValidator.Validate"/> takes.
+        /// Threading it lets a generated trigger's <c>building_type</c> name an authored custom building of the
+        /// event/condition's own faction, exactly as the DW-170 load gate allows for hand-authored triggers. NULL
+        /// (the default) restricts the check to built-in <see cref="BuildingType"/> enum names — the same amnesty
+        /// the load gate applies when no defs are threaded. Never sourced from the generated (untrusted) output.
+        /// </summary>
+        public IReadOnlyList<FactionDefinition?>? SlotFactionDefs { get; set; }
     }
 
     /// <summary>
@@ -56,18 +67,59 @@ namespace ProjectChimera.AI
         //    the promised populator: <see cref="ScenarioTypeRegistry.Apply"/> writes all three (plus
         //    <see cref="ScenarioType"/>) from a selected type's trusted preset. ──
 
+        // ── DW-372 — lower-bound guards on the two integer clamps ─────────────────────────────────────────────
+        //
+        // Story 8.3 shipped both as bare auto-properties, so nonsense values were accepted in silence:
+        //   • MinPlayerSlots = 0 admitted a scenario declaring an EMPTY player_slots array — it satisfied
+        //     "0 slots >= 0", skipped the DW-373 index loop entirely, and (with no units/buildings to fail the
+        //     DW-542 reference check) validated clean, even though every downstream faction/spawn path assumes at
+        //     least one player.
+        //   • MaxCombatUnitsPerSlot < 0 produced the nonsense reject message "…(max -1)" and made the prompt ask
+        //     for "at most -1 combat units".
+        // Both are CLAMPED ON SET rather than checked at the point of use, so the prompt and the gate can only ever
+        // read the SAME effective number — the prompt/gate divergence class this whole entry exists to close.
+
+        /// <summary>DW-372: the floor for <see cref="MinPlayerSlots"/>. A scenario with no player slot at all is not
+        /// authorable, so one player slot is the effective minimum however the caller sets the clamp.</summary>
+        public const int MinPlayerSlotsFloor = 1;
+
+        /// <summary>DW-372: the floor for <see cref="MaxCombatUnitsPerSlot"/>. Zero is a MEANINGFUL cap ("no
+        /// pre-placed combat units at all"); anything below it is not.</summary>
+        public const int MaxCombatUnitsPerSlotFloor = 0;
+
+        private int _minPlayerSlots        = 2;
+        private int _maxCombatUnitsPerSlot = 6;
+
         /// <summary>Story 8.3: the minimum number of player slots a valid scenario must declare. RTS default 2;
-        /// <see cref="ValidateScenario"/> rejects fewer. Trusted (never read from the scenario file).</summary>
-        public int MinPlayerSlots { get; set; } = 2;
+        /// <see cref="ValidateScenario"/> rejects fewer. Trusted (never read from the scenario file).
+        /// DW-372: clamped on set into [<see cref="MinPlayerSlotsFloor"/>, <see cref="FactionRegistry.PLAYER_COUNT"/>]
+        /// — below the floor an empty player_slots array validates clean; above the sim's player ceiling the floor is
+        /// unsatisfiable by any loadable scenario (<see cref="ScenarioValidator"/> rejects a slot index ≥
+        /// PLAYER_COUNT), so every generation would be rejected no matter what the model returned.</summary>
+        public int MinPlayerSlots
+        {
+            get => _minPlayerSlots;
+            set => _minPlayerSlots =
+                  value < MinPlayerSlotsFloor          ? MinPlayerSlotsFloor
+                : value > FactionRegistry.PLAYER_COUNT ? FactionRegistry.PLAYER_COUNT
+                : value;
+        }
 
         /// <summary>Story 8.3: the maximum pre-placed combat (non-worker) units allowed per faction slot. RTS default
-        /// 6; <see cref="ValidateScenario"/> rejects more. Trusted (never read from the scenario file).</summary>
-        public int MaxCombatUnitsPerSlot { get; set; } = 6;
+        /// 6; <see cref="ValidateScenario"/> rejects more. Trusted (never read from the scenario file).
+        /// DW-372: clamped on set to at least <see cref="MaxCombatUnitsPerSlotFloor"/>.</summary>
+        public int MaxCombatUnitsPerSlot
+        {
+            get => _maxCombatUnitsPerSlot;
+            set => _maxCombatUnitsPerSlot =
+                value < MaxCombatUnitsPerSlotFloor ? MaxCombatUnitsPerSlotFloor : value;
+        }
 
-        /// <summary>Story 8.3: the TRUSTED per-slot faction-JSON resolver. NULL ⇒ the RTS default (slot 0 →
-        /// <see cref="Slot0FactionJson"/>, every other slot → <see cref="Slot1FactionJson"/>) — identical to today.
-        /// A non-RTS caller supplies its own trusted mapping. <see cref="ValidateScenario"/> OVERWRITES each slot's
-        /// hallucinated <c>faction_json</c> from this resolver, so the untrusted file never dictates the path.</summary>
+        /// <summary>Story 8.3: the TRUSTED per-slot faction-JSON resolver. NULL ⇒ the built-in default described on
+        /// <see cref="ResolveFactionJson"/> (even slots → <see cref="Slot0FactionJson"/>, odd slots →
+        /// <see cref="Slot1FactionJson"/> since DW-372 made it total). A caller wanting a different mapping supplies
+        /// its own trusted one. <see cref="ValidateScenario"/> OVERWRITES each slot's hallucinated
+        /// <c>faction_json</c> from this resolver, so the untrusted file never dictates the path.</summary>
         public Func<int, string>? FactionJsonResolver { get; set; }
 
         /// <summary>DW-371: the scenario type this context's clamps were populated for, set by
@@ -79,12 +131,30 @@ namespace ProjectChimera.AI
         // simple name would be the "Color Color" ambiguity inside an instance initializer.
         public ScenarioType ScenarioType { get; set; } = ProjectChimera.AI.ScenarioType.Rts;
 
+        /// <summary>
+        /// DW-627 (optional, TRUSTED) — the per-slot resolved <see cref="FactionDefinition"/>s, indexed by
+        /// <c>(int)Faction</c> = slot + 1, i.e. the SAME array shape <see cref="ScenarioValidator.Validate"/> takes.
+        /// Threading it lets a generated scenario pre-place an authored CUSTOM building (a lowercase building-def id
+        /// in the owning slot's faction), exactly as the Story 6.8 load gate allows for hand-authored maps. NULL (the
+        /// default) restricts the check to built-in <see cref="BuildingType"/> enum names — the same amnesty the load
+        /// gate applies when no defs are threaded. Never sourced from the generated (untrusted) file.
+        /// </summary>
+        public IReadOnlyList<FactionDefinition?>? SlotFactionDefs { get; set; }
+
         /// <summary>Resolve the trusted faction-JSON path for the given 0-based <paramref name="slot"/>, honoring
-        /// <see cref="FactionJsonResolver"/> when set else the RTS slot-0/slot-1 default mapping.</summary>
+        /// <see cref="FactionJsonResolver"/> when set else the built-in default mapping.
+        ///
+        /// DW-372 — the default is now TOTAL: it ALTERNATES (even slot → <see cref="Slot0FactionJson"/>, odd slot →
+        /// <see cref="Slot1FactionJson"/>) instead of the original <c>slot == 0 ? Slot0 : Slot1</c>, which silently
+        /// collapsed slots 1, 2, 3 … onto ONE faction. That collapse was invisible while nothing could declare more
+        /// than two slots, but a caller relaxing <see cref="MinPlayerSlots"/> without supplying a resolver turned a
+        /// 4-slot map into a 1-vs-3 with no warning. The two mappings AGREE on slots 0 and 1, so every two-slot
+        /// scenario — i.e. every scenario any shipping caller produces — resolves exactly as it always did; only
+        /// slots ≥ 2, which were previously wrong, change.</summary>
         public string ResolveFactionJson(int slot)
             => FactionJsonResolver != null
                 ? FactionJsonResolver(slot)
-                : (slot == 0 ? Slot0FactionJson : Slot1FactionJson);
+                : (slot % 2 == 0 ? Slot0FactionJson : Slot1FactionJson);
     }
 
     /// <summary>
@@ -98,8 +168,15 @@ namespace ProjectChimera.AI
     /// <c>AllowAutoRedirect=false</c> (a real key now flows through it — closes the cross-host redirect key-leak).
     /// Follows the ConcurrentQueue/DrainEvents pattern used by NakamaService and ModIoService.
     /// Call DrainEvents() once per _Process frame to marshal callbacks to the main thread.
+    ///
+    /// DW-375 — the service OWNS unmanaged-backed state and is therefore <see cref="IDisposable"/>: the seven per-flow
+    /// <see cref="CancellationTokenSource"/>es (one per generate entry point) and, on the <c>http: null</c> construction
+    /// path, the <see cref="HttpClient"/>/<see cref="HttpClientHandler"/> pair it builds. A superseded token source is
+    /// now cancelled AND disposed at the point of reassignment (<see cref="ReplaceTokenSource"/>) instead of being
+    /// abandoned once per Generate press, and <see cref="Dispose"/> releases everything the service owns. An INJECTED
+    /// client is never disposed — the caller that supplied it owns its lifetime.
     /// </summary>
-    public class LLMService
+    public sealed class LLMService : IDisposable
     {
         // ── Configuration ─────────────────────────────────────────────────────
 
@@ -113,14 +190,30 @@ namespace ProjectChimera.AI
         // of the schema comment in the prompt.
         private const int    MAX_SPAWN_COUNT = 50;
 
+        /// <summary>
+        /// DW-627 — the built-in building-type choices as the prompts spell them (<c>"A"|"B"|…</c>), DERIVED from the
+        /// one <see cref="ScenarioValidator.PlaceableBuildingTypeNames"/> vocabulary the gates enforce. Both prompt
+        /// builders hardcoded a 4-name list that went stale when Story 2.8 appended <c>Aviary</c>, so the model was
+        /// told a built-in did not exist while the (equally stale) gate rejected it if the model guessed it anyway.
+        /// A member added to <see cref="BuildingType"/> now reaches the request and both gates in the same edit.
+        /// </summary>
+        internal static readonly string BuildingTypeChoices =
+            string.Join("|", ScenarioValidator.PlaceableBuildingTypeNames.Select(n => $"\"{n}\""));
+
         // ── Internal state ────────────────────────────────────────────────────
 
         private readonly HttpClient _http;
+        /// <summary>DW-375: true only when this service BUILT <see cref="_http"/> (the <c>http: null</c> path) and is
+        /// therefore responsible for disposing it. An injected client belongs to its caller and is left alone.</summary>
+        private readonly bool _ownsHttp;
         private readonly Func<SettingsData> _getSettings;
         private readonly ISecretStore _secretStore;
         private readonly ConcurrentQueue<Action> _queue = new();
         private CancellationTokenSource? _cts;
         private CancellationTokenSource? _mapCts;
+        /// <summary>DW-375: set once by <see cref="Dispose"/>. Written and read on the caller (Godot main) thread —
+        /// the worker tasks never touch it.</summary>
+        private bool _disposed;
 
         // ── Construction ──────────────────────────────────────────────────────
 
@@ -129,6 +222,10 @@ namespace ProjectChimera.AI
         /// (the authoritative selected provider/model/base-URL), the <see cref="ISecretStore"/> (the ONLY key source),
         /// and an optional injected <see cref="HttpClient"/> (the unit-test seam over a stub handler). When
         /// <paramref name="http"/> is null an owned client is built with <c>AllowAutoRedirect=false</c>.
+        ///
+        /// DW-375: which of the two branches ran is recorded in <see cref="_ownsHttp"/> — <see cref="Dispose"/> disposes
+        /// the client ONLY on the owned branch, so a caller-injected client (every Tier-1 test, and any future shared
+        /// client) is never torn down under its owner.
         /// </summary>
         public LLMService(Func<SettingsData> getSettings, ISecretStore secretStore, HttpClient? http = null)
         {
@@ -137,13 +234,15 @@ namespace ProjectChimera.AI
 
             if (http != null)
             {
-                _http = http;
+                _http     = http;
+                _ownsHttp = false;
             }
             else
             {
                 _http = new HttpClient(BuildOwnedHttpHandler())
                 { Timeout = TimeSpan.FromMilliseconds(TIMEOUT_MS) };
                 _http.DefaultRequestHeaders.UserAgent.ParseAdd("ProjectChimera/1.0");
+                _ownsHttp = true;
             }
         }
 
@@ -155,6 +254,131 @@ namespace ProjectChimera.AI
         /// redirect — mirrors the evaluator client 8.2 hardened.
         /// </summary>
         internal static HttpClientHandler BuildOwnedHttpHandler() => new() { AllowAutoRedirect = false };
+
+        // ── Lifecycle (DW-375) ────────────────────────────────────────────────
+
+        /// <summary>
+        /// DW-375 — install a FRESH <see cref="CancellationTokenSource"/> in <paramref name="slot"/>, cancelling and
+        /// DISPOSING whatever was there, and return the new token. Every generate entry point reassigns its per-flow
+        /// source through here. Before this, each press did <c>slot?.Cancel(); slot = new()</c> — the superseded source
+        /// was left to the GC undisposed, so a session leaked one <see cref="CancellationTokenSource"/> (plus any wait
+        /// handle / linked-registration state it had materialised) per Generate press.
+        ///
+        /// The two orderings below are both load-bearing:
+        /// <list type="bullet">
+        ///   <item>the fresh source is PUBLISHED BEFORE the old one is torn down, so a <see cref="Cancel"/> racing the
+        ///         reassignment can never observe a disposed source — <c>CancellationTokenSource.Cancel</c> throws
+        ///         <see cref="ObjectDisposedException"/> after disposal;</item>
+        ///   <item>the old source is CANCELLED BEFORE it is disposed, which is what makes disposing a source whose token
+        ///         a still-unwinding request holds safe. A cancelled token stays permanently "cancellation requested",
+        ///         and every <see cref="CancellationToken"/> member such a request touches — <c>IsCancellationRequested</c>,
+        ///         <c>ThrowIfCancellationRequested</c>, <c>Register</c>/<c>UnsafeRegister</c>, the
+        ///         <c>CreateLinkedTokenSource</c> that <c>LlmHttp.SendAsync</c> wraps the body read in, and
+        ///         <c>HttpClient.SendAsync</c> itself — short-circuits on that state instead of checking disposal. Only
+        ///         <c>Token</c>, <c>Cancel</c> and <c>WaitHandle</c> throw once disposed, and none of them is reachable
+        ///         from an in-flight generation. <c>LlmServiceLifecycleTests</c> pins that framework contract.</item>
+        /// </list>
+        /// </summary>
+        private static CancellationToken ReplaceTokenSource(ref CancellationTokenSource? slot)
+        {
+            CancellationTokenSource? superseded = slot;
+            var fresh = new CancellationTokenSource();
+            slot = fresh;
+
+            if (superseded != null)
+            {
+                superseded.Cancel();    // cancel BEFORE dispose — see the ordering note above
+                superseded.Dispose();
+            }
+            return fresh.Token;
+        }
+
+        /// <summary>
+        /// DW-375 — cancel and dispose the source in <paramref name="slot"/>, leaving the slot EMPTY. Emptying it is what
+        /// keeps a <see cref="Cancel"/> / <see cref="CancelScenario"/> / <see cref="CancelDrafts"/> /
+        /// <see cref="CancelBalanceAnalysis"/> call after <see cref="Dispose"/> a silent no-op instead of an
+        /// <see cref="ObjectDisposedException"/> out of <c>CancellationTokenSource.Cancel</c>.
+        /// </summary>
+        private static void CancelAndDisposeTokenSource(ref CancellationTokenSource? slot)
+        {
+            CancellationTokenSource? source = slot;
+            slot = null;
+            if (source == null) return;
+            source.Cancel();
+            source.Dispose();
+        }
+
+        /// <summary>DW-375 — guard for the generate entry points. A request issued after <see cref="Dispose"/> would run
+        /// against a disposed client, so fail loudly at the call site rather than surfacing an opaque "Cannot access a
+        /// disposed object" through the async error callback a frame later.</summary>
+        private void ThrowIfDisposed()
+        {
+            if (_disposed) throw new ObjectDisposedException(nameof(LLMService));
+        }
+
+        /// <summary>
+        /// DW-375 — release everything this service owns: every per-flow <see cref="CancellationTokenSource"/> (cancelled
+        /// first, so an in-flight request unwinds through its own cancellation path instead of into a disposed client),
+        /// and — ONLY when the service built it (the <c>http: null</c> construction path) — the owned
+        /// <see cref="HttpClient"/>. Disposing that client also disposes the <see cref="HttpClientHandler"/> it was built
+        /// over, because <c>new HttpClient(handler)</c> takes ownership of the handler. An INJECTED client is left
+        /// untouched.
+        ///
+        /// Idempotent. Afterwards the Cancel* methods stay callable (they no-op on the emptied slots) and
+        /// <see cref="DrainEvents"/> still flushes anything already queued; the Generate* entry points throw
+        /// <see cref="ObjectDisposedException"/>.
+        /// </summary>
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+
+            CancelAndDisposeTokenSource(ref _cts);
+            CancelAndDisposeTokenSource(ref _mapCts);
+            CancelAndDisposeTokenSource(ref _unitCts);
+            CancelAndDisposeTokenSource(ref _abilityCts);
+            CancelAndDisposeTokenSource(ref _heroCts);
+            CancelAndDisposeTokenSource(ref _factionCts);
+            CancelAndDisposeTokenSource(ref _balanceCts);
+
+            if (_ownsHttp) _http.Dispose();
+        }
+
+        /// <summary>DW-375 — the per-flow cancellation slots this service owns, one per generate entry point. The ledger
+        /// entry named the trigger/scenario pair, but all seven shared the reassign-without-dispose defect.</summary>
+        internal enum GenerationFlow
+        {
+            Trigger,
+            Scenario,
+            UnitDraft,
+            AbilityDraft,
+            HeroDraft,
+            FactionDraft,
+            BalanceAnalysis
+        }
+
+        /// <summary>DW-375 Tier-1 seam — internal (not private) for the same reason <see cref="BuildSystemPrompt"/> and
+        /// <see cref="BuildOwnedHttpHandler"/> are: the property under test is otherwise unobservable. Returns the source
+        /// currently installed for <paramref name="flow"/> (null before that flow's first request and after
+        /// <see cref="Dispose"/>), so the lifecycle test can prove a SUPERSEDED source was cancelled and disposed — a
+        /// disposed source's <c>Token</c> getter throws, which is the only external evidence of disposal. Nothing in the
+        /// shipping code reads this.</summary>
+        internal CancellationTokenSource? ActiveTokenSource(GenerationFlow flow) => flow switch
+        {
+            GenerationFlow.Trigger         => _cts,
+            GenerationFlow.Scenario        => _mapCts,
+            GenerationFlow.UnitDraft       => _unitCts,
+            GenerationFlow.AbilityDraft    => _abilityCts,
+            GenerationFlow.HeroDraft       => _heroCts,
+            GenerationFlow.FactionDraft    => _factionCts,
+            GenerationFlow.BalanceAnalysis => _balanceCts,
+            _                              => null
+        };
+
+        /// <summary>DW-375 Tier-1 seam: the <see cref="HttpClient"/> this service OWNS (built on the <c>http: null</c>
+        /// path), or null when the caller injected one. Every other test injects a client, so this is the only way to
+        /// assert that <see cref="Dispose"/> disposes what it owns — and, on the injected path, that it does not.</summary>
+        internal HttpClient? OwnedHttpClient => _ownsHttp ? _http : null;
 
         // ── Public API ────────────────────────────────────────────────────────
 
@@ -168,9 +392,10 @@ namespace ProjectChimera.AI
             ScenarioContext context,
             Action<TriggerDefinition?, string?> onComplete)
         {
-            _cts?.Cancel();
-            _cts = new CancellationTokenSource();
-            var token = _cts.Token;
+            ThrowIfDisposed();
+            // DW-375: the superseded source is cancelled AND disposed here (see ReplaceTokenSource) — this press used to
+            // abandon the previous one undisposed.
+            CancellationToken token = ReplaceTokenSource(ref _cts);
 
             // Snapshot the authoritative settings on the caller thread; the factory reads the provider/model/base-URL
             // from it and the key from the secret store — no fallback, no other provider attempted.
@@ -224,7 +449,8 @@ namespace ProjectChimera.AI
             }, token);
         }
 
-        /// <summary>Cancel any in-flight generation request.</summary>
+        /// <summary>Cancel any in-flight generation request. DW-375: a no-op after <see cref="Dispose"/> — the slot is
+        /// emptied there precisely so this stays safe to call during teardown.</summary>
         public void Cancel() => _cts?.Cancel();
 
         /// <summary>Drain queued main-thread callbacks. Call once per _Process frame.</summary>
@@ -242,7 +468,9 @@ namespace ProjectChimera.AI
         /// 2. Construct membership (Story 8.3) — every event/condition/action Type is a member of the closed flat
         ///    <see cref="NodeKinds"/> vocabulary; an unknown or graph-only construct is rejected with a LOCATED error.
         /// 3. Faction slots — 0 or 1 only
-        /// 4. BuildingType strings — must match BuildingType enum
+        /// 4. BuildingType strings — a built-in <see cref="BuildingType"/> enum name, or (when the caller threaded
+        ///    <see cref="ScenarioContext.SlotFactionDefs"/>) a custom building id authored by the referencing
+        ///    faction — the same two vocabularies the load gate resolves (DW-627)
         /// 5. Operators — only the six standard comparison symbols
         /// 6. Range / safety — counts ≤ 50, durations > 0, spawn inside bounds
         /// Returns (null, errorMessage) on failure, (trigger, null) on success.
@@ -250,12 +478,13 @@ namespace ProjectChimera.AI
         public static (TriggerDefinition? trigger, string? error) Validate(
             string json, ScenarioContext context)
         {
-            // Pass 1 — schema.
+            // Pass 1 — schema. DW-526: the shared untrusted-model-output posture (see ContentJson.ModelOutputOptions),
+            // NOT a per-call hand-rolled option set — same Fixed quantization boundary, same name-only enum
+            // fail-closed, same syntax tolerance as every other LLM parse path in this file.
             TriggerDefinition trigger;
             try
             {
-                trigger = JsonSerializer.Deserialize<TriggerDefinition>(json,
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true, Converters = { new FixedJsonConverter() } })
+                trigger = JsonSerializer.Deserialize<TriggerDefinition>(json, ContentJson.ModelOutputOptions)
                     ?? throw new InvalidOperationException("Deserialised to null.");
             }
             catch (Exception ex)
@@ -292,15 +521,24 @@ namespace ProjectChimera.AI
                 if (a.Faction is not (0 or 1))
                     return (null, $"Action '{a.Type}' has invalid faction slot {a.Faction}.");
 
-            // Pass 4 — building type strings.
+            // Pass 4 — building type strings (DW-627). Resolved through ScenarioValidator's ONE predicate — the same
+            // two vocabularies the DW-170 load gate accepts: a built-in BuildingType enum name, OR an authored
+            // building-def id in the faction that owns the event/condition's own `faction` slot (its faction
+            // qualifier), when the caller threaded the trusted per-slot defs. Before this, the check ran against a
+            // PRIVATE 4-member shadow enum declared in this file, so a generated trigger naming a custom building was
+            // rejected upstream of the gate that would have accepted it — and, since Story 2.8 appended Aviary to the
+            // real enum, the shadow rejected a legitimate BUILT-IN reference too.
             foreach (var ev in trigger.Events)
                 if (!string.IsNullOrEmpty(ev.BuildingType)
-                    && !Enum.TryParse<BuildingType>(ev.BuildingType, out _))
+                    && !ScenarioValidator.IsKnownBuildingType(
+                        ev.BuildingType, ScenarioValidator.OwnerFactionDef(context.SlotFactionDefs, ev.Faction)))
                     return (null, $"Unknown building_type '{ev.BuildingType}'. " +
-                        $"Valid: {string.Join(", ", Enum.GetNames(typeof(BuildingType)))}");
+                        $"Valid: {string.Join(", ", ScenarioValidator.PlaceableBuildingTypeNames)}" +
+                        " (or a custom building id authored by that faction).");
             foreach (var c in trigger.Conditions)
                 if (!string.IsNullOrEmpty(c.BuildingType)
-                    && !Enum.TryParse<BuildingType>(c.BuildingType, out _))
+                    && !ScenarioValidator.IsKnownBuildingType(
+                        c.BuildingType, ScenarioValidator.OwnerFactionDef(context.SlotFactionDefs, c.Faction)))
                     return (null, $"Unknown building_type '{c.BuildingType}'.");
 
             // Pass 5 — operator strings.
@@ -363,9 +601,9 @@ namespace ProjectChimera.AI
             // description block is HAND-AUTHORED (not derived from NodeKinds) precisely so the staleness-guard test can
             // catch a future NodeKinds addition that was not documented here.
             sb.AppendLine("=== VALID EVENT TYPES ===");
-            sb.AppendLine(@"match_start              — no additional fields
+            sb.AppendLine($@"match_start              — no additional fields
 unit_dies               — faction (0=Player1, 1=Player2)
-building_completed      — faction, building_type (""CommandCenter""|""Barracks""|""ArcheryRange""|""SiegeWorkshop"")
+building_completed      — faction, building_type ({BuildingTypeChoices})
 timer_expires           — timer_name (string)
 resource_threshold      — faction, amount (float), operator
 unit_count_threshold    — faction, count (int), operator
@@ -449,8 +687,13 @@ play_sound      — sound_id (string)");
             return text;
         }
 
-        // Helper type alias — BuildingType is defined in ProjectChimera.Core namespace.
-        private enum BuildingType { CommandCenter, Barracks, ArcheryRange, SiegeWorkshop }
+        // DW-627: the private 4-member `enum BuildingType { CommandCenter, Barracks, ArcheryRange, SiegeWorkshop }`
+        // that used to sit here is GONE. It SHADOWED ProjectChimera.Core.BuildingType (imported above), so every
+        // building-type check in this file silently gated against a hand-listed copy that stopped tracking the real
+        // enum at Story 2.8 (Aviary) and could never know about an authored custom building. Both gates now resolve
+        // through ScenarioValidator.IsKnownBuildingType — one vocabulary for hand-authored, editor-authored and
+        // generated content. Do not re-introduce a local BuildingType: the unqualified name must keep binding to the
+        // real Core enum.
 
         // ── Scenario generation ───────────────────────────────────────────────
 
@@ -464,9 +707,8 @@ play_sound      — sound_id (string)");
             MapGeneratorContext context,
             Action<ScenarioData?, string?> onComplete)
         {
-            _mapCts?.Cancel();
-            _mapCts = new CancellationTokenSource();
-            var token = _mapCts.Token;
+            ThrowIfDisposed();
+            CancellationToken token = ReplaceTokenSource(ref _mapCts);   // DW-375: cancels AND disposes the superseded source
 
             // Snapshot the authoritative settings on the caller thread (see GenerateTriggerAsync). No fallback.
             SettingsData settings = _getSettings();
@@ -516,7 +758,7 @@ play_sound      — sound_id (string)");
             }, token);
         }
 
-        /// <summary>Cancel any in-flight scenario generation request.</summary>
+        /// <summary>Cancel any in-flight scenario generation request. DW-375: a no-op after <see cref="Dispose"/>.</summary>
         public void CancelScenario() => _mapCts?.Cancel();
 
         /// <summary>
@@ -524,9 +766,12 @@ play_sound      — sound_id (string)");
         /// 1. Schema — the DW-366 upstream byte-size guard (≤ <see cref="ScenarioSerializer.MaxScenarioFileBytes"/>,
         ///    checked BEFORE deserialization), then deserialization succeeds. (UNIVERSAL — always runs.)
         /// 2. Player slots — at least <see cref="MapGeneratorContext.MinPlayerSlots"/> (RTS default 2); slot indices
-        ///    unique and within [0, PlayerSlots.Length) (UNIVERSAL — always runs; DW-373); faction paths
+        ///    unique and within [0, PlayerSlots.Length) (UNIVERSAL — always runs; DW-373); every unit's/building's
+        ///    <c>slot</c> references a DECLARED player slot (UNIVERSAL — always runs; DW-542); faction paths
         ///    forced from the TRUSTED per-slot <see cref="MapGeneratorContext.ResolveFactionJson"/> mapping.
-        /// 3. Building types — only valid BuildingType enum names.
+        /// 3. Building types — a built-in <see cref="BuildingType"/> enum name, or (when the caller threaded
+        ///    <see cref="MapGeneratorContext.SlotFactionDefs"/>) a custom building id authored by the owning slot's
+        ///    faction — the same two vocabularies the load gate resolves (DW-627).
         /// 4. Unit IDs — only IDs present in MapGeneratorContext.UnitIds.
         /// 5. Position bounds — all X/Z within ±MapBounds. (UNIVERSAL — always runs.)
         /// 6. Ore node spacing — every pair at least 15 units apart. (UNIVERSAL — always runs.)
@@ -568,17 +813,16 @@ play_sound      — sound_id (string)");
                 // collection (the per-collection gates all run post-parse). Over-cap → the guard's JsonException is
                 // caught below and surfaced as the pass-1 validation error.
                 ScenarioSerializer.GuardScenarioInputSize(Encoding.UTF8.GetByteCount(json), "generated scenario");
-                scenario = JsonSerializer.Deserialize<ScenarioData>(json, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true,
-                    Converters = { new FixedJsonConverter() },
-                    // A model is not a JSON serializer: trailing commas and // comments are its two most common
-                    // deviations and both are pure syntax, so rejecting them throws away a whole (paid) generation
-                    // over nothing. Everything about the CONTENT is still decided by passes 2-7 below — being
-                    // lenient here widens the syntax accepted, never the values trusted.
-                    AllowTrailingCommas = true,
-                    ReadCommentHandling = JsonCommentHandling.Skip,
-                }) ?? throw new InvalidOperationException("Deserialised to null.");
+                // DW-526: the shared untrusted-model-output posture (ContentJson.ModelOutputOptions), replacing the
+                // per-call option set that used to be built here. It carries the same leniency this site always
+                // documented — a model is not a JSON serializer: trailing commas and // comments are its two most
+                // common deviations and both are pure syntax, so rejecting them throws away a whole (paid) generation
+                // over nothing. Everything about the CONTENT is still decided by passes 2-7 below; being lenient there
+                // widens the syntax accepted, never the values trusted. What it ADDS over the old inline set is the
+                // name-only enum boundary (a numeric enum now fails closed instead of silently resolving to whichever
+                // member holds that ordinal — the same tightening DW-274 gave the scenario FILE format).
+                scenario = JsonSerializer.Deserialize<ScenarioData>(json, ContentJson.ModelOutputOptions)
+                    ?? throw new InvalidOperationException("Deserialised to null.");
             }
             catch (JsonException jex)
             {
@@ -613,18 +857,39 @@ play_sound      — sound_id (string)");
                     return (null, $"player_slots[{i}].slot={slotIndex} duplicates another player slot — slot indices must be unique.");
             }
 
+            // DW-542 — PLACEMENT slot references (UNIVERSAL — structural, like the declaration check above). DW-373
+            // gated the DECLARATION indices only; a generated map could still place a unit or building on slot 3 of a
+            // 2-slot scenario. That passed here — "validated" was reported to the creator — and was then rejected at
+            // the ScenarioValidator load gate with "references no declared player_slot", so the AI-generation UX
+            // promised a scenario the loader refuses. Gate it in the SAME pass that validates the declarations, with
+            // the same located shape, so the two gates agree. Runs BEFORE the per-slot faction resolution below, so
+            // every later pass (building-type owner resolution, Pass 7's per-slot counts) reads a real declared slot.
+            for (int i = 0; i < scenario.Buildings.Length; i++)
+                if (!declaredSlots.Contains(scenario.Buildings[i].Slot))
+                    return (null, $"buildings[{i}].slot={scenario.Buildings[i].Slot} references no declared player_slot.");
+            for (int i = 0; i < scenario.Units.Length; i++)
+                if (!declaredSlots.Contains(scenario.Units[i].Slot))
+                    return (null, $"units[{i}].slot={scenario.Units[i].Slot} references no declared player_slot.");
+
             // Force faction JSON paths from the TRUSTED per-slot resolver — LLMs often hallucinate these, and the
             // untrusted file must never dictate the path. RTS default = the existing slot-0/slot-1 mapping.
             foreach (var slot in scenario.PlayerSlots)
                 slot.FactionJson = context.ResolveFactionJson(slot.Slot);
 
-            // Pass 3 — building types.
-            var validBuildings = new HashSet<string>
-                { "CommandCenter", "Barracks", "ArcheryRange", "SiegeWorkshop" };
-            foreach (var b in scenario.Buildings)
-                if (!validBuildings.Contains(b.Type))
+            // Pass 3 — building types (DW-627). The hardcoded 4-name set that used to live here has the same defect
+            // the file's private shadow enum had: it stopped tracking the real BuildingType at Story 2.8 (Aviary) and
+            // knows nothing about authored custom buildings. Resolve through ScenarioValidator's ONE predicate — a
+            // built-in enum name, or an authored building-def id in the OWNER slot's faction when the caller threaded
+            // the trusted per-slot defs — so a generated map is gated by exactly what the loader will accept.
+            for (int i = 0; i < scenario.Buildings.Length; i++)
+            {
+                ScenarioBuilding b = scenario.Buildings[i];
+                if (!ScenarioValidator.IsKnownBuildingType(
+                        b.Type, ScenarioValidator.OwnerFactionDef(context.SlotFactionDefs, b.Slot)))
                     return (null, $"Unknown building type '{b.Type}'. " +
-                        $"Valid: {string.Join(", ", validBuildings)}");
+                        $"Valid: {string.Join(", ", ScenarioValidator.PlaceableBuildingTypeNames)}" +
+                        " (or a custom building id authored by the owning slot's faction).");
+            }
 
             // Pass 4 — unit IDs.
             var validUnits = new HashSet<string>(context.UnitIds, StringComparer.OrdinalIgnoreCase);
@@ -683,10 +948,114 @@ play_sound      — sound_id (string)");
 
         // ── Map system prompt ─────────────────────────────────────────────────
 
+        /// <summary>
+        /// DW-372 — how many player slots the map prompt's SCHEMA and EXAMPLE blocks render. NEVER fewer than the
+        /// <see cref="MapGeneratorContext.MinPlayerSlots"/> floor the PLACEMENT RULES state and
+        /// <see cref="ValidateScenario"/> enforces. Before this, both blocks hardcoded exactly two slots, so a caller
+        /// raising the floor to 4 told the model "at least 4 player slots" while showing it a 2-slot schema AND a
+        /// 2-slot example — the model copies the worked example, emits 2, and the gate rejects EVERY generation.
+        /// Two is the floor of the RENDERING (not of the clamp): a 2-slot example satisfies any floor ≤ 2, so the
+        /// prompts of every shipped scenario type stay byte-for-byte what they have always been.
+        /// </summary>
+        internal static int PromptSlotCount(MapGeneratorContext ctx) => Math.Max(2, ctx.MinPlayerSlots);
+
+        /// <summary>
+        /// DW-372 — the example base position for 0-based <paramref name="slot"/> of <paramref name="slotCount"/>, on
+        /// a ring of radius <paramref name="radius"/> starting due WEST and walking counter-clockwise. Chosen so the
+        /// two-slot case is exactly the historical (-45, 0) / (+45, 0) pair while N &gt; 2 spreads the bases evenly
+        /// (the symmetry every non-RTS scenario type's guidance asks for). Integer coordinates only — the prompt must
+        /// never carry a locale-dependent decimal separator.
+        /// </summary>
+        private static (int X, int Z) PromptBase(int slot, int slotCount, int radius)
+        {
+            double angle = Math.PI + slot * (2.0 * Math.PI / slotCount);
+            return ((int)Math.Round(radius * Math.Cos(angle)), (int)Math.Round(radius * Math.Sin(angle)));
+        }
+
+        /// <summary>
+        /// DW-372 — the two example worker positions for a slot whose base is (<paramref name="baseX"/>,
+        /// <paramref name="baseZ"/>): <paramref name="offset"/> world units inboard (toward the map centre), then
+        /// ±offset along the perpendicular. Returned in ascending (Z, then X) order, which reproduces the historical
+        /// (-42,-3), (-42,3), (42,-3), (42,3) block exactly for the two-slot ring.
+        /// </summary>
+        private static (int X, int Z)[] PromptWorkers(int baseX, int baseZ, int offset)
+        {
+            double len = Math.Sqrt((double)baseX * baseX + (double)baseZ * baseZ);
+            double ux  = len > 0 ? -baseX / len : 1.0;   // unit vector: base → map centre
+            double uz  = len > 0 ? -baseZ / len : 0.0;
+            double cx  = baseX + ux * offset;
+            double cz  = baseZ + uz * offset;
+            // Perpendicular of (ux, uz) is (-uz, ux).
+            var a = ((int)Math.Round(cx - uz * offset), (int)Math.Round(cz + ux * offset));
+            var b = ((int)Math.Round(cx + uz * offset), (int)Math.Round(cz - ux * offset));
+            bool aFirst = a.Item2 < b.Item2 || (a.Item2 == b.Item2 && a.Item1 <= b.Item1);
+            return aFirst ? new[] { a, b } : new[] { b, a };
+        }
+
         // Story 8.3: internal (not private) so the Tier-1 clamp test can assert the prompt reflects the SAME clamp
         // values ValidateScenario gates against (min player slots + max combat units per slot).
         internal static string BuildMapSystemPrompt(MapGeneratorContext ctx)
         {
+            // ── DW-372 — ONE slot count and ONE ring geometry drive every slot-shaped block below: the schema's
+            //    player_slots rows and its "slot": 0|1 choice lists, the placement-rule base hints, and the example's
+            //    player_slots / CommandCenters / workers. The request therefore cannot contradict itself about how
+            //    many players the map has, which is what made a raised MinPlayerSlots unusable. The two-slot
+            //    rendering is byte-for-byte the hand-written text it replaces, so no shipping prompt moves.
+            int slotCount = PromptSlotCount(ctx);
+            // Historical radius is 45 on the default ±120 bounds; deriving it keeps the whole ring inside a caller's
+            // tighter bounds instead of emitting an example that fails the prompt's own position rule.
+            int radius    = Math.Max(1, (int)Math.Round(Math.Min(45.0, ctx.MapBounds * 0.375)));
+            int workerOff = Math.Max(1, Math.Min(3, radius));
+
+            var bases = new (int X, int Z)[slotCount];
+            for (int s = 0; s < slotCount; s++) bases[s] = PromptBase(s, slotCount, radius);
+
+            var schemaSlotRows      = new List<string>(slotCount);
+            var exampleSlotRows     = new List<string>(slotCount);
+            var exampleBuildingRows = new List<string>(slotCount);
+            var exampleUnitRows     = new List<string>(slotCount * 2);
+            var baseHints           = new StringBuilder();
+
+            for (int s = 0; s < slotCount; s++)
+            {
+                (int bx, int bz) = bases[s];
+                string tail  = s == slotCount - 1 ? "" : ",";
+                // The prompt names the SAME per-slot faction path ValidateScenario will force onto the slot, so a
+                // non-default resolver (free-for-all / sandbox) is visible to the model instead of being silently
+                // rewritten after generation.
+                string fjson = ctx.ResolveFactionJson(s);
+
+                schemaSlotRows.Add(string.Format(CultureInfo.InvariantCulture,
+                    "    {{ \"slot\": {0}, \"faction_json\": \"{1}\", \"start_ore\": 200.0, " +
+                    "\"base_x\": {2,5:0.0}, \"base_z\": {3:0.0} }}{4}", s, fjson, bx, bz, tail));
+
+                exampleSlotRows.Add(string.Format(CultureInfo.InvariantCulture,
+                    "    {{ \"slot\": {0}, \"faction_json\": \"{1}\", \"start_ore\": 200, " +
+                    "\"base_x\": {2,3}, \"base_z\": {3} }}{4}", s, fjson, bx, bz, tail));
+
+                exampleBuildingRows.Add(string.Format(CultureInfo.InvariantCulture,
+                    "    {{ \"type\": \"CommandCenter\", \"slot\": {0}, \"x\": {1,3}, \"z\": {2}, " +
+                    "\"pre_built\": true }}{3}", s, bx, bz, tail));
+
+                foreach ((int wx, int wz) in PromptWorkers(bx, bz, workerOff))
+                    exampleUnitRows.Add(string.Format(CultureInfo.InvariantCulture,
+                        "    {{ \"unit_id\": \"worker\", \"slot\": {0}, \"x\": {1,3}, \"z\": {2,2} }},", s, wx, wz));
+
+                baseHints.AppendFormat(CultureInfo.InvariantCulture,
+                    " Player {0} (slot {1}): base near X={2}, Z={3}.", s + 1, s, bx, bz);
+            }
+            // The last unit row closes its JSON array — drop the trailing comma the loop appends unconditionally.
+            exampleUnitRows[^1] = exampleUnitRows[^1].TrimEnd(',');
+
+            // Joined with a bare "\n", NEVER Environment.NewLine: these blocks are spliced INTO verbatim string
+            // literals whose newlines come from this source file, so the emitted prompt stays byte-identical on every
+            // platform instead of drifting with the host's line ending.
+            string schemaSlots      = string.Join("\n", schemaSlotRows);
+            string exampleSlots     = string.Join("\n", exampleSlotRows);
+            string exampleBuildings = string.Join("\n", exampleBuildingRows);
+            string exampleUnits     = string.Join("\n", exampleUnitRows);
+            string slotChoices      = string.Join("|", Enumerable.Range(0, slotCount));
+
             var sb = new StringBuilder();
             sb.AppendLine(
                 "You are a scenario designer for Project Chimera, a real-time strategy game.");
@@ -701,17 +1070,16 @@ play_sound      — sound_id (string)");
   ""map_bounds"": 120.0,
   ""win_condition"": ""DestroyAllBuildings"" | ""EliminateAllUnits"",
   ""player_slots"": [
-    {{ ""slot"": 0, ""faction_json"": ""{ctx.Slot0FactionJson}"", ""start_ore"": 200.0, ""base_x"": -45.0, ""base_z"": 0.0 }},
-    {{ ""slot"": 1, ""faction_json"": ""{ctx.Slot1FactionJson}"", ""start_ore"": 200.0, ""base_x"":  45.0, ""base_z"": 0.0 }}
+{schemaSlots}
   ],
   ""resource_nodes"": [
     {{ ""x"": float, ""z"": float, ""supply"": 400.0, ""rate"": 5.0, ""max_gatherers"": 4 }}
   ],
   ""buildings"": [
-    {{ ""type"": ""CommandCenter""|""Barracks""|""ArcheryRange""|""SiegeWorkshop"", ""slot"": 0|1, ""x"": float, ""z"": float, ""pre_built"": true }}
+    {{ ""type"": {BuildingTypeChoices}, ""slot"": {slotChoices}, ""x"": float, ""z"": float, ""pre_built"": true }}
   ],
   ""units"": [
-    {{ ""unit_id"": ""string"", ""slot"": 0|1, ""x"": float, ""z"": float }}
+    {{ ""unit_id"": ""string"", ""slot"": {slotChoices}, ""x"": float, ""z"": float }}
   ],
   ""triggers"": []
 }}");
@@ -719,7 +1087,9 @@ play_sound      — sound_id (string)");
             sb.AppendLine("=== PLACEMENT RULES ===");
             sb.AppendLine($"- All x/z positions MUST be within ±{ctx.MapBounds} world units.");
             // Story 8.3: reflect the SAME min-player-slots clamp ValidateScenario gates against (RTS default 2).
-            sb.AppendLine($"- Provide at least {ctx.MinPlayerSlots} player slots. Player 1 (slot 0): base near X=-45, Z=0. Player 2 (slot 1): base near X=45, Z=0.");
+            // DW-372: the per-player base hints are generated from the SAME ring the schema/example render, so a
+            // raised floor names every slot instead of only the historical two.
+            sb.AppendLine($"- Provide at least {ctx.MinPlayerSlots} player slots.{baseHints}");
             sb.AppendLine("- Each slot MUST have a CommandCenter (pre_built=true) at its base position.");
             sb.AppendLine("- Ore nodes must be spaced at least 15 units apart from every other ore node.");
             sb.AppendLine("- Use 4–12 resource nodes. Supply 200–2000, rate 3–10.");
@@ -750,8 +1120,7 @@ play_sound      — sound_id (string)");
   ""map_bounds"": 120,
   ""win_condition"": ""DestroyAllBuildings"",
   ""player_slots"": [
-    {{ ""slot"": 0, ""faction_json"": ""{ctx.Slot0FactionJson}"", ""start_ore"": 200, ""base_x"": -45, ""base_z"": 0 }},
-    {{ ""slot"": 1, ""faction_json"": ""{ctx.Slot1FactionJson}"", ""start_ore"": 200, ""base_x"":  45, ""base_z"": 0 }}
+{exampleSlots}
   ],
   ""resource_nodes"": [
     {{ ""x"": -25, ""z"":  15, ""supply"": 600, ""rate"": 5, ""max_gatherers"": 4 }},
@@ -761,14 +1130,10 @@ play_sound      — sound_id (string)");
     {{ ""x"":  25, ""z"": -15, ""supply"": 600, ""rate"": 5, ""max_gatherers"": 4 }}
   ],
   ""buildings"": [
-    {{ ""type"": ""CommandCenter"", ""slot"": 0, ""x"": -45, ""z"": 0, ""pre_built"": true }},
-    {{ ""type"": ""CommandCenter"", ""slot"": 1, ""x"":  45, ""z"": 0, ""pre_built"": true }}
+{exampleBuildings}
   ],
   ""units"": [
-    {{ ""unit_id"": ""worker"", ""slot"": 0, ""x"": -42, ""z"": -3 }},
-    {{ ""unit_id"": ""worker"", ""slot"": 0, ""x"": -42, ""z"":  3 }},
-    {{ ""unit_id"": ""worker"", ""slot"": 1, ""x"":  42, ""z"": -3 }},
-    {{ ""unit_id"": ""worker"", ""slot"": 1, ""x"":  42, ""z"":  3 }}
+{exampleUnits}
   ],
   ""triggers"": []
 }}");
@@ -797,6 +1162,8 @@ play_sound      — sound_id (string)");
         // Stays Godot-free (no Godot dependency) — Tier-1 + analyzer covered.
         // ══════════════════════════════════════════════════════════════════════
 
+        // DW-375: like _cts/_mapCts above, every one of these is reassigned ONLY through ReplaceTokenSource (cancel +
+        // dispose the superseded source) and released by Dispose. Do not hand-roll `x?.Cancel(); x = new(...)` here again.
         private CancellationTokenSource? _unitCts;
         private CancellationTokenSource? _abilityCts;
         private CancellationTokenSource? _heroCts;
@@ -813,10 +1180,10 @@ play_sound      — sound_id (string)");
         /// </summary>
         public void GenerateUnitDraftAsync(string prompt, UnitDraftContext ctx, Action<UnitDefinition?, string?> onComplete)
         {
-            _unitCts?.Cancel();
-            _unitCts = new CancellationTokenSource();
+            ThrowIfDisposed();
+            CancellationToken token = ReplaceTokenSource(ref _unitCts);   // DW-375: cancels AND disposes the superseded source
             RunDraftAsync(BuildUnitDraftPrompt(ctx), $"Create a unit for: {prompt}",
-                json => ValidateUnitDraft(json, ctx), _unitCts.Token, onComplete);
+                json => ValidateUnitDraft(json, ctx), token, onComplete);
         }
 
         /// <summary>
@@ -826,10 +1193,10 @@ play_sound      — sound_id (string)");
         /// </summary>
         public void GenerateAbilityDraftAsync(string prompt, AbilityDraftContext ctx, Action<AbilityDefinition?, string?> onComplete)
         {
-            _abilityCts?.Cancel();
-            _abilityCts = new CancellationTokenSource();
+            ThrowIfDisposed();
+            CancellationToken token = ReplaceTokenSource(ref _abilityCts);   // DW-375: cancels AND disposes the superseded source
             RunDraftAsync(BuildAbilityDraftPrompt(ctx), $"Create an ability for: {prompt}",
-                json => ValidateAbilityDraft(json, ctx), _abilityCts.Token, onComplete);
+                json => ValidateAbilityDraft(json, ctx), token, onComplete);
         }
 
         /// <summary>
@@ -839,10 +1206,10 @@ play_sound      — sound_id (string)");
         /// </summary>
         public void GenerateHeroDraftAsync(string prompt, UnitDraftContext ctx, Action<UnitDefinition?, string?> onComplete)
         {
-            _heroCts?.Cancel();
-            _heroCts = new CancellationTokenSource();
+            ThrowIfDisposed();
+            CancellationToken token = ReplaceTokenSource(ref _heroCts);   // DW-375: cancels AND disposes the superseded source
             RunDraftAsync(BuildHeroDraftPrompt(ctx), $"Create a hero for: {prompt}",
-                json => ValidateHeroDraft(json, ctx), _heroCts.Token, onComplete);
+                json => ValidateHeroDraft(json, ctx), token, onComplete);
         }
 
         /// <summary>
@@ -854,14 +1221,15 @@ play_sound      — sound_id (string)");
         /// </summary>
         public void GenerateFactionDraftAsync(string prompt, FactionDraftContext ctx, Action<FactionDefinition?, string?> onComplete)
         {
-            _factionCts?.Cancel();
-            _factionCts = new CancellationTokenSource();
+            ThrowIfDisposed();
+            CancellationToken token = ReplaceTokenSource(ref _factionCts);   // DW-375: cancels AND disposes the superseded source
             RunDraftAsync(BuildFactionDraftPrompt(ctx), $"Create a faction for: {prompt}",
-                json => ValidateFactionDraft(json, ctx), _factionCts.Token, onComplete,
+                json => ValidateFactionDraft(json, ctx), token, onComplete,
                 maxTokens: FACTION_DRAFT_MAX_TOKENS);
         }
 
-        /// <summary>Cancel any in-flight draft generation (all four kinds).</summary>
+        /// <summary>Cancel any in-flight draft generation (all four kinds) plus the balance analysis. DW-375: a no-op
+        /// after <see cref="Dispose"/>.</summary>
         public void CancelDrafts()
         {
             _unitCts?.Cancel();
@@ -893,16 +1261,16 @@ play_sound      — sound_id (string)");
         public void GenerateBalanceAnalysisAsync(
             string prompt, BalanceAnalysisContext ctx, Action<BalanceReport?, string?> onComplete)
         {
-            _balanceCts?.Cancel();
-            _balanceCts = new CancellationTokenSource();
+            ThrowIfDisposed();
+            CancellationToken token = ReplaceTokenSource(ref _balanceCts);   // DW-375: cancels AND disposes the superseded source
             RunDraftAsync(
                 BuildBalanceAnalysisPrompt(ctx),
                 $"Analyze this faction for balance. Focus: {prompt}",
                 json => ValidateBalanceReport(json, ctx),
-                _balanceCts.Token, onComplete, maxTokens: FACTION_DRAFT_MAX_TOKENS);
+                token, onComplete, maxTokens: FACTION_DRAFT_MAX_TOKENS);
         }
 
-        /// <summary>Cancel any in-flight balance-analysis request.</summary>
+        /// <summary>Cancel any in-flight balance-analysis request. DW-375: a no-op after <see cref="Dispose"/>.</summary>
         public void CancelBalanceAnalysis() => _balanceCts?.Cancel();
 
         /// <summary>Story 8.5: internal so the staleness-guard test can assert the prompt enumerates every member of
@@ -961,8 +1329,10 @@ play_sound      — sound_id (string)");
             BalanceReport report;
             try
             {
-                report = JsonSerializer.Deserialize<BalanceReport>(json,
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                // DW-526: this site used to build a per-call option set that registered NO converters at all — so it
+                // was the ONE model-output parse path that could not read a Fixed-typed field, and it rejected the
+                // trailing commas / // comments every other LLM path tolerates. Now on the shared posture.
+                report = JsonSerializer.Deserialize<BalanceReport>(json, ContentJson.ModelOutputOptions)
                     ?? throw new InvalidOperationException("Deserialised to null.");
             }
             catch (Exception ex)

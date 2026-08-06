@@ -76,8 +76,29 @@ namespace ProjectChimera.Dsl
         /// stays the continuation chain, run after the taken branch.</summary>
         public const int RandomChoiceBranchOutPort0 = 1;
 
+        /// <summary>The graph's nodes. Every order-sensitive consumer sorts by ascending <c>Id</c>.</summary>
         public List<NodeBase> Nodes     { get; } = new();
+
+        /// <summary>
+        /// The control-flow edges. ORDERING RULE (DW-337): this list's own order is authoring order and is NOT
+        /// canonical — every consumer whose output depends on edge order MUST sort by
+        /// <see cref="ExecEdge.CompareTo"/> (as <see cref="ToCanonicalJson"/>, <c>ToFlat</c> and
+        /// <c>CanonicalModelHash.MixTriggerGraph</c> do). Never derive an order by ENUMERATING a
+        /// <c>HashSet&lt;ExecEdge&gt;</c>/<c>Dictionary</c> keyed on edges: hash-container enumeration order is an
+        /// unspecified implementation detail, so a graph-editing/dedup pass that emits in set order would leak
+        /// container internals into the canonical bytes and the lockstep hashes. (The edge hash itself is now a
+        /// seed-free FNV fold, so a set's layout no longer varies per PROCESS — but "unspecified" still means
+        /// do not depend on it. Membership/dedup use is fine; sort what you enumerate out.)
+        /// </summary>
         public List<ExecEdge> ExecEdges { get; } = new();
+
+        /// <summary>
+        /// The typed dataflow edges. Same ORDERING RULE as <see cref="ExecEdges"/> (DW-337) — sort by
+        /// <see cref="DataEdge.CompareTo"/>, never by enumerating a hash-based set. Extra caveat:
+        /// <see cref="DataEdge.CompareTo"/> keys on the <c>(Src,SrcPort,Dst,DstPort)</c> topology tuple ONLY, so
+        /// two edges differing only in <see cref="DataEdge.Wire"/> tie — an order-sensitive consumer must break
+        /// that tie explicitly (<c>.ThenBy(x =&gt; x.Wire)</c>) rather than lean on sort stability.
+        /// </summary>
         public List<DataEdge> DataEdges { get; } = new();
 
         // ── Story 7.10 — graph-only classification (the T2 read-only-fallback detector) ────────────────────────
@@ -1018,6 +1039,13 @@ namespace ProjectChimera.Dsl
         /// <c>(Src,SrcPort,Dst,DstPort)</c>. Uses <see cref="DslJson.Options"/> (the closed-registry
         /// <see cref="NodeBaseJsonConverter"/> + <c>FixedJsonConverter</c>). Two structurally-equal graphs (nodes/
         /// edges added out of order) serialize byte-identically.
+        ///
+        /// NOT A HASH SOURCE (DW-337). The byte-identity above is proven only WITHIN one runtime: it rests on
+        /// System.Text.Json's indentation and number formatting, which are implementation details that may differ
+        /// across .NET versions/platforms. This string is the persistence + editor-diff format; anything that must
+        /// agree across machines (the MP start-state handshake, <c>CanonicalModelHash</c>, <c>StartStateHash</c>)
+        /// MUST fold the TYPED fields — ids, ports, <c>Fixed.Raw</c>, enum names — in a fixed field order instead.
+        /// <c>CanonicalModelHash.MixTriggerGraph</c> already does exactly that; keep it that way.
         /// </summary>
         public string ToCanonicalJson()
         {

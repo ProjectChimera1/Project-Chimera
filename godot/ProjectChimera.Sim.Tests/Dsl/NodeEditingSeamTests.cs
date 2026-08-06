@@ -95,10 +95,11 @@ namespace ProjectChimera.Sim.Tests.Dsl
             }
         }
 
-        /// <summary>Every rendered data port is legal, and every legal data port is rendered — with the ONE
-        /// sanctioned curation: an ActionNode's index-in renders only for array_set.</summary>
+        /// <summary>Every rendered data port is legal, and every legal data port is rendered — with the TWO
+        /// sanctioned curations: an ActionNode's index-in renders only for array_set, and (DW-578) an
+        /// ExprCallNode's operand ports render only up to the built-in's arity.</summary>
         [Fact]
-        public void PortCatalog_DataPorts_SoundAndComplete_ExceptActionIndexCuration()
+        public void PortCatalog_DataPorts_SoundAndComplete_ExceptSanctionedCurations()
         {
             foreach (string kind in NodePaletteFactory.PaletteKinds)
             {
@@ -112,8 +113,7 @@ namespace ProjectChimera.Sim.Tests.Dsl
 
                 for (int p = 0; p <= MaxProbePort; p++)
                 {
-                    bool curatedAway = n is ActionNode a && a.Kind != "array_set" && p == TriggerGraph.ActionIndexInPort;
-                    if (NodePorts.IsDataIn(n, p) && !curatedAway)
+                    if (NodePorts.IsDataIn(n, p) && !IsCuratedAwayDataIn(n, p))
                         Assert.True(ins.Any(x => x.IsData && x.Port == p),
                             $"'{kind}' does not render its legal data-in port {p}.");
                     if (NodePorts.IsDataOut(n, p))
@@ -122,6 +122,15 @@ namespace ProjectChimera.Sim.Tests.Dsl
                 }
             }
         }
+
+        /// <summary>The two sanctioned rendered-port curations (legal per NodePorts, deliberately NOT drawn
+        /// because a narrower downstream rule would reject the wire anyway).</summary>
+        private static bool IsCuratedAwayDataIn(NodeBase n, int port) => n switch
+        {
+            ActionNode a   => a.Kind != "array_set" && port == TriggerGraph.ActionIndexInPort,
+            ExprCallNode c => port >= NodeKinds.ExprCallArity(c.Fn), // DW-578 — arity-curated operand pins
+            _              => false,
+        };
 
         [Fact]
         public void PortCatalog_RandomChoice_BranchPortsFollowWeights()
@@ -135,6 +144,126 @@ namespace ProjectChimera.Sim.Tests.Dsl
             Assert.Equal(3, outs.Count(p => !p.IsData));
             Assert.Contains(outs, p => !p.IsData && p.Port == TriggerGraph.RandomChoiceBranchOutPort0);
             Assert.Contains(outs, p => !p.IsData && p.Port == TriggerGraph.RandomChoiceBranchOutPort0 + 1);
+        }
+
+        // ══ DW-578 — expr_call operand pins follow the built-in's ARITY ════════════════════════════════════════
+        //
+        // Pre-fix, NodePortCatalog rendered operand pins a AND b on EVERY expr_call (the NodePorts legality set),
+        // so an author could draw a wire into a zero-arity state read (region_unit_count) or into the second
+        // operand of a one-arity read (count / abs / entity_* / unit_count_*) and only learn it was illegal at
+        // compile time, via the located badge. The rendered set is now the compiler's own arity table.
+
+        /// <summary>Every closed-vocabulary built-in renders EXACTLY its arity's operand pins, ascending from
+        /// ExprOperandPort0 — and always its single data-out.</summary>
+        [Fact]
+        public void PortCatalog_ExprCall_OperandPortsFollowBuiltinArity()
+        {
+            foreach (string fn in NodeKinds.ExprCallFns)
+            {
+                int arity = NodeKinds.ExprCallArity(fn);
+                Assert.InRange(arity, 0, 2); // a closed-vocabulary fn always has a known arity
+
+                (List<GraphPortSpec> ins, List<GraphPortSpec> outs) = PortsOf(new ExprCallNode { Id = 0, Fn = fn });
+
+                Assert.Equal(arity, ins.Count(p => p.IsData));
+                Assert.Equal(
+                    Enumerable.Range(TriggerGraph.ExprOperandPort0, arity).ToArray(),
+                    ins.Where(p => p.IsData).Select(p => p.Port).ToArray());
+                Assert.Equal(0, ins.Count(p => !p.IsData));
+                Assert.Single(outs);
+                Assert.True(outs[0].IsData && outs[0].Port == TriggerGraph.ExprDataOutPort);
+            }
+        }
+
+        /// <summary>The DW-578 headline: a ZERO-arity state read draws no wireable operand pin at all (its region
+        /// is a static selector field), while still emitting its result port.</summary>
+        [Fact]
+        public void PortCatalog_ExprCall_ZeroArityStateRead_RendersNoOperandPin()
+        {
+            (List<GraphPortSpec> ins, List<GraphPortSpec> outs) =
+                PortsOf(new ExprCallNode { Id = 0, Fn = "region_unit_count", Selector = "north" });
+
+            Assert.Empty(ins);
+            Assert.Single(outs);
+        }
+
+        /// <summary>An UNKNOWN fn is unreachable through both authoring channels (parse and the inspector both
+        /// membership-check ExprCallFns), so the catalog falls back to the full legal operand pair rather than
+        /// hiding an already-drawn wire on a node the author can still repair by picking a valid fn.</summary>
+        [Fact]
+        public void PortCatalog_ExprCall_UnknownFn_FallsBackToTheFullLegalPair()
+        {
+            var ec = new ExprCallNode { Id = 0, Fn = "not_a_builtin" };
+            Assert.Equal(-1, NodeKinds.ExprCallArity(ec.Fn));
+
+            (List<GraphPortSpec> ins, _) = PortsOf(ec);
+            Assert.Equal(2, ins.Count);
+            foreach (GraphPortSpec p in ins)
+                Assert.True(NodePorts.IsDataIn(ec, p.Port));
+        }
+
+        /// <summary>THE property that makes the curation correct: a RENDERED operand pin is one the compiler will
+        /// accept an edge into, and every NodePorts-legal pin the catalog withholds is one the compiler rejects
+        /// with its located wrong-arg-count error. Pre-fix, every arity-0/1 built-in rendered a pin whose wire
+        /// compiles to a hard reject.</summary>
+        [Fact]
+        public void PortCatalog_ExprCall_RenderedOperandPins_AreExactlyTheOnesTheCompilerAccepts()
+        {
+            var noVars = new Dictionary<string, (DslValueType Type, VarScope Scope)>(StringComparer.Ordinal);
+
+            foreach (string fn in NodeKinds.ExprCallFns)
+            {
+                // Probe BOTH NodePorts-legal operand ports; legality is deliberately unchanged by DW-578.
+                foreach (int port in new[] { TriggerGraph.ExprOperandPort0, TriggerGraph.ExprOperandPort1 })
+                {
+                    var call = new ExprCallNode { Id = 1, Fn = fn, Selector = SelectorFor(fn) };
+                    var g = new TriggerGraph();
+                    g.Nodes.Add(call);
+                    g.Nodes.Add(new ExprLiteralNode { Id = 2, ValueType = DslValueType.Int, Raw = 0 });
+                    g.DataEdges.Add(new DataEdge(2, TriggerGraph.ExprDataOutPort, 1, port, DataWireType.Int));
+
+                    Assert.True(NodePorts.IsDataIn(call, port)); // still legal — this is a RENDER curation
+                    (List<GraphPortSpec> ins, _) = PortsOf(call);
+                    bool rendered = ins.Any(p => p.IsData && p.Port == port);
+
+                    ExprCompiler.TryCompile(g, rootId: 1, noVars, inCondition: false, out _, out string? error);
+                    string arityReject = $"takes {NodeKinds.ExprCallArity(fn)} argument(s), but port {port}";
+
+                    if (rendered)
+                        Assert.True(error is null || !error.Contains(arityReject, StringComparison.Ordinal),
+                            $"'{fn}' renders operand pin {port} but the compiler rejects a wire into it: {error}");
+                    else
+                        Assert.True(error != null && error.Contains(arityReject, StringComparison.Ordinal),
+                            $"'{fn}' withholds operand pin {port}, but the compiler does not reject a wire into it (error: {error ?? "<none>"}).");
+                }
+            }
+        }
+
+        /// <summary>A valid selector for the four selector-carrying state reads (so the probe above fails on
+        /// ARITY, never on a stray/absent selector); empty for every other built-in.</summary>
+        private static string SelectorFor(string fn) => fn switch
+        {
+            "unit_count_tag"      => "organic",
+            "unit_count_category" => "worker",
+            "player_resource"     => "ore",
+            "region_unit_count"   => "north",
+            _                     => "",
+        };
+
+        /// <summary>DW-179 meets DW-578: switching fn through the INSPECTOR reshapes the rendered operand pins,
+        /// so the arity rule is live while authoring rather than frozen at the palette default.</summary>
+        [Fact]
+        public void FieldCatalog_ExprCall_FnEdit_ReshapesRenderedOperandPins()
+        {
+            var ec = (ExprCallNode)MustCreate("expr_call");
+            Assert.Equal("count", ec.Fn);
+            Assert.Single(PortsOf(ec).Ins); // arity 1
+
+            Assert.Null(NodeFieldCatalog.FieldsOf(ec).Single(f => f.Key == "fn").Set("distance"));
+            Assert.Equal(2, PortsOf(ec).Ins.Count); // arity 2
+
+            Assert.Null(NodeFieldCatalog.FieldsOf(ec).Single(f => f.Key == "fn").Set("region_unit_count"));
+            Assert.Empty(PortsOf(ec).Ins); // arity 0 — the static-selector read
         }
 
         /// <summary>End-to-end: a palette-dragged objective leaf is wireable through the catalog's advertised

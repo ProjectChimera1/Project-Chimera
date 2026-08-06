@@ -155,7 +155,9 @@ namespace ProjectChimera.Core.Persistence
         }
 
         // ── EntityWorld per-entity array positions (named so capture/restore reference the SAME index). ──
-        private enum EA
+        // INTERNAL rather than private so the Tier-1 guard tests can name a lane instead of hard-coding its ordinal
+        // (the test assembly compiles these sources directly via SimSources.props — no InternalsVisibleTo needed).
+        internal enum EA
         {
             Flags, PosX, PosY, PosZ, VelX, VelY, VelZ, BaseMoveSpeed, EffMoveSpeed, Health, BaseMaxHealth, EffMaxHealth,
             FactionOf, MoveTargetX, MoveTargetY, MoveTargetZ, AttackTarget, AttackCooldown, AttackRange, BaseAtkDmg,
@@ -165,6 +167,9 @@ namespace ProjectChimera.Core.Persistence
             CommandGoalX, CommandGoalY, CommandGoalZ, CommandTarget, PatrolCount, PatrolIndex, PatrolDir,
             OrderQueueCount, ActiveOrderCmd, AbilityCount, PendingCastSlot, PendingCastTarget, AuraIdx, OnHitIdx,
             SelfPassiveIdx, HeroIndex, GatherState, GatherTarget, CarryAmount, CarryResType, CarryCapacity, BuildTarget,
+            // DW-581: the per-slot recycle generation backing PackRef/TryResolveRef. Last of the per-entity lanes (a
+            // new lane must stay BEFORE PatrolWpX, which is where the flat-stride half begins for the length checks).
+            Generation,
             // flat (stride) arrays — length EntHwm * stride
             PatrolWpX, PatrolWpY, PatrolWpZ, OrderQCmd, OrderQTargetX, OrderQTargetZ, AbilityId, AbilityCd,
             COUNT
@@ -214,6 +219,7 @@ namespace ProjectChimera.Core.Persistence
         /// by the canonical walk throws (the <c>modifier descriptor round-trip needs a content-model change</c> Block-If).</summary>
         public static SaveGameState CaptureFrom(SimulationHost host, CanonicalEffectDescriptorTable table)
         {
+            AssertDeathLogDrained(host.World);
             var s = new SaveGameState { Tick = host.CurrentTick, RngState = host.World.Rng.State };
             s.CaptureEntities(host.World);
             s.CaptureBuildings(host.Buildings);
@@ -234,6 +240,34 @@ namespace ProjectChimera.Core.Persistence
             s.CaptureAi(host.Ai);
             s.Stats = host.MatchStats.CaptureCounters();
             return s;
+        }
+
+        /// <summary>
+        /// DW-551 — the persistence side of the transient <see cref="DeathLog"/> coupling, as a FAIL-FAST guard.
+        ///
+        /// <para><see cref="SaveGameState"/> deliberately does not persist the per-tick death log: a save is taken
+        /// BETWEEN sim ticks, and by then the <c>ScenarioDirector</c> — which runs last in the tick — has already
+        /// wiped the log (in <c>UpdateSnapshots</c>, or on its trigger-less early-out), so there is provably nothing
+        /// to carry. That correctness rests entirely on WHERE the capture is called from, which nothing in the type
+        /// system enforces. Should a future save path ever capture MID-tick, the silent cost would be this tick's
+        /// <c>unit_dies</c> attribution — deaths already logged but not yet collected simply vanish across the save,
+        /// and the loss is invisible (the restored world looks complete; only trigger events are missing).</para>
+        ///
+        /// <para>So assert the premise instead of documenting it. A non-empty log at capture time means the caller is
+        /// NOT at a tick boundary; the fix is to add the log to capture/restore, never to drop the records. Throws
+        /// rather than silently proceeding, matching the fail-closed posture of the descriptor round-trip checks
+        /// (<see cref="CaptureModifiers"/>) — a save that cannot be faithfully represented is not written. Unreachable
+        /// today: every caller (the in-match save issue path and the tests) captures between ticks.</para>
+        /// </summary>
+        private static void AssertDeathLogDrained(EntityWorld world)
+        {
+            int pending = world.DeathLog.Count;
+            if (pending != 0)
+                throw new InvalidOperationException(
+                    $"SP save: the per-tick DeathLog still holds {pending} undrained record(s) at capture time, so this " +
+                    "capture is not at a tick boundary. SaveGameState does not persist the log (it is provably empty " +
+                    "between ticks), so this tick's unit_dies attribution would be lost across the save — add the " +
+                    "DeathLog to CaptureFrom/RestoreInto before introducing a mid-tick save path.");
         }
 
         private void CaptureEntities(EntityWorld w)
@@ -265,6 +299,7 @@ namespace ProjectChimera.Core.Persistence
             var aura = A(EA.AuraIdx, n); var onhit = A(EA.OnHitIdx, n); var selfp = A(EA.SelfPassiveIdx, n); var hidx = A(EA.HeroIndex, n);
             var gs = A(EA.GatherState, n); var gt = A(EA.GatherTarget, n); var ca = A(EA.CarryAmount, n);
             var crt = A(EA.CarryResType, n); var cc = A(EA.CarryCapacity, n); var bt = A(EA.BuildTarget, n);
+            var gen = A(EA.Generation, n); // DW-581 — per-slot recycle generation (the ABA half of a packed entity ref)
             EntDefId = new string[n];
 
             for (int i = 0; i < n; i++)
@@ -289,6 +324,7 @@ namespace ProjectChimera.Core.Persistence
                 aura[i] = w.AuraAbilityIndex[i]; onhit[i] = w.OnHitAbilityIndex[i]; selfp[i] = w.SelfPassiveAbilityIndex[i]; hidx[i] = w.HeroIndex[i];
                 gs[i] = (int)w.GatherState[i]; gt[i] = w.GatherTarget[i]; ca[i] = w.CarryAmount[i].Raw;
                 crt[i] = (int)w.CarryResourceType[i]; cc[i] = w.CarryCapacity[i].Raw; bt[i] = w.BuildTarget[i];
+                gen[i] = w.Generation[i]; // DW-581
                 EntDefId[i] = w.SourceDefinition[i]?.Id ?? "";
             }
 
@@ -634,6 +670,7 @@ namespace ProjectChimera.Core.Persistence
             var pcs = G(EA.PendingCastSlot); var pct = G(EA.PendingCastTarget);
             var aura = G(EA.AuraIdx); var onhit = G(EA.OnHitIdx); var selfp = G(EA.SelfPassiveIdx); var hidx = G(EA.HeroIndex);
             var gs = G(EA.GatherState); var gt = G(EA.GatherTarget); var ca = G(EA.CarryAmount); var crt = G(EA.CarryResType); var cc = G(EA.CarryCapacity); var bt = G(EA.BuildTarget);
+            var gen = G(EA.Generation); // DW-581
 
             for (int i = 0; i < n; i++)
             {
@@ -646,7 +683,19 @@ namespace ProjectChimera.Core.Persistence
                 w.FactionOf[i] = (Faction)fac[i];
                 w.MoveTarget[i] = new FixedVec3(Fixed.FromRaw(mtx[i]), Fixed.FromRaw(mty[i]), Fixed.FromRaw(mtz[i]));
                 w.AttackTarget[i] = at[i]; w.AttackCooldown[i] = Fixed.FromRaw(ac[i]); w.AttackRange[i] = Fixed.FromRaw(ar[i]);
-                w.BaseAttackDamage[i] = Fixed.FromRaw(bad[i]); w.EffectiveAttackDamage[i] = Fixed.FromRaw(ead[i]);
+                // DW-643: EffectiveAttackDamage is re-applied through ModifierSystem's ZERO-FLOOR, not copied raw.
+                // This overlay is the one writer of that field which does not go through
+                // ModifierSystem.RecomputeEntity's `Fixed.Max(Fixed.Zero, …)` — it rebuilds the SoA from raw ints, so
+                // a corrupt/tampered/older-build blob could land a NEGATIVE value that nothing downstream re-clamps
+                // (the restore runs no tick, and a modifier-free entity is never recomputed). A negative there is
+                // worse than wrong, it is INCONSISTENT: CombatSystem's non-combatant test and AiOpponentSystem's
+                // conscriptable test partition the roster only over non-negative damage, so the two systems would
+                // classify one unit two different ways. Base is copied raw and deliberately NOT floored: it is the
+                // authored source ModifierSystem re-derives Effective from, and the validator already bounds it to
+                // [0, 32768) at load, so flooring it here would only mask a corrupt blob at a different field.
+                // A well-formed save is non-negative, so this is a no-op on one and no golden moves.
+                w.BaseAttackDamage[i] = Fixed.FromRaw(bad[i]);
+                w.EffectiveAttackDamage[i] = Fixed.Max(Fixed.Zero, Fixed.FromRaw(ead[i]));
                 w.BaseArmor[i] = Fixed.FromRaw(bar[i]); w.EffectiveArmor[i] = Fixed.FromRaw(ear[i]);
                 w.AttackSpeed[i] = Fixed.FromRaw(asp[i]); w.Energy[i] = Fixed.FromRaw(en[i]); w.MaxEnergy[i] = Fixed.FromRaw(men[i]);
                 w.StatusFlagsOf[i] = (StatusFlags)sf[i]; w.DamageTypeOf[i] = (DamageType)dt[i]; w.ArmorTypeOf[i] = (ArmorType)art[i];
@@ -663,6 +712,7 @@ namespace ProjectChimera.Core.Persistence
                 w.AuraAbilityIndex[i] = aura[i]; w.OnHitAbilityIndex[i] = onhit[i]; w.SelfPassiveAbilityIndex[i] = selfp[i]; w.HeroIndex[i] = hidx[i];
                 w.GatherState[i] = (GatherState)gs[i]; w.GatherTarget[i] = gt[i]; w.CarryAmount[i] = Fixed.FromRaw(ca[i]);
                 w.CarryResourceType[i] = (ResourceKind)crt[i]; w.CarryCapacity[i] = Fixed.FromRaw(cc[i]); w.BuildTarget[i] = bt[i];
+                w.Generation[i] = gen[i]; // DW-581 — the recycle generation is what keeps a packed ref ABA-safe
 
                 // Reference-typed SoA: re-resolve the def by id + faction and set the two ref fields directly (NOT via
                 // ApplyUnitDefinition, which would clobber the just-restored numeric SoA and re-fire the self-passive
@@ -678,6 +728,17 @@ namespace ProjectChimera.Core.Persistence
             for (int i = 0; i < oqcmd.Length; i++) { w.OrderQueueCmd[i] = (byte)oqcmd[i]; w.OrderQueueTargetX[i] = oqtx[i]; w.OrderQueueTargetZ[i] = oqtz[i]; }
             var abid = G(EA.AbilityId); var abcd = G(EA.AbilityCd);
             for (int i = 0; i < abid.Length; i++) { w.AbilityId[i] = abid[i]; w.AbilityCooldownTicks[i] = abcd[i]; }
+
+            // DW-581 — the generation overlay must be TOTAL, not just [0, EntHwm). Every OTHER per-entity lane can
+            // leave its tail alone because Create() re-defaults that field when it hands out a slot; Generation is the
+            // one field Create() deliberately does NOT touch on the fresh-append path ("fresh slot — Generation stays
+            // 0"), so it rests on the invariant "generation == 0 at every id past the high-water mark". A destination
+            // world carrying a stale non-zero tail (a host restored onto without an intervening Clear) would hand the
+            // next appended entity a non-zero generation the saved world never had, and its packed refs would then
+            // disagree with an uninterrupted run. The saved world satisfies the invariant by construction (a generation
+            // only bumps on a recycle, which needs id < HighWaterMark), so zeroing the tail reproduces it exactly.
+            int genTail = EntityWorld.MAX_ENTITIES - n;
+            if (n >= 0 && genTail > 0) Array.Clear(w.Generation, n, genTail);
 
             w.RestoreAllocation(EntHwm, EntAliveCount, EntFreeList, EntFreeList.Length);
         }
@@ -1060,6 +1121,18 @@ namespace ProjectChimera.Core.Persistence
             RequireByte(EA.PatrolCount, Fail); RequireByte(EA.OrderQueueCount, Fail);
             RequireByte(EA.PatrolIndex, Fail); RequireByte(EA.ActiveOrderCmd, Fail); RequireByte(EA.AbilityCount, Fail);
             RequireSByte(EA.PatrolDir, Fail);
+            // DW-581 — the generation lane feeds a SHIFT, not an index, so a corrupt value never crashes; it silently
+            // breaks reference resolution instead, which is worse. PackRef is (gen << REF_SLOT_BITS) | id, so a
+            // generation past MAX_PACKABLE_GENERATION overflows the sign bit and PackRef stops round-tripping through
+            // TryResolveRef — a LIVE entity's own freshly-packed ref would fail to resolve (an assassination leader
+            // reads as dead ⇒ a bogus verdict on the resumed tick). A negative generation is likewise unreachable in
+            // the sim (Create only ever increments from 0). Reject both here, where the fail-closed posture lives.
+            {
+                var g = Ent[(int)EA.Generation];
+                for (int i = 0; i < g.Length; i++)
+                    if ((uint)g[i] > (uint)EntityWorld.MAX_PACKABLE_GENERATION)
+                        Fail($"entity generation lane [{i}] value {g[i]} is outside [0, {EntityWorld.MAX_PACKABLE_GENERATION}].");
+            }
 
             // ── BuildingStore ──
             if ((uint)BCount > BuildingStore.MAX_BUILDINGS) Fail($"building count {BCount} exceeds cap.");

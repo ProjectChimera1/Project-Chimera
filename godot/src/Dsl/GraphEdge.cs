@@ -25,10 +25,69 @@ namespace ProjectChimera.Dsl
     }
 
     /// <summary>
+    /// DW-337 — the DETERMINISTIC hash primitive behind <see cref="ExecEdge.GetHashCode"/> and
+    /// <see cref="DataEdge.GetHashCode"/>. <c>System.HashCode.Combine</c> mixes in a PROCESS-SEED that is
+    /// re-randomized on every launch, so two runs of the same build hand the same edge two different hash
+    /// codes. Nothing hashes edges today (all ordering goes through <c>IComparable.CompareTo</c>), but the
+    /// moment graph editing/dedup puts edges in a <c>HashSet</c>/<c>Dictionary</c>, bucket layout — and with
+    /// it any enumeration order that survives a remove/re-add — becomes run-dependent, which is a determinism
+    /// break in a lockstep sim. This fold is FNV-1a-32 over the fields as 4 little-endian bytes each, in a
+    /// FIXED field order: pure integer arithmetic, no seed, no runtime-version dependence, so it is stable
+    /// across processes, machines and .NET runtimes. Same primitive as <c>SimChecksum.Mix</c> /
+    /// <c>CanonicalModelHash</c> (32-bit variant); deliberately duplicated here so <c>src/Dsl</c> keeps no
+    /// dependency on the checksum module and neither can drift the other.
+    ///
+    /// The values are NOT folded into <c>SimChecksum</c>, <c>CanonicalModelHash</c> or <c>StartStateHash</c>
+    /// — those hash the edge FIELDS in sorted order, never <c>GetHashCode</c> — so changing this fold moves
+    /// no golden. It must still never change casually: it is the stability contract callers rely on.
+    /// </summary>
+    internal static class GraphEdgeHash
+    {
+        /// <summary>FNV-1a-32 offset basis — the fold's fixed, seed-free starting state.</summary>
+        internal const uint Seed = 2166136261u;
+        private const uint Prime = 16777619u;
+
+        /// <summary>
+        /// FNV-1a mix of one 32-bit value as 4 little-endian bytes. <c>unchecked</c> is explicit so the fold
+        /// keeps wrapping (and stays byte-identical) even if the project ever turns on overflow checking.
+        /// </summary>
+        internal static uint Mix(uint hash, int value)
+        {
+            unchecked
+            {
+                uint v = (uint)value;
+                hash ^= v & 0xFF;         hash *= Prime;
+                hash ^= (v >> 8) & 0xFF;  hash *= Prime;
+                hash ^= (v >> 16) & 0xFF; hash *= Prime;
+                hash ^= (v >> 24) & 0xFF; hash *= Prime;
+                return hash;
+            }
+        }
+
+        /// <summary>The four-field topology fold shared by both edge kinds (<c>Src, SrcPort, Dst, DstPort</c>).</summary>
+        internal static uint Topology(int src, int srcPort, int dst, int dstPort)
+        {
+            uint h = Seed;
+            h = Mix(h, src);
+            h = Mix(h, srcPort);
+            h = Mix(h, dst);
+            h = Mix(h, dstPort);
+            return h;
+        }
+    }
+
+    /// <summary>
     /// A sparse exec edge (control flow): "after <see cref="Src"/>'s <see cref="SrcPort"/> fires, run
     /// <see cref="Dst"/>'s <see cref="DstPort"/>." EventNode→Trigger (event-in) and the linear
     /// Trigger→Action0→…→Action_n chain are exec edges. Immutable value; a total
     /// <c>(Src,SrcPort,Dst,DstPort)</c> order drives canonical serialization.
+    ///
+    /// DETERMINISM (DW-337): <see cref="GetHashCode"/> is a seed-free FNV-1a-32 fold (see
+    /// <see cref="GraphEdgeHash"/>), NOT <c>HashCode.Combine</c>, so a hash-based edge collection lays out
+    /// identically in every process. Even so, prefer the ordered list + <see cref="CompareTo"/> whenever the
+    /// RESULT ORDER matters (canonical emission, IR compilation, checksum folds): a <c>HashSet</c>/
+    /// <c>Dictionary</c> keyed on edges is fine for membership/dedup, but sort what you enumerate out of it —
+    /// hash-container enumeration order is an unspecified implementation detail, not a contract.
     /// </summary>
     public readonly struct ExecEdge : IComparable<ExecEdge>, IEquatable<ExecEdge>
     {
@@ -59,7 +118,14 @@ namespace ProjectChimera.Dsl
             Src == other.Src && SrcPort == other.SrcPort && Dst == other.Dst && DstPort == other.DstPort;
 
         public override bool Equals(object? obj) => obj is ExecEdge e && Equals(e);
-        public override int GetHashCode() => HashCode.Combine(Src, SrcPort, Dst, DstPort);
+
+        /// <summary>
+        /// DW-337 — a DETERMINISTIC hash: seed-free FNV-1a-32 over <c>(Src, SrcPort, Dst, DstPort)</c> in that
+        /// fixed order (was <c>HashCode.Combine</c>, whose per-process random seed made the value differ between
+        /// runs of the same build). Covers exactly the fields <see cref="Equals(ExecEdge)"/> compares.
+        /// </summary>
+        public override int GetHashCode() =>
+            unchecked((int)GraphEdgeHash.Topology(Src, SrcPort, Dst, DstPort));
     }
 
     /// <summary>
@@ -67,6 +133,16 @@ namespace ProjectChimera.Dsl
     /// <see cref="Wire"/> type to <see cref="Dst"/>'s <see cref="DstPort"/>. In 7.2 the only data edge is the
     /// ConditionNode→Trigger Boolean gate. Immutable value; a total <c>(Src,SrcPort,Dst,DstPort)</c> order drives
     /// canonical serialization (the wire type is NOT part of the sort key — the topology tuple is total on its own).
+    ///
+    /// DETERMINISM (DW-337): <see cref="GetHashCode"/> is a seed-free FNV-1a-32 fold (see
+    /// <see cref="GraphEdgeHash"/>), NOT <c>HashCode.Combine</c>, so a hash-based edge collection lays out
+    /// identically in every process. Even so, prefer the ordered list + <see cref="CompareTo"/> whenever the
+    /// RESULT ORDER matters (canonical emission, IR compilation, checksum folds): a <c>HashSet</c>/
+    /// <c>Dictionary</c> keyed on edges is fine for membership/dedup, but sort what you enumerate out of it —
+    /// hash-container enumeration order is an unspecified implementation detail, not a contract. Note
+    /// <see cref="CompareTo"/> is NOT total here (two edges may share a topology tuple and differ only in
+    /// <see cref="Wire"/>), so an order-sensitive consumer must break that tie explicitly — as
+    /// <c>CanonicalModelHash.MixTriggerGraph</c> does with <c>.ThenBy(x =&gt; x.Wire)</c>.
     /// </summary>
     public readonly struct DataEdge : IComparable<DataEdge>, IEquatable<DataEdge>
     {
@@ -98,7 +174,16 @@ namespace ProjectChimera.Dsl
             Src == other.Src && SrcPort == other.SrcPort && Dst == other.Dst && DstPort == other.DstPort && Wire == other.Wire;
 
         public override bool Equals(object? obj) => obj is DataEdge e && Equals(e);
-        public override int GetHashCode() => HashCode.Combine(Src, SrcPort, Dst, DstPort, Wire);
+
+        /// <summary>
+        /// DW-337 — a DETERMINISTIC hash: seed-free FNV-1a-32 over <c>(Src, SrcPort, Dst, DstPort, Wire)</c> in
+        /// that fixed order (was <c>HashCode.Combine</c>, whose per-process random seed made the value differ
+        /// between runs of the same build). <see cref="Wire"/> is folded by its ORDINAL — safe because
+        /// <see cref="DataWireType"/> members are append-only, never reordered/renamed, and the same reason the
+        /// JSON layer pins the enum by name. Covers exactly the fields <see cref="Equals(DataEdge)"/> compares.
+        /// </summary>
+        public override int GetHashCode() =>
+            unchecked((int)GraphEdgeHash.Mix(GraphEdgeHash.Topology(Src, SrcPort, Dst, DstPort), (int)Wire));
     }
 
     /// <summary>

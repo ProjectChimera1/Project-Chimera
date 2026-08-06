@@ -8,8 +8,8 @@ namespace ProjectChimera.Multiplayer.Server
     /// Server-side strict-majority desync collector (AR-40 fork #2, Story 1.9a). Buffers slot-tagged 32-bit
     /// checksums per EXECUTED sim tick within a bounded window; when all expected peers have reported for a
     /// tick it declares the strict-majority (<c>&gt; N/2</c>) hash canonical and names the minority slot(s),
-    /// or "no canonical" on no majority. N-shaped (any N≥2; <see cref="MaxSlots"/>=4 — see the constant's own doc
-    /// for why that 4 is the MP SEAT ceiling and NOT the sim's 8-faction ceiling).
+    /// or "no canonical" on no majority. N-shaped (any N≥2; <see cref="MaxSlots"/> — see the constant's own doc
+    /// for why that ceiling is the MP SEAT ceiling and NOT the sim's larger faction ceiling).
     ///
     /// <para>This is server-side networking — NOT part of the 30 Hz sim tick — so it is exempt from the in-tick
     /// determinism rules (it allocates the minority list lazily). BUT its OUTPUT is order-stable: the minority
@@ -20,24 +20,25 @@ namespace ProjectChimera.Multiplayer.Server
     public sealed class ServerChecksumCollector
     {
         /// <summary>
-        /// The REPORTING-PLAYER seat ceiling: mirrors <c>PlayerCountPolicy.MpSeatCeiling</c> (== the Godot-coupled
+        /// The REPORTING-PLAYER seat ceiling: an ALIAS of <c>PlayerCountPolicy.MpSeatCeiling</c> (== the Godot-coupled
         /// <c>ServerTransport.MAX_PLAYERS</c>), NOT <c>ServerTransport.MAX_SLOTS</c>. Those are different numbers:
         /// MAX_SLOTS is 8 because slots <c>MAX_PLAYERS..MAX_SLOTS-1</c> are SPECTATOR seats, and spectators are
-        /// deliberately excluded from the quorum (D6) — so a collector sized to 8 would wait forever on reporters
-        /// that never report.
+        /// deliberately excluded from the quorum (D6) — so a collector sized to MAX_SLOTS would wait forever on
+        /// reporters that never report.
         ///
-        /// <para>The 4 is therefore NOT stale-pending-a-bump: the sim's faction ceiling did go to 8, but the MP seat
-        /// ceiling was deliberately LEFT at 4 (see <c>PlayerCountPolicy</c>, "THE transport seat ceiling — the single
-        /// documented 4→8 bump point"). Raise it there and raise this with it —
-        /// <c>NoHardcodedPlayerCountTests.TwoCeilingPolicy_ConstantsAgree</c> asserts the two are EQUAL, so they
-        /// cannot silently drift.</para>
+        /// <para>The MP seat ceiling is deliberately SMALLER than the sim's faction ceiling (which did go to 8): see
+        /// <c>PlayerCountPolicy</c>, "THE transport seat ceiling — the single documented 4→8 bump point". Because this
+        /// is an alias and not a copy, that ONE bump moves this collector with it — there is no second edit to forget.
+        /// No literal is restated here, so nothing on this line can go stale at the bump.</para>
         ///
-        /// <para>Deliberately a LITERAL rather than <c>= PlayerCountPolicy.MpSeatCeiling</c>: the same test's
-        /// <c>SourceScan_OnlyAllowlistedPlayerCountConstantsExist</c> half requires this site to be observable as an
-        /// allowlisted <c>const int … = 4</c> declaration, and aliasing the constant makes the scan miss it and fail
-        /// its vacuous-pass guard. Equality is enforced by assertion instead of by aliasing.</para>
+        /// <para>DW-513: this WAS a hardcoded literal. <c>NoHardcodedPlayerCountTests</c>' source scan could only see
+        /// <c>const int … = &lt;literal&gt;</c>, so aliasing made the scan MISS the site and fail its vacuous-pass
+        /// "every allowlisted site was found" assertion — an earlier alias attempt was reverted for exactly that
+        /// reason. That scan now also recognizes an alias of a sanctioned player-count constant, so the alias is the
+        /// sanctioned shape here. <c>TwoCeilingPolicy_ConstantsAgree</c> still asserts the equality, so a future
+        /// re-literalization that drifts is still caught.</para>
         /// </summary>
-        public const int MaxSlots = 4;
+        public const int MaxSlots = PlayerCountPolicy.MpSeatCeiling;
 
         /// <summary>
         /// Ring of recent per-tick buckets. Only ever holds the small number of checksum ticks that are
@@ -46,6 +47,22 @@ namespace ProjectChimera.Multiplayer.Server
         /// full interval behind → its late report is genuinely stale and dropped.
         /// </summary>
         private const int Window = 8;
+
+        /// <summary>
+        /// DW-511 — how far past the SERVER-AUTHORITATIVE tick frontier a reported checksum tick may key before it
+        /// is rejected as implausible (see <see cref="_tickFrontier"/>). This is the checksum-path sibling of
+        /// <c>MergedTickBuilder.ACCEPT_WINDOW</c>, but it is measured from a REAL frontier rather than from
+        /// <see cref="_resolvedThrough"/> — see <see cref="IsBeyondAcceptWindow"/> for why the naive copy is wrong.
+        ///
+        /// <para>Sizing (this is the honest-client lead, not a fudge factor). A checksum tick is an EXECUTED tick,
+        /// and a lockstep client may only execute tick T once it holds the merged commands for T — EXCEPT for the
+        /// ticks it SELF-SEEDS empty (<c>MergedArrivalRing.SeedBootstrap</c>: ticks <c>0..delay-1</c>, which the
+        /// server never emits; and <c>SeedDelayGap</c>: the <c>newDelay-oldDelay</c> ticks a GROWING delay change
+        /// opens, which no peer sends for). Both gaps are bounded by the delay clamp, so an honest client's exec
+        /// frontier can lead the server's emitted frontier by at most <see cref="DelayMath.MAX_DELAY"/> ticks and
+        /// never more. Aliasing the constant keeps the two from drifting if the delay clamp ever moves.</para>
+        /// </summary>
+        private const int ACCEPT_SLACK = DelayMath.MAX_DELAY;
 
         // DW-239: a ring overrun (a newer tick re-keying a still-incomplete older bucket) ABANDONS that older
         // comparison window — its partial reports are discarded and no verdict can ever be emitted for it. Nothing
@@ -116,6 +133,12 @@ namespace ProjectChimera.Multiplayer.Server
         // would hand the caller an out-of-order verdict for a window the ring had already given up on).
         private long _resolvedThrough = -1;
 
+        // DW-511: the SERVER-AUTHORITATIVE tick frontier a reported checksum tick is bounded against (−1 = nothing
+        // confirmed yet). Null = no frontier wired ⇒ unbounded acceptance (the pre-DW-511 behavior), which is only
+        // safe for a trusted in-process harness where every reporter is our own code. Production (DedicatedServer)
+        // wires MergedTickBuilder.EmittedThrough — see IsBeyondAcceptWindow.
+        private readonly Func<long>? _tickFrontier;
+
         /// <summary>
         /// Create a collector expecting <paramref name="expectedPeerCount"/> reporting player peers (spectators
         /// are excluded — D6). N=2 ⇒ a 1-vs-1 mismatch is NOT a majority. Throws if the count is outside [2, MaxSlots].
@@ -127,13 +150,23 @@ namespace ProjectChimera.Multiplayer.Server
         /// fires for an empty bucket (nothing was lost). The collector owns no log sink, so the caller
         /// (<see cref="ServerHost"/>) turns this into the console line + the MATCH SUMMARY count.
         /// </param>
-        public ServerChecksumCollector(int expectedPeerCount, Action<uint, int>? onWindowAbandoned = null)
+        /// <param name="tickFrontier">
+        /// DW-511 — the SERVER-AUTHORITATIVE confirmed tick high-water (<c>MergedTickBuilder.EmittedThrough</c>;
+        /// −1 when nothing has been confirmed yet). Supplying it ARMS the far-future acceptance bound: a reported
+        /// checksum tick more than <see cref="ACCEPT_SLACK"/> past this frontier is impossible for an honest client
+        /// and is DROPPED (see <see cref="IsBeyondAcceptWindow"/>). Omitting it keeps the legacy UNBOUNDED
+        /// acceptance and is only appropriate where every reporter is trusted in-process code (unit tests, the
+        /// loopback self-test) — a real transport MUST wire it, or one client can blind the whole desync guard.
+        /// </param>
+        public ServerChecksumCollector(int expectedPeerCount, Action<uint, int>? onWindowAbandoned = null,
+                                       Func<long>? tickFrontier = null)
         {
             if (expectedPeerCount < 2 || expectedPeerCount > MaxSlots)
                 throw new ArgumentOutOfRangeException(nameof(expectedPeerCount),
                     $"expectedPeerCount must be in [2, {MaxSlots}] (got {expectedPeerCount}).");
             _expected = expectedPeerCount;
             _onWindowAbandoned = onWindowAbandoned;
+            _tickFrontier = tickFrontier;
             _ring = new Bucket[Window];
             for (int i = 0; i < Window; i++) _ring[i] = new Bucket();
         }
@@ -149,16 +182,30 @@ namespace ProjectChimera.Multiplayer.Server
         public int AbandonedWindows { get; private set; }
 
         /// <summary>
+        /// DW-511 — reports DROPPED for keying implausibly far past the server-authoritative tick frontier (only
+        /// ever non-zero once a <c>tickFrontier</c> is wired). A correct lockstep client can never produce one, so
+        /// a non-zero count is misbehaviour — the grief attempt this guard exists to stop. Nothing was compared and
+        /// nothing was lost, so it is neither a desync nor an abandoned window; the caller
+        /// (<see cref="ServerHost"/>) turns it into a BOUNDED console line + a MATCH SUMMARY note.
+        /// </summary>
+        public int FarFutureRejections { get; private set; }
+
+        /// <summary>
         /// Record one peer's checksum for an EXECUTED tick. Stale inputs (a tick already resolved, or an older
-        /// tick colliding with a live newer bucket) and duplicate <c>(slot,tick)</c> inputs are ignored. Returns
-        /// <see cref="Verdict.Pending"/> until every expected peer has reported for <paramref name="tick"/>, then
-        /// returns the completed verdict exactly once and evicts the bucket.
+        /// tick colliding with a live newer bucket), implausibly-far-future inputs (DW-511) and duplicate
+        /// <c>(slot,tick)</c> inputs are ignored. Returns <see cref="Verdict.Pending"/> until every expected peer
+        /// has reported for <paramref name="tick"/>, then returns the completed verdict exactly once and evicts
+        /// the bucket.
         /// </summary>
         public Verdict Record(uint tick, int slot, uint hash)
         {
             if ((uint)slot >= MaxSlots) return Verdict.Pending;        // defensive: slot is transport-authoritative
             if (_excluded[slot]) return Verdict.Pending;               // Story 9.6: a dropped reporter's stale reports are ignored
             if ((long)tick <= _resolvedThrough) return Verdict.Pending; // already resolved / stale → drop
+
+            // DW-511: the FUTURE bound, mirroring the stale-past bound above. A tick no honest client can have
+            // executed yet must never reach the ring — see IsBeyondAcceptWindow for the attack it stops.
+            if (IsBeyondAcceptWindow(tick)) { FarFutureRejections++; return Verdict.Pending; }
 
             int idx = (int)(tick % Window);
             Bucket b = _ring[idx];
@@ -246,6 +293,40 @@ namespace ProjectChimera.Multiplayer.Server
             // Ascending by tick so the caller routes re-tallied windows in a stable, monotonic order.
             results.Sort((x, y) => x.tick.CompareTo(y.tick));
             return results;
+        }
+
+        /// <summary>
+        /// DW-511 — true when <paramref name="tick"/> keys implausibly far past the server-authoritative frontier
+        /// and must be DROPPED at the door.
+        ///
+        /// <para><b>The attack.</b> <see cref="Record"/> used to accept ANY tick a client claimed. A single
+        /// misbehaving client reporting a far-future tick (a) EVICTS whichever in-flight bucket its ring index
+        /// lands on — destroying an honest comparison window the rest of the quorum was mid-way through — and,
+        /// worse, (b) drags <see cref="_resolvedThrough"/> up to that far-future value, after which EVERY honest
+        /// report is dropped by the cheap stale check for the rest of the match: the desync guard is silently dead
+        /// and the FR-39 evidence trail flatlines. It is the checksum-path sibling of the command-path grief
+        /// vectors, and it needs no majority — one client is enough.</para>
+        ///
+        /// <para><b>Why the frontier is REAL and not <see cref="_resolvedThrough"/>.</b> Copying
+        /// <c>MergedTickBuilder.ACCEPT_WINDOW</c> (a window measured from that builder's own emitted high-water)
+        /// is WRONG here: the builder's high-water tracks a frontier that advances every tick, while this
+        /// collector's <see cref="_resolvedThrough"/> starts at −1 and only moves when a checksum window resolves —
+        /// and real checksum ticks start at the checksum interval (60), not at 0. A window measured from −1 would
+        /// therefore reject the FIRST legitimate report of every match and the guard would deadlock the quorum it
+        /// was meant to protect. Instead the bound is measured against an externally supplied, server-owned
+        /// frontier (<c>MergedTickBuilder.EmittedThrough</c> — the highest tick whose merged commands the server
+        /// actually broadcast), which no client can move on its own: a merged tick is emitted only when ALL
+        /// expected players have submitted it. A checksum tick is an EXECUTED tick and a client can only execute
+        /// what it has been given, so <c>tick ≤ frontier + ACCEPT_SLACK</c> holds for every honest report (the
+        /// slack covers the client-self-seeded bootstrap/delay-growth gaps — see <see cref="ACCEPT_SLACK"/>).</para>
+        ///
+        /// <para>With no frontier wired the bound is disabled and acceptance stays unbounded (the documented
+        /// trusted-harness default) — a real transport must supply one.</para>
+        /// </summary>
+        private bool IsBeyondAcceptWindow(uint tick)
+        {
+            if (_tickFrontier == null) return false; // no server-authoritative frontier wired → legacy unbounded accept
+            return (long)tick > _tickFrontier() + ACCEPT_SLACK;
         }
 
         /// <summary>

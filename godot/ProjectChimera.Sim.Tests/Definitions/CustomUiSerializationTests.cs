@@ -17,10 +17,13 @@ namespace ProjectChimera.Sim.Tests.Definitions
     /// </summary>
     public class CustomUiSerializationTests
     {
-        private static readonly JsonSerializerOptions Opt = new()
-        {
-            Converters = { new JsonStringEnumConverter(), new FixedJsonConverter(), new WidgetBaseJsonConverter() },
-        };
+        /// <summary>
+        /// DW-523 - the PRODUCTION scenario options (<see cref="ContentJson.ScenarioOptions"/>), not a hand-rolled
+        /// replica. The replica listed the same three converters but used the DEFAULT
+        /// <see cref="JsonStringEnumConverter"/> (integer enums accepted) and carried none of the shared authoring
+        /// base, so these fail-closed assertions were made against a posture the loader does not use.
+        /// </summary>
+        private static readonly JsonSerializerOptions Opt = ContentJson.ScenarioOptions;
 
         private static ScenarioData? RoundTrip(ScenarioData model) =>
             JsonSerializer.Deserialize<ScenarioData>(ScenarioSerializer.Serialize(model), Opt);

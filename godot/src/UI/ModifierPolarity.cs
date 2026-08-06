@@ -25,9 +25,13 @@ namespace ProjectChimera.UI
         }
 
         /// <summary>The harmful status flags (imposed ON an enemy). <see cref="StatusFlags.Invulnerable"/> is a BUFF,
-        /// so it is excluded from this set.</summary>
-        private const StatusFlags HarmfulStatus =
-            StatusFlags.Stunned | StatusFlags.Rooted | StatusFlags.Silenced | StatusFlags.Disarmed;
+        /// so it is excluded from this set.
+        /// <para>DW-618: this used to be a private copy of the partition. It now ALIASES
+        /// <see cref="StatusPolarity.Harmful"/>, the canonical set hosted beside the enum — because
+        /// <c>AbilityValidator</c>'s Ally-filtered-harmful-grant lint needs the same classification and a sim-layer
+        /// content gate must not depend on this presentation namespace. Behaviour is unchanged (identical flags); the
+        /// point is that a future flag can only be classified ONCE.</para></summary>
+        private const StatusFlags HarmfulStatus = StatusPolarity.Harmful;
 
         /// <summary>
         /// Classify <paramref name="mod"/> as a <see cref="Polarity.Buff"/>, <see cref="Polarity.Debuff"/>, or
@@ -43,7 +47,7 @@ namespace ProjectChimera.UI
             // Harmful status dominates — a stunning modifier is a debuff even if it also grants a stat.
             if ((mod.Status & HarmfulStatus) != 0) return Polarity.Debuff;
             // Beneficial status (Invulnerable) dominates the net-negative check, symmetric to HarmfulStatus above.
-            if ((mod.Status & StatusFlags.Invulnerable) != 0) return Polarity.Buff;
+            if ((mod.Status & StatusPolarity.Beneficial) != 0) return Polarity.Buff;
 
             Fixed net = mod.AttackDamageDelta + mod.MaxHealthDelta + mod.MoveSpeedDelta + mod.ArmorDelta;
             if (net < Fixed.Zero) return Polarity.Debuff;

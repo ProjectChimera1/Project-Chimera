@@ -351,7 +351,13 @@ namespace ProjectChimera.Sim.Tests.Definitions
 
             FactionValidationResult complete = FactionValidator.ValidateComplete(def);
             Assert.False(complete.Ok);
-            Assert.Contains(complete.Errors, e => e.FieldPath == "mesh_path" && e.Message.Contains("worker"));
+            // DW-505: the kind label must LEAD ("unit '<id>'.mesh_path: …"), not sit behind a faction-level
+            // "faction '<id>'.mesh_path: " prefix — FactionDefinerWizardCore.StepForError routes on that leading
+            // label, and the prefixed shape sent an author with a missing UNIT mesh_path to the Buildings & Tech
+            // step. The faction id stays in the message, just no longer in front of the label.
+            Assert.Contains(complete.Errors, e => e.FieldPath == "mesh_path"
+                && e.Message.StartsWith("unit 'worker'.mesh_path:", StringComparison.Ordinal)
+                && e.Message.Contains("'test_faction'"));
         }
 
         [Fact]
@@ -364,7 +370,10 @@ namespace ProjectChimera.Sim.Tests.Definitions
 
             FactionValidationResult complete = FactionValidator.ValidateComplete(def);
             Assert.False(complete.Ok);
-            Assert.Contains(complete.Errors, e => e.FieldPath == "mesh_path" && e.Message.Contains("command_center"));
+            // DW-505: same leading-kind-label convention on the building half of the axis.
+            Assert.Contains(complete.Errors, e => e.FieldPath == "mesh_path"
+                && e.Message.StartsWith("building 'command_center'.mesh_path:", StringComparison.Ordinal)
+                && e.Message.Contains("'test_faction'"));
         }
 
         [Fact]
@@ -375,7 +384,8 @@ namespace ProjectChimera.Sim.Tests.Definitions
 
             FactionValidationResult complete = FactionValidator.ValidateComplete(def);
             Assert.False(complete.Ok);
-            Assert.Contains(complete.Errors, e => e.FieldPath == "mesh_path" && e.Message.Contains("worker"));
+            Assert.Contains(complete.Errors, e => e.FieldPath == "mesh_path"
+                && e.Message.StartsWith("unit 'worker'.mesh_path:", StringComparison.Ordinal));
         }
 
         // ── Missing required role (ValidateComplete-only) ────────────────────

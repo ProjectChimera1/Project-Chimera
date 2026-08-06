@@ -10,6 +10,13 @@ namespace ProjectChimera.Dsl
     ///
     /// These are corpus-validated dials, not free tuning knobs: raising one is a deliberate, recorded decision
     /// (it widens what a hostile/degenerate authored trigger set can make every peer execute per tick).
+    ///
+    /// <para>DW-579 — the <c>random_choice</c> BRANCH-COUNT cap is deliberately NOT here: it already exists as
+    /// <see cref="EventBounds.MaxRandomChoiceBranches"/> (Story 7.13's caps live in <see cref="EventBounds"/>
+    /// alongside <see cref="EventBounds.MaxRunTriggerDepth"/>), and it is now enforced at parse, in the T3
+    /// inspector and at the load gate from that single constant. A <c>DslBounds.MaxRandomChoiceBranches</c>
+    /// alias would be a second dial for one limit — exactly the drift this file exists to prevent — so a reader
+    /// looking for it here is pointed there instead.</para>
     /// </summary>
     public static class DslBounds
     {

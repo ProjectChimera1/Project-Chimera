@@ -95,7 +95,16 @@ namespace ProjectChimera.Combat
         /// inventory slot (Story 3.16), REUSING the pickup claim block (ground→held flip, <c>Inventory[]</c> write,
         /// stat-modifier apply). The caller (<c>BuildingSystem.BuyItemCommand</c>) must have already gated
         /// ownership/capability/proximity/free-slot/affordability and SPENT the cost. Returns the packed <c>ItemStore</c>
-        /// ref, or -1 when the item store is full / the hero is no longer resolvable (caller then refunds — atomic).</summary>
+        /// ref, or -1 when the item store is full / the hero is no longer resolvable (caller then refunds — atomic).
+        /// <para><b>DW-489 audit — the buyer may DIE inside this call and that is deliberately NOT a refund.</b> The
+        /// stat-modifier apply below inherits <see cref="ModifierStore.Apply"/>'s "may destroy the target"
+        /// post-condition (DW-325/DW-491), so a net-negative-MaxHealth purchase can kill its own buyer. When it does,
+        /// the death hook (<see cref="OnEntityDestroyed"/> → <see cref="DropAll"/>) has already flipped the just-minted
+        /// instance to the ground at the death position and cleared the ring, leaving CONSISTENT state — the goods
+        /// exist and are lootable. We therefore still return the ref: reporting -1 would make
+        /// <c>BuildingSystem.BuyItemCommand</c> refund the cost while the purchased item lay on the map (a
+        /// resource-duplication exploit), which is strictly worse than the WC3-shaped "you bought it, you died, it is
+        /// on the floor" outcome. Pinned by <c>ItemModifierDeathAuditTests</c>.</para></summary>
         public int GrantPurchasedItem(int heroEntityId, int defIndex)
         {
             if (!ResolveHeroSlot(heroEntityId, out int heroSlot)) return -1;
@@ -183,7 +192,21 @@ namespace ProjectChimera.Combat
             int invIdx = heroSlot * HeroStore.INVENTORY_SLOTS + free;
             _heroes.Inventory[invIdx] = itemRef;
 
-            if (!ApplyStatModifierIfAny(entityId, itemSlot, itemRef))
+            bool installed = ApplyStatModifierIfAny(entityId, itemSlot, itemRef);
+
+            // DW-489: since DW-325/DW-491, ModifierStore.Apply carries a "the target may be DESTROYED before this
+            // returns" post-condition (the ceiling-collapse kill inside ApplyStatDeltas), so its `true` means
+            // "installed" — NOT "installed AND the carrier is still alive". A net-negative-MaxHealth ("cursed") item
+            // can therefore kill its own claimant DURING this apply, and that death already ran
+            // OnDestroy → OnEntityDestroyed → DropAll, which returned this item to the ground and cleared the ring.
+            // Nothing is left to claim and nothing to roll back (the rollback writes below would only re-write state
+            // the death drop already restored). Bail here so we do not (a) push an ItemPickedUp cue AFTER the death's
+            // ItemDropped — describing a claim that ended on the floor — or (b) let EndPickupOrder write command
+            // state onto a destroyed, recyclable slot. State-only check ⇒ deterministic; no shipped item authors a
+            // negative MaxHealth delta, so every live path is byte-identical and no golden moves.
+            if (!_world.IsAlive(entityId)) return;
+
+            if (!installed)
             {
                 // Modifier refused (hero at EffectCaps.MaxModifiersPerEntity) → roll back the three tentative claim
                 // writes so the deny is state-identical to never having attempted it, then deny like a full inventory.
@@ -254,9 +277,16 @@ namespace ProjectChimera.Combat
             _items.Charges[itemSlot]--;
             if (_items.Charges[itemSlot] <= 0)
             {
-                _modifiers.RemoveByModifierId(heroEntityId, ItemModifierId(itemRef));
+                // DW-489: RemoveByModifierId is LETHAL since DW-325/DW-491 — reverting this item's own +MaxHealth
+                // contribution can collapse the carrier's ceiling to 0 and Destroy it, which re-enters this system
+                // through OnDestroy → OnEntityDestroyed → DropAll → DropOne. Clear the ring slot FIRST so that
+                // re-entrant sweep sees INVENTORY_EMPTY here and skips the in-flight instance: otherwise it would
+                // flip a spent, about-to-be-freed consumable onto the ground and emit a phantom ItemDropped for an
+                // item that this call then destroys. The other carried items still drop normally. Reordering is
+                // byte-identical on the (only shipped) non-lethal path — RemoveByModifierId never reads the ring.
                 _heroes.Inventory[invIdx] = HeroStore.INVENTORY_EMPTY;
-                _items.Destroy(itemSlot);
+                _modifiers.RemoveByModifierId(heroEntityId, ItemModifierId(itemRef));
+                _items.Destroy(itemSlot); // the spent instance is freed whether or not the carrier survived it
             }
         }
 
@@ -294,9 +324,16 @@ namespace ProjectChimera.Combat
                 _items.PosX[itemSlot]            = pos.X;
                 _items.PosZ[itemSlot]            = pos.Z;
             }
+            // DW-489: clear the ring BEFORE removing the modifier. RemoveByModifierId became LETHAL with
+            // DW-325/DW-491 (reverting this item's +MaxHealth contribution can collapse the carrier's ceiling to 0
+            // and Destroy it), and that death re-enters here via OnDestroy → OnEntityDestroyed → DropAll → DropOne
+            // on the very slot this call is mid-way through. With the slot already emptied the re-entrant sweep skips
+            // it (INVENTORY_EMPTY) and this call emits the ONE ItemDropped the drop deserves; before the reorder both
+            // levels ran the ground-flip + event and the drop was announced TWICE for a single item. The hero's other
+            // carried items still drop from the re-entrant sweep exactly as they do for any other death.
+            _heroes.Inventory[invIdx] = HeroStore.INVENTORY_EMPTY;
             // Remove the carried modifier (no-op if the entity is dead/gone → its modifiers were already cleared).
             _modifiers.RemoveByModifierId(heroEntityId, ItemModifierId(itemRef));
-            _heroes.Inventory[invIdx] = HeroStore.INVENTORY_EMPTY;
             events?.Push(CombatEventType.ItemDropped, pos);
         }
 
@@ -400,7 +437,20 @@ namespace ProjectChimera.Combat
         /// <para><b>Returns</b> <c>true</c> when there was nothing to apply (null/non-stat def → no modifier depends on
         /// the ring) or the modifier was installed; <c>false</c> only when a stat item's modifier was REFUSED by a full
         /// modifier ring (DW-34). The persisted re-mint (<c>HeroProfileLoader.ReMintInventory</c>) and the buy path keep
-        /// their current behavior — they ignore the result and do not deny.</para></summary>
+        /// their current behavior — they ignore the result and do not deny.</para>
+        /// <para><b>DW-489 post-condition — <c>true</c> does NOT mean the carrier survived.</b> This forwards
+        /// <see cref="ModifierStore.Apply"/> verbatim, and since DW-325/DW-491 that method can <c>Destroy</c> (and hence
+        /// recycle) <paramref name="entityId"/> before returning: a NET-NEGATIVE MaxHealth delta that collapses the
+        /// host's <c>EffectiveMaxHealth</c> from above zero to exactly zero raises the ceiling-collapse death. The
+        /// result stays a two-valued "installed / ring-refused" signal by design (recorded decision 2026-08-03: no
+        /// tri-state API for a latent, content-gated case) — so EVERY caller that writes further state for the carrier
+        /// must re-check <see cref="EntityWorld.IsAlive"/> itself. <see cref="ResolvePickup"/> does; the buy path's
+        /// audited (deliberately unguarded) outcome is documented on <see cref="GrantPurchasedItem"/>; the persisted
+        /// re-mint runs pre-match on a freshly spawned hero and writes nothing after the apply.</para>
+        /// <para><b>DW-650</b> — this is one of the three <see cref="Modifier"/> minters that never reach
+        /// <c>AbilityValidator</c>, so DW-488's <see cref="Modifier.CheckAuthoringBounds"/> accumulator bound is adopted
+        /// at this path's own content gate: <c>ItemDefinitionValidator.CarriedModifier</c> rebuilds THIS exact
+        /// descriptor and checks it. Changing the shape here must be mirrored there.</para></summary>
         public static bool ApplyItemStatModifier(ModifierStore modifiers, EntityWorld world,
                                                  ItemDefinition? def, int entityId, int itemRef)
         {

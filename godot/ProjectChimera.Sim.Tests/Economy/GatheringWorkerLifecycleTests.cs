@@ -243,6 +243,156 @@ namespace ProjectChimera.Sim.Tests.Economy
             Assert.Equal(1, h.Nodes.AssignedGatherers[node]);
         }
 
+        // ── DW-520: a build interrupt must not throw away the delivery that was in flight ────────────────────
+
+        /// <summary>Drive a worker all the way to a FULL carry on <paramref name="node"/> (which must have a huge rate),
+        /// leaving it in <see cref="GatherState.MovingToBase"/> with its slot already handed back.</summary>
+        private static void FillCarryAndHeadHome(Harness h, int worker, int node)
+        {
+            WalkToGathering(h, worker, node);
+            h.Gather.Tick(h.World, Dt); // one huge-rate tick fills the carry -> MovingToBase
+            Assert.Equal(GatherState.MovingToBase, h.World.GatherState[worker]);
+            Assert.True(h.World.CarryAmount[worker] >= h.World.CarryCapacity[worker],
+                "fixture assumption: the worker is walking home with a FULL load");
+        }
+
+        /// <summary>Issue a build order, teleport the worker onto the site, and tick BuildingSystem so
+        /// <c>TickWorkerArrival</c> completes the order the way it does in a live match.</summary>
+        private static void BuildAndArrive(Harness h, BuildingSystem buildSys, int worker, FixedVec3 site)
+        {
+            int bId = buildSys.QueueWorkerBuild(worker, BuildingType.Barracks, site,
+                                                Faction.Player1, h.Resources, h.World);
+            Assert.True(bId >= 0, "fixture assumption: the build order was accepted");
+            Assert.Equal(UnitCommand.Build, h.World.CommandState[worker]);
+
+            h.World.Position[worker] = site;      // MovementSystem isn't running in an isolated harness
+            buildSys.Tick(h.World, Dt);           // -> TickWorkerArrival -> ClearWorkerBuild
+            Assert.Equal(UnitCommand.Idle, h.World.CommandState[worker]);
+        }
+
+        [Fact]
+        public void BuildCompletion_WithALoadStillCarried_ResumesTheDelivery_InsteadOfReSeekingANode()
+        {
+            // Pre-DW-520 ClearWorkerBuild forced GatherState.Idle regardless of CarryAmount, so a worker interrupted
+            // while walking a full load home was sent back OUT to a node: TickIdle re-reserves one of that node's
+            // MaxGatherers slots, the worker walks the whole way, gathers NOTHING (a full carry leaves canCarry == 0)
+            // and only then turns round to bank the load it had all along.
+            var h = NewHarness();
+            h.Resources.Ore[(int)Faction.Player1] = Fixed.FromInt(500);
+            h.Resources.FactionBase[(int)Faction.Player1] = V(0, 0);
+            var buildSys = NewBuildSystem(h);
+            int node = h.Nodes.Create(V(2, 0), Fixed.FromInt(1000), Fixed.FromInt(1000), maxGatherers: 2);
+            int a = SpawnWorker(h.World, Faction.Player1, V(0, 0));
+
+            FillCarryAndHeadHome(h, a, node);
+            Fixed carried = h.World.CarryAmount[a];
+
+            BuildAndArrive(h, buildSys, a, V(30, 30));
+
+            Assert.Equal(GatherState.MovingToBase, h.World.GatherState[a]);
+            Assert.Equal(carried, h.World.CarryAmount[a]);                                       // nothing dropped
+            Assert.Equal(h.Resources.FactionBase[(int)Faction.Player1], h.World.MoveTarget[a]);  // aimed at the base…
+            Assert.True((h.World.Flags[a] & EntityFlags.Moving) != 0, "…and actually walking there");
+        }
+
+        [Fact]
+        public void BuildCompletion_WithALoadStillCarried_BanksThatLoad_WithoutAWastedTripToANode()
+        {
+            // The end-to-end consequence: the interrupted delivery completes on the NEXT arrival at the base, and the
+            // credited amount is the load the worker was already carrying — no node round trip in between.
+            var h = NewHarness();
+            h.Resources.Ore[(int)Faction.Player1] = Fixed.FromInt(500);
+            h.Resources.FactionBase[(int)Faction.Player1] = V(0, 0);
+            var buildSys = NewBuildSystem(h);
+            int node = h.Nodes.Create(V(2, 0), Fixed.FromInt(1000), Fixed.FromInt(1000), maxGatherers: 2);
+            int a = SpawnWorker(h.World, Faction.Player1, V(0, 0));
+
+            FillCarryAndHeadHome(h, a, node);
+            Fixed carried = h.World.CarryAmount[a];
+
+            BuildAndArrive(h, buildSys, a, V(30, 30));
+
+            // AFTER the order: QueueWorkerBuild already debited the barracks cost, and this assertion is about the
+            // DELIVERY, not about build accounting.
+            Fixed oreBefore = h.Resources.Ore[(int)Faction.Player1];
+            h.World.Position[a] = h.Resources.FactionBase[(int)Faction.Player1]; // walks home (movement isn't ticked here)
+            h.Gather.Tick(h.World, Dt);
+
+            Assert.Equal(oreBefore + carried, h.Resources.Ore[(int)Faction.Player1]);
+            Assert.Equal(Fixed.Zero, h.World.CarryAmount[a]);
+            Assert.Equal(GatherState.Idle, h.World.GatherState[a]); // deposited, now free to seek a node again
+            Assert.Equal(0, h.Nodes.AssignedGatherers[node]);       // and it never re-reserved a slot to do it
+        }
+
+        [Fact]
+        public void BuildCompletion_WithAPartialLoad_AlsoResumesTheDelivery()
+        {
+            // A worker interrupted mid-GATHER (still at the node, partly loaded) is the same case: the load rides on
+            // the worker and CarryResourceType makes the deposit route correctly, so there is nothing to gain from
+            // walking back out for a top-up first.
+            var h = NewHarness();
+            h.Resources.Ore[(int)Faction.Player1] = Fixed.FromInt(500);
+            h.Resources.FactionBase[(int)Faction.Player1] = V(0, 0);
+            var buildSys = NewBuildSystem(h);
+            int node = h.Nodes.Create(V(2, 0), Fixed.FromInt(1000), Fixed.FromInt(5), maxGatherers: 2); // modest rate
+            int a = SpawnWorker(h.World, Faction.Player1, V(0, 0));
+
+            WalkToGathering(h, a, node);
+            h.Gather.Tick(h.World, Dt); // partial load
+            Assert.True(h.World.CarryAmount[a] > Fixed.Zero && h.World.CarryAmount[a] < h.World.CarryCapacity[a],
+                "fixture assumption: the worker holds a PARTIAL load");
+            Fixed carried = h.World.CarryAmount[a];
+
+            BuildAndArrive(h, buildSys, a, V(30, 30));
+
+            Assert.Equal(GatherState.MovingToBase, h.World.GatherState[a]);
+            Assert.Equal(carried, h.World.CarryAmount[a]);
+        }
+
+        [Fact]
+        public void BuildCompletion_EmptyHanded_StillReturnsToIdle_ToSeekANode()
+        {
+            // The unchanged contract for the common case — the fix must be scoped to a non-empty carry, or a worker
+            // that built with nothing in hand would walk to the base for no reason.
+            var h = NewHarness();
+            h.Resources.Ore[(int)Faction.Player1] = Fixed.FromInt(500);
+            h.Resources.FactionBase[(int)Faction.Player1] = V(0, 0);
+            var buildSys = NewBuildSystem(h);
+            h.Nodes.Create(V(2, 0), Fixed.FromInt(1000), Fixed.FromInt(5), maxGatherers: 2);
+            int a = SpawnWorker(h.World, Faction.Player1, V(0, 0));
+            Assert.Equal(Fixed.Zero, h.World.CarryAmount[a]);
+
+            BuildAndArrive(h, buildSys, a, V(30, 30));
+
+            Assert.Equal(GatherState.Idle, h.World.GatherState[a]);
+        }
+
+        [Fact]
+        public void BuildCancelledByADestroyedSite_WithALoadStillCarried_AlsoResumesTheDelivery()
+        {
+            // ClearWorkerBuild's OTHER call site: the build target was razed (or its slot recycled) while the worker
+            // was walking to it. The order is cancelled silently — but the load it is carrying is just as real.
+            var h = NewHarness();
+            h.Resources.Ore[(int)Faction.Player1] = Fixed.FromInt(500);
+            h.Resources.FactionBase[(int)Faction.Player1] = V(0, 0);
+            var buildSys = NewBuildSystem(h);
+            int node = h.Nodes.Create(V(2, 0), Fixed.FromInt(1000), Fixed.FromInt(1000), maxGatherers: 2);
+            int a = SpawnWorker(h.World, Faction.Player1, V(0, 0));
+
+            FillCarryAndHeadHome(h, a, node);
+            Fixed carried = h.World.CarryAmount[a];
+
+            int bId = buildSys.QueueWorkerBuild(a, BuildingType.Barracks, V(30, 30),
+                                                Faction.Player1, h.Resources, h.World);
+            Assert.True(bId >= 0);
+            h.Buildings.Alive[bId] = false; // razed mid-walk -> TryResolveRef fails -> silent cancel
+            buildSys.Tick(h.World, Dt);
+
+            Assert.Equal(UnitCommand.Idle, h.World.CommandState[a]);
+            Assert.Equal(GatherState.MovingToBase, h.World.GatherState[a]);
+            Assert.Equal(carried, h.World.CarryAmount[a]);
+        }
+
         // ── DW-80: a permanently closed Streaming gate must eventually free the worker ───────────────────────
 
         /// <summary>A gated Streaming node plus the structure that opens it. Returns (node, structure).</summary>

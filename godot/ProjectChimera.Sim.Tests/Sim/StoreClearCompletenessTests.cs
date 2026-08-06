@@ -30,13 +30,16 @@ namespace ProjectChimera.Sim.Tests.Sim
     /// to any of these stores auto-enters its sweep: forget it in the reset and the case goes red; leave it
     /// undirtiable and the precondition goes red until the fixture (or a justified allowlist entry) covers it.</para>
     ///
-    /// <para><b>Allowlists are the honest edges of the guarantee.</b> Three shapes recur, each named and justified
+    /// <para><b>Allowlists are the honest edges of the guarantee.</b> Two shapes recur, each named and justified
     /// per fixture: (1) shared dependency references and construction-lifetime config a reset deliberately
     /// preserves; (2) documented COUNT-GATED buffers whose Clear only zeroes the count and whose stale tail is
-    /// never read or folded (<c>CombatEventQueue</c>/<c>DeathFeed</c>/<c>DslSimEventFeed</c>/<c>DslEventQueue</c>);
-    /// (3) <c>TriggerEnabledStore._enabled</c>, whose stale tail is additionally reachable through the
-    /// out-of-range-returns-true <c>IsEnabled</c> — that reachability question is DW-197 (open); its allowlist
-    /// entry cites it and must be removed when DW-197 closes.</para>
+    /// never read or folded (<c>CombatEventQueue</c>/<c>DeathFeed</c>/<c>DslSimEventFeed</c>/<c>DslEventQueue</c>).
+    /// <c>TriggerEnabledStore._enabled</c> used to be a third — a count-gated tail that was ALSO reachable through
+    /// the old out-of-range-returns-<b>true</b> <c>IsEnabled</c>, so it was exempted while that reachability
+    /// question (DW-197) was open. DW-197 landed both halves (<c>IsEnabled</c> bounds to false; <c>Clear()</c>
+    /// <c>Array.Clear</c>s the WHOLE buffer), so DW-584 retired the exemption: <c>_enabled</c> is now SWEPT, and
+    /// this class PINS the wipe instead of excusing the tail — see <c>TriggerEnabledCase</c> and
+    /// <see cref="TriggerEnabledSweep_HasTeeth_AgainstAClearThatZeroesOnlyTheCount"/>.</para>
     ///
     /// <para><c>EntityWorld.Clear()</c> — the first ClearForReset line — is covered by its original DW-19 class,
     /// <see cref="EntityWorldClearCompletenessTests"/>, now driven through the same shared machinery.</para>
@@ -216,8 +219,12 @@ namespace ProjectChimera.Sim.Tests.Sim
             var system = new ModifierSystem();
             var events = new CombatEventQueue();
             var stats  = new MatchStats();
-            var fresh  = new ModifierStore(world, system, null, events, stats);
-            var dirty  = new ModifierStore(world, system, null, events, stats);
+            // DW-490: the store now also holds the shared DeathFeed (its ceiling-collapse kill records into it like
+            // every other lethal path). Wired as a REAL shared instance on both sides — a null on both would satisfy
+            // the reference-equality check trivially and prove nothing about the reset preserving the wiring.
+            var deaths = new DeathFeed();
+            var fresh  = new ModifierStore(world, system, null, events, stats, log: null, deaths: deaths);
+            var dirty  = new ModifierStore(world, system, null, events, stats, log: null, deaths: deaths);
 
             // Descriptor instances for the two reference-typed slot arrays (no parameterless ctors).
             var mod = new Modifier(1, durationTicks: 100, StackRule.Refresh, maxStacks: 1,
@@ -230,13 +237,25 @@ namespace ProjectChimera.Sim.Tests.Sim
                 // with no public write path, so the synthetic array fill cannot reach it — poke it, per the sweep's
                 // own instruction. Clear() must zero it: a re-Play that inherits the prior match's refusal count
                 // would mis-throttle (and mis-report) the next match's diagnostics.
-                DirtyNonArrayState = () => ClearCompletenessSweep.Poke(dirty, "_refusedInstalls", 3),
+                // DW-662: `_skippedPulses` (the dead-host/dead-target pulse-refusal tally) is the same shape and
+                // carries the same per-match contract — a re-Play must start it clean or the "shipped paths never
+                // trip the guard" reading is inherited from the previous match instead of measured.
+                DirtyNonArrayState = () =>
+                {
+                    ClearCompletenessSweep.Poke(dirty, "_refusedInstalls", 3);
+                    ClearCompletenessSweep.Poke(dirty, "_skippedPulses", 5);
+                },
                 Allowlist = new[]
                 {
                     // Host-lifetime wiring (readonly ctor deps, shared between fresh and dirty; Clear() preserves
                     // them by omission — clearing them would orphan the system↔store cycle the host wired once).
                     // `_log` (DW-83) is the same shape: an injected AR-4 diagnostic sink, construction-lifetime.
-                    "_world", "_system", "_damageTable", "_events", "_stats", "_log",
+                    // `_deaths` (DW-490) is likewise host-lifetime wiring — the SAME shared DeathFeed the combat,
+                    // projectile and ability death paths hold. It is a per-TICK buffer owned and drained by
+                    // HeroXpSystem (and reset through its own `_deathFeed.Clear() — DeathFeed` sweep case), so the
+                    // store must preserve the reference across a reset exactly as it preserves `_events`/`_stats`;
+                    // clearing it here would orphan the store from the XP runtime on the second Play.
+                    "_world", "_system", "_damageTable", "_events", "_stats", "_log", "_deaths",
                     // The store's OWN dedicated EffectExecutor: a construction-owned helper whose only mutable
                     // state (pre-allocated work stack + LastPeakStackDepth diagnostic) self-refreshes per Run and
                     // is unfolded — per-instance identity, preserved across reset by design (DW-20 investigation).
@@ -353,23 +372,64 @@ namespace ProjectChimera.Sim.Tests.Sim
             return new StoreResetFixture("Alliances.Clear()", new AllianceStore(), dirty, dirty.Clear);
         }
 
+        /// <summary>The dirty store's live trigger count — also the buffer capacity <c>Clear()</c> retains, which
+        /// <see cref="TriggerEnabledCase"/>'s NormalizeFresh mirrors onto the fresh side.</summary>
+        private const int TriggerEnabledLiveCount = 3;
+
         private static StoreResetFixture TriggerEnabledCase()
         {
+            var fresh = new TriggerEnabledStore();
             var dirty = new TriggerEnabledStore();
-            return new StoreResetFixture("TriggerEnabled.Clear()", new TriggerEnabledStore(), dirty, dirty.Clear)
+            return new StoreResetFixture("TriggerEnabled.Clear()", fresh, dirty, dirty.Clear)
             {
-                DirtyNonArrayState = () => dirty.Reset(3), // Count 3, buffer grown + seeded all-true
-                Allowlist = new[]
-                {
-                    // Clear() zeroes ONLY Count; the _enabled buffer keeps its stale tail by design (the folded
-                    // surface is Count-gated: a cleared store folds nothing, and the next LoadScenario's
-                    // Reset(count) re-seeds every live entry). NOTE the tail IS still observable through the
-                    // out-of-range-returns-true IsEnabled — that reachability question is DW-197 (open, medium).
-                    // When DW-197 closes (bounding IsEnabled or wiping the tail), REMOVE this entry so the sweep
-                    // pins the strengthened contract.
-                    "_enabled",
-                },
+                // Count 3, buffer grown + seeded all-true (the LoadScenario re-seed path).
+                DirtyNonArrayState = () => dirty.Reset(TriggerEnabledLiveCount),
+                // DW-584: `_enabled` carries NO allowlist entry — it is fully swept. It was exempted only while
+                // DW-197 was open (a count-gated stale tail that the old out-of-range-returns-true IsEnabled made
+                // observable); DW-197 landed, so Clear() now Array.Clears the WHOLE buffer and this case PINS that
+                // wipe. Clear() deliberately never SHRINKS the buffer — SimulationHost holds this store BY
+                // REFERENCE and Reset() reuses it in place — so, exactly like ResearchStore's never-shrinking inner
+                // arrays, the fresh side is grown to the same capacity first; otherwise the final compare trips on
+                // an incidental length mismatch (0 vs 3) instead of measuring "did every enabled bit reset".
+                // The baseline buffer is written DIRECTLY rather than through Reset()/Clear() so it can never
+                // inherit a regression in the very methods under test: a Clear() that drops its Array.Clear leaves
+                // [true,true,true] against this all-false fresh buffer and the case goes red (pinned by
+                // TriggerEnabledSweep_HasTeeth_AgainstAClearThatZeroesOnlyTheCount).
+                NormalizeFresh = () =>
+                    ClearCompletenessSweep.Poke(fresh, "_enabled", new bool[TriggerEnabledLiveCount]),
             };
+        }
+
+        /// <summary>
+        /// DW-584's teeth: with <c>_enabled</c> swept, the PRE-DW-197 <c>Clear()</c> — zero the count, leave the
+        /// enabled bits standing — must fail its sweep case at the named field. While the allowlist entry existed
+        /// that mutant shipped GREEN through the whole sweep (<see cref="ClearCompletenessSweep.DivergingFields"/>
+        /// skips allowlisted names outright), so this test is what makes the exemption's removal load-bearing
+        /// rather than cosmetic: re-add <c>"_enabled"</c> to the fixture's allowlist and this goes red.
+        /// </summary>
+        [Fact]
+        public void TriggerEnabledSweep_HasTeeth_AgainstAClearThatZeroesOnlyTheCount()
+        {
+            StoreResetFixture real = TriggerEnabledCase();
+            var mutant = new StoreResetFixture(
+                real.Name, real.Fresh, real.Dirty,
+                // The mutant reset: Count → 0 and nothing else (Count is an auto-property; Poke reaches its
+                // backing field, and is LOUD if the store ever renames it).
+                clear: () => ClearCompletenessSweep.Poke(real.Dirty, "Count", 0))
+            {
+                DirtyNonArrayState = real.DirtyNonArrayState,
+                NormalizeFresh     = real.NormalizeFresh,
+                ElementFiller      = real.ElementFiller,
+                Allowlist          = real.Allowlist,
+            };
+
+            var ex = Assert.ThrowsAny<Xunit.Sdk.XunitException>(
+                () => ClearCompletenessSweep.AssertClearRestoresFreshState(mutant));
+            Assert.Contains("TriggerEnabledStore._enabled", ex.Message);
+
+            // And the real Clear() — the shipped one — leaves the same fixture clean, so the failure above is the
+            // mutant's, not a fixture that can never pass.
+            ClearCompletenessSweep.AssertClearRestoresFreshState(TriggerEnabledCase());
         }
 
         private static StoreResetFixture TriggerFireLogCase()
@@ -538,7 +598,10 @@ namespace ProjectChimera.Sim.Tests.Sim
                 Allowlist = new[]
                 {
                     // Host-lifetime wiring (readonly ctor deps, shared between fresh and dirty).
-                    "_buildings", "_resources", "_buildSys",
+                    // DW-439/DW-445: _alliances joined them — the team mask is a host-lifetime dependency the AI
+                    // READS and never owns (SimulationHost.ClearForReset resets the store itself via
+                    // Alliances.Clear(), which AlliancesCase already sweeps), exactly like FogCase's _alliances.
+                    "_buildings", "_resources", "_buildSys", "_alliances",
                     // Readonly difficulty-derived config — "Difficulty weights are readonly and intentionally
                     // preserved" (ResetForMatch doc); both instances derive identical values from the same level.
                     "_aggressionWeight", "_techWeight", "_attackThreshold", "_attackCooldownMax",

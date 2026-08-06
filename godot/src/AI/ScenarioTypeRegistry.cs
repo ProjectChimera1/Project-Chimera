@@ -52,10 +52,13 @@ namespace ProjectChimera.AI
     /// </summary>
     public enum FactionPathPolicy
     {
-        /// <summary>The historical RTS mapping: slot 0 → <see cref="MapGeneratorContext.Slot0FactionJson"/>, every
-        /// other slot → <see cref="MapGeneratorContext.Slot1FactionJson"/>. Applied by leaving
-        /// <see cref="MapGeneratorContext.FactionJsonResolver"/> NULL, so the RTS preset is provably identical to
-        /// the pre-registry behavior rather than merely equivalent-looking.</summary>
+        /// <summary>The context's own built-in mapping, applied by leaving
+        /// <see cref="MapGeneratorContext.FactionJsonResolver"/> NULL — so the RTS preset re-uses
+        /// <see cref="MapGeneratorContext.ResolveFactionJson"/> rather than re-implementing (and possibly drifting
+        /// from) it. Slot 0 → <see cref="MapGeneratorContext.Slot0FactionJson"/>, slot 1 →
+        /// <see cref="MapGeneratorContext.Slot1FactionJson"/>; DW-372 made the branch past slot 1 ALTERNATE instead
+        /// of collapsing every higher slot onto slot 1's faction, so the RTS default is total for any slot count and
+        /// is still exactly the pre-registry mapping for the two slots an RTS map declares.</summary>
         RtsDefault = 0,
 
         /// <summary>Alternating mirror: even slots → <see cref="MapGeneratorContext.Slot0FactionJson"/>, odd slots
@@ -130,10 +133,12 @@ namespace ProjectChimera.AI
     ///  • Every enum member has exactly one preset — <see cref="Get"/> throws on an unmapped/undefined value rather
     ///    than silently falling back to RTS clamps (a silent fallback would re-open the "non-RTS scenario wrongly
     ///    rejected" defect the registry exists to close).
-    ///  • No preset raises <see cref="ScenarioTypePreset.MinPlayerSlots"/> above 2 while the map prompt's SCHEMA and
-    ///    EXAMPLE blocks still hardcode two player slots (DW-372): the model would be told "at least N" but shown a
-    ///    2-slot example and emit 2 → a guaranteed reject. Raising a floor is unlocked by DW-372, not by this table.
-    ///    Pinned by <c>ScenarioTypeRegistryTests.EveryPreset_KeepsMinSlotsWithinThePromptExample</c>.
+    ///  • A preset MAY now raise <see cref="ScenarioTypePreset.MinPlayerSlots"/> above 2: DW-372 parameterized the
+    ///    map prompt's SCHEMA and EXAMPLE blocks off <see cref="MapGeneratorContext.MinPlayerSlots"/>, so a raised
+    ///    floor is SHOWN as well as stated (it used to be stated as "at least N" while a 2-slot example was shown,
+    ///    so the model emitted 2 and the gate rejected every generation). Pinned by
+    ///    <c>ScenarioTypeRegistryTests.EveryPreset_IsShownAsManySlotsAsItDemands</c>. The floors are still clamped
+    ///    into [1, <c>FactionRegistry.PLAYER_COUNT</c>] by the context itself.
     /// </summary>
     public static class ScenarioTypeRegistry
     {
@@ -274,9 +279,12 @@ namespace ProjectChimera.AI
 
         /// <summary>Build the per-slot faction-JSON resolver for <paramref name="policy"/>, closing over
         /// <paramref name="context"/> so a later edit of its faction paths is honored. Returns NULL for
-        /// <see cref="FactionPathPolicy.RtsDefault"/> — the historical mapping IS
+        /// <see cref="FactionPathPolicy.RtsDefault"/> — that mapping IS
         /// <see cref="MapGeneratorContext.ResolveFactionJson"/>'s null branch, so RTS re-uses it rather than
-        /// re-implementing (and possibly drifting from) it.</summary>
+        /// re-implementing (and possibly drifting from) it. Since DW-372 made that branch alternate, RtsDefault and
+        /// <see cref="FactionPathPolicy.MirroredPair"/> agree on every slot; they remain distinct members because
+        /// RtsDefault means "leave the context's own default in place" (and re-applying RTS NULLS a resolver a
+        /// previous selection installed) while MirroredPair installs an explicit one.</summary>
         private static Func<int, string>? BuildResolver(MapGeneratorContext context, FactionPathPolicy policy)
             => policy switch
             {

@@ -13,10 +13,15 @@ namespace ProjectChimera.Sim.Tests.Definitions
     /// </summary>
     public class ObjectiveSerializationTests
     {
-        private static readonly JsonSerializerOptions Opt = new()
-        {
-            Converters = { new JsonStringEnumConverter() },
-        };
+        /// <summary>
+        /// DW-523 - the PRODUCTION scenario options, not a hand-rolled replica of them. This file used to declare its
+        /// own <see cref="JsonSerializerOptions"/> which was strictly LOOSER than the real loader (default
+        /// <see cref="JsonStringEnumConverter"/>, so integer enums were accepted; no widget converter; no comment /
+        /// trailing-comma handling), so the round-trips below asserted a format the loader does not actually use.
+        /// Pointing at the shared instance means a converter or strictness change at the <see cref="ContentJson"/>
+        /// choke point reaches this suite the moment it lands.
+        /// </summary>
+        private static readonly JsonSerializerOptions Opt = ContentJson.ScenarioOptions;
 
         [Fact]
         public void Objectives_RoundTrip_PreservingFields()
@@ -54,6 +59,32 @@ namespace ProjectChimera.Sim.Tests.Definitions
 
             Assert.DoesNotContain("\"objectives\"", jsonNull);
             Assert.Equal(jsonNull, jsonEmpty); // empty→null normalization ⇒ byte-identical
+        }
+
+        /// <summary>
+        /// DW-523 (the half that FAILS without the fix). A NUMERIC objective state must fail closed at parse, exactly
+        /// as it does through the real loader (DW-274 made the scenario posture <c>allowIntegerValues: false</c>).
+        /// With this file's old hand-rolled options — a bare <c>new JsonStringEnumConverter()</c>, integer values
+        /// allowed — <c>"initial_state": 1</c> parsed happily as whichever member holds ordinal 1, so the round-trip
+        /// above was pinning a format strictly looser than the one production reads.
+        /// </summary>
+        [Fact]
+        public void NumericObjectiveState_FailsClosed_MatchingTheRealLoader()
+        {
+            const string json = "{\"objectives\":[{\"id\":\"o\",\"title\":\"T\",\"initial_state\":1}]}";
+            JsonException ex = Assert.Throws<JsonException>(
+                () => JsonSerializer.Deserialize<ScenarioData>(json, Opt));
+            Assert.Contains("initial_state", ex.Message);
+        }
+
+        /// <summary>The NAMED spelling every shipped/authored scenario uses still round-trips — the tightening
+        /// rejects only the numeric form.</summary>
+        [Fact]
+        public void NamedObjectiveState_StillParses()
+        {
+            const string json = "{\"objectives\":[{\"id\":\"o\",\"title\":\"T\",\"initial_state\":\"Hidden\"}]}";
+            ScenarioData? back = JsonSerializer.Deserialize<ScenarioData>(json, Opt);
+            Assert.Equal(ObjectiveState.Hidden, back!.Objectives![0].InitialState);
         }
     }
 }

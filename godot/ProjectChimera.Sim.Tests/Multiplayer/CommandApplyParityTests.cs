@@ -835,6 +835,66 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
             }
         }
 
+        /// <summary>
+        /// DW-626 — the OFFLINE/F5 half of the DW-86 pin. <c>CommandCardSystem</c> (src/UI) is Godot-coupled and
+        /// therefore outside this Godot-free assembly's compile set, so its two direct apply sites —
+        /// <c>IssueResearchCommand</c> (StartResearch) and <c>IssueCancelResearchCommand</c> (CancelResearch) — cannot
+        /// be executed here. They are the ONLY production path a research command takes offline: online it is enqueued
+        /// (LockstepManager → MergedTickApplier, pinned above) and playback goes through ReplayPlayer (executed above).
+        /// Dropping <c>research:</c> at either site would make offline/F5 research a silent deterministic no-op while
+        /// online AND replay still apply it — the mirror image of the replay-vs-live divergence DW-86 closed, and
+        /// invisible to every executable test in this file (they all inject <c>research:</c> by hand).
+        /// </summary>
+        [Fact]
+        public void CommandCardSystem_ForwardsResearch_AtEveryOfflineResearchApplySite()
+        {
+            string blob = StripCommentsAndNormalize(File.ReadAllText(CommandCardSystemFile()));
+
+            // Vacuous-pass guard #1: the offline handle must still be DECLARED under the name the scan asserts on —
+            // a rename would otherwise make every `research: _research` check below unfalsifiable.
+            Assert.Matches(@"private (?:ProjectChimera\.Economy\.)?ResearchSystem\?? _research;", blob);
+
+            // Every offline command in this file has the shape `var order = new UnitOrder(<cmd>, …);` immediately
+            // followed by the `OrderApplier.Apply(_world, in order, …);` that consumes it, so pair each constructed
+            // order with the first apply that follows it and precedes the NEXT constructed order.
+            var ctors   = Regex.Matches(blob, @"\bnew UnitOrder\(");
+            var applies = Regex.Matches(blob, @"\bOrderApplier\.Apply\(");
+            Assert.True(ctors.Count > 0 && applies.Count > 0,
+                $"Found {ctors.Count} UnitOrder construction(s) and {applies.Count} OrderApplier.Apply call site(s) in " +
+                "CommandCardSystem.cs — the offline apply shape changed; re-point this DW-626 pin at the new sites.");
+
+            int researchSites = 0;
+            for (int c = 0; c < ctors.Count; c++)
+            {
+                string orderArgs = ArgumentList(blob, ctors[c].Index + ctors[c].Length - 1);
+                if (!Regex.IsMatch(orderArgs, @"\bUnitCommand\.(?:Start|Cancel)Research\b")) continue;
+
+                int nextCtor = (c + 1 < ctors.Count) ? ctors[c + 1].Index : blob.Length;
+                Match? site = null;
+                foreach (Match m in applies)
+                    if (m.Index > ctors[c].Index && m.Index < nextCtor) { site = m; break; }
+
+                Assert.True(site != null,
+                    "A research UnitOrder is constructed in CommandCardSystem.cs with no OrderApplier.Apply consuming " +
+                    "it before the next order is built — the offline apply shape changed (DW-626). Order args: " + orderArgs);
+
+                string args = ArgumentList(blob, site!.Index + site.Length - 1);
+                Assert.True(Regex.IsMatch(args, @"\bresearch:\s*_research\b"),
+                    "The OFFLINE (F5) research apply site in CommandCardSystem does NOT forward its `research: _research` " +
+                    "handle — a StartResearch/CancelResearch issued offline becomes a silent deterministic no-op while " +
+                    "the online (MergedTickApplier) and replay (ReplayPlayer) paths still apply it (DW-626). " +
+                    "Order args: " + orderArgs + " | Apply args: " + args);
+                researchSites++;
+            }
+
+            // Vacuous-pass guard #2: BOTH offline research apply sites must have been reached. If the loop above
+            // matched nothing (regex drift, a renamed command, the sites moved out of this file) it would pass
+            // trivially and pin nothing at all.
+            Assert.True(researchSites >= 2,
+                $"Expected CommandCardSystem to keep at least 2 offline research apply sites (StartResearch + " +
+                $"CancelResearch); the scan checked {researchSites}. If the shape changed, re-point this DW-626 pin.");
+        }
+
         /// <summary>Return the balanced parenthesised argument list that STARTS at <paramref name="openParen"/>
         /// (which must index the '(' itself), exclusive of the outer parentheses.</summary>
         private static string ArgumentList(string blob, int openParen)
@@ -849,7 +909,7 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
                     if (depth == 0) return blob.Substring(openParen + 1, i - openParen - 1);
                 }
             }
-            throw new InvalidOperationException("Unbalanced parentheses while scanning a LockstepManager apply call site.");
+            throw new InvalidOperationException("Unbalanced parentheses while scanning a source-pinned call site.");
         }
 
         /// <summary>Strip block/line comments then collapse whitespace, so comment prose can never satisfy (or hide)
@@ -863,10 +923,22 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
 
         // This file lives in godot/ProjectChimera.Sim.Tests/Multiplayer/ → ../../src/Multiplayer/LockstepManager.cs.
         private static string LockstepManagerFile([CallerFilePath] string thisFilePath = "")
+            => ResolveFromHere(thisFilePath, "..", "..", "src", "Multiplayer", "LockstepManager.cs");
+
+        // DW-626 — the OFFLINE/F5 apply site: ../../src/UI/CommandCardSystem.cs.
+        private static string CommandCardSystemFile([CallerFilePath] string thisFilePath = "")
+            => ResolveFromHere(thisFilePath, "..", "..", "src", "UI", "CommandCardSystem.cs");
+
+        /// <summary>Resolve a repo-relative path from THIS test file's own directory (portable across checkouts —
+        /// no dependency on the runner's working directory). Mirrors <c>LocalFactionSingleSourceTests</c>.</summary>
+        private static string ResolveFromHere(string thisFilePath, params string[] parts)
         {
             string dir = Path.GetDirectoryName(thisFilePath)
                          ?? throw new InvalidOperationException("Could not resolve this test's source dir via [CallerFilePath].");
-            return Path.GetFullPath(Path.Combine(dir, "..", "..", "src", "Multiplayer", "LockstepManager.cs"));
+            string[] segments = new string[parts.Length + 1];
+            segments[0] = dir;
+            Array.Copy(parts, 0, segments, 1, parts.Length);
+            return Path.GetFullPath(Path.Combine(segments));
         }
     }
 }

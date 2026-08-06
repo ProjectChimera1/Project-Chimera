@@ -27,19 +27,26 @@ namespace ProjectChimera.Effects
     /// fields), named caps only. The foldable per-instance fields are all <c>int</c>: <c>_modifierId</c>,
     /// <c>_remainingTicks</c>, <c>_ticksUntilPeriod</c>, <c>_periodsRemaining</c>, <c>_stackCount</c>. The descriptor
     /// references + caster id/faction are NOT folded — authored / peer-identical by construction (like a
-    /// <c>UnitDefinition</c> reference). Nor is the DW-83 diagnostic pair (<c>_log</c>, <c>_refusedInstalls</c>):
-    /// no sim branch reads them, so they cannot move a checksum or a golden.</para>
+    /// <c>UnitDefinition</c> reference). Nor is the diagnostic set (<c>_log</c>, <c>_refusedInstalls</c> — DW-83;
+    /// <c>_skippedPulses</c> — DW-662): no sim branch reads them, so they cannot move a checksum or a golden.</para>
     ///
-    /// <para><b>Re-entrancy.</b> The store runs ALL THREE effect phases — <c>InitialEffect</c> (on install),
-    /// <c>PeriodEffect</c> (each pulse), and <c>ExpireEffect</c> (on removal) — on its OWN dedicated
-    /// <see cref="EffectExecutor"/>, never shared with a graph-running executor, whose single pre-allocated work-stack
-    /// running re-entrantly would clobber. In 2.2b all three phases use only direct-target leaves
-    /// (DirectHpDelta/Heal/Damage, <c>spatial: null</c>) so no nesting occurs. An install-leaf
-    /// (<see cref="ApplyModifierEffect"/>/<see cref="PersistentEffect"/>) nested inside ANY of the three phases — not
-    /// just a period — would re-enter the dedicated executor AND mutate <c>_count</c> mid-<see cref="Advance"/>; that
-    /// case is unsupported in 2.2b and is kept off the executor by the Story 2.3 content validator. A future phase that
-    /// itself installs a modifier needs a fail-closed re-entrancy guard or a deferred-application queue (documented in
-    /// deferred-work, code-review 2.2b W1).</para>
+    /// <para><b>Re-entrancy.</b> The store runs ALL THREE <see cref="PersistentEffect"/> phases —
+    /// <c>InitialEffect</c> (on install), <c>PeriodEffect</c> (each pulse) and <c>ExpireEffect</c> (on removal) — plus a
+    /// <see cref="Modifier.PeriodEffect"/> pulse (DW-271), on its OWN dedicated <see cref="EffectExecutor"/>, never
+    /// shared with a graph-running executor, whose single pre-allocated work-stack running re-entrantly would clobber.
+    /// Every one of those runs resolves DIRECT-TARGET: <c>RunEffectAgainst</c> is the only place a store
+    /// <see cref="EffectContext"/> is built and it always passes <c>spatial: null</c>, so a phase subtree is
+    /// <see cref="SequenceEffect"/>s of direct-target leaves (DirectHpDelta/Heal/Damage) and nothing else.</para>
+    ///
+    /// <para>What holds that line is a MECHANISM, not a version. The Story 2.3 content validator
+    /// (<c>AbilityValidator</c>'s AC5 walk) fail-closed REJECTS an install leaf — an
+    /// <see cref="ApplyModifierEffect"/> or a nested <see cref="PersistentEffect"/> — anywhere inside a Persistent
+    /// phase OR inside a <c>Modifier.period_effect</c> subtree, and rejects a <see cref="SearchAreaEffect"/> in those
+    /// same places (no per-tick spatial rebuild exists). So no loadable ability can put one on this executor. The
+    /// hazard being fenced off is not period-specific: an install leaf in ANY of the phases would re-enter the
+    /// dedicated executor AND mutate <c>_count</c> mid-<see cref="Advance"/>. A future phase that itself installs
+    /// needs a fail-closed re-entrancy guard or a deferred-application queue HERE, with the validator fence relaxed in
+    /// the same change (deferred-work, code-review 2.2b W1).</para>
     /// </summary>
     public sealed class ModifierStore
     {
@@ -79,11 +86,13 @@ namespace ProjectChimera.Effects
         private readonly DamageTable _damageTable;
         private readonly CombatEventQueue? _events;
         private readonly MatchStats? _stats;
+        private readonly DeathFeed? _deaths;        // DW-490 — the XP death feed EVERY other lethal path passes to KillEntity
         private readonly EffectExecutor _executor;  // DEDICATED — never shared with a graph-running executor
 
         // ── DW-83 diagnostics (NEVER folded into SimChecksum; never read by any sim branch) ──
         private readonly ILogSink? _log;   // injected AR-4 seam (never a static ambient sink); null ⇒ the pre-DW-83 silent refusal
         private int _refusedInstalls;      // monotonic tally of ring-full refusals since construction / Clear
+        private int _skippedPulses;        // DW-662 tally of pulses skipped because the host/target was dead (see SkippedPulseCount)
 
         /// <summary>
         /// Construct the store, wire deps, and subscribe the destroy hook. <paramref name="system"/>/<paramref
@@ -96,15 +105,23 @@ namespace ProjectChimera.Effects
         /// through — the AR-4 <see cref="ILogSink"/>, never a static ambient sink / <c>Console</c> / <c>GD.Print</c>.
         /// Null (every golden/headless/fold-only construction) leaves a refusal byte-identical to its pre-DW-83
         /// silent self; the live host wires its own sink. Diagnostics only: a sink must never mutate sim state.</para>
+        /// <para>DW-490: <paramref name="deaths"/> is the shared <see cref="DeathFeed"/> the XP runtime drains — the
+        /// SAME argument the hitscan, projectile and self-lethal-cast death paths already pass to
+        /// <see cref="DamageResolver.KillEntity"/>. The store needs it because the DW-325 ceiling-collapse death is a
+        /// real lethal path: without the feed an ability-driven "reduce max HP to 0" finisher would be the ONLY kill in
+        /// the game that grants no hero XP. Deliberately LAST in the parameter list so every existing positional
+        /// construction (tests, fold-only stores) is unchanged; a null feed simply records no death, exactly as before.</para>
         /// </summary>
         public ModifierStore(EntityWorld world, ModifierSystem? system = null, DamageTable? damageTable = null,
-                             CombatEventQueue? events = null, MatchStats? stats = null, ILogSink? log = null)
+                             CombatEventQueue? events = null, MatchStats? stats = null, ILogSink? log = null,
+                             DeathFeed? deaths = null)
         {
             _world = world;
             _system = system;
             _damageTable = damageTable ?? DamageTable.Default;
             _events = events;
             _stats = stats;
+            _deaths = deaths;
             _log = log;
             _executor = new EffectExecutor(); // its own pre-allocated stack (re-entrancy-safe)
 
@@ -145,6 +162,19 @@ namespace ProjectChimera.Effects
         /// ring is full. The return value is not folded into any checksum — every path's behavior/state is unchanged;
         /// callers that ignore the result (the pre-DW-34 default) are byte-identical. The DW-34 pickup site reads it to
         /// deny a ground-item claim when the carrier is at the modifier cap.</para>
+        /// <para><b>POST-CONDITION (DW-325/DW-491, audited in DW-489): this method can DESTROY
+        /// <paramref name="targetId"/>.</b> A modifier whose MaxHealth delta is NET-NEGATIVE and collapses the host's
+        /// <c>EffectiveMaxHealth</c> from above zero to exactly zero raises the ceiling-collapse death inside
+        /// <see cref="ApplyStatDeltas"/> — a synchronous <c>EntityWorld.Destroy</c>, which fires <c>OnDestroy</c>
+        /// (ClearEntity wipes this host's ring; ItemSystem drops its carried items) and returns the id to the recycle
+        /// free list. The returned <c>true</c> therefore means "installed", NOT "installed AND the host is still
+        /// alive" — the two are deliberately NOT distinguished in the return value (recorded decision 2026-08-03: no
+        /// tri-state API for a latent, content-gated case). EVERY caller that writes further state for
+        /// <paramref name="targetId"/> after this returns MUST re-check <see cref="EntityWorld.IsAlive"/> first. The
+        /// three internal <see cref="ApplyStatDeltas"/> callers do so inline; the external callers are
+        /// <c>ItemSystem.ApplyItemStatModifier</c>'s call sites (guarded / audited per DW-489),
+        /// <c>EffectExecutor</c>'s apply_modifier case and <see cref="ApplyModifierEffect.Apply"/> (both return
+        /// immediately and every subsequent leaf re-guards IsAlive), and the aura re-grant walk.</para>
         /// </summary>
         public bool Apply(int targetId, Modifier mod, int casterId, Faction casterFaction)
         {
@@ -183,7 +213,10 @@ namespace ProjectChimera.Effects
                 ResetPeriodSchedule(slot, mod);
                 _count[targetId] = n + 1;
 
-                ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta, mod.ArmorDelta, isApply: true);
+                // DW-490: the instance's OWN recorded caster (just written above) is the attribution a ceiling-collapse
+                // death inside ApplyStatDeltas credits — the same pair a period pulse from this slot resolves with.
+                ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta, mod.ArmorDelta,
+                                isApply: true, _casterId[slot], _casterFaction[slot]);
                 // DW-325 re-entrancy: a ceiling-collapse kill inside ApplyStatDeltas fired OnDestroy→ClearEntity, wiping
                 // this host's slots/status/accumulators. Bail before writing status onto the dead (recycled) slot.
                 if (!_world.IsAlive(targetId)) return true;
@@ -203,7 +236,11 @@ namespace ProjectChimera.Effects
                     if (_stackCount[eslot] < mod.MaxStacks)
                     {
                         _stackCount[eslot]++;
-                        ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta, mod.ArmorDelta, isApply: true); // each stack re-adds
+                        // DW-490: attribution follows the INSTANCE, not the re-caster — _casterId/_casterFaction are
+                        // recorded once at install and a stack never rewrites them, so a collapsing stack credits the
+                        // same caster the instance's period pulses (RunEffectAgainst) already resolve with.
+                        ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta, mod.ArmorDelta,
+                                        isApply: true, _casterId[eslot], _casterFaction[eslot]); // each stack re-adds
                         // DW-325 re-entrancy: a stack that collapsed the ceiling to 0 killed the host → ClearEntity
                         // already wiped its slots; don't write status (or refresh eslot's duration below) on a dead slot.
                         if (!_world.IsAlive(targetId)) return true;
@@ -357,6 +394,9 @@ namespace ProjectChimera.Effects
                             // never `return` — the dead host's slot loop ends, but every higher-id entity must still
                             // pulse this same tick. No shipped content authors a lethal period yet; the guard's teeth
                             // are LethalPeriodMidAdvanceTests (which also covers RemoveSlot's expire-effect twin).
+                            // DW-662: this POST-condition covers the HOST only. Its companion PRE-condition — the
+                            // dead-host/dead-target refusal that fires before the executor is entered, for a pulse
+                            // resolving against an entity that is not its host — lives in RunEffectAgainst.
                             if (!_world.IsAlive(i)) break;
                             _ticksUntilPeriod[slot] = PeriodLengthOf(slot);
                             _periodsRemaining[slot]--;
@@ -440,10 +480,13 @@ namespace ProjectChimera.Effects
             if (mod != null)
             {
                 Fixed stacks = Fixed.FromInt(_stackCount[slot]); // exact for an int multiplier (no Fixed rounding)
+                // DW-490: read the slot's caster BEFORE the revert — CompactSlot (below) may overwrite this slot, and a
+                // collapse kill inside ApplyStatDeltas wipes the whole ring. Reverting a +MaxHealth grant to zero is
+                // still "this instance's stat change killed the host", so it credits this instance's caster.
                 ApplyStatDeltas(hostId, -(mod.AttackDamageDelta * stacks),
                                         -(mod.MaxHealthDelta * stacks),
                                         -(mod.MoveSpeedDelta * stacks),
-                                        -(mod.ArmorDelta * stacks), isApply: false);
+                                        -(mod.ArmorDelta * stacks), isApply: false, _casterId[slot], _casterFaction[slot]);
                 // DW-325 re-entrancy: reverting a +MaxHealth contribution can drop the ceiling to 0 and kill the host →
                 // OnDestroy→ClearEntity already wiped its slots; bail before the status-union/compact touch dead slots
                 // (mirrors the existing post-expire-effect guard above).
@@ -498,6 +541,7 @@ namespace ProjectChimera.Effects
             System.Array.Clear(_casterFaction);
             System.Array.Clear(_count);
             _refusedInstalls = 0; // DW-83: the refusal tally is PER-MATCH diagnostics — a re-Play starts it clean
+            _skippedPulses   = 0; // DW-662: same per-match contract for the dead-end pulse tally
             _system?.ClearAll(); // zero the external stat-bonus accumulators + dirty flags (the store's driver half)
         }
 
@@ -512,6 +556,18 @@ namespace ProjectChimera.Effects
         /// <see cref="Apply"/> — the seam <c>ResearchSystem</c> uses) without re-deriving the ring-full test.
         /// </summary>
         public int RefusedInstallCount => _refusedInstalls;
+
+        /// <summary>
+        /// DW-662 — monotonic count of effect pulses the store REFUSED to run because the instance's host or its
+        /// resolved target was dead/stale (see <see cref="RunEffectAgainst"/>), since construction or the last
+        /// <see cref="Clear"/>. Diagnostics only, exactly like <see cref="RefusedInstallCount"/>: never folded into
+        /// <see cref="SimChecksum"/>, never read by any sim branch, so reading or ignoring it is byte-identical.
+        /// <para>Its value on a shipped schedule is its point: every production path resolves host == target with a live
+        /// host, so this stays <b>0</b>. A non-zero reading means an instance resolved against a corpse — the signal the
+        /// DW-267 <c>CompactSlot</c>/<c>_count</c> corruption class was headed off, and the first thing to look at when a
+        /// future <c>SpatialHash</c>-threaded AoE period starts losing pulses.</para>
+        /// </summary>
+        public int SkippedPulseCount => _skippedPulses;
 
         /// <summary>
         /// DW-83 — record a refused (ring-full) install and surface it: bump <see cref="RefusedInstallCount"/> and
@@ -560,8 +616,9 @@ namespace ProjectChimera.Effects
         /// Debit a <see cref="Fixed"/> <paramref name="cost"/> from <see cref="EntityWorld.Energy"/> for ability
         /// affordability. Succeeds (and subtracts) ONLY when <c>Energy[id] &gt;= cost</c>; otherwise REFUSES and leaves
         /// <c>Energy</c> untouched (no partial spend, no negative balance). A negative <paramref name="cost"/> is a
-        /// programmer error — refused, never refunded. Dead/stale id → false (no throw). The affordability primitive
-        /// 2.4's ability-cast consumes; proven in isolation here (no ability exists in 2.2b).
+        /// programmer error — refused, never refunded. Dead/stale id → false (no throw). The affordability primitive the
+        /// ability cast consumes: <see cref="AbilityCastSystem"/> debits through here and, when a later gate in the same
+        /// cast refuses, adds back the exact same <see cref="Fixed"/> as its inverse.
         /// </summary>
         public bool TryDebitEnergy(int id, Fixed cost)
         {
@@ -583,6 +640,16 @@ namespace ProjectChimera.Effects
         /// the item's modifier uses a deterministic per-item <see cref="Modifier.Id"/>, so this reverts precisely that
         /// item's bonus. Returns true iff a matching instance was found + removed. A dead/stale host or an absent id is a
         /// harmless no-op (false) — e.g. death-drop after <see cref="ClearEntity"/> already wiped the entity's modifiers.
+        /// <para><b>POST-CONDITION (DW-325/DW-491, audited in DW-489): this method can DESTROY
+        /// <paramref name="hostId"/>.</b> Reverting a POSITIVE +MaxHealth contribution is a net-negative change, so a
+        /// removal that takes the host's <c>EffectiveMaxHealth</c> from above zero to exactly zero raises the
+        /// ceiling-collapse death inside <see cref="ApplyStatDeltas"/> — the same synchronous <c>Destroy</c> +
+        /// <c>OnDestroy</c> re-entrancy described on <see cref="Apply"/>. Removing a carried item's modifier is
+        /// therefore RE-ENTRANT into <c>ItemSystem</c>: the death hook runs <c>OnEntityDestroyed → DropAll → DropOne</c>
+        /// over the SAME inventory ring the caller is mid-way through mutating. Every caller must (a) re-check
+        /// <see cref="EntityWorld.IsAlive"/> before its next write for <paramref name="hostId"/>, and (b) leave no
+        /// half-updated ring slot live across this call — <c>ItemSystem.UseItemCommand</c>/<c>DropOne</c> clear the
+        /// in-flight slot BEFORE calling in, so the re-entrant sweep skips it instead of double-dropping it.</para>
         /// </summary>
         public bool RemoveByModifierId(int hostId, int modifierId)
         {
@@ -654,6 +721,15 @@ namespace ProjectChimera.Effects
         /// tick's recompute reproduces the saved <c>Effective*</c> exactly. The caller writes slots ascending
         /// <c>0..count</c> then calls <see cref="SetCount"/>. Must run AFTER <see cref="Clear"/> (which zeroes the
         /// re-applied self-passives + accumulators) and after the EntityWorld overlay (so <c>StatusFlagsOf</c> is set).
+        /// <para><b>DW-492 — deliberately NON-LETHAL, and no longer a gap.</b> This accumulates without recomputing, so
+        /// it can neither clamp Health nor raise the DW-325/DW-491 ceiling-collapse death, and it must not: a per-slot
+        /// check would destroy a host whose slot 0 restores a −MaxHealth debuff before slot 1 restores the +MaxHealth
+        /// grant that offsets it. The dirty flag this leaves set is the handoff — <c>ModifierSystem.Tick</c> recomputes
+        /// the entity once the WHOLE ring is back and routes the result through
+        /// <see cref="RaiseExternalCeilingCollapse"/>, so a loaded ring that genuinely floors the ceiling at zero kills
+        /// its host at the first resumed tick instead of reconstituting a living zombie. A save whose stored
+        /// <c>Effective*</c> already agrees with its bonuses (every consistent save) recomputes to the same ceiling and
+        /// that reconciliation is a no-op.</para>
         /// </summary>
         public void RestoreSlot(int hostId, int slot, int modifierId, int remainingTicks, int ticksUntilPeriod,
                                 int periodsRemaining, int stackCount, int casterId, Faction casterFaction,
@@ -713,14 +789,24 @@ namespace ProjectChimera.Effects
         /// the host's <c>EffectiveMaxHealth</c> from above zero to exactly zero. A positive grant, and any change on a host
         /// whose ceiling was ALREADY zero, are never lethal. Every caller must re-check <c>IsAlive</c> before its next
         /// slot/status write.</para>
+        /// <para><b>DW-490 attribution.</b> <paramref name="casterId"/>/<paramref name="casterFaction"/> are the
+        /// instance's OWN recorded caster (<c>_casterId</c>/<c>_casterFaction</c> at the slot whose stat change is being
+        /// applied or reverted) — the same pair a period pulse from that instance resolves with. They become the killer
+        /// attribution of a collapse death, so a creator-authored lethal −MaxHealth debuff credits its real caster for
+        /// scoring/hero XP instead of the hardcoded <see cref="Faction.Neutral"/> the DW-325 spec shipped. A store with
+        /// no caster context (the external-recompute catch-all) still uses Neutral / attacker −1.</para>
         /// </summary>
-        private void ApplyStatDeltas(int id, Fixed attackChange, Fixed maxHealthChange, Fixed moveChange, Fixed armorChange, bool isApply)
+        private void ApplyStatDeltas(int id, Fixed attackChange, Fixed maxHealthChange, Fixed moveChange, Fixed armorChange,
+                                     bool isApply, int casterId, Faction casterFaction)
         {
             // DW-491: snapshot the PRIOR ceiling before the accumulate/recompute, so the collapse test below can be a
             // downward TRANSITION (>0 → 0) instead of the absolute `== 0` it used to be. This read is the pipeline's own
             // invariant: EntityWorld.Create seeds EffectiveMaxHealth from the ctor health and every store apply/remove
-            // recomputes eagerly a few lines down, so the value here is always the host's current ceiling. (The SP-load
-            // RestoreSlot path accumulates without recomputing and is deliberately non-lethal — tracked separately.)
+            // recomputes eagerly a few lines down, so the value here is always the host's current ceiling. (DW-492: the
+            // SP-load RestoreSlot path is the one producer that accumulates WITHOUT recomputing — deliberately, because a
+            // per-slot check would kill a host mid-restore before a later slot's +MaxHealth grant is back. That ring is
+            // reconciled by RaiseExternalCeilingCollapse at the first ModifierSystem.Tick after the load, when the whole
+            // ring is present; the residual window before that tick can only under-read the ceiling, i.e. fail SAFE.)
             Fixed ceilingBefore = _world.EffectiveMaxHealth[id];
 
             _system?.AccumulateBonus(id, attackChange, maxHealthChange, moveChange, armorChange);
@@ -740,10 +826,21 @@ namespace ProjectChimera.Effects
                 // `== Fixed.Zero` test below matches the floored result) leaves the host clamped to 0 HP but still
                 // alive — a "zombie". Kill it
                 // ONCE, through the SINGLE combat death sequence (UnitKilled event + Destroy) so no invented death path
-                // exists. Killer = Faction.Neutral (no attacker): RecordKill counts
-                // the victim's loss but credits no kill/XP (killer index 0 is skipped). The kill fires
+                // exists. The kill fires
                 // OnDestroy→ClearEntity, wiping this host's slots + accumulators — every ApplyStatDeltas caller
                 // re-checks IsAlive before its next slot/status write.
+                //
+                // DW-490 — ATTRIBUTION. The DW-325 spec hardcoded `Faction.Neutral` with the DeathFeed argument omitted,
+                // on the reasoning that a ceiling collapse is an attacker-less rules death. That holds for a rules-driven
+                // collapse, but a creator CAN author a lethal −MaxHealth debuff cast by a real player: the instance
+                // already records who cast it, so that kill is no more attacker-less than a DoT tick. The collapse now
+                // credits the instance's own caster and pushes the victim into the shared DeathFeed, making it the same
+                // shape as EVERY other lethal path (hitscan, projectile, splash, self-lethal cast) — kill/loss counted
+                // for the right factions, hostile heroes in range earning the victim's XpBounty. When the caster is
+                // genuinely unknown the recorded pair IS `(-1, Faction.Neutral)` — the slot default and what
+                // ClearSlotFields writes — so a rules-driven collapse is byte-identical to the pre-DW-490 behaviour
+                // apart from the DeathFeed push (XP-bounty policy: a collapse death is worth exactly what any other
+                // death of that victim is worth; the bounty is the VICTIM's, so no new policy is invented here).
                 //
                 // DW-491 — the gate is a COLLAPSE, not an absolute reading. It used to be `IsAlive && ceiling == 0`,
                 // which made two non-collapses lethal and contradicted this comment's own "net-negative-MaxHealth" wording:
@@ -763,8 +860,50 @@ namespace ProjectChimera.Effects
                 // and a FRESH collapse (or any damage) kills it. Pinned by InvulnerableDeathImmunityTests.
                 if (_world.IsAlive(id) && maxHealthChange < Fixed.Zero
                     && ceilingBefore > Fixed.Zero && _world.EffectiveMaxHealth[id] == Fixed.Zero)
-                    DamageResolver.KillEntity(_world, id, Faction.Neutral, _events, _stats);
+                    DamageResolver.KillEntity(_world, id, casterFaction, _events, _stats, _deaths, casterId);
             }
+        }
+
+        /// <summary>
+        /// DW-492 — the ceiling-collapse CATCH-ALL for every recompute the store did not drive itself.
+        ///
+        /// <para>The DW-325/DW-491 death lives inside <see cref="ApplyStatDeltas"/>, which is only reached on the
+        /// apply / stack / remove paths. Two other producers move <c>EffectiveMaxHealth</c> without it:
+        /// <see cref="RestoreSlot"/> (an SP load re-accumulates every saved bonus but deliberately does NOT recompute)
+        /// and any bonus dirtied through <c>ModifierSystem.AccumulateBonus</c> from outside the store, both of which are
+        /// reconciled by <c>ModifierSystem.Tick</c>'s dirty loop. Without this hook that loop could recompute a live
+        /// unit's ceiling down to zero and leave it standing — the exact 0-HP zombie DW-325 advertises as impossible,
+        /// and a state divergence between a freshly-applied and a loaded match.</para>
+        ///
+        /// <para><b>Why here and not per-slot in <see cref="RestoreSlot"/>.</b> A restore rebuilds one ring slot at a
+        /// time. Checking after each slot would kill a host whose slot 0 is a −100 MaxHealth debuff before its slot 1
+        /// +100 grant is back — destroying a unit the save shows alive. <c>Tick</c> runs after the WHOLE ring (and the
+        /// entity overlay) is restored, so it is the first point at which the recomputed ceiling is the host's real one.</para>
+        ///
+        /// <para><b>Same rule, same shape.</b> Health is re-clamped into <c>[0, EffectiveMaxHealth]</c> whenever the
+        /// recompute MOVED the ceiling (so an external drop cannot leave phantom HP above it), and the death fires only
+        /// on the DW-491 downward TRANSITION — the ceiling was above zero and is exactly zero now. A host that
+        /// legitimately SITS at ceiling 0 across the recompute is untouched, exactly as on the apply path. No caster
+        /// exists for an external recompute, so the kill is the attacker-less <see cref="Faction.Neutral"/> / attacker
+        /// −1 form — but it still records into the <see cref="DeathFeed"/> like every other death (DW-490).</para>
+        ///
+        /// <para><b>Golden-neutral by construction.</b> Every store path recomputes EAGERLY and clears the dirty flag,
+        /// so <c>ModifierSystem.Tick</c>'s dirty loop body is unreachable in a match that never loads a save and never
+        /// accumulates a bonus outside the store — which is every recorded golden. Nothing here can move a checksum.</para>
+        /// </summary>
+        /// <param name="id">The entity <c>ModifierSystem.Tick</c> just recomputed.</param>
+        /// <param name="ceilingBefore">Its <c>EffectiveMaxHealth</c> snapshotted immediately BEFORE that recompute.</param>
+        internal void RaiseExternalCeilingCollapse(int id, Fixed ceilingBefore)
+        {
+            if (!_world.IsAlive(id)) return; // IsAlive also bounds-checks the id
+            Fixed ceilingAfter = _world.EffectiveMaxHealth[id];
+            if (ceilingAfter == ceilingBefore) return; // the recompute was a no-op for the ceiling — nothing to reconcile
+
+            // Mirrors ApplyStatDeltas: clamp FIRST (so a refused kill — DW-620 invulnerability — still lands the host at
+            // 0 HP rather than phantom HP above a zero ceiling), then raise the collapse death.
+            _world.Health[id] = Fixed.Clamp(_world.Health[id], Fixed.Zero, ceilingAfter);
+            if (ceilingBefore > Fixed.Zero && ceilingAfter == Fixed.Zero)
+                DamageResolver.KillEntity(_world, id, Faction.Neutral, _events, _stats, _deaths);
         }
 
         /// <summary>Recompute and write the host's status-flag union from all active slots EXCEPT <paramref name="excludeSlot"/>.</summary>
@@ -833,12 +972,64 @@ namespace ProjectChimera.Effects
             _periodsRemaining[slot] = hasPeriod ? EffectCaps.MaxPersistentPeriods : 0;
         }
 
-        /// <summary>Run an effect node against a fresh, direct-target (<c>spatial: null</c>) context for the host, on the dedicated executor.</summary>
-        private void RunEffect(int hostId, int slot, EffectNode effect)
+        /// <summary>Run an effect node against a fresh, direct-target (<c>spatial: null</c>) context for the host, on the
+        /// dedicated executor. Every production path resolves <b>host == target</b>; the explicitly re-targeted form is
+        /// <see cref="RunEffectAgainst"/>, which carries the DW-662 fail-closed guard both share.</summary>
+        private void RunEffect(int hostId, int slot, EffectNode effect) => RunEffectAgainst(hostId, slot, hostId, effect);
+
+        /// <summary>
+        /// DW-662 — run the instance at <paramref name="slot"/> (owned by <paramref name="hostId"/>) against an EXPLICIT
+        /// <paramref name="targetId"/>, on the dedicated executor, and FAIL CLOSED when either end of that pair is
+        /// dead/stale.
+        ///
+        /// <para><b>Why the target needs its own guard.</b> <see cref="Advance"/>'s DW-267 bail
+        /// (<c>if (!_world.IsAlive(i)) break;</c>) is a POST-condition and it covers only the HOST — it exists because a
+        /// lethal period destroys the host mid-pulse and the walk must not then rewrite/compact a ring
+        /// <see cref="ClearEntity"/> has already wiped (the <c>CompactSlot</c>/<c>_count</c> corruption class: an
+        /// <c>IndexOutOfRangeException</c> at owner id 0, a <c>_count</c> of −1 at higher ids). Nothing covered the other
+        /// end: an instance resolving against an entity that is NOT its host. That is unreachable today — this method is
+        /// the ONLY place a store context is built and every production caller passes <c>targetId == hostId</c> with
+        /// <c>spatial: null</c>, so a <c>SearchArea</c> inside a period fans out to nobody and every period leaf is
+        /// direct-target. The moment a future story threads a real <c>SpatialHash</c> into the store's period executor
+        /// (or fans a period out per matched entity through <see cref="RunSlotEffectAgainst"/>), a pulse can resolve
+        /// against a corpse. This PRE-condition makes that a deterministic, tallied skip instead of an executor run over
+        /// a dead/recycled slot.</para>
+        ///
+        /// <para><b>Golden-neutral.</b> Both conjuncts are no-ops on every shipped path: the host is alive at every call
+        /// site (<see cref="InstallPersistent"/> and <see cref="RemoveByModifierId"/> guard at entry;
+        /// <see cref="Advance"/> guards at the top of the owner walk and breaks out of the slot loop the instant a pulse
+        /// kills the host), and the target IS the host. <see cref="SkippedPulseCount"/> pins that mechanically — it stays
+        /// 0 across every production schedule.</para>
+        /// </summary>
+        private void RunEffectAgainst(int hostId, int slot, int targetId, EffectNode effect)
         {
-            var ctx = new EffectContext(_world, _casterId[slot], hostId, _casterFaction[slot],
+            // IsAlive also bounds-checks both ids. ONE tally for both conjuncts — a dead host and a dead target are the
+            // same failure to a reader (an instance resolved against something that no longer exists), and splitting it
+            // would fold nothing extra. Diagnostics only: never folded, never read by a sim branch.
+            if (!_world.IsAlive(hostId) || !_world.IsAlive(targetId)) { _skippedPulses++; return; }
+
+            var ctx = new EffectContext(_world, _casterId[slot], targetId, _casterFaction[slot],
                                         _damageTable, spatial: null, _events, _stats, modifierStore: this);
             _executor.Run(effect, in ctx);
+        }
+
+        /// <summary>
+        /// DW-662 — resolve host <paramref name="hostId"/>'s instance at ring slot <paramref name="slotIndex"/> against an
+        /// explicit <paramref name="targetId"/>. This is the seam a future <c>SpatialHash</c>-threaded AoE period fans
+        /// out through (one call per matched entity, ascending id), and it is where the
+        /// <see cref="RunEffectAgainst"/> dead-end guard has its teeth today — no shipped effect graph can reach a
+        /// non-host target, so without this entry the guard would be untestable. Deliberately <c>internal</c>: it is not
+        /// part of the store's public surface and no production caller uses it yet (the <c>EffectExecutor</c>
+        /// frame-capacity ctor is the same pattern).
+        /// <para>Fail-closed on an out-of-range host or a slot index outside the per-entity ring — those are programmer
+        /// errors, not skips, so they do NOT bump <see cref="SkippedPulseCount"/>. The slot's recorded caster
+        /// id/faction (not the target) still drive attribution, exactly as a period pulse does.</para>
+        /// </summary>
+        internal void RunSlotEffectAgainst(int hostId, int slotIndex, int targetId, EffectNode effect)
+        {
+            if ((uint)hostId >= (uint)EntityWorld.MAX_ENTITIES) return;
+            if ((uint)slotIndex >= (uint)EffectCaps.MaxModifiersPerEntity) return;
+            RunEffectAgainst(hostId, hostId * EffectCaps.MaxModifiersPerEntity + slotIndex, targetId, effect);
         }
 
         private bool HasPeriod(int slot)

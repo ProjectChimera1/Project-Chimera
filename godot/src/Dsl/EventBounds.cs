@@ -102,6 +102,22 @@ namespace ProjectChimera.Dsl
         /// Story 7.13 — the maximum number of weighted branches a single <c>random_choice</c> may declare. Bounds the
         /// per-node branch-port fan-out (and the weight array) at load; a wider node is a located reject. 16 comfortably
         /// covers a weighted loot/spawn table while keeping the exec walk trivially bounded.
+        ///
+        /// <para>DW-579 — this is the ONE cap, enforced at every entrance a <c>RandomChoiceNode</c> can arrive
+        /// through, all reading THIS constant (never a literal, never a second dial):
+        /// <list type="bullet">
+        /// <item>PARSE — <c>NodeBaseJsonConverter.ReadIntArray</c> rejects an over-long <c>weights</c> array from
+        /// the array's declared length, before a single element is read. This is the primary entrance: the T3
+        /// canvas renders one branch port per weight (<c>NodePortCatalog</c> / <c>NodePorts.IsExecOut</c>), so a
+        /// hand-authored or hostile raw-IR file would otherwise make the editor draw as many ports as the file
+        /// asks for — long before any load gate runs on it.</item>
+        /// <item>INSPECTOR — <c>NodeFieldCatalog</c>'s <c>weights</c> field Set mirrors parse exactly (an
+        /// accepted inspector value must always survive the canonical serialize→re-parse round-trip).</item>
+        /// <item>LOAD GATE — <c>DslLoopGate.CheckGraph</c> re-checks it on the parsed graph, which still covers a
+        /// node built PROGRAMMATICALLY (neither parsed nor inspector-edited) and keeps the reject located at the
+        /// scenario gate for the load paths that report through it.</item>
+        /// </list>
+        /// Raising the value therefore widens all three together and can never be tightened on one path only.</para>
         /// </summary>
         public const int MaxRandomChoiceBranches = 16;
 

@@ -53,6 +53,21 @@ namespace ProjectChimera.Economy
         // Per-faction definitions indexed by (int)Faction. Slot 0 = Neutral (unused) — mirrors BuildingSystem._factions.
         private readonly FactionDefinition?[] _factions;
 
+        // ── DW-624: future-spawn catch-up refusal AGGREGATION ────────────────────────────────────────────────
+        // Per-match tallies of catch-up installs the target's full ring REFUSED, outer = (int)Faction, inner =
+        // research index (lazily grown, mirroring ResearchStore.EnsureCapacity's never-shrink shape). The
+        // completion path can afford to warn inline because it fires ONCE per completed level; ApplyCompletedResearch
+        // cannot — it fires once PER SPAWN (training, scenario placement, hero respawn, editor restore), so a
+        // 200-unit scenario load with full rings would emit 200 lines. These accumulate silently instead and
+        // <see cref="FlushSpawnCatchUpDiagnostics"/> emits ONE line per faction at the match boundary.
+        //
+        // UNFOLDED diagnostics, exactly ModifierStore.RefusedInstallCount's posture: never hashed into SimChecksum,
+        // never read by any sim branch, so a run that reads them and a run that ignores them are byte-identical.
+        private readonly int[][] _spawnRefusalsByResearch;
+        // Count of DISTINCT spawns that lost at least one research bonus (a single spawn can refuse several
+        // researches, so summing the per-research row would over-count units).
+        private readonly int[] _spawnRefusedSpawnCount;
+
         public ResearchSystem(BuildingStore buildings, ResourceStore resources, ResearchStore research,
                               ModifierStore modifiers, CombatEventQueue? events = null,
                               FactionDefinition? p1Faction = null, FactionDefinition? p2Faction = null,
@@ -67,6 +82,13 @@ namespace ProjectChimera.Economy
             _factions  = new FactionDefinition?[FactionRegistry.FACTION_ARRAY_SIZE]; // 9: Neutral + Player1..Player8
             _factions[(int)Faction.Player1] = p1Faction;
             _factions[(int)Faction.Player2] = p2Faction;
+
+            // DW-624: same outer shape as _factions / ResearchStore's per-faction arrays; inner rows start empty and
+            // grow on first use (EnsureRefusalCapacity), so a def-less slot allocates nothing.
+            _spawnRefusalsByResearch = new int[FactionRegistry.FACTION_ARRAY_SIZE][];
+            _spawnRefusedSpawnCount  = new int[FactionRegistry.FACTION_ARRAY_SIZE];
+            for (int i = 0; i < _spawnRefusalsByResearch.Length; i++)
+                _spawnRefusalsByResearch[i] = System.Array.Empty<int>();
 
             if (p1Faction != null) _research.EnsureCapacity(Faction.Player1, ResearchCount(p1Faction));
             if (p2Faction != null) _research.EnsureCapacity(Faction.Player2, ResearchCount(p2Faction));
@@ -384,8 +406,8 @@ namespace ProjectChimera.Economy
                 // army). Research is the producer the ledger flagged: each completed research owns its OWN permanent
                 // modifier id, so a unit already carrying items + a self-passive + earlier researches can silently lose
                 // an EARNED, PAID-FOR upgrade. Named by research id + level so a designer can act on it. The per-unit
-                // spawn-catch-up path (ApplyCompletedResearch) deliberately stays on ModifierStore's own THROTTLED warn
-                // — it fires per spawn, so an aggregate there would be per-spawn spam.
+                // spawn-catch-up path (ApplyCompletedResearch) still must NOT log inline — it fires per spawn — so
+                // DW-624 gives it a per-MATCH tally flushed as one line by FlushSpawnCatchUpDiagnostics instead.
                 if (refusedUnits > 0)
                     _log?.Warn(RefusalWarn(rdef, levelIdx, faction, refusedUnits) +
                                "Those units keep the research's cost but not its effect — raise the cap or reduce the " +
@@ -471,19 +493,50 @@ namespace ProjectChimera.Economy
         /// (permanent), <see cref="StackRule.Refresh"/>, <c>MaxStacks: 1</c> (ONE cumulative slot per research, never
         /// stacked per level). Shared by <see cref="CompleteResearch"/> (apply to every currently alive unit) and
         /// <see cref="ApplyCompletedResearch"/> (future-spawn catch-up), both via <see cref="ApplyCumulativeModifier"/>.
+        ///
+        /// <para><b>DW-650</b> — every delta goes out through <see cref="BoundedDelta"/> so the minted descriptor always
+        /// satisfies DW-488's <see cref="Modifier.CheckAuthoringBounds"/>. Research is the one Modifier minter whose
+        /// magnitude is NOT authored: it is a running sum <see cref="SaturatingAdd"/> accumulates across a repeatable
+        /// ladder, so no load-time content gate can bound it — the bound has to be applied where the modifier is built.
+        /// </para>
         /// </summary>
         private Modifier BuildCumulativeModifier(int f, int researchIndex) => new Modifier(
             ResearchModifierId(researchIndex),
             durationTicks: -1,
             StackRule.Refresh,
             maxStacks: 1,
-            maxHealthDelta:    _research.CumulativeMaxHealthDelta[f][researchIndex],
-            attackDamageDelta: _research.CumulativeAttackDamageDelta[f][researchIndex],
-            moveSpeedDelta:    _research.CumulativeMoveSpeedDelta[f][researchIndex],
+            maxHealthDelta:    BoundedDelta(_research.CumulativeMaxHealthDelta[f][researchIndex]),
+            attackDamageDelta: BoundedDelta(_research.CumulativeAttackDamageDelta[f][researchIndex]),
+            moveSpeedDelta:    BoundedDelta(_research.CumulativeMoveSpeedDelta[f][researchIndex]),
             status: StatusFlags.None,
             periodEffect: null,
             periodTicks: 0,
-            armorDelta: _research.CumulativeArmorDelta[f][researchIndex]);
+            armorDelta:        BoundedDelta(_research.CumulativeArmorDelta[f][researchIndex]));
+
+        /// <summary>
+        /// DW-650 — clamp one cumulative research total into DW-488's per-modifier authoring bound
+        /// (±<see cref="Modifier.MaxStatDeltaTotalRaw"/>, ≈4096 stat units) as the modifier is built.
+        ///
+        /// <para><b>Why the clamp is here and not on the stored total.</b> <see cref="SaturatingAdd"/> deliberately
+        /// saturates the BANKED cumulative at the full 16.16 <see cref="Fixed"/> range so the DW-623 void/rollback
+        /// snapshot stays exact and the persisted/checksummed value keeps its established meaning. But a research's
+        /// modifier feeds the same 8-slot <c>ModifierSystem.AccumulateBonus</c> int accumulator every other minter does,
+        /// and <see cref="Effects.EffectCaps.MaxModifiersPerEntity"/> researches each contributing a Fixed-ceiling delta
+        /// sum to ~8 × <c>int.MaxValue</c> — which WRAPS NEGATIVE, and DW-28's saturating <c>Base + Σbonus</c> read
+        /// cannot recover an already-wrapped value (its own docstring says so). Clamping the CONTRIBUTION keeps the
+        /// worst case at <c>MaxModifiersPerEntity × MaxStatDeltaTotalRaw</c> ≤ <c>int.MaxValue</c> — un-wrappable by
+        /// construction, exactly as DW-488 intended.</para>
+        ///
+        /// <para>Deterministic and <see cref="Fixed"/>-only (pure raw-int compare, no float, no branch on wall-clock).
+        /// Inert for anything a designer would actually ship: it engages only past ≈4096 accumulated stat units, and no
+        /// shipped research authors a modifier delta at all.</para>
+        /// </summary>
+        private static Fixed BoundedDelta(Fixed cumulative)
+        {
+            if (cumulative.Raw >  Modifier.MaxStatDeltaTotalRaw) return Fixed.FromRaw( Modifier.MaxStatDeltaTotalRaw);
+            if (cumulative.Raw < -Modifier.MaxStatDeltaTotalRaw) return Fixed.FromRaw(-Modifier.MaxStatDeltaTotalRaw);
+            return cumulative;
+        }
 
         // ── Future-spawn catch-up ────────────────────────────────────────────────
 
@@ -494,6 +547,15 @@ namespace ProjectChimera.Economy
         /// <see cref="Modifier"/> to ONLY the newly spawned unit — the only hook that fires for every future spawn
         /// regardless of spawn path (training, scenario placement, hero respawn, editor restore/placement). Never
         /// re-triggers completion or spends resources.
+        ///
+        /// <para><b>DW-624 refusal aggregation.</b> A spawn whose modifier ring is already full silently loses a
+        /// banked, ALREADY-PAID-FOR research bonus here, and unlike the completion path there is nothing to refund
+        /// (the level was banked and paid for ticks or minutes earlier — see DW-679). This path deliberately does
+        /// NOT log inline: it fires once per spawn, so an aggregate line here would be per-spawn spam (a 200-unit
+        /// scenario load with full rings = 200 lines). Each refusal is instead TALLIED per faction + per research
+        /// and reported as ONE line by <see cref="FlushSpawnCatchUpDiagnostics"/> at the match boundary, which is
+        /// what gives the designer research-NAME attribution that <see cref="ModifierStore"/>'s own throttled warn
+        /// (a bare <c>0x3439_00xx</c> modifier id) cannot. Tally only — no sim state, no branch, nothing folded.</para>
         /// </summary>
         public void ApplyCompletedResearch(EntityWorld world, int id)
         {
@@ -503,14 +565,112 @@ namespace ProjectChimera.Economy
             if (fdef == null) return;
 
             int f = (int)faction;
-            _research.EnsureCapacity(faction, ResearchCount(fdef));
-            for (int ri = 0; ri < ResearchCount(fdef); ri++)
+            int researchCount = ResearchCount(fdef);
+            _research.EnsureCapacity(faction, researchCount);
+            EnsureRefusalCapacity(f, researchCount);      // DW-624: same lazy growth as the store's inner arrays
+            bool anyRefused = false;                      // DW-624: this SPAWN lost at least one research bonus
+            for (int ri = 0; ri < researchCount; ri++)
             {
                 if (_research.CompletedLevels[f][ri] <= 0) continue;
                 // Future-spawn catch-up KEEPS the heal (preserveCurrentHealth: false) so a freshly trained unit
                 // spawns at full upgraded HP — DW-85 suppresses the heal for the living-army path only.
-                ApplyCumulativeModifier(world, id, faction, f, ri, preserveCurrentHealth: false);
+                if (!ApplyCumulativeModifier(world, id, faction, f, ri, preserveCurrentHealth: false))
+                {
+                    _spawnRefusalsByResearch[f][ri]++;    // DW-624: accumulate, never log per spawn
+                    anyRefused = true;
+                }
             }
+            if (anyRefused) _spawnRefusedSpawnCount[f]++;
+        }
+
+        // ── DW-624: per-match aggregation of the catch-up refusals ───────────────────────────────
+
+        /// <summary>
+        /// DW-624 — report and ZERO the per-match future-spawn catch-up refusal tally: at most ONE warn line per
+        /// faction, naming every research whose banked, already-paid-for permanent bonus a full modifier ring
+        /// dropped on a spawn, and how many spawns each one hit. Emits nothing at all for a match with no refusals
+        /// (the overwhelmingly common case), so it is safe to call unconditionally at every match boundary.
+        ///
+        /// <para>Called by <c>SimulationHost.ClearForReset</c> (the host's per-match teardown, reached by every
+        /// Play→Edit toggle / re-launch) and exposed on the host as <c>FlushMatchDiagnostics()</c> so a bootstrap
+        /// can also flush explicitly at end-of-match or after a bulk scenario load. Idempotent: a second call with
+        /// nothing accumulated logs nothing and returns 0.</para>
+        ///
+        /// <para>Diagnostics only — reads and clears unfolded counters, touches no sim array and pushes no event,
+        /// so calling it (or not) is byte-identical for <c>SimChecksum</c>. Faction slots are walked in ascending
+        /// order and each faction's researches in ascending research index, so the emitted text is deterministic.
+        /// Returns the total number of refusals reported (0 when clean) — the seam tests assert on without a sink.</para>
+        /// </summary>
+        public int FlushSpawnCatchUpDiagnostics()
+        {
+            int flushedTotal = 0;
+            for (int f = 1; f < _spawnRefusedSpawnCount.Length; f++) // slot 0 = Neutral (never carries a faction def)
+            {
+                int[] row = _spawnRefusalsByResearch[f];
+                int spawns = _spawnRefusedSpawnCount[f];
+                int total = 0;
+                for (int ri = 0; ri < row.Length; ri++) total += row[ri];
+
+                if (total > 0)
+                {
+                    // Build the line only when a sink is actually wired — golden/headless/Tier-1 hosts pass none,
+                    // and the string-building must not cost them anything.
+                    _log?.Warn(SpawnCatchUpWarn((Faction)f, row, spawns, total));
+                    flushedTotal += total;
+                }
+
+                _spawnRefusedSpawnCount[f] = 0;
+                System.Array.Clear(row); // per-MATCH aggregation: the next match starts from zero
+            }
+            return flushedTotal;
+        }
+
+        /// <summary>DW-624 — render one faction's catch-up refusal tally as a single designer-facing line: the
+        /// affected spawn count, then each research by its authored <see cref="ResearchDefinition.Id"/> (ascending
+        /// research index) with the number of spawns it was dropped on. Diagnostic string-building only, reached
+        /// solely from <see cref="FlushSpawnCatchUpDiagnostics"/>'s sink-wired path.</summary>
+        private string SpawnCatchUpWarn(Faction faction, int[] row, int spawns, int total)
+        {
+            var fdef = GetFactionDef(faction);
+            var sb = new System.Text.StringBuilder();
+            sb.Append("[ResearchSystem] future-spawn research catch-up DROPPED an already-completed, already-paid-for ")
+              .Append("permanent bonus on ").Append(spawns).Append(" spawn(s) for ").Append(faction)
+              .Append(" this match (").Append(total).Append(" refused install(s) in total): ");
+            bool first = true;
+            for (int ri = 0; ri < row.Length; ri++)
+            {
+                if (row[ri] <= 0) continue;
+                if (!first) sb.Append(", ");
+                first = false;
+                sb.Append('\'').Append(ResearchIdAt(fdef, ri)).Append("' on ").Append(row[ri]).Append(" spawn(s)");
+            }
+            sb.Append(". Those units spawned WITHOUT an upgrade their faction already owns — their ")
+              .Append(EffectCaps.MaxModifiersPerEntity)
+              .Append("-slot modifier ring was already full (items + hero growth + self-passives + earlier ")
+              .Append("researches), and unlike a completion there is nothing to refund. Aggregated per match — ONE ")
+              .Append("line, never one per spawn (DW-624).");
+            return sb.ToString();
+        }
+
+        /// <summary>DW-624 — the authored research id at <paramref name="ri"/>, or a positional fallback when the
+        /// faction def is missing/short/blank (a research list can be shorter than an already-grown tally row if the
+        /// def was swapped, and a malformed <c>"research": null</c> file loads with a null list by design).</summary>
+        private static string ResearchIdAt(FactionDefinition? fdef, int ri)
+        {
+            var list = fdef?.Research;
+            if (list == null || ri < 0 || ri >= list.Count) return $"research #{ri}";
+            string? id = list[ri]?.Id;
+            return string.IsNullOrEmpty(id) ? $"research #{ri}" : id!;
+        }
+
+        /// <summary>DW-624 — grow faction-index <paramref name="f"/>'s per-research refusal row to at least
+        /// <paramref name="researchCount"/> entries, preserving existing counts and never shrinking (mirrors
+        /// <see cref="ResearchStore.EnsureCapacity"/>). Out-of-range <paramref name="f"/> is a silent no-op.</summary>
+        private void EnsureRefusalCapacity(int f, int researchCount)
+        {
+            if (f < 0 || f >= _spawnRefusalsByResearch.Length) return;
+            if (researchCount <= _spawnRefusalsByResearch[f].Length) return;
+            System.Array.Resize(ref _spawnRefusalsByResearch[f], researchCount);
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────

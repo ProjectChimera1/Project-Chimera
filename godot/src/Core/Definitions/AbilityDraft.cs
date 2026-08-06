@@ -269,11 +269,31 @@ namespace ProjectChimera.Core.Definitions
             }
         }
 
-        // ── Caps metrics (Godot-free, Tier-1-tested) — power the panel's in-UI EffectCaps guardrail (Task 1.5). ──
-        // The AbilityValidator remains the authoritative gate on save; these only drive the "grey out the add that
-        // would breach a cap" affordances + friendly messaging, so they need only be conservative, not the gate.
+        // ── Caps metric (Godot-free, Tier-1-tested) — powers the panel's in-UI EffectCaps guardrail (Task 1.5). ──
+        // The AbilityValidator remains the authoritative gate on save; this only drives the "grey out the add that
+        // would breach a cap" affordance + friendly messaging, so it need only be conservative, not the gate.
+        //
+        // DW-297 — there is deliberately only ONE metric here. Two sibling metrics (`Depth()` and
+        // `SearchAreaDepth()`) once sat alongside it and were referenced by nothing but their own unit test, because
+        // the two DEPTH caps cannot be served by a bottom-up subtree measurement at all:
+        //   • The panel's question is "which kinds may I add IN THIS SLOT", which depends on the depth ABOVE the slot,
+        //     not below it. AbilityEditorPanel.Advanced answers it with the top-down `TreeCtx` it already threads
+        //     through the render walk (CompDepth + SearchAncestors), which is the only context a freshly-added leaf has.
+        //   • Worse, the deleted `Depth()` did not even agree with the cap it named: it counted EVERY node on a path
+        //     (self = 1, terminal leaves included), whereas EffectCaps.MaxEffectDepth counts only COMPOSITION nodes
+        //     (EffectBounds: root frame = 0, leaves contribute nothing). A legal chain of MaxEffectDepth compositions
+        //     ending in a leaf measured MaxEffectDepth + 1, so any `Depth() <= MaxEffectDepth` guard built on it would
+        //     have rejected content the loader accepts. An unused metric cannot be trusted; this one is used and pinned.
+        // Any depth metric re-added here MUST be pinned against EffectBounds/AbilityValidator, not merely unit-tested
+        // against hand-counted literals — see AbilityDraftTests.
 
-        /// <summary>Total node count in this subtree (self + every descendant across all slots, incl. a modifier's period effect).</summary>
+        /// <summary>
+        /// Total node count in this subtree (self + every descendant across all slots, INCLUDING an
+        /// <c>ApplyModifier</c>'s period effect). Deliberately mirrors <c>AbilityValidator.WalkGraph</c>'s
+        /// <see cref="EffectCaps.MaxTotalEffectNodes"/> tally — which also descends a modifier's period subtree — so the
+        /// panel's budget and the save-time gate agree on what "64 nodes" means. Pinned at the cap boundary by
+        /// <c>AbilityDraftTests</c>.
+        /// </summary>
         public int CountNodes()
         {
             int n = 1;
@@ -284,28 +304,6 @@ namespace ProjectChimera.Core.Definitions
             if (Expire  is not null) n += Expire.CountNodes();
             if (Kind == DraftKind.ApplyModifier && Modifier.Period is not null) n += Modifier.Period.CountNodes();
             return n;
-        }
-
-        /// <summary>Composition nesting depth of this subtree (self = 1). ApplyModifier is treated as a structural leaf
-        /// (mirrors EffectBounds), so a modifier's period effect does not deepen the composition depth.</summary>
-        public int Depth()
-        {
-            int childMax = 0;
-            void Consider(DraftNode? c) { if (c is not null) { int d = c.Depth(); if (d > childMax) childMax = d; } }
-            foreach (DraftNode c in Children) Consider(c);
-            Consider(Child); Consider(Initial); Consider(Period); Consider(Expire);
-            return 1 + childMax;
-        }
-
-        /// <summary>Max number of <c>SearchArea</c> nodes on any root→leaf path within this subtree (the
-        /// MaxSearchAreaDepth metric). Does not descend a modifier's period effect (a SearchArea there is a validator reject).</summary>
-        public int SearchAreaDepth()
-        {
-            int childMax = 0;
-            void Consider(DraftNode? c) { if (c is not null) { int d = c.SearchAreaDepth(); if (d > childMax) childMax = d; } }
-            foreach (DraftNode c in Children) Consider(c);
-            Consider(Child); Consider(Initial); Consider(Period); Consider(Expire);
-            return (Kind == DraftKind.SearchArea ? 1 : 0) + childMax;
         }
     }
 

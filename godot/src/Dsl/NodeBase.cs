@@ -678,6 +678,32 @@ namespace ProjectChimera.Dsl
             fn == "unit_count_tag" || fn == "unit_count_category"
             || fn == "player_resource" || fn == "region_unit_count";
 
+        /// <summary>
+        /// DW-578 — the ONE per-fn OPERAND-ARITY table for the closed <see cref="ExprCallFns"/> vocabulary: how
+        /// many <c>ExprOperandPort*</c> data edges a built-in takes. Returns −1 for an unknown fn (the caller's
+        /// located "unknown built-in" reject). <c>ExprCompiler.VisitCall</c> gates operand edges against this,
+        /// and <c>NodePortCatalog</c> renders EXACTLY this many operand pins — so the visual editor can no longer
+        /// offer a wireable operand port the compiler will reject, which previously surfaced only at compile time
+        /// via the located badge (a zero-arity read like <c>region_unit_count</c> still drew both a and b).
+        ///
+        /// <para>Note the closed-vocabulary SELECTOR (see <see cref="FnUsesSelector"/>) is a STATIC field, never
+        /// an operand — which is why the four selector reads are arity 1/1/1/0, not 2.</para>
+        /// </summary>
+        /// <remarks>The TEXT expression surface (<c>ExprParser.ParseCall</c>) deliberately exposes only the five
+        /// Story 7.4 fns and keeps its own NARROWER table — routing it through this one would silently widen that
+        /// grammar to the 7.13 state reads, which is a language change, not a de-duplication.</remarks>
+        public static int ExprCallArity(string? fn) => fn switch
+        {
+            "count" => 1, "abs" => 1,
+            "distance" => 2, "min" => 2, "max" => 2,
+            // Story 7.13 — the state reads. entity_* + the three faction-count reads take one operand; the
+            // closed-vocab selector (tag/category/resource/region) is a STATIC field, never an operand.
+            "entity_hp" => 1, "entity_owner" => 1, "entity_position" => 1,
+            "unit_count_tag" => 1, "unit_count_category" => 1, "player_resource" => 1,
+            "region_unit_count" => 0,
+            _ => -1,
+        };
+
         /// <summary>Story 7.13 — resolve a <c>unit_count_tag</c> selector to its <see cref="UnitTag"/> bit (int).</summary>
         public static bool TryResolveTagSelector(string? s, out int bit)
         {

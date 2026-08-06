@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Reflection;                // DW-297 — the deleted-metric guard reads DraftNode's public surface
 using System.Text.Json;
 using ProjectChimera.Combat;            // DamageType
 using ProjectChimera.Core;              // Fixed
@@ -119,10 +120,10 @@ namespace ProjectChimera.Sim.Tests.Definitions
             EffectGraphAssert.Equal(def1.EffectGraph, def2.EffectGraph);
         }
 
-        // ── Caps metrics (power the in-UI guardrail; the validator remains the gate) ──
+        // ── Caps metric (powers the in-UI guardrail; the validator remains the gate) ──
 
         [Fact]
-        public void Metrics_CountDepthSearchArea_AreCorrect()
+        public void Metrics_CountNodes_CountsEverySlot()
         {
             // Sequence[ DirectHpDelta, SearchArea → Heal ]
             var seq = new DraftNode { Kind = DraftKind.Sequence };
@@ -132,8 +133,71 @@ namespace ProjectChimera.Sim.Tests.Definitions
             seq.Children.Add(search);
 
             Assert.Equal(4, seq.CountNodes());        // seq + direct + search + heal
-            Assert.Equal(3, seq.Depth());             // seq(1) → search(2) → heal(3)
-            Assert.Equal(1, seq.SearchAreaDepth());   // one SearchArea on the deepest path
+        }
+
+        // ── DW-297: the surviving metric is PINNED against the authoritative gate, not hand-counted literals ──
+
+        /// <summary>
+        /// DW-297 — <see cref="DraftNode.CountNodes"/> is the number the composer spends its
+        /// <see cref="EffectCaps.MaxTotalEffectNodes"/> budget against, so it must mean exactly what
+        /// <c>AbilityValidator.WalkGraph</c>'s tally means. Pinned AT THE BOUNDARY from both sides with the one shape
+        /// the two walks could plausibly disagree on: an <c>ApplyModifier</c>'s period subtree (a structural leaf to
+        /// <c>EffectBounds</c>, but descended by the validator's node tally — and therefore by CountNodes too).
+        /// Teeth: make CountNodes stop descending <c>Modifier.Period</c> and BOTH drafts collapse to 56, so both
+        /// equality assertions go RED — and the panel would silently offer adds past a budget the save-time gate has
+        /// already spent.
+        /// </summary>
+        [Fact]
+        public void CountNodes_AgreesWithTheValidatorTally_AtTheMaxTotalEffectNodesBoundary()
+        {
+            // Exactly at the cap: root Sequence(1) + 6 × Sequence-of-8-Heals(6 × 9 = 54)
+            //                     + ApplyModifier(1) whose period subtree is Sequence-of-7-Heals(1 + 7 = 8) → 64.
+            DraftNode atCap = SequenceOfSequences(sequenceChildren: 6, healsPerSequence: 8, modifierPeriodHeals: 7);
+            Assert.Equal(EffectCaps.MaxTotalEffectNodes, atCap.CountNodes());
+
+            AbilityValidationResult okr = new AbilityValidator().Validate(Draft("caps_at", "Self", atCap).ToDefinition());
+            Assert.True(okr.Ok, okr.Error);                       // the validator's own tally agrees: 64 is not over
+
+            // One node over: the SAME shape with one extra Heal in the modifier's period subtree.
+            DraftNode overCap = SequenceOfSequences(sequenceChildren: 6, healsPerSequence: 8, modifierPeriodHeals: 8);
+            Assert.Equal(EffectCaps.MaxTotalEffectNodes + 1, overCap.CountNodes());
+
+            AbilityValidationResult bad = new AbilityValidator().Validate(Draft("caps_over", "Self", overCap).ToDefinition());
+            Assert.False(bad.Ok);                                 // …and 65 IS over — the extra node was counted by both
+            Assert.Contains("MaxTotalEffectNodes", bad.Error!);
+        }
+
+        /// <summary>
+        /// DW-297 — the two dead metrics (<c>DraftNode.Depth()</c> / <c>DraftNode.SearchAreaDepth()</c>) are gone and
+        /// must not creep back. They were referenced by nothing but their own assertions, and <c>Depth()</c> did not
+        /// even agree with the cap it named: it counted every node on a path including the terminal leaf, while
+        /// <see cref="EffectCaps.MaxEffectDepth"/> counts only COMPOSITION nodes (<c>EffectBounds</c>: root = 0, leaves
+        /// contribute nothing), so a legal <c>MaxEffectDepth</c>-deep chain measured <c>MaxEffectDepth + 1</c>.
+        /// The panel derives both depths TOP-DOWN via its own <c>TreeCtx</c>, which is the only context an add-affordance
+        /// has. Re-adding a subtree depth metric is allowed — but only pinned against <c>EffectBounds</c>, which is why
+        /// this guard names the semantics rather than just the member.
+        /// </summary>
+        [Fact]
+        public void DeadDepthMetrics_AreNotReintroducedUnpinned()
+        {
+            foreach (string dead in new[] { "Depth", "SearchAreaDepth" })
+                Assert.Null(typeof(DraftNode).GetMethod(dead, BindingFlags.Public | BindingFlags.Instance));
+        }
+
+        /// <summary>
+        /// The composition-depth semantics the panel's guardrail is written against, asserted on the AUTHORITATIVE
+        /// enforcer so the comment in <c>AbilityDraft</c> can never quietly go stale: a chain of
+        /// <see cref="EffectCaps.MaxEffectDepth"/> nested compositions ending in a leaf LOADS (the leaf costs no depth),
+        /// and one more composition does not. This is the fact the deleted <c>Depth()</c> got wrong.
+        /// </summary>
+        [Fact]
+        public void MaxEffectDepth_CountsCompositionsOnly_NotTheTerminalLeaf()
+        {
+            Assert.True(EffectBounds.Validate(NestedSequences(EffectCaps.MaxEffectDepth)).IsValid);
+
+            EffectBoundsResult over = EffectBounds.Validate(NestedSequences(EffectCaps.MaxEffectDepth + 1));
+            Assert.False(over.IsValid);
+            Assert.Contains("MaxEffectDepth", over.Error!);
         }
 
         // ── Teeth: every gate observably rejects (inject a violation → it fails) ──
@@ -199,6 +263,50 @@ namespace ProjectChimera.Sim.Tests.Definitions
             CostEnergy = Fixed.FromInt(10), CostOre = 0, CostCrystal = 0, Cooldown = Fixed.FromInt(2),
             Effect = effect,
         };
+
+        /// <summary>
+        /// DW-297 — a draft whose node count is dialled to a precise total, built ONLY from shapes both the composer
+        /// and <c>AbilityValidator</c> accept: a root Sequence holding <paramref name="sequenceChildren"/> Sequences of
+        /// <paramref name="healsPerSequence"/> Heals, plus one ApplyModifier whose period effect is a Sequence of
+        /// <paramref name="modifierPeriodHeals"/> Heals (the subtree only the node tally descends).
+        /// Total = 1 + sequenceChildren × (1 + healsPerSequence) + 1 + (1 + modifierPeriodHeals).
+        /// </summary>
+        private static DraftNode SequenceOfSequences(int sequenceChildren, int healsPerSequence, int modifierPeriodHeals)
+        {
+            var root = new DraftNode { Kind = DraftKind.Sequence };
+            for (int i = 0; i < sequenceChildren; i++)
+            {
+                var inner = new DraftNode { Kind = DraftKind.Sequence };
+                for (int k = 0; k < healsPerSequence; k++)
+                    inner.Children.Add(new DraftNode { Kind = DraftKind.Heal, Amount = Fixed.FromInt(1) });
+                root.Children.Add(inner);
+            }
+
+            var period = new DraftNode { Kind = DraftKind.Sequence };
+            for (int k = 0; k < modifierPeriodHeals; k++)
+                period.Children.Add(new DraftNode { Kind = DraftKind.Heal, Amount = Fixed.FromInt(1) });
+
+            var mod = new DraftNode { Kind = DraftKind.ApplyModifier };
+            mod.Modifier = new DraftModifier
+            {
+                // duration != 0 and period_ticks > 0 keep the DW-278 warning and the DW-504 period-shape REJECT out of
+                // the picture, so the only thing under test here is the node tally.
+                Id = 1, DurationTicks = 100, Stacking = StackRule.Refresh, MaxStacks = 1,
+                AttackDamageDelta = Fixed.FromInt(1), PeriodTicks = 10, Period = period,
+            };
+            root.Children.Add(mod);
+            return root;
+        }
+
+        /// <summary>A chain of <paramref name="compositions"/> nested <c>SequenceEffect</c>s terminating in a single
+        /// leaf — the shape <see cref="EffectCaps.MaxEffectDepth"/> is defined against.</summary>
+        private static EffectNode NestedSequences(int compositions)
+        {
+            EffectNode node = new DirectHpDeltaEffect(Fixed.FromInt(-1));
+            for (int i = 0; i < compositions; i++)
+                node = new SequenceEffect(node);
+            return node;
+        }
 
         /// <summary>Materialise → validate (Ok) → serialise(canonical) → load → assert the parsed graph + scalar
         /// fields are identical (Fixed pinned by <c>.Raw</c>); the re-load also re-validates, so a round-trip that

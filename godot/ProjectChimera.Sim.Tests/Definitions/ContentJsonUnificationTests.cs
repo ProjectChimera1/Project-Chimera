@@ -67,21 +67,33 @@ namespace ProjectChimera.Sim.Tests.Definitions
         /// <summary>A hand-edited NUMERIC enum in a scenario file is rejected at parse. Before DW-274 the scenario
         /// options used the DEFAULT <see cref="JsonStringEnumConverter"/> (<c>allowIntegerValues: true</c>), so
         /// <c>"win_condition": 1</c> loaded silently as whichever member holds ordinal 1 — the exact silent-miscode
-        /// class <see cref="ContentJson.Options"/> has always rejected for abilities.</summary>
+        /// class <see cref="ContentJson.Options"/> has always rejected for abilities.
+        /// <para>DW-533 updated the CHANNEL, not the boundary: the rejection now surfaces as the null/fallback contract
+        /// both production callers code to, with the located reason on the <c>out</c> overload, instead of an exception
+        /// escaping <c>LoadFromFile</c> and aborting boot. What DW-274 pins — the numeric spelling never resolving to a
+        /// member — is asserted more directly here than the old <c>Assert.Throws</c> did.</para></summary>
         [Fact]
         public void NumericEnum_InScenarioJson_FailsClosed()
         {
-            JsonException ex = Assert.Throws<JsonException>(() => LoadScenarioJson(
-                "{\"id\":\"m\",\"display_name\":\"M\",\"win_condition\":1}"));
-            Assert.Contains("win_condition", ex.Message);
+            ScenarioData? s = LoadScenarioJson(
+                "{\"id\":\"m\",\"display_name\":\"M\",\"win_condition\":1}", out string? parseError);
+
+            Assert.Null(s);                                  // never silently miscoded into a model
+            Assert.NotNull(parseError);                       // …and never mistaken for "no scenario here"
+            Assert.Contains("win_condition", parseError!);    // located at the offending property
         }
 
         /// <summary>Same fail-closed boundary one level down — a numeric <c>preset</c> inside the win-condition spec
         /// (the nested POCO the scenario converter set also covers).</summary>
         [Fact]
-        public void NumericEnum_InNestedScenarioSpec_FailsClosed() =>
-            Assert.Throws<JsonException>(() => LoadScenarioJson(
-                "{\"id\":\"m\",\"display_name\":\"M\",\"win_condition_spec\":{\"preset\":2}}"));
+        public void NumericEnum_InNestedScenarioSpec_FailsClosed()
+        {
+            ScenarioData? s = LoadScenarioJson(
+                "{\"id\":\"m\",\"display_name\":\"M\",\"win_condition_spec\":{\"preset\":2}}", out string? parseError);
+
+            Assert.Null(s);
+            Assert.NotNull(parseError);
+        }
 
         /// <summary>The named form is what every shipped map authors, and it still loads — the tightening rejects
         /// only the numeric spelling, never the canonical one.</summary>
@@ -213,11 +225,14 @@ namespace ProjectChimera.Sim.Tests.Definitions
 
         /// <summary>Drive the REAL <see cref="ScenarioSerializer.LoadFromFile"/> (and therefore the real options
         /// object) over a JSON literal written to a temp file.</summary>
-        private static ScenarioData? LoadScenarioJson(string json)
+        private static ScenarioData? LoadScenarioJson(string json) => LoadScenarioJson(json, out _);
+
+        /// <summary>As above, surfacing the DW-533 located parse-failure reason (null unless the content failed).</summary>
+        private static ScenarioData? LoadScenarioJson(string json, out string? parseError)
         {
             string path = Path.Combine(Path.GetTempPath(), $"chimera_dw274_{Guid.NewGuid():N}.json");
             File.WriteAllText(path, json);
-            try { return ScenarioSerializer.LoadFromFile(path); }
+            try { return ScenarioSerializer.LoadFromFile(path, out parseError); }
             finally { File.Delete(path); }
         }
 

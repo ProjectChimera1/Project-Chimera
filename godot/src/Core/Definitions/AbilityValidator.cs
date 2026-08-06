@@ -47,6 +47,19 @@ namespace ProjectChimera.Core.Definitions
     /// still never double-reported. The remaining warnings (0-duration modifier, non-scaling stacked period, phaseless
     /// Persistent, <c>period_count</c> ≤ 0, ignored <c>lifelong</c>) stay non-fatal.</para>
     ///
+    /// <para><b>DW-618 — the POLARITY lint.</b> Every rule above reads one descriptor in isolation. The
+    /// self-stunning-Guardian-Aura class is different: each half is individually well-formed and only their
+    /// COMBINATION is wrong. <c>aura_guard.json</c> shipped a <c>SearchArea(filter: Ally) → ApplyModifier(+5 armor,
+    /// status: Stunned)</c> — a valid filter, a valid modifier — and passed every gate, because nothing cross-checked
+    /// a granted modifier's <see cref="StatusFlags"/> against the allegiance its enclosing search selects. DW-266
+    /// corrected that one content file; <see cref="CollectPolarityDiagnostics"/> closes the authoring hole that let it
+    /// through, warning when an ApplyModifier under a provably friendly-only SearchArea grants a
+    /// <see cref="StatusPolarity.Harmful"/> status. WARNING-channel by design (the DW-618 closure note): "buff my
+    /// allies and root them in place" is a strange but conceivable design, and the flags are now live, so the cost of
+    /// a false reject is higher than the cost of a false warning. The harmful set is NOT re-declared here — it is the
+    /// same <see cref="StatusPolarity"/> partition the Story-11.5 buff/debuff icon classifier reads, so the tooltip
+    /// that paints a status red and the validator that warns about it can never disagree.</para>
+    ///
     /// AR-13 ("a random effect requires SimRng") is OWNED here and discharged by RESERVATION: the 2.1 vocabulary has
     /// no random leaf, so a random kind is unauthorable today (rejected as unknown by the converter); the mature
     /// accept-if-present / reject-if-absent enforcement lands with the story that first adds a random leaf.
@@ -190,12 +203,17 @@ namespace ProjectChimera.Core.Definitions
         /// <see cref="Modifier.CheckAuthoringBounds"/> — a FATAL bound on <c>|delta| × max_stacks</c> (and on
         /// <c>max_stacks</c> itself), because a modifier over that bound can wrap <c>ModifierSystem</c>'s int stat
         /// accumulator negative, which DW-28's saturating read cannot recover.</para>
+        /// <para>DW-618: the frame additionally carries the innermost enclosing FRIENDLY-ONLY SearchArea (see
+        /// <see cref="WalkFrame.FriendlyOnlySearch"/>) so an ApplyModifier leaf knows whose side its grant lands on —
+        /// the one piece of context no single descriptor can see, and the reason the self-stunning aura was
+        /// unauthorable-to-catch before.</para>
         /// </summary>
         private static string? WalkGraph(string id, EffectNode root, List<(string FieldPath, string Message)> warnings,
                                          List<string> periodShapeErrors)
         {
             var stack = new Stack<WalkFrame>();
-            stack.Push(new WalkFrame(root, "effect", searchAreaDepth: 0, inPersistentPhase: false, inPersistentPeriod: false));
+            stack.Push(new WalkFrame(root, "effect", searchAreaDepth: 0, inPersistentPhase: false, inPersistentPeriod: false,
+                                     friendlyOnlySearch: null));
             int total = 0;
 
             while (stack.Count > 0)
@@ -230,10 +248,16 @@ namespace ProjectChimera.Core.Definitions
                         // re-entrancy / period-shape rules over the modifier's period subtree.
                         if (am.Modifier?.PeriodEffect is not null)
                             stack.Push(new WalkFrame(am.Modifier.PeriodEffect, $"{f.Path}.modifier.period_effect",
-                                f.SearchAreaDepth, inPersistentPhase: true, inPersistentPeriod: true));
+                                f.SearchAreaDepth, inPersistentPhase: true, inPersistentPeriod: true,
+                                friendlyOnlySearch: f.FriendlyOnlySearch));
                         // DW-278 warnings + DW-504 period-mismatch rejects for this modifier descriptor.
                         if (am.Modifier is not null)
+                        {
                             CollectModifierDiagnostics(id, f.Path, am.Modifier, warnings, periodShapeErrors);
+                            // DW-618: the CROSS-descriptor rule — this grant's status polarity vs. the allegiance the
+                            // enclosing search selects. Only reachable with a friendly-only SearchArea above it.
+                            CollectPolarityDiagnostics(id, f.Path, am.Modifier, f.FriendlyOnlySearch, warnings);
+                        }
                         break;
 
                     case PersistentEffect p:
@@ -243,11 +267,14 @@ namespace ProjectChimera.Core.Definitions
                                 "nested PersistentEffect is not allowed inside a PersistentEffect phase (install re-entrancy).");
                         // Descend each phase: everything below is "in a phase"; the period subtree is also "in a period".
                         if (p.InitialEffect is not null)
-                            stack.Push(new WalkFrame(p.InitialEffect, $"{f.Path}.initial_effect", f.SearchAreaDepth, true, false));
+                            stack.Push(new WalkFrame(p.InitialEffect, $"{f.Path}.initial_effect", f.SearchAreaDepth, true, false,
+                                                     f.FriendlyOnlySearch));
                         if (p.PeriodEffect is not null)
-                            stack.Push(new WalkFrame(p.PeriodEffect, $"{f.Path}.period_effect", f.SearchAreaDepth, true, true));
+                            stack.Push(new WalkFrame(p.PeriodEffect, $"{f.Path}.period_effect", f.SearchAreaDepth, true, true,
+                                                     f.FriendlyOnlySearch));
                         if (p.ExpireEffect is not null)
-                            stack.Push(new WalkFrame(p.ExpireEffect, $"{f.Path}.expire_effect", f.SearchAreaDepth, true, false));
+                            stack.Push(new WalkFrame(p.ExpireEffect, $"{f.Path}.expire_effect", f.SearchAreaDepth, true, false,
+                                                     f.FriendlyOnlySearch));
                         // DW-278 warnings + DW-504 period-mismatch rejects for this persistent descriptor.
                         CollectPersistentDiagnostics(id, f.Path, p, warnings, periodShapeErrors);
                         break;
@@ -265,8 +292,13 @@ namespace ProjectChimera.Core.Definitions
                         if (f.InPersistentPhase)
                             return Located(id, f.Path,
                                 "SearchAreaEffect is not allowed inside a PersistentEffect phase (initial/period/expire run direct-target only — no spatial hash).");
+                        // DW-618: the child subtree's allegiance is decided by THIS filter, not by an outer one —
+                        // EffectContext.WithTarget re-centres the search on each match but keeps the ORIGINAL
+                        // CasterFaction, so a nested SearchArea's Ally/Enemy bits are still resolved against the
+                        // caster. Hence OVERRIDE rather than inherit: the innermost enclosing search wins.
                         if (s.Child is not null)
-                            stack.Push(new WalkFrame(s.Child, $"{f.Path}.child", sad, f.InPersistentPhase, f.InPersistentPeriod));
+                            stack.Push(new WalkFrame(s.Child, $"{f.Path}.child", sad, f.InPersistentPhase, f.InPersistentPeriod,
+                                                     FriendlyOnlyDescription(f.Path, s.Filter)));
                         break;
                     }
 
@@ -278,7 +310,7 @@ namespace ProjectChimera.Core.Definitions
                         for (int k = 0; k < seq.Children.Length; k++)
                             if (seq.Children[k] is not null)
                                 stack.Push(new WalkFrame(seq.Children[k], $"{f.Path}.children[{k}]",
-                                    f.SearchAreaDepth, f.InPersistentPhase, f.InPersistentPeriod));
+                                    f.SearchAreaDepth, f.InPersistentPhase, f.InPersistentPeriod, f.FriendlyOnlySearch));
                         break;
 
                     // DirectHpDelta / Heal / Damage — counted leaves with no children.
@@ -387,6 +419,52 @@ namespace ProjectChimera.Core.Definitions
                 Warn(warnings, id, $"{path}.lifelong",
                     "lifelong is ignored — it re-arms the periodic pulse and this persistent effect declares no period_effect.");
         }
+
+        // ── DW-618: the cross-descriptor status-polarity lint ──
+
+        /// <summary>
+        /// DW-618 — warn when a modifier granted to FRIENDLY units imposes a
+        /// <see cref="StatusPolarity.Harmful"/> status: the self-stunning-Guardian-Aura class.
+        /// <para>Every other rule in this validator reads one descriptor alone, and that is exactly why this class
+        /// shipped: <c>filter: Ally</c> is a fine filter, <c>status: Stunned</c> is a fine status, and only their
+        /// pairing is wrong. <paramref name="friendlyOnlySearch"/> is non-null only when the walk is inside a
+        /// SearchArea subtree that provably selects allies and provably excludes enemies (see
+        /// <see cref="FriendlyOnlyDescription"/>), so the grant cannot reach a hostile unit — meaning a
+        /// capability-removing status on it lands on the caster's own side.</para>
+        /// <para>NON-FATAL by the DW-618 closure note. Rejecting would overreach: a creator platform must let someone
+        /// author "shield my allies but root them in place", and the status flags only became live recently, so a false
+        /// reject would cost more than a false warning. <see cref="StatusPolarity.Beneficial"/> statuses are silent —
+        /// an Ally-filtered Invulnerable grant is the point of such an ability, not a bug — which makes this a POLARITY
+        /// check rather than a blanket "no status on an ally grant".</para>
+        /// </summary>
+        private static void CollectPolarityDiagnostics(string id, string path, Modifier mod, string? friendlyOnlySearch,
+                                                       List<(string FieldPath, string Message)> warnings)
+        {
+            if (friendlyOnlySearch is null) return;
+            StatusFlags harmful = mod.Status & StatusPolarity.Harmful;
+            if (harmful == StatusFlags.None) return;
+
+            Warn(warnings, id, $"{path}.modifier.status",
+                $"the modifier imposes the harmful status '{harmful}' but its enclosing {friendlyOnlySearch} selects " +
+                "only friendly units, so the debuff lands on the caster's own side (the self-stunning-aura class). " +
+                "Grant a beneficial status instead, widen the filter to include Enemy, or drop the status flags.");
+        }
+
+        /// <summary>
+        /// DW-618 — describe <paramref name="filter"/> for the warning message when it selects FRIENDLIES ONLY,
+        /// otherwise null.
+        /// <para>The predicate is deliberately narrow: <c>Ally</c> set (so the grant demonstrably reaches the caster's
+        /// own faction) AND <c>Enemy</c> clear (so it demonstrably cannot reach a hostile one). Both halves matter —
+        /// without the first, <see cref="TargetFilter.None"/> ("every allegiance is eligible") would trip the lint, and
+        /// without the second an <c>Ally|Enemy</c> friendly-fire AoE stun — a legitimate design — would.
+        /// <see cref="TargetFilter.Self"/> is NOT treated as friendly here: a self-imposed root or silence is a
+        /// well-established cost/trade-off (siege-mode immobility, berserk self-silence), so warning about it would be
+        /// noise in the one channel whose value depends on staying signal.</para>
+        /// </summary>
+        private static string? FriendlyOnlyDescription(string searchPath, TargetFilter filter) =>
+            (filter & TargetFilter.Ally) != 0 && (filter & TargetFilter.Enemy) == 0
+                ? $"SearchArea at '{searchPath}' (filter {filter})"
+                : null;
 
         /// <summary>Append one located non-fatal warning (same <c>"ability '&lt;id&gt;'.&lt;path&gt;: &lt;reason&gt;"</c> shape as an error).</summary>
         private static void Warn(List<(string FieldPath, string Message)> warnings, string id, string path, string reason) =>
@@ -497,13 +575,22 @@ namespace ProjectChimera.Core.Definitions
             public readonly bool InPersistentPhase;  // anywhere under a Persistent initial/period/expire subtree
             public readonly bool InPersistentPeriod; // specifically under a Persistent period_effect subtree
 
-            public WalkFrame(EffectNode node, string path, int searchAreaDepth, bool inPersistentPhase, bool inPersistentPeriod)
+            /// <summary>DW-618: a human-readable description of the INNERMOST enclosing SearchArea when that search
+            /// selects friendlies only (<see cref="FriendlyOnlyDescription"/>), else null. Inherited unchanged through
+            /// Sequence children / Persistent phases / a modifier's period subtree, and OVERWRITTEN when the walk
+            /// enters another SearchArea's child — allegiance is resolved against the original caster at every depth,
+            /// so the innermost filter is the one that decides who a leaf below it reaches.</summary>
+            public readonly string? FriendlyOnlySearch;
+
+            public WalkFrame(EffectNode node, string path, int searchAreaDepth, bool inPersistentPhase,
+                             bool inPersistentPeriod, string? friendlyOnlySearch)
             {
                 Node = node;
                 Path = path;
                 SearchAreaDepth = searchAreaDepth;
                 InPersistentPhase = inPersistentPhase;
                 InPersistentPeriod = inPersistentPeriod;
+                FriendlyOnlySearch = friendlyOnlySearch;
             }
         }
     }

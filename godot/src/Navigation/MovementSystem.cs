@@ -163,49 +163,26 @@ namespace ProjectChimera.Navigation
                     velocity = velocity.Normalized() * maxSpeed;
 
                 world.Velocity[i] = velocity;
-                world.Position[i] = pos + velocity * dt;
 
                 // Story 6.5 — deterministic blocked-cell rejection (the sim TEETH; the flow-field OR-in is only the
                 // live-game "route around" nicety). A live unit may not INTEGRATE its position INTO — or THROUGH
-                // (DW-147) — a blocked cell it was not already in. Null / all-clear grid ⇒ an exact no-op (Position untouched ⇒ byte-identical to
-                // pre-feature, so flat maps never move a per-tick checksum). Pure Fixed, integer cell lookup, so it is
-                // byte-identical across same-seed replays and both lockstep peers.
-                var pathability = world.Pathability;
-                if (pathability != null && pathability.AnyBlocked)
-                {
-                    FixedVec3 np = world.Position[i];
-                    // DW-148: reject any step that ENTERS a blocked cell the unit is not already standing in. The
-                    // reference cell is the unit's PRE-step cell, so:
-                    //   • a unit in a CLEAR cell behaves exactly as before (a blocked destination is necessarily a
-                    //     different cell) — byte-identical for every validated map, so no golden moves;
-                    //   • a unit that somehow starts INSIDE a blocked cell (a slope-derived spawn the Godot-free gate
-                    //     cannot see — see ScenarioValidator.CheckSpawnsNotBlocked) is CONFINED: it may shuffle within
-                    //     its own cell and walk out into a CLEAR neighbour, but it can no longer traverse ONWARD
-                    //     through the blocked region. Pre-fix such a unit was exempt from blocking entirely and walked
-                    //     through walls freely.
-                    // DW-147: the test is SWEPT, not endpoint-only. The whole segment pos→np is walked cell by cell
-                    // (PathabilityGrid.IsBlockedOnSegmentOutside) and rejected on the FIRST foreign blocked cell it
-                    // enters. Endpoint-only sampling let a unit whose per-tick displacement reached the 2-unit cell
-                    // size (move speed ≳ 60 u/s) TUNNEL a one-cell-thick wall — both endpoints clear, the wall never
-                    // sampled — and let a diagonal step clip a blocked cell's corner. For an AXIS-ALIGNED sub-cell step
-                    // the swept walk visits exactly the two endpoint cells, so it is byte-identical to the pre-fix
-                    // check; a DIAGONAL sub-cell step additionally visits the one shared-edge cell it really passes
-                    // through, which is the deliberate tightening (no corner-cutting through an obstacle).
-                    int fromCell = PathabilityGrid.CellOf(pos.X, pos.Z);
-                    if (pathability.IsBlockedOnSegmentOutside(fromCell, pos.X, pos.Z, np.X, np.Z))
-                    {
-                        // Wall-slide: keep whichever single-axis move stays out of a foreign blocked cell; otherwise
-                        // fully retain the pre-step position. Each candidate slide is itself SWEPT from the pre-step
-                        // position, so a fast axis-aligned slide cannot tunnel the wall the full step was rejected for.
-                        // Ascending id + Fixed-only ⇒ deterministic.
-                        if (!pathability.IsBlockedOnSegmentOutside(fromCell, pos.X, pos.Z, np.X, pos.Z))
-                            world.Position[i] = new FixedVec3(np.X, np.Y, pos.Z); // slide along X
-                        else if (!pathability.IsBlockedOnSegmentOutside(fromCell, pos.X, pos.Z, pos.X, np.Z))
-                            world.Position[i] = new FixedVec3(pos.X, np.Y, np.Z); // slide along Z
-                        else
-                            world.Position[i] = pos;                              // hard stop at the boundary
-                    }
-                }
+                // (DW-147) — a blocked cell it was not already in. Null / all-clear grid ⇒ an exact no-op (the
+                // integrated step is stored unchanged ⇒ byte-identical to pre-feature, so flat maps never move a
+                // per-tick checksum). Pure Fixed, integer cell lookup, so it is byte-identical across same-seed
+                // replays and both lockstep peers.
+                //
+                // DW-648: the sweep-and-slide sequence now lives in the SHARED CheckedStep.Resolve helper rather
+                // than inline here, so this integrator is no longer the only writer that can apply it — any future
+                // movement writer (blink/teleport, knockback, snap-to-waypoint, a path consumer that repositions
+                // directly) makes the SAME one call instead of hand-copying four branches that can silently drift.
+                // Behaviour is verbatim: DW-148's confinement (the sweep's reference is the unit's PRE-step cell, so
+                // a unit already inside a blocked cell may shuffle within it and walk out into a CLEAR neighbour but
+                // may not traverse onward) and DW-147's SWEPT test (the whole segment is walked cell by cell and
+                // rejected at the first foreign blocked cell, so a fast unit cannot tunnel a one-cell wall and a
+                // diagonal step cannot clip a blocked corner), including the X-then-Z wall-slide order and the
+                // hard-stop fallback to the full pre-step position. PositionWriterGuardTests pins that this is the
+                // one MOVEMENT writer of EntityWorld.Position and that CheckedStep is the one caller of the sweep.
+                world.Position[i] = CheckedStep.Resolve(world.Pathability, pos, pos + velocity * dt);
             }
         }
     }

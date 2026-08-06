@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using ProjectChimera.Combat;
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
+using ProjectChimera.Effects;   // StatusFlags (modifier-imposed per-entity status; a value enum, same sim layer)
 
 namespace ProjectChimera.Economy
 {
@@ -68,6 +69,21 @@ namespace ProjectChimera.Economy
         /// <see cref="TrainUnit"/>'s chosen-unit category guard and <c>ScenarioApplier.SpawnUnitAt</c>'s worker test.
         /// </summary>
         private const string WORKER_CATEGORY = "Worker";
+
+        /// <summary>
+        /// DW-619 — the statuses that bar a worker from STARTING a construction, the same pair as
+        /// <c>MovementSystem.MOVE_BLOCKING</c> / <c>GatheringSystem.GATHER_BLOCKING</c>.
+        ///
+        /// <para>The ledger entry expected a per-tick construction accrual to gate, mirroring the gather loop. There
+        /// is none: <see cref="TickConstruction"/> runs a per-BUILDING <see cref="BuildingStore.ConstructionTimer"/>
+        /// that is never linked to a builder (the worker only walks to the site to clear its own Build command —
+        /// <see cref="TickWorkerArrival"/>), and <see cref="BuildingStore"/> carries no status channel of its own.
+        /// So the ONE moment a worker's status can reach construction at all is the ORDER: <see cref="QueueWorkerBuild"/>
+        /// spends the cost and starts the self-ticking timer in a single atomic act. Refusing there is what makes a
+        /// stun land on construction — it is exactly <c>AbilityCastSystem</c>'s DW-266 refusal shape (checked ahead of
+        /// every debit, so a refused order spends nothing and places nothing), not a new mechanic.</para>
+        /// </summary>
+        private const StatusFlags BUILD_BLOCKING = StatusFlags.Stunned | StatusFlags.Rooted;
 
         /// <summary>
         /// DW-205: carry capacity (world resource units per trip) a freshly trained worker enters the gather loop
@@ -1106,12 +1122,39 @@ namespace ProjectChimera.Economy
             }
         }
 
-        /// <summary>Clear the Build command on a worker and resume gathering.</summary>
-        private static void ClearWorkerBuild(EntityWorld world, int workerId)
+        /// <summary>
+        /// Clear the Build command on a worker and resume the gather loop.
+        ///
+        /// <para>DW-520 — a worker interrupted MID-CARRY finishes its DELIVERY. Forcing <see cref="GatherState.Idle"/>
+        /// regardless of <see cref="EntityWorld.CarryAmount"/> sent a worker that was walking a load home when the build
+        /// order landed back out to a node instead: <c>TickIdle</c> re-reserves one of that node's
+        /// <c>MaxGatherers</c> slots, the worker walks the whole way there, gathers NOTHING (a full carry leaves
+        /// <c>canCarry == 0</c>), and only then turns round and banks the load it was already carrying — a wasted round
+        /// trip per interrupted worker, and a slot needlessly taken from a worker that could have used it. Routing a
+        /// non-empty carry straight back to <see cref="GatherState.MovingToBase"/> resumes the leg that was in flight;
+        /// the deposit itself is unchanged (<c>TickMovingToBase</c> credits by the carried
+        /// <see cref="EntityWorld.CarryResourceType"/>, which survived the interrupt).</para>
+        ///
+        /// <para>The base position and <see cref="EntityFlags.Moving"/> are set here for the same reason
+        /// <c>GatheringSystem.SetMoveToBase</c> sets them: the Build order overwrote <c>MoveTarget</c> with the build
+        /// site, so the resumed leg needs its destination back. Nothing folded into <c>SimChecksum</c> is read or
+        /// written by the choice itself, and no recorded golden issues a Build order at all.</para>
+        /// </summary>
+        private void ClearWorkerBuild(EntityWorld world, int workerId)
         {
             world.CommandState[workerId] = UnitCommand.Idle;
             world.BuildTarget[workerId]  = -1;
-            // Resume the gather loop; GatheringSystem will assign a node next tick.
+
+            if (world.CarryAmount[workerId] > Fixed.Zero)
+            {
+                // DW-520: still holding a load — finish the delivery that the build order interrupted.
+                world.MoveTarget[workerId]  = _resources.FactionBase[(int)world.FactionOf[workerId]];
+                world.Flags[workerId]      |= EntityFlags.Moving;
+                world.GatherState[workerId] = GatherState.MovingToBase;
+                return;
+            }
+
+            // Empty-handed — resume the gather loop; GatheringSystem will assign a node next tick.
             world.GatherState[workerId]  = GatherState.Idle;
         }
 
@@ -1132,6 +1175,21 @@ namespace ProjectChimera.Economy
         {
             if (!world.IsAlive(workerId)) return -1;
             if (world.GatherState[workerId] == GatherState.Inactive) return -1; // not a worker
+
+            // DW-619 — STATUS GATE (stun / root), ABOVE every debit so the refusal is atomic: no ore/crystal spent, no
+            // building placed, no gather slot released, no Build command written — the order simply does not happen,
+            // exactly like AbilityCastSystem's DW-266 refusal. Without it a stunned worker still paid for and started a
+            // whole building, which then finished on its own timer (TickConstruction needs no builder) — the stun landed
+            // on the worker's movement and on nothing else. Cue reason: Stunned when the worker is stunned, otherwise
+            // the generic "Order denied" — there is no Rooted member in the DenialReason vocabulary and widening it
+            // means editing src/UI/DenialReasonText.cs, which this Godot-free bundle deliberately does not touch.
+            StatusFlags status = world.StatusFlagsOf[workerId];
+            if ((status & BUILD_BLOCKING) != 0)
+            {
+                events?.PushDenied(position, faction,
+                    (status & StatusFlags.Stunned) != 0 ? DenialReason.Stunned : DenialReason.None);
+                return -1;
+            }
 
             // Prerequisite check
             BuildingDefinition? bdef = GetFactionDef(faction)?.GetBuilding(TechTreeChecker.BuildingTypeId(type));

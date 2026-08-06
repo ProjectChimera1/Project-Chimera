@@ -232,7 +232,10 @@ namespace ProjectChimera.Core.Sim
             var modSys = new ModifierSystem();
             // DW-83: the live host wires its ILogSink into the store so a REFUSED (8-slot ring full) install — an
             // earned item / hero-growth / self-passive / research buff silently dropped — warns instead of vanishing.
-            Modifiers = new ModifierStore(World, modSys, damageTable, CombatEvents, MatchStats, log);
+            // DW-490: the SAME DeathFeed combat/projectile/ability deaths record into is threaded in too, because the
+            // store's DW-325 ceiling-collapse kill is a real lethal path — without it, a creator-authored lethal
+            // −MaxHealth debuff would be the one death in the game that grants no hero XP.
+            Modifiers = new ModifierStore(World, modSys, damageTable, CombatEvents, MatchStats, log, _deathFeed);
             // DW-285: the same host ILogSink is threaded in as the cast system's diagnostic seam, so an unresolvable
             // cast / aura / self-passive WARNS instead of vanishing on every host that already owns a real sink
             // (MainScene's GodotLogSink, the dedicated server's) while the golden/Tier-1 NullLogSink stays silent.
@@ -316,7 +319,10 @@ namespace ProjectChimera.Core.Sim
                 ItemSys,                                                                  // [10] ItemSystem       (Combat, FR-64)
                 new SupplySystem(Resources),                                              // [11] SupplySystem      (Economy)
                 Fog,                                                                      // [12] FogOfWarSystem    (Core)
-                _ai = new AiOpponentSystem(Buildings, Resources, BuildSys, aiLevel),      // [13] AI opponent (plays Player2)
+                // DW-439/DW-445: Alliances threaded in so the AI's target/raze/threat classification is team-aware —
+                // without it a teamed AI ordered attacks onto its own ally, combat's Story-9.14 allied guard rejected
+                // them, and its whole force reverted to Idle every tick. Null/FFA ⇒ byte-identical to pre-fix.
+                _ai = new AiOpponentSystem(Buildings, Resources, BuildSys, aiLevel, Alliances), // [13] AI opponent (plays Player2)
                 // ── Story 7.11 win-condition evaluator. Immediately AFTER AiOpponentSystem (so it sees post-death
                 //    alive counts) and immediately BEFORE ScenarioDirector (so the director's OnVictory escape hatch
                 //    still runs last). Reads final entity/building state, writes the folded WinStateStore verdict. ──
@@ -361,6 +367,11 @@ namespace ProjectChimera.Core.Sim
         /// </summary>
         public void ClearForReset()
         {
+            // DW-624: report the ENDING match's aggregated future-spawn research-catch-up refusals before anything is
+            // re-minted. This is the host's per-match teardown (every Play→Edit toggle / re-launch reaches it), so it
+            // is both the "match end" flush and the zeroing that keeps the tally per-match. Diagnostics only — it
+            // reads/clears unfolded counters and routes through the injected sink, so the reset stays byte-identical.
+            FlushMatchDiagnostics();
             World.Clear();          // entity SoA + free-list + RNG re-seed (also zeroes AbilityCooldownTicks / StatusFlagsOf)
             Nodes.Clear();
             Resources.Clear();
@@ -389,6 +400,22 @@ namespace ProjectChimera.Core.Sim
             _ai.ResetForMatch();    // Story 3.10 — AI per-match decision state is not in any store; reset it too or the next Play desyncs
             _loop.ResetTick();      // CurrentTick + LastChecksum → 0 (checksum store wiring untouched)
         }
+
+        /// <summary>
+        /// DW-624 — flush the per-match diagnostic AGGREGATES the sim accumulates but deliberately does not log at
+        /// the point of occurrence. Today that is <see cref="ResearchSystem"/>'s future-spawn catch-up refusal tally:
+        /// <c>ApplyCompletedResearch</c> is wired to <see cref="EntityWorld.OnUnitDefinitionApplied"/>, so it fires
+        /// once PER SPAWN (training, scenario placement, hero respawn, editor restore) and an inline warn there would
+        /// be per-spawn spam — a 200-unit scenario load with full modifier rings would emit 200 lines. The refusals
+        /// accumulate per faction + per research instead and surface here as ONE line each.
+        ///
+        /// <para>Called by <see cref="ClearForReset"/> (the per-match teardown) so a tally is never silently
+        /// discarded, and public so a bootstrap can flush explicitly at end-of-match or right after a bulk scenario
+        /// load. Idempotent and silent when nothing was refused. Diagnostics only: reads and zeroes unfolded
+        /// counters, mutates no sim array and pushes no event, so a run that calls it is byte-identical to one that
+        /// does not. Returns the number of refusals reported.</para>
+        /// </summary>
+        public int FlushMatchDiagnostics() => ResearchSys.FlushSpawnCatchUpDiagnostics();
 
         /// <summary>
         /// Story 3.14 — the respawn hook HeroXpSystem calls when a revival countdown completes. Routes to the

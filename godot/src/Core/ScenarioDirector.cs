@@ -851,8 +851,16 @@ namespace ProjectChimera.Core
         }
 
         /// <summary>Build the declared name → (type, scope) map for the loop gate (TryAdd — first declaration
-        /// wins, matching DslVarTable.Resolve). Duplicate declarations reject when <paramref name="requireUnique"/>:
-        /// armed by the 7.4 anyExpr rule AND (review, 7.6) by the presence of loop constructs.</summary>
+        /// wins, matching DslVarTable.Resolve). Duplicate declarations reject when <paramref name="requireUnique"/>.
+        /// DW-587 — exactly two call sites arm it and NEITHER keys off loop-construct presence: the 7.6
+        /// <c>HasLoopConstructs</c> arming was removed by the 7.7 gate/backstop reconciliation.
+        /// <see cref="LoadScenario"/> passes <c>true</c> UNCONDITIONALLY (matching the validator gate, which always
+        /// rejected duplicates), so EVERY load — legacy flat, expression-free, loop-free — rejects a duplicate name
+        /// before any field commit; the <see cref="CompileExpressionPrograms"/> backstop still passes the 7.4
+        /// <c>anyExpr</c> legacy-parity flag, which can only ever re-check what the unconditional call already
+        /// rejected. DW-359's shadowing argument (a loop_var can never silently shadow a declared Global/PerPlayer,
+        /// because declaration names are unique at both gates) rests on that unconditional arming — pinned by
+        /// <c>BuildDeclMapUniquenessTests</c>, which must fail if this call site ever becomes conditional again.</summary>
         private static Dictionary<string, (DslValueType Type, VarScope Scope)> BuildDeclMap(
             ScenarioData scenario, bool requireUnique)
         {
@@ -1376,6 +1384,15 @@ namespace ProjectChimera.Core
                     _expiredTimers.Clear();
                     _vars.TimerTickAndCollectExpired(_expiredTimers);
                     _eventQueue.Clear();
+                    // DW-551 — the LAST transient rail on this path, and the one that was missing. The per-tick
+                    // DeathLog's only other wipe point is UpdateSnapshots, which the early-out skips: without this a
+                    // trigger-less scenario ACCUMULATES combat death records across ticks until CAPACITY, so "the log
+                    // is empty at the tick boundary" (the invariant DeathLog's own docs state, and the one
+                    // SaveGameState.CaptureFrom now asserts) held only for scenarios that own at least one trigger.
+                    // Inert for behaviour: CollectEvents — the log's single reader — is skipped on this path, and a
+                    // trigger-less scenario can have no unit_dies subscriber at all. Inert for determinism: the log is
+                    // NOT folded into SimChecksum, so no golden and no checksum moves.
+                    world.DeathLog.Clear();
                     return;
                 }
 

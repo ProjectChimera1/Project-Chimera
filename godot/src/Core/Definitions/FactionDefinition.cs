@@ -88,13 +88,66 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("starting_crystal")]
         public float StartingCrystal { get; set; } = 0f;
 
+        // ── Runtime-only drop record (never authored, never serialized) ─────────
+
+        /// <summary>
+        /// DW-652 — the ids of units this faction DECLARED in its JSON but that
+        /// <see cref="UnitTagValidator.ValidateAndDropUnits"/> REMOVED from <see cref="Units"/> for carrying an
+        /// unknown tag. Runtime-only bookkeeping written by that validator at load; <c>[JsonIgnore]</c> so it never
+        /// round-trips through the Faction Definer wizard's re-serialize (the <see cref="UnitDefinition"/>
+        /// <c>[JsonIgnore]</c> resolved-index precedent).
+        ///
+        /// <para><b>Why it exists.</b> The tag drop runs AFTER the faction file loads and BEFORE the scenario gate, so
+        /// a shipped map naming a dropped unit sees a roster that no longer declares it. Without this record the gate
+        /// cannot tell that case (engine removed an author-declared unit — the map is innocent) from a genuine typo
+        /// (an id nothing ever declared), and DW-240's fail-closed unit_id rule turns the first one into a
+        /// WHOLE-SCENARIO reject that boots the fallback map. The record lets the gate degrade exactly that case to the
+        /// per-entity drop the applier already performs, while a real dangling reference still fails closed.</para>
+        /// </summary>
+        [JsonIgnore]
+        public List<string> TagDroppedUnitIds { get; } = new();
+
+        /// <summary>
+        /// DW-652 — record <paramref name="unitId"/> as dropped by the closed-set tag validator. Idempotent (a second
+        /// <see cref="UnitTagValidator.ValidateAndDropUnits"/> pass over the already-compacted roster finds no
+        /// offenders, and a repeated id is never appended twice), and a null/blank id is ignored — a blank reference
+        /// is never "known but dropped", it is malformed.
+        /// </summary>
+        public void NoteTagDroppedUnit(string? unitId)
+        {
+            if (string.IsNullOrEmpty(unitId)) return;
+            if (!TagDroppedUnitIds.Contains(unitId)) TagDroppedUnitIds.Add(unitId!);
+        }
+
+        /// <summary>
+        /// DW-652 — true when <paramref name="unitId"/> names a unit this faction DECLARED but the closed-set tag
+        /// validator dropped from <see cref="Units"/>. False for a blank id and for any id the faction never declared
+        /// (those stay genuinely-malformed references the scenario gate must still fail closed on).
+        /// </summary>
+        public bool WasUnitDroppedForInvalidTag(string? unitId)
+        {
+            if (string.IsNullOrEmpty(unitId)) return false;
+            for (int i = 0; i < TagDroppedUnitIds.Count; i++)
+                if (TagDroppedUnitIds[i] == unitId) return true;
+            return false;
+        }
+
         // ── Lookup helpers ──────────────────────────────────────────────────────
 
-        /// <summary>Find a building definition by ID, or null if not found.</summary>
+        /// <summary>Find a building definition by ID, or null if not found. A null <see cref="Buildings"/> list
+        /// (malformed JSON <c>"buildings": null</c> — the property is settable, so a JSON null overwrites the
+        /// <c>= new()</c> default) OR a null element inside it is skipped, never an NRE (DW-629 — mirrors the
+        /// <see cref="GetUnit"/>/<see cref="GetResearch"/> siblings hardened by DW-103, which this getter was
+        /// missed by). Callers reached this shape through any path that does not run
+        /// <see cref="FactionValidator.Validate"/>'s structural pre-check first — a direct
+        /// <see cref="JsonSerializer"/> deserialize, or a hand-built definition in a test/tool — and
+        /// <c>NavigationPhase.FindBuilding</c> carries a caller-side <c>Buildings == null</c> workaround that this
+        /// guard makes redundant.</summary>
         public BuildingDefinition? GetBuilding(string id)
         {
+            if (Buildings == null) return null;   // DW-629: malformed JSON "buildings": null — never an NRE
             foreach (var b in Buildings)
-                if (b.Id == id) return b;
+                if (b != null && b.Id == id) return b;   // DW-629: null element skipped
             return null;
         }
 
@@ -238,22 +291,67 @@ namespace ProjectChimera.Core.Definitions
         /// — the roster-completeness checks (missing <c>mesh_path</c>, missing required roles) are a legitimate
         /// mid-edit state that <see cref="BuildingCardPanel"/>/<see cref="UnitCardPanel"/>'s Save self-check (which
         /// also calls this method) must never reject; see <c>FactionValidator</c>'s own docs.
+        ///
+        /// <para><b>DW-62 — a malformed JSON VALUE now fails the same way a malformed CONTENT value does.</b> Every
+        /// rejection this method makes is a located <see cref="System.InvalidOperationException"/> whose message is
+        /// the aggregate <c>errors</c> list joined by newlines — except, until DW-62, a parse failure. A bad value
+        /// for ANY field (<c>"cost": {"ore": null}</c> against the non-nullable
+        /// <c>Dictionary&lt;string,int&gt;</c> value type, <c>"hp": "abc"</c>, a truncated document, an unterminated
+        /// string) escaped as a raw <see cref="JsonException"/> — a DIFFERENT exception type than every validator
+        /// below throws with, so a caller that handled a content rejection did not handle a parse failure. That one
+        /// hole is now folded into the SAME aggregate channel: same exception type, same located message shape, with
+        /// the offending file named and System.Text.Json's own <c>Path</c>/<c>LineNumber</c>/<c>BytePositionInLine</c>
+        /// carried through verbatim. The original <see cref="JsonException"/> is preserved as
+        /// <see cref="System.Exception.InnerException"/> so nothing is lost.</para>
         /// </summary>
         public static FactionDefinition LoadFromFile(string absolutePath)
         {
             string json = File.ReadAllText(absolutePath);
-            FactionDefinition def = JsonSerializer.Deserialize<FactionDefinition>(json, JsonOptions)
-                                     ?? new FactionDefinition();
 
             var errors = new List<string>();
-            FactionValidationResult result = FactionValidator.Validate(def);
-            if (!result.Ok)
-                foreach ((string _, string message) in result.Errors)
-                    errors.Add(message);
-            if (errors.Count > 0)
-                throw new System.InvalidOperationException(string.Join("\n", errors));
+            FactionDefinition? def = null;
+            JsonException? parseFailure = null;
 
-            return def;
+            // DW-62: the ONLY exception folded here is JsonException — a CONTENT fault, which is exactly what the
+            // aggregate errors channel reports. An I/O fault from File.ReadAllText above is deliberately left alone:
+            // "this file is unreadable/absent" is not a content error and must not masquerade as one.
+            try
+            {
+                def = JsonSerializer.Deserialize<FactionDefinition>(json, JsonOptions);
+            }
+            catch (JsonException ex)
+            {
+                parseFailure = ex;
+                errors.Add($"{absolutePath}: malformed faction JSON — {ex.Message}");
+            }
+
+            // A parse failure leaves nothing meaningful to validate: running FactionValidator over a
+            // default-constructed shell would append a pile of unrelated "missing id"-class errors that bury the one
+            // line naming the real fault. Validate ONLY when the document actually parsed.
+            if (parseFailure == null)
+            {
+                // A literal `null` document deserializes to null — unchanged pre-DW-62 behavior: it becomes an empty
+                // definition and is then rejected by the validator below, not by the parse guard above.
+                def ??= new FactionDefinition();
+
+                // DW-537: the RAW duplicate-key pass, ahead of the model-level validators. A repeated key inside a
+                // `cost` block binds last-wins in System.Text.Json, and the deserialized model cannot see the
+                // collision (one repeated key still yields one dictionary entry) — so this is the only place the
+                // fault is visible. Located exactly like the DW-62 parse line (file-prefixed), and aggregated into
+                // the SAME errors channel every content check throws with. See CostDuplicateKeyGuard.
+                foreach (string duplicate in CostDuplicateKeyGuard.Scan(json))
+                    errors.Add($"{absolutePath}: {duplicate}");
+
+                FactionValidationResult result = FactionValidator.Validate(def);
+                if (!result.Ok)
+                    foreach ((string _, string message) in result.Errors)
+                        errors.Add(message);
+            }
+
+            if (errors.Count > 0)
+                throw new System.InvalidOperationException(string.Join("\n", errors), parseFailure);
+
+            return def!;
         }
 
         /// <summary>
@@ -327,10 +425,14 @@ namespace ProjectChimera.Core.Definitions
             foreach (string file in files.OrderBy(f => f, System.StringComparer.Ordinal))
             {
                 string fileName = Path.GetFileName(file);
+                string text;
                 FactionDefinition? def;
                 try
                 {
-                    def = JsonSerializer.Deserialize<FactionDefinition>(File.ReadAllText(file), JsonOptions);
+                    // The raw text is hoisted into a local (still INSIDE the try, so an I/O fault keeps taking the
+                    // never-throws onExcluded path) because the DW-537 duplicate-key pass below re-walks it.
+                    text = File.ReadAllText(file);
+                    def = JsonSerializer.Deserialize<FactionDefinition>(text, JsonOptions);
                 }
                 catch (System.Exception ex)
                 {
@@ -341,6 +443,16 @@ namespace ProjectChimera.Core.Definitions
                 if (def is null)
                 {
                     onExcluded?.Invoke(fileName, "deserialized to null");
+                    continue;
+                }
+
+                // DW-537: the SAME raw duplicate-key pass LoadFromFile runs. Without it, a faction whose cost block
+                // silently last-wins would list here as SELECTABLE while the load gate rejects it — the exact
+                // selectable-but-not-launchable split DW-327 closed for the signature-mechanic check above.
+                IReadOnlyList<string> costDuplicates = CostDuplicateKeyGuard.Scan(text);
+                if (costDuplicates.Count > 0)
+                {
+                    onExcluded?.Invoke(fileName, costDuplicates[0]);
                     continue;
                 }
 

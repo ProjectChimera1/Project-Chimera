@@ -190,9 +190,17 @@ namespace ProjectChimera.Sim.Tests.Effects
         }
 
         [Fact]
-        public void CeilingCollapseDeath_CountsVictimLoss_ButCreditsNoKill()
+        public void CeilingCollapseDeath_CountsVictimLoss_AndCreditsTheCastersFaction()
         {
-            // Fully-wired store so RecordKill is reachable (killer = Neutral).
+            // Fully-wired store so RecordKill is reachable.
+            //
+            // DW-490 SUPERSEDES this test's original "…ButCreditsNoKill" reading. The DW-325 spec hardcoded the killer
+            // to Faction.Neutral, which made a collapse the one lethal path invisible to scoring; the kill now carries
+            // the collapsing instance's OWN recorded caster. Here the modifier is SELF-cast by a Player1 unit, so
+            // Player1 is credited — the same posture AbilityCastSystem's self-lethal `cost_health` death already has
+            // ("a self-lethal cast credits the caster"). The attacker-less form is still reachable and still credits
+            // nobody: an instance with no caster records (−1, Faction.Neutral), pinned by
+            // ModifierCollapseAttributionTests.RulesDrivenCollapse_WithNoCaster_StaysAttackerLess_ButStillFeedsTheXpRuntime.
             var world  = new EntityWorld();
             var sys    = new ModifierSystem();
             var events = new CombatEventQueue();
@@ -204,12 +212,14 @@ namespace ProjectChimera.Sim.Tests.Effects
             store.Apply(id, StatMod(1, 5, StackRule.Refresh, 1, maxHp: -100, atk: 0, move: 0), id, Faction.Player1);
 
             Assert.False(world.IsAlive(id));
-            // The victim's LOSS is counted (Player1 lost a unit to the rules death)…
+            // The victim's LOSS is counted (Player1 lost a unit)…
             Assert.Equal(1, stats.Losses(Faction.Player1));
-            // …but NO faction is credited a KILL: killer = Faction.Neutral → RecordKill skips killer index 0.
-            Assert.Equal(0, stats.Kills(Faction.Player1));
+            // …and the KILL is credited to the caster's faction (DW-490), not silently dropped on Neutral.
+            Assert.Equal(1, stats.Kills(Faction.Player1));
             Assert.Equal(0, stats.Kills(Faction.Player2));
-            Assert.Equal(0, stats.Kills(Faction.Neutral));
+            Assert.Equal(0, stats.Kills(Faction.Neutral)); // index 0 is never credited by RecordKill
+            Assert.Equal((int)Faction.Player1 - 1, world.KillerFactionOf[id]);
+            Assert.Equal(id, world.KillerOf[id]);          // the self-cast caster is the recorded attacker
 
             // The death goes through the SINGLE combat death sequence, which pushes exactly one UnitKilled event for
             // the victim (its faction + position, captured pre-Destroy). Drain the queue and pin it — proves the death

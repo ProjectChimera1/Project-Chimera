@@ -114,8 +114,10 @@ namespace ProjectChimera.Core.Definitions
             "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
         };
 
-        /// <summary>The pipe-list form of <see cref="_reservedBasenames"/> for the located reject message (built once).</summary>
-        private const string ReservedPipeList = "con|prn|aux|nul|com1-com9|lpt1-lpt9";
+        /// <summary>The pipe-list form of <see cref="_reservedBasenames"/> for the located reject message (built once).
+        /// Public since DW-528 so every surface that rejects a reserved basename quotes the SAME human-readable list
+        /// instead of hand-copying it (the divergent-hand-maintained-table problem).</summary>
+        public const string ReservedPipeList = "con|prn|aux|nul|com1-com9|lpt1-lpt9";
 
 
         /// <summary>
@@ -232,8 +234,22 @@ namespace ProjectChimera.Core.Definitions
                 errors.Add(("projectile_speed", Located(kind, id, "projectile_speed",
                     $"={def.ProjectileSpeed} must be strictly positive for a Projectile-delivery unit (authored or inferred from range).")));
 
-            // ── numeric stats: finite & [0, 32768) — the 16.16 Fixed ceiling (AC2 "out-of-range/missing stat") ──
-            CheckStat(errors, kind, id, "hp", def.Hp);
+            // ── numeric stats: finite & [0, 32768) — the 16.16 Fixed ceiling (AC2 "out-of-range/missing stat"), with
+            //    hp the one strictly-positive exception noted immediately below ──
+
+            //    hp (DW-527) is the ONE stat in this group that is STRICTLY positive — the fourth degenerate-at-zero
+            //    stat alongside the three the block further down handles, and the only one that had a matching rule on
+            //    the building side but not here. A 0 does not author a frail entity: EntityWorld.Create seeds
+            //    Health/BaseMaxHealth/EffectiveMaxHealth from this value, so the entity spawns ALIVE at 0 HP with a
+            //    zero health ceiling. It can never be healed (ModifierStore.ApplyStatDeltas re-clamps Health into
+            //    [0, EffectiveMaxHealth], which is [0, 0] here) and dies to the first point of damage — and per DW-491
+            //    the ceiling-collapse death cannot even fire on it, because that gate needs a >0 → 0 TRANSITION, so a
+            //    0-hp entity is a permanent 0-HP husk rather than a unit. Routed through CheckStatPositive HERE, in the
+            //    stat's long-standing position, rather than moved down into the DW-380 block, so the order of the
+            //    reported errors is unchanged. BuildingDefinitionValidator reuses this whole gate, so it now inherits
+            //    the value rule and keeps only its own PRESENCE (HpAuthored) check — see the D-9 note there.
+            CheckStatPositive(errors, kind, id, "hp", def.Hp,
+                "0 is a zero health ceiling rather than a frail unit — the entity spawns already at 0 HP, can never be healed (Health is clamped into [0, EffectiveMaxHealth]) and dies to the first point of damage");
             CheckStat(errors, kind, id, "speed", def.Speed);
             CheckStat(errors, kind, id, "attack_damage", def.AttackDamage);
             CheckStat(errors, kind, id, "attack_range", def.AttackRange);
@@ -260,11 +276,12 @@ namespace ProjectChimera.Core.Definitions
                 CheckStatPositive(errors, kind, id, "train_time", def.TrainTime,
                     "a queued order whose timer starts already expired is never actually trained over time — the whole production queue behind it drains at one unit per tick");
 
-            // ── DEGENERATE-AT-ZERO stats (DW-380). The generic CheckStat bound is [0, 32768) — INCLUSIVE of 0 — which
-            //    is right for every stat above (0 armor / 0 splash / 0 energy / an immobile 0-speed structure / a
-            //    0-damage non-combatant are all legitimate authoring), but WRONG for the three handled below
-            //    (collision_radius, mesh_scale, and — conditionally — attack_speed), where 0 is not a weaker value but
-            //    a broken one. Same shape as projectile_speed's rule (2): a strictly-positive lower
+            // ── DEGENERATE-AT-ZERO stats (DW-380, extended by DW-527). The generic CheckStat bound is [0, 32768) —
+            //    INCLUSIVE of 0 — which is right for every stat above (0 armor / 0 splash / 0 energy / an immobile
+            //    0-speed structure / a 0-damage non-combatant are all legitimate authoring), but WRONG for the three
+            //    handled below (collision_radius, mesh_scale, and — conditionally — attack_speed) and for hp (handled
+            //    in place above, DW-527), where 0 is not a weaker value but a broken one. Same shape as
+            //    projectile_speed's rule (2): a strictly-positive lower
             //    bound only where zero is degenerate, so both hand-authored edits AND the Story-8.5 balance-apply path
             //    (BalanceSuggestionApplier routes its proposed value through this very gate) are gated identically. ──
 
@@ -429,6 +446,78 @@ namespace ProjectChimera.Core.Definitions
 
         /// <summary>Finite &amp; in [0, <paramref name="max"/>) — a float stat with a tighter-than-<see cref="Range"/> ceiling
         /// (Story 3.13 hero runtime fields whose downstream squaring/stacking would overflow Fixed at the generic Range).</summary>
+        // ── DW-650: the hero per-level growth bound (DW-488's rule, adopted at the hero minter) ──────────────────
+
+        /// <summary>Which of <see cref="ProjectChimera.Effects.Modifier"/>'s four stat deltas a given hero
+        /// <c>*_per_level</c> field feeds in <c>HeroXpSystem.ReconcileGrowth</c>'s growth descriptor. Move speed is
+        /// absent by design — there is no move-speed growth channel (Story 3.13 scope).</summary>
+        private const int GrowthMaxHealth = 0, GrowthAttackDamage = 1, GrowthArmor = 2;
+
+        /// <summary>
+        /// DW-650 — the WORST-CASE number of growth stacks a hero with this <c>max_level</c> can ever carry.
+        /// <c>HeroXpSystem.ReconcileGrowth</c> applies <c>desired = Level-1</c> stacks and <c>AdvanceLevels</c> caps
+        /// <c>Level</c> at the hero's <c>max_level</c>, so the true ceiling is <c>max_level - 1</c> — NOT the descriptor's
+        /// <c>MaxStacks</c> (<c>HeroXpSystem.MaxGrowthStacks</c> = 99), which is the store-side cap for the whole
+        /// authorable level range. Bounding against the hero's OWN level ceiling keeps the check exact: a
+        /// <c>max_level: 2</c> hero really can only ever hold one stack, so a large per-level delta on it is safe and
+        /// must not be rejected. Clamped into <c>[1, MaxGrowthStacks]</c> so an out-of-range <c>max_level</c> (already
+        /// badged on its own field above) can never produce a degenerate probe.
+        /// </summary>
+        private static int HeroGrowthStacks(int maxLevel)
+        {
+            int stacks = maxLevel - 1;
+            if (stacks < 1) return 1;
+            return stacks > ProjectChimera.Combat.HeroXpSystem.MaxGrowthStacks
+                ? ProjectChimera.Combat.HeroXpSystem.MaxGrowthStacks
+                : stacks;
+        }
+
+        /// <summary>
+        /// DW-650 — validate one hero <c>*_per_level</c> growth delta: the pre-existing coarse
+        /// <see cref="HeroStatGrowthMax"/> range cap first, and — only when that passed — DW-488's shared authoring
+        /// bound (<c>Modifier.CheckAuthoringBounds</c>) applied to the EXACT descriptor
+        /// <c>HeroXpSystem.ReconcileGrowth</c> mints from this field.
+        ///
+        /// <para><b>Why this is not covered by <see cref="HeroStatGrowthMax"/>.</b> That cap (256) was derived from a
+        /// DIFFERENT ceiling — keeping <c>99 × delta</c> inside the 16.16 <c>Fixed</c> integer range (~32768). DW-488's
+        /// bound is much tighter (<c>Modifier.MaxStatDeltaTotalRaw</c> ≈ 4096 stat units) because
+        /// <c>ModifierSystem.AccumulateBonus</c> sums up to <c>EffectCaps.MaxModifiersPerEntity</c> (8) modifier
+        /// contributions into ONE wrapping int accumulator, and DW-28's saturating read cannot recover a value that
+        /// already wrapped. A max-level-100 hero authored at <c>health_per_level: 256</c> passes the coarse cap today and
+        /// contributes 25344 stat units (≈1.66e9 raw) from a single modifier id — over three quarters of
+        /// <c>int.MaxValue</c> on its own, so a couple of ordinary items or researches alongside it wrap the accumulator
+        /// negative and (since DW-325/DW-491) can collapse the hero's own MaxHealth ceiling to 0 and kill it. Growth
+        /// mints its Modifier directly and never reaches <c>AbilityValidator</c>, which is exactly the DW-650 gap.</para>
+        ///
+        /// <para>One badge per field (D-9): when the coarse cap already reported this field, the bound is not also
+        /// reported — the tighter, more actionable message wins.</para>
+        /// </summary>
+        private static void CheckHeroGrowth(List<(string, string)> errors, string kind, string id, string path,
+                                            float v, int growthStacks, int deltaSlot)
+        {
+            int before = errors.Count;
+            CheckStatMax(errors, kind, id, path, v, HeroStatGrowthMax);
+            if (errors.Count != before) return; // already badged (non-finite / negative / over the coarse cap)
+
+            Fixed d = Fixed.FromFloat(v);
+            var probe = new ProjectChimera.Effects.Modifier(
+                ProjectChimera.Combat.HeroXpSystem.HeroGrowthModifierId,
+                durationTicks: -1,                                  // permanent, exactly as ReconcileGrowth mints it
+                ProjectChimera.Effects.StackRule.Stack,
+                maxStacks: growthStacks,
+                maxHealthDelta:    deltaSlot == GrowthMaxHealth    ? d : Fixed.Zero,
+                attackDamageDelta: deltaSlot == GrowthAttackDamage ? d : Fixed.Zero,
+                moveSpeedDelta:    Fixed.Zero,                      // no move-speed growth channel
+                status: ProjectChimera.Effects.StatusFlags.None,
+                periodEffect: null,
+                periodTicks: 0,
+                armorDelta:        deltaSlot == GrowthArmor        ? d : Fixed.Zero);
+
+            (string Field, string Reason)? overBound = probe.CheckAuthoringBounds();
+            if (overBound is not null)
+                errors.Add((path, Located(kind, id, path, overBound.Value.Reason)));
+        }
+
         private static void CheckStatMax(List<(string, string)> errors, string kind, string id, string path, float v, float max)
         {
             if (!float.IsFinite(v) || v < 0f || v >= max)
@@ -535,9 +624,12 @@ namespace ProjectChimera.Core.Definitions
             // downstream squaring/stacking cannot overflow 16.16 Fixed (the pre-3.13 CheckStat allowed up to 32767, which
             // r*r and 99× overflow — reviewer-found).
             CheckStatMax(errors, kind, id, "hero.xp_share_radius", h.XpShareRadius, HeroShareRadiusMax);
-            CheckStatMax(errors, kind, id, "hero.health_per_level", h.HealthPerLevel, HeroStatGrowthMax);
-            CheckStatMax(errors, kind, id, "hero.damage_per_level", h.DamagePerLevel, HeroStatGrowthMax);
-            CheckStatMax(errors, kind, id, "hero.armor_per_level", h.ArmorPerLevel, HeroStatGrowthMax);
+            // DW-650: each *_per_level ALSO goes through DW-488's shared accumulator bound, applied to the exact growth
+            // descriptor HeroXpSystem.ReconcileGrowth mints from these three fields. See CheckHeroGrowth.
+            int growthStacks = HeroGrowthStacks(h.MaxLevel);
+            CheckHeroGrowth(errors, kind, id, "hero.health_per_level", h.HealthPerLevel, growthStacks, GrowthMaxHealth);
+            CheckHeroGrowth(errors, kind, id, "hero.damage_per_level", h.DamagePerLevel, growthStacks, GrowthAttackDamage);
+            CheckHeroGrowth(errors, kind, id, "hero.armor_per_level", h.ArmorPerLevel, growthStacks, GrowthArmor);
 
             // Ability slots — a SET-but-undefined ref is rejected; an empty (null/"") slot is valid (not authored yet).
             // Skip the ref lookup when there is no registry to validate against (mirrors the abilities[] guard).
@@ -625,6 +717,53 @@ namespace ProjectChimera.Core.Definitions
                 if (string.Equals(id, _reservedBasenames[i], System.StringComparison.OrdinalIgnoreCase)) return true;
             return false;
         }
+
+        /// <summary>
+        /// DW-528 — the FILENAME-level companion to <see cref="IsReservedDeviceName"/>, for the callers that do not
+        /// use a free-text id verbatim as the file basename but DECORATE it (a prefix/suffix/extension) before the
+        /// write: true when <paramref name="fileName"/> would land on a Win32 reserved device.
+        ///
+        /// <para>Win32 resolves the reservation against the LAST path component's LEADING segment — everything before
+        /// the FIRST <c>'.'</c>, with trailing dots and spaces stripped — not against the whole name and not against
+        /// "name minus its last extension" (<i>"NUL.txt and NUL.tar.gz are both equivalent to NUL"</i>, Naming Files,
+        /// Paths, and Namespaces). So <c>con.json</c>, <c>con.json.tmp</c> and <c>nul.x_faction.json</c> all name the
+        /// device, while <c>con_faction.json</c> and <c>console.json</c> are ordinary files. Checking the ASSEMBLED
+        /// name rather than the raw id is what keeps a DECORATING caller correct: it neither over-rejects an id that
+        /// its own decoration already makes safe, nor stays silently safe-by-accident if that decoration is later
+        /// shortened, parameterized or dropped.</para>
+        ///
+        /// <para>A PORTABILITY gate, not a local crash guard. Enforcement varies by Windows build — this project's
+        /// dev machine (Win11 26200) creates <c>con.json</c> without complaint from .NET and from <c>cmd.exe</c>
+        /// alike, so DW-454's "the write throws an opaque Save failed" symptom is not reproducible there. The reject
+        /// still earns its place: authored content is meant to be shared, and a file whose basename is a DOS device
+        /// stays unopenable on every Windows build and third-party tool that does enforce the reservation.</para>
+        ///
+        /// <para>Splits on BOTH <c>'/'</c> and <c>'\'</c> explicitly rather than using <c>Path.GetFileName</c>, whose
+        /// separator set is platform-dependent (<c>'\'</c> is an ordinary character on Linux) — the hazard is a
+        /// property of the Windows TARGET, so the verdict must not depend on the authoring host. Godot-free pure
+        /// string comparison, homed beside <see cref="IsReservedDeviceName"/> so there is one convention, not two.</para>
+        /// </summary>
+        public static bool IsReservedDeviceFileName(string? fileName)
+        {
+            if (string.IsNullOrEmpty(fileName)) return false;
+
+            int lastSep = fileName.LastIndexOfAny(_pathSeparators);
+            string leaf = lastSep >= 0 ? fileName.Substring(lastSep + 1) : fileName;
+
+            int firstDot = leaf.IndexOf('.');
+            string basename = firstDot >= 0 ? leaf.Substring(0, firstDot) : leaf;
+
+            // Win32 strips trailing dots and spaces before the device compare, so "con " and "con." are both CON.
+            // Only the SPACE trim can fire after the split above (the leading segment cannot contain a '.'); the '.'
+            // is listed anyway so this line states the whole Win32 rule and stays correct if the split ever changes.
+            basename = basename.TrimEnd(' ', '.');
+
+            return IsReservedDeviceName(basename);
+        }
+
+        /// <summary>Both path separators, checked explicitly by <see cref="IsReservedDeviceFileName"/> so its verdict
+        /// is identical on Windows and Linux (see that method's doc).</summary>
+        private static readonly char[] _pathSeparators = { '/', '\\' };
 
         /// <summary>
         /// Sanitize <paramref name="baseId"/> and, if it already appears in <paramref name="existingIds"/>, suffix it

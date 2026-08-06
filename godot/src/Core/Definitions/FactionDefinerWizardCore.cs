@@ -93,6 +93,18 @@ namespace ProjectChimera.Core.Definitions
         private static readonly JsonSerializerOptions IndentedOptions = new() { WriteIndented = true };
 
         /// <summary>
+        /// The suffix+extension a Finish-written faction file gets: <c>&lt;id&gt;_faction.json</c>. Named (DW-528)
+        /// rather than inlined so the one seam this entry is about — the decoration between a free-text id and the
+        /// name that hits the filesystem — is a single obvious edit point. Shortening, parameterizing or dropping it
+        /// needs NO change to the reserved-device guard in <see cref="TryFinish"/>: that guard inspects the assembled
+        /// file name, so it re-derives the right verdict from whatever this becomes.
+        /// <para>Must stay consistent with the <c>"*_faction.json"</c> discovery globs a written file is later found
+        /// by (<see cref="FactionDefinition"/>'s directory load and <c>SkirmishCatalog</c>) — a file this wizard
+        /// writes under a name those globs miss would save successfully and then be invisible.</para>
+        /// </summary>
+        public const string FactionFileSuffix = "_faction.json";
+
+        /// <summary>
         /// Scan the given absolute faction-JSON paths (alpha/beta today — Story 5.5's "Epics 2-4 content" pool) for
         /// the Roster / Buildings &amp; Tech preset pools. A path that fails to load (missing file, invalid JSON) is
         /// skipped defensively — never throws; the pool is a picker convenience surface, not a load-time gate. Every
@@ -147,17 +159,43 @@ namespace ProjectChimera.Core.Definitions
         }
 
         /// <summary>
-        /// Map one <see cref="FactionValidator"/>-located (or target-exists) error to the wizard step it belongs to.
-        /// A few field paths are unambiguous (<c>color</c>/<c>id</c> → Name &amp; Color, <c>ai_preset</c> → AI
-        /// Preset, <c>units</c> → Roster). The rest (<c>buildings</c>, <c>prerequisites</c>, <c>cost</c>,
-        /// <c>mesh_path</c>, <c>research</c>, and the building-only required fields <c>hp</c>/
-        /// <c>construction_time</c>/<c>supply_bonus</c>/<c>produces_category</c>) are shared between a unit (Roster)
-        /// and a building (Buildings &amp; Tech) — disambiguated by sniffing the message's leading
-        /// <c>"unit '"</c>/<c>"building '"</c> kind label, the shared wording convention <see
-        /// cref="TechTreeValidator"/>/<see cref="ResourceCostValidator"/>/<see cref="BuildingDefinitionValidator"/>
-        /// all use. Falls back to Buildings &amp; Tech when neither prefix matches (a faction-level structural
-        /// message, e.g. a null list, or a research entry — research lives in the combined Buildings &amp; Tech
-        /// step per this story's spec).
+        /// Map one <see cref="FactionValidator"/>-located (or target-exists / raw-JSON parse) error to the wizard step
+        /// it belongs to. Most field paths are unambiguous (<c>color</c>/<c>id</c> → Name &amp; Color,
+        /// <c>ai_preset</c>/<c>signature_mechanic*</c> → AI Preset, <c>units</c>/<c>hero_unit_id</c> → Roster,
+        /// <c>starting_ore</c>/<c>starting_crystal</c> → Starting Conditions, <c>raw_json</c> → Name &amp; Color).
+        /// The rest (<c>buildings</c>, <c>prerequisites</c>, <c>cost</c>, <c>mesh_path</c>, <c>research</c>, and the
+        /// building-only required fields <c>hp</c>/<c>construction_time</c>/<c>supply_bonus</c>/
+        /// <c>produces_category</c>) are shared between a unit (Roster) and a building (Buildings &amp; Tech) —
+        /// disambiguated by sniffing the message's leading <c>"unit '"</c>/<c>"building '"</c> kind label, the shared
+        /// wording convention <see cref="TechTreeValidator"/>/<see cref="ResourceCostValidator"/>/<see
+        /// cref="BuildingDefinitionValidator"/> all use. Falls back to Buildings &amp; Tech when neither prefix
+        /// matches (a faction-level structural message, e.g. a null list, or a research entry — research lives in the
+        /// combined Buildings &amp; Tech step per this story's spec).
+        ///
+        /// <para><b>DW-114/DW-116 (step-route hardening).</b> Every field path any error-producing surface can name is
+        /// now EXPLICIT here rather than relying on the Buildings &amp; Tech sniff-default, which has no UI for any of
+        /// them. That default is a fallback for genuinely-ambiguous shared paths, not a place for a known field to
+        /// land: a creator sent to Buildings &amp; Tech for a negative <c>starting_ore</c> sees no offending control at
+        /// all. <c>starting_ore</c>/<c>starting_crystal</c> became LIVE (not latent) once
+        /// <see cref="FactionValidator.Validate"/> gained DW-115's finite-and-non-negative check — they are the two
+        /// controls the Starting Conditions step actually renders, so that is where the remedy is. The remaining
+        /// additions are still unreachable today (no validator emits them) and are pre-wired so a later check cannot
+        /// silently misroute: <c>signature_mechanic</c>/<c>signature_mechanic_display</c> join the already-routed
+        /// <c>signature_mechanic_effect_id</c> at AI Preset, the faction-config-level step that hosts the other
+        /// descriptor fields; <c>raw_json</c> (a <see cref="TryFinishFromRawJson"/> parse failure) maps to Name &amp;
+        /// Color, the wizard's first step — Advanced mode has no step tabs to jump to and
+        /// <c>FactionDefinerPanel.OnFinishPressed</c> deliberately skips the jump there, so this exists purely so any
+        /// FUTURE consumer of <see cref="FactionDefinerFinishResult.Step"/> (logging, an error-label step chip, a
+        /// different UI surface) reads a defensible step instead of a misleading Buildings &amp; Tech.</para>
+        ///
+        /// <para><b>DW-505 (the kind-label sniff reads the REASON).</b> The sniff used to run on the raw message, so it
+        /// only matched a message whose kind label was literally first. <see cref="FactionValidator.ValidateComplete"/>
+        /// wrapped its two item-level <c>mesh_path</c> errors in the FACTION-level <c>"faction '&lt;id&gt;'.mesh_path: "</c>
+        /// prefix, which pushed the label off the front and dropped every missing-UNIT-mesh_path error on the
+        /// Buildings &amp; Tech fallback — a step with no roster control, in the one flow (Finish) where the author is
+        /// already blocked. That validator now emits the item-level shape, and this method additionally strips a
+        /// faction-located prefix before sniffing, so neither side alone can re-open the mis-route. The two mesh_path
+        /// producers (that validator and <see cref="MeshAssetLint"/>) now share one message shape.</para>
         /// </summary>
         public static FactionDefinerStep StepForError(string fieldPath, string message)
         {
@@ -168,14 +206,59 @@ namespace ProjectChimera.Core.Definitions
                 case "ai_preset": return FactionDefinerStep.AiPreset;
                 case "units": return FactionDefinerStep.Roster;
                 // DW-106 / DW-114: a hero is a roster unit — the Roster step is where the remedy lives (pick/unpick
-                // the referenced unit). A signature_mechanic_effect_id is not editable in any Simple step; route it to
+                // the referenced unit). A signature_mechanic_* field is not editable in any Simple step; route it to
                 // AI Preset, a defensible faction-config-level default (per DW-114's routing note).
                 case "hero_unit_id": return FactionDefinerStep.Roster;
+                case "signature_mechanic": return FactionDefinerStep.AiPreset;
+                case "signature_mechanic_display": return FactionDefinerStep.AiPreset;
                 case "signature_mechanic_effect_id": return FactionDefinerStep.AiPreset;
+                // DW-114/DW-115: the two economy fields the Starting Conditions step renders as editable inputs.
+                case "starting_ore": return FactionDefinerStep.StartingConditions;
+                case "starting_crystal": return FactionDefinerStep.StartingConditions;
+                // DW-116: a raw-JSON parse failure names no wizard field at all — the whole document is wrong. Name &
+                // Color (the first step) is the defensible landing spot; Advanced mode itself never reads Step.
+                case "raw_json": return FactionDefinerStep.NameColor;
             }
-            if (!string.IsNullOrEmpty(message) && message.StartsWith("unit '", StringComparison.Ordinal))
+            // DW-505: sniff the kind label on the REASON, not on the raw message. The label normally leads
+            // (MeshAssetLint / UnitDefinitionValidator / BuildingDefinitionValidator / TechTreeValidator /
+            // ResourceCostValidator all emit "unit '<id>'.<field>: <reason>"), but a faction-level validator can wrap
+            // an item-level reason in its own "faction '<id>'.<field>: " prefix — which used to defeat this match
+            // outright and drop a missing-unit-mesh_path error on the Buildings & Tech fallback. FactionValidator no
+            // longer produces that shape (it emits the item-level form for its two mesh_path errors), and stripping
+            // the prefix here keeps the routing correct for any future faction-located message that carries a kind
+            // label. A genuine faction-level reason ("units list is null.", "duplicate building id 'x' …") carries no
+            // kind label, so it still falls through to Buildings & Tech exactly as before.
+            string reason = StripFactionLocatedPrefix(message);
+            if (reason.StartsWith("unit '", StringComparison.Ordinal))
                 return FactionDefinerStep.Roster;
             return FactionDefinerStep.BuildingsTech;
+        }
+
+        /// <summary>The head of <see cref="FactionValidator"/>'s faction-level located idiom,
+        /// <c>"faction '{id}'.{path}: {reason}"</c>.</summary>
+        private const string FactionLocatedHead = "faction '";
+
+        /// <summary>
+        /// Return <paramref name="message"/> with a leading faction-level located prefix
+        /// (<c>"faction '{id}'.{path}: "</c>) removed, or the message unchanged when it carries no such prefix
+        /// (DW-505). Null/empty reads as <c>""</c>. Parses positionally — the first <c>'.</c> after the opening quote
+        /// ends the id, the first <c>": "</c> after that ends the field path — rather than assuming a fixed id shape,
+        /// because a faction id is free text. A pathological id containing <c>'.</c> can mis-split, which at worst
+        /// yields a substring that matches no kind label and lands on the same Buildings &amp; Tech fallback an
+        /// unparsed message would have: a wrong tab is the entire blast radius, never an exception.
+        /// </summary>
+        private static string StripFactionLocatedPrefix(string message)
+        {
+            if (string.IsNullOrEmpty(message)) return "";
+            if (!message.StartsWith(FactionLocatedHead, StringComparison.Ordinal)) return message;
+
+            int idEnd = message.IndexOf("'.", FactionLocatedHead.Length, StringComparison.Ordinal);
+            if (idEnd < 0) return message;
+
+            int reasonStart = message.IndexOf(": ", idEnd + 2, StringComparison.Ordinal);
+            if (reasonStart < 0) return message;
+
+            return message[(reasonStart + 2)..];
         }
 
         /// <summary>
@@ -296,6 +379,29 @@ namespace ProjectChimera.Core.Definitions
         /// is derived from <paramref name="factionsDirAbsolute"/> by walking up to the enclosing <c>project.godot</c>,
         /// and when there is no such project tree on disk (an exported build, a unit test's bare temp directory) the
         /// lint is skipped rather than rejecting every path it cannot resolve.</para>
+        ///
+        /// <para><b>DW-528: the reserved-device-basename guard.</b> The id is free text and this method is where it
+        /// becomes a file name, so alongside the path-separator/traversal reject the assembled
+        /// <c>&lt;id&gt;<see cref="FactionFileSuffix"/></c> is run through
+        /// <see cref="UnitDefinitionValidator.IsReservedDeviceFileName"/> — the same DW-454 convention the unit,
+        /// building and item id gates enforce. Checked on the assembled NAME (not the bare id) because Win32 reserves
+        /// only the segment before the first <c>'.'</c>: that both spares an id the suffix already makes safe
+        /// (<c>con</c> → <c>con_faction.json</c>, an ordinary file) and catches one it does not (<c>con.x</c> →
+        /// <c>con.x_faction.json</c>, the CON device). A portability gate — see the inline comment for what modern
+        /// Windows builds actually enforce.</para>
+        ///
+        /// <para><b>DW-112: the <c>File.Exists</c> → <c>File.Move</c> TOCTOU window.</b> The target-exists pre-check
+        /// and the <c>overwrite:false</c> move are two separate filesystem observations, so a target that appears
+        /// BETWEEN them (a second wizard session, an external tool) used to fall through to the generic
+        /// <c>"save failed: {ex.Message}"</c> branch and hand the creator a raw OS string ("Cannot create a file when
+        /// that file already exists.") for the exact situation the pre-check words helpfully. The move now classifies
+        /// its own failure through <see cref="TryClassifyTargetCollision"/>: when the destination name turns out to be
+        /// taken, the SAME located <c>id</c> error the pre-check produces is returned instead — one shared builder
+        /// (<see cref="TargetFileExistsFailure"/>) so the two wordings cannot drift. The atomic move was never the
+        /// risk (<c>overwrite:false</c> still refuses to clobber); this is purely the UX half. A destination occupied
+        /// by a DIRECTORY is the same class of problem and the same remedy (choose a different id) — the pre-check's
+        /// <c>File.Exists</c> cannot see it at all, so it is classified here with its own accurate wording rather than
+        /// left on the opaque generic branch. Any other write failure keeps the generic message unchanged.</para>
         /// </summary>
         public static FactionDefinerFinishResult TryFinish(FactionDefinition def, string factionsDirAbsolute,
             AbilityRegistry? abilityRegistry = null, Func<string, bool>? meshExists = null)
@@ -347,31 +453,120 @@ namespace ProjectChimera.Core.Definitions
                 });
             }
 
-            string targetAbs = Path.Combine(factionsDirAbsolute, $"{id}_faction.json");
-            if (File.Exists(targetAbs))
+            // The single place the free-text id becomes a file name. Built into a local FIRST so the reserved-device
+            // guard below inspects the exact name that is about to be written, not a reconstruction of it.
+            string fileName = $"{id}{FactionFileSuffix}";
+
+            // DW-528: wire DW-454's reserved-device-basename convention (the one the unit/building/item id validators
+            // already enforce) into this free-text filename path, so the safety here is EXPLICIT rather than an
+            // accident of the "_faction" suffix.
+            //
+            // Checked on the ASSEMBLED fileName, not on the bare id, because Win32 reserves only the leading segment
+            // — everything before the FIRST '.' ("NUL.tar.gz is equivalent to NUL", Naming Files/Paths/Namespaces).
+            // That distinction is the whole point: today's suffix makes a bare "con" harmless (`con_faction.json` is
+            // an ordinary file, and refusing it would be a gratuitous restriction), while an id of "con.x" or "nul."
+            // is NOT harmless — it passes the separator/traversal guard above ('.' is a legal filename char and there
+            // is no "..") and still assembles a reserved leading segment. Reading the assembled name also means this
+            // guard stays correct with no further edit if FactionFileSuffix is ever shortened, parameterized or
+            // dropped. The sibling ".tmp" write needs no separate check: it shares this name's leading segment.
+            //
+            // Scope, measured rather than assumed: whether the filesystem itself REFUSES such a name depends on the
+            // Windows build — this project's dev machine (Win11 26200) creates `con.json` happily, from .NET and from
+            // cmd.exe alike, so DW-454's "the write throws an opaque Save failed" symptom is not observable there.
+            // The reject is therefore a PORTABILITY gate, not a local crash fix: a faction file whose basename is a
+            // DOS device is still unopenable by every Windows build and third-party tool that does enforce the
+            // reservation, and authored content is meant to be shared. Authoring-time reject only — nothing folded
+            // into SimChecksum/ContentHash/StartStateHash moves.
+            if (UnitDefinitionValidator.IsReservedDeviceFileName(fileName))
             {
                 return FactionDefinerFinishResult.Failure(new (string, string)[]
                 {
-                    ("id", $"a faction file already exists at '{targetAbs}' — choose a different id " +
-                           "(an existing faction file is never overwritten)."),
+                    ("id", $"faction id '{id}' makes the file '{fileName}', whose basename is a Windows reserved " +
+                           $"device name ({UnitDefinitionValidator.ReservedPipeList}) — Windows matches everything " +
+                           "before the first '.', and systems that enforce the reservation cannot open such a file, " +
+                           "so rename before saving."),
                 });
             }
 
+            string targetAbs = Path.Combine(factionsDirAbsolute, fileName);
+            if (File.Exists(targetAbs))
+                return TargetFileExistsFailure(targetAbs);
+
             string tmp = targetAbs + ".tmp";
+            // DW-112: distinguishes "the MOVE failed" from "the serialize/write/self-check failed". Only a move
+            // failure may be re-read as a target-name collision — a write that failed for its own reason (a locked
+            // .tmp, a full disk) must keep reporting that reason even if some other process happens to have taken
+            // the target name in the meantime, because that reason is the truthful account of what went wrong.
+            bool moveAttempted = false;
             try
             {
                 string json = SerializeDraftClean(def);
                 File.WriteAllText(tmp, json);
                 _ = FactionDefinition.LoadFromFile(tmp);   // self-check: refuse to report success for a file that won't reload
+                moveAttempted = true;
                 File.Move(tmp, targetAbs, overwrite: false);
                 return FactionDefinerFinishResult.Success(targetAbs);
             }
             catch (Exception ex)
             {
                 try { if (File.Exists(tmp)) File.Delete(tmp); } catch { /* leave no stray .tmp */ }
-                return FactionDefinerFinishResult.Failure(new (string, string)[] { ("id", $"save failed: {ex.Message}") });
+
+                // DW-112: the pre-check above and the overwrite:false move are two separate observations of the same
+                // fact, so a target created in the window between them lands here. Classify ONCE (the classifier
+                // re-probes the filesystem, and probing twice could itself observe two different states), and fall
+                // back to the unchanged generic message for every failure that is not a name collision.
+                FactionDefinerFinishResult? collision =
+                    moveAttempted ? TryClassifyTargetCollision(ex, targetAbs) : null;
+                return collision ?? FactionDefinerFinishResult.Failure(
+                    new (string, string)[] { ("id", $"save failed: {ex.Message}") });
             }
         }
+
+        /// <summary>
+        /// DW-112 — re-read a failed <see cref="File.Move(string, string, bool)"/> as a target-name collision, or
+        /// return null when it is not one (leaving the caller's generic <c>"save failed: …"</c> message in place).
+        ///
+        /// <para>Classifies by re-probing the destination rather than by inspecting the exception's platform-specific
+        /// <see cref="Exception.HResult"/>/errno: an <c>overwrite:false</c> move that fails while the destination is
+        /// occupied IS the collision, on every platform, and the probe stays readable. Only
+        /// <see cref="IOException"/>/<see cref="UnauthorizedAccessException"/> are eligible (the two families a
+        /// filesystem move raises) so an unrelated failure type can never be dressed up as a collision.</para>
+        ///
+        /// <para>Internal, not private, so the Tier-1 suite can pin the concurrent-FILE arm directly — that arm needs
+        /// a target that materialises strictly between the pre-check and the move, which no single-threaded test can
+        /// stage. The directory arm IS reachable end-to-end (<see cref="File.Exists"/> is blind to a directory, so the
+        /// pre-check waves it through and the move collides), and covers the wiring from the catch into this method.</para>
+        /// </summary>
+        internal static FactionDefinerFinishResult? TryClassifyTargetCollision(Exception moveFailure, string targetAbs)
+        {
+            if (moveFailure is not IOException and not UnauthorizedAccessException) return null;
+            if (File.Exists(targetAbs)) return TargetFileExistsFailure(targetAbs);
+            if (Directory.Exists(targetAbs)) return TargetDirectoryBlocksFailure(targetAbs);
+            return null;
+        }
+
+        /// <summary>DW-112 — the SINGLE producer of the "that faction file already exists, pick another id" located
+        /// error, shared by <see cref="TryFinish"/>'s target-exists pre-check and by
+        /// <see cref="TryClassifyTargetCollision"/>'s post-move re-read, so the two can never word the same fact
+        /// differently. Names the <c>id</c> field, which <see cref="StepForError"/> routes to
+        /// <see cref="FactionDefinerStep.NameColor"/> — the step holding the control that fixes it.</summary>
+        private static FactionDefinerFinishResult TargetFileExistsFailure(string targetAbs) =>
+            FactionDefinerFinishResult.Failure(new (string, string)[]
+            {
+                ("id", $"a faction file already exists at '{targetAbs}' — choose a different id " +
+                       "(an existing faction file is never overwritten)."),
+            });
+
+        /// <summary>DW-112 — the destination NAME is taken by a directory. Same remedy as
+        /// <see cref="TargetFileExistsFailure"/> (choose a different id) and the same <c>id</c> field, but worded
+        /// accurately: nothing is being overwritten and there is no existing faction file to preserve. Only reachable
+        /// after the move, since <see cref="File.Exists"/> reports false for a directory.</summary>
+        private static FactionDefinerFinishResult TargetDirectoryBlocksFailure(string targetAbs) =>
+            FactionDefinerFinishResult.Failure(new (string, string)[]
+            {
+                ("id", $"a folder already exists at '{targetAbs}', so the faction file cannot be written there — " +
+                       "choose a different id."),
+            });
 
         /// <summary>
         /// Assemble the Finish-write JSON for a brand-new faction file: a fresh top-level <see cref="JsonObject"/>

@@ -62,6 +62,25 @@ namespace ProjectChimera.Core.Definitions
         // silently defaulting them to CommandCenter the way the applier does (D4).
         private static readonly string[] _buildingTypeNames = Enum.GetNames(typeof(BuildingType));
 
+        /// <summary>
+        /// DW-627 — the PLACEABLE built-in building-type names: every <see cref="BuildingType"/> member except the
+        /// <see cref="BuildingType.Custom"/> sentinel (which resolves no def → a stat-less, unrendered ghost, so it
+        /// is not an identity a map may name). Derived from the enum, never hand-listed: a hand-listed copy is
+        /// exactly how <c>LLMService</c>'s private shadow enum sat one member behind the real one from Story 2.8
+        /// (Aviary) until DW-627. INTERNAL because the LLM generation gate reads the same vocabulary — for its
+        /// building-type prompt lines and its rejection messages — so the request and both gates can never drift.
+        /// </summary>
+        internal static readonly string[] PlaceableBuildingTypeNames = BuildPlaceableBuildingTypeNames();
+
+        private static string[] BuildPlaceableBuildingTypeNames()
+        {
+            var names = new List<string>(_buildingTypeNames.Length);
+            for (int i = 0; i < _buildingTypeNames.Length; i++)
+                if (_buildingTypeNames[i] != nameof(BuildingType.Custom))
+                    names.Add(_buildingTypeNames[i]);
+            return names.ToArray();
+        }
+
         // Story 4.7: the closed resource_type vocabulary (mirrors _buildingTypeNames — small, hand-authored,
         // allocated once). Only Ore/Crystal have real ResourceStore-backed balances today.
         private static readonly string[] _resourceTypeNames = { "Ore", "Crystal" };
@@ -282,6 +301,27 @@ namespace ProjectChimera.Core.Definitions
                     return ValidationResult.Fail(
                         $"scenario.player_slots[{i}].slot={s.Slot} is a duplicate.");
 
+                // DW-442 — `team` was the one per-slot field this loop never looked at. A NEGATIVE ordinal is an
+                // authoring lie the file can carry all the way into a match: AllianceSeeder.ComputeTeamIds treats
+                // `team <= 0` as UNASSIGNED/FFA, so -1 silently means "no team" while the JSON says otherwise — and
+                // because Team folds into the match-agreement hash (MatchAgreementHash, algo v2) two peers whose files
+                // differ only in WHICH negative ordinal they carry fail the start handshake over alliance masks that
+                // are byte-identical. Reject it located; 0 — the omit-when-default FFA value every pre-9.14 scenario
+                // carries — still passes, so no shipped map moves.
+                //
+                // A POSITIVE ordinal is deliberately NOT range-capped here. Ordinals are arbitrary authoring labels
+                // that never reach a sim store (the canonical id is always a faction slot; AllianceSeederTests pins
+                // ordinals 5/9 seeding ids 1/3), and the DEGENERATE positive layouts — every active slot on one team,
+                // an inert team-of-one — are NOT load failures: trigger factions are gated by CheckFactionSlot, not by
+                // `declared`, so a co-op map whose enemies arrive from `spawn_unit` triggers on an UNDECLARED faction
+                // slot is legitimately all-allied among its declared slots. Those cases are non-fatal author-facing
+                // advisories in CollectAdvisories instead (the lobby's own all-allied rule, SkirmishSetupValidator
+                // rule 7, can be a hard error because there the active set IS the whole match).
+                if (s.Team < 0)
+                    return ValidationResult.Fail(
+                        $"scenario.player_slots[{i}].team={s.Team} must be >= 0 (0 = unassigned/FFA; a negative " +
+                        "ordinal is silently treated as FFA by the alliance seeder).");
+
                 string? e = CheckNonNeg($"scenario.player_slots[{i}].start_ore", s.StartOre)
                          ?? CheckNonNeg($"scenario.player_slots[{i}].start_crystal", s.StartCrystal)
                          ?? CheckCoord($"scenario.player_slots[{i}].base_x", s.BaseX, bounds)
@@ -391,9 +431,25 @@ namespace ProjectChimera.Core.Definitions
                 // Same owner-def amnesty as the Story 6.8 building-type gate: when no faction defs are threaded (the
                 // default — every legacy caller/test) or the owner slot resolves to no def, there is nothing to
                 // resolve against and the check is a no-op, byte-identical to the pre-DW-240 gate.
-                if (!IsKnownUnitId(u.UnitId, OwnerFactionDef(slotFactionDefs, u.Slot)))
+                // DW-652 (recorded decision, 2026-08-05): the fail-closed posture above is RIGHT for a dangling
+                // reference and WRONG for a reference the author never got wrong. Two concrete paths reach an
+                // unresolvable id with a blameless map, and both used to cost the WHOLE scenario (the fallback map
+                // boots instead of the authored one — strictly worse than losing one entity):
+                //   (1) TAG-DROPPED UNIT — UnitTagValidator.ValidateAndDropUnits runs on the loaded faction BEFORE this
+                //       gate (SlotFactionResolver / ServerBootstrap / MainScene) and REMOVES any unit carrying an
+                //       unknown tag. The map named a unit its faction really does declare; the engine deleted it.
+                //   (2) The fallback mirror's worker id — hardened at the source (ScenarioApplier.WorkerIdForSlot now
+                //       resolves an id that is actually in the roster, or omits the row), so the mirror can no longer
+                //       name an unresolvable unit and can no longer be rejected into an EMPTY WORLD.
+                // Case (1) is downgraded HERE to the per-entity drop the applier already performs (def == null ⇒ warn +
+                // skip that unit, the rest of the scenario loads). Everything else — a blank id, a typo, a
+                // cross-faction id — is a genuinely malformed reference and still fails closed exactly as DW-240
+                // specified. The distinction is only decidable because the tag validator records what it removed.
+                FactionDefinition? unitOwnerDef = OwnerFactionDef(slotFactionDefs, u.Slot);
+                if (!IsKnownUnitId(u.UnitId, unitOwnerDef)
+                    && !unitOwnerDef!.WasUnitDroppedForInvalidTag(u.UnitId))
                     return ValidationResult.Fail(UnknownUnitIdError($"scenario.units[{i}].unit_id", u.UnitId,
-                        OwnerFactionDef(slotFactionDefs, u.Slot), u.Slot));
+                        unitOwnerDef, u.Slot));
             }
 
             // ── Regions (Story 6.4) — fail-closed well-formedness so a malformed/cheat region can never reach the
@@ -936,6 +992,24 @@ namespace ProjectChimera.Core.Definitions
                             if (ga.Kind == "spawn_unit" && (ga.Count < 1 || ga.Count > EffectCaps.MaxSpawnCount))
                                 return ValidationResult.Fail(
                                     $"{gp}.count={ga.Count} is out of range 1..EffectCaps.MaxSpawnCount={EffectCaps.MaxSpawnCount}.");
+                            // DW-509 — the graph channel gets the SAME spawn PLACEMENT gates as the flat pass. Both
+                            // channels merge into ONE execution walk and both land on the identical
+                            // ScenarioDelegateBinder.OnSpawnUnit → ScenarioApplier.SpawnUnitAt write, so a byte-identical
+                            // spawn authored in the graph IR must be accepted/rejected byte-identically: a coordinate
+                            // outside ±map_bounds is the same authoring error in either channel (and, past
+                            // MapSizes.MaxHalfExtent, the same grid-aliasing lie the map_bounds ceiling closes), and a
+                            // spawn onto a blocked cell of the AUTHORED union (painted ∪ blocking prop / water footprint)
+                            // places a unit where none can legally stand. Same order + same helpers as the flat
+                            // `a.Type == "spawn_unit"` arm above, so the first-fail message is identical apart from the
+                            // node-located path prefix. Cheap no-op for every other action kind and for a null grid.
+                            if (ga.Kind == "spawn_unit")
+                            {
+                                string? gce = CheckCoordFixed($"{gp}.x", ga.X, bounds)
+                                           ?? CheckCoordFixed($"{gp}.z", ga.Z, bounds);
+                                if (gce != null) return ValidationResult.Fail(gce);
+                                string? gbe = CheckNotBlocked(gp, "spawn_unit position", ga.X, ga.Z, painted);
+                                if (gbe != null) return ValidationResult.Fail(gbe);
+                            }
                             // DW-240 — the graph channel gets the SAME unknown-unit_id gate as the flat pass (both
                             // channels merge into one execution walk and hit the identical OnSpawnUnit resolution).
                             if (ga.Kind == "spawn_unit"
@@ -990,6 +1064,21 @@ namespace ProjectChimera.Core.Definitions
                         }
                     }
                 }
+
+                // ── DW-628 — the graph channel's BUILDING-REF gate, the last per-leaf rule the flat pass had and
+                //    this channel did not. An event/condition node naming a building that resolves in NEITHER
+                //    vocabulary (a BuildingType enum name, or an authored building id in the faction the node
+                //    itself names) is the same silently-inert authoring error the flat arms reject: a typo'd
+                //    building_completed ref index-encodes an id no placed building carries, and a building_exists
+                //    ref matches nothing — forever, with no load error. Runs AFTER the per-node loop so an
+                //    out-of-range faction slot (which would null the owner def and downgrade the message to
+                //    "unknown building") is reported as the faction error it actually is. The rule itself lives in
+                //    GraphStructureGate beside the other whole-graph rulebooks and calls the SAME
+                //    IsKnownBuildingType/OwnerFactionDef pair the flat arms above use — one vocabulary by
+                //    construction, threaded with the same per-slot faction defs. ──
+                string? graphBuildingErr = GraphStructureGate.CheckBuildingRefs(parsedGraph, slotFactionDefs);
+                if (graphBuildingErr != null)
+                    return ValidationResult.Fail($"scenario.trigger_graph {graphBuildingErr}");
 
                 // ── Story 7.4 — expression consumer edges: run the ExprCompiler (the full load-time rulebook:
                 //    strict typing, literal-zero divisor, undeclared/mis-scoped variables, TriggerLocal-in-condition,
@@ -1318,7 +1407,62 @@ namespace ProjectChimera.Core.Definitions
                     $"{nContent} placed object(s) are outside the current map bounds ({m.MapBounds}) — " +
                     $"a smaller map size can strand content; move or delete them before saving/exporting.");
 
+            // DW-442 — team advisories, APPENDED LAST so the existing advisories keep their indices. An FFA map
+            // (every slot team=0, i.e. every shipped scenario and every ScenarioData.CreateBlank) produces NOTHING
+            // here: the FFA mapping gives each faction its own side, so neither branch below can fire.
+            CollectTeamAdvisories(m, advisories);
+
             return advisories;
+        }
+
+        /// <summary>
+        /// DW-442 — the non-fatal author-facing half of the team gate: the degenerate-but-loadable team layouts
+        /// <see cref="Validate"/> deliberately does not reject (see the `team` check in its player-slots loop for why
+        /// they are advisories and not load failures).
+        ///
+        /// <para>The "sides" verdict is computed through <see cref="AllianceSeeder.ComputeTeamIds(ScenarioData?)"/> —
+        /// the SAME mapping the sim seeds into <c>AllianceStore</c> and the match-agreement hash folds — so the warning
+        /// can never disagree with the alliances the match actually gets (no second hand-copied grouping loop to
+        /// drift). Two slots are on the same side exactly when they share a canonical team id; under FFA that id is the
+        /// faction's own slot, so each unassigned slot is its own side (the semantics <c>SkirmishSetupValidator</c>
+        /// rule 7 encodes for the lobby).</para>
+        ///
+        /// <para>The seeder's OWN diagnostics (out-of-range member dropped, duplicate-<c>.Slot</c> last-write-wins,
+        /// inert team-of-one) are forwarded verbatim under a <c>scenario.</c> prefix so the editor surfaces them in the
+        /// one place authors already look, and so the knowledge of what the mapping silently does lives with the
+        /// mapping. Pure — never throws, never logs, mutates nothing.</para>
+        /// </summary>
+        private static void CollectTeamAdvisories(ScenarioData m, List<string> advisories)
+        {
+            ScenarioPlayerSlot[] slots = m.PlayerSlots ?? Array.Empty<ScenarioPlayerSlot>();
+
+            // Distinct SIDES among the slots the engine can actually field. Count distinct FACTIONS, not entries, so a
+            // duplicated .Slot (which Validate hard-rejects, but a mid-edit model can still carry) cannot inflate the
+            // active count and mask the all-allied verdict.
+            int[] teamIdByFaction = AllianceSeeder.ComputeTeamIds(m);
+            var seenFactions = new HashSet<int>();
+            var sides        = new HashSet<int>();
+            foreach (ScenarioPlayerSlot s in slots)
+            {
+                if (s is null) continue;
+                int faction = s.Slot + 1;
+                if (faction <= 0 || faction >= teamIdByFaction.Length) continue; // never fielded — Neutral / off-ceiling
+                if (!seenFactions.Add(faction)) continue;
+                sides.Add(teamIdByFaction[faction]);
+            }
+
+            // The headline degenerate case: every start position allied with every other one. Nothing auto-acquires,
+            // nothing force-fires, nothing is ever eliminated — an elimination win condition can never resolve, so the
+            // match hangs. Legal (a trigger-driven co-op map spawns its enemies on an undeclared faction slot), but
+            // almost always a mistake worth telling the author about.
+            if (seenFactions.Count >= 2 && sides.Count == 1)
+                advisories.Add(
+                    $"All {seenFactions.Count} start positions are on the same team — no two of them are hostile, so " +
+                    "nothing will ever engage and an elimination win condition can never resolve. Put at least one " +
+                    "start position on a different team, or leave a slot unassigned (team 0).");
+
+            foreach (string d in AllianceSeeder.CollectDiagnostics(m))
+                advisories.Add("scenario." + d);
         }
 
         // ── DW-148: the LOAD-TIME spawn-in-blocked-cell guard (the resolved-union half the pre-tick gate cannot see) ──
@@ -1530,8 +1674,12 @@ namespace ProjectChimera.Core.Definitions
         /// DW-170 — the trigger gate now calls this with the OWNER faction of the event/condition's own
         /// <c>faction</c> slot (its faction qualifier), so a trigger can name an authored custom building exactly
         /// like a pre-placed scenario building does. <c>ScenarioDirector</c> resolves the same two vocabularies at
-        /// runtime (enum name → <c>BuildingStore.Type</c>, authored id → <c>BuildingStore.DefinitionId</c>).</summary>
-        private static bool IsKnownBuildingType(string? type, FactionDefinition? ownerDef = null)
+        /// runtime (enum name → <c>BuildingStore.Type</c>, authored id → <c>BuildingStore.DefinitionId</c>).
+        /// DW-627 — INTERNAL, not private: <c>LLMService</c>'s generation gate used to run its own 4-name copy of
+        /// this vocabulary (a private shadow enum + a hardcoded string set), so an AI-generated map naming a custom
+        /// building — or the built-in Aviary — was rejected UPSTREAM of this validator. Both LLM sites now call THIS
+        /// predicate, so there is one resolution rule for hand-authored, editor-authored and generated scenarios.</summary>
+        internal static bool IsKnownBuildingType(string? type, FactionDefinition? ownerDef = null)
         {
             if (type is null) return false;
             for (int i = 0; i < _buildingTypeNames.Length; i++)
@@ -1570,8 +1718,11 @@ namespace ProjectChimera.Core.Definitions
         /// <summary>Story 6.8 — resolve a pre-placed building's owner <see cref="FactionDefinition"/> from the
         /// per-slot defs (indexed by <c>(int)Faction</c> = slot+1). Null when no defs are threaded or the slot is out
         /// of range — the caller then falls back to enum-name-only building-type acceptance. DW-240 reuses it for the
-        /// pre-placed / spawn_unit unit-id resolution domain (the same per-slot roster the applier reads).</summary>
-        private static FactionDefinition? OwnerFactionDef(IReadOnlyList<FactionDefinition?>? slotFactionDefs, int slot)
+        /// pre-placed / spawn_unit unit-id resolution domain (the same per-slot roster the applier reads).
+        /// DW-627 — INTERNAL so <c>LLMService</c>'s generation gate resolves an owner faction with the SAME slot→def
+        /// indexing convention (slot + 1) the load gate and the applier use; a second hand-rolled cast there would be
+        /// an off-by-one waiting to happen.</summary>
+        internal static FactionDefinition? OwnerFactionDef(IReadOnlyList<FactionDefinition?>? slotFactionDefs, int slot)
         {
             if (slotFactionDefs is null) return null;
             int fIdx = slot + 1; // (Faction)(slot + 1), matching the applier's cast

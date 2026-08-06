@@ -20,8 +20,10 @@ namespace ProjectChimera.Sim.Tests.Validation
             WinCondition = WinCondition.DestroyAllBuildings,
         };
 
+        // Bump history lives on CanonicalModelHash.AlgoVersion's XML doc, never restated here (DW-583).
+        // The prop/water folds this file covers are unchanged since the version named in the class summary above.
         [Fact]
-        public void AlgoVersion_IsPinned() => Assert.Equal(14, CanonicalModelHash.AlgoVersion); // 7.5 re-land merge: 9→10 (custom-events fold); Story 7.9: 10→11 (Button fold). Prop/water folds unchanged.
+        public void AlgoVersion_IsPinned() => Assert.Equal(14, CanonicalModelHash.AlgoVersion);
 
         [Fact]
         public void EmptyPropsWater_HashEqual_ToBaseline()

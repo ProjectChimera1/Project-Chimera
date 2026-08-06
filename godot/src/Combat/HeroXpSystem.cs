@@ -324,7 +324,13 @@ namespace ProjectChimera.Combat
         /// <summary>Reconcile per-level stat growth to <c>desired = Level-1</c> stacks of the permanent growth modifier
         /// via the FOLDED <see cref="ModifierStore.Apply"/> (D3). Applies <c>desired - GrowthStacksApplied</c> more stacks
         /// and records the new count. No-op when already reconciled, or when the hero entity is dead/link-stale (revival
-        /// is Story 3.14). Idempotent; covers mid-match level-ups AND the deploy-at-level-N first-tick catch-up.</summary>
+        /// is Story 3.14). Idempotent; covers mid-match level-ups AND the deploy-at-level-N first-tick catch-up.
+        /// <para>DW-650: the descriptor minted below is one of the three <see cref="Modifier"/> minters that never reach
+        /// <c>AbilityValidator</c>, so DW-488's <see cref="Modifier.CheckAuthoringBounds"/> accumulator bound is adopted
+        /// at this path's own content gate — <c>UnitDefinitionValidator.CheckHeroGrowth</c> runs THIS exact shape
+        /// (<see cref="StackRule.Stack"/> × the hero's <c>max_level - 1</c> worst case) over the authored
+        /// <c>hero.*_per_level</c> fields. Changing the shape here (a new delta channel, a different stack rule) must be
+        /// mirrored there or the bound stops covering what this actually installs.</para></summary>
         private void ReconcileGrowth(EntityWorld world, int slot)
         {
             int desired = _heroes.Level[slot] - 1;
