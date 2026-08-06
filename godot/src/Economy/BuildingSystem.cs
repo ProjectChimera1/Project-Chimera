@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using ProjectChimera.Combat;
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
+using ProjectChimera.Effects;   // StatusFlags (modifier-imposed per-entity status; a value enum, same sim layer)
 
 namespace ProjectChimera.Economy
 {
@@ -68,6 +69,21 @@ namespace ProjectChimera.Economy
         /// <see cref="TrainUnit"/>'s chosen-unit category guard and <c>ScenarioApplier.SpawnUnitAt</c>'s worker test.
         /// </summary>
         private const string WORKER_CATEGORY = "Worker";
+
+        /// <summary>
+        /// DW-619 — the statuses that bar a worker from STARTING a construction, the same pair as
+        /// <c>MovementSystem.MOVE_BLOCKING</c> / <c>GatheringSystem.GATHER_BLOCKING</c>.
+        ///
+        /// <para>The ledger entry expected a per-tick construction accrual to gate, mirroring the gather loop. There
+        /// is none: <see cref="TickConstruction"/> runs a per-BUILDING <see cref="BuildingStore.ConstructionTimer"/>
+        /// that is never linked to a builder (the worker only walks to the site to clear its own Build command —
+        /// <see cref="TickWorkerArrival"/>), and <see cref="BuildingStore"/> carries no status channel of its own.
+        /// So the ONE moment a worker's status can reach construction at all is the ORDER: <see cref="QueueWorkerBuild"/>
+        /// spends the cost and starts the self-ticking timer in a single atomic act. Refusing there is what makes a
+        /// stun land on construction — it is exactly <c>AbilityCastSystem</c>'s DW-266 refusal shape (checked ahead of
+        /// every debit, so a refused order spends nothing and places nothing), not a new mechanic.</para>
+        /// </summary>
+        private const StatusFlags BUILD_BLOCKING = StatusFlags.Stunned | StatusFlags.Rooted;
 
         /// <summary>
         /// DW-205: carry capacity (world resource units per trip) a freshly trained worker enters the gather loop
@@ -1159,6 +1175,21 @@ namespace ProjectChimera.Economy
         {
             if (!world.IsAlive(workerId)) return -1;
             if (world.GatherState[workerId] == GatherState.Inactive) return -1; // not a worker
+
+            // DW-619 — STATUS GATE (stun / root), ABOVE every debit so the refusal is atomic: no ore/crystal spent, no
+            // building placed, no gather slot released, no Build command written — the order simply does not happen,
+            // exactly like AbilityCastSystem's DW-266 refusal. Without it a stunned worker still paid for and started a
+            // whole building, which then finished on its own timer (TickConstruction needs no builder) — the stun landed
+            // on the worker's movement and on nothing else. Cue reason: Stunned when the worker is stunned, otherwise
+            // the generic "Order denied" — there is no Rooted member in the DenialReason vocabulary and widening it
+            // means editing src/UI/DenialReasonText.cs, which this Godot-free bundle deliberately does not touch.
+            StatusFlags status = world.StatusFlagsOf[workerId];
+            if ((status & BUILD_BLOCKING) != 0)
+            {
+                events?.PushDenied(position, faction,
+                    (status & StatusFlags.Stunned) != 0 ? DenialReason.Stunned : DenialReason.None);
+                return -1;
+            }
 
             // Prerequisite check
             BuildingDefinition? bdef = GetFactionDef(faction)?.GetBuilding(TechTreeChecker.BuildingTypeId(type));
