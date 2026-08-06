@@ -1513,6 +1513,30 @@ namespace ProjectChimera.Core
         public bool IsNonCombatant(int id) => !CanDealDamage(id);
 
         /// <summary>
+        /// DW-664 — the PERMANENT half of the same partition: a unit that could not deal damage even with every
+        /// modifier stripped off it, because its AUTHORED <see cref="BaseAttackDamage"/> is zero (a worker, a hauler,
+        /// a pure support unit). The complement — <c>BaseAttackDamage &gt; 0</c> while
+        /// <see cref="IsNonCombatant"/> is true — is a real combatant whose damage is TEMPORARILY debuffed to the
+        /// <see cref="ProjectChimera.Effects.ModifierSystem"/> zero-floor, and whose orders must therefore survive
+        /// the debuff window.
+        ///
+        /// <para><b>Why this exists as its own predicate.</b> <see cref="IsNonCombatant"/> reads the EFFECTIVE stat,
+        /// which <c>ModifierSystem.RecomputeEntity</c> zero-FLOORS, so it answers "can this unit deal damage RIGHT
+        /// NOW?" — the right question for routing a tick, and the wrong question for deciding whether an order is
+        /// permanently un-executable and should be thrown away. <c>CombatSystem.TickNonCombatant</c> conflated the
+        /// two and DESTROYED a force-attack order the moment a temporary debuff landed (DW-664). Anything that
+        /// makes an IRREVERSIBLE decision about a unit's orders must ask THIS one.</para>
+        ///
+        /// <para>Bounds-guarded like <see cref="CanDealDamage"/>, and out-of-range ids answer <c>true</c> — the same
+        /// conservative side <see cref="IsNonCombatant"/> takes. <c>&lt;= Zero</c> rather than <c>== Zero</c> so a
+        /// negative base (unreachable from authored content — the definition validator bounds damage at [0, …) — but
+        /// producible by the SoA-direct save-restore overlay) classifies as permanent rather than as a combatant
+        /// awaiting a buff that can never arrive.</para>
+        /// </summary>
+        public bool IsPermanentNonCombatant(int id) =>
+            id < 0 || id >= MAX_ENTITIES || BaseAttackDamage[id] <= Fixed.Zero;
+
+        /// <summary>
         /// DW-184 (the Story 2.13 AC3.4 pattern, applied to entities) — pack a live entity id into a
         /// generation-stamped CROSS-TICK reference <c>(Generation[id] &lt;&lt; 12) | id</c> (id 0–4095 = low
         /// <see cref="REF_SLOT_BITS"/> bits; generation = the upper bits). A holder that carries an entity id across

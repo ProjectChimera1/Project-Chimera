@@ -32,7 +32,10 @@ namespace ProjectChimera.Combat
     ///
     /// NON-COMBATANTS (EffectiveAttackDamage == 0, non-gatherer) never enter an acquisition or engagement
     /// path, but they ARE still driven by the pure-MOVEMENT half of the vocabulary — see
-    /// <see cref="TickNonCombatant"/> (Story 15.4, DW-242/DW-202).
+    /// <see cref="TickNonCombatant"/> (Story 15.4, DW-242/DW-202). That routing gate reads the EFFECTIVE stat, so a
+    /// real combatant debuffed to <c>ModifierSystem</c>'s zero-floor passes through it as well; DW-664 makes the one
+    /// arm that DESTROYS an order ask the AUTHORED stat instead, so a temporary debuff PAUSES a force-attack order
+    /// rather than cancelling it — the same disposition <see cref="StatusFlags.Disarmed"/> already has.
     /// </summary>
     public class CombatSystem : ISimSystem
     {
@@ -249,7 +252,9 @@ namespace ProjectChimera.Combat
         //
         // The two force-attack orders have no movement half worth running (the unit would chase something it can
         // never damage, forever), so they normalize to Idle — the same disposal the gatherer guard above applies
-        // to the same orders.
+        // to the same orders. DW-664: that disposal is for a PERMANENT non-combatant only (BaseAttackDamage == 0).
+        // The entry gate reads the EFFECTIVE stat, so a combatant debuffed to the zero-floor arrives here too, and
+        // for it the order is PAUSED rather than cancelled — see the arm itself.
         //
         // Every other state (Idle / Move / Stop / HoldPosition / Build / PickupItem) is either a stable resting
         // state or driven by another system, so it stays a no-op: byte-identical to the pre-15.4 blanket skip.
@@ -298,9 +303,35 @@ namespace ProjectChimera.Combat
 
                 case UnitCommand.AttackTarget:
                 case UnitCommand.AttackBuilding:
-                    // Un-executable for a non-combatant: it would chase and then stand at the target dealing
-                    // nothing. Normalize to Idle, clearing both target refs and both flags (the same clean revert
-                    // TickAttackBuildingCombat/TickFollowCombat do), so the unit stops being stuck.
+                    // DW-664 — PERMANENT non-combatant only. The gate that routed this unit here reads the EFFECTIVE
+                    // stat, which ModifierSystem.RecomputeEntity zero-FLOORS, so a REAL combatant carrying a temporary
+                    // attack-damage debuff of at least its base damage lands in this arm too. Wiping the order for it
+                    // is a CANCEL, and the player never asked for one: on expiry the unit stands Idle and
+                    // TickIdleCombat re-acquires the NEAREST enemy rather than the one that was force-fired at. It
+                    // also contradicts the two dispositions this codebase already committed to for "cannot attack" —
+                    // DW-266's Disarmed ("still acquires and chases but can never land a hit", order preserved, see
+                    // TryDealDamage) and MovementSystem's rule that a debuff PAUSES a queued order, never cancels it.
+                    // So the disposal is asked of the AUTHORED stat: only a unit that could never execute the order
+                    // with every modifier stripped off it gets that order thrown away.
+                    if (!world.IsPermanentNonCombatant(i))
+                    {
+                        // TEMPORARILY debuffed combatant — PAUSE, exactly as the DW-266 stun gate above pauses: drop
+                        // the transient acquisition slot and stop the presentation swing, but leave CommandState /
+                        // CommandTarget / MoveTarget / Moving untouched so the order is still there when the debuff
+                        // expires and the combatant switch takes the unit back. AttackTarget is cleared rather than
+                        // frozen because nothing re-validates it while this arm runs (unlike the disarmed unit, which
+                        // still ticks the full combatant body every tick) — a held id would go stale, and DW-184's
+                        // recycle trap turns a stale entity id into an ABA retarget. Nothing is lost: CommandTarget
+                        // still holds the forced target, and TickAttackTargetCombat restores AttackTarget from it on
+                        // the first post-debuff tick.
+                        world.AttackTarget[i] = -1;
+                        world.Flags[i]       &= ~EntityFlags.Attacking;
+                        break;
+                    }
+
+                    // Un-executable for a PERMANENT non-combatant: it would chase and then stand at the target
+                    // dealing nothing, forever. Normalize to Idle, clearing both target refs and both flags (the same
+                    // clean revert TickAttackBuildingCombat/TickFollowCombat do), so the unit stops being stuck.
                     world.CommandState[i]  = UnitCommand.Idle;
                     world.CommandTarget[i] = -1;
                     world.AttackTarget[i]  = -1;
