@@ -347,6 +347,19 @@ namespace ProjectChimera.Sim.Tests.Combat
                                      new FactionDefinition(), new FactionDefinition(),
                                      damageTable: null, aiLevel: AiDifficulty.Normal);
 
+        /// <summary>
+        /// DW-783 — something hostile for the AI's wave to march AT.
+        ///
+        /// <para>Before this batch, <c>TryResolveWaveDestination</c> short-circuited to the hardcoded
+        /// <c>P1_BASE</c> in every FFA match, so an AI-wave fixture could launch a wave into a world containing no
+        /// enemy whatsoever. Now the destination is computed from the nearest hostile structure (else unit), so a
+        /// fixture whose subject is "who gets conscripted" must still supply a target or the wave correctly declines
+        /// and the conscription assertion is never exercised. Placed far from the wave so it is a destination only,
+        /// never an engagement.</para>
+        /// </summary>
+        private static int HostileTarget(EntityWorld w)
+            => w.Create(V(-40, 0), Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+
         /// <summary>An idle, damage-bearing Player2 wave unit — conscriptable by construction.</summary>
         private static int AiWaveUnit(EntityWorld w, FixedVec3 pos)
         {
@@ -365,6 +378,7 @@ namespace ProjectChimera.Sim.Tests.Combat
             SimulationHost host = NewAiHost();
             EntityWorld    w    = host.World;
 
+            HostileTarget(w); // DW-783: the wave needs a real destination now that P1_BASE is no longer hardcoded
             var wave = new int[NormalAttackThreshold];
             for (int i = 0; i < wave.Length; i++) wave[i] = AiWaveUnit(w, V(40, i * 2 - 4));
             int support = NonCombatant(w, V(40, 20), Faction.Player2);
@@ -382,6 +396,10 @@ namespace ProjectChimera.Sim.Tests.Combat
         {
             SimulationHost host = NewAiHost();
             EntityWorld    w    = host.World;
+
+            // DW-783: a real destination, so "did not launch" is proven by the THRESHOLD gate rather than passing
+            // vacuously because the world holds nothing hostile to march at.
+            HostileTarget(w);
 
             // One unit SHORT of the threshold in real combat units, padded well past it with non-combatants.
             var wave = new int[NormalAttackThreshold - 1];

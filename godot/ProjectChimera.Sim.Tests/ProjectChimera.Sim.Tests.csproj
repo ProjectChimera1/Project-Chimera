@@ -217,13 +217,20 @@
          file; the 23 goldens above ARE re-baselined once for the v14 fold. -->
     <None Remove="Golden\research-scenario.golden.txt" />
     <EmbeddedResource Include="Golden\research-scenario.golden.txt" />
-    <!-- Story 7.13 — the re-baseline DIFFERENTIAL GUARD's FROZEN control: a verbatim copy of the pre-story (v20)
-         golden-scenario (a NO-TRIGGER scenario) captured BEFORE the SimChecksum 20->21 re-record. The
-         TriggerEnabledStore fold is a true no-op for a Count==0 scenario, so the v21 run MUST reproduce these bytes
-         exactly; this frozen file is NEVER re-recorded (no RecordGoldenBaseline covers it) so it is an independent
-         control against a reset/threading defect baked into the re-baseline. -->
-    <None Remove="Golden\rebaseline-guard-story12-frozen-v20.golden.txt" />
-    <EmbeddedResource Include="Golden\rebaseline-guard-story12-frozen-v20.golden.txt" />
+    <!-- The re-baseline DIFFERENTIAL GUARD's FROZEN control: a verbatim copy of the PRE-Phase-B (v22)
+         formation-separation golden, captured before the SimChecksum 22->23 re-record. FormationSeparationScenario
+         carries NO gatherers and NO DSL triggers, so DW-78's BOUNDED v23 gather fold is a true no-op for it and the
+         v23 run MUST reproduce these bytes exactly. This frozen file is NEVER re-recorded (no MaybeRecord covers it)
+         so it is an independent control against a reset/threading defect baked into the re-baseline.
+
+         REPLACES rebaseline-guard-story12-frozen-v20.golden.txt (deleted in the same commit). That control was a
+         copy of GoldenScenario, which story 11.6's production-queue fold legitimately moved; the guard fired, and
+         the control was overwritten with the new sequence instead of halting — after which the test compared
+         GoldenScenario against a copy of its own committed golden and could never fail. ReBaselineDifferentialGuard
+         Tests.FrozenControl_OwnBytes_ArePinned now pins this file's content so that silent re-freeze turns the
+         suite RED. -->
+    <None Remove="Golden\rebaseline-guard-frozen-v22-formation-separation.golden.txt" />
+    <EmbeddedResource Include="Golden\rebaseline-guard-frozen-v22-formation-separation.golden.txt" />
     <!-- Story 9.3 — the server-authoritative merged-tick N=2 FR-39 regression golden. Driven by a deterministic
          per-tick P1+P2 UnitOrder stream through the REAL MergedTickBuilder + MergedTickApplier. NEW file; the
          goldens above are NOT re-recorded (the rewrite touches the wire, not the sim fold — AlgoVersion unchanged). -->

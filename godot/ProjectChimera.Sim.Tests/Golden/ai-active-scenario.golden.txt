@@ -1,6 +1,6 @@
 # Project Chimera — AI-active golden-checksum baseline (Story 1.11, AC1) — SAME-MACHINE ONLY; EXCLUDED from the Win↔Linux gate.
 # Format: "<tick> <hashHex8>" per line — tick decimal, hash 8 uppercase hex digits (no 0x).
-# checksum_algo_version: 22
+# checksum_algo_version: 23
 # Pins the SimChecksum sequence for AiActiveScenario.Build() (Player2 AiOpponentSystem ACTIVE at index 7, AiDifficulty.Normal) stepped via StepOnce at ChecksumInterval=1. AiOpponentSystem scores with float (AiOpponentSystem.cs:266-271): PROVEN = same-machine determinism; NOT PROVEN = cross-platform (D2 float→Fixed debt). Deliberately EXCLUDED from the 1.10c WSL cross-platform gate.
 # Samples: 300 (one line per sim tick).
 # Re-baseline (intentional behavior change only): set CHIMERA_GOLDEN_RECORD=1, run `dotnet test --filter FullyQualifiedName~AiActive`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit. Record ONCE on the ship-primary machine (Windows).

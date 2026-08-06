@@ -1,6 +1,6 @@
 # Project Chimera — item golden-checksum baseline (Story 3.15) — CROSS-PLATFORM SAFE (integer/Fixed only).
 # Format: "<tick> <hashHex8>" per line — tick decimal, hash 8 uppercase hex digits (no 0x).
-# checksum_algo_version: 22
+# checksum_algo_version: 23
 # Pins the SimChecksum (v12, ItemStore + per-hero inventory now mutating) sequence for ItemScenario.Build() (a Player1 hero picking up a stat item + a consumable, using a charge, then dying and dropping the stat item; Player2 empty so the AI no-ops) stepped via StepOnce at ChecksumInterval=1. All hashed fields integer/Fixed → byte-identical Win↔Linux; compared on both CI legs.
 # Samples: 120 (one line per sim tick).
 # Re-baseline (intentional behavior change only): set CHIMERA_GOLDEN_RECORD=1, run `dotnet test --filter FullyQualifiedName~ItemGolden`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit.

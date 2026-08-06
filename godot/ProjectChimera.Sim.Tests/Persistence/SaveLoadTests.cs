@@ -455,7 +455,7 @@ namespace ProjectChimera.Sim.Tests.Persistence
         [Fact]
         public void SaveLoad_LeavesHashAlgoVersionsUnchanged()
         {
-            Assert.Equal(22, SimChecksum.AlgoVersion); // Story 11.6: production-queue + head-timer fold
+            Assert.Equal(23, SimChecksum.AlgoVersion); // v23 = DW-78 bounded worker-gather-state fold (GatherState/GatherTarget/CarryAmount/CarryResourceType/GateClosedTicks)
             Assert.Equal(14, CanonicalModelHash.AlgoVersion);
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
