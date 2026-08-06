@@ -270,6 +270,18 @@ namespace ProjectChimera.Core.Sim
             // Story 4.9 — future-spawn catch-up: every future spawn of a faction with a completed research (training,
             // scenario placement, hero respawn, editor restore/placement) also picks up its cumulative modifier(s).
             World.OnUnitDefinitionApplied += id => ResearchSys.ApplyCompletedResearch(World, id);
+            // DW-659 — the effective-stat RE-MIRROR repair, wired THIRD (after both installers, so it observes every
+            // modifier they just applied). ApplyUnitDefinition re-mirrors Base*→Effective* for AttackDamage/Armor,
+            // discarding every installed modifier's contribution, and ModifierSystem.Tick only recomputes entities
+            // something DIRTIED — so a unit carrying a research / item / aura modifier and NO self-passive silently
+            // lost the bonus on a live in-place re-apply (upgrade / morph / tech re-map / editor restore) until an
+            // unrelated apply/remove happened to re-dirty it. DW-300 repaired only the guarded self-passive path
+            // (InstallSelfPassive's duplicate-skip); this closes the general case for every def-based caller.
+            // NO-OP on a genuine spawn: a fresh/recycled slot's accumulators are zero (ClearEntity wipes them on
+            // destroy), so the recompute is Effective = max(0, Base + 0) — byte-identical to the mirror the mapper
+            // just wrote, for the two stats it writes AND for MaxHealth/MoveSpeed which it does not touch. One
+            // closure alloc at construction (never per-tick), symmetric with the two subscriptions above.
+            World.OnUnitDefinitionApplied += id => Modifiers.RecomputeEffectiveStats(id);
 
             // ── The canonical 16-system tick order (Story 7.11 inserted WinConditionSystem at index 14, after AI /
             //    before ScenarioDirector; Story 2.12 inserted OrderQueueSystem at index 3; Story 3.13

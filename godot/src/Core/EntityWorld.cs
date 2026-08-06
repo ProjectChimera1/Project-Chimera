@@ -827,6 +827,14 @@ namespace ProjectChimera.Core
         /// def-based unit, so a restored unit's while-alive self-passive IS re-installed via this seam (the prior
         /// carve-off that skipped restore is closed). <see cref="Destroy"/> cleared the entity's modifiers on delete,
         /// so there is no double-install.
+        ///
+        /// <para><b>DW-659 — the LAST subscriber repairs the re-mirror.</b> <see cref="ApplyUnitDefinition"/> writes
+        /// <c>Effective* = Base*</c> for the two modifier-affected stats it sources from the def
+        /// (<see cref="EffectiveAttackDamage"/> / <see cref="EffectiveArmor"/>), which on a LIVE in-place re-apply
+        /// discards every installed modifier's contribution. <c>SimulationHost</c> therefore subscribes
+        /// <c>ModifierStore.RecomputeEffectiveStats</c> LAST, so the seam always ends with
+        /// <c>Effective = max(0, Base + Σ bonus)</c>. Any FUTURE subscriber that mutates <c>Base*</c> or installs a
+        /// modifier must be wired BEFORE that repair, or its contribution is what the recompute misses.</para>
         /// </summary>
         public Action<int>? OnUnitDefinitionApplied;
 
