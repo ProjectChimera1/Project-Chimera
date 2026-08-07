@@ -31,6 +31,18 @@ namespace ProjectChimera.Effects
         /// <summary>The entity the current node acts on (the leaf's target; the SearchArea center).</summary>
         public readonly int PrimaryTargetId;
 
+        /// <summary>
+        /// Story 15.11 (DW-280): the GROUND POINT a <see cref="ProjectChimera.Core.Definitions.AbilityTargeting.GroundPoint"/>
+        /// cast resolves at. Meaningful ONLY when <see cref="HasTargetPoint"/> is true — a <see cref="SearchAreaEffect"/>
+        /// centers its impact here instead of on the (absent) primary target's position. A transient value carried by the
+        /// context copy, never sim state — it is NOT read on a Self/TargetUnit cast, so those paths are byte-identical.
+        /// </summary>
+        public readonly FixedVec3 TargetPoint;
+
+        /// <summary>Story 15.11: true when this context carries a ground <see cref="TargetPoint"/> (a GroundPoint cast). Default
+        /// false ⇒ Self/TargetUnit graphs behave exactly as before (they center on <see cref="PrimaryTargetId"/>).</summary>
+        public readonly bool HasTargetPoint;
+
         /// <summary>The caster's faction (the killer for <see cref="DamageEffect"/>, the allegiance anchor for filters).</summary>
         public readonly Faction CasterFaction;
 
@@ -72,8 +84,9 @@ namespace ProjectChimera.Effects
                              DamageTable damageTable, SpatialHash? spatial = null,
                              CombatEventQueue? events = null, MatchStats? stats = null,
                              ModifierStore? modifierStore = null, DeathFeed? deaths = null,
-                             AllianceStore? alliances = null)
-            : this(world, world.Rng, spatial, casterId, primaryTargetId, casterFaction, damageTable, events, stats, modifierStore, deaths, alliances)
+                             AllianceStore? alliances = null,
+                             FixedVec3 targetPoint = default, bool hasTargetPoint = false)
+            : this(world, world.Rng, spatial, casterId, primaryTargetId, casterFaction, damageTable, events, stats, modifierStore, deaths, alliances, targetPoint, hasTargetPoint)
         {
         }
 
@@ -81,7 +94,7 @@ namespace ProjectChimera.Effects
         private EffectContext(EntityWorld world, SimRng rng, SpatialHash? spatial, int casterId,
                               int primaryTargetId, Faction casterFaction, DamageTable damageTable,
                               CombatEventQueue? events, MatchStats? stats, ModifierStore? modifierStore, DeathFeed? deaths,
-                              AllianceStore? alliances)
+                              AllianceStore? alliances, FixedVec3 targetPoint, bool hasTargetPoint)
         {
             World = world;
             Rng = rng;
@@ -95,14 +108,19 @@ namespace ProjectChimera.Effects
             ModifierStore = modifierStore;
             Deaths = deaths;
             Alliances = alliances;
+            TargetPoint = targetPoint;
+            HasTargetPoint = hasTargetPoint;
         }
 
         /// <summary>
         /// A copy of this context re-pointed at <paramref name="targetId"/> as the primary target. Used by the
         /// executor to fan a SearchArea child out per matched entity. Cheap (struct copy of references) and shares
         /// the same RNG stream and modifier store.
+        /// <para>Story 15.11: re-pointing to an ENTITY clears the ground <see cref="TargetPoint"/> — a leaf below a
+        /// SearchArea acts on the matched entity, and a nested SearchArea should re-center on that entity, not on the
+        /// original ground point. The ground point governs only the ROOT SearchArea's center.</para>
         /// </summary>
         public EffectContext WithTarget(int targetId) =>
-            new EffectContext(World, Rng, Spatial, CasterId, targetId, CasterFaction, DamageTable, Events, Stats, ModifierStore, Deaths, Alliances);
+            new EffectContext(World, Rng, Spatial, CasterId, targetId, CasterFaction, DamageTable, Events, Stats, ModifierStore, Deaths, Alliances, default, false);
     }
 }

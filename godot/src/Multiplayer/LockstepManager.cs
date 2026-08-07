@@ -351,15 +351,17 @@ namespace ProjectChimera.Multiplayer
         /// Queue a local command for this tick.
         /// Returns true (apply now) in offline mode; false (deferred) in online mode.
         /// </summary>
-        public bool EnqueueOrder(int unitId, UnitCommand command, Fixed targetX, Fixed targetZ)
+        public bool EnqueueOrder(int unitId, UnitCommand command, Fixed targetX, Fixed targetZ, byte slot = 0)
         {
             if (!IsOnline)   return true;
             if (IsSpectator) return false;
 
             // DW-464: while a Concede is queued the last batch slot is RESERVED for it (budget MAX_ORDERS-1), so a
             // spam-click flood can never starve the surrender out of the stream. Full budget otherwise (unchanged).
+            // Story 15.11: `slot` is the CastAbility ability slot on the widened 12-byte wire (byte 11); 0 for every
+            // other command (the UnitOrder ctor default), so non-cast callers are unchanged.
             if (_pendingCount < _concedeBuffer.OrderBudget(TickCommandPacket.MAX_ORDERS))
-                _pendingOrders[_pendingCount++] = new UnitOrder(unitId, command, targetX, targetZ);
+                _pendingOrders[_pendingCount++] = new UnitOrder(unitId, command, targetX, targetZ, slot);
 
             return false;
         }

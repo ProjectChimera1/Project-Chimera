@@ -304,7 +304,7 @@ development_status:
   #   against source, not the ledger. Both closed; the cosmetic residual (no standalone panel;
   #   OnboardingPanel exposes 2 of 6 conditions) re-filed as DW-880 rather than dropped.
   15-10-scenario-settings-panel-new-scenario-empty-canvas-flow-dw-126-dw-127: done
-  15-11-ability-targeting-increments-ground-target-cast-ally-heal-other: backlog
+  15-11-ability-targeting-increments-ground-target-cast-ally-heal-other: done
   15-12-energy-stack-mechanics: backlog
   15-13-effect-vocabulary-completion-teleport-presentation-leaves: backlog
   # 15-14..15-20 were added 2026-07-30 from the 20260730-122934-d7ae partition. 15-16..15-20 RETIRED

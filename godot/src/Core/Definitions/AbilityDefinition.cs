@@ -32,6 +32,18 @@ namespace ProjectChimera.Core.Definitions
         public string Targeting { get; set; } = "Self";
 
         /// <summary>
+        /// Story 15.11 (DW-286) — OPTIONAL allegiance hint for the click-picker of a <c>TargetUnit</c> (or
+        /// <c>GroundPoint</c>) ability, one of <see cref="TargetAffinity"/> by NAME: Enemy | Ally | Any. It is a HINT
+        /// on the existing targeting mode, NOT a 5th <see cref="AbilityTargeting"/> value. <b>Nullable and defaults to
+        /// null</b> so an absent value serializes identically to today — every shipped ability's <c>ContentHash</c>/
+        /// <c>CanonicalModelHash</c> is unchanged (Block-If) and <see cref="ParsedTargetAffinity"/> reads back as the
+        /// historical enemy-only default. Deserializes only through <c>ContentJson.Options</c>
+        /// (<c>UnmappedMemberHandling.Disallow</c>); the parse GETTER is <c>[JsonIgnore]</c> (never re-emitted).
+        /// </summary>
+        [JsonPropertyName("target_affinity")]
+        public string? TargetAffinity { get; set; } = null;
+
+        /// <summary>
         /// How this ability ACTIVATES (Story 2.6, FR-9): one of <see cref="PassiveActivation"/> by NAME —
         /// active | aura | on_hit | while_alive. Default <c>"active"</c> so every pre-2.6 ability (and every existing
         /// golden) is unaffected — the field is omittable and an absent value reads back as "active".
@@ -111,6 +123,25 @@ namespace ProjectChimera.Core.Definitions
             "TargetUnit"  => AbilityTargeting.TargetUnit,
             "GroundPoint" => AbilityTargeting.GroundPoint,
             _             => null,
+        };
+
+        /// <summary>
+        /// Story 15.11 (DW-286) — <see cref="TargetAffinity"/> string resolved to the closed
+        /// <see cref="Core.Definitions.TargetAffinity"/> set by EXACT name. Returns <c>null</c> when the string is
+        /// ABSENT (the enemy-only default — <see cref="AbilityValidator"/> accepts it) OR UNKNOWN; the validator tells
+        /// them apart by checking the RAW string (non-null string + null parse = unparseable → reject), the
+        /// <see cref="ParsedTargeting"/> fail-closed posture. Consumers (the click-picker) treat null as
+        /// <see cref="Core.Definitions.TargetAffinity.Enemy"/>, so an absent hint behaves exactly as today.
+        /// <c>[JsonIgnore]</c> for the same round-trip reason as <see cref="ParsedTargeting"/>.
+        /// </summary>
+        [JsonIgnore]
+        public TargetAffinity? ParsedTargetAffinity => this.TargetAffinity switch
+        {
+            null    => null, // absent → the picker's historical enemy-only default (never a reject)
+            "Enemy" => Core.Definitions.TargetAffinity.Enemy,
+            "Ally"  => Core.Definitions.TargetAffinity.Ally,
+            "Any"   => Core.Definitions.TargetAffinity.Any,
+            _       => null, // unknown non-null string → null; AbilityValidator rejects it (raw non-null + parse null)
         };
 
         /// <summary>

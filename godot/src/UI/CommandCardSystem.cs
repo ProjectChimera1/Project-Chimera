@@ -1492,20 +1492,21 @@ namespace ProjectChimera.UI
                 bool oreOk    = _resources.CanAffordOre(faction, Fixed.FromInt(ab.CostOre));
                 bool crysOk   = _resources.CanAffordCrystal(faction, Fixed.FromInt(ab.CostCrystal));
 
-                bool groundCast = ab.ParsedTargeting == AbilityTargeting.GroundPoint;
-                bool unknownTgt = ab.ParsedTargeting == null;
+                // Story 15.11 (DW-290): the SINGLE shared is-castable predicate consulted by BOTH this disable-gate and
+                // OnAbilityBtnPressed — so the enabled state and the press action can never diverge as targeting modes
+                // are added (GroundPoint is now castable; only an unknown/unparseable targeting string is not). The
+                // GroundPoint "coming soon" fence is removed — the press arms the ground reticle (SelectionSystem).
+                bool castableTgt = IsTargetingCastable(ab.ParsedTargeting);
 
-                // GroundPoint → disabled with a "coming soon" note (the 2.4a fence — no ground reticle is built here);
-                // an unknown targeting string → disabled (fail-closed). Otherwise the button is disabled iff the sim
-                // would refuse the cast. cdTicks/30f is presentation display math (no-float rule is src/Core+Effects only).
-                btn.Disabled = groundCast || unknownTgt || onCd || !energyOk || !oreOk || !crysOk;
+                // Disabled iff the sim would refuse the cast (unknown targeting fails closed). cdTicks/30f is
+                // presentation display math (no-float rule is src/Core+Effects only).
+                btn.Disabled = !castableTgt || onCd || !energyOk || !oreOk || !crysOk;
 
-                string note = groundCast ? "[ground-cast: coming soon]"
-                            : unknownTgt ? "[unsupported]"
-                            : onCd       ? $"[on CD {cdTicks / 30f:F1}s]"
-                            : !energyOk  ? "[need energy]"
-                            : !oreOk     ? "[need ore]"
-                            : !crysOk    ? "[need crystal]"
+                string note = !castableTgt ? "[unsupported]"
+                            : onCd          ? $"[on CD {cdTicks / 30f:F1}s]"
+                            : !energyOk     ? "[need energy]"
+                            : !oreOk        ? "[need ore]"
+                            : !crysOk       ? "[need crystal]"
                             : CostSummary(ab);
                 btn.Text = $"{ab.DisplayName}\n{note}";
             }
@@ -1540,6 +1541,10 @@ namespace ProjectChimera.UI
             if (regIdx < 0 || regIdx >= _registry.Count) return;
             AbilityDefinition ab = _registry.Get(regIdx);
 
+            // Story 15.11 (DW-290): consult the SAME predicate the disable-gate uses, so an unknown targeting mode is
+            // handled identically in both (the card greys it out; a press is a no-op). GroundPoint is castable in both.
+            if (!IsTargetingCastable(ab.ParsedTargeting)) return;
+
             // Branch on targeting. The card READS _world for display only; the cast leaves as an intent via _selection.
             switch (ab.ParsedTargeting)
             {
@@ -1548,13 +1553,26 @@ namespace ProjectChimera.UI
                     _selection.IssueCastAbilityCommand(focusId, slot, -1); // instant self-cast, no targeting click
                     break;
                 case AbilityTargeting.TargetUnit:
-                    _selection.ArmCastTargeting(focusId, slot);            // next left-click picks the enemy target
+                    // Story 15.11 (DW-286): pass the ability's affinity so the click-picker selects an ally (heal-other),
+                    // an enemy (default), or anyone. Absent affinity → Enemy (the historical pick), so shipped content is unchanged.
+                    _selection.ArmCastTargeting(focusId, slot, ab.ParsedTargetAffinity ?? TargetAffinity.Enemy);
                     break;
-                // GroundPoint / null are rendered Disabled in RefreshAbilityCard, so a press can't reach here — defensive.
+                case AbilityTargeting.GroundPoint:
+                    _selection.ArmCastGroundTargeting(focusId, slot); // Story 15.11: next left-click picks the ground point
+                    break;
                 default:
-                    break;
+                    break; // unreachable (IsTargetingCastable already returned above), defensive
             }
         }
+
+        /// <summary>
+        /// Story 15.11 (DW-290): the SINGLE is-castable-targeting predicate shared by <c>RefreshAbilityCard</c>'s
+        /// disable-gate and <see cref="OnAbilityBtnPressed"/>. Forwards to the Godot-free
+        /// <see cref="CastTargetPicker.IsTargetingCastable"/> core so the predicate is Tier-1 unit-testable and BOTH
+        /// call sites resolve through the identical function — the enabled state and the press action can never diverge.
+        /// </summary>
+        private static bool IsTargetingCastable(AbilityTargeting? targeting) =>
+            CastTargetPicker.IsTargetingCastable(targeting);
 
         // ── Shared helpers ────────────────────────────────────────────────────
 

@@ -17,8 +17,9 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
         // ── PROTOCOL_VERSION bump ──────────────────────────────────────────────────
 
         [Fact]
-        public void ProtocolVersion_IsBumpedTo2()
-            => Assert.Equal(2, TickCommandPacket.PROTOCOL_VERSION);
+        public void ProtocolVersion_IsCurrent()
+            // Story 9.4 bumped this to 2; Story 15.11 (DW-280) bumped it to 3 for the widened 12-byte UnitOrder stride.
+            => Assert.Equal(3, TickCommandPacket.PROTOCOL_VERSION);
 
         // ── Widened Ready packet ───────────────────────────────────────────────────
 

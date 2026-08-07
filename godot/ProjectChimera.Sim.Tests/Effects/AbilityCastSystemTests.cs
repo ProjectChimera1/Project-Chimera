@@ -52,7 +52,8 @@ namespace ProjectChimera.Sim.Tests.Effects
             int c = h.Caster("minor_heal", energy: 50);
 
             // Slot 2 does not exist (the unit has only slot 0). OrderApplier guards slot < AbilityCount → no intent set.
-            OrderApplier.Apply(h.World, new UnitOrder(c, UnitCommand.CastAbility, Fixed.FromRaw(2), Fixed.FromRaw(-1)),
+            // Story 15.11: the ability slot now rides the UnitOrder's dedicated byte (5th ctor arg), not TargetX.
+            OrderApplier.Apply(h.World, new UnitOrder(c, UnitCommand.CastAbility, Fixed.Zero, Fixed.FromRaw(-1), slot: 2),
                 Faction.Player1);
             Assert.Equal(EntityWorld.NO_PENDING_CAST, h.World.PendingCastSlot[c]); // OrderApplier rejected the bad slot
 
@@ -95,18 +96,45 @@ namespace ProjectChimera.Sim.Tests.Effects
         }
 
         [Fact]
-        public void GroundPointCast_IsRefused_NotSelfCast()
+        public void GroundPointCast_NowResolves_SpendsAndStartsCooldown()
         {
-            // AC6 fence: GroundPoint casting is out of scope for 2.4a. A GroundPoint ability must refuse as a no-op
-            // (there is no ground (x,z) plumbing) — it must NOT fall through to a self-cast.
+            // Story 15.11 (DW-280): the 2.4a AC6 fence is REMOVED — GroundPoint casting is supported. A GroundPoint cast
+            // resolves at the wire-supplied ground point (stored mode-agnostically into PendingCastPointX/Z by
+            // OrderApplier, read by AbilityCastSystem's GroundPoint branch), so it now spends its cost and starts its
+            // cooldown rather than refusing as a no-op. (ground_nuke here is a bare Damage leaf and a ground cast leaves
+            // the primary target INVALID (-1, review P3) — NOT the caster — so the leaf no-ops on the IsAlive(-1) guard;
+            // a real ground nuke uses a SearchArea centred on the point. See GroundCast_SearchArea_… for the AoE path.)
             var h = new CastHarness(AbilityTestAbilities.GroundPointDamage());
             int caster = h.Caster("ground_nuke", energy: 50, pos: V(0, 0, 0));
 
             h.IssueAndTick(caster, -1);
 
-            Assert.Equal(Fixed.FromInt(100).Raw, h.World.Health[caster].Raw); // no self-damage
-            Assert.Equal(Fixed.FromInt(50).Raw,  h.World.Energy[caster].Raw);  // no spend
-            Assert.Equal(0, h.Cooldown(caster));                              // no cooldown
+            Assert.Equal(Fixed.FromInt(50 - 40).Raw, h.World.Energy[caster].Raw); // ground_nuke's 40 energy WAS spent
+            Assert.True(h.Cooldown(caster) > 0);                                  // the cooldown started (cast resolved)
+            Assert.Equal(Fixed.FromInt(100).Raw, h.World.Health[caster].Raw);     // caster NOT self-harmed by the bare leaf (P3: primary target is -1, not the caster)
+        }
+
+        [Fact]
+        public void GroundCast_SearchArea_DamagesAtThePoint_NotTheCaster()
+        {
+            // Story 15.11 (review P4a/P3): a real GroundPoint AoE (SearchArea centred on the clicked point) damages the
+            // clustered dummies AT the point and leaves the caster's HP UNCHANGED (the primary target is invalid for a
+            // ground cast, so nothing resolves on the caster). Uses a SearchArea ability, not a bare Damage leaf.
+            var h = new CastHarness(AbilityTestAbilities.GroundPointNuke());
+            int caster = h.Caster("ground_nuke_aoe", energy: 50, pos: V(0, 0, 0));
+            int d1 = h.Target(200, V(10, 0, 0));  // clustered at the ground point, inside the 4u radius
+            int d2 = h.Target(200, V(11, 0, 1));  // caster is ~10u away → outside the radius
+            Fixed casterHpBefore = h.World.Health[caster];
+
+            // GroundPoint cast: slot 0 in the wire byte, the ground point (10,0,0) in TargetX/TargetZ.
+            OrderApplier.Apply(h.World,
+                new UnitOrder(caster, UnitCommand.CastAbility, Fixed.FromInt(10), Fixed.FromInt(0), slot: 0),
+                Faction.Player1);
+            h.Cast.Tick(h.World, SimulationLoop.FixedDt);
+
+            Assert.Equal(casterHpBefore.Raw, h.World.Health[caster].Raw);     // caster NOT self-harmed (P3)
+            Assert.True(h.World.Health[d1] < Fixed.FromInt(200), "dummy at the ground point should have taken damage");
+            Assert.True(h.World.Health[d2] < Fixed.FromInt(200), "second clustered dummy should have taken damage");
         }
 
         [Fact]

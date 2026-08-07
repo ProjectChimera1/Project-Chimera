@@ -185,6 +185,7 @@ namespace ProjectChimera.Sim.Tests.Golden
         [InlineData(1)]
         [InlineData(2)]
         [InlineData(3)]
+        [InlineData(4)] // Story 15.11 (DW-280): a v4 replay predates the 12-byte wire stride → hard-rejected, never misaligned
         public void LegacyVersion_IsHardRejected(int version)
         {
             string chmrPath = Path.Combine(Path.GetTempPath(), $"chimera_legacy_v{version}_{Guid.NewGuid():N}.chmr");

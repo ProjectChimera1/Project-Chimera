@@ -24,7 +24,7 @@ namespace ProjectChimera.Core
         Follow       = 8, // Track a friendly unit (CommandTarget) within a leash; re-path when beyond it, idle within it.
         PatrolAppend = 9, // WIRE-ONLY: append a waypoint to the patrol route, then rewritten to Patrol on apply (CombatSystem never sees it).
         // ── Story 2.4a (FR-11): appended AFTER PatrolAppend. Values 0–9 stay FROZEN for replay back-compat. ──
-        CastAbility  = 10, // Cast the ability in slot TargetX (raw int) at target entity TargetZ (raw int, -1 = Self/None). A fire-and-forget INTENT: OrderApplier writes PendingCast*, AbilityCastSystem consumes it inside the tick — it does NOT persist as a CommandState (the caster's Move/Attack order is preserved).
+        CastAbility  = 10, // Cast the ability in wire slot byte (Story 15.11: moved out of TargetX to its own byte). Payload rides TargetX/TargetZ MODE-DEPENDENTLY: TargetUnit → TargetX=0, TargetZ=targetId; GroundPoint → TargetX=groundX, TargetZ=groundZ (Fixed raw); Self/None → TargetX=0, TargetZ=-1. A fire-and-forget INTENT: OrderApplier writes PendingCast* (slot/target + PendingCastPointX/Z), AbilityCastSystem consumes it inside the tick by ParsedTargeting — it does NOT persist as a CommandState (the caster's Move/Attack order is preserved).
         // ── Story 2.8 (D-1 / FR-11): appended AFTER CastAbility. Values 0-10 stay FROZEN for replay back-compat. ──
         Train        = 11, // Train a unit at a production BUILDING. WIRE: UnitId = buildingId, TargetX = chosen unit index (raw int, -1 = first-of-category). Handled by OrderApplier BEFORE the entity-ownership guard (UnitId names a building, not an entity); ore/supply spend happens at exec-tick via BuildingSystem.TrainUnitCommand. Never persists as a CommandState.
         // ── Story 2.9a (FR-11/FR-12): appended AFTER Train. Values 0-11 stay FROZEN for replay back-compat. ──
@@ -52,10 +52,13 @@ namespace ProjectChimera.Core
 
     /// <summary>
     /// Wire-level flag bits OR'd onto the <see cref="UnitCommand"/> byte of a <see cref="Multiplayer.UnitOrder"/>
-    /// (Story 2.12, Decision #2). <see cref="UnitCommand"/> uses values 0-13, so bits 6-7 are free; a Shift-issued
-    /// (queued) order sets <see cref="Queued"/> on the wire and <c>OrderApplier</c> masks it off with
+    /// (Story 2.12, Decision #2). <see cref="UnitCommand"/> currently spans values 0-23 (grown from 0-13; the max is
+    /// <see cref="UnitCommand.CancelTrain"/>=23), all &lt;= 0x3F, so the high bits stay free for wire flags/slot; a
+    /// Shift-issued (queued) order sets <see cref="Queued"/> on the wire and <c>OrderApplier</c> masks it off with
     /// <see cref="CommandMask"/> before the command→state switch. Wire-only — a flagged byte NEVER reaches
-    /// <c>CommandState</c> (only 0-13 are valid enum values there) or <see cref="SimChecksum"/>.
+    /// <c>CommandState</c> (only the defined 0-23 are valid enum values there) or <see cref="SimChecksum"/>.
+    /// The &lt;= 0x3F budget (bits 6-7 reserved for the queued flag / Story 15.11 cast slot) is pinned by
+    /// <c>Story1511WireAndAffinityTests.CommandBudget_LeavesRoomForTheQueuedSlotBits</c>.
     /// </summary>
     public static class UnitOrderFlags
     {
@@ -682,6 +685,17 @@ namespace ProjectChimera.Core
         /// treatment as <see cref="PendingCastSlot"/> (consumed + cleared before the checksum) → NOT folded.
         /// </summary>
         public readonly int[] PendingCastTarget;
+        /// <summary>
+        /// Story 15.11 (DW-280): transient GROUND-POINT cast intent — the X coord a <see cref="Core.Definitions.AbilityTargeting.GroundPoint"/>
+        /// cast resolves at (<see cref="Fixed"/> world coord). Written by <see cref="Multiplayer.OrderApplier"/> at input
+        /// time (mode-agnostically, alongside <see cref="PendingCastSlot"/>/<see cref="PendingCastTarget"/>), consumed +
+        /// cleared by <see cref="ProjectChimera.Effects.AbilityCastSystem"/> the SAME tick — ALWAYS 0 at the checksum
+        /// boundary → NOT folded (the <see cref="PendingCastSlot"/> transient posture; no golden moves, no AlgoVersion bump).
+        /// </summary>
+        public readonly Fixed[] PendingCastPointX;
+        /// <summary>Story 15.11 (DW-280): the Z coord companion to <see cref="PendingCastPointX"/>. Transient, cleared each
+        /// tick before the checksum → NOT folded.</summary>
+        public readonly Fixed[] PendingCastPointZ;
 
         // --- Passive ability registration (Story 2.6, FR-9) — per-entity AbilityRegistry indices partitioned by
         //     activation; each is one index or −1 (none). Spawn-constant authored data → NOT folded (the AbilityId
@@ -947,6 +961,8 @@ namespace ProjectChimera.Core
             AbilityCount         = new byte[MAX_ENTITIES];                          // Story 2.4a (v7 fold loop bound)
             PendingCastSlot      = new byte[MAX_ENTITIES];                          // Story 2.4a (transient — NOT folded)
             PendingCastTarget    = new int[MAX_ENTITIES];                           // Story 2.4a (transient — NOT folded)
+            PendingCastPointX    = new Fixed[MAX_ENTITIES];                         // Story 15.11 (transient ground point — NOT folded; default Fixed.Zero)
+            PendingCastPointZ    = new Fixed[MAX_ENTITIES];                         // Story 15.11 (transient ground point — NOT folded; default Fixed.Zero)
             AuraAbilityIndex        = new int[MAX_ENTITIES];                        // Story 2.6 (authored — NOT folded)
             OnHitAbilityIndex       = new int[MAX_ENTITIES];                        // Story 2.6 (authored — NOT folded)
             SelfPassiveAbilityIndex = new int[MAX_ENTITIES];                        // Story 2.6 (authored — NOT folded)
@@ -1087,6 +1103,8 @@ namespace ProjectChimera.Core
             AbilityCount[id]      = 0;
             PendingCastSlot[id]   = NO_PENDING_CAST;
             PendingCastTarget[id] = -1;
+            PendingCastPointX[id] = Fixed.Zero; // Story 15.11: a recycled slot must never carry the prior occupant's ground-cast point (SoA-recycle trap)
+            PendingCastPointZ[id] = Fixed.Zero;
             // Story 2.6: a recycled slot must NEVER carry the prior occupant's passive registration (the SoA-recycle
             // trap). ApplyUnitDefinition re-partitions these from the def for def-based units; default −1 (none) here.
             AuraAbilityIndex[id]        = -1;
@@ -1614,6 +1632,7 @@ namespace ProjectChimera.Core
             Array.Clear(OrderQueueTargetX);     Array.Clear(OrderQueueTargetZ);     Array.Clear(OrderQueueCount);
             Array.Clear(ActiveOrderCmd);        Array.Clear(AbilityId);             Array.Clear(AbilityCooldownTicks);
             Array.Clear(AbilityCount);          Array.Clear(PendingCastSlot);       Array.Clear(PendingCastTarget);
+            Array.Clear(PendingCastPointX);     Array.Clear(PendingCastPointZ);     // Story 15.11 (Fixed.Zero == the fresh-ctor state)
             Array.Clear(AuraAbilityIndex);      Array.Clear(OnHitAbilityIndex);     Array.Clear(SelfPassiveAbilityIndex);
             Array.Clear(HeroIndex);             Array.Clear(GatherState);           Array.Clear(GatherTarget);
             Array.Clear(CarryAmount);           Array.Clear(CarryResourceType);     Array.Clear(CarryCapacity);         Array.Clear(BuildTarget);

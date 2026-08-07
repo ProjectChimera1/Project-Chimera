@@ -151,8 +151,9 @@ namespace ProjectChimera.CreationSuite
         {
             _draft.Id          = _idEdit.Text.Trim();   // raw (Decision #8 blocks an un-sanitised id at save), not silently sanitised
             _draft.DisplayName = _nameEdit.Text;
-            _draft.Targeting   = _targetingName;
-            _draft.Activation  = _activationName;        // Story 2.6 — carry the activation into the saved model
+            _draft.Targeting      = _targetingName;
+            _draft.TargetAffinity = _targetAffinity;     // Story 15.11 (DW-286) — carry the affinity hint into the saved model
+            _draft.Activation     = _activationName;     // Story 2.6 — carry the activation into the saved model
             // Decision #4 — a passive carries no cost/cooldown; force zero so the validator passes regardless of any
             // stale value the (hidden) cost rows held before the activation switch.
             if (IsPassive) { _draft.CostEnergy = Fixed.Zero; _draft.CostOre = 0; _draft.CostCrystal = 0; _draft.Cooldown = Fixed.Zero; }

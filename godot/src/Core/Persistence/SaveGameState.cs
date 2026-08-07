@@ -173,7 +173,9 @@ namespace ProjectChimera.Core.Persistence
             VisionRange, Elevation, SplashRadius, Delivery, ProjectileSpeed, XpBounty, KillerOf, KillerFactionOf,
             CollisionRadius, SepPriority, Category, AttackDomain, Tags, SupplyCost, MeshType, CommandState,
             CommandGoalX, CommandGoalY, CommandGoalZ, CommandTarget, PatrolCount, PatrolIndex, PatrolDir,
-            OrderQueueCount, ActiveOrderCmd, AbilityCount, PendingCastSlot, PendingCastTarget, AuraIdx, OnHitIdx,
+            OrderQueueCount, ActiveOrderCmd, AbilityCount, PendingCastSlot, PendingCastTarget,
+            PendingCastPointX, PendingCastPointZ, // Story 15.11 — transient ground-cast point (persisted for the mid-tick save, like PendingCastSlot/Target)
+            AuraIdx, OnHitIdx,
             SelfPassiveIdx, HeroIndex, GatherState, GatherTarget, CarryAmount, CarryResType, CarryCapacity, BuildTarget,
             // DW-581: the per-slot recycle generation backing PackRef/TryResolveRef. Last of the per-entity lanes (a
             // new lane must stay BEFORE PatrolWpX, which is where the flat-stride half begins for the length checks).
@@ -309,6 +311,7 @@ namespace ProjectChimera.Core.Persistence
             var pc = A(EA.PatrolCount, n); var pidx = A(EA.PatrolIndex, n); var pdir = A(EA.PatrolDir, n);
             var oqc = A(EA.OrderQueueCount, n); var aoc = A(EA.ActiveOrderCmd, n); var abc = A(EA.AbilityCount, n);
             var pcs = A(EA.PendingCastSlot, n); var pct = A(EA.PendingCastTarget, n);
+            var pcpx = A(EA.PendingCastPointX, n); var pcpz = A(EA.PendingCastPointZ, n); // Story 15.11
             var aura = A(EA.AuraIdx, n); var onhit = A(EA.OnHitIdx, n); var selfp = A(EA.SelfPassiveIdx, n); var hidx = A(EA.HeroIndex, n);
             var gs = A(EA.GatherState, n); var gt = A(EA.GatherTarget, n); var ca = A(EA.CarryAmount, n);
             var crt = A(EA.CarryResType, n); var cc = A(EA.CarryCapacity, n); var bt = A(EA.BuildTarget, n);
@@ -334,6 +337,7 @@ namespace ProjectChimera.Core.Persistence
                 pc[i] = w.PatrolCount[i]; pidx[i] = w.PatrolIndex[i]; pdir[i] = w.PatrolDir[i];
                 oqc[i] = w.OrderQueueCount[i]; aoc[i] = w.ActiveOrderCmd[i]; abc[i] = w.AbilityCount[i];
                 pcs[i] = w.PendingCastSlot[i]; pct[i] = w.PendingCastTarget[i];
+                pcpx[i] = w.PendingCastPointX[i].Raw; pcpz[i] = w.PendingCastPointZ[i].Raw; // Story 15.11
                 aura[i] = w.AuraAbilityIndex[i]; onhit[i] = w.OnHitAbilityIndex[i]; selfp[i] = w.SelfPassiveAbilityIndex[i]; hidx[i] = w.HeroIndex[i];
                 gs[i] = (int)w.GatherState[i]; gt[i] = w.GatherTarget[i]; ca[i] = w.CarryAmount[i].Raw;
                 crt[i] = (int)w.CarryResourceType[i]; cc[i] = w.CarryCapacity[i].Raw; bt[i] = w.BuildTarget[i];
@@ -685,6 +689,7 @@ namespace ProjectChimera.Core.Persistence
             var pc = G(EA.PatrolCount); var pidx = G(EA.PatrolIndex); var pdir = G(EA.PatrolDir);
             var oqc = G(EA.OrderQueueCount); var aoc = G(EA.ActiveOrderCmd); var abc = G(EA.AbilityCount);
             var pcs = G(EA.PendingCastSlot); var pct = G(EA.PendingCastTarget);
+            var pcpx = G(EA.PendingCastPointX); var pcpz = G(EA.PendingCastPointZ); // Story 15.11
             var aura = G(EA.AuraIdx); var onhit = G(EA.OnHitIdx); var selfp = G(EA.SelfPassiveIdx); var hidx = G(EA.HeroIndex);
             var gs = G(EA.GatherState); var gt = G(EA.GatherTarget); var ca = G(EA.CarryAmount); var crt = G(EA.CarryResType); var cc = G(EA.CarryCapacity); var bt = G(EA.BuildTarget);
             var gen = G(EA.Generation); // DW-581
@@ -726,6 +731,7 @@ namespace ProjectChimera.Core.Persistence
                 w.PatrolCount[i] = (byte)pc[i]; w.PatrolIndex[i] = (byte)pidx[i]; w.PatrolDir[i] = (sbyte)pdir[i];
                 w.OrderQueueCount[i] = (byte)oqc[i]; w.ActiveOrderCmd[i] = (byte)aoc[i]; w.AbilityCount[i] = (byte)abc[i];
                 w.PendingCastSlot[i] = (byte)pcs[i]; w.PendingCastTarget[i] = pct[i];
+                w.PendingCastPointX[i] = Fixed.FromRaw(pcpx[i]); w.PendingCastPointZ[i] = Fixed.FromRaw(pcpz[i]); // Story 15.11
                 w.AuraAbilityIndex[i] = aura[i]; w.OnHitAbilityIndex[i] = onhit[i]; w.SelfPassiveAbilityIndex[i] = selfp[i]; w.HeroIndex[i] = hidx[i];
                 w.GatherState[i] = (GatherState)gs[i]; w.GatherTarget[i] = gt[i]; w.CarryAmount[i] = Fixed.FromRaw(ca[i]);
                 w.CarryResourceType[i] = (ResourceKind)crt[i]; w.CarryCapacity[i] = Fixed.FromRaw(cc[i]); w.BuildTarget[i] = bt[i];

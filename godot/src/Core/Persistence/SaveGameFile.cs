@@ -43,8 +43,13 @@ namespace ProjectChimera.Core.Persistence
         /// <para>v3 (DW-548, post-merge review fix): the Director section gained the four deferred trigger-phase
         /// death-rail lanes. A v2 body ends the Director frame after <c>DirFirstTick</c>, so without this bump it
         /// would fail as a TRUNCATED SECTION — technically fail-closed, but with a "corrupt save" message for a save
-        /// that is merely older. Same reasoning as v2.</para></summary>
-        public const ushort FormatVersion = 3;
+        /// that is merely older. Same reasoning as v2.</para>
+        /// <para>v4 (Story 15.11, DW-280): the entity section gained the <c>PendingCastPointX</c>/<c>PendingCastPointZ</c>
+        /// lanes (the transient ground-cast point), inserted mid-order in the <c>SaveGameState.EA</c> lane enum. A v3
+        /// body carries the OLD lane ordering, so WITHOUT this bump it would parse at the same format version and
+        /// silently MISALIGN every entity lane after PendingCastTarget. The bump makes a pre-15.11 save fail-closed at
+        /// the header with the accurate "older game version" message, before any lane is read. Same reasoning as v2/v3.</para></summary>
+        public const ushort FormatVersion = 4;
 
         /// <summary>Max player slots in a persisted launch record — a fail-closed corruption bound on the slot count.</summary>
         public const int MaxSlots = 64;

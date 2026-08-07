@@ -97,7 +97,7 @@ namespace ProjectChimera.Core
             int baseIdx = i * EntityWorld.MAX_ORDER_QUEUE;
             int count   = world.OrderQueueCount[i];
 
-            byte cmdByte = world.OrderQueueCmd[baseIdx];
+            byte packed = world.OrderQueueCmd[baseIdx];
             int  tx      = world.OrderQueueTargetX[baseIdx];
             int  tz      = world.OrderQueueTargetZ[baseIdx];
 
@@ -109,9 +109,13 @@ namespace ProjectChimera.Core
             }
             world.OrderQueueCount[i] = (byte)(count - 1);
 
-            // The stored command is already the masked 0-13 value (AppendOrder strips the 0x80 flag), so it is a valid
-            // UnitCommand. Dispatch through the shared active-order core — single-sourced with the wire-entry apply.
-            OrderApplier.ApplyActiveOrder(world, i, (UnitCommand)cmdByte, tx, tz);
+            // Story 15.11: unpack the ability slot AppendOrder bit-packed into the free high bits of the command byte
+            // (bits 5-7) so a queued CastAbility reaches ApplyActiveOrder with its slot; a non-cast order has slot 0,
+            // so cmdByte == packed for every pre-15.11 order. The low bits are the masked 0-13 command (AppendOrder
+            // strips the 0x80 flag), a valid UnitCommand. Dispatch through the shared active-order core.
+            byte cmdByte = (byte)(packed & OrderApplier.ORDER_QUEUE_CMD_MASK);
+            int  slot    = packed >> OrderApplier.ORDER_QUEUE_SLOT_SHIFT;
+            OrderApplier.ApplyActiveOrder(world, i, (UnitCommand)cmdByte, tx, tz, slot);
         }
     }
 }

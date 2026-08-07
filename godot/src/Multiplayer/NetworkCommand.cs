@@ -133,12 +133,22 @@ namespace ProjectChimera.Multiplayer
         StartStateDisagreement = 2,
     }
 
-    // ── Per-unit order (11 bytes) ─────────────────────────────────────────────
+    // ── Per-unit order (12 bytes) ─────────────────────────────────────────────
 
     /// <summary>
     /// One unit command issued on a given tick.
-    /// Serialised as 11 bytes: unitId(2) + command(1) + targetX(4) + targetZ(4).
+    /// Serialised as 12 bytes: unitId(2) + command(1) + targetX(4) + targetZ(4) + slot(1).
     /// Y is not sent — the sim keeps units on the terrain height, determined locally.
+    ///
+    /// <para>Story 15.11 (DW-280/DW-290): the wire widened 11→12 to make <see cref="UnitCommand.CastAbility"/>
+    /// GROUND-CASTABLE. The 11-byte order spent BOTH 4-byte payloads on a cast (TargetX=slot, TargetZ=targetId),
+    /// leaving no room for an 8-byte ground point. The ability <see cref="Slot"/> (≤ MAX_ABILITIES_PER_UNIT) now
+    /// rides its OWN trailing byte, freeing <see cref="TargetX"/>/<see cref="TargetZ"/> to carry either the two
+    /// Fixed ground coords (GroundPoint) or 0 + targetId (TargetUnit) or 0 + -1 (Self). Every OTHER command writes
+    /// <see cref="Slot"/> = 0 and reads it never (their payload semantics are unchanged, so no existing golden or
+    /// hash moves — the wire is not a SimChecksum input). The stride change bumps <see cref="TickCommandPacket.PROTOCOL_VERSION"/>
+    /// and <c>ReplayRecorder.VERSION</c>; an older replay is hard-rejected at the version gate, never decoded at the
+    /// wrong stride.</para>
     /// </summary>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public readonly struct UnitOrder
@@ -147,20 +157,24 @@ namespace ProjectChimera.Multiplayer
         public readonly ushort UnitId;
         /// <summary>The command being issued.</summary>
         public readonly UnitCommand Command;
-        /// <summary>World target X (Fixed raw int, 0 for Stop/Hold/Idle).</summary>
+        /// <summary>World target X (Fixed raw int, 0 for Stop/Hold/Idle; ground X for a GroundPoint cast).</summary>
         public readonly int TargetX;
-        /// <summary>World target Z (Fixed raw int, 0 for Stop/Hold/Idle).</summary>
+        /// <summary>World target Z (Fixed raw int, 0 for Stop/Hold/Idle; ground Z / target id for a cast).</summary>
         public readonly int TargetZ;
+        /// <summary>Story 15.11: the ability slot for a <see cref="UnitCommand.CastAbility"/> order (0 for every other
+        /// command). A single byte — a unit holds at most <c>EntityWorld.MAX_ABILITIES_PER_UNIT</c> abilities.</summary>
+        public readonly byte Slot;
 
-        public UnitOrder(int unitId, UnitCommand command, Fixed targetX, Fixed targetZ)
+        public UnitOrder(int unitId, UnitCommand command, Fixed targetX, Fixed targetZ, byte slot = 0)
         {
             UnitId  = (ushort)unitId;
             Command = command;
             TargetX = targetX.Raw;
             TargetZ = targetZ.Raw;
+            Slot    = slot;
         }
 
-        public const int SIZE = 11; // bytes on the wire
+        public const int SIZE = 12; // bytes on the wire (unitId 2 + command 1 + targetX 4 + targetZ 4 + slot 1)
     }
 
     // ── OrderApplier (the SINGLE deterministic command→world step) ──────────────
@@ -363,11 +377,11 @@ namespace ProjectChimera.Multiplayer
             // plain command always wipes any stale queued orders (WC3 behaviour).
             if (queued)
             {
-                AppendOrder(world, id, cmd, o.TargetX, o.TargetZ, events);
+                AppendOrder(world, id, cmd, o.TargetX, o.TargetZ, o.Slot, events);
                 return;
             }
             world.OrderQueueCount[id] = 0; // plain (replace) — discard any pending queued orders before applying
-            ApplyActiveOrder(world, id, cmd, o.TargetX, o.TargetZ, onRequestPath, onRequestAttackMove, onCancelPath);
+            ApplyActiveOrder(world, id, cmd, o.TargetX, o.TargetZ, o.Slot, onRequestPath, onRequestAttackMove, onCancelPath);
         }
 
         /// <summary>
@@ -381,6 +395,7 @@ namespace ProjectChimera.Multiplayer
         /// delegates are presentation hooks — null on the pop and all headless/golden/replay paths.
         /// </summary>
         public static void ApplyActiveOrder(EntityWorld world, int id, UnitCommand cmd, int targetX, int targetZ,
+            int slot = 0,
             Action<int, float, float>? onRequestPath = null,
             Action<int, float, float>? onRequestAttackMove = null,
             Action<int>? onCancelPath = null)
@@ -520,20 +535,28 @@ namespace ProjectChimera.Multiplayer
                 }
                 case UnitCommand.CastAbility:
                 {
-                    // Story 2.4a (FR-11): a fire-and-forget cast INTENT. The ability slot rides in TargetX (raw int,
-                    // packed at issue time via Fixed.FromRaw(slot)) and the target entity id in TargetZ (raw int,
-                    // -1 = Self/None) — read back directly as targetX/targetZ, NEVER via .ToFloat() (that path is
-                    // float and would corrupt the packed int — the 1.12 AttackTarget lesson). We write ONLY the
-                    // pending-cast SoA; the effect graph runs in AbilityCastSystem INSIDE the tick. Running it here
-                    // would advance the shared SimRng / query a stale SpatialHash off-tick (OrderApplier runs at input
-                    // time, OUTSIDE the tick on the offline path) → desync vs the online/replay path. An instant cast
-                    // must not interrupt the unit's order, so restore CommandState to its prior value (mirrors how
-                    // PatrolAppend rewrites CommandState back to Patrol above).
+                    // Story 2.4a (FR-11) + Story 15.11 (DW-280): a fire-and-forget cast INTENT. The ability slot now
+                    // rides its OWN wire byte (<see cref="UnitOrder.Slot"/>), freeing TargetX/TargetZ to carry the
+                    // MODE-DEPENDENT payload that we store RAW here WITHOUT interpreting (AbilityCastSystem.TryCast
+                    // interprets it by ab.ParsedTargeting inside the tick):
+                    //   • TargetUnit → TargetX = 0,        TargetZ = target entity id (raw int, -1 = none)
+                    //   • GroundPoint → TargetX = ground X, TargetZ = ground Z (both Fixed raw)
+                    //   • Self/None  → TargetX = 0,        TargetZ = -1
+                    // Read back directly as raw ints, NEVER via .ToFloat() (that path is float and would corrupt the
+                    // packed int / the ground point — the 1.12 AttackTarget lesson). We write ONLY the pending-cast
+                    // SoA; the effect graph runs in AbilityCastSystem INSIDE the tick. Running it here would advance
+                    // the shared SimRng / query a stale SpatialHash off-tick (OrderApplier runs at input time, OUTSIDE
+                    // the tick on the offline path) → desync vs the online/replay path. An instant cast must not
+                    // interrupt the unit's order, so restore CommandState to its prior value (mirrors how PatrolAppend
+                    // rewrites CommandState back to Patrol above).
                     world.CommandState[id] = prior;
-                    int slot = targetX;
-                    if (slot < 0 || slot >= world.AbilityCount[id]) break; // no such slot → deterministic no-op
+                    // Review P10: `slot` comes from the unsigned wire byte UnitOrder.Slot (0-255) or the unpacked queue
+                    // bits (0-3) — never negative, so only the upper bound is a real gate.
+                    if (slot >= world.AbilityCount[id]) break; // no such slot → deterministic no-op
                     world.PendingCastSlot[id]   = (byte)slot;
-                    world.PendingCastTarget[id] = targetZ;
+                    world.PendingCastTarget[id] = targetZ;                        // targetId (TargetUnit) | groundZ raw (GroundPoint) — TryCast disambiguates
+                    world.PendingCastPointX[id] = Fixed.FromRaw(targetX);         // groundX (GroundPoint) | 0 (TargetUnit/Self) — mode-agnostic store
+                    world.PendingCastPointZ[id] = Fixed.FromRaw(targetZ);
                     break;
                 }
             }
@@ -555,7 +578,7 @@ namespace ProjectChimera.Multiplayer
         /// from the single wire-entry <see cref="Apply"/> (never the pop path), so appending never touches CommandState.
         /// </summary>
         private static void AppendOrder(EntityWorld world, int id, UnitCommand cmd, int targetX, int targetZ,
-            CombatEventQueue? events)
+            byte abilitySlot, CombatEventQueue? events)
         {
             int count = world.OrderQueueCount[id];
             if (count >= EntityWorld.MAX_ORDER_QUEUE)
@@ -566,12 +589,33 @@ namespace ProjectChimera.Multiplayer
                 events?.PushDenied(world.Position[id], world.FactionOf[id], DenialReason.QueueFull);
                 return; // ring full — deterministic reject (mirrors PatrolAppend's "route full → ignore", plus the event)
             }
-            int slot = id * EntityWorld.MAX_ORDER_QUEUE + count;
-            world.OrderQueueCmd[slot]     = (byte)cmd; // the MASKED 0-13 command (the 0x80 wire flag is already stripped)
-            world.OrderQueueTargetX[slot] = targetX;
-            world.OrderQueueTargetZ[slot] = targetZ;
+            // Story 15.11 (review P2): a queued CastAbility with an out-of-range slot NO-OPS rather than being appended
+            // and later truncated to a valid slot by the pack below (`badSlot << 6` would overflow the byte and wrap to
+            // a real slot). Mirror the non-queued ApplyActiveOrder guard (`slot >= AbilityCount`). Non-cast orders carry
+            // slot 0, so this never blocks them; AbilityCount ≤ MAX_ABILITIES_PER_UNIT (4) also bounds slot to 0-3 (2 bits).
+            if (cmd == UnitCommand.CastAbility && abilitySlot >= world.AbilityCount[id]) return;
+
+            int ring = id * EntityWorld.MAX_ORDER_QUEUE + count;
+            // Story 15.11: a queued CastAbility needs its ability slot to survive the ring, but the wire moved the slot
+            // OUT of TargetX/TargetZ (those now carry the ground point or targetId). Rather than add a parallel
+            // OrderQueueSlot array (a new fold/save decision), pack the ≤2-bit slot into the FREE high bits (6-7) of the
+            // already-folded, already-saved command byte: the masked command uses bits 0-5 (the UnitCommand enum is
+            // documented ≤ 0x3F) and the 0x80 wire flag was stripped, so bits 6-7 are free. Every non-cast queued order
+            // carries slot 0, so its stored byte is byte-IDENTICAL to before (bits 6-7 == 0) — no golden moves.
+            System.Diagnostics.Debug.Assert((byte)cmd <= ORDER_QUEUE_CMD_MASK,
+                "queued command exceeds the 6-bit field — the packed ability slot bits (6-7) would collide with it");
+            world.OrderQueueCmd[ring]     = (byte)((byte)cmd | (abilitySlot << ORDER_QUEUE_SLOT_SHIFT));
+            world.OrderQueueTargetX[ring] = targetX;
+            world.OrderQueueTargetZ[ring] = targetZ;
             world.OrderQueueCount[id]     = (byte)(count + 1);
         }
+
+        /// <summary>Story 15.11: bit position of the packed ability slot inside a queued <see cref="EntityWorld.OrderQueueCmd"/>
+        /// byte (bits 6-7; the masked command occupies bits 0-5, matching the UnitCommand enum's documented ≤ 0x3F range).
+        /// Read back by <c>OrderQueueSystem.PopAndDispatchHead</c>.</summary>
+        public const int ORDER_QUEUE_SLOT_SHIFT = 6;
+        /// <summary>Story 15.11: mask isolating the masked <see cref="UnitCommand"/> (bits 0-5) from a queued command byte.</summary>
+        public const int ORDER_QUEUE_CMD_MASK = (1 << ORDER_QUEUE_SLOT_SHIFT) - 1;
 
         /// <summary>
         /// DW-304 — a building-family command reached <see cref="Apply"/> while the system handle that executes it
@@ -607,8 +651,8 @@ namespace ProjectChimera.Multiplayer
 
     /// <summary>
     /// All orders a player issues on a single tick.
-    /// Wire format: PacketType(1) + tick(4) + faction(1) + orderCount(1) + orders(11 each).
-    /// Max 32 orders per tick (352 bytes total worst-case) — well under 1 MTU.
+    /// Wire format: PacketType(1) + tick(4) + faction(1) + orderCount(1) + orders(12 each, Story 15.11).
+    /// Max 32 orders per tick (384 bytes of orders worst-case) — well under 1 MTU.
     /// </summary>
     public static class TickCommandPacket
     {
@@ -652,6 +696,7 @@ namespace ProjectChimera.Multiplayer
                 buf[pos++] = (byte)o.Command;
                 WriteInt(buf, ref pos, o.TargetX);
                 WriteInt(buf, ref pos, o.TargetZ);
+                buf[pos++] = o.Slot; // Story 15.11: ability slot (byte 11); 0 for every non-cast command
             }
 
             return totalBytes;
@@ -681,7 +726,8 @@ namespace ProjectChimera.Multiplayer
                 var command = (UnitCommand)buf[pos++];
                 int tx = ReadInt(buf, ref pos);
                 int tz = ReadInt(buf, ref pos);
-                outOrders[i] = new UnitOrder(unitId, command, Fixed.FromRaw(tx), Fixed.FromRaw(tz));
+                byte slot = buf[pos++]; // Story 15.11: ability slot (byte 11)
+                outOrders[i] = new UnitOrder(unitId, command, Fixed.FromRaw(tx), Fixed.FromRaw(tz), slot);
             }
 
             return true;
@@ -773,7 +819,12 @@ namespace ProjectChimera.Multiplayer
         /// Ready packet (protocol version + 64-bit match-agreement hash). The version is now VALIDATED fail-closed
         /// on the client's inbound Hello and the server's inbound Ready (closing the D3.8 gap), so an old build
         /// (v1) can no longer complete the handshake against a v2 build.</remarks>
-        public const ushort PROTOCOL_VERSION = 2;
+        /// <remarks>Story 15.11 (DW-280): bumped 2→3 — the coordinated wire change that widened the
+        /// <see cref="UnitOrder"/> stride 11→12 (the ability slot moved to its own trailing byte so a
+        /// <see cref="UnitCommand.CastAbility"/> can carry an 8-byte ground point). A v2 build and a v3 build have
+        /// different order strides, so they cannot interoperate — the fail-closed version check at the lobby
+        /// rejects the mismatch, and <c>ReplayRecorder.VERSION</c> (4→5) rejects a v4 replay at its own gate.</remarks>
+        public const ushort PROTOCOL_VERSION = 3;
 
         /// <summary>
         /// DW-419/DW-420 — Hello role flag: the sender is a DEDICATED SERVER (not a P2P host). Tells the client
@@ -1350,6 +1401,7 @@ namespace ProjectChimera.Multiplayer
                     buf[pos++] = (byte)o.Command;
                     WriteInt(buf, ref pos, o.TargetX);
                     WriteInt(buf, ref pos, o.TargetZ);
+                    buf[pos++] = o.Slot; // Story 15.11: ability slot (byte 11) — same 12-byte order encoding as TickCommandPacket
                 }
             }
 
@@ -1394,7 +1446,8 @@ namespace ProjectChimera.Multiplayer
                     var command = (UnitCommand)buf[pos++];
                     int tx = ReadInt(buf, ref pos);
                     int tz = ReadInt(buf, ref pos);
-                    outOrdersFlat[baseIdx + i] = new UnitOrder(unitId, command, Fixed.FromRaw(tx), Fixed.FromRaw(tz));
+                    byte slot = buf[pos++]; // Story 15.11: ability slot (byte 11)
+                    outOrdersFlat[baseIdx + i] = new UnitOrder(unitId, command, Fixed.FromRaw(tx), Fixed.FromRaw(tz), slot);
                 }
                 outFactions[b]    = faction;
                 outOrderCounts[b] = count;

@@ -320,6 +320,7 @@ namespace ProjectChimera.Core.Definitions
         public string Id          = "";
         public string DisplayName = "";
         public string Targeting   = "Self";
+        public string? TargetAffinity = null;   // Story 15.11 (DW-286) — optional Enemy|Ally|Any; null = absent (enemy default), round-trips unchanged
         public string Activation  = "active";   // Story 2.6 — active | aura | on_hit | while_alive (closed set)
         public Fixed  CostEnergy  = Fixed.Zero;
         public int    CostOre;
@@ -335,6 +336,7 @@ namespace ProjectChimera.Core.Definitions
             Id          = Id,
             DisplayName = DisplayName,
             Targeting   = Targeting,
+            TargetAffinity = TargetAffinity, // Story 15.11 (null → absent, serializes identically to today)
             Activation  = Activation,
             CostEnergy  = CostEnergy,
             CostOre     = CostOre,
@@ -349,6 +351,7 @@ namespace ProjectChimera.Core.Definitions
             Id          = def.Id,
             DisplayName = def.DisplayName,
             Targeting   = def.Targeting,
+            TargetAffinity = def.TargetAffinity, // Story 15.11 — inverse of ToDefinition (round-trips null unchanged)
             Activation  = def.Activation,
             CostEnergy  = def.CostEnergy,
             CostOre     = def.CostOre,

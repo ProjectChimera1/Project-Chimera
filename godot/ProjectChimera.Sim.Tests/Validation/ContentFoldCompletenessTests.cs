@@ -121,7 +121,9 @@ namespace ProjectChimera.Sim.Tests.Validation
         public void AbilityDefinition_EveryFieldClassified()
             => AssertClassified(typeof(AbilityDefinition),
                 folded: new[] { "id", "targeting", "activation", "cost_energy", "cost_ore", "cost_crystal", "cost_health", "allow_self_lethal", "cooldown", "effect" },
-                excluded: new[] { "display_name", "combat_feedback" },
+                // Story 15.11 (DW-286): target_affinity is EXCLUDED (a UI click-picker hint, not sim state) — deliberately
+                // NOT folded so adding it moves no ContentHash/CanonicalModelHash for any shipped ability (absent → identical).
+                excluded: new[] { "display_name", "combat_feedback", "target_affinity" },
                 allowlist: Array.Empty<string>());
 
         [Fact]

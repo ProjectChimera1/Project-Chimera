@@ -1,0 +1,15 @@
+{
+  "id": "ground_nuke",
+  "display_name": "Ground Nuke",
+  "targeting": "GroundPoint",
+  "cost_energy": 60,
+  "cost_ore": 0,
+  "cost_crystal": 0,
+  "cooldown": 8,
+  "effect": {
+    "kind": "search_area",
+    "radius": 4,
+    "filter": "Enemy",
+    "child": { "kind": "damage", "amount": 60, "damage_type": "Magic" }
+  }
+}

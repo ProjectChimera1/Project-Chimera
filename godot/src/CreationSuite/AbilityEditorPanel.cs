@@ -77,6 +77,10 @@ namespace ProjectChimera.CreationSuite
         private OptionButton _targetingBtn  = null!;
         private Label        _targetingHint = null!;
         private string       _targetingName = "Self";
+        // Story 15.11 (DW-286): optional target-affinity dropdown, shown only for TargetUnit/GroundPoint.
+        private OptionButton _affinityBtn   = null!;
+        private Control      _affinityRow   = null!;
+        private string?      _targetAffinity = null; // null = absent (enemy default; serializes identically to today)
 
         // ── Activation (Story 2.6 — the closed passive model: active | aura | on_hit | while_alive) ──
         private OptionButton _activationBtn  = null!;
@@ -214,12 +218,22 @@ namespace ProjectChimera.CreationSuite
             }, selectedId: 1, OnTargetingSelected);
             _targetingHint = new Label
             {
-                Text = "Authorable, but cast support is pending (Story 2.4 deferral) — not castable yet.",
+                Text = "Ground Point: the player clicks a location; the effect (e.g. a Search Area) resolves at that point.",
                 AutowrapMode = TextServer.AutowrapMode.Word, Visible = false,
             };
             _targetingHint.AddThemeFontSizeOverride("font_size", 10);
             _targetingHint.AddThemeColorOverride("font_color", HintText);
             content.AddChild(_targetingHint);
+
+            // Story 15.11 (DW-286): the target-affinity hint for a TargetUnit/GroundPoint ability — which allegiance the
+            // click-picker selects. "Enemy (default)" writes no key (absent), so shipped content is unchanged; Ally is a
+            // heal-other. Shown only for TargetUnit/GroundPoint (see UpdateAffinityVisibility).
+            _affinityBtn = AddDropdownRow(content, "Target Affinity", new[]
+            {
+                ("Enemy (default)", 0), ("Ally", 1), ("Any", 2),
+            }, selectedId: 0, OnAffinitySelected);
+            _affinityRow = _affinityBtn.GetParent<Control>();
+            _affinityRow.Visible = false; // default targeting is Self → hidden
 
             // Activation selector (Story 2.6) — the CLOSED passive set, exactly these four and nothing else (AC5). A
             // passive choice reveals the passive affordances, fixes targeting, hides cost/cooldown, and routes the
@@ -517,6 +531,7 @@ namespace ProjectChimera.CreationSuite
         {
             _targetingName = id switch { 0 => "None", 1 => "Self", 2 => "TargetUnit", 3 => "GroundPoint", _ => "Self" };
             _targetingHint.Visible = _targetingName == "GroundPoint";
+            UpdateAffinityVisibility();
             ClearStatus();
         }
 
@@ -526,6 +541,34 @@ namespace ProjectChimera.CreationSuite
             int id = name switch { "None" => 0, "Self" => 1, "TargetUnit" => 2, "GroundPoint" => 3, _ => 1 };
             SelectDropdownId(_targetingBtn, id);
             _targetingHint.Visible = name == "GroundPoint";
+            UpdateAffinityVisibility();
+        }
+
+        // ── Target affinity (Story 15.11, DW-286) ───────────────────────────────
+
+        private void OnAffinitySelected(int id)
+        {
+            // id 0 ("Enemy (default)") → null (absent, the enemy-only default that serializes identically to today).
+            _targetAffinity = id switch { 1 => "Ally", 2 => "Any", _ => null };
+            ClearStatus();
+        }
+
+        /// <summary>Reflect a stored affinity string into the dropdown ("Enemy"/null → the default item).</summary>
+        private void SetAffinity(string? affinity)
+        {
+            _targetAffinity = affinity;
+            int id = affinity switch { "Ally" => 1, "Any" => 2, _ => 0 };
+            SelectDropdownId(_affinityBtn, id);
+        }
+
+        /// <summary>Story 15.11: the affinity row is meaningful ONLY for a TargetUnit/GroundPoint ability (a click picks a
+        /// unit/point). Hide it — and clear any stored affinity so a Self/None ability saves no meaningless hint (the
+        /// validator would otherwise warn) — for every other targeting mode.</summary>
+        private void UpdateAffinityVisibility()
+        {
+            bool show = _targetingName is "TargetUnit" or "GroundPoint";
+            if (_affinityRow != null) _affinityRow.Visible = show;
+            if (!show) SetAffinity(null);
         }
 
         // ── Activation (Story 2.6 passive mode) ─────────────────────────────────
@@ -600,8 +643,9 @@ namespace ProjectChimera.CreationSuite
             _params.Id = SanitizeId(_idEdit.Text);
             _params.DisplayName = _nameEdit.Text;
             AbilityDefinition def = AbilityPresets.Build(_presetKind, _params);
-            def.Targeting  = _targetingName;     // header override (the creator's explicit choice wins)
-            def.Activation = _activationName;    // Story 2.6 (always "active" in Simple — passives author in Advanced)
+            def.Targeting      = _targetingName;   // header override (the creator's explicit choice wins)
+            def.TargetAffinity = _targetAffinity;  // Story 15.11 (null → absent; only meaningful for TargetUnit/GroundPoint)
+            def.Activation     = _activationName;  // Story 2.6 (always "active" in Simple — passives author in Advanced)
             return def;
         }
 
@@ -644,6 +688,7 @@ namespace ProjectChimera.CreationSuite
             _idEdit.Text   = def.Id;
             _nameEdit.Text = def.DisplayName;
             SetTargeting(def.Targeting);
+            SetAffinity(def.TargetAffinity); // Story 15.11 (after SetTargeting, which sets the row's visibility)
             // Story 2.6 — reflect the activation (drives passive affordances). Load-path: the caller owns the mode
             // switch (LoadFromRegistry opens non-preset passives in Advanced), so do not double-switch here.
             SetActivation(def.Activation, userInitiated: false);

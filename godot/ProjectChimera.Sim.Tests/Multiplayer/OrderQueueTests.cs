@@ -22,6 +22,58 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
         private static UnitOrder Queued(int id, UnitCommand cmd, Fixed tx, Fixed tz)
             => new UnitOrder(id, (UnitCommand)((byte)cmd | UnitOrderFlags.Queued), tx, tz);
 
+        // ── Story 15.11 (review P4b) — a queued CastAbility's ability slot survives the ring via the bit-pack ────
+
+        [Fact]
+        public void QueuedCastAbility_BitPacksAndUnpacksSlot()
+        {
+            // The wire moved the ability slot off TargetX/Z, so a Shift-queued cast packs its slot into the FREE high
+            // bits (6-7) of the queued command byte. Append slot 3, and prove BOTH the command and the slot survive:
+            // the stored byte decodes to (CastAbility, slot 3), and the pop sets PendingCastSlot == 3.
+            var w = new EntityWorld();
+            int u = w.Create(V(0, 0, 0), Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            w.AbilityCount[u] = 4; // slots 0-3 exist → slot 3 is valid at both append and dispatch
+
+            OrderApplier.Apply(w,
+                new UnitOrder(u, (UnitCommand)((byte)UnitCommand.CastAbility | UnitOrderFlags.Queued),
+                    Fixed.Zero, Fixed.FromRaw(-1), slot: 3),
+                Faction.Player1);
+
+            // The stored queued byte packs slot in bits 6-7 and the masked command in bits 0-5 — decode both.
+            byte stored = w.OrderQueueCmd[u * EntityWorld.MAX_ORDER_QUEUE + 0];
+            Assert.Equal((byte)UnitCommand.CastAbility, (byte)(stored & OrderApplier.ORDER_QUEUE_CMD_MASK));
+            Assert.Equal(3, stored >> OrderApplier.ORDER_QUEUE_SLOT_SHIFT);
+
+            // The queue pops on the Idle active order and dispatches the cast intent with the UNPACKED slot.
+            new OrderQueueSystem().Tick(w, Fixed.Zero);
+            Assert.Equal((byte)0, w.OrderQueueCount[u]);   // popped
+            Assert.Equal((byte)3, w.PendingCastSlot[u]);   // slot survived the pack → unpack round-trip
+            Assert.Equal(-1, w.PendingCastTarget[u]);      // the target payload round-tripped too
+        }
+
+        [Fact]
+        public void QueuedCastAbility_OutOfRangeSlot_IsRejectedAtAppend_FailClosed()
+        {
+            // Story 15.11 (review P2, verification-gap): the AppendOrder guard (`slot >= AbilityCount → return`) must
+            // reject an out-of-range queued cast slot BEFORE the `slot << 6` bit-pack — `4 << 6 = 256` truncates to 0 in
+            // the byte, so an un-guarded append would WRAP a bad slot onto the VALID low slot 0 and slip past the
+            // dispatch-time `slot >= AbilityCount` check (which sees the wrapped-to-0 slot). Prove nothing is appended
+            // and the pop dispatches no cast (fail-closed), not a stray slot-0 fire.
+            var w = new EntityWorld();
+            int u = w.Create(V(0, 0, 0), Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            w.AbilityCount[u] = 2; // only slots 0-1 exist → slot 4 is out of range
+
+            OrderApplier.Apply(w,
+                new UnitOrder(u, (UnitCommand)((byte)UnitCommand.CastAbility | UnitOrderFlags.Queued),
+                    Fixed.Zero, Fixed.FromRaw(-1), slot: 4),
+                Faction.Player1);
+
+            Assert.Equal((byte)0, w.OrderQueueCount[u]); // rejected at append — never entered the ring
+
+            new OrderQueueSystem().Tick(w, Fixed.Zero);
+            Assert.Equal(EntityWorld.NO_PENDING_CAST, w.PendingCastSlot[u]); // no cast dispatched (not wrapped to slot 0)
+        }
+
         // ── AC1.2 — queued APPENDS (no CommandState touch); plain CLEARS the ring + applies ───────────────────
 
         [Fact]

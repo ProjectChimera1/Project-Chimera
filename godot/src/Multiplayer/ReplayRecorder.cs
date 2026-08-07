@@ -36,7 +36,10 @@ namespace ProjectChimera.Multiplayer
         //   plus a result trailer, and a header that embeds the canonical scenario hash, ruleset hash, model
         //   algo-version, faction count, and roster. v1/v2/v3 files carry no scenario hash so the playback re-gate
         //   invariant cannot hold for them → they are HARD-REJECTED by ReplayPlayer ("re-record") — see Design Notes.
-        public const ushort VERSION = 4;
+        // v5 (Story 15.11, DW-280): the UnitOrder wire stride widened 11→12 (the ability slot moved to its own byte so
+        //   a CastAbility can carry a ground point). A v4 body decoded at the v5 stride would misalign every order after
+        //   the first — so v4 (and earlier) are HARD-REJECTED at the version gate ("please re-record"), never decoded.
+        public const ushort VERSION = 5;
 
         /// <summary>Legacy (pre-v4) EOF sentinel — retained only so the hard-reject tests can hand-write old headers.</summary>
         public const uint EOF_SENTINEL = 0xFFFFFFFFu;

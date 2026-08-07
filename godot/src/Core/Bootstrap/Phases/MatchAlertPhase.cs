@@ -38,6 +38,11 @@ namespace ProjectChimera.Core.Bootstrap
             _ctx.Scene.AddChild(markers);
             _ctx.OrderMarkers = markers;
 
+            // Story 15.11 (DW-280): the cursor-following ground-cast reticle (shown only while a GroundPoint ability is armed).
+            var castReticle = new CastReticleBridge();
+            _ctx.Scene.AddChild(castReticle);
+            _ctx.Selection.SetCastReticle(castReticle);
+
             // The feedback coordinator — read-only drainer of the non-folded CombatEventQueue.
             var bridge = new MatchAlertBridge();
             _ctx.Scene.AddChild(bridge);

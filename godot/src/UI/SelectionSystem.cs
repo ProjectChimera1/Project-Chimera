@@ -87,8 +87,13 @@ namespace ProjectChimera.UI
         // Both nullable — wired by MatchAlertPhase; a null dep just skips its half of the feedback.
         private AudioManager?      _audioMgr     = null;
         private OrderMarkerBridge? _orderMarkers = null;
+        // Story 15.11 (DW-280): the cursor-following ground-cast reticle. Shown only while a GroundPoint ability is armed.
+        private CastReticleBridge? _castReticle  = null;
         // Own-view faction tint for the order-confirmed marker (matches the minimap own-colour).
         private static readonly Color OrderMarkerTint = new Color(0.20f, 0.55f, 1.00f);
+
+        /// <summary>Story 15.11: inject the cursor-following ground-cast reticle (a presentation Node added by the boot phase).</summary>
+        public void SetCastReticle(CastReticleBridge reticle) => _castReticle = reticle;
 
         /// <summary>Story 11.4: inject the issue-time acknowledgment deps (audio cue + ground-marker pool).</summary>
         public void SetFeedbackDeps(AudioManager audio, OrderMarkerBridge markers)
@@ -170,9 +175,13 @@ namespace ProjectChimera.UI
         private bool _awaitingFollowClick;
         /// <summary>True after a TargetUnit ability button arms a cast: the next left-click picks the target (Story 2.4b).</summary>
         private bool _awaitingCastClick;
+        /// <summary>Story 15.11: true after a GroundPoint ability button arms a cast: the next left-click picks the ground point.</summary>
+        private bool _awaitingCastGroundClick;
         /// <summary>The caster + ability slot a pending cast-target click will fire (set by <see cref="ArmCastTargeting"/>; -1 = none).</summary>
         private int _pendingCastCasterId = -1;
         private int _pendingCastSlot     = -1;
+        /// <summary>Story 15.11 (DW-286): the allegiance the pending TargetUnit cast-click picks (Enemy default; Ally = heal-other).</summary>
+        private TargetAffinity _pendingCastAffinity = TargetAffinity.Enemy;
 
         /// <summary>
         /// Optional lockstep coordinator. When set (online mode), all player commands
@@ -373,6 +382,17 @@ namespace ProjectChimera.UI
             UpdateHealthBar();
             UpdateSelectionBox();
             UpdateMultiLabel();
+            UpdateCastReticle();
+        }
+
+        /// <summary>Story 15.11 (DW-280): while a GroundPoint ability is armed, steer the cursor-following reticle to the
+        /// world point under the mouse each frame so the player sees where the cast will land before clicking.</summary>
+        private void UpdateCastReticle()
+        {
+            if (_castReticle == null || !_awaitingCastGroundClick) return;
+            Vector2 mouse = GetViewport().GetMousePosition();
+            if (RaycastGround(mouse, out Vector3 hit))
+                _castReticle.MoveTo(hit);
         }
 
         // ── Input ─────────────────────────────────────────────────────────────────
@@ -420,18 +440,37 @@ namespace ProjectChimera.UI
                         return;
                     }
 
-                    // Cast-target pending (Story 2.4b): the player armed a TargetUnit ability on the command card;
-                    // this left-click picks the nearest enemy as the target and issues the cast (Decision B = enemy-only,
-                    // 2.4b's lone TargetUnit sample is offensive). A click hitting no enemy just disarms; an
-                    // unfulfillable target is refused atomically by AbilityCastSystem (no spend, no cooldown).
+                    // Cast-target pending (Story 2.4b + Story 15.11): the player armed a TargetUnit ability on the command
+                    // card; this left-click picks a unit by the ability's affinity and issues the cast. Enemy (or absent
+                    // affinity) = the historical enemy-only pick; Ally = the caster's own faction excluding the caster
+                    // (heal-other); Any = nearest unit of any allegiance excluding the caster. A click hitting no valid
+                    // unit just disarms; an unfulfillable target is refused atomically by AbilityCastSystem.
                     if (_awaitingCastClick)
                     {
                         if (RaycastGround(lmb.Position, out Vector3 cHit))
                         {
-                            int targetId = FindNearestEnemyUnit(cHit, PICK_RADIUS);
+                            int targetId = _pendingCastAffinity switch
+                            {
+                                TargetAffinity.Ally => FindNearestAllyUnit(cHit, PICK_RADIUS, _pendingCastCasterId),
+                                TargetAffinity.Any  => FindNearestAnyUnit(cHit, PICK_RADIUS, _pendingCastCasterId),
+                                _                   => FindNearestEnemyUnit(cHit, PICK_RADIUS),
+                            };
                             if (targetId >= 0)
                                 IssueCastAbilityCommand(_pendingCastCasterId, _pendingCastSlot, targetId, queued: lmb.ShiftPressed);
                         }
+                        ResetPendingCommandClicks();
+                        GetViewport().SetInputAsHandled();
+                        return;
+                    }
+
+                    // Story 15.11 (DW-280): ground-cast pending — the player armed a GroundPoint ability; this left-click
+                    // resolves the world point under the cursor and issues the ground cast. A click off the ground plane
+                    // (RaycastGround fails) just disarms without a cast (no crash).
+                    if (_awaitingCastGroundClick)
+                    {
+                        if (RaycastGround(lmb.Position, out Vector3 gHit))
+                            IssueCastAbilityGroundCommand(_pendingCastCasterId, _pendingCastSlot,
+                                Fixed.FromFloat(gHit.X), Fixed.FromFloat(gHit.Z), queued: lmb.ShiftPressed);
                         ResetPendingCommandClicks();
                         GetViewport().SetInputAsHandled();
                         return;
@@ -468,8 +507,8 @@ namespace ProjectChimera.UI
                 && rmb.ButtonIndex == MouseButton.Right
                 && rmb.Pressed)
             {
-                // Story 2.4b: right-click cancels a pending cast-target click (no cast, no move command).
-                if (_awaitingCastClick)
+                // Story 2.4b + 15.11: right-click cancels a pending cast-target OR ground-cast click (no cast, no move).
+                if (_awaitingCastClick || _awaitingCastGroundClick)
                 {
                     ResetPendingCommandClicks();
                 }
@@ -992,33 +1031,52 @@ namespace ProjectChimera.UI
             _awaitingPatrolClick     = false;
             _awaitingFollowClick     = false;
             _awaitingCastClick       = false;
+            _awaitingCastGroundClick = false;                 // Story 15.11
             _pendingCastCasterId     = -1;
             _pendingCastSlot         = -1;
+            _pendingCastAffinity     = TargetAffinity.Enemy;  // Story 15.11: back to the default pick
+            _castReticle?.SetActive(false);                   // Story 15.11: hide the ground reticle when any arm clears
         }
 
         /// <summary>
-        /// Arm a TargetUnit cast (Story 2.4b): the command card calls this when the player presses a TargetUnit
-        /// ability button. The NEXT left-click picks the nearest enemy as the target and issues the cast; right-click
-        /// or Escape cancels. Stores the caster + ability slot (a cast needs BOTH, unlike the other click-arms which
-        /// act on the whole selection). SelectionSystem stays ability-data-free — the card supplies caster+slot.
+        /// Arm a TargetUnit cast (Story 2.4b + Story 15.11): the command card calls this when the player presses a
+        /// TargetUnit ability button. The NEXT left-click picks a unit by <paramref name="affinity"/> (Enemy = the
+        /// historical default; Ally = own faction excluding the caster; Any = nearest of any allegiance) and issues the
+        /// cast; right-click or Escape cancels. Stores the caster + slot + affinity (a cast needs all three).
+        /// SelectionSystem stays ability-data-free — the card supplies caster+slot+affinity from the AbilityDefinition.
         /// </summary>
-        public void ArmCastTargeting(int casterId, int slot)
+        public void ArmCastTargeting(int casterId, int slot, TargetAffinity affinity = TargetAffinity.Enemy)
         {
             ResetPendingCommandClicks();
             _pendingCastCasterId = casterId;
             _pendingCastSlot     = slot;
+            _pendingCastAffinity = affinity;
             _awaitingCastClick   = true;
-            GD.Print("[Selection] Cast: click an enemy target.");
+            GD.Print($"[Selection] Cast: click a {(affinity == TargetAffinity.Ally ? "friendly" : affinity == TargetAffinity.Any ? "unit" : "enemy")} target.");
         }
 
         /// <summary>
-        /// Issue a single-caster ability cast (Story 2.4b). Mirrors <see cref="IssueAttackTargetCommand"/> but on ONE
-        /// caster and packs BOTH values into the shipped 11-byte wire: the ability slot in TargetX and the target
-        /// entity id in TargetZ, each a RAW int via <see cref="Fixed.FromRaw"/> — NEVER <c>Fixed.FromFloat</c> (it
-        /// scales by 65536 and corrupts the packed ints — the 1.12 lesson). Self/None casts pass targetEntityId = -1
-        /// (issued directly from the card, no arming). Online → queued via <c>EnqueueOrder</c> (Flush applies later);
-        /// offline (<c>_lockstep == null</c>) → applied now through the SAME shared <see cref="OrderApplier"/> the
-        /// lockstep/replay paths use, so live/replay/offline cast application can never diverge.
+        /// Story 15.11 (DW-280): arm a GroundPoint cast — the command card calls this when the player presses a
+        /// GroundPoint ability button. A cursor-following reticle appears (if wired) and the NEXT left-click resolves
+        /// the world point under the cursor and issues the ground cast; right-click or Escape cancels.
+        /// </summary>
+        public void ArmCastGroundTargeting(int casterId, int slot)
+        {
+            ResetPendingCommandClicks();
+            _pendingCastCasterId     = casterId;
+            _pendingCastSlot         = slot;
+            _awaitingCastGroundClick = true;
+            _castReticle?.SetActive(true);
+            GD.Print("[Selection] Ground cast: click a target location.");
+        }
+
+        /// <summary>
+        /// Issue a single-caster UNIT-target (or Self/None) ability cast (Story 2.4b + Story 15.11). On the widened
+        /// 12-byte wire the ability slot rides its OWN byte (<see cref="UnitOrder.Slot"/>), so TargetX is 0 and TargetZ
+        /// carries the target entity id (raw int via <see cref="Fixed.FromRaw"/> — NEVER <c>Fixed.FromFloat</c>, which
+        /// scales by 65536 and corrupts the packed int, the 1.12 lesson). Self/None casts pass targetEntityId = -1
+        /// (issued directly from the card, no arming). Online → queued via <c>EnqueueOrder</c>; offline
+        /// (<c>_lockstep == null</c>) → applied now through the SAME shared <see cref="OrderApplier"/>.
         /// </summary>
         public void IssueCastAbilityCommand(int casterId, int slot, int targetEntityId, bool queued = false)
         {
@@ -1034,11 +1092,34 @@ namespace ProjectChimera.UI
             // the shared ApplyActiveOrder core. A plain (non-Shift) cast is unflagged → clears the ring + casts now.
             var wireCmd = queued ? (UnitCommand)((byte)UnitCommand.CastAbility | UnitOrderFlags.Queued)
                                  : UnitCommand.CastAbility;
+            // Story 15.11: slot → the wire's dedicated byte; TargetX = 0 (unused for TargetUnit/Self), TargetZ = targetId.
             // Online: EnqueueOrder returns false (queued). Offline (_lockstep == null): the ?? true yields apply-now.
             bool applyNow = _lockstep?.EnqueueOrder(casterId, wireCmd,
-                                                    Fixed.FromRaw(slot), Fixed.FromRaw(targetEntityId)) ?? true;
+                                                    Fixed.Zero, Fixed.FromRaw(targetEntityId), (byte)slot) ?? true;
             if (!applyNow) return; // online: LockstepManager.Flush will apply it later
-            var order = new UnitOrder(casterId, wireCmd, Fixed.FromRaw(slot), Fixed.FromRaw(targetEntityId));
+            var order = new UnitOrder(casterId, wireCmd, Fixed.Zero, Fixed.FromRaw(targetEntityId), (byte)slot);
+            OrderApplier.Apply(_world, in order, _world.FactionOf[casterId]);
+        }
+
+        /// <summary>
+        /// Story 15.11 (DW-280): issue a single-caster GROUND-POINT ability cast. The ability slot rides the wire's
+        /// dedicated byte; the two <see cref="Fixed"/> ground coords ride TargetX/TargetZ. The coords were quantized
+        /// once at the screen→world seam via <see cref="Fixed.FromFloat"/> (the <c>IssueMoveCommand</c>/rally idiom —
+        /// the local peer resolves its ray, ships the raw, every peer applies the identical value). Online → queued
+        /// via <c>EnqueueOrder</c>; offline → applied now through the SAME shared <see cref="OrderApplier"/>.
+        /// </summary>
+        public void IssueCastAbilityGroundCommand(int casterId, int slot, Fixed groundX, Fixed groundZ, bool queued = false)
+        {
+            if (!_world.IsAlive(casterId) || _world.FactionOf[casterId] != _localFaction()) return;
+            var wireCmd = queued ? (UnitCommand)((byte)UnitCommand.CastAbility | UnitOrderFlags.Queued)
+                                 : UnitCommand.CastAbility;
+            // Review P6: spawn the issue-time impact marker BEFORE the online-defer guard — it exists to mask the
+            // lockstep input-delay, so it must fire in the ONLINE case too (IssueMoveCommand/SetRallyPoint do the same).
+            // Placing it after `if (!applyNow) return;` would skip it exactly when it is most needed.
+            _orderMarkers?.Spawn(new Vector3(groundX.ToFloat(), 0f, groundZ.ToFloat()), OrderMarkerTint);
+            bool applyNow = _lockstep?.EnqueueOrder(casterId, wireCmd, groundX, groundZ, (byte)slot) ?? true;
+            if (!applyNow) return;
+            var order = new UnitOrder(casterId, wireCmd, groundX, groundZ, (byte)slot);
             OrderApplier.Apply(_world, in order, _world.FactionOf[casterId]);
         }
 
@@ -1114,26 +1195,21 @@ namespace ProjectChimera.UI
         /// Nearest ENEMY unit to the world hit within radius (Story 1.12). Enemy = alive and neither the local
         /// faction nor Neutral. Mirror of <see cref="FindNearestUnit"/>, which finds local-faction-only.
         /// </summary>
-        private int FindNearestEnemyUnit(Vector3 worldHit, float radius)
-        {
-            int   bestId     = -1;
-            float bestSqDist = radius * radius;
-            int   cap        = _world.HighWaterMark;
-            Faction me       = _localFaction(); // hoist out of the per-entity loop (invariant here)
+        /// <summary>Nearest ENEMY unit (not the local faction, not Neutral). Story 15.11 (review P5): delegates to the
+        /// Godot-free <see cref="CastTargetPicker.FindNearest"/> core (casterId -1 = no exclusion; an enemy is never the
+        /// local-faction caster). Also used by right-click force-attack.</summary>
+        private int FindNearestEnemyUnit(Vector3 worldHit, float radius) =>
+            CastTargetPicker.FindNearest(_world, worldHit.X, worldHit.Z, radius, _localFaction(), -1, TargetAffinity.Enemy);
 
-            for (int i = 0; i < cap; i++)
-            {
-                if (!_world.IsAlive(i)) continue;
-                Faction f = _world.FactionOf[i];
-                if (f == me || f == Faction.Neutral) continue; // enemy = not me, not neutral
-                var pos = _world.Position[i];
-                float dx = pos.X.ToFloat() - worldHit.X;
-                float dz = pos.Z.ToFloat() - worldHit.Z;
-                float sqDist = dx * dx + dz * dz;
-                if (sqDist < bestSqDist) { bestSqDist = sqDist; bestId = i; }
-            }
-            return bestId;
-        }
+        /// <summary>Story 15.11 (DW-286): nearest ALLY unit within radius — own faction, EXCLUDING the caster (heal-OTHER).
+        /// Delegates to the Godot-free <see cref="CastTargetPicker.FindNearest"/> core.</summary>
+        private int FindNearestAllyUnit(Vector3 worldHit, float radius, int excludeCasterId) =>
+            CastTargetPicker.FindNearest(_world, worldHit.X, worldHit.Z, radius, _localFaction(), excludeCasterId, TargetAffinity.Ally);
+
+        /// <summary>Story 15.11 (DW-286): nearest unit of ANY allegiance within radius, EXCLUDING only the caster.
+        /// Delegates to the Godot-free <see cref="CastTargetPicker.FindNearest"/> core.</summary>
+        private int FindNearestAnyUnit(Vector3 worldHit, float radius, int excludeCasterId) =>
+            CastTargetPicker.FindNearest(_world, worldHit.X, worldHit.Z, radius, _localFaction(), excludeCasterId, TargetAffinity.Any);
 
         private int FindNearestBuilding(Vector3 worldHit, float radius)
         {

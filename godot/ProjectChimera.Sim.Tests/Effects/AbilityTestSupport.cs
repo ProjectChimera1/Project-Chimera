@@ -43,13 +43,26 @@ namespace ProjectChimera.Sim.Tests.Effects
             EffectGraph = new DamageEffect(Fixed.FromInt(80), DamageType.Magic),
         };
 
-        /// <summary>A GroundPoint Damage ability — the AC6 out-of-scope fence. Used to prove a GroundPoint cast
-        /// refuses as a no-op (no ground (x,z) plumbing in 2.4a) rather than falling through to a self-cast.</summary>
+        /// <summary>A GroundPoint ability whose effect root is a BARE Damage leaf (reads PrimaryTargetId). Story 15.11
+        /// (review P3): a ground cast leaves the primary target invalid, so this now RESOLVES (spends/cooldowns) but its
+        /// bare leaf no-ops on the IsAlive(-1) guard — it must NOT self-harm the caster.</summary>
         public static AbilityDefinition GroundPointDamage() => new AbilityDefinition
         {
             Id = "ground_nuke", DisplayName = "Ground Nuke", Targeting = "GroundPoint",
             CostEnergy = Fixed.FromInt(40), Cooldown = Fixed.FromInt(8),
             EffectGraph = new DamageEffect(Fixed.FromInt(80), DamageType.Magic),
+        };
+
+        /// <summary>Story 15.11 (DW-280): a REAL GroundPoint AoE — SearchArea(radius 4, Neutral) → Damage 50 Magic. The
+        /// SearchArea centres on the clicked ground point (ctx.TargetPoint), damaging Neutral dummies there and never
+        /// the caster. Mirrors the shipped ground_nuke.json shape (Neutral filter so a CastHarness caster's Neutral
+        /// dummies are hit without needing an enemy faction).</summary>
+        public static AbilityDefinition GroundPointNuke() => new AbilityDefinition
+        {
+            Id = "ground_nuke_aoe", DisplayName = "Ground Nuke (AoE)", Targeting = "GroundPoint",
+            CostEnergy = Fixed.FromInt(40), Cooldown = Fixed.FromInt(8),
+            EffectGraph = new SearchAreaEffect(Fixed.FromInt(4), TargetFilter.Neutral,
+                new DamageEffect(Fixed.FromInt(50), DamageType.Magic)),
         };
 
         /// <summary>

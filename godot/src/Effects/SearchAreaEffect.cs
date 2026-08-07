@@ -59,11 +59,23 @@ namespace ProjectChimera.Effects
         internal int FindTargets(in EffectContext ctx, int[] hitBuffer)
         {
             EntityWorld world = ctx.World;
-            int center = ctx.PrimaryTargetId;
-            if (ctx.Spatial is null || !world.IsAlive(center))
+            if (ctx.Spatial is null)
                 return 0;
 
-            FixedVec3 pos = world.Position[center];
+            // Story 15.11 (DW-280): a GroundPoint cast centers the search on the clicked ground point (there is no
+            // entity primary target), NOT on PrimaryTargetId's position. HasTargetPoint is false for every Self/
+            // TargetUnit/aura path, so those center on the primary target's position exactly as before (byte-identical).
+            FixedVec3 pos;
+            if (ctx.HasTargetPoint)
+            {
+                pos = ctx.TargetPoint;
+            }
+            else
+            {
+                int center = ctx.PrimaryTargetId;
+                if (!world.IsAlive(center)) return 0;
+                pos = world.Position[center];
+            }
             var filter = new TargetMatcher.QueryFilter(
                 Filter, ctx.CasterId, ctx.CasterFaction, RequireTag, ctx.Alliances);
             // excludeId = -1: no POSITIONAL exclusion — Filter (Self/Ally/Enemy/Neutral) decides allegiance, so

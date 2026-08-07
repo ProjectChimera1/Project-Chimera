@@ -252,9 +252,9 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
         [Fact]
         public void ReplayFile_RoundTrips_CastAbility_ThroughSharedApplier_WireUnchanged()
         {
-            // The cast reuses the unchanged 11-byte command wire (the Story 1.12 precedent); the replay container
-            // format is VERSION 4 (Story 9.11 "replay v2" — bumped independently of this command wire).
-            Assert.Equal(4, ReplayRecorder.VERSION);
+            // Story 15.11 (DW-280): the command wire is now the 12-byte UnitOrder (ability slot in its own byte); the
+            // replay container format is VERSION 5 (bumped with the stride so a v4 body can't decode at the wrong stride).
+            Assert.Equal(5, ReplayRecorder.VERSION);
 
             string path = Path.GetTempFileName();
             try
@@ -298,9 +298,9 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
         [Fact]
         public void ReplayFile_RoundTrips_ShiftQueue_ThroughSharedApplier_WireUnchanged()
         {
-            // Story 2.12: the queued flag + SetRally reuse the unchanged 11-byte command wire; the replay container
-            // format is VERSION 3 (bumped independently of this command).
-            Assert.Equal(4, ReplayRecorder.VERSION);
+            // Story 2.12: the queued flag + SetRally ride the command wire (now the 12-byte UnitOrder — Story 15.11);
+            // the replay container format is VERSION 5 (bumped with the stride).
+            Assert.Equal(5, ReplayRecorder.VERSION);
 
             string path = Path.GetTempFileName();
             try
@@ -419,7 +419,7 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
             // and DropItem returns the item to the ground, IDENTICALLY through the live apply site (OrderApplier.Apply
             // with items:, the exact line LockstepManager.ApplyOrders calls) and the replay site (ReplayPlayer, Items
             // wired). If EITHER apply site stops forwarding `items`, the item command becomes a no-op and this fails.
-            Assert.Equal(4, ReplayRecorder.VERSION); // unchanged 11-byte command wire; replay container format is VERSION 4
+            Assert.Equal(5, ReplayRecorder.VERSION); // Story 15.11: 12-byte command wire; replay container format is VERSION 5
 
             var useOrder  = new UnitOrder(0, UnitCommand.UseItem,  Fixed.FromRaw(0), Fixed.Zero); // inv slot 0 = potion
             var dropOrder = new UnitOrder(0, UnitCommand.DropItem, Fixed.FromRaw(1), Fixed.Zero); // inv slot 1 = ring

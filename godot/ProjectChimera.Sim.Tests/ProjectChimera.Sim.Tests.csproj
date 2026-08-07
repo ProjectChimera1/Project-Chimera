@@ -45,6 +45,9 @@
          which SimSources.props does NOT glob; deliberately OUTSIDE the determinism analyzer set — presentation-side). -->
     <Compile Include="..\src\UI\SelectionSubgroups.cs" LinkBase="Sim\UI" />
     <Compile Include="..\src\UI\ModifierPolarity.cs"   LinkBase="Sim\UI" />
+    <!-- Story 15.11 (DW-286/DW-290, review P5): the Godot-free cast-target picker cores (affinity click-pick +
+         the shared IsTargetingCastable predicate) extracted from SelectionSystem/CommandCardSystem, testable Tier-1. -->
+    <Compile Include="..\src\UI\CastTargetPicker.cs"   LinkBase="Sim\UI" />
     <!-- DW-163: the Godot-free start-slot arithmetic (declared-set / lowest-undeclared / max-declared) extracted from
          EntityPlacer.RefreshSubRow so the non-contiguous slot logic is Tier-1 testable without Godot. Lives under
          src/UI (NOT globbed by SimSources.props), included as a single file like the presentation cores above. -->
@@ -132,6 +135,10 @@
          Integer/Fixed-only → CROSS-PLATFORM SAFE, compared on both CI legs. NEW file; goldens above untouched. -->
     <None Remove="Golden\ability-cast-scenario.golden.txt" />
     <EmbeddedResource Include="Golden\ability-cast-scenario.golden.txt" />
+    <!-- Story 15.11 (DW-280) — GROUND-CAST golden (a GroundPoint SearchArea→Damage nuke at a Neutral cluster; P2 empty
+         so the AI no-ops). Integer/Fixed-only → CROSS-PLATFORM SAFE, compared on both CI legs. NEW file; goldens above untouched. -->
+    <None Remove="Golden\ground-cast-scenario.golden.txt" />
+    <EmbeddedResource Include="Golden\ground-cast-scenario.golden.txt" />
     <!-- Story 2.6 (AC4) — passive-active golden (an aura owner buffing an armored ally, a Neutral on-hit attacker,
          and a self-regen unit; Player2 empty so the AI no-ops). First golden exercising all three passive drivers
          AND the v8 EffectiveArmor fold with a non-zero armor value. Integer/Fixed-only → CROSS-PLATFORM SAFE,

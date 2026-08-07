@@ -156,6 +156,11 @@ namespace ProjectChimera.Effects
                     TryCast(world, id, abBase, n);
                     world.PendingCastSlot[id]   = EntityWorld.NO_PENDING_CAST;
                     world.PendingCastTarget[id] = -1;
+                    // Story 15.11 (review P1): clear the ground point too, so the "PendingCast* are ALWAYS 0 at the
+                    // checksum boundary → not folded" invariant (EntityWorld/OrderApplier prose) holds for the point as
+                    // well as the slot/target — and a mid-tick save never persists a stale nonzero cast point.
+                    world.PendingCastPointX[id] = Fixed.Zero;
+                    world.PendingCastPointZ[id] = Fixed.Zero;
                 }
             }
 
@@ -380,8 +385,25 @@ namespace ProjectChimera.Effects
             //   tick consumes the intent, or the order can carry -1; self-harming the caster + spending the cost is
             //   wrong (it would violate AC6's "an unfulfillable cast changes nothing").
             int target = world.PendingCastTarget[id];
+            FixedVec3 groundPoint = default;
+            bool hasGroundPoint = false;
             if (ab.ParsedTargeting == AbilityTargeting.Self || ab.ParsedTargeting == AbilityTargeting.None)
                 target = id;
+            else if (ab.ParsedTargeting == AbilityTargeting.GroundPoint)
+            {
+                // Story 15.11 (DW-280): a GROUND cast resolves at the clicked point, not on an entity. OrderApplier
+                // stored the point mode-agnostically into PendingCastPointX/Z; read it here and flag the context so a
+                // SearchArea leaf centers on it (see EffectContext.HasTargetPoint / SearchAreaEffect.FindTargets).
+                // Review P3: the primary target is left INVALID (-1), NOT the caster — a ground cast has no entity
+                // target, and a bare leaf that reads PrimaryTargetId (e.g. a mis-authored Damage root) then no-ops on
+                // the IsAlive(-1) guard instead of SELF-HARMING the caster. The golden's SearchArea root reads
+                // ctx.TargetPoint (not PrimaryTargetId), so it is unaffected. There is no entity-liveness gate here (a
+                // ground point is a coordinate); the UI's RaycastGround is the on-map gate, and an off-map point simply
+                // matches nothing (no crash). Cost/cooldown are consumed like a fireball onto empty ground (WC3).
+                groundPoint    = new FixedVec3(world.PendingCastPointX[id], Fixed.Zero, world.PendingCastPointZ[id]);
+                hasGroundPoint = true;
+                target         = -1;
+            }
             else if (target < 0 || !world.IsAlive(target))
             {
                 _events?.PushDenied(world.Position[id], faction, DenialReason.InvalidTarget); // Story 11.4: no valid target
@@ -416,7 +438,8 @@ namespace ProjectChimera.Effects
             _spatial.Rebuild(world);
             var ctx = new EffectContext(world, casterId: id, primaryTargetId: target, casterFaction: faction,
                                         _damageTable, spatial: _spatial, _events, _stats, modifierStore: _modifiers, deaths: _deaths,
-                                        alliances: _alliances); // Story 9.14: team-aware cast Ally/Enemy filter
+                                        alliances: _alliances, // Story 9.14: team-aware cast Ally/Enemy filter
+                                        targetPoint: groundPoint, hasTargetPoint: hasGroundPoint); // Story 15.11: ground-cast impact center
             _executor.Run(ab.EffectGraph, in ctx);
 
             // Story 7.13 — raise ability_cast at the atomic-success point (every gate passed, all costs debited, the
@@ -458,10 +481,12 @@ namespace ProjectChimera.Effects
 
             // Story 2.7 (SD-3): the cast fired → push a presentation-only AbilityCast feedback event carrying the
             // ability's profile (the Story 2.10 "cast plays its CombatFeedbackProfile" / "no new engine code"
-            // contract). Position = the primary target (self/none casts resolved target=id above, so it's the caster).
-            // Emits exactly ONCE per committed cast — every refusal already returned. Null profile ⇒ no extra juice.
-            // Never folded: CombatEventQueue is not a SimChecksum input, so this cannot perturb the deterministic tick.
-            _events?.Push(CombatEventType.AbilityCast, world.Position[target], ab.CombatFeedback);
+            // contract). Position = the primary target (self/none casts resolved target=id above, so it's the caster);
+            // review P3: a GroundPoint cast has target=-1 (no entity), so the feedback plays at the GROUND POINT — and
+            // world.Position[-1] is never dereferenced. Emits exactly ONCE per committed cast — every refusal already
+            // returned. Never folded: CombatEventQueue is not a SimChecksum input, so this cannot perturb the tick.
+            FixedVec3 feedbackPos = hasGroundPoint ? groundPoint : world.Position[target];
+            _events?.Push(CombatEventType.AbilityCast, feedbackPos, ab.CombatFeedback);
         }
     }
 }

@@ -106,6 +106,14 @@ namespace ProjectChimera.Core.Definitions
                     return Fail(id, "targeting", "a 'while_alive' passive must use targeting Self or None.");
             }
 
+            // ── (a3) Story 15.11 (DW-286): target_affinity is OPTIONAL. Reject an UNKNOWN string fail-closed (a
+            //    non-null string that does not parse), mirroring the targeting/activation gates. Absent (null) is valid
+            //    and means the historical enemy-only default. The "affinity on Self/None is meaningless" case is a
+            //    non-fatal WARNING collected later (it loads and runs; the hint is simply ignored by the picker). ──
+            if (def.TargetAffinity is not null && def.ParsedTargetAffinity is null)
+                return Fail(id, "target_affinity",
+                    $"'{def.TargetAffinity}' is not a known affinity (Enemy|Ally|Any).");
+
             // ── (b) Costs + cooldown sign (FixedJsonConverter already rejected NaN/Inf/over-range at parse; this
             //        guards SIGN and the int costs). Fixed sign via .Raw (the underlying 16.16 int). ──
             if (def.CostEnergy.Raw < 0)
@@ -160,6 +168,22 @@ namespace ProjectChimera.Core.Definitions
             //    on the same walk, the DW-278 non-fatal inert-content warnings PLUS the DW-504 period-mismatch rejects. ──
             var warnings = new List<(string FieldPath, string Message)>();
             var periodShapeErrors = new List<string>();
+
+            // Story 15.11 (DW-286, review P8): target_affinity steers the TargetUnit CLICK-PICKER only. It is ignored on
+            // Self/None (no target is picked) AND on GroundPoint (the ground pick's allegiance is governed by the
+            // SearchArea Filter, not the picker). Non-fatal (it loads and runs), so warn rather than reject (DW-278 channel).
+            if (def.TargetAffinity is not null && def.ParsedTargeting != AbilityTargeting.TargetUnit)
+                Warn(warnings, id, "target_affinity",
+                    $"target_affinity is only used by the TargetUnit click-picker; it is ignored for a '{def.Targeting}' ability. Remove it, or use targeting TargetUnit.");
+
+            // Story 15.11 (review P3): a GroundPoint cast resolves at the clicked point ONLY through a SearchArea (which
+            // centres on the point). Every other leaf reads the primary target, which is absent for a ground cast — so a
+            // bare damage/heal/modifier root silently no-ops. Warn when a GroundPoint ability has no top-level SearchArea
+            // to consume the point. Non-fatal (the content loads; the author may still intend a pure presentation cast).
+            if (def.ParsedTargeting == AbilityTargeting.GroundPoint && !GroundPointResolvesAtPoint(root))
+                Warn(warnings, id, "effect",
+                    "a GroundPoint ability resolves at the clicked point only through a SearchArea (which centres on the point); its effect root reads the absent primary target, so a bare damage/heal/modifier leaf will no-op. Wrap the effect in a SearchArea.");
+
             string? walkError = WalkGraph(id, root, warnings, periodShapeErrors);
             if (walkError is not null)
                 return AbilityValidationResult.Fail(walkError);
@@ -465,6 +489,22 @@ namespace ProjectChimera.Core.Definitions
             (filter & TargetFilter.Ally) != 0 && (filter & TargetFilter.Enemy) == 0
                 ? $"SearchArea at '{searchPath}' (filter {filter})"
                 : null;
+
+        /// <summary>
+        /// Story 15.11 (review P3): does a GroundPoint ability's effect root actually consume the ground point? Only a
+        /// <see cref="SearchAreaEffect"/> centres on <c>ctx.TargetPoint</c>; every other node reads the (absent) primary
+        /// target. Conservative + low-false-positive: true iff the root IS a SearchArea, or is a Sequence with at least
+        /// one direct SearchArea child (the top level, before any per-match <c>WithTarget</c> re-centring). A false here
+        /// drives a non-fatal warning, never a reject.
+        /// </summary>
+        private static bool GroundPointResolvesAtPoint(EffectNode root)
+        {
+            if (root is SearchAreaEffect) return true;
+            if (root is SequenceEffect seq)
+                foreach (EffectNode child in seq.Children)
+                    if (child is SearchAreaEffect) return true;
+            return false;
+        }
 
         /// <summary>Append one located non-fatal warning (same <c>"ability '&lt;id&gt;'.&lt;path&gt;: &lt;reason&gt;"</c> shape as an error).</summary>
         private static void Warn(List<(string FieldPath, string Message)> warnings, string id, string path, string reason) =>

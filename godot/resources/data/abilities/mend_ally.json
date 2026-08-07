@@ -1,0 +1,9 @@
+{
+  "id": "mend_ally",
+  "display_name": "Mend Ally",
+  "targeting": "TargetUnit",
+  "target_affinity": "Ally",
+  "cost_energy": 20,
+  "cooldown": 4,
+  "effect": { "kind": "heal", "amount": 50 }
+}

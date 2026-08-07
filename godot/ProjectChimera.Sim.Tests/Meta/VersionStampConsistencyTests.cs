@@ -164,8 +164,11 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// (<c>DelayDirective</c>/<c>DelayAck</c>) + the widened Ready packet (protocol version + 64-bit
         /// match-agreement hash). The version is now VALIDATED fail-closed on the client's inbound Hello and the
         /// server's inbound Ready (closing the D3.8 gap), so a v1 build can no longer complete the handshake against
-        /// a v2 build. No golden/checksum re-baseline — this is handshake/wire only, no sim-array fold.</summary>
-        private const ushort ExpectedProtocolVersion = 2;
+        /// a v2 build. No golden/checksum re-baseline — this is handshake/wire only, no sim-array fold.
+        /// v3 (Story 15.11, DW-280): the coordinated wire bump for the widened 11→12-byte UnitOrder stride (the ability
+        /// slot moved to its own byte so a CastAbility can carry a ground point). Still handshake/wire only — the wire is
+        /// not a SimChecksum input, so no golden/checksum re-baseline.</summary>
+        private const ushort ExpectedProtocolVersion = 3;
 
         /// <summary>Story 9.4 — the net-new ruleset-fingerprint hash over the <see cref="EffectCaps"/> structural
         /// caps, folded into <see cref="MatchAgreementHash"/>. v1 = initial (AlgoVersion + every cap in file order).
@@ -190,8 +193,10 @@ namespace ProjectChimera.Sim.Tests.Meta
 
         /// <summary>.chmr replay file-format version. Story 7.9 bumped 2→3 (DslEvent orders). Story 9.11 bumped 3→4
         /// ("replay v2": self-describing tagged body via the frozen MergedTickPacket envelope + a result trailer, and
-        /// a header embedding the scenario/ruleset/algo hashes + roster; ReplayPlayer hard-rejects all pre-v4 files).</summary>
-        private const ushort ExpectedReplayFormatVersion = 4;
+        /// a header embedding the scenario/ruleset/algo hashes + roster; ReplayPlayer hard-rejects all pre-v4 files).
+        /// Story 15.11 (DW-280) bumped 4→5: the UnitOrder wire stride widened 11→12, so a v4 body decoded at the v5
+        /// stride would misalign — ReplayPlayer hard-rejects all pre-v5 files at the version gate ("please re-record").</summary>
+        private const ushort ExpectedReplayFormatVersion = 5;
 
         /// <summary>Default minimum game version a packaged .chimera.zip declares it requires.</summary>
         private const string ExpectedManifestMinGameVersion = "0.1";
