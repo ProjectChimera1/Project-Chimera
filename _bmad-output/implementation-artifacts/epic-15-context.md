@@ -4,48 +4,49 @@
 
 ## Goal
 
-Epic 15 retires the verified deferred-work (DW) backlog and lands the decision-mandated feature builds that fell out of that backlog. Most burn-down work is executed as DW bundle cycles and tracked entirely in `deferred-work.md` — the eleven original thematic "sweep container" stories were retired as sprint keys on 2026-08-06 because nothing ever wrote to them (the burn-down closes ledger ids, it never executes stories). What remains as live stories are the named deliverables: v1 MP reconnect, map-size determinism unification, making authored status effects actually do something (the headline gap — all five StatusFlags were authorable and hashed yet read by no system), the Scenario Settings / New-Scenario surfaces, ability-targeting and energy/stack feature increments, effect-vocabulary completion, host-side hero attestation, MP test extraction, a creator-authorable hero attribute system, and a batched golden re-baseline. Epic 11 is done; this epic runs next rather than interleaved.
+Epic 15 retires the verified deferred-work backlog and lands the decision-mandated feature builds that fell out of it. The bulk of the work is a ledger-driven burn-down: hundreds of `DW-<n>` defects (verified against the codebase with file:line evidence) are closed in themed bundles at the `bmad-loop sweep` / `chimera-dw-burndown` cadence. Layered on top are net-new builds Alec approved during the correct-course passes: v1 multiplayer reconnect, map-size determinism unification, making authored status effects actually read by the sim (the headline gap — all five StatusFlags are authorable and hashed but no system honors them), the Scenario Settings and New-Scenario surfaces, and several ability/energy/attribute feature increments. It runs after Epic 11 (done), not interleaved.
 
 ## Stories
 
-- Story 15.1: MP reconnect v1 — command-log rejoin + fast-forward catch-up
+Real stories with named deliverables (kept):
+- Story 15.1: MP reconnect v1 — command-log rejoin + fast-forward catch-up (DEFERRED — needs a human present, not `bmad-loop`-runnable)
 - Story 15.2: Map-size determinism unification + raw heightmap read
 - Story 15.3: Status effects become real + modifier-period honesty
 - Story 15.10: Scenario Settings panel + New-Scenario empty-canvas flow
-- Story 15.11: Ability targeting increments — ground-target cast + ally-targeted heal-other
+- Story 15.11: Ability targeting increments — ground-target cast + ally-targeted heal-other (done)
 - Story 15.12: Energy & stack mechanics
 - Story 15.13: Effect vocabulary completion — Teleport + presentation leaves
-- Story 15.14: Host-side hero identity enforcement + attested-hero deployment (re-scoped to DW-200)
-- Story 15.15: MP surfaces & Godot-free MP test extraction (done record — 11/11 closed)
-- Story 15.21: Creator-authorable hero attribute system
+- Story 15.14: Host-side hero identity enforcement + attested-hero deployment (re-scoped to DW-200 alone)
+- Story 15.15: MP surfaces & Godot-free MP test extraction (done, 11/11)
+- Story 15.21: Creator-authorable hero attribute system (net-new feature, no DW ids)
 - Story 15.22: Phase C — batched golden re-baseline
 
-_Retired as sprint keys (tracked solely in `deferred-work.md`): §§ 15.4–15.9, 15.16–15.20._
+Retired as sprint keys on 2026-08-06 (thematic "sweep container" stories; scope unchanged, now tracked solely in `deferred-work.md`):
+- Stories 15.4–15.9 and 15.16–15.20
 
 ## Requirements & Constraints
 
-- **Determinism is the governing constraint.** Any change that folds new state into `SimChecksum`, or adds authored definition fields (`CanonicalModelHash`), or alters stored map format (`StartStateHash`), moves goldens and requires a deliberate re-baseline. Fold a new array only when it first becomes mutable mid-match (checksum-fold timing rule).
-- **Batch rule:** a re-baseline batch takes **bounded corrections only** — the cost amortised is a ~10-minute re-record, so coupling it to a multi-week feature keeps the branch open and queues every other golden-moving fix behind it. **Feature stories that move goldens re-record at the end of their own story**, isolated, never folded into a batch. Batching corrections is correct; batching builds is not.
-- **Default-preserving behavior change:** where a feature adds a mode (stacking, periodic-stacking, MaxHealth-to-zero death), the default path must preserve today's behavior byte-for-byte so no shipped content changes meaning and no existing golden moves — only opt-in content diverges.
-- Untrusted input (scenarios, map packages, MP payloads) must fail closed with upstream byte/size and element-count guards, not parse-then-gate.
-- Every system must stay data-driven and creator-extensible; new definitions carry a `Validated<T>` gate, JSON round-trip, and authoring warnings surfaced via the existing `Warnings` channel on `AbilityValidationResult`.
-- Godot-free bundles route to `chimera-dw-burndown` (parallel worktree + Tier-1 gate); Godot-coupled bundles stay on `bmad-loop sweep` (single-client editor bridge + routed in-engine gate).
+- The burn-down executes DW bundles and closes ledger ids; it never executes the container stories. The deferred-work ledger is the single source of truth for burn-down status — join on DW ids, not on stale bundle names.
+- MP reconnect v1: server flags a dropped-then-returning peer by its slot identity, streams the match command log, the rejoiner re-runs content/hash gates then fast-forward-simulates to the live tick and resumes input. AC gate is a 2-player LAN mid-match rejoin with post-catch-up checksum agreement; a failed content gate must reject the rejoin without disturbing the live match. Note: the original "server buffers the whole command stream" premise is FALSE — only a 64-tick ring exists, so v1 must BUILD the full-match buffer plus new packet types and a protocol-version bump.
+- Status effects: Combat must honor Disarmed, Movement must honor Rooted/Stunned, AbilityCastSystem must honor Silenced, DamageResolver must honor Invulnerable. A modifier that collapses effective max health to 0 must raise death, not pin a 0-HP "zombie."
+- Godot-free bundles route to `chimera-dw-burndown`; Godot-coupled bundles stay on `bmad-loop` because of the single-client editor bridge and routed in-engine gate.
 
 ## Technical Decisions
 
-- **Map size:** four sim grids parameterize from one map-size truth source; +128 is the intended playable ceiling. `border_extent` on `ScenarioData` is visual/camera only and **excluded** from `CanonicalModelHash`; `map_bounds ≤ MapSizes.MaxHalfExtent` enforced fail-closed in `ScenarioValidator`. A `ScenarioType`/GameMode registry (enum + per-type clamp preset table + Map Generator selection UI) makes the inert `MapGeneratorContext` clamps load-bearing.
-- **Elevation grid** must read raw per-region heightmap cells — no Godot float interpolation in the sim path.
-- **Stacking** (`StackRule`, `godot/src/Effects/Modifier.cs`) is a closed enum: three requested modes already map to `Refresh`/`Ignore`/`Stack`; only per-stack expiry is new. Split `Stack` into a grouped variant (byte-identical to today) and an independent per-stack variant. Patch both switches and any `(int)`-enum-indexed arrays (enum-indexed-array touch-site rule).
-- **Energy regen** (15.12) builds a flat authored `regen_rate` on `UnitDefinition` read through a **single seam** that Story 15.21's attribute system can later drive — do not hardcode the field at the tick site.
-- **Hero attributes** (15.21) are data-driven and creator-defined (not a fixed enum); ship ARPG/WC3 presets as editable starting points, with a derived-stat mapping (first consumer: Intelligence → max energy/regen; WC3 primary → attack damage proves generality). Authoring `float` numbers convert to `Fixed` at the single load boundary, per the `HeroDefinition` convention. There are no hero primary attributes in the codebase today — this story creates them.
-- **Ground-target casting** (15.11) widens `UnitOrder` 11→12 and bumps `ReplayRecorder.VERSION`; adds an `EffectContext` ground-point field; card disable-gate and press-handler targeting fold into one shared is-castable predicate.
-- **Re-baseline procedure (15.22):** bound the fold so untouched scenarios stay byte-identical (Phase B cut 28 golden files to 5); re-record on Windows so the float-AI `ai-active` golden stays current; diff with `grep -v '^#'` (the recorder rewrites the algo-version header on every file); verify with `--logger trx` (console logger truncates); when a deliberate halt gate fires, never re-freeze its control.
+- **Determinism / golden discipline:** fold a sim array into `SimChecksum` and re-baseline goldens only when it first becomes mutable mid-match. A re-baseline batch takes **bounded corrections only** — feature builds that move goldens re-record at the end of their **own** story, never inside a batch window. Always measure a bounded fold (byte-identical for scenarios not carrying the new state) before accepting an unconditional one. Re-record on Windows so the float-AI `ai-active` golden stays current.
+- **Story 15.22 batch:** one `SimChecksum.AlgoVersion` bump 23→24, 14 bounded sim corrections plus 1 golden-moving ruling (total wipeout always loses — drop the `ActiveCount < 3` guard) and 3 in-window riders. All Godot-free.
+- **Authoring→sim boundary:** authored numbers are `float`, quantized to `Fixed` at a single load boundary (the `HeroDefinition` `*_per_level` convention). Simulation stays pure C# with no Godot Nodes.
+- **Closed-enum touch rule:** adding a member to a closed enum (e.g. `StackRule`) requires patching both switch statements AND any `(int)`-indexed arrays.
+- **Energy/stacking (15.12):** flat authored `regen_rate` with a folded per-tick regen path, read through a seam that 15.21's attribute system can later drive. `StackRule` split into explicit grouped vs. per-stack-expiry variants; periodic-stacking mode is creator-authored (multiply-the-pulse or repeat-the-pulse) with a system-level cap. The **default** mode must preserve today's non-scaling pulse byte-for-byte so no shipped content changes meaning.
+- **Map size (15.2):** parameterize the four sim grids from one map-size truth source; read raw per-region heightmap cells (no Godot float interpolation); +128 is the intended playable ceiling. Add `border_extent` to `ScenarioData` (visual/camera only, excluded from `CanonicalModelHash`); enforce `map_bounds ≤ MapSizes.MaxHalfExtent` fail-closed. This changes the pathability persist format — moves `CanonicalModelHash` and `StartStateHash`.
+- **Attribute system (15.21):** data-driven and creator-defined attribute set (not a fixed enum), with shipped presets seeding common ARPG/RTS models; per-hero base + per-level growth; creator-authored derived-stat mappings (first consumer: Intelligence → max energy/regen; WC3 primary attribute → attack damage proves the mapping is general). Full `Validated<T>` gate and JSON round-trip. Sequence after 15.12.
 
 ## Cross-Story Dependencies
 
-- **15.21 sequences after 15.12** — the attribute system plugs into the regen seam 15.12 is required to leave open.
-- **15.2 depends on** the A5-E11 map-size decision (Route C) which unblocked it; it also invalidates every stored `pathability_blocked` cell (moves `CanonicalModelHash` and `StartStateHash`), so it is explicitly excluded from 15.22's batch.
-- **15.3, 15.12, 15.21** each carry independent, isolated re-baselines — status-flag fold; regen fold and stacking fold (two separate movements); attribute fold plus `CanonicalModelHash` (a third and fourth movement). None ride 15.22.
-- **15.14** (unbuilt feature) moves no existing golden and must not be folded into a batch; it re-records at its own story end only if it ends up moving one.
-- **15.18** (retired container, ledger-tracked) is the natural predecessor to Epic 12 (Import Manager & Content Sync).
-- **DW-466** (cross-machine save portability) resolves to Story 10.11 (`AiOpponentSystem` float→Fixed), not Epic 15 — and is the standing hard prerequisite for running AI inside lockstep MP.
+- 15.21 depends on 15.12 leaving a regen seam open, and must sequence after it.
+- 15.2 is unblocked by the A5-E11 map-size decision (Route C) and folds in the `editor-map-bounds-guards` bundle.
+- 15.3 lost DW-272 to 15.12 (it is an authored stacking mode, not a semantics correction).
+- 15.22 explicitly excludes items homed elsewhere (DW-160/146/162→15.2, DW-265→15.12/15.21, DW-272→15.12, DW-200→15.14, DW-280→15.11, DW-346→15.17).
+- 15.18 is the natural predecessor to Epic 12 (Import Manager & Content Sync) — every bundle hardens a surface Epic 12 builds on.
+- 15.1 and the AI-in-lockstep path depend on `AiOpponentSystem` float→Fixed migration (Story 10.11, DW-466), which is Epic-10 work, not Epic-15.
+- 15.14's `post-drop-checksum-honesty` and other live-MP verification items are blocked on the Epic-10 live-verify batch (A5-E9), which requires two physical machines.

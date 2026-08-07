@@ -295,7 +295,15 @@ development_status:
   15-3-status-effects-become-real-modifier-period-honesty: done
   # RETIRED 2026-08-06: 15-4, 15-5, 15-6, 15-7, 15-8, 15-9 (thematic sweep containers) — see the
   #   RE-SHAPED block below. Scope unchanged; it now lives ONLY in deferred-work.md.
-  15-10-scenario-settings-panel-new-scenario-empty-canvas-flow-dw-126-dw-127: backlog
+  # 15-10 DONE 2026-08-06 WITHOUT CODE — Alec's call on the dev-auto stale-premise HALT (3rd of the
+  #   class after 15-1 and 15-3). Both DW ids this story existed to resolve were already delivered by
+  #   Story 6.7 (Epic 6): DW-127 FULLY (ScenarioData.CreateBlank:1081 + MapPropertiesPanel.
+  #   OpenNewMapDialog:37 + WinConditionPhase "New Map…":199 -> CreateNewMap:299 -> MapWritePipeline.
+  #   RunNewMap:319), DW-126 FUNCTIONALLY (all 6 win conditions + live BuildPropertiesEditor in the
+  #   corner panel; per-slot economy via EntityPlacer -> MainScene.SetStartSlotEconomy:1569). Verified
+  #   against source, not the ledger. Both closed; the cosmetic residual (no standalone panel;
+  #   OnboardingPanel exposes 2 of 6 conditions) re-filed as DW-880 rather than dropped.
+  15-10-scenario-settings-panel-new-scenario-empty-canvas-flow-dw-126-dw-127: done
   15-11-ability-targeting-increments-ground-target-cast-ally-heal-other: backlog
   15-12-energy-stack-mechanics: backlog
   15-13-effect-vocabulary-completion-teleport-presentation-leaves: backlog
