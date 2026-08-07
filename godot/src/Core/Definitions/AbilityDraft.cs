@@ -22,6 +22,20 @@ namespace ProjectChimera.Core.Definitions
         Sequence      = 4,
         SearchArea    = 5,
         Persistent    = 6,
+
+        /// <summary>
+        /// DW-903 — a leaf the structured composer cannot EDIT but must not LOSE: it carries the original immutable
+        /// node through unchanged. Deliberately absent from <see cref="DraftVocabulary.Kinds"/>, so the composer never
+        /// OFFERS it — a draft node of this kind only ever arrives by loading existing content.
+        ///
+        /// <para>Story 15.13 added four leaves to the closed vocabulary (teleport, play_vfx, play_sound, shake_screen)
+        /// and did not teach the composer about them. <see cref="DraftNode.FromEffectNode"/>'s default arm THROWS, and
+        /// nothing on the <c>LoadFromRegistry → ReflectModelIntoForm → SeedDraftFromDef</c> path catches it — so
+        /// opening any ability that uses one (the shipped <c>blink_strike</c> does) took the editor down. Passing the
+        /// node through opaquely fixes the crash AND is lossless, which a "skip what I don't understand" arm would not
+        /// be. Rich authoring widgets for these four are the follow-up.</para>
+        /// </summary>
+        Opaque        = 7,
     }
 
     /// <summary>
@@ -153,6 +167,10 @@ namespace ProjectChimera.Core.Definitions
         public DraftNode? Expire;                             // persistent.expire_effect  (optional)
         public DraftModifier Modifier = new();                // apply_modifier
 
+        /// <summary>DW-903: the untouched original node for <see cref="DraftKind.Opaque"/> — carried through
+        /// materialize unchanged so a composer round-trip cannot silently drop a leaf it cannot render.</summary>
+        public EffectNode? Opaque;
+
         /// <summary>A fresh node of <paramref name="kind"/> seeded with sensible authoring defaults.</summary>
         public static DraftNode NewDefault(DraftKind kind)
         {
@@ -171,6 +189,7 @@ namespace ProjectChimera.Core.Definitions
             Kind = kind;
             Children.Clear();
             Child = Initial = Period = Expire = null;
+            Opaque = null;
             Delta = Amount = Radius = Fixed.Zero;
             DamageType = DamageType.Normal;
             Filter = TargetFilter.Enemy;
@@ -225,6 +244,12 @@ namespace ProjectChimera.Core.Definitions
                         Initial?.ToEffectNode(), Period?.ToEffectNode(), Expire?.ToEffectNode(),
                         PeriodTicks, PeriodCount);
 
+                case DraftKind.Opaque:
+                    // DW-903: hand back the very node we were loaded from. EffectNodes are immutable, so sharing the
+                    // instance is safe and is what makes the round-trip byte-identical.
+                    return Opaque ?? throw new InvalidOperationException(
+                        "This effect was loaded from existing content and cannot be rebuilt — edit it in the Raw JSON pane.");
+
                 default:
                     throw new InvalidOperationException($"Unknown draft kind '{Kind}'.");
             }
@@ -270,6 +295,17 @@ namespace ProjectChimera.Core.Definitions
                         Period  = e.PeriodEffect  is null ? null : FromEffectNode(e.PeriodEffect),
                         Expire  = e.ExpireEffect  is null ? null : FromEffectNode(e.ExpireEffect),
                     };
+
+                // DW-903 — Story 15.13's four leaves. The composer has no widgets for a teleport's (empty) shape or a
+                // presentation cue's CombatFeedbackProfile, so they load OPAQUELY: shown read-only, materialized back
+                // out untouched. Listed EXPLICITLY rather than folded into the default arm on purpose — a genuinely
+                // unknown node type must still throw loudly, because that means the vocabulary grew and nobody told
+                // this file.
+                case TeleportEffect:
+                case PlayVfxEffect:
+                case PlaySoundEffect:
+                case ShakeScreenEffect:
+                    return new DraftNode { Kind = DraftKind.Opaque, Opaque = node };
 
                 default:
                     throw new InvalidOperationException($"Unknown effect node type '{node.GetType().Name}'.");

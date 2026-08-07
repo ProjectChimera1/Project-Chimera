@@ -56,6 +56,7 @@ namespace ProjectChimera.CreationSuite
         private VBoxContainer  _aiCard        = null!;
         private TextEdit       _aiPromptInput = null!;
         private Button         _aiGenBtn      = null!;
+        private Button         _aiAddBtn      = null!;   // DW-900: the non-destructive 'Add more' sibling
         private Label          _aiAvailLabel  = null!;
         private Label          _aiStatusLabel = null!;
         private ChimeraSpinner _aiSpinner     = null!;
@@ -310,9 +311,20 @@ namespace ProjectChimera.CreationSuite
             genRow.AddThemeConstantOverride("separation", 8);
             _aiCard.AddChild(genRow);
 
-            _aiGenBtn = new Button { Text = "Generate ✦", TooltipText = "Draft an editable ability from your prompt — you own what you make." };
+            _aiGenBtn = new Button { Text = "Generate ✦", TooltipText = "Draft a NEW ability from your prompt, replacing what is here — you own what you make." };
             _aiGenBtn.Pressed += OnAiGeneratePressed;
             genRow.AddChild(_aiGenBtn);
+
+            // DW-900: the non-destructive sibling. Generate always drafts a fresh ability and discards the authored
+            // graph, so iterating meant re-describing everything; this asks the model for the NEW nodes only and
+            // merges them locally, which is what makes the author's existing effects structurally safe.
+            _aiAddBtn = new Button
+            {
+                Text = "Add more ✦",
+                TooltipText = "Extend the ability you already have — the AI adds effects instead of rewriting it.",
+            };
+            _aiAddBtn.Pressed += OnAiAddMorePressed;
+            genRow.AddChild(_aiAddBtn);
 
             _aiSpinner = ChimeraSpinner.Create(20);
             _aiSpinner.Visible = false;
@@ -351,6 +363,7 @@ namespace ProjectChimera.CreationSuite
                 : AiAvailabilityMessages.Describe(state);
             _aiAvailLabel.AddThemeColorOverride("font_color", available ? OkGreen : new Color(0.95f, 0.8f, 0.45f));
             _aiGenBtn.Disabled = !available;
+            _aiAddBtn.Disabled = !available;   // DW-900: gate the sibling identically
         }
 
         private void OnAiGeneratePressed()
@@ -372,6 +385,82 @@ namespace ProjectChimera.CreationSuite
             _llm.GenerateAbilityDraftAsync(prompt, new AbilityDraftContext { ExistingAbilityIds = ids }, OnAiDraftComplete);
         }
 
+        /// <summary>
+        /// DW-900 — "Add more": ask the model for effect nodes to APPEND to what the author already has.
+        ///
+        /// <para>Three properties make this safe where Generate is not. The pre-flight runs BEFORE any provider call,
+        /// so a refusal costs nothing. The model is asked for an array of ADDITIONS, so it is structurally unable to
+        /// reword the author's existing effects. And the merged result is validated locally — if it fails, the draft
+        /// on screen is left exactly as it was.</para>
+        /// </summary>
+        private void OnAiAddMorePressed()
+        {
+            if (_llm == null) return;
+            string prompt = _aiPromptInput.Text.Trim();
+            if (string.IsNullOrEmpty(prompt))
+            {
+                ShowAiStatus("Describe what to add first, Commander.", error: true);
+                return;
+            }
+
+            // The CURRENT ability, from whichever mode is authoritative right now. A null advanced resolve has already
+            // surfaced its own inline error (malformed JSON in the pane), so bail quietly.
+            AbilityDefinition? current = _simpleMode ? BuildSimpleModel() : ResolveAdvancedDef();
+            if (current == null) return;
+
+            if (!AbilityGraphMerge.CanAppend(current, out string reason))
+            {
+                ShowAiStatus(reason, error: true);   // deliberately BEFORE the provider call — do not spend a request
+                return;
+            }
+
+            SetAiBusy(true);
+            var ids = new string[_registry.Count];
+            for (int i = 0; i < _registry.Count; i++) ids[i] = _registry.Get(i).Id;
+
+            _llm.ExtendAbilityDraftAsync(prompt, new AbilityDraftContext
+            {
+                ExistingAbilityIds = ids,
+                CurrentAbilityJson = JsonSerializer.Serialize(current, IndentedOptions),
+            }, (nodes, error) => OnAiExtendComplete(current, nodes, error));
+        }
+
+        /// <summary>DW-900 — merge the returned additions, validate, and only then re-render.</summary>
+        private void OnAiExtendComplete(AbilityDefinition current,
+                                        System.Collections.Generic.List<Effects.EffectNode>? nodes, string? error)
+        {
+            SetAiBusy(false);
+            if (nodes == null || nodes.Count == 0)
+            {
+                ShowAiStatus(error ?? "The AI returned nothing to add.", error: true);
+                return;
+            }
+
+            AbilityDefinition merged;
+            try
+            {
+                merged = AbilityGraphMerge.Append(current, nodes);
+            }
+            catch (Exception ex)
+            {
+                ShowAiStatus($"Could not add those effects: {ex.Message}", error: true);
+                return;
+            }
+
+            // The real gate. A rejected merge is DISCARDED — the author's draft is untouched, which is the whole
+            // promise of an additive action.
+            AbilityValidationResult r = new AbilityValidator().Validate(merged);
+            if (!r.Ok)
+            {
+                ShowAiStatus($"The AI's addition would not validate, so nothing was changed: {r.Error}", error: true);
+                return;
+            }
+
+            LoadFromRegistry(merged);
+            _pendingWarnings = r.Warnings;
+            ShowAiStatus($"Added {nodes.Count} effect{(nodes.Count == 1 ? "" : "s")} — edit and Save.", error: false);
+        }
+
         private void OnAiDraftComplete(AbilityDefinition? def, string? error)
         {
             SetAiBusy(false);
@@ -389,6 +478,7 @@ namespace ProjectChimera.CreationSuite
         private void SetAiBusy(bool busy)
         {
             _aiGenBtn.Disabled = busy;
+            _aiAddBtn.Disabled = busy;         // DW-900: one provider call at a time (both share _abilityCts)
             _aiSpinner.Visible = busy;
             _aiSpinnerText.Visible = busy;
             if (busy) { _aiStatusLabel.Visible = false; }

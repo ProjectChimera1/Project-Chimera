@@ -243,6 +243,24 @@ namespace ProjectChimera.CreationSuite
             var header = new HBoxContainer();
             header.AddThemeConstantOverride("separation", 6);
             card.AddChild(header);
+
+            // DW-903 — an OPAQUE node (a Story 15.13 leaf the composer has no widgets for) gets a READ-ONLY header,
+            // never the kind dropdown. Two reasons: its kind id is deliberately absent from KindItems(), so the
+            // dropdown would render blank; and selecting any entry would call ResetKind and DESTROY the carried node.
+            // Reorder and remove still work — the author keeps structural control, and the Raw JSON pane remains the
+            // way to edit the payload.
+            if (node.Kind == DraftKind.Opaque)
+            {
+                var name = new Label { Text = OpaqueLabel(node), SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+                name.TooltipText = "This effect is preserved exactly as authored. The structured composer has no editor " +
+                                   "for it yet — use the Raw JSON pane to change its values.";
+                header.AddChild(name);
+                if (moveUp is not null)   { Button oup = SmallBtn("↑"); oup.TooltipText = "Move up";   oup.Pressed += () => moveUp();   header.AddChild(oup); }
+                if (moveDown is not null) { Button odn = SmallBtn("↓"); odn.TooltipText = "Move down"; odn.Pressed += () => moveDown(); header.AddChild(odn); }
+                Button orm = SmallBtn("✕"); orm.TooltipText = "Remove this node"; orm.Pressed += () => remove(); header.AddChild(orm);
+                return;
+            }
+
             OptionButton kindDd = MakeStyledDropdown(KindItems(), (int)node.Kind, id =>
             {
                 var k = (DraftKind)id;
@@ -430,6 +448,21 @@ namespace ProjectChimera.CreationSuite
             DraftKind.Persistent    => "Persistent",
             _                       => k.ToString(),
         };
+
+        /// <summary>DW-903 — the author-facing name of an opaque (carried-through) node, derived from the runtime type
+        /// it wraps: <c>PlaySoundEffect</c> → "Play Sound  (read-only)".</summary>
+        private static string OpaqueLabel(DraftNode node)
+        {
+            string t = node.Opaque?.GetType().Name ?? "Effect";
+            if (t.EndsWith("Effect", StringComparison.Ordinal)) t = t.Substring(0, t.Length - "Effect".Length);
+            var sb = new System.Text.StringBuilder(t.Length + 8);
+            for (int i = 0; i < t.Length; i++)
+            {
+                if (i > 0 && char.IsUpper(t[i])) sb.Append(' ');
+                sb.Append(t[i]);
+            }
+            return sb.Append("  (read-only)").ToString();
+        }
 
         // damage_type: the 5 real types — NEVER COUNT (AC5-COMPOSER).
         private static (string Label, int Id)[] DamageTypeItems() => EnumItems(DraftVocabulary.DamageTypes, t => (int)t);

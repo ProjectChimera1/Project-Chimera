@@ -1208,6 +1208,20 @@ play_sound      — sound_id (string)");
         }
 
         /// <summary>
+        /// DW-900 — ask the model for effect nodes to APPEND to the ability in <paramref name="ctx"/>, rather than a
+        /// replacement ability. Same cancellation/callback contract as <see cref="GenerateAbilityDraftAsync"/> and it
+        /// shares the same <c>_abilityCts</c>, so a Generate and an Add-more can never both be in flight.
+        /// </summary>
+        public void ExtendAbilityDraftAsync(string prompt, AbilityDraftContext ctx,
+                                            Action<List<ProjectChimera.Effects.EffectNode>?, string?> onComplete)
+        {
+            ThrowIfDisposed();
+            CancellationToken token = ReplaceTokenSource(ref _abilityCts);
+            RunDraftAsync(BuildAbilityExtendPrompt(ctx), $"Add to this ability: {prompt}",
+                json => ValidateAbilityAddition(json, ctx), token, onComplete);
+        }
+
+        /// <summary>
         /// Asynchronously generate an editable HERO draft — a <see cref="UnitDefinition"/> with <c>is_hero:true</c> and a
         /// <c>hero</c> block. <see cref="ValidateHeroDraft"/> requires the hero designation before running the shared unit
         /// gate. See <see cref="GenerateUnitDraftAsync"/> for the callback contract.
@@ -1466,6 +1480,33 @@ play_sound      — sound_id (string)");
         }
 
         /// <summary>
+        /// DW-900 — parse an EXTEND reply: a bare JSON array of effect nodes to append. Goes through the same
+        /// <see cref="ContentJson.Options"/> the hand-authored path uses, so the registered
+        /// <c>EffectNodeJsonConverter</c> applies the identical closed-vocabulary rules (unknown kind rejected,
+        /// unknown property rejected, numbers landing as <see cref="Fixed"/>). The APPENDED-TO ability is validated
+        /// separately by the caller once merged — this only has to produce well-formed nodes.
+        /// </summary>
+        public static (List<ProjectChimera.Effects.EffectNode>? nodes, string? error) ValidateAbilityAddition(string json, AbilityDraftContext ctx)
+        {
+            List<ProjectChimera.Effects.EffectNode>? nodes;
+            try
+            {
+                nodes = JsonSerializer.Deserialize<List<ProjectChimera.Effects.EffectNode>>(json, ContentJson.Options);
+            }
+            catch (Exception ex)
+            {
+                return (null, $"The AI's addition was not a valid effect-node array: {ex.Message}");
+            }
+
+            if (nodes is null || nodes.Count == 0)
+                return (null, "The AI returned no effects to add.");
+            foreach (ProjectChimera.Effects.EffectNode n in nodes)
+                if (n is null) return (null, "The AI's addition contained an empty effect node.");
+
+            return (nodes, null);
+        }
+
+        /// <summary>
         /// Deserialize a generated faction through <see cref="FactionDefinition.JsonOptions"/>, run the structural
         /// <see cref="FactionValidator.Validate"/> gate, AND loop <see cref="UnitDefinitionValidator"/> over
         /// <c>def.Units</c> (the deep per-unit validation bare faction load skips — closing that gap). Does NOT run
@@ -1668,6 +1709,47 @@ play_sound      — sound_id (string)");
             return sb.ToString();
         }
 
+        /// <summary>
+        /// DW-900 — the EXTEND prompt: same vocabulary blocks as <see cref="BuildAbilityDraftPrompt"/>, but it shows
+        /// the model the ability that already exists and asks for ONLY the new nodes, as a bare JSON ARRAY.
+        ///
+        /// <para>Asking for an array of additions rather than a rewritten whole ability is the design decision that
+        /// makes "add more" mean it. A whole-ability reply cannot GUARANTEE the author's existing effects survive —
+        /// the model is free to quietly reword them — which is the exact complaint this feature answers. An array of
+        /// additions is structurally incapable of touching what is already there: the merge is done locally by
+        /// <see cref="Core.Definitions.AbilityGraphMerge"/>, not by the model.</para>
+        /// </summary>
+        internal static string BuildAbilityExtendPrompt(AbilityDraftContext ctx)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("You are an ability-authoring assistant for Project Chimera, a real-time strategy game.");
+            sb.AppendLine("The user already has an ability and wants to ADD to it. You are extending it, not rewriting it.");
+            sb.AppendLine();
+            sb.AppendLine("=== VALID EFFECT KINDS (the 'kind' field on every effect node) ===");
+            sb.AppendLine("direct_hp_delta — { \"kind\": \"direct_hp_delta\", \"delta\": float }");
+            sb.AppendLine("heal            — { \"kind\": \"heal\", \"amount\": float }");
+            sb.AppendLine("damage          — { \"kind\": \"damage\", \"amount\": float, \"damage_type\": \"Normal\" }");
+            sb.AppendLine("apply_modifier  — { \"kind\": \"apply_modifier\", \"modifier\": { … } }");
+            sb.AppendLine("sequence        — { \"kind\": \"sequence\", \"children\": [ EffectNode, … ] }");
+            sb.AppendLine("search_area     — { \"kind\": \"search_area\", \"radius\": float, \"child\": EffectNode }");
+            sb.AppendLine("persistent      — { \"kind\": \"persistent\", \"period_ticks\": int, \"period_count\": int, … }");
+            sb.AppendLine();
+            if (!string.IsNullOrWhiteSpace(ctx?.CurrentAbilityJson))
+            {
+                sb.AppendLine("=== THE CURRENT ABILITY (do NOT rewrite or restate any of this) ===");
+                sb.AppendLine(ctx!.CurrentAbilityJson);
+                sb.AppendLine();
+            }
+            sb.AppendLine("=== INSTRUCTIONS ===");
+            sb.AppendLine("Return ONLY a JSON ARRAY of the NEW effect nodes to append, e.g. [ { \"kind\": … }, … ].");
+            sb.AppendLine("Do NOT return an ability object. Do NOT include id, display_name, targeting, costs or cooldown.");
+            sb.AppendLine("Do NOT repeat any effect that already exists above — return only what is being ADDED.");
+            sb.AppendLine("Return 1 to 4 nodes. Prefer the smallest addition that satisfies the request.");
+            sb.AppendLine($"Every numeric value MUST be finite and within [0, {DraftFixedRange}) (the Fixed-safe range).");
+            sb.AppendLine("Return ONLY valid JSON. No markdown fences, no explanation, no extra text.");
+            return sb.ToString();
+        }
+
         /// <summary>Story 8.4: internal so the staleness-guard test can assert the prompt enumerates every closed-set
         /// <c>ai_preset</c> member (from the trusted context, seeded from <c>FactionValidator.KnownAiPresets</c>).</summary>
         internal static string BuildFactionDraftPrompt(FactionDraftContext ctx)
@@ -1803,6 +1885,13 @@ play_sound      — sound_id (string)");
     {
         /// <summary>Existing ability ids the prompt lists as "avoid colliding" (purely a prompt hint; not a gate).</summary>
         public IReadOnlyList<string>? ExistingAbilityIds { get; set; }
+
+        /// <summary>
+        /// DW-900 — the ability being EXTENDED, serialized, for the "Add more" flow. Null for a plain Generate (which
+        /// is a create-from-nothing and deliberately sends no current state). When set, the prompt shows the model what
+        /// already exists and asks for ONLY the new nodes, so the author's graph is never restated and never rewritten.
+        /// </summary>
+        public string? CurrentAbilityJson { get; set; }
     }
 
     /// <summary>
