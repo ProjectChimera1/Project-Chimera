@@ -1,6 +1,6 @@
 ---
 project: Project Chimera
-last_touched: 2026-08-06
+last_touched: 2026-08-07
 phase: Phase 5 — Polish & 1.0
 status: Active
 ---
@@ -15,9 +15,19 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
+**Run `bmad-loop run --epic 15`.** The loop is stopped, the tree is clean and 15-13 is `done`, so a fresh run picks up **15-14 — host-side hero identity enforcement / attested deployment (DW-200)**, the largest remaining Epic-15 item. The other two open keys are **15-21** (creator-authorable hero attribute system — folds BOTH `SimChecksum` and `CanonicalModelHash`, so it re-records at the end of its own story per the batch rule and must not be queued behind anything) and **15-23** (generation-validated entity references, DW-775). 15-1 stays `blocked` by Alec's deferral.
+
+**The in-engine gate is no longer a blocker for Godot-coupled stories** — the DW-882 seam landed 2026-08-07, so a dev session can drive and observe a real match. Two operating notes for whoever runs it: freeze game time before asserting sim state, and the bridge is still single-client, so close idle Claude sessions before an in-engine run.
+
+Read the **2026-08-07** block below first.
+
+<details><summary>Superseded Next Action (Story 15-3 — now done)</summary>
+
 **Run Story 15-3 — status effects become real + modifier-period honesty** (`bmad-loop run --story 15-3`; DW-266, 267, 270, 271, 278, 323). `StatusFlags` is written by the ability system and read by *nothing*: Disarmed, Rooted, Stunned, Silenced and Invulnerable are all authorable today and all do nothing in play. **It moves goldens by design** (the StatusFlags re-baseline) and re-records at the end of its own story per the standing batch rule — do not queue it behind a batch. Decision **DW-325 is already ruled *build***: a modifier collapsing `EffectiveMaxHealth` to 0 raises death rather than pinning a 0-HP "zombie"; that rides the same re-record. It is Godot-coupled (the `Warnings` channel surfaces in the 2.5 ability editor), so it needs the in-engine gate and the MCP bridge free.
 
 Read the **2026-08-06 (later)** block below first — the earlier same-day block's numbers (AlgoVersion 23, 370 open) are superseded. Both precede the 2026-08-01 block, and all three precede the legacy sections, which describe Sessions 20–21 and are far out of date.
+
+</details>
 
 ---
 
@@ -25,7 +35,45 @@ Read the **2026-08-06 (later)** block below first — the earlier same-day block
 
 ---
 
-## Current State (2026-08-06, later) — read this first
+## Current State (2026-08-07) — read this first
+
+**Headline: the in-engine gate stopped being a wall.** Story 15-13 escalated CRITICAL because its diff touched
+`src/UI/**` and the behaviour was unobservable over the GDScript-only bridge (DW-882). Alec's call was to BUILD the
+seam rather than waive the gate — so `godot/src/Core/MainSceneDebugSeam.cs` landed, the gate was driven and observed
+for real, and every future Godot-coupled story inherits the capability.
+
+**Shipped (7 commits, `a6fca507` → `0edc863e`):**
+- **Story 15-13 `done`** — the closed effect vocabulary is complete: `TeleportEffect` plus the three checksum-neutral
+  presentation leaves, wired through the converter, an explicit `CanonicalFold` arm per kind, the validator and the
+  closedness/fold/position guards. No golden re-recorded, no hash `AlgoVersion` moved.
+- **DW-882 `done`** — the debug seam: `_mcp_state()`/`DebugSimJson`/`DebugEntityJson` (raw `Fixed`) to READ,
+  `DebugCastGround`/`DebugCastTarget` to DRIVE real orders through the production path, `DebugSpawnUnit`/
+  `DebugGrantAbility`/`DebugSetHealth`/`DebugSetEnergy` to set up. Debug-build-only and offline-only. Presentation
+  taps on `CombatFeedbackBridge` and `AudioManager` report cue drains, flash spawns, shake values and sound routing.
+- **Ten bugs from Alec's live editor session** — DW-893…DW-901 filed, then all closed, plus DW-903 and DW-904 found
+  while fixing them. All ten VERIFIED BY ALEC in live use.
+- **DW-903 was a live crash I had shipped**: 15-13's four leaves were never taught to the ability composer, whose
+  converter throws on an unknown node — so opening `blink_strike` took the Ability Editor down.
+
+**Suite: 6340 passed, 0 failed, 1 skipped** (the pre-existing reserved-story skip). Ledger: 904 entries.
+
+**Three lessons worth carrying:**
+1. **Three of four ledger hypotheses were WRONG** and a parallel read-only investigation caught all three (the Map Gen
+   "busy flag" was really a layout blow-out pushing the ✕ off-screen; Esc was not "lazily armed by Play" but eaten by a
+   placer that boots armed; DW-901's `location:` named the wrong directory). Root-cause by reading, not by plausibility.
+2. **A closed-vocabulary addition has FIVE consumers, not four.** Sim, JSON converter, canonical fold and validator all
+   knew about the new leaves; the authoring composer did not, and it fails at RUNTIME — no build and no Tier-1 run
+   catches it. That is DW-903.
+3. **A placement ghost is a promise.** Its whole transform must derive from the same rule as the renderer that will
+   draw the object. Adding a shadow did not create DW-904, it exposed a misalignment that had been there all along.
+
+**Deliberately NOT done, filed:** DW-902 (the TOOL-tier hint strip still has no table — the reason it has drifted
+twice), and widening the over-UI guard in the four paint tools (there the failure mode is unsafe: a wrong guard
+silently stops terrain/path painting).
+
+---
+
+## Current State (2026-08-06, later)
 
 Supersedes the earlier 2026-08-06 block below, which was written *before* 15-22 and 15-2 ran. Its ledger counts and AlgoVersion are stale; its correct-course reasoning still stands.
 
