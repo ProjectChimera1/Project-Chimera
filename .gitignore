@@ -20,6 +20,10 @@ godot/obj/
 *.key
 secrets/
 
+# LAN determinism-gate run logs (godot/tools/lan-desync-smoke.ps1 writes here). Machine-specific
+# run artifacts — the FINDINGS belong in the ledger / Snapshot, never the raw logs.
+lan-logs/
+
 # OS junk
 .DS_Store
 Thumbs.db
