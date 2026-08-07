@@ -107,7 +107,9 @@ namespace ProjectChimera.UI
 
         /// <summary>A built-in mesh per prop id (no external prop-asset pipeline yet — decorative primitives keyed by a
         /// small vocabulary; any unknown id falls back to a box). The mesh choice is presentation-only.</summary>
-        private static Mesh MeshForProp(string propId) => propId switch
+        // DW-893: internal (was private) so the placement ghost and drag preview show the SAME primitive the placed
+        // prop renders from, rather than a generic box.
+        internal static Mesh MeshForProp(string propId) => propId switch
         {
             "tree"    => new CylinderMesh { TopRadius = 0.1f, BottomRadius = 0.6f, Height = 2.5f },
             "rock"    => new BoxMesh      { Size = new Vector3(1.4f, 1.0f, 1.4f) },

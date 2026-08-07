@@ -147,6 +147,28 @@ namespace ProjectChimera.UI
         // Buildings, not a fixed BuildingType enum — so the palette can place any authored (custom) building.
         private string        _buildingId   = "command_center";
         private int           _unitIndex    = 0;
+
+        // ── DW-893: real-mesh placement ghost ────────────────────────────────────────────────────────────────────
+        /// <summary>Ingested custom-map meshes (null before FactionVisualsPhase runs — the lookup stays lazy).</summary>
+        private AssetRegistry? _assets;
+        /// <summary>Resolved ghost meshes keyed by mode + the unit/building/prop id, so the GLB load never runs per
+        /// frame. <see cref="MeshLoader.LoadFromGlb"/> does a PackedScene load + Instantiate + Free, which is fine on a
+        /// mode change and unacceptable in <c>_Process</c>.</summary>
+        private readonly System.Collections.Generic.Dictionary<string, (Mesh Mesh, float Scale, bool Authored)> _ghostMeshCache = new();
+        private float _ghostScale      = 1f;      // authored MeshScale for the resolved mesh
+        private float _ghostGroundLift = 0.6f;    // Y offset that sits the resolved mesh ON the ground
+        /// <summary>Shadow-only twin of the ghost. In Godot 4 an alpha-BLEND material casts no shadow, and the ghost's
+        /// translucent look is deliberate — so the silhouette shadow Alec asked for comes from an opaque sibling that
+        /// renders nothing but its shadow, sharing the ghost's mesh and transform.</summary>
+        private MeshInstance3D? _ghostShadow;
+
+        // ── DW-894: live group-drag preview ─────────────────────────────────────────────────────────────────────
+        /// <summary>Snapped drag delta applied to <c>_markerRoot</c> each frame while <c>_groupMoving</c>. Uses the
+        /// SAME <see cref="SnapDelta"/> the commit applies, so the preview is byte-equal to where objects land.</summary>
+        private Vector3 _groupMovePreviewDelta;
+        /// <summary>Translucent mesh copies shown during a drag; children of <c>_markerRoot</c>, so one root offset
+        /// moves them all.</summary>
+        private readonly System.Collections.Generic.List<MeshInstance3D> _dragPreview = new();
         private bool          _gridSnapEnabled = false;
 
         // Start position sub-state (Story 6.7: 2–4 slots, capped at the engine ceiling Faction.Player4).
@@ -311,9 +333,14 @@ namespace ProjectChimera.UI
                                System.Action<int>? onStartSlotRemoved = null,
                                System.Action<int, float, float>? onStartSlotEconomy = null,
                                System.Func<ScenarioSyncOp, object?, string, Vector3, object?>? onItemSync = null,
-                               HeroStore? heroes = null)
+                               HeroStore? heroes = null,
+                               AssetRegistry? assets = null)   // DW-893: lets the ghost resolve ingested custom-map meshes
         {
             _camCtrl            = camCtrl;
+            // DW-893 — captured by REFERENCE on purpose. CameraPhase (which builds this placer) runs BEFORE
+            // FactionVisualsPhase populates the registry, so the ghost's mesh lookup must stay lazy; holding the
+            // reference is safe, resolving eagerly would not be.
+            _assets             = assets;
             _world              = world;
             _heroes             = heroes;        // DW-52 — free hero rows on editor delete
             _nodes              = nodes;
@@ -374,6 +401,13 @@ namespace ProjectChimera.UI
         {
             if (player1 != null) _faction  = player1;
             if (player2 != null) _faction2 = player2;
+
+            // DW-893 — CRITICAL ordering fix. CameraPhase builds this placer BEFORE FactionVisualsPhase resolves the
+            // real slot factions, so any ghost mesh resolved earlier is pinned to the PRE-scenario default factions and
+            // would show the wrong faction's art for the rest of the session. Drop the cache and re-resolve here, the
+            // moment the real defs arrive.
+            _ghostMeshCache.Clear();
+            RefreshGhostVisuals();
         }
 
         // ── Godot lifecycle ───────────────────────────────────────────────────
@@ -570,6 +604,11 @@ namespace ProjectChimera.UI
                     _gridSnapEnabled = !_gridSnapEnabled;
                     RefreshSnapButton();
                     GD.Print($"[EntityPlacer] Grid snap: {(_gridSnapEnabled ? "ON" : "OFF")}");
+                    // G is a deliberate BROADCAST: EntityPlacer, RegionTool and WaterTool each keep their own grid-snap
+                    // flag and all three read this one press. Consuming it here would silently desync the other two
+                    // (their snap would stop tracking the key) — the exact regression DW-666's proposed fix would have
+                    // caused. It stays unconsumed on purpose.
+                    handled = false;
                     break;
 
                 default:
@@ -615,7 +654,89 @@ namespace ProjectChimera.UI
             };
             // Add as a sibling in the scene so it renders in 3D world space
             GetParent()?.AddChild(_ghost);
+
+            // DW-893: the shadow twin. Opaque + ShadowsOnly, so it contributes an accurate silhouette shadow while
+            // drawing nothing itself — the ghost keeps its translucent look, which an AlphaScissor conversion would
+            // have traded away.
+            _ghostShadow = new MeshInstance3D
+            {
+                CastShadow      = GeometryInstance3D.ShadowCastingSetting.ShadowsOnly,
+                Visible         = false,
+                MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color(0f, 0f, 0f, 1f) },
+            };
+            GetParent()?.AddChild(_ghostShadow);
+
             RefreshGhostVisuals();
+        }
+
+        /// <summary>
+        /// DW-893 — the ghost's mesh for the CURRENT mode: the object's real authored mesh where one exists, else the
+        /// primitive stand-in this method used to hard-code for everything.
+        ///
+        /// <para>Every unit, hero and building already renders from a per-type GLB through
+        /// <see cref="MeshLoader.LoadFromGlb"/> (units via MultiMeshBridge, buildings via BuildingBridge), and that
+        /// loader already falls back to a box on a miss — so resolving the ghost through the same seam gives the real
+        /// silhouette for free and cannot regress to worse than today. Props have no GLBs yet, so they share
+        /// <see cref="PropRenderer.MeshForProp"/>, the same primitive table the placed prop renders from; resource
+        /// nodes, start positions and items keep their stand-ins because no authored mesh exists for them at all.</para>
+        ///
+        /// <para>Cached by mode+id: the loader does a PackedScene load + Instantiate + Free, so this may run on a mode
+        /// or type change (which is where <c>RefreshGhostVisuals</c> is called from) but never per frame.</para>
+        /// </summary>
+        private (Mesh Mesh, float Scale, bool Authored) ResolveGhostMesh()
+        {
+            string key = _mode switch
+            {
+                PlacementMode.Building => $"b:{_faction?.GetBuilding(_buildingId)?.Id ?? _buildingId.ToString()}",
+                PlacementMode.Prop     => $"p:{PROP_LIBRARY[_propIndex % PROP_LIBRARY.Length]}",
+                PlacementMode.P1Unit or PlacementMode.P2Unit => $"u:{CurrentUnitDef()?.Id ?? "?"}",
+                _                      => $"m:{_mode}",
+            };
+            if (_ghostMeshCache.TryGetValue(key, out var hit)) return hit;
+
+            (Mesh Mesh, float Scale, bool Authored) resolved;
+            switch (_mode)
+            {
+                case PlacementMode.P1Unit:
+                case PlacementMode.P2Unit:
+                {
+                    UnitDefinition? def = CurrentUnitDef();
+                    Color tint = _mode == PlacementMode.P2Unit ? new Color(1f, 0.30f, 0.2f) : new Color(0.2f, 0.50f, 1f);
+                    Mesh mesh = MeshLoader.LoadFromGlb(def?.MeshPath ?? "", new Vector3(0.6f, 1.2f, 0.6f), tint, _assets);
+                    resolved = (mesh, def?.MeshScale ?? 1f, !string.IsNullOrEmpty(def?.MeshPath));
+                    break;
+                }
+                case PlacementMode.Building:
+                {
+                    BuildingDefinition? def = _faction?.GetBuilding(_buildingId);
+                    Mesh mesh = MeshLoader.LoadFromGlb(def?.MeshPath ?? "", new Vector3(4f, 2f, 4f), new Color(0.2f, 0.80f, 0.3f), _assets);
+                    resolved = (mesh, def?.MeshScale ?? 1f, !string.IsNullOrEmpty(def?.MeshPath));
+                    break;
+                }
+                case PlacementMode.Prop:
+                    resolved = (PropRenderer.MeshForProp(PROP_LIBRARY[_propIndex % PROP_LIBRARY.Length]), 1f, true);
+                    break;
+                case PlacementMode.ResourceNode:
+                    resolved = (new SphereMesh { Radius = 0.8f, Height = 1.6f }, 1f, false);
+                    break;
+                case PlacementMode.StartPos:
+                    resolved = (new BoxMesh { Size = new Vector3(0.15f, 3f, 0.15f) }, 1f, false); // flag pole
+                    break;
+                default:
+                    resolved = (new BoxMesh { Size = new Vector3(0.6f, 1.2f, 0.6f) }, 1f, false);
+                    break;
+            }
+
+            _ghostMeshCache[key] = resolved;
+            return resolved;
+        }
+
+        /// <summary>The unit definition the palette currently has armed (mirrors the pick <c>PlaceUnit</c> makes).</summary>
+        private UnitDefinition? CurrentUnitDef()
+        {
+            var units = GetCombatUnits();
+            if (units.Count > 0) return units[_unitIndex % units.Count];
+            return ActiveFactionDef()?.GetUnit("infantry");
         }
 
         /// <summary>
@@ -626,14 +747,26 @@ namespace ProjectChimera.UI
         {
             if (_ghost == null) return;
 
-            _ghost.Mesh = _mode switch
-            {
-                PlacementMode.ResourceNode => (Mesh)new SphereMesh { Radius = 0.8f, Height = 1.6f },
-                PlacementMode.Building     => new BoxMesh { Size = new Vector3(4f, 2f, 4f) },
-                PlacementMode.StartPos     => new BoxMesh { Size = new Vector3(0.15f, 3f, 0.15f) }, // flag pole
-                PlacementMode.Prop         => new BoxMesh { Size = new Vector3(1f, 1f, 1f) },
-                _                          => new BoxMesh { Size = new Vector3(0.6f, 1.2f, 0.6f) },
-            };
+            // DW-893: the object's real mesh where one is authored (see ResolveGhostMesh), so the author can judge
+            // footprint, facing and silhouette before committing — instead of the same box for everything.
+            var ghostMesh = ResolveGhostMesh();
+            _ghost.Mesh   = ghostMesh.Mesh;
+            _ghostScale   = ghostMesh.Scale;
+            // Sit the mesh ON the ground rather than centring it. An authored GLB is feet-pivoted with its own AABB,
+            // so the lift is derived from the mesh (the MultiMeshBridge.GroundOffsetFor formula, which every placed
+            // entity already uses); the primitives keep the hand-tuned half-height offsets they were drawn for.
+            _ghostGroundLift = ghostMesh.Authored
+                ? -ghostMesh.Mesh.GetAabb().Position.Y * ghostMesh.Scale
+                : _mode switch
+                {
+                    PlacementMode.Building     => 1.0f,
+                    PlacementMode.ResourceNode => 0.8f,
+                    PlacementMode.StartPos     => 1.5f, // flag pole: half of 3u height
+                    PlacementMode.Prop         => 0.5f,
+                    _                          => 0.6f,
+                };
+
+            if (_ghostShadow != null) _ghostShadow.Mesh = ghostMesh.Mesh;
 
             if (_ghost.MaterialOverride is StandardMaterial3D mat)
             {
@@ -685,22 +818,25 @@ namespace ProjectChimera.UI
             var   hit  = origin + dir * t;
             float x    = SnapValue(hit.X);
             float z    = SnapValue(hit.Z);
-            float yOff = _mode switch
-            {
-                PlacementMode.Building     => 1.0f,
-                PlacementMode.ResourceNode => 0.8f,
-                PlacementMode.StartPos     => 1.5f, // flag pole: half of 3u height
-                PlacementMode.Prop         => 0.5f,
-                _                          => 0.6f,
-            };
+            // DW-893: both computed once per mesh resolve in RefreshGhostVisuals, so this per-frame path stays cheap.
+            float yOff  = _ghostGroundLift;
+            float scale = _mode == PlacementMode.Prop ? _propScale : _ghostScale;
 
             _lastCursorWorld = new Vector3(x, 0f, z);
             _ghost.Position  = new Vector3(x, yOff, z);
-            _ghost.Scale     = _mode == PlacementMode.Prop ? new Vector3(_propScale, _propScale, _propScale) : Vector3.One;
+            _ghost.Scale     = new Vector3(scale, scale, scale);
             // UX-DR56 (Story 6.1): keep tracking the cursor (so Delete still targets the hover), but only SHOW the
             // ghost while a placement mode is armed — a right-click/Esc cancel hides it until a mode is re-selected.
             // Story 6.6: Select mode has no ghost (it marquees, not places).
             _ghost.Visible   = _placementActive && _mode != PlacementMode.Select;
+
+            // DW-893: the shadow twin tracks the ghost exactly and is shown with it.
+            if (_ghostShadow != null)
+            {
+                _ghostShadow.Position = _ghost.Position;
+                _ghostShadow.Scale    = _ghost.Scale;
+                _ghostShadow.Visible  = _ghost.Visible;
+            }
         }
 
         // ── Placement arm / cancel (UX-DR56) ──────────────────────────────────
@@ -710,7 +846,14 @@ namespace ProjectChimera.UI
         private void CancelPlacement()
         {
             _placementActive = false;
-            if (_ghost != null) _ghost.Visible = false;
+            if (_ghost != null)       _ghost.Visible = false;
+            if (_ghostShadow != null) _ghostShadow.Visible = false;
+            // DW-894: a right-click mid-drag returns BEFORE the Select-mode dispatch, so without this the drag stayed
+            // "live" with a stale start point and the next left-release committed a bogus move. Pre-existing, but the
+            // live preview makes it visible (the selection would sit stuck at an offset), so it is cleared here.
+            _groupMoving = false;
+            _groupMovePreviewDelta = Vector3.Zero;
+            HideDragPreview();
             GD.Print("[EntityPlacer] Placement cancelled.");
         }
 
@@ -2170,6 +2313,8 @@ namespace ProjectChimera.UI
                     {
                         _groupMoving = true;
                         _groupMoveStartWorld = gp.Value;
+                        _groupMovePreviewDelta = Vector3.Zero;
+                        BuildDragPreview();   // DW-894: real meshes that follow the cursor for the whole drag
                     }
                     else
                     {
@@ -2185,7 +2330,12 @@ namespace ProjectChimera.UI
                     if (_groupMoving)
                     {
                         _groupMoving = false;
+                        _groupMovePreviewDelta = Vector3.Zero;
+                        HideDragPreview();
                         Vector3? gp = GroundPointOf(mb.Position);
+                        // Still EXACTLY ONE MoveSelection call — it is a delete+recreate that pushes an undo/redo
+                        // pair, so it must never run per motion event. The RAW delta is passed as before; MoveSelection
+                        // re-derives the snap itself.
                         if (gp != null) MoveSelection(gp.Value - _groupMoveStartWorld);
                         GetViewport().SetInputAsHandled();
                         return true;
@@ -2202,10 +2352,115 @@ namespace ProjectChimera.UI
             else if (@event is InputEventMouseMotion motion && (_marqueeActive || _groupMoving))
             {
                 if (_marqueeActive) _marqueeCurrent = motion.Position;
+                if (_groupMoving)
+                {
+                    // DW-894: the drag now FOLLOWS the cursor. Previously this branch did nothing for _groupMoving, so
+                    // nothing moved until mouse-up and the selection appeared to teleport. The preview uses the SAME
+                    // SnapDelta the commit applies, so what the author sees during the drag is byte-equal to where the
+                    // objects actually land.
+                    Vector3? gp = GroundPointOf(motion.Position);
+                    if (gp != null)
+                        _groupMovePreviewDelta = new Vector3(
+                            SnapDelta(gp.Value.X - _groupMoveStartWorld.X), 0f,
+                            SnapDelta(gp.Value.Z - _groupMoveStartWorld.Z));
+                }
                 GetViewport().SetInputAsHandled();
                 return true;
             }
             return false;
+        }
+
+        // ── DW-894: live drag preview ────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Populate the drag preview: one translucent copy of each selected object's REAL mesh, parented to
+        /// <c>_markerRoot</c>.
+        ///
+        /// <para>Parenting is the whole trick. <c>_markerRoot</c> sits at the origin with an identity transform and its
+        /// children are written in absolute world coordinates, so offsetting the ROOT by the drag delta translates
+        /// every preview (and the existing selection markers) in one assignment — no per-child bookkeeping, and
+        /// resetting the root to zero on release restores truth with no cleanup pass.</para>
+        /// </summary>
+        private void BuildDragPreview()
+        {
+            HideDragPreview();
+            if (_markerRoot == null) return;
+
+            foreach (Selected s in _selection)
+            {
+                Mesh? mesh = PreviewMeshFor(s);
+                if (mesh == null) continue;
+
+                var node = new MeshInstance3D
+                {
+                    Mesh       = mesh,
+                    CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+                    Position   = SelectedWorldPos(s),
+                    MaterialOverride = new StandardMaterial3D
+                    {
+                        Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+                        ShadingMode  = BaseMaterial3D.ShadingModeEnum.Unshaded,
+                        CullMode     = BaseMaterial3D.CullModeEnum.Disabled,
+                        AlbedoColor  = new Color(0.95f, 0.85f, 0.30f, 0.45f),   // the selection amber, translucent
+                    },
+                };
+                _markerRoot.AddChild(node);
+                _dragPreview.Add(node);
+            }
+        }
+
+        /// <summary>
+        /// DW-894/893 — the real mesh for a selected object, so the drag preview shows the BUILDING moving rather than
+        /// a floating pad. Resolved through the same <see cref="MeshLoader"/> seam the placed entity renders from, with
+        /// the same box fallback, so it can never be worse than a stand-in.
+        /// </summary>
+        private Mesh? PreviewMeshFor(Selected s)
+        {
+            switch (s.Category)
+            {
+                case Selected.Kind.Unit:
+                {
+                    string? id = _world.SourceDefinition[s.LiveId]?.Id;
+                    UnitDefinition? def = id == null ? null : (ActiveFactionDef()?.GetUnit(id) ?? _faction2?.GetUnit(id));
+                    return MeshLoader.LoadFromGlb(def?.MeshPath ?? "", new Vector3(0.6f, 1.2f, 0.6f), new Color(0.95f, 0.85f, 0.3f), _assets);
+                }
+                case Selected.Kind.Building:
+                {
+                    BuildingDefinition? def = _buildings == null ? null : BuildingDefFor(_buildings.Type[s.LiveId]);
+                    return MeshLoader.LoadFromGlb(def?.MeshPath ?? "", new Vector3(4f, 2f, 4f), new Color(0.95f, 0.85f, 0.3f), _assets);
+                }
+                case Selected.Kind.Node:
+                    return new SphereMesh { Radius = 0.8f, Height = 1.6f };
+                case Selected.Kind.Prop:
+                    return s.PropHandle is ScenarioProp p ? PropRenderer.MeshForProp(p.PropId) : null;
+                default:
+                    return null;
+            }
+        }
+
+        /// <summary>
+        /// The definition behind a PLACED building. <c>BuildingStore</c> keeps the <see cref="BuildingType"/> enum, not
+        /// the authored id, and only the id→enum direction has a helper — so walk the loaded rosters and take the
+        /// definition whose id maps back to this type. A handful of definitions, and it runs once per drag start
+        /// (never per frame), so the scan is cheaper than caching it would be to keep correct.
+        /// </summary>
+        private BuildingDefinition? BuildingDefFor(BuildingType type)
+        {
+            foreach (FactionDefinition? f in new[] { _faction, _faction2 })
+            {
+                if (f?.Buildings == null) continue;
+                foreach (BuildingDefinition b in f.Buildings)
+                    if (TechTreeChecker.BuildingTypeFromId(b.Id) is BuildingType bt && bt == type) return b;
+            }
+            return null;
+        }
+
+        /// <summary>Drop the preview copies and put the marker root back at the origin.</summary>
+        private void HideDragPreview()
+        {
+            foreach (MeshInstance3D n in _dragPreview) n.QueueFree();
+            _dragPreview.Clear();
+            if (_markerRoot != null) _markerRoot.Position = Vector3.Zero;
         }
 
         private void FinishMarquee(bool shiftAdd)
@@ -2741,6 +2996,12 @@ namespace ProjectChimera.UI
 
         private void UpdateSelectionOverlay(bool edit)
         {
+            // DW-894: ONE assignment moves the whole drag preview. _markerRoot sits at the origin and its children are
+            // written in absolute world coordinates, so offsetting the root translates every marker and every preview
+            // mesh together — and zeroing it on release restores truth with no cleanup pass.
+            if (_markerRoot != null)
+                _markerRoot.Position = _groupMoving ? _groupMovePreviewDelta : Vector3.Zero;
+
             // Marquee rectangle.
             if (_marqueeVisual != null)
             {

@@ -43,7 +43,9 @@ namespace ProjectChimera.Core.Bootstrap
                               _ctx.Scene.RemoveStartPosition, // Story 6.7 — remove trailing start slot (2–4)
                               _ctx.Scene.SetStartSlotEconomy, // Story 6.7 (patch 3) — persist spinner economy edits to a placed slot
                               _ctx.Scene.SyncItem, // DW-137 — ScenarioData.Items sync for editor-placed ground items
-                              _ctx.Host.Heroes); // DW-52 — free the linked HeroStore row on editor delete
+                              _ctx.Host.Heroes, // DW-52 — free the linked HeroStore row on editor delete
+                              _ctx.AssetRegistry); // DW-893 — real-mesh placement ghost; captured by reference (this
+                                                   // phase runs BEFORE FactionVisualsPhase ingests, so the lookup is lazy)
             _ctx.Placer = placer;
 
             var selection = new SelectionSystem();

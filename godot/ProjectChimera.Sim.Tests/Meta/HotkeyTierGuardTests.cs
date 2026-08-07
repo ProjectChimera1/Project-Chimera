@@ -100,6 +100,28 @@ namespace ProjectChimera.Sim.Tests.Meta
         }
 
         /// <summary>
+        /// …but G must stay UNCONSUMED. Grid snap is a deliberate broadcast: EntityPlacer, RegionTool and WaterTool
+        /// each hold their own snap flag and all three read the same press. Consuming it in the placer silently desyncs
+        /// the other two — the regression the DW-666 fix would have caused, and one the "consume what you handle" rule
+        /// added for DW-895 walks straight into if applied uniformly. Pinned because nothing else can see it: all three
+        /// tools keep "working", they just stop agreeing.
+        /// </summary>
+        [Fact]
+        public void GridSnapStaysABroadcast_NotConsumedByThePalette()
+        {
+            string code = StripCommentsAndLiterals(
+                File.ReadAllText(Path.Combine(SrcRoot(), "UI", "EntityPlacer.cs")));
+
+            int g = code.IndexOf("case Key.G:", StringComparison.Ordinal);
+            Assert.True(g >= 0, "DW-895 guard: EntityPlacer no longer has a bare-G case — update this guard.");
+
+            // Within its own case body (up to the next case label), G must clear `handled` so the press travels on.
+            int next = code.IndexOf("case ", g + 1, StringComparison.Ordinal);
+            string body = next > g ? code.Substring(g, next - g) : code.Substring(g);
+            Assert.Contains("handled = false", body, StringComparison.Ordinal);
+        }
+
+        /// <summary>
         /// DW-898: the placer must not SWALLOW Esc. It boots armed (<c>_placementActive = true</c>), so consuming Esc
         /// while armed ate the first press in every cold Create-mode session and Settings never opened — the whole
         /// reported bug. Esc may cancel a ghost here, but the event has to continue to the single Esc owner.

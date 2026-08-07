@@ -2036,15 +2036,30 @@ namespace ProjectChimera.Core
 
             // Create or replace the ghost mesh for the new building type.
             _buildGhost?.QueueFree();
-            var box = new BoxMesh();
-            box.Size = new Vector3(4f, 3f, 4f);
+            // DW-893 — the in-game (worker build) placement ghost, previously a fixed 4x3x4 box for every building.
+            // Same fix as the editor placer: resolve the building's real authored mesh through the shared MeshLoader
+            // seam, which already falls back to a box on a miss — so a player about to drop a barracks now sees the
+            // barracks' footprint and silhouette. Without this, DW-893 would only be half closed (editor yes, play no).
+            BuildingDefinition? ghostDef = null;
+            foreach (var fdef in new[] { _factionDef, _factionDef2 })
+            {
+                if (fdef?.Buildings == null) continue;
+                foreach (BuildingDefinition b in fdef.Buildings)
+                    if (TechTreeChecker.BuildingTypeFromId(b.Id) is BuildingType gbt && gbt == _pendingBuildType)
+                        { ghostDef = b; break; }
+                if (ghostDef != null) break;
+            }
+            Mesh ghostMesh = UI.MeshLoader.LoadFromGlb(ghostDef?.MeshPath ?? "", new Vector3(4f, 3f, 4f),
+                                                       new Color(0.3f, 0.8f, 0.3f), _ctx.AssetRegistry);
             var mat = new StandardMaterial3D();
             mat.AlbedoColor  = new Color(0.3f, 0.8f, 0.3f, 0.45f);
             mat.Transparency = BaseMaterial3D.TransparencyEnum.Alpha;
             mat.ShadingMode  = BaseMaterial3D.ShadingModeEnum.Unshaded;
-            box.Material     = mat;
             _buildGhost          = new MeshInstance3D();
-            _buildGhost.Mesh     = box;
+            _buildGhost.Mesh     = ghostMesh;
+            // MaterialOverride, not Mesh.Material: an authored GLB carries its own surface materials, and assigning to
+            // the shared Mesh resource would tint every OTHER instance of that building on the map too.
+            _buildGhost.MaterialOverride = mat;
             _buildGhost.Visible  = false;
             AddChild(_buildGhost);
 
