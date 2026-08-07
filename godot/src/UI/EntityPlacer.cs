@@ -156,7 +156,15 @@ namespace ProjectChimera.UI
         /// mode change and unacceptable in <c>_Process</c>.</summary>
         private readonly System.Collections.Generic.Dictionary<string, (Mesh Mesh, float Scale, bool Authored)> _ghostMeshCache = new();
         private float _ghostScale      = 1f;      // authored MeshScale for the resolved mesh
-        private float _ghostGroundLift = 0.6f;    // Y offset that sits the resolved mesh ON the ground
+        /// <summary>The resolved mesh's UNSCALED AABB minimum Y. Kept raw rather than pre-multiplied because the scale
+        /// actually applied can change every frame (a prop's scale spinner), and the lift must track it — see
+        /// <see cref="GhostGroundLift"/>.</summary>
+        private float _ghostAabbMinY   = 0f;
+        /// <summary>True when the resolved mesh is an authored one whose renderer lifts it by its AABB (units, heroes,
+        /// buildings). False for the primitive stand-ins, which keep their hand-tuned constants.</summary>
+        private bool  _ghostUsesAabbLift;
+        /// <summary>The stand-in's hand-tuned half-height lift, used only when <see cref="_ghostUsesAabbLift"/> is false.</summary>
+        private float _ghostFixedLift  = 0.6f;
         /// <summary>Shadow-only twin of the ghost. In Godot 4 an alpha-BLEND material casts no shadow, and the ghost's
         /// translucent look is deliberate — so the silhouette shadow Alec asked for comes from an opaque sibling that
         /// renders nothing but its shadow, sharing the ghost's mesh and transform.</summary>
@@ -755,16 +763,16 @@ namespace ProjectChimera.UI
             // Sit the mesh ON the ground rather than centring it. An authored GLB is feet-pivoted with its own AABB,
             // so the lift is derived from the mesh (the MultiMeshBridge.GroundOffsetFor formula, which every placed
             // entity already uses); the primitives keep the hand-tuned half-height offsets they were drawn for.
-            _ghostGroundLift = ghostMesh.Authored
-                ? -ghostMesh.Mesh.GetAabb().Position.Y * ghostMesh.Scale
-                : _mode switch
-                {
-                    PlacementMode.Building     => 1.0f,
-                    PlacementMode.ResourceNode => 0.8f,
-                    PlacementMode.StartPos     => 1.5f, // flag pole: half of 3u height
-                    PlacementMode.Prop         => 0.5f,
-                    _                          => 0.6f,
-                };
+            _ghostAabbMinY     = ghostMesh.Mesh.GetAabb().Position.Y;
+            _ghostUsesAabbLift = ghostMesh.Authored && _mode != PlacementMode.Prop;
+            _ghostFixedLift    = _mode switch
+            {
+                PlacementMode.Building     => 1.0f,
+                PlacementMode.ResourceNode => 0.8f,
+                PlacementMode.StartPos     => 1.5f, // flag pole: half of 3u height
+                PlacementMode.Prop         => 0f,   // see GhostGroundLift — a placed prop sits at Y=0
+                _                          => 0.6f,
+            };
 
             if (_ghostShadow != null) _ghostShadow.Mesh = ghostMesh.Mesh;
 
@@ -818,13 +826,15 @@ namespace ProjectChimera.UI
             var   hit  = origin + dir * t;
             float x    = SnapValue(hit.X);
             float z    = SnapValue(hit.Z);
-            // DW-893: both computed once per mesh resolve in RefreshGhostVisuals, so this per-frame path stays cheap.
-            float yOff  = _ghostGroundLift;
             float scale = _mode == PlacementMode.Prop ? _propScale : _ghostScale;
+            float yOff  = GhostGroundLift(scale);
 
             _lastCursorWorld = new Vector3(x, 0f, z);
             _ghost.Position  = new Vector3(x, yOff, z);
             _ghost.Scale     = new Vector3(scale, scale, scale);
+            // DW-904: a prop is PLACED with its yaw applied (PropRenderer builds Basis(Up, p.Rot).Scaled(...)), so the
+            // ghost must carry the same yaw or R-rotating a prop previews a different orientation than it places.
+            _ghost.Rotation  = _mode == PlacementMode.Prop ? new Vector3(0f, _placementRot, 0f) : Vector3.Zero;
             // UX-DR56 (Story 6.1): keep tracking the cursor (so Delete still targets the hover), but only SHOW the
             // ghost while a placement mode is armed — a right-click/Esc cancel hides it until a mode is re-selected.
             // Story 6.6: Select mode has no ghost (it marquees, not places).
@@ -835,9 +845,34 @@ namespace ProjectChimera.UI
             {
                 _ghostShadow.Position = _ghost.Position;
                 _ghostShadow.Scale    = _ghost.Scale;
+                _ghostShadow.Rotation = _ghost.Rotation;
                 _ghostShadow.Visible  = _ghost.Visible;
             }
         }
+
+        /// <summary>
+        /// DW-904 — the ghost's Y, matching what the RENDERER that will draw the placed object actually does.
+        ///
+        /// <para>This has to be computed per frame against the scale being applied THIS frame, which is the bug Alec
+        /// reported: a prop scaled down still previewed with a lift computed for scale 1, so the ghost floated. A
+        /// floating mesh throws its shadow SIDEWAYS under the directional light, so the shadow pointed at a spot the
+        /// object would never land on — "it places where my mouse is, not where the shadow shows". The horizontal
+        /// position was never wrong (<c>TrySpawnAt</c> snaps identically); the height was, and the shadow made a
+        /// vertical error read as a horizontal one. Adding the shadow is what exposed it — the prop ghost had been
+        /// half a unit off since long before, with nothing to reveal it.</para>
+        ///
+        /// <para>The rules are per-renderer and must stay in sync with them:
+        /// <list type="bullet">
+        /// <item>Props render at <b>Y = 0</b> — <c>PropRenderer</c> writes <c>new Vector3(p.X, 0f, p.Z)</c>, no lift.</item>
+        /// <item>Units, heroes and buildings are lifted by <c>-aabb.min.Y * scale</c> — the shared
+        /// <c>MultiMeshBridge.GroundOffsetFor</c> / <c>BuildingBridge</c> rule.</item>
+        /// <item>The remaining stand-ins keep their hand-tuned half-height constants.</item>
+        /// </list></para>
+        /// </summary>
+        private float GhostGroundLift(float scale) =>
+            _mode == PlacementMode.Prop ? 0f
+            : _ghostUsesAabbLift        ? -_ghostAabbMinY * scale
+                                        : _ghostFixedLift;
 
         // ── Placement arm / cancel (UX-DR56) ──────────────────────────────────
 
@@ -2388,14 +2423,20 @@ namespace ProjectChimera.UI
 
             foreach (Selected s in _selection)
             {
-                Mesh? mesh = PreviewMeshFor(s);
+                (Mesh? mesh, float pScale) = PreviewMeshFor(s);
                 if (mesh == null) continue;
+
+                // DW-904: same per-renderer rule as the placement ghost — a prop sits at Y=0, everything else is
+                // lifted by its AABB. Without this the preview floats (or sinks) relative to the object it stands for.
+                Vector3 at = SelectedWorldPos(s);
+                if (s.Category != Selected.Kind.Prop) at.Y = -mesh.GetAabb().Position.Y * pScale;
 
                 var node = new MeshInstance3D
                 {
                     Mesh       = mesh,
+                    Scale      = new Vector3(pScale, pScale, pScale),
                     CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-                    Position   = SelectedWorldPos(s),
+                    Position   = at,
                     MaterialOverride = new StandardMaterial3D
                     {
                         Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
@@ -2414,7 +2455,7 @@ namespace ProjectChimera.UI
         /// a floating pad. Resolved through the same <see cref="MeshLoader"/> seam the placed entity renders from, with
         /// the same box fallback, so it can never be worse than a stand-in.
         /// </summary>
-        private Mesh? PreviewMeshFor(Selected s)
+        private (Mesh? Mesh, float Scale) PreviewMeshFor(Selected s)
         {
             switch (s.Category)
             {
@@ -2422,19 +2463,24 @@ namespace ProjectChimera.UI
                 {
                     string? id = _world.SourceDefinition[s.LiveId]?.Id;
                     UnitDefinition? def = id == null ? null : (ActiveFactionDef()?.GetUnit(id) ?? _faction2?.GetUnit(id));
-                    return MeshLoader.LoadFromGlb(def?.MeshPath ?? "", new Vector3(0.6f, 1.2f, 0.6f), new Color(0.95f, 0.85f, 0.3f), _assets);
+                    return (MeshLoader.LoadFromGlb(def?.MeshPath ?? "", new Vector3(0.6f, 1.2f, 0.6f), new Color(0.95f, 0.85f, 0.3f), _assets),
+                            def?.MeshScale ?? 1f);
                 }
                 case Selected.Kind.Building:
                 {
                     BuildingDefinition? def = _buildings == null ? null : BuildingDefFor(_buildings.Type[s.LiveId]);
-                    return MeshLoader.LoadFromGlb(def?.MeshPath ?? "", new Vector3(4f, 2f, 4f), new Color(0.95f, 0.85f, 0.3f), _assets);
+                    return (MeshLoader.LoadFromGlb(def?.MeshPath ?? "", new Vector3(4f, 2f, 4f), new Color(0.95f, 0.85f, 0.3f), _assets),
+                            def?.MeshScale ?? 1f);
                 }
                 case Selected.Kind.Node:
-                    return new SphereMesh { Radius = 0.8f, Height = 1.6f };
+                    return (new SphereMesh { Radius = 0.8f, Height = 1.6f }, 1f);
                 case Selected.Kind.Prop:
-                    return s.PropHandle is ScenarioProp p ? PropRenderer.MeshForProp(p.PropId) : null;
+                    // A placed prop carries its OWN authored scale — mirror it, or the preview is the wrong size.
+                    return s.PropHandle is ScenarioProp p
+                        ? (PropRenderer.MeshForProp(p.PropId), p.Scale ?? 1f)
+                        : (null, 1f);
                 default:
-                    return null;
+                    return (null, 1f);
             }
         }
 
