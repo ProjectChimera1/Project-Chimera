@@ -6,6 +6,25 @@
 .mono/
 bin/
 obj/
+
+# GDExtension native libraries live in an addon's bin/ and are NOT build output — the `bin/` rule
+# above (and `**/bin/` in the root .gitignore) would otherwise swallow them, leaving a fresh clone
+# with a .gdextension manifest pointing at files that do not exist. Godot then fails to load the
+# addon and DISABLES it in project.godot, silently diverging that machine from every other one.
+# Order matters: the directory itself must be re-included before its contents can be.
+!addons/*/bin/
+!addons/*/bin/**
+
+# ...but only for the platforms this project actually targets (Windows dev/test machines + the
+# Linux headless dedicated server in docs/server-deploy). Re-ignoring the rest keeps ~23 MB of
+# unused binaries out of the repo and `git status` clean. Add a platform here when we ship it.
+addons/*/bin/*android*
+addons/*/bin/*ios*
+addons/*/bin/*macos*
+addons/*/bin/*web*
+addons/*/bin/*.wasm
+# Godot hot-reload lock artifact (e.g. ~libterrain.windows.debug.x86_64.dll)
+addons/*/bin/~*
 *.user
 *.suo
 *.cache
