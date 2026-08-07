@@ -323,7 +323,30 @@ development_status:
   #   2026-08-06 as sweep containers; 15-14 RE-SCOPED to DW-200 alone (its five hardening bundles
   #   released to the ledger). 15-15 kept as a done record — it is the one sweep container that
   #   genuinely completed (11/11 ids closed).
-  15-14-host-side-hero-identity-enforcement-attested-deployment-dw-200: backlog
+  # 15-14 DE-QUEUED 2026-08-07 (Alec) — status `blocked`, NOT `backlog`, same mechanism and reasoning as
+  #   15-1 above (outside bmad-loop's STORY_STATUSES set; only {backlog, ready-for-dev} are ACTIONABLE, so
+  #   this skips the story without lying about it). Run 20260807-114218-ebd1 PAUSED on the CRITICAL
+  #   escalation; stopped and re-run fresh so the rest of Epic 15 keeps moving.
+  #   WHY: dev-auto HALTed in planning 2026-08-07 (`bmad-dev-auto-result-15-14-...md`) with two
+  #   code-confirmed blockers. It did NOT fail on ambiguity — the intent is fully specified.
+  #   (1) MISSING FOUNDATION — DW-200 component (b) "server-side Nakama trust" has nothing to build on:
+  #       `DedicatedServer.cs` has zero Nakama surface and knows a peer only as a transport-slot int
+  #       (`HandleConnect(int slot)`:289); the Nakama->ENet handoff `MatchFoundInfo`
+  #       (`NakamaService.cs:348-351`) is endpoint-only, so no userId/token ever crosses into ENet.
+  #       The trust MECHANISM is an unmade architecture decision reserved to Alec.
+  #   (2) UNVERIFIABLE UNATTENDED — host enforcement only means anything across TWO peers presenting
+  #       DISTINCT real Nakama credentials; the in-engine bridge is single-client and no Nakama is
+  #       hosted (cf. DW-435). Same class as 15-1/DW-879.
+  #   NOTE (2026-08-07): blocker (2) is now solvable — Alec is standing up a second machine, and
+  #       `docs/server-deploy/docker-compose.yml` runs the full Nakama+Postgres stack on a LAN (build the
+  #       gitignored TS module FIRST or the container fail-stops by design). That does NOT unblock (1).
+  #   SCOPE DECISION STILL OPEN (Alec's call, not taken here): split into 15-14a (Godot-free — multi-hero
+  #       HeroStore fold + StartStateHash re-baseline, attestation packet, AssignedRoster userId->slot bind,
+  #       HandleReady gate predicate; Tier-1 verifiable, dev-auto can own it) and 15-14b (live host
+  #       enforcement, human-present on the two-machine rig) — versus deferring the whole story like 15.1.
+  #       Flip back to `backlog` ONLY for a 15-14a half. The full rail cannot reach `done` unattended.
+  #   DW-200 stays `open` with a 2026-08-07 `seen-again` note recording this finding.
+  15-14-host-side-hero-identity-enforcement-attested-deployment-dw-200: blocked
   15-15-mp-surfaces-godot-free-mp-test-extraction: done
   # 15-21 added 2026-08-03 from the DW-265 decision. NOT burn-down: no DW ids, no bundles (like 15-1 and 15-10).
   #   DW-265 asked "should energy regenerate?"; Alec answered "yes, with an Intelligence mechanic driving it" —
