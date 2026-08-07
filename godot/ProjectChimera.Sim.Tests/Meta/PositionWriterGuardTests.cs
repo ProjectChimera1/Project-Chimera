@@ -79,6 +79,11 @@ namespace ProjectChimera.Sim.Tests.Meta
             ["UI/EntityPlacer.cs"] = (2,
                 "Editor undo/redo restoring a BUILDING slot's authored position. Editor-authored placement, " +
                 "Godot-side; the map editor's blocked-cell feedback is the pathability overlay + validator."),
+
+            ["Effects/TeleportEffect.cs"] = (1,
+                "Teleport blink: authored/instant PLACEMENT, not a swept step — a blink deliberately bypasses walls " +
+                "between origin and destination, so CheckedStep.Resolve must NOT apply. Destination validity is the " +
+                "ground-cast RaycastGround gate (MVP)."),
         };
 
         /// <summary>

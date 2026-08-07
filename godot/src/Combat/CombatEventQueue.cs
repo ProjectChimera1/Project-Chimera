@@ -46,7 +46,16 @@ namespace ProjectChimera.Combat
         // carrying the building's Faction (so MatchAlertBridge fires the completion cue ONLY for the local player).
         // Presentation-only — CombatEventQueue is NOT a SimChecksum input, so appending an enum value cannot move any
         // golden (same property the appends above rely on). ──
-        TrainingComplete
+        TrainingComplete,
+        // ── Story 15.13 (DW-248): appended AFTER TrainingComplete. The three PRESENTATION leaves' cue types, pushed by
+        // PlayVfxEffect / PlaySoundEffect / ShakeScreenEffect when a closed-vocabulary presentation leaf runs, each
+        // carrying the ability's CombatFeedbackProfile. Rendered by CombatFeedbackBridge (PlayVfx flash / ShakeScreen
+        // camera shake) and AudioManager (PlaySound). Presentation-only — CombatEventQueue is NOT a SimChecksum input,
+        // so appending these enum values cannot move any golden (the same not-folded property the appends above rely
+        // on). All three are IsAmbient (battle-volume juice, individually droppable). ──
+        PlayVfx,
+        PlaySound,
+        ShakeScreen
     }
 
     /// <summary>
@@ -189,6 +198,12 @@ namespace ProjectChimera.Combat
             CombatEventType.UnitKilled        => true,
             CombatEventType.BuildingDestroyed => true,
             CombatEventType.AbilityCast       => true,
+            // Story 15.13 (DW-248): the three presentation-leaf cues are battle-volume juice (a cast can spam them), and
+            // an individual dropped flash/sound/shake is imperceptible — so they ride the ambient lane and must NOT draw
+            // on the notification reserve (which is sized for the low-volume click/production cues).
+            CombatEventType.PlayVfx           => true,
+            CombatEventType.PlaySound         => true,
+            CombatEventType.ShakeScreen       => true,
             _                                 => false
         };
 

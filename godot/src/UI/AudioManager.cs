@@ -54,6 +54,12 @@ namespace ProjectChimera.UI
 
         private CombatEventQueue? _events;
 
+        // ── DW-882 audio tap: out-of-process evidence that a sound cue was routed (see _mcp_state) ──
+        private string? _lastSoundId;
+        private CombatEventType _lastSoundType;
+        private int _overridePlays;
+        private int _missingStreams;
+
         /// <summary>Story 2.7: cache of override streams keyed by sound id (caches null too, so a missing asset is
         /// probed once and is graceful-silent thereafter). Presentation-only.</summary>
         private readonly Dictionary<string, AudioStream?> _overrideCache = new();
@@ -131,6 +137,9 @@ namespace ProjectChimera.UI
 
                 // Story 2.7 (SD-2): profile-first. An override's sound id plays for ANY event type — including the new
                 // AbilityCast (which has NO default clip, so the override's ImpactSoundId is the ONLY sound a cast makes).
+                // Story 15.13 (DW-248): the closed-vocabulary PlaySound leaf also routes through here — its profile's
+                // ImpactSoundId is the sound it plays (graceful-silent when empty/absent). PlayVfx/ShakeScreen stay
+                // audio-silent UNLESS they too carry an ImpactSoundId, which this same block then honours.
                 if (fb != null)
                 {
                     string? id = evt.Type == CombatEventType.UnitKilled ? fb.DeathSoundId : fb.ImpactSoundId;
@@ -139,7 +148,15 @@ namespace ProjectChimera.UI
                     if (!string.IsNullOrEmpty(id))
                     {
                         bool pitch = evt.Type == CombatEventType.MeleeHit || evt.Type == CombatEventType.RangedHit;
-                        PlayOneShot(ResolveOverrideStream(id), VolumeFor(evt.Type), pitch); // graceful-silent if absent
+                        AudioStream? stream = ResolveOverrideStream(id); // graceful-silent if absent
+                        // DW-882 audio tap: record that the profile-first route FIRED and whether the asset resolved.
+                        // Without this, "no sound came out" is ambiguous between "the leaf never routed here" and "it
+                        // routed and the clip is not authored yet" — the gate has to be able to tell those apart.
+                        _lastSoundId   = id;
+                        _lastSoundType = evt.Type;
+                        _overridePlays++;
+                        if (stream == null) _missingStreams++;
+                        PlayOneShot(stream, VolumeFor(evt.Type), pitch);
                         continue;
                     }
                 }
@@ -156,6 +173,21 @@ namespace ProjectChimera.UI
             }
             // NOTE: Do NOT call _events.Clear() here — CombatFeedbackBridge owns the clear.
         }
+
+        /// <summary>
+        /// DW-882 — the godot-mcp digest hook for the AUDIO half of the in-engine gate. Reports how many events took the
+        /// profile-first override route, the last sound id routed and for which event type, and how many of those routes
+        /// found no stream on disk (the graceful-silent case) — so a gate artifact can state exactly what happened
+        /// instead of inferring from silence.
+        /// </summary>
+        public Godot.Collections.Dictionary _mcp_state() => new()
+        {
+            ["override_plays"]  = _overridePlays,
+            ["missing_streams"] = _missingStreams,
+            ["last_sound_id"]   = _lastSoundId ?? "",
+            ["last_sound_type"] = _lastSoundType.ToString(),
+            ["streams_loaded"]  = CountLoaded(),
+        };
 
         // ── Public one-shot helpers ───────────────────────────────────────────
 
@@ -243,6 +275,7 @@ namespace ProjectChimera.UI
             CombatEventType.RangedHit  => 0.8f,
             CombatEventType.SplashHit  => 1.0f,
             CombatEventType.UnitKilled => 0.85f,
+            CombatEventType.PlaySound  => 1.0f, // Story 15.13 (DW-248): an authored ability sound plays at unity
             _                          => 1.0f,
         };
 

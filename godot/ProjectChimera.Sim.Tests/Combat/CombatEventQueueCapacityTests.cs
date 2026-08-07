@@ -183,6 +183,10 @@ namespace ProjectChimera.Sim.Tests.Combat
         [InlineData(CombatEventType.ItemPickedUp,      false)]
         [InlineData(CombatEventType.ItemUsed,          false)]
         [InlineData(CombatEventType.ItemDropped,       false)]
+        // Story 15.13 (DW-248): the three presentation-leaf cues are battle-volume juice → ambient lane.
+        [InlineData(CombatEventType.PlayVfx,           true)]
+        [InlineData(CombatEventType.PlaySound,         true)]
+        [InlineData(CombatEventType.ShakeScreen,       true)]
         public void LaneClassification_IsPinnedPerEventType(CombatEventType type, bool ambient)
             => Assert.Equal(ambient, CombatEventQueue.IsAmbient(type));
 
@@ -193,7 +197,7 @@ namespace ProjectChimera.Sim.Tests.Combat
         /// </summary>
         [Fact]
         public void LaneClassificationTable_CoversEveryEventType()
-            => Assert.Equal(14, AllEventTypes().Count);
+            => Assert.Equal(17, AllEventTypes().Count); // Story 15.13 (DW-248): +PlayVfx/PlaySound/ShakeScreen
 
         // ── capacity + reset invariants ───────────────────────────────────────────────────────────
 

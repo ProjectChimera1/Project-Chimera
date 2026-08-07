@@ -45,6 +45,11 @@ namespace ProjectChimera.Core.Definitions
         private const string KindSequence      = "sequence";
         private const string KindSearchArea    = "search_area";
         private const string KindPersistent    = "persistent";
+        // Story 15.13 (DW-248): the reserved sim relocation + three presentation-cue leaves.
+        private const string KindTeleport      = "teleport";
+        private const string KindPlayVfx       = "play_vfx";
+        private const string KindPlaySound     = "play_sound";
+        private const string KindShakeScreen   = "shake_screen";
 
         /// <inheritdoc />
         public override EffectNode Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
@@ -113,6 +118,30 @@ namespace ProjectChimera.Core.Definitions
                     WriteRequireTag(writer, am.RequireTag, options);   // Story 2.11 (omit-when-None)
                     break;
 
+                // ── Story 15.13 (DW-248) leaves ──
+                case TeleportEffect tp:
+                    writer.WriteString("kind", KindTeleport);
+                    WriteRequireTag(writer, tp.RequireTag, options);   // Story 2.11 (omit-when-None)
+                    break;
+
+                case PlayVfxEffect pv:
+                    writer.WriteString("kind", KindPlayVfx);
+                    WriteFeedback(writer, pv.Feedback, options);       // omit-when-null
+                    WriteRequireTag(writer, pv.RequireTag, options);
+                    break;
+
+                case PlaySoundEffect ps:
+                    writer.WriteString("kind", KindPlaySound);
+                    WriteFeedback(writer, ps.Feedback, options);
+                    WriteRequireTag(writer, ps.RequireTag, options);
+                    break;
+
+                case ShakeScreenEffect ss:
+                    writer.WriteString("kind", KindShakeScreen);
+                    WriteFeedback(writer, ss.Feedback, options);
+                    WriteRequireTag(writer, ss.RequireTag, options);
+                    break;
+
                 // ── Composition nodes ──
                 case SequenceEffect s:
                     writer.WriteString("kind", KindSequence);
@@ -179,6 +208,17 @@ namespace ProjectChimera.Core.Definitions
             WriteNode(writer, child, options);
         }
 
+        // Story 15.13 (DW-248): the presentation leaves' optional CombatFeedbackProfile payload. OMIT-WHEN-NULL (Read
+        // treats a missing/absent feedback as null), so a payload-less presentation leaf round-trips byte-identically.
+        // Serialized through the shared options so its [JsonPropertyName]s + the FlashSpec/ShakeSpec sub-shapes mirror
+        // the strict ability loader that ReadFeedback deserializes with.
+        private static void WriteFeedback(Utf8JsonWriter writer, CombatFeedbackProfile? feedback, JsonSerializerOptions options)
+        {
+            if (feedback is null) return;
+            writer.WritePropertyName("feedback");
+            JsonSerializer.Serialize(writer, feedback, options);
+        }
+
         private static void WriteFixed(Utf8JsonWriter writer, string name, Fixed value, JsonSerializerOptions options)
         {
             writer.WritePropertyName(name);
@@ -239,6 +279,28 @@ namespace ProjectChimera.Core.Definitions
                     if (!el.TryGetProperty("modifier", out JsonElement modEl))
                         throw new JsonException($"{path}: apply_modifier is missing its required 'modifier' object.");
                     return new ApplyModifierEffect(ReadModifier(modEl, options, depth, $"{path}.modifier"), ReadRequireTag(el, path, options));
+                }
+
+                // ── Story 15.13 (DW-248) leaves ──
+                case KindTeleport:
+                {
+                    RejectUnknownProperties(el, path, "kind", "require_tag");
+                    return new TeleportEffect(ReadRequireTag(el, path, options));
+                }
+                case KindPlayVfx:
+                {
+                    RejectUnknownProperties(el, path, "kind", "feedback", "require_tag");
+                    return new PlayVfxEffect(ReadFeedback(el, path, options), ReadRequireTag(el, path, options));
+                }
+                case KindPlaySound:
+                {
+                    RejectUnknownProperties(el, path, "kind", "feedback", "require_tag");
+                    return new PlaySoundEffect(ReadFeedback(el, path, options), ReadRequireTag(el, path, options));
+                }
+                case KindShakeScreen:
+                {
+                    RejectUnknownProperties(el, path, "kind", "feedback", "require_tag");
+                    return new ShakeScreenEffect(ReadFeedback(el, path, options), ReadRequireTag(el, path, options));
                 }
 
                 // ── Composition nodes (carry the parse-time depth guard, mirroring EffectBounds' threshold) ──
@@ -376,6 +438,21 @@ namespace ProjectChimera.Core.Definitions
         // is rejected fail-closed here by ContentJson's name-only enum converter (allowIntegerValues:false), located.
         private static UnitTag ReadRequireTag(JsonElement el, string path, JsonSerializerOptions options)
             => ReadEnum<UnitTag>(el, "require_tag", path, options, required: false, fallback: UnitTag.None);
+
+        // Story 15.13 (DW-248): the presentation leaves' optional CombatFeedbackProfile payload. Missing or explicit-null
+        // ⇒ null (a valid payload-less cue; the drainers fall back to their defaults / graceful silence). Deserialized
+        // through the shared strict options (UnmappedMemberHandling.Disallow reaches the nested POCO), located on error.
+        private static CombatFeedbackProfile? ReadFeedback(JsonElement el, string path, JsonSerializerOptions options)
+        {
+            if (!el.TryGetProperty("feedback", out JsonElement fbEl) || fbEl.ValueKind == JsonValueKind.Null)
+                return null;
+            // Broaden past JsonException: a malformed feedback payload can surface a NotSupportedException,
+            // InvalidOperationException, etc. from the nested Deserialize — rethrow ALL of them as a LOCATED
+            // JsonException carrying the "{path}.feedback: …" prefix (the surrounding located-error contract), inner
+            // preserved. A missing/explicit-null feedback is handled above (returns null) and never reaches here.
+            try { return fbEl.Deserialize<CombatFeedbackProfile>(options); }
+            catch (Exception ex) { throw new JsonException($"{path}.feedback: {ex.Message}", ex); }
+        }
 
         private static EffectNode ReadRequiredChild(JsonElement parent, string prop, JsonSerializerOptions options, int depth, string path)
         {

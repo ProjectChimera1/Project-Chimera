@@ -137,6 +137,10 @@
          1.8a/c). StressTest was relocated to godot/tools/ in Story 1.8a, so it is no longer under the
          src\Core\** glob and needs no <Compile Remove>. FixedPoint.cs STAYS IN (Godot bridge is #if GODOT). -->
     <Compile Remove="$(MSBuildThisFileDirectory)src\Core\MainScene.cs" />
+    <!-- DW-882: MainSceneDebugSeam.cs is a PARTIAL of that same Godot-coupled god object (Node3D, OS.IsDebugBuild,
+         Godot.Collections.Dictionary), so it follows MainScene.cs out of the Godot-free assembly. It holds no sim
+         logic to Tier-1 test — it only reads/forwards to code that is already covered. -->
+    <Compile Remove="$(MSBuildThisFileDirectory)src\Core\MainSceneDebugSeam.cs" />
     <!-- Story 1.8c: the Godot-TOUCHING concrete setup phases + SceneContext live under Bootstrap/Phases/ and
          must NOT enter this Godot-free assembly (they hold CanvasLayer/Node handles). The Godot-FREE phase
          kernel (ISetupPhase / DelegateSetupPhase / ScenePhaseOrder / ScenePhaseRunner) stays directly under

@@ -313,7 +313,12 @@ development_status:
   #   CanonicalModelHash 14→15 (hero-start-state re-recorded), RulesetHash 2→3, SaveGameFile FormatVersion
   #   4→5, new energy-regen-scenario golden. In-engine gate PASS. Tier-1 6275/1/0. followup_review: true.
   15-12-energy-stack-mechanics: done
-  15-13-effect-vocabulary-completion-teleport-presentation-leaves: backlog
+  # 15-13 DONE 2026-08-07. Closed DW-248 (the four leaves Story 2.1 reserved: teleport + play_vfx/play_sound/
+  #   shake_screen). Escalated CRITICAL on the in-engine gate (DW-882: unobservable over the GDScript-only
+  #   bridge); Alec chose to BUILD the seam rather than waive the gate, so DW-882 is now done too and the gate
+  #   was driven + observed for real. Deferred DW-891/DW-892; filed nothing new against the story.
+  #   Tier-1 6310/1/0. No golden re-recorded, no hash AlgoVersion moved. followup_review: true.
+  15-13-effect-vocabulary-completion-teleport-presentation-leaves: done
   # 15-14..15-20 were added 2026-07-30 from the 20260730-122934-d7ae partition. 15-16..15-20 RETIRED
   #   2026-08-06 as sweep containers; 15-14 RE-SCOPED to DW-200 alone (its five hardening bundles
   #   released to the ledger). 15-15 kept as a done record — it is the one sweep container that

@@ -182,7 +182,7 @@ namespace ProjectChimera.Core.Definitions
             // to consume the point. Non-fatal (the content loads; the author may still intend a pure presentation cast).
             if (def.ParsedTargeting == AbilityTargeting.GroundPoint && !GroundPointResolvesAtPoint(root))
                 Warn(warnings, id, "effect",
-                    "a GroundPoint ability resolves at the clicked point only through a SearchArea (which centres on the point); its effect root reads the absent primary target, so a bare damage/heal/modifier leaf will no-op. Wrap the effect in a SearchArea.");
+                    "a GroundPoint ability resolves at the clicked point only through a point-aware node — a SearchArea (which centres on the point), a teleport (which blinks the caster to it), or a presentation cue (which fires at it); its effect root reads the absent primary target, so a bare damage/heal/modifier leaf will no-op. Wrap the effect in a SearchArea.");
 
             string? walkError = WalkGraph(id, root, warnings, periodShapeErrors);
             if (walkError is not null)
@@ -337,7 +337,23 @@ namespace ProjectChimera.Core.Definitions
                                     f.SearchAreaDepth, f.InPersistentPhase, f.InPersistentPeriod, f.FriendlyOnlySearch));
                         break;
 
-                    // DirectHpDelta / Heal / Damage — counted leaves with no children.
+                    // Story 15.13 (DW-248): the presentation leaves are counted leaves with no children. Non-fatal
+                    // (DW-278 channel): warn when the authored cue is genuinely INERT — a play_sound with no sound id,
+                    // or a shake_screen with no shake spec, plays/does nothing. play_vfx is NOT warned: it always
+                    // renders at least the bridge's default flash, so it is never inert.
+                    case PlaySoundEffect ps:
+                        if (string.IsNullOrEmpty(ps.Feedback?.ImpactSoundId))
+                            Warn(warnings, id, f.Path,
+                                "a play_sound leaf carries no impact_sound id (feedback.impact_sound is null/empty), so it plays nothing — author feedback.impact_sound, or remove the leaf.");
+                        break;
+
+                    case ShakeScreenEffect ss:
+                        if (ss.Feedback?.Shake is null)
+                            Warn(warnings, id, f.Path,
+                                "a shake_screen leaf carries no shake spec (feedback.shake is null), so no screen shake occurs — author feedback.shake, or remove the leaf.");
+                        break;
+
+                    // DirectHpDelta / Heal / Damage / Teleport / PlayVfx — counted leaves with no children.
                     default:
                         break;
                 }
@@ -524,12 +540,28 @@ namespace ProjectChimera.Core.Definitions
         /// </summary>
         private static bool GroundPointResolvesAtPoint(EffectNode root)
         {
-            if (root is SearchAreaEffect) return true;
+            if (ConsumesTargetPoint(root)) return true;
             if (root is SequenceEffect seq)
                 foreach (EffectNode child in seq.Children)
-                    if (child is SearchAreaEffect) return true;
+                    if (ConsumesTargetPoint(child)) return true;
             return false;
         }
+
+        /// <summary>
+        /// Does this node read <c>ctx.TargetPoint</c> itself? Story 15.11 knew only one such node — SearchArea, which
+        /// CENTRES on the clicked point. Story 15.13 (DW-248) added four more, and they are the reason this predicate
+        /// exists as a named helper: <c>TeleportEffect</c> blinks the caster TO the point (its FIRST destination branch
+        /// is <c>ctx.HasTargetPoint</c>), and the three presentation leaves resolve their event position from the point
+        /// before falling back to the target/caster. A GroundPoint ability rooted at any of them consumes the click
+        /// correctly and must NOT be warned about — the warning is for leaves that read the PrimaryTargetId a ground
+        /// cast deliberately leaves at −1 (damage / heal / apply_modifier).
+        /// </summary>
+        private static bool ConsumesTargetPoint(EffectNode node)
+            => node is SearchAreaEffect
+                    or TeleportEffect
+                    or PlayVfxEffect
+                    or PlaySoundEffect
+                    or ShakeScreenEffect;
 
         /// <summary>Append one located non-fatal warning (same <c>"ability '&lt;id&gt;'.&lt;path&gt;: &lt;reason&gt;"</c> shape as an error).</summary>
         private static void Warn(List<(string FieldPath, string Message)> warnings, string id, string path, string reason) =>

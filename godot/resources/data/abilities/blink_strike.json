@@ -1,0 +1,29 @@
+{
+  "id": "blink_strike",
+  "display_name": "Blink Strike",
+  "targeting": "GroundPoint",
+  "cost_energy": 0,
+  "cost_ore": 0,
+  "cost_crystal": 0,
+  "cooldown": 1,
+  "effect": {
+    "kind": "sequence",
+    "children": [
+      { "kind": "teleport" },
+      {
+        "kind": "play_vfx",
+        "feedback": {
+          "hit_flash": { "color_rgb": [0.35, 0.85, 1.0], "emission_mult": 3.0, "scale": 2.0, "duration_sec": 0.45 }
+        }
+      },
+      {
+        "kind": "play_sound",
+        "feedback": { "impact_sound": "blink_strike" }
+      },
+      {
+        "kind": "shake_screen",
+        "feedback": { "shake": { "duration_sec": 0.25, "strength": 0.35 } }
+      }
+    ]
+  }
+}

@@ -50,6 +50,19 @@ namespace ProjectChimera.UI
         /// is forced to 0 so flashes hold; the queue drain + Clear() are UNAFFECTED. Default 0 = off (today's look).</summary>
         private int _freezeFrames;
 
+        // ── DW-882 cue tap: presentation-side evidence that a cue actually rendered ────────────────────────────
+        // The queue is drained and CLEARED every frame, so by the time a bridge client looks, the event is gone. This
+        // cumulative tally is the only way an out-of-process observer (the godot-mcp bridge) can prove a PlayVfx /
+        // PlaySound / ShakeScreen leaf reached the renderer. Three int writes per event; no allocation, no sim contact.
+        private static readonly int CUE_KIND_COUNT = System.Enum.GetValues<CombatEventType>().Length;
+        private readonly int[] _cueCounts = new int[CUE_KIND_COUNT];
+        private CombatEventType _lastCueType;
+        private Vector3 _lastCuePos;
+        private int _flashSpawnCount;
+        private float _lastShakeDuration;
+        private float _lastShakeStrength;
+        private int _shakeApplyCount;
+
         public void Initialize(CombatEventQueue events, RtsCameraController camCtrl)
         {
             _events  = events;
@@ -95,6 +108,12 @@ namespace ProjectChimera.UI
 
                 CombatFeedbackProfile? fb = evt.Feedback;
 
+                // DW-882 cue tap: tally BEFORE the switch, so a cue whose only renderer is elsewhere — PlaySound, which
+                // AudioManager owns — is still recorded here as having been drained by the presentation layer.
+                if ((int)evt.Type >= 0 && (int)evt.Type < CUE_KIND_COUNT) _cueCounts[(int)evt.Type]++;
+                _lastCueType = evt.Type;
+                _lastCuePos  = pos;
+
                 switch (evt.Type)
                 {
                     case CombatEventType.MeleeHit:
@@ -119,6 +138,18 @@ namespace ProjectChimera.UI
                         // (there is no default cast look, mirroring AudioManager's no default cast clip).
                         if (fb?.HitFlash != null) SpawnFlashFromSpec(pos, fb.HitFlash);
                         if (fb?.Shake != null)    ApplyShake(fb.Shake);
+                        break;
+
+                    // Story 15.13 (DW-248): the closed-vocabulary presentation leaves. PlayVfx always renders a flash
+                    // (authored look, else the Splash default burst); ShakeScreen shakes only when a spec is carried.
+                    // PlaySound has no visual case here — AudioManager renders it. All checksum-neutral (the sim never
+                    // reads this queue).
+                    case CombatEventType.PlayVfx:
+                        SpawnFlashFromSpec(pos, fb?.HitFlash ?? CombatFeedbackDefaults.Splash);
+                        break;
+
+                    case CombatEventType.ShakeScreen:
+                        if (fb?.Shake != null) ApplyShake(fb.Shake); // null shake ⇒ skip
                         break;
                 }
 
@@ -162,7 +193,44 @@ namespace ProjectChimera.UI
         }
 
         /// <summary>Apply a shake spec to the camera — note the camera takes (duration, strength) in THAT order.</summary>
-        private void ApplyShake(ShakeSpec shake) => _camCtrl?.SetShake(shake.DurationSec, shake.Strength);
+        private void ApplyShake(ShakeSpec shake)
+        {
+            // DW-882 cue tap: record the exact authored numbers handed to the camera. A shake decays within a few
+            // frames, so "the camera is shaking right now" is unobservable to a poll — the last-applied pair is.
+            _lastShakeDuration = shake.DurationSec;
+            _lastShakeStrength = shake.Strength;
+            _shakeApplyCount++;
+            _camCtrl?.SetShake(shake.DurationSec, shake.Strength);
+        }
+
+        /// <summary>
+        /// DW-882 — the godot-mcp digest hook for the PRESENTATION half of the in-engine gate. The combat event queue is
+        /// drained and cleared every frame, so a cue is invisible to any out-of-process observer by the time it looks;
+        /// these cumulative tallies are the evidence that a cue leaf actually reached the renderer, and with what numbers.
+        /// </summary>
+        public Godot.Collections.Dictionary _mcp_state()
+        {
+            var cues = new Godot.Collections.Dictionary();
+            for (int i = 0; i < CUE_KIND_COUNT; i++)
+                if (_cueCounts[i] > 0) cues[((CombatEventType)i).ToString()] = _cueCounts[i];
+
+            int activeFlashes = 0;
+            for (int i = 0; i < MAX_FLASHES; i++) if (_flashTimer[i] > 0f) activeFlashes++;
+
+            return new Godot.Collections.Dictionary
+            {
+                ["cue_counts"]        = cues,
+                ["last_cue"]          = _lastCueType.ToString(),
+                ["last_cue_x"]        = _lastCuePos.X,
+                ["last_cue_z"]        = _lastCuePos.Z,
+                ["flash_spawns"]      = _flashSpawnCount,
+                ["flashes_active"]    = activeFlashes,
+                ["shake_applies"]     = _shakeApplyCount,
+                ["last_shake_dur"]    = _lastShakeDuration,
+                ["last_shake_str"]    = _lastShakeStrength,
+                ["camera_wired"]      = _camCtrl != null,
+            };
+        }
 
         /// <summary>Spawn a flash from a resolved <see cref="FlashSpec"/> (override or default look).</summary>
         private void SpawnFlashFromSpec(Vector3 pos, FlashSpec spec)
@@ -188,6 +256,7 @@ namespace ProjectChimera.UI
                 _flashTimer[i]    = duration;
                 _flashDuration[i] = duration;
                 _flashScale[i]    = baseScale;
+                _flashSpawnCount++; // DW-882 cue tap: counted on a CLAIMED slot, so it never over-reports a starved pool
                 return;
             }
             // Pool exhausted — silently drop (non-critical cosmetic)

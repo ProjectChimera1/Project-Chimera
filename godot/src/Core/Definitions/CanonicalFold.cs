@@ -121,6 +121,28 @@ namespace ProjectChimera.Core.Definitions
                     h = MixInt(h, p.PeriodCount);
                     h = MixInt(h, p.Lifelong ? 1 : 0);
                     break;
+                // ── Story 15.13 (DW-248): the four new leaves. Explicit arms (never the DW-449 reflection default, which
+                // would throw fail-closed on the presentation leaves' unfoldable CombatFeedbackProfile). Each folds its
+                // kind string + the inherited RequireTag. The presentation payload (Feedback) is CONSCIOUSLY EXCLUDED —
+                // it is float-bearing, presentation-only, and already hash-excluded everywhere else; folding only
+                // kind+RequireTag keeps peers agreeing on the effect graph's SHAPE while presentation divergence stays
+                // sim-irrelevant. Dead for shipped content (nothing authors these kinds), so no golden/hash moves. ──
+                case ProjectChimera.Effects.TeleportEffect tp:
+                    h = MixStr(h, "teleport");
+                    h = MixStr(h, tp.RequireTag.ToString());
+                    break;
+                case ProjectChimera.Effects.PlayVfxEffect pv:
+                    h = MixStr(h, "play_vfx");
+                    h = MixStr(h, pv.RequireTag.ToString());
+                    break;
+                case ProjectChimera.Effects.PlaySoundEffect ps:
+                    h = MixStr(h, "play_sound");
+                    h = MixStr(h, ps.RequireTag.ToString());
+                    break;
+                case ProjectChimera.Effects.ShakeScreenEffect ss:
+                    h = MixStr(h, "shake_screen");
+                    h = MixStr(h, ss.RequireTag.ToString());
+                    break;
                 default:
                     // DW-449: full-field fold — value-visible for a future kind, never the old name-only fold.
                     h = MixUnknownEffect(h, e);

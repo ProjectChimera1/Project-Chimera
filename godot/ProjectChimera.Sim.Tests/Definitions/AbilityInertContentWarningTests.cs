@@ -200,6 +200,78 @@ namespace ProjectChimera.Sim.Tests.Definitions
             AssertOneWarning(r, "effect.lifelong", "lifelong is ignored");
         }
 
+        // ── Story 15.13 (DW-248): inert presentation-cue warnings (both directions) ──
+
+        [Fact]
+        public void PlaySound_WithNoImpactSoundId_Warns_PlaysNothing()
+        {
+            // An id-less play_sound plays nothing — a validated, castable, silent no-op. Null AND empty-string id.
+            AssertOneWarning(V.Validate(Def(new PlaySoundEffect(null))),
+                "effect", "impact_sound", "plays nothing");
+            AssertOneWarning(V.Validate(Def(new PlaySoundEffect(new CombatFeedbackProfile { ImpactSoundId = "" }))),
+                "effect", "impact_sound", "plays nothing");
+        }
+
+        [Fact]
+        public void ShakeScreen_WithNoShakeSpec_Warns_NoShakeOccurs()
+        {
+            // A shake-less shake_screen produces no screen shake. Null feedback AND a feedback carrying other cues but
+            // no shake are both inert.
+            AssertOneWarning(V.Validate(Def(new ShakeScreenEffect(null))),
+                "effect", "shake spec", "no screen shake");
+            AssertOneWarning(V.Validate(Def(new ShakeScreenEffect(new CombatFeedbackProfile { ImpactSoundId = "x" }))),
+                "effect", "shake spec", "no screen shake");
+        }
+
+        [Fact]
+        public void PopulatedPresentationCues_AndAnyPlayVfx_WarnAboutNothing()
+        {
+            // Teeth: a populated play_sound (real id), a populated shake_screen (real shake), and ANY play_vfx (it always
+            // renders at least the bridge's default flash, so it is never inert) are all silent — else the channel is noise.
+            Assert.Empty(V.Validate(Def(new PlaySoundEffect(new CombatFeedbackProfile { ImpactSoundId = "zap" }))).Warnings);
+            Assert.Empty(V.Validate(Def(new ShakeScreenEffect(
+                new CombatFeedbackProfile { Shake = new ShakeSpec { DurationSec = 0.2f, Strength = 0.3f } }))).Warnings);
+            Assert.Empty(V.Validate(Def(new PlayVfxEffect(null))).Warnings);
+            Assert.Empty(V.Validate(Def(new PlayVfxEffect(new CombatFeedbackProfile()))).Warnings);
+        }
+
+        // ── The Story 15.11 GroundPoint "wrap it in a SearchArea" warning vs the 15.13 point-aware leaves ──
+
+        /// <summary>A GroundPoint-targeted ability (the mode that leaves PrimaryTargetId at −1).</summary>
+        private static AbilityDefinition Ground(EffectNode graph, string id = "wtest") =>
+            new AbilityDefinition { Id = id, Targeting = "GroundPoint", EffectGraph = graph };
+
+        [Fact]
+        public void GroundPointRootedAtAPointAwareLeaf_DoesNotWarn()
+        {
+            // Regression: the 15.11 rule knew only SearchArea as point-consuming, so every GroundPoint ability built from
+            // the 15.13 vocabulary was told to "wrap the effect in a SearchArea" — advice that would BREAK a teleport
+            // (a SearchArea would run the blink once per match instead of moving the caster). Caught by the
+            // every-shipped-ability guard the moment blink_strike.json landed.
+            Assert.Empty(V.Validate(Ground(new TeleportEffect())).Warnings);
+            Assert.Empty(V.Validate(Ground(new PlayVfxEffect(null))).Warnings);
+            Assert.Empty(V.Validate(Ground(new PlaySoundEffect(new CombatFeedbackProfile { ImpactSoundId = "zap" }))).Warnings);
+            Assert.Empty(V.Validate(Ground(new ShakeScreenEffect(
+                new CombatFeedbackProfile { Shake = new ShakeSpec { DurationSec = 0.2f, Strength = 0.3f } }))).Warnings);
+
+            // …including as a SEQUENCE child, which is the real authoring shape (blink_strike.json itself).
+            Assert.Empty(V.Validate(Ground(new SequenceEffect(
+                new TeleportEffect(),
+                new PlayVfxEffect(null),
+                new PlaySoundEffect(new CombatFeedbackProfile { ImpactSoundId = "blink_strike" }),
+                new ShakeScreenEffect(new CombatFeedbackProfile { Shake = new ShakeSpec { DurationSec = 0.25f, Strength = 0.35f } })
+            ))).Warnings);
+        }
+
+        [Fact]
+        public void GroundPointRootedAtATargetReadingLeaf_StillWarns()
+        {
+            // The teeth on the other side: widening the predicate must not have disarmed the original rule. A bare
+            // damage root on a ground cast reads the absent primary target and silently no-ops — still warned.
+            AssertOneWarning(V.Validate(Ground(new DirectHpDeltaEffect(Fixed.FromInt(-10)))),
+                "effect", "GroundPoint", "SearchArea");
+        }
+
         // ── The channel never competes with, or leaks past, the hard gates ──
 
         [Fact]

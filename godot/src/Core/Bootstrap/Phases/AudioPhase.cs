@@ -18,6 +18,7 @@ namespace ProjectChimera.Core.Bootstrap
         public void Run()
         {
             var audioMgr = new UI.AudioManager();
+            audioMgr.Name = "AudioManager"; // DW-882: a stable node path for the bridge/gate (an auto-name changes every run)
             _ctx.Scene.AddChild(audioMgr);
             // Initialize is deferred to after sim objects are constructed — CombatEvents already exists on the context.
             audioMgr.Initialize(_ctx.CombatEvents);

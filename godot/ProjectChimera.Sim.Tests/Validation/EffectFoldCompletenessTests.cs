@@ -32,8 +32,9 @@ namespace ProjectChimera.Sim.Tests.Validation
     public class EffectFoldCompletenessTests
     {
         // ── The classification: mirrors CanonicalFold.MixEffect's explicit arms ──────────────────────────────
-        // (Folded field lists per kind; EXCLUDED would list consciously-unfolded presentation-only fields — none
-        // exist today. Public instance fields, inherited included, because the vocabulary is field-shaped.)
+        // (Folded field lists per kind; EXCLUDED lists consciously-unfolded presentation-only fields — Story 15.13's
+        // presentation cues carry a hash-excluded CombatFeedbackProfile. Public instance fields, inherited included,
+        // because the vocabulary is field-shaped. Every public field must be in folded ∪ excluded.)
 
         private static readonly Dictionary<Type, string[]> FoldedFieldsByKind = new Dictionary<Type, string[]>
         {
@@ -44,6 +45,23 @@ namespace ProjectChimera.Sim.Tests.Validation
             [typeof(SequenceEffect)]      = new[] { "Children" },
             [typeof(SearchAreaEffect)]    = new[] { "Radius", "Filter", "Child", "RequireTag" },
             [typeof(PersistentEffect)]    = new[] { "InitialEffect", "PeriodEffect", "ExpireEffect", "PeriodTicks", "PeriodCount", "Lifelong" },
+            // Story 15.13 (DW-248): a sim relocation (folds RequireTag) + three presentation cues (fold RequireTag only;
+            // their Feedback is EXCLUDED — see ExcludedFieldsByKind).
+            [typeof(TeleportEffect)]      = new[] { "RequireTag" },
+            [typeof(PlayVfxEffect)]       = new[] { "RequireTag" },
+            [typeof(PlaySoundEffect)]     = new[] { "RequireTag" },
+            [typeof(ShakeScreenEffect)]   = new[] { "RequireTag" },
+        };
+
+        // ── The CONSCIOUS EXCLUSIONS: public fields deliberately NOT folded, with the reason recorded in the
+        //    CanonicalFold arm. Story 15.13's presentation payload is float-bearing, presentation-only, and hash-excluded
+        //    everywhere else — folding it deterministically is impossible (the whole reason for the float ban). A field
+        //    here is accepted by AssertFieldsClassified as "consciously classified" without moving the fold. ──
+        private static readonly Dictionary<Type, string[]> ExcludedFieldsByKind = new Dictionary<Type, string[]>
+        {
+            [typeof(PlayVfxEffect)]     = new[] { "Feedback" },
+            [typeof(PlaySoundEffect)]   = new[] { "Feedback" },
+            [typeof(ShakeScreenEffect)] = new[] { "Feedback" },
         };
 
         private static readonly string[] ModifierFoldedFields =
@@ -102,7 +120,8 @@ namespace ProjectChimera.Sim.Tests.Validation
         public void EveryShippedEffectKindField_IsConsciouslyClassified()
         {
             foreach (KeyValuePair<Type, string[]> kv in FoldedFieldsByKind)
-                AssertFieldsClassified(kv.Key, kv.Value);
+                AssertFieldsClassified(kv.Key, kv.Value,
+                    ExcludedFieldsByKind.TryGetValue(kv.Key, out string[]? ex) ? ex : Array.Empty<string>());
         }
 
         [Fact]
@@ -110,27 +129,32 @@ namespace ProjectChimera.Sim.Tests.Validation
         {
             Assert.True(typeof(Modifier).IsSealed,
                 "Modifier must stay sealed — MixModifier folds the concrete Modifier only; a subtype would escape it.");
-            AssertFieldsClassified(typeof(Modifier), ModifierFoldedFields);
+            AssertFieldsClassified(typeof(Modifier), ModifierFoldedFields, Array.Empty<string>());
         }
 
-        private static void AssertFieldsClassified(Type t, string[] folded)
+        private static void AssertFieldsClassified(Type t, string[] folded, string[] excluded)
         {
             string[] actual = t.GetFields(BindingFlags.Public | BindingFlags.Instance)
                 .Select(f => f.Name).ToArray();
             Assert.NotEmpty(actual); // non-vacuity
 
-            string[] unclassified = actual.Where(n => !folded.Contains(n, StringComparer.Ordinal))
+            // A public field is consciously classified when it is either FOLDED (in the handshake hash) or explicitly
+            // EXCLUDED (a recorded presentation-only non-fold). Anything in neither set silently escapes the audit.
+            string[] classified = folded.Concat(excluded).ToArray();
+            string[] unclassified = actual.Where(n => !classified.Contains(n, StringComparer.Ordinal))
                 .OrderBy(n => n, StringComparer.Ordinal).ToArray();
             Assert.True(unclassified.Length == 0,
-                $"{t.Name}: public field(s) [{string.Join(", ", unclassified)}] are not in the folded classification. " +
-                "Fold them in the kind's explicit CanonicalFold arm (and CanonicalModelHashEffectFoldTests) and add " +
-                "them here — a semantic field must not silently escape the handshake hash (DW-449).");
+                $"{t.Name}: public field(s) [{string.Join(", ", unclassified)}] are neither folded nor consciously excluded. " +
+                "Fold them in the kind's explicit CanonicalFold arm (and CanonicalModelHashEffectFoldTests) and add them " +
+                "to FoldedFieldsByKind, or record a conscious non-fold in ExcludedFieldsByKind — a semantic field must " +
+                "not silently escape the handshake hash (DW-449).");
 
-            string[] stale = folded.Where(n => !actual.Contains(n, StringComparer.Ordinal))
+            // Stale-check BOTH classifications so a renamed/removed field cannot leave a dead entry behind.
+            string[] stale = classified.Where(n => !actual.Contains(n, StringComparer.Ordinal))
                 .OrderBy(n => n, StringComparer.Ordinal).ToArray();
             Assert.True(stale.Length == 0,
                 $"{t.Name}: classified field(s) [{string.Join(", ", stale)}] no longer exist — update the guard " +
-                "(and the kind's CanonicalFold arm).");
+                "(FoldedFieldsByKind / ExcludedFieldsByKind and the kind's CanonicalFold arm).");
 
             // The vocabulary is public-readonly-FIELD-shaped; a property-shaped stat would bypass a fields-only
             // guard, so its appearance must also be a conscious decision.

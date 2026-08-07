@@ -7060,7 +7060,8 @@ source_spec: `_bmad-output/implementation-artifacts/spec-15-11-ability-targeting
 location: godot/src/Core/MainScene.cs (_world/_host are private C# fields, no marshallable sim seam) + godot/src/UI/SelectionSystem.cs (IssueCastAbilityGroundCommand takes non-marshallable Fixed) + godot/resources/data/abilities/{ground_nuke,mend_ally}.json (on no faction roster)
 severity: medium
 reason: The literal player-facing gameplay of 15.11 — press a GroundPoint card, click ground, watch the AoE land; press an Ally heal, click a friendly unit, watch it heal — could NOT be driven or observed in the running game. Empirically established 2026-08-06: the godot-mcp bridge executes GDScript only; it CAN call marshallable C# methods (proved `MainScene.CountFaction(1)=2`) but cannot reach the pure-C# `EntityWorld` SoA (not a GodotObject; `_world`/`_host` private), cannot construct `Fixed` to call `IssueCastAbilityGroundCommand`, and neither new ability is on any roster so no command card ever renders them. Consequence: the cast gameplay's IN-ENGINE verification is a standing gap — the sim path is instead proven through the real engine by the byte-identical ground-cast golden and the discriminating Tier-1 tests (SearchArea damages at the point not the caster; CastTargetPicker Ally excludes caster), and the reachable coupled surfaces (CreationSuite affinity dropdown, boot wiring, strict JSON load, "coming soon" removal) were driven and passed — but the card->arm->click->issue UI glue and the reticle-follow were not observed. Evidence: intent-alignment, verification-gap, and both hunter lenses converged on this gap; the gate-drive attempt hit a hard C#/GDScript-marshalling wall, not laziness. Closure = add a small debug-gated marshallable seam on MainScene (e.g. `int DebugSpawn(int faction,float x,float z,string unitId)`, `void DebugGrantAbility(int id,int slot,string abilityId)`, `void DebugSetHealth(int id,float hp)`, `float DebugHealth(int id)`) so the bridge can construct + read the real running sim, OR place the two abilities on a sandbox roster and drive the command card; note even then the mouse-pixel->RaycastGround sliver stays human-verify (the bridge has no absolute-mouse click). Best folded into the Epic-10 live-verify batch (A5-E9) alongside the other in-engine-observability debt.
-status: open
+resolution: BUILT 2026-08-07 (Alec: "land the DW-882 debug seam first", chosen over waiving Story 15.13's gate). `godot/src/Core/MainSceneDebugSeam.cs` — a debug-gated partial of MainScene exposing only marshallable primitives: READ (`_mcp_state()` godot-mcp digest hook, `DebugSimJson`, `DebugEntityJson` incl. RAW Fixed values, `DebugAliveCount`, `DebugFindUnit`), DRIVE (`DebugCastGround` — the seam's whole reason to exist, since GDScript cannot construct the two `Fixed` args — and `DebugCastTarget`, both issuing REAL orders through `SelectionSystem` → `OrderApplier`, never a test double), and SETUP (`DebugSpawnUnit`, `DebugGrantAbility`, `DebugSetHealth`, `DebugSetEnergy`). Mutators are gated on `OS.IsDebugBuild()` AND refuse while `Lockstep.IsOnline` (a direct SoA write outside the command stream is a guaranteed desync). Paired presentation taps: `CombatFeedbackBridge._mcp_state()` (per-`CombatEventType` cumulative drain tally, flash spawns/active, shake applies + last authored duration/strength) and `AudioManager._mcp_state()` (profile-first route count, last sound id/type, and `missing_streams` so "routed but the clip is not authored yet" is distinguishable from "never routed"). Both nodes are now explicitly Named so a gate artifact can cite a stable path instead of an auto-name (`@Node3D@494`) that changes every run. Excluded from the Godot-free Tier-1 assembly beside MainScene.cs in `SimSources.props`. PROVEN by driving Story 15.13's gate end-to-end: caster relocated to the cast point with exact Fixed raws, all three cue leaves tallied with their authored numbers. Residual (unchanged, still open as noted above): the mouse-pixel→RaycastGround sliver stays human-verify — the bridge has no absolute-mouse click. LESSON: freeze game time (`godot_game_time freeze` → cast → `step frames=3`) before asserting sim state — in a free-running match the caster walks off the blink point within a few hundred ms and a correct cast reads as a failed one.
+status: done 2026-08-07
 
 ### DW-883: Cast reticle ring radius is hard-coded, not the ability's authored SearchArea radius
 origin: deferred by review of `_bmad-output/implementation-artifacts/spec-15-11-ability-targeting-increments-ground-target-cast-ally-heal-other.md`, 2026-08-06
@@ -7124,4 +7125,92 @@ source_spec: `_bmad-output/implementation-artifacts/spec-15-12-energy-stack-mech
 location: godot/ProjectChimera.Sim.Tests/Golden/energy-regen-scenario.golden.txt (header) + godot/ProjectChimera.Sim.Tests/Golden/EnergyRegenGoldenTests.cs (`RecordRun`)
 severity: low
 reason: The new energy-regen golden's header asserts "All hashed fields are integer/Fixed → byte-identical Win<->Linux; NOT Windows-gated," but `AiOpponentSystem.Tick` runs float scorers every tick unconditionally, and the golden's cross-platform safety depends on the fixture's empty Player2 causing the AI to take NO folded-state action (so no float ever reaches a hashed field). Nothing in the repo proves that premise: `RunsTwiceInProcess` and `MatchesCommittedGolden` only prove SAME-platform determinism, and the only cross-platform validator is the out-of-repo M1 run. If the premise is subtly wrong now, or a later edit grants Player2 a unit/resources, the sequence would diverge ONLY on Linux/WSL and never trip the Tier-1 gate — the exact ai-active Windows-only golden hazard the project has already been bitten by. Evidence: verification-gap lens; confirmed the fixture (`RecordRun`: one Player1 caster, empty Player2, empty ScenarioData) and that `AiOpponentSystem.Tick` scores floats every tick. Low severity (premise is very likely true today). Fix: either OS-gate this golden like the ai-active one, or add a test pinning that the AI takes no state-changing action on this fixture (e.g. chosen action == Nothing every tick).
+status: open
+
+### DW-891: Teleport writes Position with no sim-side destination-pathability check (blink can embed a unit in a wall/building/off-map)
+origin: deferred by review of `_bmad-output/implementation-artifacts/spec-15-13-effect-vocabulary-completion-teleport-presentation-leaves.md`, 2026-08-07
+source_spec: `_bmad-output/implementation-artifacts/spec-15-13-effect-vocabulary-completion-teleport-presentation-leaves.md`
+location: godot/src/Effects/TeleportEffect.cs (Apply: `world.Position[caster] = dest` — placement-class, sanctioned in PositionWriterGuardTests)
+severity: medium
+reason: `TeleportEffect` writes the destination directly (correct for a wall-bypassing blink — it must NOT sweep), but performs ZERO destination validity/pathability check on any invocation path. The spec consciously scopes this as MVP ("Destination validity is the ground-cast RaycastGround gate"), but that gate only exists on the mouse→RaycastGround presentation path; a trigger-DSL `run_effect` embed, an online/replay cast, or the charge (self→target) branch can land the caster inside a blocked cell / building footprint / off the navigable map, where MovementSystem confinement can soft-lock it. Same defect class as the SaveGameState restore writer (also has no blocked-cell diagnostic, likewise deferred). Evidence: adversarial + edge-case lenses; confirmed no pathability check in Apply and that RaycastGround is presentation-only. Not required by the story intent ("build the reserved Teleport leaf"), so deferred rather than blocking. Fix is a design call: clamp/snap to the nearest navigable cell, reject the cast, or add a load-time/issue-time diagnostic — mirroring the ScenarioValidator.CheckSpawnsNotBlocked pattern.
+status: open
+
+### DW-892: No validator warning for a Teleport leaf that can never fire under its ability's targeting mode
+origin: deferred by review of `_bmad-output/implementation-artifacts/spec-15-13-effect-vocabulary-completion-teleport-presentation-leaves.md`, 2026-08-07
+source_spec: `_bmad-output/implementation-artifacts/spec-15-13-effect-vocabulary-completion-teleport-presentation-leaves.md`
+location: godot/src/Core/Definitions/AbilityValidator.cs (WalkGraph — no Teleport case) + godot/src/Effects/EffectExecutor.cs (generic LeafEffect TagGate on PrimaryTargetId)
+severity: low
+reason: `TeleportEffect` relocates the caster to the ground point (GroundPoint cast) or a live non-caster target (TargetUnit cast); a Self/None-targeted teleport has no destination and silently no-ops, and a `require_tag`'d teleport on a GroundPoint ability also silently no-ops because the executor gates the leaf on `PrimaryTargetId` which is `-1` for a ground cast (TagGate fails on a non-None tag). Both cost + cooldown are spent for nothing, with no authoring diagnostic — the same validated-but-inert authoring footgun class the story's own play_sound/shake_screen inert warnings address, but not covered for teleport. Evidence: adversarial + edge-case lenses; confirmed AbilityValidator has no Teleport case and the executor's PrimaryTargetId gate. Low severity (unusual authoring choices). Fix: an AbilityValidator warning when a Teleport leaf's ability targeting is Self/None, or when a Teleport carries a require_tag on a GroundPoint ability.
+status: open
+
+### DW-893: Placement ghost renders a box/rectangle instead of the object's own silhouette + shadow
+origin: reported by Alec 2026-08-07 from live editor use (session that landed the DW-882 seam)
+source_spec: — (live-use field report, no spec)
+location: godot/src/CreationSuite/** (the placement preview/ghost path shared by doodad/prop, building and hero placement)
+severity: medium
+reason: When placing doodads, buildings or heroes the ghost is drawn as a generic rectangle/box for EVERY object rather than the object's real mesh, so its cast shadow is a slab and the author cannot judge footprint, facing or silhouette before committing the placement. This is the same defect class as the shipped-unit "cast-shadow SLAB" already recorded for the asset pipeline, but here it is a PRESENTATION choice in the placer, not a mesh defect: the GLBs exist and render correctly once placed. Fix: have the placement ghost instance the target's actual mesh (team-tinted/translucent) and cast a real shadow, falling back to the box only when no mesh resolves. Wanted by Alec for authoring feel.
+status: open
+
+### DW-894: Dragging a placed building/unit does not follow the cursor — it teleports on mouse release
+origin: reported by Alec 2026-08-07 from live editor use
+source_spec: — (live-use field report, no spec)
+location: godot/src/CreationSuite/** (editor select+drag path) + the placement preview shared with DW-893
+severity: medium
+reason: Alec: "I hold mouse click, drag, and release and then the building jumps to that location." The drag is committed as a single move at mouse-UP with no live preview during the drag, so the author gets no continuous feedback about where the object will land and must place-check-undo to iterate. Fix: drive the ghost/target transform from the motion events during the drag (the same preview DW-893 fixes), committing only on release. The two should be fixed together — they share the preview.
+status: open
+
+### DW-895: Ctrl+B and Ctrl+U both toggle their editor AND cycle the upper-right tab on every press
+origin: reported by Alec 2026-08-07 from live editor use
+source_spec: — (live-use field report, no spec)
+location: godot/src/Core/Definitions/EditorHotkeys.cs (the binding table) + the editor dock/tab strip handler + MainScene input routing
+severity: medium
+reason: One chord is being consumed by TWO handlers: the EditorHotkeys panel toggle AND the upper-right tab strip's cycle action. Reported for Ctrl+B (building editor) and Ctrl+U (unit card), and the shape suggests the tab strip cycles on the BARE letter while the modifier is not being tested, so Ctrl+letter matches both. This is the same class the EditorHotkeys tier policy and its duplicate-chord red test were built to prevent — but that test only covers duplicates WITHIN the table, so a collision with a handler outside the table (the tab strip) is still silent. Fix: make the tab-strip handler require the modifier state it actually wants (and mark the event handled), then extend the hotkey guard to cover non-table consumers of the same chords.
+status: open
+
+### DW-896: Stale/deprecated key hints in the HUD (e.g. "N = Lobby" lower-left) — the whole hint set needs an audit
+origin: reported by Alec 2026-08-07 from live editor use
+source_spec: — (live-use field report, no spec)
+location: godot/src/Core/Bootstrap/Phases/HudPhase.cs (hint strip) + per-panel close-button labels (e.g. godot/src/UI/ReplayBrowserPanel.cs "Close  [N]")
+severity: low
+reason: The lower-left hint strip still advertises bindings that no longer do what they say ("N = Lobby" called out by name), and panel close buttons carry hard-coded bracket hints (Close [N], Close [K], Close [J], Close [C], Close [R], Close [V], Close [X], Close [O]) that are strings, not reads of the binding table — so they cannot follow a rebind and were never re-checked after the 2026-08-04 keymap re-tier. Fix: audit every advertised chord against EditorHotkeys/the input map, delete the dead ones, and source the remaining hint text from the table so the two cannot drift again.
+status: open
+
+### DW-897: Tab cycles the upper-right Palette instead of its intended action
+origin: reported by Alec 2026-08-07 from live editor use
+source_spec: — (live-use field report, no spec)
+location: the upper-right palette/tab strip handler (same consumer as DW-895) + MainScene `_UnhandledInput`
+severity: low
+reason: Pressing Tab cycles the upper-right Palette menu. Historically Tab was the edit-mode placement-mode cycler (documented in MainScene's own header: "Tab cycles mode"), so either the binding moved and the palette inherited it, or both consumers are live and the palette wins. Same root shape as DW-895 (an unclaimed/duplicated chord with no table entry and no red test). Fix alongside DW-895 — decide who owns Tab, mark the event handled, and add it to the guarded set.
+status: open
+
+### DW-898: Esc does not open Settings in Create mode until a Play-mode round-trip has happened
+origin: reported by Alec 2026-08-07 from live editor use
+source_spec: — (live-use field report, no spec)
+location: the pause/settings overlay wiring (godot/src/Core/Bootstrap/Phases/** settings/pause phase) + MainScene mode transitions
+severity: medium
+reason: Alec: "Esc isn't working to get to settings in create mode, only when I enter test mode by pressing F5 and then Esc. After going into the game and pressing Esc, now when I am in Create mode again, Esc works for settings." That ordering is diagnostic: the Esc-to-settings handler is armed LAZILY by the Play-mode entry path (or the overlay node is created/connected there) rather than at scene setup, so it is dead on the boot path into Create until a Play transition initialises it. Fix: arm the binding/overlay at setup for both modes, and add an in-engine check that Esc opens Settings from a COLD Create-mode boot (the state that is broken) — the warm path masks it.
+status: open
+
+### DW-899: Map Gen close button is dead after a failed generation (only Ctrl+M dismisses the panel)
+origin: reported by Alec 2026-08-07 from live editor use
+source_spec: — (live-use field report, no spec)
+location: godot/src/Core/Bootstrap/Phases/MapGeneratorPhase.cs + the map-gen panel's close handler / busy-state flag
+severity: medium
+reason: After a generation FAILS, the panel's close button stops responding and the panel can only be dismissed with the Ctrl+M toggle. The failure path evidently leaves the panel in its "generating/busy" state — a guard that disables or early-returns the close handler while a job is in flight — because the error branch never clears the flag the success branch clears. A user with no knowledge of the hotkey is trapped in the panel. Fix: clear the busy/in-flight state in the failure branch (or a finally), and make close unconditional; regression-test the FAILED-generation path specifically, since the happy path already works.
+status: open
+
+### DW-900: Ability editor AI generation always rewrites the ability — no "add more" / append affordance
+origin: requested by Alec 2026-08-07 from live editor use
+source_spec: — (live-use feature request, no spec)
+location: the Ability editor panel's AI generate flow (godot/src/CreationSuite/** ability panel) + godot/src/AI/LLMService.cs
+severity: low
+reason: Alec: "Ability editor AI gen works pretty good, but I want it to have a generate or 'Add more' button so that the AI knows to add onto the ability instead of writing a new one." Today the single Generate button always drafts a fresh ability from the prompt, discarding the authored graph, so iterating means re-describing everything. Fix: a second action that sends the CURRENT ability draft as context with an append/extend instruction and MERGES the returned nodes into the existing graph rather than replacing it. Note this is the concrete next step of the recorded ability-authoring AI-transparency direction (creator types plain language, the AI shows the field swaps) — the append mode is what makes that conversational rather than one-shot.
+status: open
+
+### DW-901: Paint-paths tool — "Erase mode" cannot be selected and "Slope auto-block" cannot be unchecked
+origin: reported by Alec 2026-08-07 from live editor use
+source_spec: — (live-use field report, no spec)
+location: godot/src/CreationSuite/PathabilityTool.cs (the "Erase mode" CheckButton and "Slope auto-block" CheckBox and their toggled handlers)
+severity: medium
+reason: Both controls in the pathability/paint-paths panel are unresponsive: Erase mode never engages and Slope auto-block cannot be turned OFF, so the author can only ADD pathability blocking and cannot correct a mistake or hand-author a walkable slope. Two failure shapes fit: the toggled signal is never connected (the control renders but drives nothing), or a per-frame refresh re-asserts the backing value and overwrites the user's toggle. Both controls confirmed present in the live tree at .../PathabilityTool/.../@CheckButton@736 and @CheckBox@740 during the 2026-08-07 session, so this is handler wiring, not a missing widget. Paint-write at GDExtension was already recorded as broken once (set_control fix path) — check whether this is the same underlying write seam before treating it as pure UI.
 status: open

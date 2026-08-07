@@ -41,6 +41,7 @@ namespace ProjectChimera.Core.Bootstrap
 
             // Combat feedback: hit flashes and camera shake
             var feedbackBridge = new CombatFeedbackBridge();
+            feedbackBridge.Name = "CombatFeedbackBridge"; // DW-882: a stable node path — an auto-name (@Node3D@494) changes every run, so a gate artifact could not cite it
             _ctx.Scene.AddChild(feedbackBridge);
             feedbackBridge.Initialize(_ctx.CombatEvents, _ctx.Cam);
         }

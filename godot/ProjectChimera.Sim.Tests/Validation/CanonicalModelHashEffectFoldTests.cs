@@ -151,5 +151,77 @@ namespace ProjectChimera.Sim.Tests.Validation
         // ── The effect KIND discriminator itself must fold (two different leaves must not alias) ──
         [Fact] public void EffectKindDiscriminator_Folds() =>
             AssertFolded(new HealEffect(Fixed.FromInt(1)), new DamageEffect(Fixed.FromInt(1), DamageType.Normal));
+
+        // ── Story 15.13 (DW-248): the four new leaves ──────────────────────────────────────────────────
+        //
+        // (a) RequireTag folds for each new kind (the one semantic field they carry). Teleport folds RequireTag as a
+        //     sim leaf; the three presentation cues fold kind+RequireTag ONLY (their Feedback is consciously excluded).
+
+        [Fact] public void Teleport_RequireTag_Folds() =>
+            AssertFolded(new TeleportEffect(UnitTag.None), new TeleportEffect(UnitTag.Organic));
+        [Fact] public void PlayVfx_RequireTag_Folds() =>
+            AssertFolded(new PlayVfxEffect(null, UnitTag.None), new PlayVfxEffect(null, UnitTag.Organic));
+        [Fact] public void PlaySound_RequireTag_Folds() =>
+            AssertFolded(new PlaySoundEffect(null, UnitTag.None), new PlaySoundEffect(null, UnitTag.Organic));
+        [Fact] public void ShakeScreen_RequireTag_Folds() =>
+            AssertFolded(new ShakeScreenEffect(null, UnitTag.None), new ShakeScreenEffect(null, UnitTag.Organic));
+
+        // (b) The KIND discriminator: all four new kinds hash DISTINCTLY from one another AND from existing leaves.
+        //     Catches a copy-paste like ShakeScreenEffect mixing "play_vfx" — that would collide two of these hashes.
+        [Fact]
+        public void NewLeafKinds_HashDistinctly_FromEachOther_AndFromExistingLeaves()
+        {
+            EffectNode[] leaves =
+            {
+                new TeleportEffect(),
+                new PlayVfxEffect(null),
+                new PlaySoundEffect(null),
+                new ShakeScreenEffect(null),
+                new HealEffect(Fixed.FromInt(1)),                        // existing leaf
+                new DamageEffect(Fixed.FromInt(1), DamageType.Normal),   // existing leaf
+            };
+            var hashes = new ulong[leaves.Length];
+            for (int i = 0; i < leaves.Length; i++) hashes[i] = HashOf(leaves[i]);
+            for (int i = 0; i < hashes.Length; i++)
+                for (int j = i + 1; j < hashes.Length; j++)
+                    Assert.True(hashes[i] != hashes[j],
+                        $"effect leaves at indices {i} and {j} hash identically ({hashes[i]}) — a kind discriminator collision.");
+        }
+
+        // (c) CHECKSUM-NEUTRALITY TEETH: two presentation leaves of the SAME kind carrying DIFFERENT Feedback fold to
+        //     the SAME hash — proving the float-bearing Feedback is excluded from the fold VALUE (not merely classified
+        //     as excluded structurally). If a regression started folding Feedback, these turn RED.
+        [Fact] public void PlayVfx_Feedback_DoesNotFold() =>
+            AssertSameFold(new PlayVfxEffect(FeedbackA()), new PlayVfxEffect(FeedbackB()));
+        [Fact] public void PlaySound_Feedback_DoesNotFold() =>
+            AssertSameFold(new PlaySoundEffect(FeedbackA()), new PlaySoundEffect(FeedbackB()));
+        [Fact] public void ShakeScreen_Feedback_DoesNotFold() =>
+            AssertSameFold(new ShakeScreenEffect(FeedbackA()), new ShakeScreenEffect(FeedbackB()));
+
+        /// <summary>The canonical hash of the standard single-trigger run_effect graph wrapping <paramref name="e"/>.</summary>
+        private static ulong HashOf(EffectNode e)
+        {
+            var m = BaseModel();
+            m.TriggerGraphJson = TriggerGraph.BuildRunEffectTrigger("t", "match_start", e).ToCanonicalJson();
+            return CanonicalModelHash.Compute(m);
+        }
+
+        /// <summary>Assert the two embeds hash IDENTICALLY — the mutated field is genuinely NOT folded (the inverse of
+        /// <see cref="AssertFolded"/>).</summary>
+        private static void AssertSameFold(EffectNode a, EffectNode b) => Assert.Equal(HashOf(a), HashOf(b));
+
+        // Two feedback payloads that differ in every folded-if-it-were-folded field (sound id + shake).
+        private static CombatFeedbackProfile FeedbackA() => new CombatFeedbackProfile
+        {
+            ImpactSoundId = "alpha",
+            Shake = new ShakeSpec { DurationSec = 0.10f, Strength = 0.20f },
+            HitFlash = new FlashSpec { ColorRgb = new[] { 0.1f, 0.2f, 0.3f }, Scale = 1.0f, DurationSec = 0.2f },
+        };
+        private static CombatFeedbackProfile FeedbackB() => new CombatFeedbackProfile
+        {
+            ImpactSoundId = "omega",
+            Shake = new ShakeSpec { DurationSec = 0.90f, Strength = 0.80f },
+            HitFlash = new FlashSpec { ColorRgb = new[] { 0.9f, 0.8f, 0.7f }, Scale = 2.5f, DurationSec = 0.7f },
+        };
     }
 }
