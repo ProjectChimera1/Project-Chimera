@@ -2124,7 +2124,7 @@ namespace ProjectChimera.UI
             {
                 if (mb.Pressed)
                 {
-                    if (IsOverPalette(mb.Position)) return false;
+                    if (IsOverUi(mb.Position)) return false; // DW-901: never claim a click the GUI is about to deliver to a control
                     PruneSelection(); // review fix (B3/E1): don't hit-test the cursor against dead/removed selections
                     Vector3? gp = GroundPointOf(mb.Position);
                     if (gp != null && _selection.Count > 0 && OverSelection(gp.Value))
@@ -2660,6 +2660,27 @@ namespace ProjectChimera.UI
                 if (c is PanelContainer pc && pc.GetGlobalRect().HasPoint(screenPos)) return true;
             return false;
         }
+
+        /// <summary>
+        /// DW-901 — is the cursor over ANY interactive UI, not just this placer's own palette?
+        ///
+        /// <para>This exists because <see cref="IsOverPalette"/> was the only guard on a handler that runs in
+        /// <c>_Input</c> and ends in <c>SetInputAsHandled()</c>. <c>_Input</c> fires BEFORE Godot's GUI phase, so a
+        /// left-click the placer claims is a click the Control under the cursor never receives. The palette was
+        /// excluded; every OTHER editor panel was not — so with Select mode armed, clicking a
+        /// control in any tool panel started a marquee instead of pressing the control. Reported from live use as
+        /// "can't select erase mode in paint paths, can't uncheck slope auto-block": both of those are CheckButtons
+        /// sitting in exactly such a panel, and both were confirmed correctly wired, enabled, laid out inside their
+        /// panel rect, and MouseFilter.Stop — the clicks simply never arrived.</para>
+        ///
+        /// <para><c>GuiGetHoveredControl()</c> is the general form of the question: it returns the Control the GUI
+        /// would deliver this click to (null when the cursor is over bare 3D world), and it already accounts for
+        /// MouseFilter.Ignore anchors, visibility and z-order — none of which a hand-rolled rect check can see. The
+        /// palette rect check is kept as a cheap first pass and as a backstop for the frame right after the palette
+        /// appears, before hover has been recomputed.</para>
+        /// </summary>
+        private bool IsOverUi(Vector2 screenPos)
+            => IsOverPalette(screenPos) || GetViewport().GuiGetHoveredControl() != null;
 
         // ── Selection overlay (screen-space marquee rect + 3D markers) ────────
 
