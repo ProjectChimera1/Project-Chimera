@@ -190,7 +190,7 @@ namespace ProjectChimera.CreationSuite
             _nextBtn.Pressed += () => Browse(1);
             titleRow.AddChild(_nextBtn);
 
-            var closeBtn = ChimeraComponents.Button("Close [C]", ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Sm);
+            var closeBtn = ChimeraComponents.Button(EditorHotkeys.CloseLabel(EditorPanelId.BuildingCard), ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Sm);
             closeBtn.Pressed += Close;
             closeBtn.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             titleRow.AddChild(closeBtn);

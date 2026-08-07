@@ -39,7 +39,7 @@ namespace ProjectChimera.Core.Bootstrap
 
             _ctx.BuildingCardPanel.Initialize(_ctx.FactionDef, _ctx.GameState, factionPath);
 
-            GD.Print("[BuildingCard] Initialized — press C in Edit mode to open (edit/create/duplicate/delete).");
+            GD.Print($"[BuildingCard] Initialized — press {Definitions.EditorHotkeys.ChordFor(Definitions.EditorPanelId.BuildingCard)} in Edit mode to open (edit/create/duplicate/delete).");
         }
     }
 }

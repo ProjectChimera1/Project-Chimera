@@ -167,7 +167,7 @@ namespace ProjectChimera.UI
             title.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             headerRow.AddChild(title);
 
-            var closeBtn = new Button { Text = "Close  [O]", CustomMinimumSize = new Vector2(110, 36) };
+            var closeBtn = new Button { Text = EditorHotkeys.CloseLabel(EditorPanelId.ContentBrowser), CustomMinimumSize = new Vector2(150, 36) };
             closeBtn.AddThemeFontSizeOverride("font_size", 14);
             closeBtn.Pressed += () => Visible = false;
             headerRow.AddChild(closeBtn);

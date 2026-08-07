@@ -750,7 +750,15 @@ play_sound      — sound_id (string)");
 
                     _queue.Enqueue(() => onComplete(scenario, null));
                 }
-                catch (OperationCanceledException) { }
+                catch (OperationCanceledException)
+                {
+                    // DW-899 (adjacent defect, found while tracing it): swallowing the cancel WITHOUT enqueueing a
+                    // callback meant OnGenerationComplete never ran, so the panel's Generate button — disabled at
+                    // issue time and re-enabled only in that callback — stayed disabled for the rest of the session
+                    // with no path back. That is the "flag set, never cleared" shape, applied to the button rather
+                    // than to close. Report the cancel so every completion path lands in exactly one callback.
+                    _queue.Enqueue(() => onComplete(null, "Generation cancelled."));
+                }
                 catch (Exception ex)
                 {
                     _queue.Enqueue(() => onComplete(null, ex.Message));

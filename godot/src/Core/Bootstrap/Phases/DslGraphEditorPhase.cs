@@ -29,7 +29,7 @@ namespace ProjectChimera.Core.Bootstrap
             // Reciprocal wiring: T2's graph-only fallback rows open this T3 panel.
             _ctx.TriggerPanel.SetGraphEditor(_ctx.DslGraphEditorPanel);
 
-            GD.Print("[DslGraphEditor] Initialized — press Y in Edit mode to open the node-graph editor.");
+            GD.Print($"[DslGraphEditor] Initialized — press {Definitions.EditorHotkeys.ChordFor(Definitions.EditorPanelId.DslGraph)} in Edit mode to open the node-graph editor.");
         }
     }
 }

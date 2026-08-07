@@ -144,7 +144,7 @@ namespace ProjectChimera.CreationSuite
             title.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             titleRow.AddChild(title);
 
-            var closeBtn = ChimeraComponents.Button("Close [R]", ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Sm);
+            var closeBtn = ChimeraComponents.Button(EditorHotkeys.CloseLabel(EditorPanelId.TechTree), ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Sm);
             closeBtn.Pressed += Close;
             AttachTip(closeBtn, "Close", "Close the Tech Tree Editor (R).");
             titleRow.AddChild(closeBtn);

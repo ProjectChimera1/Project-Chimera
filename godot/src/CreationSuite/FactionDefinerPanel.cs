@@ -165,7 +165,7 @@ namespace ProjectChimera.CreationSuite
             titleLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             titleRow.AddChild(titleLbl);
 
-            var closeBtn = ChimeraComponents.Button("Close [X]", ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Sm);
+            var closeBtn = ChimeraComponents.Button(EditorHotkeys.CloseLabel(EditorPanelId.FactionDefiner), ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Sm);
             closeBtn.Pressed += Close;
             closeBtn.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             AttachTip(closeBtn, "Close", "Close the Faction Definer (X).");

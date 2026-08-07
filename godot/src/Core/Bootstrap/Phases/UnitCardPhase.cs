@@ -39,7 +39,7 @@ namespace ProjectChimera.Core.Bootstrap
             _ctx.UnitCardPanel.Initialize(_ctx.FactionDef, _ctx.GameState, _ctx.AbilityRegistry, _ctx.BehaviorRegistry,
                 factionPath, _ctx.LlmService, _ctx.AiEvaluator, _ctx.SecretStore);
 
-            GD.Print("[UnitCard] Initialized — press J in Edit mode to open (edit/create/duplicate/delete).");
+            GD.Print($"[UnitCard] Initialized — press {Definitions.EditorHotkeys.ChordFor(Definitions.EditorPanelId.UnitCard)} in Edit mode to open (edit/create/duplicate/delete).");
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿#nullable enable
+#nullable enable
 using Godot;
 using ProjectChimera.AI;
 using ProjectChimera.Combat;
@@ -779,8 +779,10 @@ namespace ProjectChimera.Core
             // run. On the fail-safe path we returned above with _bootAborted set, so this line is not reached there.
             _bootPending = false;
 
+            // DW-896: dropped the trailing N-to-multiplayer-lobby claim — Story 9.7 removed that binding; the lobby is reached from the
+            // main menu's Multiplayer destination.
             GD.Print("[MainScene] Ready. F5=Play/Edit, Tab=cycle mode, Shift+Click=worker, " +
-                     "L-Drag=box-select, R-Click=move, Ctrl+1-9=group. N=Multiplayer lobby.");
+                     "L-Drag=box-select, R-Click=move, Ctrl+1-9=group.");
         }
 
         /// <summary>
@@ -1993,7 +1995,15 @@ namespace ProjectChimera.Core
                 // like Snap/Edge — a toggle you cannot see the state of is barely a toggle.
                 string paths = _ctx.PathTool != null && _ctx.PathTool.OverlayVisible ? "ON" : "OFF";
                 _ctx.ControlsLabel.Text =
-                    $"F5=Play   N=Lobby   O=Maps   Esc=Settings   T=Terrain   G=Snap({snap})   E=Edge({edge})" +
+                    // DW-896: the old N-to-Lobby and O-to-Maps hints were both DEAD and are gone. The dev-only Edit-mode N lobby
+                    // toggle was removed in Story 9.7 (see the comment at the _UnhandledInput N branch) and bare N has
+                    // since been taken by the Water tool, so the strip was pointing at a different tool entirely; the
+                    // Content Browser moved to Ctrl+O at the 2026-08-04 re-tier and is already advertised correctly on
+                    // the generated Editors line below, so the O hint was both dead AND a duplicate. Replaced with the
+                    // tools that actually own those bare letters today. This line is still a hand-written literal —
+                    // the TOOL tier has no table behind it the way the editor tier does, which is why it has now
+                    // drifted twice; DW-902 tracks giving it one.
+                    $"F5=Play   Esc=Settings   T=Terrain   N=Water   V=Cameras   I=Regions   G=Snap({snap})   E=Edge({edge})" +
                     $"   K=PaintPaths   P=Paths({paths})" +
                     $"   Tab=Mode   U=Unit   B=Building   Del=Delete   Ctrl+Z=Undo\n" +
                     // Rendered FROM EditorHotkeys.All, so the strip, the dock tooltips and the real bindings

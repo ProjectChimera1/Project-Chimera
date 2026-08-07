@@ -34,7 +34,7 @@ namespace ProjectChimera.Core.Bootstrap
 
             _ctx.TechTreePanel.Initialize(_ctx.FactionDef, _ctx.GameState, factionPath, _ctx.BuildingCardPanel);
 
-            GD.Print("[TechTree] Initialized — press R in Edit mode to open (drag out-port to wire prerequisites).");
+            GD.Print($"[TechTree] Initialized — press {Definitions.EditorHotkeys.ChordFor(Definitions.EditorPanelId.TechTree)} in Edit mode to open (drag out-port to wire prerequisites).");
         }
     }
 }

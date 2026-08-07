@@ -22,7 +22,7 @@ namespace ProjectChimera.Core.Bootstrap
             _ctx.ItemCardPanel = new ItemCardPanel();
             _ctx.Scene.AddChild(_ctx.ItemCardPanel);
             _ctx.ItemCardPanel.Initialize(MainScene.ITEMS_DIR, _ctx.GameState);
-            GD.Print("[ItemCard] Initialized — press G in Edit mode to open the item editor.");
+            GD.Print($"[ItemCard] Initialized — press {Definitions.EditorHotkeys.ChordFor(Definitions.EditorPanelId.ItemCard)} in Edit mode to open the item editor.");
         }
     }
 }

@@ -456,16 +456,23 @@ namespace ProjectChimera.UI
                 return;
             }
 
-            // UX-DR56 (Story 6.1): Esc cancels an active placement mode. Gated on _placementActive so that when
-            // nothing is armed the event is NOT consumed here — it falls through to MainScene._UnhandledInput's
-            // global Esc→Settings toggle (this _Input runs before and preempts that unhandled-input handler).
+            // UX-DR56 (Story 6.1): Esc cancels an active placement mode.
+            //
+            // DW-898: it must NOT consume the event. The gate below reads as "only swallow Esc when something is
+            // armed", which sounds narrow — but _placementActive starts TRUE (see its declaration: "Starts armed so
+            // placement works immediately on entering Edit mode"), so on a cold boot into Create the very first Esc
+            // was always eaten here and never reached MainScene._UnhandledInput's Esc→Settings toggle. Reported as
+            // "Esc isn't working to get to settings in create mode, only after I enter test mode with F5 and press Esc
+            // there first". The Play round-trip was correlation, not cause: the swallowed first press had already set
+            // _placementActive = false, so the SECOND press fell through and Settings opened. Any palette click
+            // re-arms, so it went dead again for exactly one press each time.
+            //
+            // Letting it fall through costs no affordance: right-click is the documented pure cancel (UX-DR56, the
+            // branch above), and the Edit HUD hint strip already promises "Esc=Settings" unconditionally. Esc now
+            // hides an armed ghost AND opens Settings, which is what the hint has always claimed.
             if (editMode && key.Keycode == Key.Escape)
             {
-                if (_placementActive)
-                {
-                    CancelPlacement();
-                    GetViewport().SetInputAsHandled();
-                }
+                if (_placementActive) CancelPlacement(); // deliberately NOT SetInputAsHandled — see above
                 return;
             }
 
@@ -504,6 +511,31 @@ namespace ProjectChimera.UI
                 return;
             }
 
+            // DW-895 — Ctrl+<letter> belongs to the EDITOR tier (EditorHotkeys), never to this palette. Godot's
+            // InputEventKey.Keycode is unaffected by modifiers, so without this bail Ctrl+B *is* Key.B in the switch
+            // below: one Ctrl+B press cycled the palette here AND opened the Building editor from MainScene's
+            // EditorHotkeys dispatch, because nothing below consumed the event. Same for Ctrl+U (unit card) and — as
+            // an unreported third instance — Ctrl+G (DslGraph), which also flipped grid snap on every press.
+            // This is the idiom the 2026-08-04 keymap re-tier retrofitted into TerrainBrush/RegionTool/PathabilityTool/
+            // WaterTool; EntityPlacer was the one bare-letter consumer it missed. It must sit AFTER the Ctrl+C/V and
+            // Ctrl+Z/Y branches above, which legitimately own their chords.
+            if (key.CtrlPressed && key.Keycode >= Key.A && key.Keycode <= Key.Z) return;
+
+            // DW-895/897 — the palette is an EDIT-mode tool. Ungated, this switch also ran in Play, where it mutated
+            // _mode / _gridSnapEnabled and re-armed placement off the same Tab that SelectionSystem uses for the
+            // subgroup cycle.
+            if (!editMode) return;
+
+            // DW-897 — Tab: yield to GUI focus traversal. The palette IS the legitimate Edit-mode owner of Tab
+            // (MainScene's header documents "Tab cycles mode"), but it was never consuming the event, so one press
+            // both cycled the palette and ran Godot's built-in ui_focus_next across every focusable Control on
+            // screen — the "Tab cycles the upper-right Palette" report. TextFocusGuard above only bails for
+            // LineEdit/TextEdit, so without this check consuming Tab would break focus traversal between the
+            // Buttons/OptionButtons inside an open editor panel. With it, the palette politely loses Tab whenever a
+            // control has focus, and owns it when the user is driving the map.
+            if (key.Keycode == Key.Tab && GetViewport().GuiGetFocusOwner() != null) return;
+
+            bool handled = true;
             switch (key.Keycode)
             {
                 case Key.Tab:
@@ -539,7 +571,14 @@ namespace ProjectChimera.UI
                     RefreshSnapButton();
                     GD.Print($"[EntityPlacer] Grid snap: {(_gridSnapEnabled ? "ON" : "OFF")}");
                     break;
+
+                default:
+                    handled = false; // a key this palette does not bind must fall through untouched
+                    break;
             }
+            // DW-895: consume ONLY what was actually acted on. This switch was the one branch in this method that
+            // never called SetInputAsHandled, which is what let every key it handled fire a second consumer.
+            if (handled) GetViewport().SetInputAsHandled();
         }
 
         public override void _UnhandledInput(InputEvent @event)

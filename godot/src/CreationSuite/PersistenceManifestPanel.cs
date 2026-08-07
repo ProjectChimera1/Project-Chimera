@@ -132,7 +132,7 @@ namespace ProjectChimera.CreationSuite
             titleLbl.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             titleRow.AddChild(titleLbl);
 
-            var closeBtn = ChimeraComponents.Button("Close [V]", ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Sm);
+            var closeBtn = ChimeraComponents.Button(EditorHotkeys.CloseLabel(EditorPanelId.PersistenceManifest), ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Sm);
             closeBtn.Pressed += () => _panel.Visible = false;
             closeBtn.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             AttachFieldTip(closeBtn, "Close", "Close the Hero Persistence editor (also toggled with V in Edit mode).");

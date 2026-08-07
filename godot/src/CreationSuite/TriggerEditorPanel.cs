@@ -353,8 +353,12 @@ namespace ProjectChimera.CreationSuite
             AttachTip(_genBtn, "Generate", "Send the description to the AI and preview the generated trigger below.");
             genRow.AddChild(_genBtn);
 
-            _statusLabel = new Label { Text = "" };
-            _statusLabel.SizeFlagsHorizontal = Control.SizeFlags.Expand;
+            // DW-899 (same defect, second site): an unwrapped status Label's minimum width is its full text width, so a
+            // long AI error widens this panel without bound. This panel has no ✕ to push off-screen (it closes on L),
+            // so nothing becomes unreachable here — but the panel still swallows the screen. Same fix, and ExpandFill
+            // rather than Expand for the same reason (see the MapGeneratorPanel comment).
+            _statusLabel = new Label { Text = "", AutowrapMode = TextServer.AutowrapMode.Word };
+            _statusLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             genRow.AddChild(_statusLabel);
 
             _genSection.AddChild(new Label { Text = "Preview (review before accepting):" });

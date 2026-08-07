@@ -34,7 +34,7 @@ namespace ProjectChimera.Core.Bootstrap
             _ctx.FactionDefinerPanel.Initialize(_ctx.GameState,
                 _ctx.LlmService, _ctx.AiEvaluator, _ctx.SecretStore);
 
-            GD.Print("[FactionDefiner] Initialized — press X in Edit mode to open (5-step guided faction wizard).");
+            GD.Print($"[FactionDefiner] Initialized — press {Definitions.EditorHotkeys.ChordFor(Definitions.EditorPanelId.FactionDefiner)} in Edit mode to open (5-step guided faction wizard).");
         }
     }
 }

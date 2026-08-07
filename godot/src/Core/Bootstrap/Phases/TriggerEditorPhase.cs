@@ -72,7 +72,7 @@ namespace ProjectChimera.Core.Bootstrap
             string llmKeyState = !AI.Providers.LlmProviderFactory.RequiresKey(llmProviderId)
                 ? "not required (local provider)."
                 : _ctx.SecretStore.Has(Definitions.SecretIds.ForLlmProvider(llmProviderId)) ? "configured." : "not set.";
-            GD.Print("[TriggerEditor] Initialized — press L in Edit mode to open. " +
+            GD.Print($"[TriggerEditor] Initialized — press {Definitions.EditorHotkeys.ChordFor(Definitions.EditorPanelId.Trigger)} in Edit mode to open. " +
                      $"AI provider '{llmProviderId}' key " + llmKeyState);
         }
     }

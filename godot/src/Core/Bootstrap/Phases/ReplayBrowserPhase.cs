@@ -35,7 +35,7 @@ namespace ProjectChimera.Core.Bootstrap
             _ctx.ReplayControls.OnSeekForward      += t   => _ctx.Scene.ReplaySeekForward(t);
             _ctx.ReplayControls.OnCyclePerspective += ()  => _ctx.Scene.ReplayCyclePerspective();
 
-            GD.Print("[ReplayBrowser] Initialized — press N in Edit mode to open. Replays: " +
+            GD.Print($"[ReplayBrowser] Initialized — press {Definitions.EditorHotkeys.ChordFor(Definitions.EditorPanelId.ReplayBrowser)} in Edit mode to open. Replays: " +
                      ProjectSettings.GlobalizePath("user://replays/"));
         }
 

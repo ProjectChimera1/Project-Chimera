@@ -284,7 +284,7 @@ namespace ProjectChimera.UI
                 {
                     bool created = _mainScene?.OpenUnitCardPanel(capturedId) ?? false;
                     if (created)
-                        ShowNote($"Created a copy of '{capturedId}' — now open in the Unit Editor [J].", ThemeTokens.Ok);
+                        ShowNote($"Created a copy of '{capturedId}' — now open in the Unit Editor [{EditorHotkeys.ChordFor(EditorPanelId.UnitCard)}].", ThemeTokens.Ok);
                     else
                         ShowNote($"Couldn't find template '{capturedId}' in the current faction — opened the Unit Editor on whatever's currently selected instead.", ThemeTokens.Warn);
                 };
@@ -305,7 +305,7 @@ namespace ProjectChimera.UI
             tuneBody.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             _bodyHost.AddChild(tuneBody);
 
-            var btn = ChimeraComponents.Button("Open Unit Editor [J]", ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Sm);
+            var btn = ChimeraComponents.Button($"Open Unit Editor [{EditorHotkeys.ChordFor(EditorPanelId.UnitCard)}]", ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Sm);
             btn.Pressed += () => _mainScene?.OpenUnitCardPanel();
             AttachTip(btn, "Open Unit Editor", "Reopen the Unit Editor on the unit you're building.");
             _bodyHost.AddChild(btn);
@@ -322,7 +322,7 @@ namespace ProjectChimera.UI
             promoteBody.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             _bodyHost.AddChild(promoteBody);
 
-            var btn = ChimeraComponents.Button("Open Unit Editor [J]", ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Sm);
+            var btn = ChimeraComponents.Button($"Open Unit Editor [{EditorHotkeys.ChordFor(EditorPanelId.UnitCard)}]", ChimeraComponents.ButtonVariant.Secondary, ChimeraComponents.ButtonSize.Sm);
             btn.Pressed += () => _mainScene?.OpenUnitCardPanel();
             AttachTip(btn, "Open Unit Editor", "Reopen the Unit Editor on the unit you're building.");
             _bodyHost.AddChild(btn);

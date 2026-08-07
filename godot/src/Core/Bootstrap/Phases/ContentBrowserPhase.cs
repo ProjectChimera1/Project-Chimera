@@ -39,7 +39,7 @@ namespace ProjectChimera.Core.Bootstrap
             _ctx.ContentBrowser.Initialize("user://packages/", modIo, _ctx.SecretStore);
             _ctx.ContentBrowser.OnLoadMap += HandleLoadMap;
 
-            GD.Print("[ContentBrowser] Initialized — press O in Edit mode to open. " +
+            GD.Print($"[ContentBrowser] Initialized — press {Definitions.EditorHotkeys.ChordFor(Definitions.EditorPanelId.ContentBrowser)} in Edit mode to open. " +
                      "Drop .chimera.zip files into: " +
                      ProjectSettings.GlobalizePath("user://packages/"));
         }

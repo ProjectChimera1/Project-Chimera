@@ -283,8 +283,21 @@ namespace ProjectChimera.CreationSuite
             AttachTip(_genBtn, "Generate", "Send the brief to the AI and generate a candidate scenario to preview below.");
             genRow.AddChild(_genBtn);
 
-            _statusLabel = new Label { Text = "" };
-            _statusLabel.SizeFlagsHorizontal = Control.SizeFlags.Expand;
+            // DW-899: this label MUST wrap. Without AutowrapMode a Label's minimum width is its full single-line text
+            // width, and a failed generation writes a 250-350 char error here (an "Invalid JSON: … — line N:" from
+            // LLMService quotes up to 160 chars of the offending line). That minimum propagates genRow -> root ->
+            // _panel, and because _panel is anchored CenterLeft with a pinned left edge, ALL the growth goes RIGHTWARD
+            // until the header's ✕ — which sits flush against the right content edge — is rendered outside the 1920px
+            // viewport and can no longer be clicked. Reported as "close button doesn't work after it fails to generate";
+            // Ctrl+M still worked because that path is keyboard-only and geometry-independent. Nothing about the close
+            // button, its handler, or any visibility flag differs before/after the failure — only this text does.
+            //
+            // ExpandFill, not Expand, is load-bearing: an autowrapping Label reports a minimum width of ~1, and under
+            // SIZE_EXPAND WITHOUT SIZE_FILL an HBoxContainer lays a child out at its MINIMUM size, so autowrap alone
+            // would collapse the label to a 1px column wrapping one character per line. Fill stretches it to the slack
+            // it was allocated, which is what makes the wrap correct.
+            _statusLabel = new Label { Text = "", AutowrapMode = TextServer.AutowrapMode.Word };
+            _statusLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             genRow.AddChild(_statusLabel);
 
             root.AddChild(new HSeparator());

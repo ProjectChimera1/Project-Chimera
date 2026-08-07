@@ -186,7 +186,7 @@ namespace ProjectChimera.CreationSuite
             title.AddThemeFontSizeOverride("font_size", 24);
             title.AddThemeColorOverride("font_color", Colors.White);
             titleRow.AddChild(title);
-            var closeBtn = new Button { Text = "Close  [K]", CustomMinimumSize = new Vector2(96, 30) };
+            var closeBtn = new Button { Text = EditorHotkeys.CloseLabel(EditorPanelId.Ability), CustomMinimumSize = new Vector2(136, 30) };
             closeBtn.AddThemeFontSizeOverride("font_size", 12);
             closeBtn.Pressed += Close;
             titleRow.AddChild(closeBtn);

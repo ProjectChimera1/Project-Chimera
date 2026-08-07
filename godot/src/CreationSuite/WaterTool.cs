@@ -97,6 +97,11 @@ namespace ProjectChimera.CreationSuite
             if (!_toolActive || _gameState == null || _gameState.Mode != GameMode.Edit) return;
 
             if (@event is InputEventKey && ProjectChimera.UI.TextFocusGuard.IsTyping(this)) return; // hotkeys must not fire while typing
+            // DW-895 (same class as the EntityPlacer defect): this _Input claims bare G, but Keycode ignores modifiers,
+            // so while the water tool was active Ctrl+G toggled grid-snap here instead of reaching the DslGraph editor.
+            // The tool's _UnhandledInput above already carries this exact bail; its _Input did not.
+            if (@event is InputEventKey ctrlKey && ctrlKey.Pressed && ctrlKey.CtrlPressed
+                && ctrlKey.Keycode >= Key.A && ctrlKey.Keycode <= Key.Z) return;   // Ctrl+<letter> = editor tier
             if (@event is InputEventKey key && key.Pressed && !key.Echo && key.Keycode == Key.G)
             {
                 if (_dragging) { GetViewport().SetInputAsHandled(); return; }

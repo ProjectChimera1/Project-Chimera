@@ -1,4 +1,4 @@
-﻿#nullable enable
+#nullable enable
 using System.Collections.Generic;
 
 namespace ProjectChimera.Core.Definitions
@@ -78,6 +78,28 @@ namespace ProjectChimera.Core.Definitions
                 if (h.Key == upper && h.Ctrl == ctrl) return h;
             return null;
         }
+
+        /// <summary>
+        /// DW-896 — the chord that opens <paramref name="id"/>, e.g. <c>"Ctrl+N"</c>. Throws for an unbound panel,
+        /// which <c>EditorHotkeyTableTests.EveryPanelIdIsBound</c> already makes impossible.
+        /// </summary>
+        public static string ChordFor(EditorPanelId id)
+        {
+            foreach (EditorHotkey h in All) if (h.Panel == id) return h.Chord;
+            throw new System.ArgumentOutOfRangeException(nameof(id), $"{id} has no binding row in EditorHotkeys.All.");
+        }
+
+        /// <summary>
+        /// DW-896 — the standard close-button caption, e.g. <c>"Close  [Ctrl+N]"</c>.
+        ///
+        /// <para>Every editor panel hard-coded its own bracket hint as a literal (<c>Close-bracket-N</c>,
+        /// <c>Close-bracket-J</c>, …). The 2026-08-04 re-tier moved all twelve editors onto <c>Ctrl+</c> chords and not one
+        /// of those literals was updated, so ALL EIGHT were wrong — four advertised a key that now does nothing, and
+        /// four advertised a key that had since been taken by a different tool (bracket-N toggles the water tool,
+        /// bracket-K paints paths, bracket-R rotates a ghost, bracket-V opens the camera tool). Routing the caption
+        /// through the table is what makes the hint incapable of disagreeing with the binding.</para>
+        /// </summary>
+        public static string CloseLabel(EditorPanelId id) => $"Close  [{ChordFor(id)}]";
 
         /// <summary>Every chord that appears more than once — empty in a healthy table. The duplicate-detection the
         /// old flat namespace never had; see <c>EditorHotkeyTableTests</c>.</summary>

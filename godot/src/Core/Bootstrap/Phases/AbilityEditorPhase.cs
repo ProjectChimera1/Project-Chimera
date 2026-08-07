@@ -28,7 +28,7 @@ namespace ProjectChimera.Core.Bootstrap
             _ctx.AbilityEditorPanel.Initialize(_ctx.Scenario, _ctx.GameState, _ctx.AbilityRegistry,
                 _ctx.LlmService, _ctx.AiEvaluator, _ctx.SecretStore);
 
-            GD.Print("[AbilityEditor] Initialized — press K in Edit mode to open.");
+            GD.Print($"[AbilityEditor] Initialized — press {Definitions.EditorHotkeys.ChordFor(Definitions.EditorPanelId.Ability)} in Edit mode to open.");
         }
     }
 }

@@ -48,7 +48,7 @@ namespace ProjectChimera.Core.Bootstrap
                 _ctx.AiEvaluator, _ctx.SecretStore);
             _ctx.MapGenPanel.OnLoadRequested += _ctx.Scene.LoadGeneratedScenario;
 
-            GD.Print("[MapGenerator] Initialized — press M in Edit mode to open.");
+            GD.Print($"[MapGenerator] Initialized — press {Definitions.EditorHotkeys.ChordFor(Definitions.EditorPanelId.MapGenerator)} in Edit mode to open.");
         }
     }
 }

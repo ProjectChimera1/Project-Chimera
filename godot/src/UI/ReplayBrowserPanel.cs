@@ -71,7 +71,7 @@ namespace ProjectChimera.UI
             var refreshBtn = new Button { Text = "Refresh", CustomMinimumSize = new Vector2(100, 36) };
             refreshBtn.Pressed += Refresh;
             headerRow.AddChild(refreshBtn);
-            var closeBtn = new Button { Text = "Close  [N]", CustomMinimumSize = new Vector2(110, 36) };
+            var closeBtn = new Button { Text = ProjectChimera.Core.Definitions.EditorHotkeys.CloseLabel(ProjectChimera.Core.Definitions.EditorPanelId.ReplayBrowser), CustomMinimumSize = new Vector2(150, 36) };
             closeBtn.Pressed += () => Visible = false;
             headerRow.AddChild(closeBtn);
 

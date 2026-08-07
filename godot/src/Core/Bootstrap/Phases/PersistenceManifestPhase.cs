@@ -27,7 +27,7 @@ namespace ProjectChimera.Core.Bootstrap
             // globalizes at Save time. The live edited scenario (null on the hardcoded fallback) is bound directly.
             _ctx.PersistenceManifestPanel.Initialize(_ctx.Scenario, _ctx.GameState, _ctx.Scene.ScenarioPath);
 
-            GD.Print("[PersistenceManifest] Initialized — press V in Edit mode to open (choose which hero progression carries forward).");
+            GD.Print($"[PersistenceManifest] Initialized — press {Definitions.EditorHotkeys.ChordFor(Definitions.EditorPanelId.PersistenceManifest)} in Edit mode to open (choose which hero progression carries forward).");
         }
     }
 }
