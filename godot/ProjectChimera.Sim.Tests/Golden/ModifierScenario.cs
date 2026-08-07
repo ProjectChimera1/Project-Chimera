@@ -41,7 +41,13 @@ namespace ProjectChimera.Sim.Tests.Golden
             // Four stationary, non-fighting Player1 units (no MoveTarget, no enemies → only the modifier schedule
             // and DoT/HoT move the checksum). Authored bases set explicitly; all integer/Fixed.
             int buff = Unit(w, V(-10, 0, 0), baseAtk: 10);
-            w.Energy[buff] = Fixed.FromInt(20);   // seed Energy so the debit step is meaningful (folded)
+            // DW-265 / Story 15.12: seed MaxEnergy alongside Energy so the pool is a VALID Energy<=MaxEnergy state.
+            // EnergyRegenSystem now clamps Energy into [0, MaxEnergy] every tick; a real unit always has
+            // Energy<=MaxEnergy (ApplyUnitDefinition starts it full), so the clamp is a no-op there. Leaving MaxEnergy
+            // at its Create default (0) would let the new system clamp this seeded 20 down to 0 — a fixture artifact,
+            // not a regen effect (regen_rate is 0 here). MaxEnergy is NOT folded, so this does not move the golden.
+            w.MaxEnergy[buff] = Fixed.FromInt(20);
+            w.Energy[buff]    = Fixed.FromInt(20); // seed Energy so the debit step is meaningful (folded)
 
             Unit(w, V(-6, 0, 0), baseAtk: 10);    // StackUnit (id 1)
 

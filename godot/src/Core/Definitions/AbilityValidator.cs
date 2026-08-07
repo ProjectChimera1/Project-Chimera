@@ -395,9 +395,34 @@ namespace ProjectChimera.Core.Definitions
                 Reject(periodShapeErrors, id, $"{modPath}.period_ticks",
                     $"period_ticks={mod.PeriodTicks} is ignored — the modifier declares no period_effect to pulse. Add a period_effect, or set period_ticks to 0.");
 
-            if (hasPeriodEffect && mod.PeriodTicks > 0 && mod.Stacking == StackRule.Stack && mod.MaxStacks > 1)
+            // DW-272 / Story 15.12: the period pulse now SCALES with stacks iff the grouped Stack rule holds multiple
+            // stacks over a live period AND the author opted into a scaling mode. `scales` is exactly the shape a
+            // Multiply/Repeat periodic_stack_mode is meaningful on.
+            bool pulsesFire = hasPeriodEffect && mod.PeriodTicks > 0;
+            bool scales = mod.Stacking == StackRule.Stack && mod.MaxStacks > 1 && pulsesFire;
+
+            // The non-scaling-stacked-DoT footgun — now ONLY when the author left periodic_stack_mode at None (with
+            // Multiply/Repeat the pulse DOES scale, so there is nothing to warn about).
+            if (scales && mod.PeriodicStacking == PeriodicStackMode.None)
                 Warn(warnings, id, $"{modPath}.period_effect",
-                    $"the modifier stacks (stacking Stack, max_stacks={mod.MaxStacks}) but its period_effect fires ONCE per period regardless of stack count — the stat deltas scale with stacks, the periodic pulse does not.");
+                    $"the modifier stacks (stacking Stack, max_stacks={mod.MaxStacks}) but periodic_stack_mode is None, so its period_effect fires ONCE per period regardless of stack count — the stat deltas scale with stacks, the periodic pulse does not. Set periodic_stack_mode to Multiply or Repeat to scale the pulse.");
+
+            // DW-272 — a periodic_stack_mode that can never take effect here (nothing to scale): a non-stacking rule
+            // (Refresh/Ignore) or StackIndependent (each stack is its OWN single pulse), max_stacks==1, or no live
+            // period. Non-fatal (the DW-278 Warnings channel): it loads and runs, just as None would.
+            if (mod.PeriodicStacking != PeriodicStackMode.None && !scales)
+                Warn(warnings, id, $"{modPath}.periodic_stack_mode",
+                    $"periodic_stack_mode={mod.PeriodicStacking} has no effect here — it scales a stacked pulse only when stacking is Stack with max_stacks>1 and a live period_effect. This modifier {PeriodicModeInertReason(mod, pulsesFire)}, so the pulse behaves as None.");
+        }
+
+        /// <summary>DW-272 helper — WHY a periodic_stack_mode is inert on this modifier (for the located warning above).</summary>
+        private static string PeriodicModeInertReason(Modifier mod, bool pulsesFire)
+        {
+            if (!pulsesFire) return "has no live period_effect to pulse";
+            if (mod.Stacking == StackRule.StackIndependent)
+                return "uses StackIndependent (each stack is its own single pulse, so the pulse count scales via the stacks themselves)";
+            if (mod.Stacking != StackRule.Stack) return $"does not stack (stacking {mod.Stacking})";
+            return $"holds at most one stack (max_stacks={mod.MaxStacks})";
         }
 
         /// <summary>

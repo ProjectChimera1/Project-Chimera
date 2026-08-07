@@ -66,7 +66,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         // whatever comes next). Do NOT restate a partial history here: a copy that stops short of the pin reads as
         // the current version to anyone skimming, which is exactly how this line rotted (DW-583).
         [Fact]
-        public void AlgoVersion_IsPinned() => Assert.Equal(14, CanonicalModelHash.AlgoVersion);
+        public void AlgoVersion_IsPinned() => Assert.Equal(15, CanonicalModelHash.AlgoVersion);
 
         [Fact]
         public void ReorderedCollections_HashEqual()

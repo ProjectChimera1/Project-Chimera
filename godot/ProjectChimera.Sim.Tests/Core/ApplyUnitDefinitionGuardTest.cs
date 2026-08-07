@@ -48,6 +48,8 @@ namespace ProjectChimera.Sim.Tests.Core
             Delivery = "Projectile", ProjectileSpeed = 6f,
             // Story 3.13: an authored xp_bounty so the XpBounty mapper teeth bite (Create default = 0). 42 != 0.
             XpBounty = 42,
+            // DW-265 / Story 15.12: a non-zero regen_rate so the RegenRate mapper teeth bite (Create default = 0).
+            RegenRate = 2f,
         };
 
         [Fact]
@@ -88,6 +90,8 @@ namespace ProjectChimera.Sim.Tests.Core
             Assert.Equal(Fixed.FromFloat(def.ProjectileSpeed).Raw, w.ProjectileSpeed[id].Raw);
             // Story 3.13: the resolved XP bounty (authored, else cost) is written through the single mapper.
             Assert.Equal(Fixed.FromInt(def.ResolveXpBounty()).Raw, w.XpBounty[id].Raw);
+            // DW-265 / Story 15.12: the flat energy-regen rate is written through the single mapper.
+            Assert.Equal(Fixed.FromFloat(def.RegenRate).Raw, w.RegenRate[id].Raw);
 
             // Teeth: prove the mapped values are NOT coincidentally the Create defaults.
             Assert.NotEqual(Fixed.Zero.Raw,            w.BaseAttackDamage[id].Raw);    // default 0
@@ -100,6 +104,7 @@ namespace ProjectChimera.Sim.Tests.Core
             Assert.NotEqual(AttackDelivery.Hitscan,          w.Delivery[id]);          // default Hitscan (Story 3.12)
             Assert.NotEqual(ProjectileSystem.PROJECTILE_SPEED.Raw, w.ProjectileSpeed[id].Raw); // default 18 (Story 3.12)
             Assert.NotEqual(Fixed.Zero.Raw,                  w.XpBounty[id].Raw);      // default 0 (Story 3.13)
+            Assert.NotEqual(Fixed.Zero.Raw,                  w.RegenRate[id].Raw);     // default 0 (Story 15.12)
         }
 
         [Fact]
@@ -157,6 +162,8 @@ namespace ProjectChimera.Sim.Tests.Core
             Assert.Equal(refWorld.ProjectileSpeed[refId].Raw,  w.ProjectileSpeed[id].Raw);
             // Story 3.13: SpawnUnit routes the XP bounty through the same single mapper.
             Assert.Equal(refWorld.XpBounty[refId].Raw,         w.XpBounty[id].Raw);
+            // DW-265 / Story 15.12: SpawnUnit routes the energy-regen rate through the same single mapper.
+            Assert.Equal(refWorld.RegenRate[refId].Raw,        w.RegenRate[id].Raw);
         }
 
         // ── Story 2.4a — the FIRST per-entity ability state flows through ApplyUnitDefinition (A2), and a recycled

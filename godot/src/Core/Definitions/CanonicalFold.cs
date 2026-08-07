@@ -254,7 +254,9 @@ namespace ProjectChimera.Core.Definitions
         }
 
         /// <summary>An <c>apply_modifier</c> payload (v8): every semantic Modifier field in fixed order. Moved verbatim
-        /// from <see cref="CanonicalModelHash"/>.</summary>
+        /// from <see cref="CanonicalModelHash"/>. v15 (DW-272 / Story 15.12) appends <see cref="ProjectChimera.Effects.Modifier.PeriodicStacking"/>
+        /// by NAME (the StackRule convention) — unconditionally, so it also moves <c>ContentHash</c> for any ability that
+        /// authors an apply_modifier.</summary>
         internal static ulong MixModifier(ulong h, ProjectChimera.Effects.Modifier? m)
         {
             if (m is null) return MixInt(h, 0);
@@ -270,6 +272,7 @@ namespace ProjectChimera.Core.Definitions
             h = MixInt(h, (int)m.Status); // deliberate ordinal fold: Status is a [Flags] enum — a combined value has no single NAME, and the bit layout is append-only/stable ("fixing" this to a name fold would churn the hash)
             h = MixEffect(h, m.PeriodEffect);
             h = MixInt(h, m.PeriodTicks);
+            h = MixStr(h, m.PeriodicStacking.ToString()); // DW-272 / Story 15.12 — folded by NAME (the StackRule convention); AlgoVersion 14→15
             return h;
         }
     }

@@ -42,7 +42,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         [Fact]
         public void AlgoVersions_Unchanged() // 10 canonical (7.5 merge fold) / 2 start-state (value moves via the seed)
         {
-            Assert.Equal(14, CanonicalModelHash.AlgoVersion);
+            Assert.Equal(15, CanonicalModelHash.AlgoVersion);
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
 
@@ -252,7 +252,7 @@ namespace ProjectChimera.Sim.Tests.Validation
             var heroes = new HeroStore();
             Assert.Equal(StartStateHash.Compute(a, heroes), StartStateHash.Compute(b, heroes));
 
-            Assert.Equal(14, CanonicalModelHash.AlgoVersion);
+            Assert.Equal(15, CanonicalModelHash.AlgoVersion);
             Assert.Equal(24, SimChecksum.AlgoVersion);
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }

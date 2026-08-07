@@ -169,7 +169,7 @@ namespace ProjectChimera.Core.Persistence
         {
             Flags, PosX, PosY, PosZ, VelX, VelY, VelZ, BaseMoveSpeed, EffMoveSpeed, Health, BaseMaxHealth, EffMaxHealth,
             FactionOf, MoveTargetX, MoveTargetY, MoveTargetZ, AttackTarget, AttackCooldown, AttackRange, BaseAtkDmg,
-            EffAtkDmg, BaseArmor, EffArmor, AttackSpeed, Energy, MaxEnergy, StatusFlags, DamageType, ArmorType,
+            EffAtkDmg, BaseArmor, EffArmor, AttackSpeed, Energy, MaxEnergy, RegenRate, StatusFlags, DamageType, ArmorType, // RegenRate: DW-265 / Story 15.12
             VisionRange, Elevation, SplashRadius, Delivery, ProjectileSpeed, XpBounty, KillerOf, KillerFactionOf,
             CollisionRadius, SepPriority, Category, AttackDomain, Tags, SupplyCost, MeshType, CommandState,
             CommandGoalX, CommandGoalY, CommandGoalZ, CommandTarget, PatrolCount, PatrolIndex, PatrolDir,
@@ -301,7 +301,7 @@ namespace ProjectChimera.Core.Persistence
             var fac = A(EA.FactionOf, n); var mtx = A(EA.MoveTargetX, n); var mty = A(EA.MoveTargetY, n); var mtz = A(EA.MoveTargetZ, n);
             var at = A(EA.AttackTarget, n); var ac = A(EA.AttackCooldown, n); var ar = A(EA.AttackRange, n);
             var bad = A(EA.BaseAtkDmg, n); var ead = A(EA.EffAtkDmg, n); var bar = A(EA.BaseArmor, n); var ear = A(EA.EffArmor, n);
-            var asp = A(EA.AttackSpeed, n); var en = A(EA.Energy, n); var men = A(EA.MaxEnergy, n); var sf = A(EA.StatusFlags, n);
+            var asp = A(EA.AttackSpeed, n); var en = A(EA.Energy, n); var men = A(EA.MaxEnergy, n); var rgn = A(EA.RegenRate, n); var sf = A(EA.StatusFlags, n);
             var dt = A(EA.DamageType, n); var art = A(EA.ArmorType, n); var vr = A(EA.VisionRange, n); var el = A(EA.Elevation, n);
             var spl = A(EA.SplashRadius, n); var del = A(EA.Delivery, n); var psp = A(EA.ProjectileSpeed, n); var xpb = A(EA.XpBounty, n);
             var ko = A(EA.KillerOf, n); var kf = A(EA.KillerFactionOf, n); var cr = A(EA.CollisionRadius, n);
@@ -327,7 +327,7 @@ namespace ProjectChimera.Core.Persistence
                 fac[i] = (int)w.FactionOf[i]; mtx[i] = w.MoveTarget[i].X.Raw; mty[i] = w.MoveTarget[i].Y.Raw; mtz[i] = w.MoveTarget[i].Z.Raw;
                 at[i] = w.AttackTarget[i]; ac[i] = w.AttackCooldown[i].Raw; ar[i] = w.AttackRange[i].Raw;
                 bad[i] = w.BaseAttackDamage[i].Raw; ead[i] = w.EffectiveAttackDamage[i].Raw; bar[i] = w.BaseArmor[i].Raw; ear[i] = w.EffectiveArmor[i].Raw;
-                asp[i] = w.AttackSpeed[i].Raw; en[i] = w.Energy[i].Raw; men[i] = w.MaxEnergy[i].Raw; sf[i] = (int)w.StatusFlagsOf[i];
+                asp[i] = w.AttackSpeed[i].Raw; en[i] = w.Energy[i].Raw; men[i] = w.MaxEnergy[i].Raw; rgn[i] = w.RegenRate[i].Raw; sf[i] = (int)w.StatusFlagsOf[i];
                 dt[i] = (int)w.DamageTypeOf[i]; art[i] = (int)w.ArmorTypeOf[i]; vr[i] = w.VisionRange[i].Raw; el[i] = w.Elevation[i].Raw;
                 spl[i] = w.SplashRadius[i].Raw; del[i] = (int)w.Delivery[i]; psp[i] = w.ProjectileSpeed[i].Raw; xpb[i] = w.XpBounty[i].Raw;
                 ko[i] = w.KillerOf[i]; kf[i] = w.KillerFactionOf[i]; cr[i] = w.CollisionRadius[i].Raw;
@@ -679,7 +679,7 @@ namespace ProjectChimera.Core.Persistence
             var fac = G(EA.FactionOf); var mtx = G(EA.MoveTargetX); var mty = G(EA.MoveTargetY); var mtz = G(EA.MoveTargetZ);
             var at = G(EA.AttackTarget); var ac = G(EA.AttackCooldown); var ar = G(EA.AttackRange);
             var bad = G(EA.BaseAtkDmg); var ead = G(EA.EffAtkDmg); var bar = G(EA.BaseArmor); var ear = G(EA.EffArmor);
-            var asp = G(EA.AttackSpeed); var en = G(EA.Energy); var men = G(EA.MaxEnergy); var sf = G(EA.StatusFlags);
+            var asp = G(EA.AttackSpeed); var en = G(EA.Energy); var men = G(EA.MaxEnergy); var rgn = G(EA.RegenRate); var sf = G(EA.StatusFlags);
             var dt = G(EA.DamageType); var art = G(EA.ArmorType); var vr = G(EA.VisionRange); var el = G(EA.Elevation);
             var spl = G(EA.SplashRadius); var del = G(EA.Delivery); var psp = G(EA.ProjectileSpeed); var xpb = G(EA.XpBounty);
             var ko = G(EA.KillerOf); var kf = G(EA.KillerFactionOf); var cr = G(EA.CollisionRadius);
@@ -719,7 +719,7 @@ namespace ProjectChimera.Core.Persistence
                 w.BaseAttackDamage[i] = Fixed.FromRaw(bad[i]);
                 w.EffectiveAttackDamage[i] = Fixed.Max(Fixed.Zero, Fixed.FromRaw(ead[i]));
                 w.BaseArmor[i] = Fixed.FromRaw(bar[i]); w.EffectiveArmor[i] = Fixed.FromRaw(ear[i]);
-                w.AttackSpeed[i] = Fixed.FromRaw(asp[i]); w.Energy[i] = Fixed.FromRaw(en[i]); w.MaxEnergy[i] = Fixed.FromRaw(men[i]);
+                w.AttackSpeed[i] = Fixed.FromRaw(asp[i]); w.Energy[i] = Fixed.FromRaw(en[i]); w.MaxEnergy[i] = Fixed.FromRaw(men[i]); w.RegenRate[i] = Fixed.FromRaw(rgn[i]);
                 w.StatusFlagsOf[i] = (StatusFlags)sf[i]; w.DamageTypeOf[i] = (DamageType)dt[i]; w.ArmorTypeOf[i] = (ArmorType)art[i];
                 w.VisionRange[i] = Fixed.FromRaw(vr[i]); w.Elevation[i] = Fixed.FromRaw(el[i]); w.SplashRadius[i] = Fixed.FromRaw(spl[i]);
                 w.Delivery[i] = (AttackDelivery)del[i]; w.ProjectileSpeed[i] = Fixed.FromRaw(psp[i]); w.XpBounty[i] = Fixed.FromRaw(xpb[i]);

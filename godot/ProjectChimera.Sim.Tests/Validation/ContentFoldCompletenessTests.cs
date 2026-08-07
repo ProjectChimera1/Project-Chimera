@@ -91,7 +91,7 @@ namespace ProjectChimera.Sim.Tests.Validation
             "armor_type", "armor", "cost_ore", "cost_crystal", "cost", "supply", "train_time", "vision_range",
             "splash_radius", "delivery", "projectile_speed", "xp_bounty", "collision_radius", "separation_priority",
             "prerequisites", "abilities", "attack_domains", "tags", "is_hero", "revives_heroes", "sells_items",
-            "shop_stock", "shop_radius", "max_energy",
+            "shop_stock", "shop_radius", "max_energy", "regen_rate",
         };
         private static readonly string[] UnitExcluded = { "display_name", "mesh_path", "mesh_scale", "combat_feedback" };
         private static readonly string[] UnitAllowlist = { "behaviors", "hero" }; // authoring-only, not sim-read (fold when a story reads them)

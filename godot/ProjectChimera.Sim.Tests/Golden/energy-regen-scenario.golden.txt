@@ -1,0 +1,46 @@
+# Project Chimera — energy-regen golden-checksum baseline (DW-265 / Story 15.12) — CROSS-PLATFORM SAFE (integer/Fixed only).
+# Format: "<tick> <hashHex8>" per line — tick decimal, hash 8 uppercase hex digits (no 0x).
+# checksum_algo_version: 24
+# Pins the SimChecksum (v24) sequence for one stationary Player1 caster (max_energy=100, regen_rate=2, seeded Energy=40; Player2 empty so the AI no-ops) stepped via StepOnce at ChecksumInterval=1. EnergyRegenSystem restores +2 energy/tick, clamped at MaxEnergy — the folded Energy pool climbs 40→100 (tick 30) then holds. All hashed fields are integer/Fixed → byte-identical Win↔Linux; NOT Windows-gated.
+# Samples: 40 (one line per sim tick).
+# Re-baseline (intentional behavior change only): set CHIMERA_GOLDEN_RECORD=1, run `dotnet test --filter FullyQualifiedName~EnergyRegen`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit.
+1 DCD6E59F
+2 A16185DA
+3 932F0631
+4 CF94F548
+5 837583BB
+6 5F6A9E3E
+7 94D04745
+8 8B68DDB4
+9 B2FF9F87
+10 174F8F22
+11 1AA381F9
+12 06D23E20
+13 4742CA13
+14 3D10AC56
+15 2F23E27D
+16 48AF1B9C
+17 854875EF
+18 BF93A48A
+19 86858681
+20 1C83CD78
+21 26EE034B
+22 C91BFAAE
+23 3E655595
+24 97FF1704
+25 9DA1F677
+26 E05350F2
+27 AB402429
+28 6F8342B0
+29 44F6A243
+30 56D01BA6
+31 D7535B2F
+32 431A2A78
+33 F77AAB89
+34 D56B9C22
+35 A1DCDE7B
+36 295E3394
+37 A8B3CA25
+38 C7D7ADCE
+39 BB68DA37
+40 D25EB940

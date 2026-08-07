@@ -305,7 +305,14 @@ development_status:
   #   OnboardingPanel exposes 2 of 6 conditions) re-filed as DW-880 rather than dropped.
   15-10-scenario-settings-panel-new-scenario-empty-canvas-flow-dw-126-dw-127: done
   15-11-ability-targeting-increments-ground-target-cast-ally-heal-other: done
-  15-12-energy-stack-mechanics: backlog
+  # 15-12 DONE 2026-08-07 via /bmad-dev-auto (spec-15-12-energy-stack-mechanics.md). Closed DW-264
+  #   (StackRule.StackIndependent per-stack expiry), DW-265 (flat regen_rate + EnergyRegenSystem behind a
+  #   RegenPerTick seam for 15.21; regen==0 no-op so SimChecksum stayed 24, NO existing golden moved),
+  #   DW-272 behavior (authored PeriodicStackMode None/Multiply/Repeat + EffectCaps.MaxPeriodicStackScale
+  #   cap; default None byte-for-byte), and DW-503 (Warnings channel surfaced in the ability editor).
+  #   CanonicalModelHash 14→15 (hero-start-state re-recorded), RulesetHash 2→3, SaveGameFile FormatVersion
+  #   4→5, new energy-regen-scenario golden. In-engine gate PASS. Tier-1 6275/1/0. followup_review: true.
+  15-12-energy-stack-mechanics: done
   15-13-effect-vocabulary-completion-teleport-presentation-leaves: backlog
   # 15-14..15-20 were added 2026-07-30 from the 20260730-122934-d7ae partition. 15-16..15-20 RETIRED
   #   2026-08-06 as sweep containers; 15-14 RE-SCOPED to DW-200 alone (its five hardening bundles

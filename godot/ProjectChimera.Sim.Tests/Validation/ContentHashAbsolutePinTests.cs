@@ -49,12 +49,16 @@ namespace ProjectChimera.Sim.Tests.Validation
             PlayerSlots = new[] { new ScenarioPlayerSlot { Slot = 0, StartOre = 200f, StartCrystal = 50f, BaseX = -30f, BaseZ = 0f } },
         };
 
-        /// <summary>The exact value <see cref="FixedContentHash"/> folds to on ContentHash AlgoVersion 1.</summary>
-        private const ulong ExpectedContentHash = 0x2B522E2872CCAB29UL;
+        /// <summary>The exact value <see cref="FixedContentHash"/> folds to on ContentHash AlgoVersion 1. Re-pinned for
+        /// DW-272 / Story 15.12: FoldUnitCommon now folds the new UnitDefinition.RegenRate stat (default 0 ⇒ a MixInt(0)
+        /// after MaxEnergy), a deliberate fold-layout change that moves every unit/building's content hash.</summary>
+        private const ulong ExpectedContentHash = 0x74227B59C03CEDE9UL;
 
-        /// <summary>The exact value CanonicalModelHash folds <see cref="FixedModel"/> to (AlgoVersion 14). A behavior-
-        /// preserving refactor (the 9.16 effect-walk extract) must NOT move this.</summary>
-        private const ulong ExpectedCanonicalModelHash = 0x8FAEF27483671B3EUL;
+        /// <summary>The exact value CanonicalModelHash folds <see cref="FixedModel"/> to (AlgoVersion 15). Re-pinned for
+        /// DW-272 / Story 15.12's AlgoVersion 14→15 bump (the new Modifier.PeriodicStacking fold, mixed after the leading
+        /// AlgoVersion); the fixture carries no modifier, so only the AlgoVersion mix moved this. A behavior-preserving
+        /// refactor must NOT move it again without a further deliberate bump.</summary>
+        private const ulong ExpectedCanonicalModelHash = 0xF3108869386B7199UL;
 
         [Fact]
         public void ContentHash_FixedFixture_PinsExactValue()

@@ -101,6 +101,47 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Contains("effect.modifier.max_stacks", r.Error!);
         }
 
+        // ── DW-264 / Story 15.12: StackIndependent also enters the multiply-contribution branch, so the same bounds apply ──
+
+        [Theory]
+        [InlineData("max_health_delta")]
+        [InlineData("attack_damage_delta")]
+        [InlineData("move_speed_delta")]
+        [InlineData("armor_delta")]
+        public void StackIndependent_StackedDeltaOverTheBound_IsRejected_OnEveryStatField(string field)
+        {
+            // Each StackIndependent stack is its own slot re-adding the delta, so N independent slots sum to N × delta —
+            // the same accumulator-wrap exposure as grouped Stack. |delta| × max_stacks past the bound must reject.
+            Fixed delta = Fixed.FromRaw(Modifier.MaxStatDeltaTotalRaw / 8 + 1);
+            AbilityValidationResult r = V.Validate(Def(new ApplyModifierEffect(
+                Mod(StackRule.StackIndependent, maxStacks: 8, delta, field))));
+
+            Assert.False(r.Ok);
+            Assert.Contains($"effect.modifier.{field}", r.Error!);
+            Assert.Contains("MaxStatDeltaTotalRaw", r.Error!);
+        }
+
+        [Fact]
+        public void StackIndependent_WithNonPositiveMaxStacks_IsRejected()
+        {
+            // A `stacking: StackIndependent` modifier that can hold no stack is inert — rejected like the Stack row.
+            AbilityValidationResult r = V.Validate(Def(new ApplyModifierEffect(
+                Mod(StackRule.StackIndependent, maxStacks: 0, Fixed.FromInt(3)))));
+
+            Assert.False(r.Ok);
+            Assert.Contains("effect.modifier.max_stacks", r.Error!);
+        }
+
+        [Fact]
+        public void StackIndependent_StackedDeltaExactlyAtTheBound_IsAccepted()
+        {
+            // Boundary teeth: 5 stacks × (bound/5) lands exactly on the ceiling and must PASS (an off-by-one that
+            // rejected the bound itself would be a silent content-breaking change), mirroring the Stack row.
+            Fixed delta = Fixed.FromRaw(Modifier.MaxStatDeltaTotalRaw / 5);
+            Assert.True(V.Validate(Def(new ApplyModifierEffect(
+                Mod(StackRule.StackIndependent, maxStacks: 5, delta)))).Ok);
+        }
+
         [Fact]
         public void MaxStacksBeyondTheFixedRepresentableLimit_IsRejected()
         {

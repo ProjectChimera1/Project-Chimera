@@ -165,6 +165,10 @@ namespace ProjectChimera.Core.Definitions
             WriteEnum(writer, "status", m.Status, options);
             WriteOptionalChild(writer, "period_effect", m.PeriodEffect, options);
             writer.WriteNumber("period_ticks", m.PeriodTicks);
+            // DW-272 / Story 15.12: OMIT-WHEN-None (the require_tag/lifelong discipline) so every pre-15.12 modifier
+            // round-trips byte-identically (Read treats a missing periodic_stack_mode as None). Emitted as the enum NAME.
+            if (m.PeriodicStacking != PeriodicStackMode.None)
+                WriteEnum(writer, "periodic_stack_mode", m.PeriodicStacking, options);
             writer.WriteEndObject();
         }
 
@@ -297,7 +301,7 @@ namespace ProjectChimera.Core.Definitions
             RejectUnknownProperties(el, path,
                 "id", "duration_ticks", "stacking", "max_stacks",
                 "max_health_delta", "attack_damage_delta", "move_speed_delta", "armor_delta",
-                "status", "period_effect", "period_ticks");
+                "status", "period_effect", "period_ticks", "periodic_stack_mode");
 
             int id                 = ReadInt(el, "id", path, 0);
             int durationTicks      = ReadInt(el, "duration_ticks", path, 0);   // <0 = permanent, 0 = ONE TICK (DW-270; AbilityValidator warns)
@@ -312,10 +316,13 @@ namespace ProjectChimera.Core.Definitions
             // parse-time bound; ApplyModifier is a structural leaf so this is for stack-safety, not EffectBounds depth).
             EffectNode? periodEffect = ReadOptionalChild(el, "period_effect", options, depth + 1, $"{path}.period_effect");
             int periodTicks        = ReadInt(el, "period_ticks", path, 0);
+            // DW-272 / Story 15.12: name-based enum, missing → None (back-compat); an unknown token is rejected
+            // fail-closed by the enum converter, exactly like `stacking`/`status`.
+            PeriodicStackMode periodicStacking = ReadEnum<PeriodicStackMode>(el, "periodic_stack_mode", path, options, required: false, fallback: PeriodicStackMode.None);
 
             return new Modifier(id, durationTicks, stacking, maxStacks,
                                 maxHealthDelta, attackDamageDelta, moveSpeedDelta,
-                                status, periodEffect, periodTicks, armorDelta);
+                                status, periodEffect, periodTicks, armorDelta, periodicStacking);
         }
 
         // ── Field readers (each wraps a value-converter error with the located field path) ──

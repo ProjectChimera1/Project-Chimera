@@ -46,7 +46,12 @@ namespace ProjectChimera.Effects
             var dc = new DamageContext(world, t, world.ArmorTypeOf[t], ctx.CasterFaction,
                                        ctx.DamageTable, ctx.Events, ctx.Stats, ctx.Deaths,
                                        attackerId: ctx.CasterId);
-            DamageResolver.Apply(in dc, Amount, Type);
+            // DW-272 / Story 15.12: scale the BASE damage (pre-matrix) by PulseScale — > 1 only for a Multiply stacked
+            // periodic pulse (one big hit, armor subtracted once, vs. Repeat's N smaller hits). Guard the identity path
+            // so every non-period cast passes its plain base (Fixed.One × x == x exactly) with no new multiply/overflow;
+            // the type/armor matrix still applies to the scaled base inside the resolver.
+            Fixed amount = ctx.PulseScale.Raw == Fixed.One.Raw ? Amount : Amount * ctx.PulseScale;
+            DamageResolver.Apply(in dc, amount, Type);
         }
     }
 }

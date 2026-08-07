@@ -43,6 +43,7 @@ namespace ProjectChimera.CreationSuite
         private static readonly Color HintText   = new(0.55f, 0.55f, 0.6f);
         private static readonly Color OkGreen    = new(0.4f, 0.8f, 0.45f);
         private static readonly Color ErrRed     = new(0.92f, 0.4f, 0.4f);
+        private static readonly Color WarnAmber  = new(0.95f, 0.8f, 0.45f); // DW-503 — non-fatal AbilityValidationResult.Warnings
 
         // ── Deps (create-only editor; scenario is accepted for phase-signature parity, unused today) ──
         private GameState?      _gameState;
@@ -101,6 +102,10 @@ namespace ProjectChimera.CreationSuite
         // ── Status + list ──
         private Label         _statusLabel = null!;
         private VBoxContainer _listBox     = null!;
+        // DW-503 — the non-fatal warnings from the most recent Validate/Load, carried to the Save success line (which is
+        // written by a code path that no longer holds the AbilityValidationResult). Empty ⇒ no warnings to surface.
+        private System.Collections.Generic.IReadOnlyList<(string FieldPath, string Message)> _pendingWarnings
+            = System.Array.Empty<(string, string)>();
 
         // ── Authoring-only serialize options: the canonical converters + human-readable indentation. ──
         // Parse/validate ALWAYS goes through ContentJson.Options/AbilityLoader; only the on-disk + preview text is
@@ -678,7 +683,8 @@ namespace ProjectChimera.CreationSuite
             if (!r.Ok) { ShowError(r.Error); return; }   // do NOT clobber the model on a bad edit
             ReflectModelIntoForm(r.Value.Value);          // seeds header + Simple form + the structured tree (Story 2.5b, Task 2.2)
             _paneDirty = false;                            // the pane now matches the applied model
-            ShowValid("Valid — applied to the form.");
+            // DW-503: surface any non-fatal authoring warnings (e.g. an inert periodic_stack_mode) in the status line.
+            ShowValidWithWarnings("Valid — applied to the form.", r.Warnings);
         }
 
         /// <summary>Reflect a parsed/validated ability back into the header fields, and into the Simple-mode preset
@@ -721,6 +727,7 @@ namespace ProjectChimera.CreationSuite
                 def = BuildSimpleModel();
                 AbilityValidationResult r = new AbilityValidator().Validate(def);
                 if (!r.Ok) { ShowError(r.Error); return; }   // AC3: blocked, located error shown, NO file written
+                _pendingWarnings = r.Warnings;               // DW-503: carry non-fatal warnings to the Save success line
             }
             else
             {
@@ -765,7 +772,8 @@ namespace ProjectChimera.CreationSuite
                 File.WriteAllText(tmp, json);   // atomic: write to temp, then replace
                 File.Move(tmp, abs, overwrite: true);
                 GD.Print($"[AbilityEditor] Saved {abs}");
-                ShowValid($"Saved {Path.GetFileName(abs)} — available in the next match.");
+                // DW-503: report the save AND any non-fatal warnings captured at validate time (amber, non-blocking).
+                ShowValidWithWarnings($"Saved {Path.GetFileName(abs)} — available in the next match.", _pendingWarnings);
                 if (reloadAfter) GetTree().ReloadCurrentScene();
             }
             catch (Exception ex)
@@ -843,6 +851,27 @@ namespace ProjectChimera.CreationSuite
             _statusLabel.Visible = true;
             _statusLabel.Text = message;
             _statusLabel.AddThemeColorOverride("font_color", OkGreen);
+        }
+
+        /// <summary>
+        /// DW-503 / Story 15.12 — render a validation PASS, appending any non-fatal
+        /// <see cref="AbilityValidationResult.Warnings"/> in amber (the Warnings channel was built + Tier-1-tested on
+        /// the sim side but no authoring surface displayed it, so authoring footguns shipped silently). No warnings ⇒
+        /// the plain green OK. The located warning text is shown verbatim (it already carries the
+        /// <c>ability '&lt;id&gt;'.&lt;path&gt;: &lt;reason&gt;</c> shape).
+        /// </summary>
+        private void ShowValidWithWarnings(string okMessage,
+            System.Collections.Generic.IReadOnlyList<(string FieldPath, string Message)> warnings)
+        {
+            if (warnings == null || warnings.Count == 0) { ShowValid(okMessage); return; }
+
+            var sb = new System.Text.StringBuilder(okMessage);
+            sb.Append(warnings.Count == 1 ? "  (1 warning)" : $"  ({warnings.Count} warnings)");
+            foreach (var (_, message) in warnings) sb.Append('\n').Append("⚠ ").Append(message);
+
+            _statusLabel.Visible = true;
+            _statusLabel.Text = sb.ToString();
+            _statusLabel.AddThemeColorOverride("font_color", WarnAmber);
         }
 
         private void ClearStatus()

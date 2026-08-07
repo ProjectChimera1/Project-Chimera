@@ -41,9 +41,9 @@ namespace ProjectChimera.Sim.Tests.Validation
             int id = 1, int durationTicks = 30, StackRule stacking = StackRule.Refresh, int maxStacks = 1,
             Fixed maxHealthDelta = default, Fixed attackDamageDelta = default, Fixed moveSpeedDelta = default,
             StatusFlags status = StatusFlags.None, EffectNode? periodEffect = null, int periodTicks = 0,
-            Fixed armorDelta = default)
+            Fixed armorDelta = default, PeriodicStackMode periodicStacking = PeriodicStackMode.None)
             => new Modifier(id, durationTicks, stacking, maxStacks, maxHealthDelta, attackDamageDelta,
-                            moveSpeedDelta, status, periodEffect, periodTicks, armorDelta);
+                            moveSpeedDelta, status, periodEffect, periodTicks, armorDelta, periodicStacking);
 
         // ── DirectHpDelta: RequireTag (Delta is already pinned in the declaration-fold suite) ──
         [Fact] public void DirectHpDelta_RequireTag_Folds() =>
@@ -101,6 +101,10 @@ namespace ProjectChimera.Sim.Tests.Validation
         [Fact] public void Modifier_RequireTag_Folds() =>
             AssertFolded(new ApplyModifierEffect(Mod(), UnitTag.None),
                          new ApplyModifierEffect(Mod(), UnitTag.Organic));
+        // DW-272 / Story 15.12 — the new PeriodicStacking field folds (CanonicalModelHash AlgoVersion 14→15).
+        [Fact] public void Modifier_PeriodicStacking_Folds() =>
+            AssertFolded(new ApplyModifierEffect(Mod(periodicStacking: PeriodicStackMode.None)),
+                         new ApplyModifierEffect(Mod(periodicStacking: PeriodicStackMode.Multiply)));
 
         // ── Sequence: child count + child content ──
         [Fact] public void Sequence_ChildCount_Folds() =>

@@ -174,6 +174,7 @@ namespace ProjectChimera.CreationSuite
                 if (!r.Ok) { ShowError(r.Error); return null; }
                 ReflectModelIntoForm(r.Value.Value);   // fold manual edits back into header + tree (Review P1: the shared header must reconverge too, not just the tree)
                 _paneDirty = false;
+                _pendingWarnings = r.Warnings;         // DW-503: carry non-fatal warnings to the Save success line
                 return r.Value.Value;
             }
 
@@ -183,6 +184,7 @@ namespace ProjectChimera.CreationSuite
 
             AbilityValidationResult vr = new AbilityValidator().Validate(built);
             if (!vr.Ok) { ShowError(vr.Error); return null; }
+            _pendingWarnings = vr.Warnings;            // DW-503: carry non-fatal warnings to the Save success line
             return vr.Value.Value;
         }
 
@@ -356,6 +358,10 @@ namespace ProjectChimera.CreationSuite
             AddFlagChecks(card, "Status", DraftVocabulary.Statuses, () => m.Status, v => m.Status = v);
             AddSpinRow(card, "Period (ticks)", 0, 99999, 1, m.PeriodTicks, v => m.PeriodTicks = (int)v);
             RenderChildSlot(card, "Period effect", ctx, () => m.Period, n => m.Period = n);
+            // DW-272 / Story 15.12 — how a STACKED periodic pulse scales with stacks (None/Multiply/Repeat). The
+            // Stacking dropdown above auto-includes StackIndependent because both are built from DraftVocabulary.
+            AddDropdownRow(card, "Periodic stacking", PeriodicStackModeItems(), (int)m.PeriodicStacking,
+                           id => m.PeriodicStacking = (PeriodicStackMode)id);
             // Story 2.6 (Task 7.3) — surface the 2.5b deferred no-op trap (a period effect that never fires).
             if (m.Period is not null && m.PeriodTicks == 0)
                 AddDimNote(card, "Period (ticks) = 0 with a period effect — the period effect never fires.");
@@ -428,6 +434,8 @@ namespace ProjectChimera.CreationSuite
         // damage_type: the 5 real types — NEVER COUNT (AC5-COMPOSER).
         private static (string Label, int Id)[] DamageTypeItems() => EnumItems(DraftVocabulary.DamageTypes, t => (int)t);
         private static (string Label, int Id)[] StackRuleItems()  => EnumItems(DraftVocabulary.StackRules, s => (int)s);
+        // DW-272 / Story 15.12 — the closed periodic-stacking set (None/Multiply/Repeat), built from the vocabulary.
+        private static (string Label, int Id)[] PeriodicStackModeItems() => EnumItems(DraftVocabulary.PeriodicStackModes, m => (int)m);
         // (Story 2.6, Task 8) filter + status are now authored via AddFlagChecks ([Flags] multi-select checkboxes), not
         // single-select dropdowns — so the former FilterItems/StatusItems builders + the IncludingCurrent loaded-combo
         // dropdown workaround (2.5b review P3) are removed: checkboxes display + round-trip any combination natively.

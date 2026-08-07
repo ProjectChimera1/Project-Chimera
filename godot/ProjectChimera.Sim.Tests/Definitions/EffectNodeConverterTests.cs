@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using ProjectChimera.Combat;
+using ProjectChimera.Core;             // Fixed
 using ProjectChimera.Core.Definitions;
 using ProjectChimera.Effects;
 using Xunit;
@@ -96,6 +97,34 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Equal(StackRule.Stack, a.Modifier.Stacking);
             Assert.Equal(3, a.Modifier.MaxStacks);
             Assert.Equal(5 * 65536, a.Modifier.AttackDamageDelta.Raw);
+            Assert.Equal(PeriodicStackMode.None, a.Modifier.PeriodicStacking); // absent ⇒ None (back-compat default)
+        }
+
+        // DW-264 / DW-272 / Story 15.12 — the new stacking members round-trip by NAME.
+        [Fact]
+        public void ApplyModifier_ReadsStackIndependent_AndPeriodicStackMode_ByName()
+        {
+            var a = Assert.IsType<ApplyModifierEffect>(Compile(
+                """{ "kind": "apply_modifier", "modifier": { "id": 7, "duration_ticks": 90, "stacking": "StackIndependent", "max_stacks": 3, "period_effect": { "kind": "heal", "amount": 1 }, "period_ticks": 10, "periodic_stack_mode": "Multiply" } }"""));
+            Assert.Equal(StackRule.StackIndependent, a.Modifier.Stacking);
+            Assert.Equal(PeriodicStackMode.Multiply, a.Modifier.PeriodicStacking);
+        }
+
+        [Fact]
+        public void ApplyModifier_PeriodicStackMode_None_OmitsOnWrite_ButMultiplyRoundTrips()
+        {
+            // OMIT-WHEN-None (the lifelong/require_tag discipline): a default-None modifier serializes WITHOUT the key,
+            // so every pre-15.12 ability is byte-identical on round-trip.
+            var none = new ApplyModifierEffect(new Modifier(7, 90, StackRule.Stack, 3, Fixed.Zero, Fixed.FromInt(5),
+                Fixed.Zero, StatusFlags.None, null, 0, Fixed.Zero, PeriodicStackMode.None));
+            Assert.DoesNotContain("periodic_stack_mode", System.Text.Json.JsonSerializer.Serialize<EffectNode>(none, ContentJson.Options));
+
+            var mul = new ApplyModifierEffect(new Modifier(7, 90, StackRule.Stack, 3, Fixed.Zero, Fixed.FromInt(5),
+                Fixed.Zero, StatusFlags.None, new HealEffect(Fixed.FromInt(1)), 10, Fixed.Zero, PeriodicStackMode.Multiply));
+            string json = System.Text.Json.JsonSerializer.Serialize<EffectNode>(mul, ContentJson.Options);
+            Assert.Contains("periodic_stack_mode", json);
+            var back = (ApplyModifierEffect)System.Text.Json.JsonSerializer.Deserialize<EffectNode>(json, ContentJson.Options)!;
+            Assert.Equal(PeriodicStackMode.Multiply, back.Modifier.PeriodicStacking);
         }
 
         [Fact]

@@ -149,8 +149,13 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// folds byte-identical apart from this AlgoVersion bump — the ONE named re-baseline: hero-start-state golden
         /// re-recorded (StartStateHash value moves via the canonical seed; StartStateHash.AlgoVersion stays 2).
         /// SimChecksum stays 21 and the 24 per-tick world goldens are UNTOUCHED (objective state rides the existing
-        /// v16 DslVarTable fold; a scenario with no authored objectives declares no reserved var).</summary>
-        private const int ExpectedCanonicalModelHashAlgoVersion = 14;
+        /// v16 DslVarTable fold; a scenario with no authored objectives declares no reserved var).
+        /// v15 (DW-272 / Story 15.12): CanonicalFold.MixModifier now folds the new Modifier.PeriodicStacking field (by
+        /// name, unconditionally). No shipped scenario embeds an apply_modifier run_effect, so every shipped model folds
+        /// byte-identical apart from this AlgoVersion bump — the ONE named re-baseline: hero-start-state golden
+        /// re-recorded (StartStateHash.AlgoVersion stays 2). SimChecksum stays 24 and the per-tick world goldens are
+        /// UNTOUCHED (regen_rate defaults to 0 ⇒ the new EnergyRegenSystem is a no-op write).</summary>
+        private const int ExpectedCanonicalModelHashAlgoVersion = 15;
 
         /// <summary>Load-time canonical START-STATE hash algorithm version (Story 3.2, AC3) — a NEW, distinct FNV-64
         /// over the full init state = the <see cref="CanonicalModelHash"/> content seed PLUS the HeroStore rows.
@@ -173,10 +178,13 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// <summary>Story 9.4 — the net-new ruleset-fingerprint hash over the <see cref="EffectCaps"/> structural
         /// caps, folded into <see cref="MatchAgreementHash"/>. v1 = initial (AlgoVersion + every cap in file order).
         /// DW-534 bumped v1→v2: <see cref="EffectCaps.MaxSearchRadius"/> — the authored SearchArea radius ceiling —
-        /// joins the fold as an eleventh cap. Handshake-only: no sim-array fold, so no golden moved.
+        /// joins the fold as an eleventh cap. DW-272 / Story 15.12 bumped v2→v3:
+        /// <see cref="EffectCaps.MaxPeriodicStackScale"/> — the stacked-periodic-pulse scaling ceiling — joins as a
+        /// twelfth cap. Handshake-only: no sim-array fold, so no golden moved, and no PROTOCOL_VERSION bump
+        /// (RulesetHash is precisely the mechanism that makes a cap change handshake-rejectable WITHOUT a protocol bump).
         /// A bump changes the value old clients compute for the start-state handshake — update this pin in the same
         /// commit.</summary>
-        private const int ExpectedRulesetHashAlgoVersion = 2;
+        private const int ExpectedRulesetHashAlgoVersion = 3;
 
         /// <summary>Story 9.4 — the single 64-bit start-state-agreement hash on the widened Ready packet. v1 =
         /// initial (AlgoVersion + RulesetHash + initial-delay + faction-count + roster + StartStateHash). Story 9.14

@@ -22,15 +22,18 @@ namespace ProjectChimera.Core.Definitions
         /// <para>v1 = initial (Story 9.4): AlgoVersion then the ten structural caps in file order.
         /// v2 = DW-534: <see cref="EffectCaps.MaxSearchRadius"/> joins the fold as an eleventh cap (the authored
         /// SearchArea radius ceiling), so a build that bounds the radius and one that does not are now
-        /// handshake-incompatible rather than silently running different work per cast.</para></summary>
-        public const int AlgoVersion = 2;
+        /// handshake-incompatible rather than silently running different work per cast.
+        /// v3 = DW-272 / Story 15.12: <see cref="EffectCaps.MaxPeriodicStackScale"/> joins the fold as a twelfth cap
+        /// (the stacked-periodic-pulse scaling ceiling), so two builds that disagree on how far a stacked DoT/HoT
+        /// pulse may scale are handshake-incompatible rather than desyncing on the first stacked periodic cast.</para></summary>
+        public const int AlgoVersion = 3;
 
         private const ulong Offset = 14695981039346656037UL; // FNV-64 offset basis (same primitive as StartStateHash)
         private const ulong Prime  = 1099511628211UL;        // FNV-64 prime
 
         /// <summary>
         /// Fold <see cref="AlgoVersion"/> then every <see cref="EffectCaps"/> cap in FILE ORDER
-        /// (<see cref="EffectCaps.MaxEffectDepth"/> … <see cref="EffectCaps.MaxSearchRadius"/>). Never returns 0
+        /// (<see cref="EffectCaps.MaxEffectDepth"/> … <see cref="EffectCaps.MaxPeriodicStackScale"/>). Never returns 0
         /// (sentinel), so a valid ruleset never collides with the fail-open "no hash" value.
         /// </summary>
         public static ulong Compute()
@@ -51,6 +54,7 @@ namespace ProjectChimera.Core.Definitions
             h = MixInt(h, EffectCaps.MaxSearchAreaDepth);
             h = MixInt(h, EffectCaps.MaxTotalEffectNodes);
             h = MixInt(h, EffectCaps.MaxSearchRadius); // DW-534 (AlgoVersion 2)
+            h = MixInt(h, EffectCaps.MaxPeriodicStackScale); // DW-272 / Story 15.12 (AlgoVersion 3)
 
             return h == 0UL ? 1UL : h;
         }

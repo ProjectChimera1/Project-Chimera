@@ -316,6 +316,19 @@ namespace ProjectChimera.Core.Definitions
         public float MaxEnergy { get; set; } = 0f;
 
         /// <summary>
+        /// Flat ability-resource (energy) REGEN rate per SIM TICK for this unit type (DW-265; Story 15.12). Authored
+        /// float, quantized once to <see cref="ProjectChimera.Core.Fixed"/> in
+        /// <see cref="ProjectChimera.Core.EntityWorld.ApplyUnitDefinition"/> (the single float→Fixed boundary, like
+        /// <see cref="MaxEnergy"/> and the other stats) into the per-entity <c>EntityWorld.RegenRate</c> SoA. 0 (the
+        /// default) = NO regen — byte-for-byte the pre-15.12 "start full, never recover" behavior, so no shipped unit
+        /// changes meaning and no golden moves. The per-tick amount is returned by the ONE regen seam
+        /// (<c>EnergyRegenSystem.RegenPerTick</c>, <c>=&gt; RegenRate[id]</c> today) that Story 15.21's attribute
+        /// system later extends. At 30 ticks/sec a <c>regen_rate</c> of 2 restores 60 energy per second.
+        /// </summary>
+        [JsonPropertyName("regen_rate")]
+        public float RegenRate { get; set; } = 0f;
+
+        /// <summary>
         /// Optional per-unit combat-feedback override (Story 2.7, FR-12a). Presentation-domain — EXCLUDED from
         /// <see cref="ProjectChimera.Core.SimChecksum"/> and the canonical hash; the sim only carries the reference
         /// (copied to <c>EntityWorld.FeedbackProfile</c> in <see cref="ProjectChimera.Core.EntityWorld.ApplyUnitDefinition"/>),

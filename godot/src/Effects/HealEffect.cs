@@ -28,7 +28,10 @@ namespace ProjectChimera.Effects
 
             // Clamp into the valid HP band [0, MaxHealth] — no overheal, and a (mis-authored) negative amount
             // floors at 0 instead of underflowing to negative HP (matches DirectHpDeltaEffect's both-ends clamp).
-            world.Health[t] = Fixed.Clamp(world.Health[t] + Amount, Fixed.Zero, world.EffectiveMaxHealth[t]);
+            // DW-272 / Story 15.12: scale by PulseScale, guarding the identity path so every non-period path keeps its
+            // plain value and adds no Fixed-multiply (Fixed.One × x == x exactly).
+            Fixed amount = ctx.PulseScale.Raw == Fixed.One.Raw ? Amount : Amount * ctx.PulseScale;
+            world.Health[t] = Fixed.Clamp(world.Health[t] + amount, Fixed.Zero, world.EffectiveMaxHealth[t]);
         }
     }
 }

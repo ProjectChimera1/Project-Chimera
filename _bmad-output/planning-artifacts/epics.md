@@ -4308,7 +4308,7 @@ _Generated from the 2026-07-30 partition. `bmad-loop sweep` executes **by bundle
 | **15.8** | `card-panel-edit-hardening` · `creation-suite-panel-conventions` · `customui-panel-and-gate` · `elevated-terrain-editing` · `entity-placer-scenario-sync` · `entity-placer-undo-and-fidelity` · `hud-viewport-resize` · `item-editor-registry-diagnostics` · `minimap-fog-and-faction-clamp` · `onboarding-and-scenario-origination` · `shared-overlay-base` · `start-position-slot-handling` | 36 | ◐ 21/39 |
 | **15.9** | `ability-cast-path-hardening` · `ability-editor-cleanup` · `ai-scoring-supply-awareness` · `command-card-producer-surfaces` · `custom-building-render-and-footprint` · `determinism-golden-coverage` · `dsl-graph-editor-node-inspector` · `hero-store-and-xp` · `win-condition-elimination-and-identity` | 26 | ◐ 22/30 |
 | **15.11** | `ability-targeting-increments` | 2 | **✅ 1/1** |
-| **15.12** | `energy-and-stack-mechanics` | 4 | ☐ 0/2 |
+| **15.12** | `energy-and-stack-mechanics` | 4 | **✅ 4/4** (DW-264/265/272-behavior/503, done 2026-08-07) |
 | **15.13** | `effect-vocabulary-completion` | 1 | — |
 | **15.14** | `dedicated-server-test-coverage` · `dropcontroller-and-delay-recovery` · `per-peer-misbehavior-handling` · `post-drop-checksum-honesty` · `server-rtt-and-reset-hygiene` | 19 | ◐ 15/20 |
 | **15.15** | `lobbyui-and-handshake-coverage` · `mergedtick-scratch-pool` · `mp-godot-free-test-extraction` · `nakama-ts-handler-hardening` | 10 | **✅ 11/11** |

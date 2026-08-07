@@ -55,6 +55,7 @@ namespace ProjectChimera.Sim.Tests.Validation
             h = Mix(h, EffectCaps.MaxSearchAreaDepth);
             h = Mix(h, EffectCaps.MaxTotalEffectNodes);
             h = Mix(h, EffectCaps.MaxSearchRadius);
+            h = Mix(h, EffectCaps.MaxPeriodicStackScale);
             ulong expected = h == 0UL ? 1UL : h;
 
             Assert.Equal(expected, RulesetHash.Compute());
@@ -78,6 +79,7 @@ namespace ProjectChimera.Sim.Tests.Validation
             h = Mix(h, EffectCaps.MaxSearchAreaDepth);
             h = Mix(h, EffectCaps.MaxTotalEffectNodes);
             h = Mix(h, EffectCaps.MaxSearchRadius);
+            h = Mix(h, EffectCaps.MaxPeriodicStackScale);
             ulong bumped = h == 0UL ? 1UL : h;
 
             Assert.NotEqual(bumped, RulesetHash.Compute());
@@ -99,7 +101,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         [Fact]
         public void EveryDeclaredEffectCap_IsFoldedIntoTheHash()
         {
-            const int FoldedCapCount = 11; // MaxEffectDepth … MaxSearchRadius, as folded by RulesetHash.Compute
+            const int FoldedCapCount = 12; // MaxEffectDepth … MaxPeriodicStackScale, as folded by RulesetHash.Compute
 
             string[] declared = typeof(EffectCaps)
                 .GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)
@@ -118,7 +120,7 @@ namespace ProjectChimera.Sim.Tests.Validation
                     nameof(EffectCaps.MaxPersistentPeriods), nameof(EffectCaps.MaxSearchAreaDepth),
                     nameof(EffectCaps.MaxSearchTargets), nameof(EffectCaps.MaxSequenceChildren),
                     nameof(EffectCaps.MaxSpawnCount), nameof(EffectCaps.MaxTotalEffectNodes),
-                    nameof(EffectCaps.MaxSearchRadius),
+                    nameof(EffectCaps.MaxSearchRadius), nameof(EffectCaps.MaxPeriodicStackScale),
                 }.OrderBy(n => n, System.StringComparer.Ordinal).ToArray(),
                 declared);
         }

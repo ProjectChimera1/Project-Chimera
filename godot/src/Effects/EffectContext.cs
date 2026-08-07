@@ -46,6 +46,16 @@ namespace ProjectChimera.Effects
         /// <summary>The caster's faction (the killer for <see cref="DamageEffect"/>, the allegiance anchor for filters).</summary>
         public readonly Faction CasterFaction;
 
+        /// <summary>
+        /// DW-272 / Story 15.12 — a MULTIPLIER on the additive magnitude of the direct-HP leaves
+        /// (<see cref="DirectHpDeltaEffect"/> / <see cref="HealEffect"/> / <see cref="DamageEffect"/>'s base damage,
+        /// pre-matrix). Default <see cref="Fixed.One"/>, so EVERY non-period path is byte-identical (magnitude × 1). It
+        /// is set above 1 only by <c>ModifierStore</c> when replaying a <see cref="PeriodicStackMode.Multiply"/> stacked
+        /// periodic pulse (<c>effectiveScale = min(stackCount, EffectCaps.MaxPeriodicStackScale)</c>): the pulse fires
+        /// once at magnitude × scale. A transient value carried by the context copy, never sim state.
+        /// </summary>
+        public readonly Fixed PulseScale;
+
         /// <summary>Story 9.14 — the sim-owned alliance mask, so a <see cref="SearchAreaEffect"/>'s Ally/Enemy filter
         /// is TEAM-aware (an allied faction matches Ally and is excluded from Enemy). Optional (a reference, never
         /// copied by value): null ⇒ allegiance falls back to strict faction equality (byte-identical to pre-9.14 / FFA,
@@ -80,13 +90,19 @@ namespace ProjectChimera.Effects
         /// callers never pass a separate generator. <paramref name="primaryTargetId"/> defaults to the caster for
         /// self-targeted graphs. <paramref name="modifierStore"/> is null for graphs that install no modifier.
         /// </summary>
+        /// <param name="pulseScale">DW-272: the additive-magnitude multiplier for a stacked periodic Multiply pulse.
+        /// <c>default(Fixed)</c> (the sentinel every non-period caller leaves it at) is normalized to <see cref="Fixed.One"/>,
+        /// so omitting it is byte-identical to the pre-15.12 behavior; the store passes an explicit scale only for a
+        /// Multiply pulse.</param>
         public EffectContext(EntityWorld world, int casterId, int primaryTargetId, Faction casterFaction,
                              DamageTable damageTable, SpatialHash? spatial = null,
                              CombatEventQueue? events = null, MatchStats? stats = null,
                              ModifierStore? modifierStore = null, DeathFeed? deaths = null,
                              AllianceStore? alliances = null,
-                             FixedVec3 targetPoint = default, bool hasTargetPoint = false)
-            : this(world, world.Rng, spatial, casterId, primaryTargetId, casterFaction, damageTable, events, stats, modifierStore, deaths, alliances, targetPoint, hasTargetPoint)
+                             FixedVec3 targetPoint = default, bool hasTargetPoint = false,
+                             Fixed pulseScale = default)
+            : this(world, world.Rng, spatial, casterId, primaryTargetId, casterFaction, damageTable, events, stats, modifierStore, deaths, alliances, targetPoint, hasTargetPoint,
+                   pulseScale.Raw == 0 ? Fixed.One : pulseScale) // default(Fixed)==Zero is the "unset" sentinel → One (magnitude × 1 = identity)
         {
         }
 
@@ -94,7 +110,7 @@ namespace ProjectChimera.Effects
         private EffectContext(EntityWorld world, SimRng rng, SpatialHash? spatial, int casterId,
                               int primaryTargetId, Faction casterFaction, DamageTable damageTable,
                               CombatEventQueue? events, MatchStats? stats, ModifierStore? modifierStore, DeathFeed? deaths,
-                              AllianceStore? alliances, FixedVec3 targetPoint, bool hasTargetPoint)
+                              AllianceStore? alliances, FixedVec3 targetPoint, bool hasTargetPoint, Fixed pulseScale)
         {
             World = world;
             Rng = rng;
@@ -110,6 +126,7 @@ namespace ProjectChimera.Effects
             Alliances = alliances;
             TargetPoint = targetPoint;
             HasTargetPoint = hasTargetPoint;
+            PulseScale = pulseScale;
         }
 
         /// <summary>
@@ -121,6 +138,6 @@ namespace ProjectChimera.Effects
         /// original ground point. The ground point governs only the ROOT SearchArea's center.</para>
         /// </summary>
         public EffectContext WithTarget(int targetId) =>
-            new EffectContext(World, Rng, Spatial, CasterId, targetId, CasterFaction, DamageTable, Events, Stats, ModifierStore, Deaths, Alliances, default, false);
+            new EffectContext(World, Rng, Spatial, CasterId, targetId, CasterFaction, DamageTable, Events, Stats, ModifierStore, Deaths, Alliances, default, false, PulseScale);
     }
 }

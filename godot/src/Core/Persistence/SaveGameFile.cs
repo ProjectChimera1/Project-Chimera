@@ -48,8 +48,14 @@ namespace ProjectChimera.Core.Persistence
         /// lanes (the transient ground-cast point), inserted mid-order in the <c>SaveGameState.EA</c> lane enum. A v3
         /// body carries the OLD lane ordering, so WITHOUT this bump it would parse at the same format version and
         /// silently MISALIGN every entity lane after PendingCastTarget. The bump makes a pre-15.11 save fail-closed at
-        /// the header with the accurate "older game version" message, before any lane is read. Same reasoning as v2/v3.</para></summary>
-        public const ushort FormatVersion = 4;
+        /// the header with the accurate "older game version" message, before any lane is read. Same reasoning as v2/v3.</para>
+        /// <para>v5 (Story 15.12, DW-265): the entity section gained the <c>RegenRate</c> lane (flat energy regen),
+        /// inserted mid-order in the <c>SaveGameState.EA</c> lane enum (between <c>MaxEnergy</c> and <c>StatusFlags</c>).
+        /// A v4 body carries the OLD lane ordering, so WITHOUT this bump the positional <c>A(EA.X, n)</c> addressing
+        /// would silently MISALIGN every entity lane from RegenRate onward (RegenRate would read StatusFlags bytes, and
+        /// so on). The bump makes a pre-15.12 save fail-closed at the header with the "older game version" message,
+        /// before any lane is read. Same reasoning as v2/v3/v4.</para></summary>
+        public const ushort FormatVersion = 5;
 
         /// <summary>Max player slots in a persisted launch record — a fail-closed corruption bound on the slot count.</summary>
         public const int MaxSlots = 64;

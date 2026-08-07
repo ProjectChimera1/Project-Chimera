@@ -57,8 +57,13 @@ namespace ProjectChimera.Core.Definitions
             TargetFilter.Air, TargetFilter.Ground, TargetFilter.Structure,
         };
 
-        /// <summary>Authorable stacking rules (the full closed <see cref="StackRule"/> set).</summary>
-        public static readonly StackRule[] StackRules = { StackRule.Refresh, StackRule.Stack, StackRule.Ignore };
+        /// <summary>Authorable stacking rules (the full closed <see cref="StackRule"/> set; DW-264 adds StackIndependent).</summary>
+        public static readonly StackRule[] StackRules =
+            { StackRule.Refresh, StackRule.Stack, StackRule.Ignore, StackRule.StackIndependent };
+
+        /// <summary>Authorable periodic-stacking modes (the full closed <see cref="PeriodicStackMode"/> set; DW-272).</summary>
+        public static readonly PeriodicStackMode[] PeriodicStackModes =
+            { PeriodicStackMode.None, PeriodicStackMode.Multiply, PeriodicStackMode.Repeat };
 
         /// <summary>Authorable status flags (the full closed <see cref="StatusFlags"/> set).</summary>
         public static readonly StatusFlags[] Statuses =
@@ -88,12 +93,13 @@ namespace ProjectChimera.Core.Definitions
         public StatusFlags Status           = StatusFlags.None;
         public DraftNode?  Period;                                 // optional period_effect (DoT/HoT)
         public int         PeriodTicks;
+        public PeriodicStackMode PeriodicStacking = PeriodicStackMode.None; // DW-272 — how a stacked pulse scales
 
         /// <summary>Materialize the immutable runtime <see cref="Modifier"/> (constructor order is load-bearing — verified).</summary>
         public Modifier ToModifier() => new Modifier(
             Id, DurationTicks, Stacking, MaxStacks,
             MaxHealthDelta, AttackDamageDelta, MoveSpeedDelta,
-            Status, Period?.ToEffectNode(), PeriodTicks, ArmorDelta);
+            Status, Period?.ToEffectNode(), PeriodTicks, ArmorDelta, PeriodicStacking);
 
         /// <summary>Build a mutable draft from an existing immutable runtime <see cref="Modifier"/> (parse-in / load path).</summary>
         public static DraftModifier FromModifier(Modifier m) => new DraftModifier
@@ -109,6 +115,7 @@ namespace ProjectChimera.Core.Definitions
             Status            = m.Status,
             Period            = m.PeriodEffect is null ? null : DraftNode.FromEffectNode(m.PeriodEffect),
             PeriodTicks       = m.PeriodTicks,
+            PeriodicStacking  = m.PeriodicStacking,
         };
     }
 

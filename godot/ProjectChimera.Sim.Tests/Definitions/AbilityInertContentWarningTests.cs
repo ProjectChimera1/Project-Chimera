@@ -103,6 +103,62 @@ namespace ProjectChimera.Sim.Tests.Definitions
                 Mod(duration: 90, period: new HealEffect(Fixed.FromInt(1)), periodTicks: 10)))).Warnings);
         }
 
+        // ── DW-272 / Story 15.12: periodic_stack_mode narrows the footgun and adds an inert-mode warning ──
+
+        private static Modifier PeriodicMod(StackRule rule, int maxStacks, PeriodicStackMode mode,
+                                            EffectNode? period, int periodTicks) =>
+            new Modifier(11, 90, rule, maxStacks, Fixed.Zero, Fixed.FromInt(3), Fixed.Zero,
+                         StatusFlags.None, period, periodTicks, Fixed.Zero, mode);
+
+        [Fact]
+        public void StackingPeriodicModifier_WithMultiplyOrRepeat_WarnsAboutNothing_ThePulseScales()
+        {
+            // DW-272: once the author opts into a scaling mode, the "pulse does not scale" footgun no longer applies.
+            var mul = PeriodicMod(StackRule.Stack, 5, PeriodicStackMode.Multiply,
+                                  new DamageEffect(Fixed.FromInt(2), DamageType.Magic), 10);
+            Assert.Empty(V.Validate(Def(new ApplyModifierEffect(mul))).Warnings);
+            var rep = PeriodicMod(StackRule.Stack, 5, PeriodicStackMode.Repeat,
+                                  new DamageEffect(Fixed.FromInt(2), DamageType.Magic), 10);
+            Assert.Empty(V.Validate(Def(new ApplyModifierEffect(rep))).Warnings);
+        }
+
+        [Fact]
+        public void PeriodicMode_OnANonStackingRule_Warns_HasNoEffectHere()
+        {
+            // Refresh never holds more than one instance, so a periodic_stack_mode can scale nothing.
+            var m = PeriodicMod(StackRule.Refresh, 1, PeriodicStackMode.Repeat, new HealEffect(Fixed.FromInt(1)), 10);
+            AssertOneWarning(V.Validate(Def(new ApplyModifierEffect(m))),
+                "effect.modifier.periodic_stack_mode", "no effect here", "does not stack");
+        }
+
+        [Fact]
+        public void PeriodicMode_OnStackIndependent_Warns_HasNoEffectHere()
+        {
+            // Each StackIndependent stack is its OWN single pulse, so the mode is a documented no-op.
+            var m = PeriodicMod(StackRule.StackIndependent, 3, PeriodicStackMode.Multiply, new HealEffect(Fixed.FromInt(1)), 10);
+            AssertOneWarning(V.Validate(Def(new ApplyModifierEffect(m))),
+                "effect.modifier.periodic_stack_mode", "no effect here", "StackIndependent");
+        }
+
+        [Fact]
+        public void PeriodicMode_WithNoLivePeriod_Warns_HasNoEffectHere()
+        {
+            // A scaling mode on a modifier with no period_effect at all — nothing to pulse.
+            var m = PeriodicMod(StackRule.Stack, 3, PeriodicStackMode.Repeat, period: null, periodTicks: 0);
+            AssertOneWarning(V.Validate(Def(new ApplyModifierEffect(m))),
+                "effect.modifier.periodic_stack_mode", "no effect here", "no live period_effect");
+        }
+
+        [Fact]
+        public void PeriodicMode_OnStackWithMaxStacksOne_Warns_HasNoEffectHere()
+        {
+            // The final inert branch: Stack + a live period, but max_stacks=1 so the scale is always min(1, cap)=1 —
+            // the mode can never do anything. The warning interpolates the real max_stacks (never a hardcoded 1).
+            var m = PeriodicMod(StackRule.Stack, 1, PeriodicStackMode.Multiply, new HealEffect(Fixed.FromInt(1)), 10);
+            AssertOneWarning(V.Validate(Def(new ApplyModifierEffect(m))),
+                "effect.modifier.periodic_stack_mode", "no effect here", "max_stacks=1");
+        }
+
         // ── Inert Persistent shapes on a NON-while_alive ability (where nothing gated them) ──
 
         [Fact]

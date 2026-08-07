@@ -239,6 +239,10 @@ namespace ProjectChimera.Core.Definitions
             h = FoldStringArray(h, u.ShopStock);
             h = CanonicalFold.MixInt(h, Fixed.FromFloat(u.ShopRadius).Raw);
             h = CanonicalFold.MixInt(h, Fixed.FromFloat(u.MaxEnergy).Raw);
+            // DW-265 / Story 15.12: regen_rate is a sim-affecting authored stat (it drives EnergyRegenSystem → the
+            // folded Energy pool), so a content-byte mismatch on it must reject at the handshake — folded exactly like
+            // MaxEnergy. Default 0 folds a MixInt(0), so this moves the ContentHash pin (re-recorded in the same commit).
+            h = CanonicalFold.MixInt(h, Fixed.FromFloat(u.RegenRate).Raw);
             return h;
         }
 

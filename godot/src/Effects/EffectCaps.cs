@@ -148,5 +148,20 @@ namespace ProjectChimera.Effects
         /// that makes this a cost ceiling, and the headroom over the shipped ability files.</para>
         /// </summary>
         public const int MaxSearchRadius = 64;
+
+        /// <summary>
+        /// DW-272 / Story 15.12 — the runtime ceiling on how far a STACKED periodic modifier's pulse may scale with its
+        /// stack count. <c>ModifierStore.Advance</c> enforces it at the pulse boundary: the effective scale is
+        /// <c>min(stackCount, MaxPeriodicStackScale)</c>, applied as the repeat COUNT for
+        /// <see cref="ProjectChimera.Effects.PeriodicStackMode.Repeat"/> (that many graph runs) or as the magnitude
+        /// MULTIPLIER for <see cref="ProjectChimera.Effects.PeriodicStackMode.Multiply"/> (one run at ×scale). Without
+        /// this bound a modifier authored with a large <c>max_stacks</c> could multiply a per-tick pulse's work/damage
+        /// without limit. 8 == the per-entity ring cap (<see cref="MaxModifiersPerEntity"/>), the most independent
+        /// stacks that can coexist, so it never truncates a legitimately-reachable stack count while still capping a
+        /// pathological authored one. A new cap here MOVES <c>RulesetHash</c> (it is folded in file order), so
+        /// <c>RulesetHash.AlgoVersion</c> is bumped and its pins re-recorded in the same commit
+        /// (<c>RulesetHashTests</c> enforces the count parity).
+        /// </summary>
+        public const int MaxPeriodicStackScale = 8;
     }
 }

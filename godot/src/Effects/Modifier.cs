@@ -8,10 +8,40 @@ namespace ProjectChimera.Effects
     {
         /// <summary>Re-applying resets the existing instance's duration; no second stack.</summary>
         Refresh = 0,
-        /// <summary>Re-applying adds an independent stack, up to <see cref="Modifier.MaxStacks"/>.</summary>
+        /// <summary>Re-applying adds a stack that SHARES ONE duration with the others (all expire together), up to
+        /// <see cref="Modifier.MaxStacks"/>. One ring slot, a <c>_stackCount</c>, re-adding the deltas per stack.</summary>
         Stack = 1,
         /// <summary>Re-applying is ignored while an instance is active.</summary>
         Ignore = 2,
+        /// <summary>
+        /// DW-264 / Story 15.12 — re-applying adds an INDEPENDENT stack with its OWN duration: each application installs
+        /// a fresh ring slot (same <see cref="Modifier.Id"/>, <c>_stackCount=1</c>), up to <see cref="Modifier.MaxStacks"/>
+        /// same-id slots AND the per-entity ring capacity. Each slot expires on its own <c>_remainingTicks</c>, reverting
+        /// one stack's contribution at a time — the per-stack-expiry model <see cref="Stack"/> (single shared duration)
+        /// cannot express. Reuses <c>ModifierStore</c>'s existing per-slot machinery (no new per-stack-timer array); at the
+        /// cap a further application is ignored (no refresh).
+        /// </summary>
+        StackIndependent = 3,
+    }
+
+    /// <summary>
+    /// DW-272 / Story 15.12 — how a STACKED periodic modifier's pulse scales with its stack count. The default
+    /// <see cref="None"/> preserves today's byte-for-byte behavior (the pulse fires once per period regardless of
+    /// stacks — only the flat stat deltas scaled with stacks before this story), so no shipped content changes meaning.
+    /// The effective scale is always bounded by <see cref="EffectCaps.MaxPeriodicStackScale"/> (runaway protection).
+    /// On a <see cref="StackRule.StackIndependent"/> modifier each stack is its own slot pulsing once, so the pulse
+    /// count scales naturally and this mode is a documented no-op.
+    /// </summary>
+    public enum PeriodicStackMode : byte
+    {
+        /// <summary>Pulse runs ONCE per period regardless of stack count (today's behavior, byte-for-byte).</summary>
+        None = 0,
+        /// <summary>Pulse runs ONCE per period with its magnitude multiplied by <c>min(stacks, cap)</c> (one big hit;
+        /// for a <c>damage</c> leaf, armor is subtracted once).</summary>
+        Multiply = 1,
+        /// <summary>The pulse graph runs <c>min(stacks, cap)</c> times per period (N smaller hits; for a <c>damage</c>
+        /// leaf, armor is subtracted per hit).</summary>
+        Repeat = 2,
     }
 
     /// <summary>
@@ -118,6 +148,16 @@ namespace ProjectChimera.Effects
         public readonly int PeriodTicks;
 
         /// <summary>
+        /// DW-272 / Story 15.12 — how this modifier's periodic <see cref="PeriodEffect"/> pulse scales with stack count
+        /// (<see cref="PeriodicStackMode"/>). Default <see cref="PeriodicStackMode.None"/> = today's non-scaling pulse,
+        /// byte-for-byte. A <c>public readonly</c> FIELD (not a property) so it keeps the fold-shaped vocabulary
+        /// <c>EffectFoldCompletenessTests</c> pins — it is folded by NAME into <c>CanonicalFold.MixModifier</c> (and thus
+        /// <see cref="ProjectChimera.Core.Definitions.CanonicalModelHash"/> / <c>ContentHash</c>), so no piece of semantic
+        /// state hides behind a property and escapes the handshake hash.
+        /// </summary>
+        public readonly PeriodicStackMode PeriodicStacking;
+
+        /// <summary>
         /// DW-678 — true iff installing this descriptor could not change ANY observable state: all four stat deltas are
         /// exactly zero, <see cref="Status"/> is <see cref="StatusFlags.None"/>, and there is no
         /// <see cref="PeriodEffect"/> to pulse. Such an instance still consumes one of the
@@ -188,18 +228,21 @@ namespace ProjectChimera.Effects
         /// <see cref="MaxAuthorableStacks"/>. Returns <c>null</c> when this descriptor is within bounds, or the offending
         /// <c>(field, reason)</c> pair for the caller to LOCATE into its own error shape (so the same rule can be adopted
         /// by any validator that mints modifiers, not just <c>AbilityValidator</c>).
-        /// <para>Only <see cref="StackRule.Stack"/> multiplies a modifier's contribution — <see cref="StackRule.Refresh"/>
-        /// and <see cref="StackRule.Ignore"/> hold exactly one instance whatever <see cref="MaxStacks"/> says (the store
-        /// re-adds deltas only on the Stack branch). Pure, never throws; allocates a string only on a REJECT.</para>
+        /// <para>Only the two STACKING rules — <see cref="StackRule.Stack"/> (one shared-duration slot,
+        /// <c>_stackCount</c> up to <see cref="MaxStacks"/>) and <see cref="StackRule.StackIndependent"/> (up to
+        /// <see cref="MaxStacks"/> independent same-id slots) — multiply a modifier's summed contribution;
+        /// <see cref="StackRule.Refresh"/> and <see cref="StackRule.Ignore"/> hold exactly one instance whatever
+        /// <see cref="MaxStacks"/> says (the store re-adds deltas only on those two branches). Pure, never throws;
+        /// allocates a string only on a REJECT.</para>
         /// </summary>
         public (string Field, string Reason)? CheckAuthoringBounds()
         {
             long stacks = 1;
-            if (Stacking == StackRule.Stack)
+            if (Stacking == StackRule.Stack || Stacking == StackRule.StackIndependent)
             {
                 if (MaxStacks < 1)
                     return ("max_stacks",
-                        $"={MaxStacks} must be >= 1 when stacking is Stack (a stacking modifier that can hold no stack is inert).");
+                        $"={MaxStacks} must be >= 1 when stacking is {Stacking} (a stacking modifier that can hold no stack is inert).");
                 if (MaxStacks > MaxAuthorableStacks)
                     return ("max_stacks",
                         $"={MaxStacks} exceeds MaxAuthorableStacks={MaxAuthorableStacks} — expiry reverts the slot as " +
@@ -231,11 +274,14 @@ namespace ProjectChimera.Effects
 
         /// <summary>Construct a modifier descriptor. Pure data; no execution happens here.
         /// <paramref name="armorDelta"/> is an optional trailing parameter (Story 2.6) so every pre-2.6
-        /// <c>new Modifier(...)</c> call site stays source-compatible (defaults to <see cref="Fixed.Zero"/>).</summary>
+        /// <c>new Modifier(...)</c> call site stays source-compatible (defaults to <see cref="Fixed.Zero"/>).
+        /// <paramref name="periodicStacking"/> is likewise an optional trailing parameter (DW-272 / Story 15.12) so every
+        /// pre-15.12 call site stays source-compatible (defaults to <see cref="PeriodicStackMode.None"/> = today's
+        /// non-scaling pulse).</summary>
         public Modifier(int id, int durationTicks, StackRule stacking, int maxStacks,
                         Fixed maxHealthDelta, Fixed attackDamageDelta, Fixed moveSpeedDelta,
                         StatusFlags status, EffectNode? periodEffect, int periodTicks,
-                        Fixed armorDelta = default)
+                        Fixed armorDelta = default, PeriodicStackMode periodicStacking = PeriodicStackMode.None)
         {
             Id = id;
             DurationTicks = durationTicks;
@@ -248,6 +294,7 @@ namespace ProjectChimera.Effects
             PeriodEffect = periodEffect;
             PeriodTicks = periodTicks;
             ArmorDelta = armorDelta;
+            PeriodicStacking = periodicStacking;
         }
     }
 }

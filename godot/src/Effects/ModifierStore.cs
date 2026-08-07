@@ -184,10 +184,30 @@ namespace ProjectChimera.Effects
             int n = _count[targetId];
 
             int existing = -1;
+            int sameIdCount = 0; // DW-264: StackIndependent counts same-id slots (each is its own independent stack)
             for (int s = 0; s < n; s++)
             {
                 int sl = @base + s;
-                if (_modifier[sl] != null && _modifierId[sl] == mod.Id) { existing = s; break; }
+                if (_modifier[sl] != null && _modifierId[sl] == mod.Id)
+                {
+                    if (existing < 0) existing = s;
+                    sameIdCount++;
+                }
+            }
+
+            // DW-264 / Story 15.12: StackIndependent NEVER merges into an existing same-id slot — each application
+            // installs a FRESH slot with its own duration (same Id, _stackCount=1), bounded by MaxStacks same-id slots
+            // AND the per-entity ring. At the MaxStacks cap a further application is ignored (no refresh); a ring-full
+            // target is refused (drop), exactly like a fresh install of any rule.
+            if (mod.Stacking == StackRule.StackIndependent)
+            {
+                if (sameIdCount >= mod.MaxStacks) return true;          // at the per-modifier stack cap → ignore (no refresh)
+                if (n >= EffectCaps.MaxModifiersPerEntity)
+                {
+                    NoteRefusedInstall(targetId, mod.Id, casterId, persistent: false); // ring full → refuse (DW-83 observable)
+                    return false;
+                }
+                return InstallNewSlot(targetId, mod, casterId, casterFaction, n);
             }
 
             if (existing < 0)
@@ -200,28 +220,7 @@ namespace ProjectChimera.Effects
                     NoteRefusedInstall(targetId, mod.Id, casterId, persistent: false);
                     return false;
                 }
-                int slot = @base + n;
-                _modifierId[slot]    = mod.Id;
-                _modifier[slot]      = mod;
-                _persistent[slot]    = null;
-                _casterId[slot]      = casterId;
-                _casterFaction[slot] = casterFaction;
-                _stackCount[slot]    = 1;
-                // DW-270: 0 is stored VERBATIM, so Advance decrements it to −1 and expires it at the end of the next
-                // tick — a 0-duration modifier is a ONE-TICK modifier, never an instantaneous one (see Modifier.DurationTicks).
-                _remainingTicks[slot] = mod.DurationTicks < 0 ? PERMANENT : mod.DurationTicks;
-                ResetPeriodSchedule(slot, mod);
-                _count[targetId] = n + 1;
-
-                // DW-490: the instance's OWN recorded caster (just written above) is the attribution a ceiling-collapse
-                // death inside ApplyStatDeltas credits — the same pair a period pulse from this slot resolves with.
-                ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta, mod.ArmorDelta,
-                                isApply: true, _casterId[slot], _casterFaction[slot]);
-                // DW-325 re-entrancy: a ceiling-collapse kill inside ApplyStatDeltas fired OnDestroy→ClearEntity, wiping
-                // this host's slots/status/accumulators. Bail before writing status onto the dead (recycled) slot.
-                if (!_world.IsAlive(targetId)) return true;
-                _world.StatusFlagsOf[targetId] |= mod.Status;
-                return true; // fresh install accepted
+                return InstallNewSlot(targetId, mod, casterId, casterFaction, n); // fresh install accepted
             }
 
             int eslot = @base + existing;
@@ -255,6 +254,40 @@ namespace ProjectChimera.Effects
                     break; // active instance → ignore the re-apply entirely
             }
             return true; // an existing same-id instance was handled (Refresh/Stack/Ignore)
+        }
+
+        /// <summary>
+        /// Install <paramref name="mod"/> into a FRESH slot at index <paramref name="n"/> of <paramref name="targetId"/>'s
+        /// ring (the shared install path for a first-ever apply of any rule AND every <see cref="StackRule.StackIndependent"/>
+        /// application). Writes the slot's folded state, arms its period schedule, applies its stat deltas + status, and
+        /// re-checks <see cref="EntityWorld.IsAlive"/> after the (possibly lethal) stat apply. Returns <c>true</c> (installed).
+        /// The caller has already verified the ring has room. Extracted verbatim from the pre-15.12 inline install so both
+        /// call paths stay byte-identical.
+        /// </summary>
+        private bool InstallNewSlot(int targetId, Modifier mod, int casterId, Faction casterFaction, int n)
+        {
+            int slot = targetId * EffectCaps.MaxModifiersPerEntity + n;
+            _modifierId[slot]    = mod.Id;
+            _modifier[slot]      = mod;
+            _persistent[slot]    = null;
+            _casterId[slot]      = casterId;
+            _casterFaction[slot] = casterFaction;
+            _stackCount[slot]    = 1;
+            // DW-270: 0 is stored VERBATIM, so Advance decrements it to −1 and expires it at the end of the next
+            // tick — a 0-duration modifier is a ONE-TICK modifier, never an instantaneous one (see Modifier.DurationTicks).
+            _remainingTicks[slot] = mod.DurationTicks < 0 ? PERMANENT : mod.DurationTicks;
+            ResetPeriodSchedule(slot, mod);
+            _count[targetId] = n + 1;
+
+            // DW-490: the instance's OWN recorded caster (just written above) is the attribution a ceiling-collapse
+            // death inside ApplyStatDeltas credits — the same pair a period pulse from this slot resolves with.
+            ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta, mod.ArmorDelta,
+                            isApply: true, _casterId[slot], _casterFaction[slot]);
+            // DW-325 re-entrancy: a ceiling-collapse kill inside ApplyStatDeltas fired OnDestroy→ClearEntity, wiping
+            // this host's slots/status/accumulators. Bail before writing status onto the dead (recycled) slot.
+            if (!_world.IsAlive(targetId)) return true;
+            _world.StatusFlagsOf[targetId] |= mod.Status;
+            return true;
         }
 
         /// <summary>
@@ -384,7 +417,9 @@ namespace ProjectChimera.Effects
                         _ticksUntilPeriod[slot]--;
                         if (_ticksUntilPeriod[slot] <= 0)
                         {
-                            RunEffect(i, slot, PeriodEffectOf(slot)!);
+                            // DW-272: honor the modifier's PeriodicStacking (None/Repeat/Multiply) + stack count, cap-bounded.
+                            // None / a single stack / a Persistent slot run exactly one pulse — byte-for-byte with pre-15.12.
+                            RunScaledPulse(i, slot);
                             // DW-267: a LETHAL period — an authored `damage` leaf, which the ability validator accepts
                             // in a period_effect — destroys the host MID-PULSE, so OnDestroy → ClearEntity has ALREADY
                             // wiped this entity's slots and zeroed its count. Bail out of the slot loop before touching
@@ -978,6 +1013,50 @@ namespace ProjectChimera.Effects
         private void RunEffect(int hostId, int slot, EffectNode effect) => RunEffectAgainst(hostId, slot, hostId, effect);
 
         /// <summary>
+        /// DW-272 / Story 15.12 — run ONE period-boundary pulse for <paramref name="slot"/>, honoring the installing
+        /// <see cref="Modifier.PeriodicStacking"/> and the slot's stack count, bounded by
+        /// <see cref="EffectCaps.MaxPeriodicStackScale"/>:
+        /// <list type="bullet">
+        /// <item><see cref="PeriodicStackMode.None"/> (the default, every Persistent slot, and any single-stack slot):
+        ///   exactly ONE pulse at scale 1 — byte-for-byte with the pre-15.12 pulse.</item>
+        /// <item><see cref="PeriodicStackMode.Repeat"/>: the pulse graph runs <c>min(stacks, cap)</c> times (N hits;
+        ///   armor subtracted per hit for a <c>damage</c> leaf). Stops the instant a hit kills the host — the
+        ///   subsequent runs would self-skip anyway (<see cref="RunEffectAgainst"/> guards a dead host), but returning
+        ///   early keeps the DW-267 wiped-ring contract crisp.</item>
+        /// <item><see cref="PeriodicStackMode.Multiply"/>: ONE pulse at magnitude × <c>min(stacks, cap)</c> (one big
+        ///   hit; armor subtracted once) via <see cref="EffectContext.PulseScale"/>.</item>
+        /// </list>
+        /// A <see cref="StackRule.StackIndependent"/> instance always has <c>_stackCount == 1</c>, so its scale is 1 and
+        /// its <see cref="Modifier.PeriodicStacking"/> is a documented no-op — the pulse count scales via its multiple
+        /// same-id slots each pulsing once.
+        /// </summary>
+        private void RunScaledPulse(int hostId, int slot)
+        {
+            EffectNode effect = PeriodEffectOf(slot)!;
+            PeriodicStackMode mode = _modifier[slot]?.PeriodicStacking ?? PeriodicStackMode.None;
+
+            int stacks = _stackCount[slot];
+            int scale = stacks < EffectCaps.MaxPeriodicStackScale ? stacks : EffectCaps.MaxPeriodicStackScale;
+            if (scale < 1) scale = 1; // defensive: a well-formed slot always has _stackCount >= 1
+
+            if (mode == PeriodicStackMode.Repeat && scale > 1)
+            {
+                for (int r = 0; r < scale; r++)
+                {
+                    RunEffect(hostId, slot, effect);
+                    if (!_world.IsAlive(hostId)) return; // a hit killed the host → stop repeating (ring already wiped)
+                }
+                return;
+            }
+            if (mode == PeriodicStackMode.Multiply && scale > 1)
+            {
+                RunEffectAgainst(hostId, slot, hostId, effect, Fixed.FromInt(scale)); // one pulse at magnitude × scale
+                return;
+            }
+            RunEffect(hostId, slot, effect); // None / scale 1 — today's single pulse, byte-for-byte
+        }
+
+        /// <summary>
         /// DW-662 — run the instance at <paramref name="slot"/> (owned by <paramref name="hostId"/>) against an EXPLICIT
         /// <paramref name="targetId"/>, on the dedicated executor, and FAIL CLOSED when either end of that pair is
         /// dead/stale.
@@ -1001,15 +1080,18 @@ namespace ProjectChimera.Effects
         /// kills the host), and the target IS the host. <see cref="SkippedPulseCount"/> pins that mechanically — it stays
         /// 0 across every production schedule.</para>
         /// </summary>
-        private void RunEffectAgainst(int hostId, int slot, int targetId, EffectNode effect)
+        private void RunEffectAgainst(int hostId, int slot, int targetId, EffectNode effect, Fixed pulseScale = default)
         {
             // IsAlive also bounds-checks both ids. ONE tally for both conjuncts — a dead host and a dead target are the
             // same failure to a reader (an instance resolved against something that no longer exists), and splitting it
             // would fold nothing extra. Diagnostics only: never folded, never read by a sim branch.
             if (!_world.IsAlive(hostId) || !_world.IsAlive(targetId)) { _skippedPulses++; return; }
 
+            // DW-272: pulseScale is the Multiply-mode magnitude multiplier (default(Fixed) ⇒ the EffectContext ctor
+            // normalizes it to Fixed.One, so every non-Multiply pulse is byte-identical to the pre-15.12 run).
             var ctx = new EffectContext(_world, _casterId[slot], targetId, _casterFaction[slot],
-                                        _damageTable, spatial: null, _events, _stats, modifierStore: this);
+                                        _damageTable, spatial: null, _events, _stats, modifierStore: this,
+                                        pulseScale: pulseScale);
             _executor.Run(effect, in ctx);
         }
 

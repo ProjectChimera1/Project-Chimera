@@ -176,8 +176,16 @@ namespace ProjectChimera.Core.Definitions
         /// hash-EXCLUDED (authoring/presentation data on the <c>variables</c>/<c>display_name</c> basis). A scenario
         /// carrying NONE of the three kinds folds BYTE-IDENTICALLY apart from this leading AlgoVersion mix — so only the
         /// <c>hero-start-state</c> golden re-records (the 7.5/7.11/7.13 graph-walk-extension precedent).
+        /// <c>StartStateHash.AlgoVersion</c> stays 2.
+        /// 15 = DW-272 / Story 15.12 — <see cref="CanonicalFold.MixModifier"/> now folds the new
+        /// <see cref="ProjectChimera.Effects.Modifier.PeriodicStacking"/> field (by NAME, unconditionally), so a
+        /// scenario embedding an <c>apply_modifier</c> run_effect folds one extra name. No shipped scenario embeds one,
+        /// so every shipped model folds BYTE-IDENTICALLY apart from this leading AlgoVersion mix — only the
+        /// <c>hero-start-state</c> golden re-records. (The SHARED fold also moves <c>ContentHash</c> for any ability
+        /// authoring an apply_modifier, which is the intended handshake-reject of pre/post-15.12 content;
+        /// <c>ContentHash.AlgoVersion</c> stays 1 — the content-byte difference itself is what rejects.)
         /// <c>StartStateHash.AlgoVersion</c> stays 2.</summary>
-        public const int AlgoVersion = 14;
+        public const int AlgoVersion = 15;
 
         private const ulong Offset = 14695981039346656037UL; // FNV-64 offset basis
         private const ulong Prime  = 1099511628211UL;        // FNV-64 prime

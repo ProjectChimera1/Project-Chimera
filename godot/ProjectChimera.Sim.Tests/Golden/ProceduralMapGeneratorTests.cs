@@ -43,7 +43,11 @@ namespace ProjectChimera.Sim.Tests.Golden
         // Re-recorded for Story 7.8: CanonicalModelHash.AlgoVersion bumped 8→9 (the custom-UI widget-tree fold), and
         // Serialize stamps that value into `checksum_algo_version`, so the generated JSON's stamp changed 8→9 —
         // moving this byte-hash tripwire by one stamp digit (the same additive stamp-change class as the 7.7 record).
-        private const uint GoldenHash = 3814668611u; // Story 7.14: serializer checksum_algo_version stamp moved (CanonicalModelHash 13->14; the objectives field is omit-when-null so the map bytes are otherwise unchanged)
+        // DW-272 / Story 15.12: CanonicalModelHash.AlgoVersion bumped 14->15 (the Modifier.PeriodicStacking fold), and
+        // Serialize stamps that value into `checksum_algo_version`, so the generated JSON's stamp moved 14->15 — the
+        // same additive stamp-change class as every re-record above (the generated map has no modifiers, so the bytes
+        // are otherwise unchanged).
+        private const uint GoldenHash = 3825370216u;
 
         [Fact]
         public void SameSeed_TwiceProducesByteIdenticalSerialization_AndMatchesGoldenHash()

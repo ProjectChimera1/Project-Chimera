@@ -332,6 +332,18 @@ namespace ProjectChimera.Core
         public readonly Fixed[] MaxEnergy;
 
         /// <summary>
+        /// DW-265 / Story 15.12 — the flat per-TICK ability-resource (energy) regen rate, authored on
+        /// <see cref="Core.Definitions.UnitDefinition.RegenRate"/> and copied via <see cref="ApplyUnitDefinition"/>
+        /// (the single-mapper rule; the A2 guard). Read ONLY through the one regen seam
+        /// (<c>EnergyRegenSystem.RegenPerTick</c>) that Story 15.21 later extends — never anywhere else in the tick.
+        /// Spawn-constant authored data → NOT folded into <see cref="SimChecksum"/> (the <c>MaxEnergy</c>/<c>BaseArmor</c>
+        /// posture: peer-identical, and its effect reaches the hash transitively through the already-folded
+        /// <see cref="Energy"/>). Create-defaulted to Zero so a recycled slot never inherits a prior regen; a default
+        /// 0 makes the per-tick regen a byte-identical no-op (<c>min(E+0, Max) == E</c>).
+        /// </summary>
+        public readonly Fixed[] RegenRate;
+
+        /// <summary>
         /// Per-entity boolean status the active <see cref="ProjectChimera.Effects.Modifier"/> instances impose
         /// (the OR-union over a unit's modifiers — Stunned/Rooted/Silenced/Disarmed/Invulnerable). Written by the
         /// Story 2.2b <c>ModifierStore</c> on apply/remove; <c>Create</c>-defaulted to <see cref="StatusFlags.None"/>
@@ -922,6 +934,7 @@ namespace ProjectChimera.Core
             AttackSpeed = new Fixed[MAX_ENTITIES];
             Energy         = new Fixed[MAX_ENTITIES];
             MaxEnergy      = new Fixed[MAX_ENTITIES];
+            RegenRate      = new Fixed[MAX_ENTITIES];           // DW-265 / Story 15.12 (authored — NOT folded; Create-defaulted Zero)
             StatusFlagsOf  = new StatusFlags[MAX_ENTITIES];     // Story 2.2b (folded v6); modifier-imposed status
             DamageTypeOf = new DamageType[MAX_ENTITIES];
             ArmorTypeOf = new ArmorType[MAX_ENTITIES];
@@ -1041,6 +1054,9 @@ namespace ProjectChimera.Core
             // from UnitDefinition.MaxEnergy (start full) for ability-bearing units. A unit with no def stays at 0.
             Energy[id]        = Fixed.Zero;
             MaxEnergy[id]     = Fixed.Zero;
+            // DW-265 / Story 15.12: a (re)allocated slot carries NO regen — ApplyUnitDefinition sets it from
+            // UnitDefinition.RegenRate for def units; a unit with no def stays at 0 (the SoA-recycle trap closed).
+            RegenRate[id]     = Fixed.Zero;
             // Story 2.2b: a (re)allocated slot carries NO modifier-imposed status — the ModifierStore ORs flags in on
             // apply and recomputes the union on remove; defaulting here closes the SoA-recycle trap for this field.
             StatusFlagsOf[id] = StatusFlags.None;
@@ -1277,6 +1293,10 @@ namespace ProjectChimera.Core
             // stay 0 from Create (ready). Excess ids beyond the cap were already dropped by ResolveAbilities.
             MaxEnergy[id] = Fixed.FromFloat(def.MaxEnergy);
             Energy[id]    = MaxEnergy[id];
+            // DW-265 / Story 15.12 (A2): the flat energy-regen rate rides the SAME single mapper — another float→Fixed
+            // boundary here (the MaxEnergy precedent). Default 0 ⇒ EnergyRegenSystem's per-tick write is a byte-identical
+            // no-op, so no shipped unit changes and no golden moves. Read only via EnergyRegenSystem.RegenPerTick.
+            RegenRate[id] = Fixed.FromFloat(def.RegenRate);
             // Story 2.6 (A2): the castable slots + the per-entity passive registration, partitioned by activation at
             // scenario link (UnitDefinition.ResolveAbilities). Authored/peer-identical → NOT folded (the AbilityId
             // posture; AbilityCount only bounds the v7 cooldown fold). DW-54: written from the pin when one is
@@ -1617,6 +1637,7 @@ namespace ProjectChimera.Core
             Array.Clear(AttackCooldown);        Array.Clear(AttackRange);           Array.Clear(BaseAttackDamage);
             Array.Clear(EffectiveAttackDamage); Array.Clear(BaseArmor);             Array.Clear(EffectiveArmor);
             Array.Clear(AttackSpeed);           Array.Clear(Energy);                Array.Clear(MaxEnergy);
+            Array.Clear(RegenRate);             // DW-265 / Story 15.12 (0 == the fresh-ctor state; no residual regen after a reset)
             Array.Clear(StatusFlagsOf);         Array.Clear(DamageTypeOf);          Array.Clear(ArmorTypeOf);
             Array.Clear(VisionRange);           Array.Clear(SplashRadius);          Array.Clear(CollisionRadius);
             Array.Clear(Elevation);             // Story 6.3 (0 == the fresh-ctor state; re-sampled at the next spawn)

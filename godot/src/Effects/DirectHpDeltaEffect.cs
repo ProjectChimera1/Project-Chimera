@@ -31,7 +31,11 @@ namespace ProjectChimera.Effects
             if (!world.IsAlive(t)) return; // dead/recycled target — no-op (future callers hit these)
 
             // Flat, armor-independent, NEVER through the damage matrix. Clamp into the valid HP band.
-            world.Health[t] = Fixed.Clamp(world.Health[t] + Delta, Fixed.Zero, world.EffectiveMaxHealth[t]);
+            // DW-272 / Story 15.12: scale by the context's PulseScale (> 1 only for a Multiply stacked periodic pulse,
+            // which fires once at magnitude × min(stacks, cap)). Guard the identity path so every non-period cast keeps
+            // its plain authored value and introduces no new Fixed-multiply/overflow surface (Fixed.One × x == x exactly).
+            Fixed delta = ctx.PulseScale.Raw == Fixed.One.Raw ? Delta : Delta * ctx.PulseScale;
+            world.Health[t] = Fixed.Clamp(world.Health[t] + delta, Fixed.Zero, world.EffectiveMaxHealth[t]);
         }
     }
 }

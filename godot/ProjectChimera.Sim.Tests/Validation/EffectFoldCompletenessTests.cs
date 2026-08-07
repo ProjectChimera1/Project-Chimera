@@ -50,6 +50,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         {
             "Id", "DurationTicks", "Stacking", "MaxStacks", "MaxHealthDelta", "AttackDamageDelta",
             "MoveSpeedDelta", "ArmorDelta", "Status", "PeriodEffect", "PeriodTicks",
+            "PeriodicStacking", // DW-272 / Story 15.12 (folded by name in MixModifier; CanonicalModelHash AlgoVersion 14→15)
         };
 
         private static Type[] ConcreteNodes() =>
