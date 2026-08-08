@@ -15,60 +15,122 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-**RUN THE TWO-MACHINE FR-39 GATE. DW-908 is built, tested and closed — nothing else is in the way.**
+**Run the two-machine FR-39 gate. Both machines just need `git pull` + a rebuild - nothing else is queued.**
 
-The blocker named in the previous Next Action is gone. `AiOpponentSystem` no longer plays a faction a human
-occupies: AI control is now a per-match `AiControlPlan` (a faction bitmask) resolved from slot OCCUPANCY, it
-is folded into `MatchAgreementHash` (**AlgoVersion 3 → 4**) so peers that disagree are rejected at the
-handshake instead of desyncing, and a single-machine loopback run confirmed both peers logging
-`AI active this match: False` and the identical `Match-agreement hash (algo v4): 0xD9E709768053087C`.
-**Tier-1 6355 passed / 0 failed / 1 skipped; no golden moved; `StartStateHash` stayed at v2.**
+Two blockers were closed this session and both are pushed (`790e00a0`). Start here, cold:
 
-**Do this, on both machines:**
-1. `git pull` on the laptop, then `dotnet build godot/godot.csproj` on BOTH — the hash algo version moved, so
-   a stale peer will now be REJECTED at the handshake with a start-state-mismatch message rather than
-   desyncing. That rejection is the fix working; it is not a new bug.
-2. Run `godot/tools/lan-desync-smoke.ps1` per `lan-determinism-runbook.md` — server + client on the PC,
-   client on the laptop.
-3. **Play the match for 300+ ticks and read the WINDOW COUNT, not the PASS.** Expect sustained clean windows
-   **past tick 660** (where it HALTed last time) with `0 desync`. Close the CLIENTS before the server or the
-   `MATCH SUMMARY` line is lost.
-4. Record that summary in story **1-9b**'s Change Log — that closes **FR-39**, the #1 pre-ship gate, carried
-   since Epic 1.
+```powershell
+# BOTH machines
+cd D:\Projects\Project_Chimera
+Get-Process Godot* -ErrorAction SilentlyContinue | Stop-Process -Force
+git pull
+dotnet build godot\godot.csproj
+```
 
-**What a clean run past 660 proves and does not prove.** It proves the AI is no longer co-piloting a human
-and no longer injecting float nondeterminism into a live match. It does NOT close **DW-204** (the AI's
-scorer is still float) — that debt is now *contained* rather than fixed: the AI simply does not run online.
-DW-204 must land before an AI may ever fill a vacant slot in a lockstep match.
+Then, per `godot/tools/lan-determinism-runbook.md`: PC window A = `-Role server`, PC window B =
+`-Role client -ServerIp 127.0.0.1`, laptop = `-Role client -ServerIp 192.168.1.13`.
 
-**If it still desyncs**, the AI is exonerated by construction — both clients log `AI active this match:
-False`, so the cause is elsewhere. Grep both client logs for `Placement mode` (DW-405) before anything else.
+**Three lines to confirm before scoring anything** (any one missing means that machine is on a stale assembly):
 
-**Residuals filed, not forgotten:** **DW-909** (the offline AI seat is still the constant {Player2}; the AI
-is still a singleton, so a 3rd AI player is unbuildable — this is the feature Alec said he *wants*) and
-**DW-910** (the `.chmr` header carries no AI plan, so an online replay plays back with the AI armed).
+| Where | Line |
+|---|---|
+| both clients | `Match-agreement hash (algo v4): 0xD9E709768053087C` - identical on both |
+| both clients | `Online match - AI control plan: AiControlPlan(none) (AI active this match: False).` |
+| both clients | `[ENet] Peer connected (timeout budget 20000/60000 ms, DW-911)` |
 
-**Also available, unblocked, no code needed:** A5-E9 leg (b), **live Nakama** — the same two-machine rig
-plus `docs/server-deploy/docker-compose.yml` on the LAN. Highest-value target there is **DW-435**, the
-flagged soft-lock risk that could lock every player out of every online match.
+**Success = at least 5 CROSS-PEER ATTESTED windows, sustained past tick 660** with `0 desync`. Read the window
+count, never the `PASS`. `single-reporter ... INCONCLUSIVE` means a peer is still being dropped - that is
+DW-911(b), not a determinism result. Close the CLIENTS before the server or the `MATCH SUMMARY` line is lost.
 
-**bmad-loop is stopped**, tree clean. A fresh `bmad-loop run --epic 15` picks up the remaining Epic-15
-keys (**15-21**, **15-23**); **15-14** is `blocked` (DW-200, needs Alec's trust-mechanism decision) and
-**15-1** stays `blocked` by Alec's deferral.
+**Do NOT place buildings while scoring.** DW-405 (unreplicated worker-build) is a live desync source; the
+2026-08-08 run could only pin the blame on the AI because its logs had ZERO `Placement mode` lines. Move, fight,
+gather - do not build.
 
-Read the **2026-08-08** block below first.
+**If a peer still drops:** paste the `[FrameStall]` and `[NavBake]` lines from the weaker machine. They were
+added for exactly this and turn DW-911(b) from a hypothesis into a number.
 
-<details><summary>Superseded Next Action (Story 15-3 — now done)</summary>
+Record the `MATCH SUMMARY` in story **1-9b**'s Change Log - that closes **FR-39**, the #1 pre-ship gate, carried
+since Epic 1. Note a clean run does **not** close **DW-204**: the AI's scorer is still float, now merely
+*contained* (it does not run online). DW-204 must land before an AI may fill a vacant slot in a lockstep match.
 
-**Run Story 15-3 — status effects become real + modifier-period honesty** (`bmad-loop run --story 15-3`; DW-266, 267, 270, 271, 278, 323). `StatusFlags` is written by the ability system and read by *nothing*: Disarmed, Rooted, Stunned, Silenced and Invulnerable are all authorable today and all do nothing in play. **It moves goldens by design** (the StatusFlags re-baseline) and re-records at the end of its own story per the standing batch rule — do not queue it behind a batch. Decision **DW-325 is already ruled *build***: a modifier collapsing `EffectiveMaxHealth` to 0 raises death rather than pinning a 0-HP "zombie"; that rides the same re-record. It is Godot-coupled (the `Warnings` channel surfaces in the 2.5 ability editor), so it needs the in-engine gate and the MCP bridge free.
+**Also available, unblocked, no code needed:** A5-E9 leg (b), **live Nakama** - the same two-machine rig plus
+`docs/server-deploy/docker-compose.yml`. Highest-value target there is **DW-435**, the flagged soft-lock risk.
 
-Read the **2026-08-06 (later)** block below first — the earlier same-day block's numbers (AlgoVersion 23, 370 open) are superseded. Both precede the 2026-08-01 block, and all three precede the legacy sections, which describe Sessions 20–21 and are far out of date.
-
-</details>
+**bmad-loop is stopped**, tree clean. A fresh `bmad-loop run --epic 15` picks up **15-21** and **15-23**;
+**15-14** is `blocked` (DW-200, needs Alec's trust-mechanism decision) and **15-1** stays `blocked` by deferral.
 
 ---
 
 *Session type: bmad (prescribed workflow in active execution)*
+
+---
+
+## Current State (2026-08-08, later) — read this first
+
+Supersedes the 2026-08-08 block below, whose Next Action ("build DW-908") is now done. Its account of the
+tick-660 desync still stands and is still the reason this session existed.
+
+**Master `790e00a0`, pushed, tree clean. Tier-1 6355 passed / 0 failed / 1 skipped. No golden moved.**
+
+### DW-908 closed — the AI follows slot OCCUPANCY now, not a constant
+
+The AI was bound to `AI_FACTION = Faction.Player2` and ticked unconditionally, so online — where
+`AssignedRoster` seats peers by ARRIVAL ORDER with no Human/AI concept — slot 1 is a human who is *also*
+Player2, and the AI co-piloted them. The rule is now stated once, in `AiControlPlan`: **an AI controls a
+faction iff the launch path marked it AI-driven AND no human occupies it.** Deliberately not an off-switch —
+an AI filling a genuinely VACANT slot still plays it, which is the 3rd-AI-player case Alec said he wants.
+
+- `AiOpponentSystem.Tick` early-returns as its FIRST statement when the plan omits its faction. Ctor default
+  is the offline `{Player2}` pairing, so offline is bit-identical and **all 25 goldens are byte-unchanged**.
+- **Fail-closed:** the mask folds into `MatchAgreementHash` (**AlgoVersion 3 -> 4**), so peers that disagree
+  are rejected by `HandshakeGate` before tick 0 instead of desyncing 600 ticks later.
+- **One judgment call, made differently from the ledger's plan:** the fold went into `MatchAgreementHash`, not
+  `StartStateHash` — the plan is a per-match agreement item like the input delay, not start-state content. So
+  `StartStateHash` stayed v2 and `hero-start-state.golden.txt` did **not** re-record. The entry's predicted
+  start-state re-record did not apply.
+- One stored value (`SceneContext.OnlineAiPlan`) is both folded and pushed into the sim — that is what makes
+  the fold load-bearing rather than decorative.
+- `ResetForMatch` deliberately PRESERVES the plan (allowlisted in `StoreClearCompletenessTests` with that
+  justification): the online path reaches `ClearForReset` AFTER `OnMatchStart`, so restoring the default there
+  would re-arm the AI on the joining human's faction — this defect exactly.
+
+**Verified on two machines:** both peers computed the identical `Match-agreement hash (algo v4)
+0xD9E709768053087C`, the server broadcast StartGame, and both logged `AI active this match: False`.
+
+### DW-911 found and half-closed — the gate was measuring the transport, not determinism
+
+With DW-908 landed the run got further than ever, then the laptop peer was dropped at tick 4, and next attempt
+tick 9 — twice, deterministically, over a WIRED link measuring **0% loss at 1-5 ms**, with no exception on
+either side. Every run ended `1 windows compared (0 cross-peer attested, 1 single-reporter) — INCONCLUSIVE`.
+
+**Neither transport had ever called `ENetPacketPeer.SetTimeout`.** ENet derives its disconnect timer from the
+MEASURED RTT, which inverts the intuition: **the tolerated stall is proportional to latency, so the faster your
+LAN the LESS slack a peer gets when its main thread blocks.** Known Godot issue (godotengine/godot#40618,
+#20056), reported worst on **debug builds** — which the runbook mandates. Closed by `PeerTimeoutPolicy`
+(limit 32 / min 20 s / max 60 s), applied by BOTH transports on connect; both ends check independently, so
+widening one side alone is insufficient. Transport-layer only — never folded, no golden moves.
+
+**Part (b) is still open: the STALL itself.** A 20 s hitch is an unplayable match even when the peer survives.
+Two diagnostics were added rather than guessing: `[FrameStall]` (any frame >250 ms, with the sim tick, directly
+comparable against the server's `Slot N disconnected`) and `[NavBake]` (times the synchronous 240x240-unit
+terrain navmesh bake — the leading suspect).
+
+### Three lessons worth carrying
+
+1. **A healthy network is the FRAGILE case for ENet, not the safe one.** Every instinct says low latency and 0%
+   loss mean the transport is fine. Here it meant the opposite. Whenever a timeout is RTT-derived, the best link
+   has the tightest budget.
+2. **Two wrong turns, both from testing the wrong property.** The navmesh bake was dismissed because it fires
+   twice, not per frame — but frequency was never the risk; DURATION blocks the ENet poll. And `ping` timing out
+   proved nothing, because every ICMP Echo inbound rule was disabled on the PC (now enabled). Check that your
+   instrument measures the thing before believing its answer.
+3. **The handshake earned its keep on its first outing.** `Start-state agreement FAILED (StartStateDisagreement)
+   — broadcasting HALT, not starting` caught a stale laptop build (algo v3 vs v4) at the lobby. On the old code
+   those two peers would have started and desynced hundreds of ticks in, with nothing naming the cause.
+
+**Residuals filed:** DW-909 (offline AI seats still a constant; the AI is still a singleton, so a 3rd AI player
+is unbuildable — the feature Alec actually wants), DW-910 (`.chmr` header carries no AI plan, so an online
+replay plays back with the AI armed), DW-911(b) (the stall).
 
 ---
 

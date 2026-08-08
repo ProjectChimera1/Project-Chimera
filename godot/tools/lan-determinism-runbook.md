@@ -65,7 +65,11 @@ Both must hold for the gate to be green.
    If either machine prints anything else, stop — the AI is live in a lockstep match and any desync you
    then observe is DW-204's float scorer, not new information. (This is what HALTed the 2026-08-07/08 run
    at tick 660.)
-9. **Start a FRESH server for every match.** A server reused across matches carries frozen-slot and tick
+9. **Expect the DW-911 peer-timeout budget on connect.** Each client prints
+   `[ENet] Peer connected (timeout budget 20000/60000 ms, DW-911)` and the server prints the same budget on its
+   accept line. If you do NOT see it, that machine is running a stale assembly -- stop and rebuild, because the
+   ENet default will drop a stalling peer within a second or two on a fast LAN (see the troubleshooting entry).
+10. **Start a FRESH server for every match.** A server reused across matches carries frozen-slot and tick
    state from the previous one (DW-598, DW-599, DW-600). The launcher now cleans stale instances by
    default; do not defeat it with `-NoClean` unless you know why.
 
@@ -248,6 +252,40 @@ That confirms a real divergence is detected, attributed, and terminated end-to-e
 ---
 
 ## 8. Troubleshooting
+
+### A peer connects, agrees the hash, enters Play -- and is dropped within ~10 ticks (DW-911)
+
+**Symptom.** The server logs `All 2 players ready -- broadcasting StartGame`, then a few ticks later
+`Slot N disconnected` / `Player2 dropped mid-match -- freezing at tick 9`, and the run ends
+`MATCH SUMMARY: 1 windows compared (0 cross-peer attested, 1 single-reporter) -- INCONCLUSIVE`. The dropped
+client logs `[ENet] Peer disconnected.` and NOTHING ELSE -- no exception, no stack trace. Ping between the two
+machines is perfect.
+
+**This is not a determinism finding and not a network fault.** ENet derives its disconnect timer from the
+MEASURED ROUND-TRIP TIME, so the stall it tolerates is proportional to latency -- which inverts the intuition:
+**the faster your LAN, the LESS slack a peer gets when its main thread blocks.** A 300 ms link rides out a
+multi-second freeze; a 1-2 ms LAN drops the peer almost immediately. It is a known Godot issue
+(godotengine/godot#40618, #20056) and is reported as WORST on debug builds -- which this runbook mandates.
+Fixed 2026-08-08 by `PeerTimeoutPolicy` (limit 32 / min 20 s / max 60 s, applied by BOTH transports on connect).
+
+**If it still happens after both machines are rebuilt**, the stall is longer than 20 s and is a real defect.
+Read these two diagnostics ON THE WEAKER MACHINE -- they exist so this is a number, not a hypothesis:
+
+| Log line | What it tells you |
+|---|---|
+| `[FrameStall] N ms frame at sim tick T` | The main thread -- and therefore the ENet poll -- was blocked for N ms. Compare T against the server's `Slot N disconnected` tick. |
+| `[NavBake] Synchronous terrain navmesh bake took N ms` | The 240x240-unit synchronous bake in `NavObstacleManager.RebakeWithTerrain`, the leading suspect. |
+
+**Do not treat a widened timeout as the fix.** A 20 s hitch is an unplayable match even when the peer survives
+it; the timeout only stops the hitch from destroying the RUN. DW-911 part (b) tracks the stall itself.
+
+> **A wrong turn worth not repeating (2026-08-08).** The navmesh-bake backtraces in the client logs were first
+> dismissed because the bake is `_dirty`-gated and fires twice per match, not per frame. True -- and the wrong
+> test. Bake FREQUENCY is irrelevant here; bake DURATION is the risk, because one synchronous main-thread bake
+> blocks the ENet poll for its whole length. Likewise, `ping` timing out proved nothing: every ICMP Echo inbound
+> rule was disabled on the server machine, so it never answered ping at all. Enable
+> `File and Printer Sharing (Echo Request - ICMPv4-In)` before using ping as evidence.
+
 
 | Symptom | Likely cause / fix |
 |---|---|
