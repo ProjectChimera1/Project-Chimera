@@ -1364,9 +1364,34 @@ namespace ProjectChimera.Core
             return rp.Roster[_replayView.Perspective].ToString();
         }
 
+        /// <summary>
+        /// FR-39 rig diagnostic (2026-08-08) — the wall-clock length of the LONGEST frame seen so far, and the
+        /// threshold past which one is reported. A frame this long means the main thread was blocked, which means
+        /// <c>ENetTransport</c> was not polled for that whole span — and an unpolled peer is dropped by the server
+        /// as a timeout even though nothing threw and the network is healthy. That is the failure signature the
+        /// two-machine gate hit on 2026-08-08 (the laptop peer disconnected at tick 4, then tick 9, twice, over a
+        /// wired link measuring 0% loss at 1-5 ms). Presentation-only: reads no sim state, writes no sim state, is
+        /// never folded into <c>SimChecksum</c>. Cheap enough to leave in — one Stopwatch read per frame.
+        /// </summary>
+        private const double FRAME_STALL_REPORT_MS = 250.0;
+        private readonly System.Diagnostics.Stopwatch _frameStallWatch = System.Diagnostics.Stopwatch.StartNew();
+        private double _worstFrameMs;
+
         public override void _Process(double delta)
         {
             if (_headless || _bootAborted || _bootPending) return; // dedicated server: no presentation context; _bootAborted = fail-safe reload pending; _bootPending = phase run not yet built _ctx handles
+
+            // FR-39 rig diagnostic — report any frame long enough to have starved the ENet poll. `delta` is the
+            // engine's own measured frame time, so this names the stall WITHOUT attributing it: whatever blocked the
+            // thread (a synchronous navmesh bake, a shader compile, an asset upload) shows up here with the tick it
+            // happened on, which is directly comparable against the server's "[Server] Slot N disconnected" line.
+            double frameMs = delta * 1000.0;
+            if (frameMs > FRAME_STALL_REPORT_MS)
+            {
+                _worstFrameMs = System.Math.Max(_worstFrameMs, frameMs);
+                GD.Print($"[FrameStall] {frameMs:F0} ms frame at sim tick {_host?.CurrentTick ?? 0} " +
+                         $"(worst so far {_worstFrameMs:F0} ms) — the ENet poll was blocked for this long.");
+            }
 
             // DW-467: surface background save completions on the game thread (mode-independent — a save issued just
             // before a mode flip must still toast). Success/failure mirror the pre-DW-467 synchronous messages, so a

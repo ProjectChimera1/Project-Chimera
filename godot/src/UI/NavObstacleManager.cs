@@ -121,6 +121,13 @@ namespace ProjectChimera.UI
         /// </summary>
         private void RebakeWithTerrain()
         {
+            // FR-39 rig diagnostic (2026-08-08): this bake is SYNCHRONOUS on the main thread, and it covers a
+            // 240x240-unit terrain AABB. It is not frequent — the _dirty gate means it runs when the building set
+            // changes, which at match start is once — but frequency is not the risk here: a single bake long enough
+            // to block the frame also blocks the ENet poll, and the server then drops this peer as a timeout with no
+            // exception and a perfectly healthy network. Time it so the cost is a NUMBER on each machine rather than
+            // a hypothesis. Presentation-only; nothing here reaches the sim or SimChecksum.
+            var bakeWatch = System.Diagnostics.Stopwatch.StartNew();
             var navMeshTemplate = _region.NavigationMesh;
             // Duplicate so BakeFromSourceGeometryData produces a fresh mesh object;
             // assigning a new object to NavigationMesh forces Godot to re-register the region.
@@ -142,6 +149,11 @@ namespace ProjectChimera.UI
 
             NavigationServer3D.BakeFromSourceGeometryData(navMesh, sourceGeo);
             _region.NavigationMesh = navMesh;
+
+            bakeWatch.Stop();
+            GD.Print($"[NavBake] Synchronous terrain navmesh bake took {bakeWatch.Elapsed.TotalMilliseconds:F0} ms " +
+                     $"({faces.Length} terrain faces, {BAKE_HALF * 2f}x{BAKE_HALF * 2f} unit AABB) — the main thread, " +
+                     "and therefore the ENet poll, was blocked for this long.");
         }
 
         // ── Obstacle management ───────────────────────────────────────────────

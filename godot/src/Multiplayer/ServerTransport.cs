@@ -100,9 +100,17 @@ namespace ProjectChimera.Multiplayer
                             peer.PeerDisconnect();
                             break;
                         }
+                        // DW-911: widen this peer's ENet timeout budget the moment it is accepted. ENet's default
+                        // tolerance scales with RTT, so on a 1-2 ms LAN a client that blocks its main thread (level
+                        // load / navmesh bake / shader compile — worst on debug builds) is dropped almost instantly.
+                        // That is what made the FR-39 gate unscoreable on 2026-08-08. See PeerTimeoutPolicy.
+                        peer.SetTimeout(PeerTimeoutPolicy.TIMEOUT_LIMIT,
+                                        PeerTimeoutPolicy.TIMEOUT_MIN_MS,
+                                        PeerTimeoutPolicy.TIMEOUT_MAX_MS);
                         _slots[slot] = peer;
                         ConnectedCount++;
-                        GD.Print($"[Server] Peer connected → slot {slot} ({role}).");
+                        GD.Print($"[Server] Peer connected → slot {slot} ({role}); peer timeout budget " +
+                                 $"{PeerTimeoutPolicy.TIMEOUT_MIN_MS}/{PeerTimeoutPolicy.TIMEOUT_MAX_MS} ms (DW-911).");
                         OnSlotConnected?.Invoke(slot);
                         break;
                     }

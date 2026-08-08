@@ -115,7 +115,14 @@ namespace ProjectChimera.Multiplayer
                     case ENetConnection.EventType.Connect:
                         _peer = peer;
                         IsConnected = true;
-                        GD.Print("[ENet] Peer connected.");
+                        // DW-911: widen the timeout budget on OUR side too. Both ends run the check independently,
+                        // so a server-only widening still lets this client decide the server has vanished during its
+                        // own stall. See PeerTimeoutPolicy for why a fast LAN is the fragile case, not the safe one.
+                        peer.SetTimeout(PeerTimeoutPolicy.TIMEOUT_LIMIT,
+                                        PeerTimeoutPolicy.TIMEOUT_MIN_MS,
+                                        PeerTimeoutPolicy.TIMEOUT_MAX_MS);
+                        GD.Print($"[ENet] Peer connected (timeout budget {PeerTimeoutPolicy.TIMEOUT_MIN_MS}/" +
+                                 $"{PeerTimeoutPolicy.TIMEOUT_MAX_MS} ms, DW-911).");
                         OnPeerConnected?.Invoke();
                         break;
 
