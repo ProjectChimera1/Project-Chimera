@@ -201,12 +201,12 @@ RTT measurement via Ping/Pong + negotiated delay changes via DelayProposal packe
 **Offline smoke test (single machine):**
 - [ ] Launch game in Play mode (offline). No pings should be sent (only fires when `IsOnline`). No errors in Output.
 
-**LAN smoke test (two machines required — do alongside P2.4 LAN test):**
-- [ ] Host + join on LAN. Watch Godot Output on both machines.
-- [ ] Within 2s of match start: both machines should log `[Lockstep] RTT sample: Xms` and a smoothed RTT.
-- [ ] On LAN (~1-5ms RTT): target delay = `ceil(2.5ms / 33ms) + 1 = 2`. Both machines should log `[Lockstep] Delay: 4 → 2 ticks` within ~5s.
-- [ ] Play for 300+ ticks. Checksums must stay in sync (same HUD hash on both machines). The delay reduction must NOT cause desync.
-- [ ] Optionally: to test high-latency path, add artificial latency (e.g. `tc netem` on Linux) and verify delay increases toward MAX_DELAY=12.
+**LAN smoke test (two machines required — do alongside P2.4 LAN test):** _partially run 2026-08-07 (PC + laptop, dedicated-server topology, `alpha_map_01`). Full record: story 1-9b Change Log + `godot/tools/lan-determinism-runbook.md` §10._
+- [x] Host + join on LAN. Watch Godot Output on both machines. — 2026-08-07
+- [ ] Within 2s of match start: both machines should log `[Lockstep] RTT sample: Xms` and a smoothed RTT. — **not observed**; no `RTT sample` line appeared in either client log, though the delay controller clearly acted on RTT. Check whether that log line still exists before re-testing.
+- [x] On LAN (~1-5ms RTT): target delay = `ceil(2.5ms / 33ms) + 1 = 2`. Both machines should log `[Lockstep] Delay: 4 → 2 ticks` within ~5s. — 2026-08-07, observed on BOTH machines, and server-side as `Dictating → 2 ticks, applyAtTick 40` + `committed (all 2 players ACKed)`
+- [ ] Play for 300+ ticks. Checksums must stay in sync (same HUD hash on both machines). The delay reduction must NOT cause desync. — **NOT MET.** Best run compared **1 window** (tick 60, `0xE4FE8ED9`, agreed) before both peers dropped. This is the remaining blocker for FR-39.
+- [x] Optionally: to test high-latency path, add artificial latency (e.g. `tc netem` on Linux) and verify delay increases toward MAX_DELAY=12. — 2026-08-07, reached MAX_DELAY=12 (`applyAtTick 99`) — **not** via `tc netem` but via a genuinely stalled peer, which is the same code path and arguably a better test.
 
 **HUD wiring (optional, low priority):**
 - The `CurrentDelay` property is now public. You can display it in the HUD stall indicator: e.g. `"Delay: {_lockstep.CurrentDelay} ticks"` alongside the "Waiting for peer…" banner. Not required for correctness — just a nice debug display.
@@ -222,7 +222,7 @@ RTT measurement via Ping/Pong + negotiated delay changes via DelayProposal packe
 - **LLM Trigger System: PASS (core).** Panel opens, generator section works, no-API-key path fails gracefully ("Ollama unreachable" — message differs from spec'd "Both Claude and Ollama are unavailable"). Inline triggers verified in Play mode: match_start→add_resources (ore 200→700 tick 1) and create_timer→display_message (toast at ~5s) both fired. Not verified: unit_dies→spawn_unit, Validate() rejection, physical L key.
 - **AI Map Generator: PASS (core).** Main-menu button enters Edit + toggles panel; panel renders left side; auto-hides on Play mode. Not verified: Load/Save flows + 7-pass validation (need API key or Ollama), physical M key.
 - **Utility AI: FAIL — match deadlocks.** Barracks built fast (tick 45 ✓), but on Normal/alpha_map_01: a single early P2 unit killed both P1 workers, P2 income flatlined (25 ore, sim hash identical across ticks 1680→3180), no tech progression, no further attack waves. Needs investigation: worker gathering stops after AI build/train; no AI recovery path with no workers + <50 ore.
-- **Adaptive delay (offline only): no errors observed** in ~110s offline play. LAN test still pending.
+- **Adaptive delay (offline only): no errors observed** in ~110s offline play. ~~LAN test still pending.~~ **LAN-verified 2026-08-07**: `4 → 2` on both machines, and `→ 12` (MAX_DELAY) then `→ 11` under a stalled peer, all with full server-side ACK round-trips. The *determinism-across-a-delay-change* half is still unproven — the run never reached a second comparison window.
 - Cosmetic: long status text stretches both AI panels across the screen (no autowrap/max width); possible shortcut leak (Grid Snap toggled while typing "G" in a text field — may be synthetic-input artifact, recheck manually).
 
 ---
@@ -287,12 +287,12 @@ RTT measurement via Ping/Pong + negotiated delay changes via DelayProposal packe
 |------|--------|-------|
 | Drop in audio .ogg files | 📋 | `res://resources/audio/sfx/` — AudioManager already wired |
 | mod.io Inspector setup | 📋 | Select MainScene → set `Mod Io Game Id` + `Mod Io Api Key`; walkthrough at `docs/modio-setup-guide.md` |
-| P2.4 LAN test (P2P mode) | 📋 | FlowFieldBridge active, verify checksums stay in sync through 300+ ticks |
+| P2.4 LAN test | 🔨 | **ATTEMPTED 2026-08-07 on two machines — NOT PASSED** (1 comparison window; needs ≥5 / 300+ ticks, and the F9 HALT drill never fired). Note: the old "(P2P mode)" label here was **stale** — the pinned topology is the **dedicated server** (runbook §2 / story 1-9b Resolved Decision #2), since the checksum quorum lives there and there is no listen-server mode. Blocker is method (no client survives an unattended phone-driven remote session), not code. See story 1-9b Change Log. |
 | P0.3 Iron Pact art | 📋 | Hunyuan3D or Tripo — 8 GLBs to replace box placeholders (external work) |
 | Terrain texture painting | 📋 | Set Terrain3D textures via Godot Inspector (Terrain3D → Assets) — procedural via ClassDB doesn't persist |
 | Utility AI decision system | ✅ | VERIFIED in-engine 2026-06-20 (alpha_map_01/Normal, ~290s) — all 4 deadlock ACs pass, no deadlock. `e3e48bc` resolves the 2026-06-09 FAIL. |
 | AI build order + attack timing logic | ✅ | Covered by utility scoring (tech tree, supply, aggression weights) |
-| Adaptive input delay | 🔨 | Written — needs LAN test (see checklist above) |
+| Adaptive input delay | 🔨 | Written. **LAN-verified 2026-08-07** for the adaptation itself (`4→2`, `→12`, `→11`, all ACK-committed on both machines). Still owed: proof that determinism HOLDS across a delay change — the run never reached a second comparison window. |
 | LLM trigger scripting | 🔨 | Written — needs smoke test (see checklist below) |
 | AI-assisted map generation | 🔨 | Written session 23 — needs smoke test |
 | AI balance analysis tools | 📋 | Phase 5 GDD item |

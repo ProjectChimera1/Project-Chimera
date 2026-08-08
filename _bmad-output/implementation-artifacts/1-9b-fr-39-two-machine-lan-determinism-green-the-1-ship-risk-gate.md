@@ -4,7 +4,7 @@ baseline_commit: 38e0b61
 
 # Story 1.9b: FR-39 two-machine LAN determinism — green the #1 ship-risk gate
 
-Status: done  <!-- AC1–3 + AC5 dev-complete + code-reviewed (gds-code-review 2026-06-24, 3-layer adversarial; all 6 patches applied + suite green). AC4 (the physical two-machine LAN run) is PARKED pending a 2nd machine per Resolved Decision #1 — Task 7 stays unchecked; run lan-determinism-runbook.md + record it in the Change Log when the hardware exists. -->
+Status: done  <!-- AC1–3 + AC5 dev-complete + code-reviewed (gds-code-review 2026-06-24, 3-layer adversarial; all 6 patches applied + suite green). AC4 (the physical two-machine LAN run) is STILL UNMET — Task 7 stays unchecked. UPDATE 2026-08-07: Resolved Decision #1's "Alec has one machine" premise is NO LONGER TRUE — a second machine exists and AC4 was ATTEMPTED twice that day. Both runs aborted early (1 comparison window; see Change Log), so AC4 is now BLOCKED-ON-METHOD rather than blocked-on-hardware. Three tooling defects were found and fixed in the attempt (DW-905, DW-906); the gate itself is unchanged and still owed. -->
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 <!-- 1.9b is the SECOND half of the former Story 1.9 and is a DIFFERENT KIND of story than every Epic-1
@@ -330,3 +330,62 @@ _Code review (`gds-code-review`, 3-layer adversarial: Blind Hunter + Edge Case H
 2. **Topology = server + client 1 on machine A, client 2 on machine B** (D3 default confirmed). Two machines; the server co-locates with client 1 on A (it arbitrates, it doesn't tick a match), so the proof is still two independent sims on two physical machines.
 3. **Canonical P2.4 scenario = `map_02_iron_crossing.json`** (D4 default confirmed). Symmetric 2-player; reuse existing data, no authoring.
 4. **Run-from-source (`godot --path`) on both machines** (D7 default confirmed). No export preset; the export pipeline stays Epic 10 (10-7/10-9a).
+
+---
+
+## Change Log
+
+### 2026-08-07 — AC4 first physical attempt. **NOT MET.** Two runs, both aborted early.
+
+Hardware finally available (Resolved Decision #1's one-machine premise is retired): PC (RTX 3060) as
+Machine A running the dedicated server + client 1; laptop (GTX 1650) as Machine B running client 2;
+same LAN, both at commit `289e795f`, both `dotnet build` clean.
+
+**Verdict: AC4 remains unmet.** Best result was
+`[Determinism] MATCH SUMMARY: 1 windows compared, 0 desync, 0 abandoned — PASS` — a truthful log line
+and a worthless gate result. AC4 requires ≥300 ticks / ≥5 windows. The F9 HALT drill (AC4's second
+half) was **never fired**. Two attempts ended at tick 94 and tick 114 respectively when the driving
+Chrome-Remote-Desktop-from-phone sessions backgrounded, which stops the client's `_Process`, stops tick
+submission, and gets that peer dropped as a timeout. Server-side signature both times: input delay
+driven to `MAX_DELAY` = 12 (`→ 12 ticks at tick 99`) immediately before
+`Player2 dropped mid-match — freezing at tick 114`.
+
+**Verified live for the first time (do not re-derive — also recorded in runbook §10):**
+
+| Observed | Evidence |
+|---|---|
+| Content agreement across two machines | Both slots Ready at match hash `0xBE1EFB623E0049E8`; scenario `0x8D79360D`, start-state `0x013912C889112CC0` (algo v2), full content breakdown identical |
+| Slot assignment + quorum start | `slot 0 → Player1`, `slot 1 → Player2`, `State → Lobby (2/2)`, `All 2 players ready — broadcasting StartGame (quorum N=2)` |
+| **AC1's server verdict working end-to-end over a real LAN** | `[Determinism] tick 60: all 2 peers matched 0xE4FE8ED9 (window #1)` + the terminal `MATCH SUMMARY` line, both in the exact AC1-pinned format |
+| Cross-machine sim determinism (one window) | The tick-60 hash agreed across different CPUs and GPUs |
+| Delay negotiation with full ACK round-trip | Three `Dictating → applyAtTick → committed (all 2 players ACKed)` cycles |
+| Adaptive delay adapting to real conditions | `4 → 2` healthy, `→ 12` (MAX) under a stalled peer, `→ 11` recovering |
+| Story 9.5 drop → freeze-and-continue | `Player2 dropped mid-match — freezing at tick 114, awaiting survivor ACK(s). Match continues.` → `Freeze committed for slot 1 … Injecting empty commands; quorum reduced.` |
+
+**Defects found by the attempt (all fixed except where noted):**
+- **DW-905** (closed) — Terrain3D's GDExtension binaries were excluded from the repo by a `bin/`
+  .gitignore rule, so the laptop's fresh clone had **no terrain**: Godot disabled the addon and rewrote
+  the tracked `project.godot`. Would have produced a desync unrelated to determinism (cf. DW-828).
+  Residual re-filed as **DW-907** (nothing verifies a fresh clone builds).
+- **DW-906** (closed) — `lan-desync-smoke.ps1` launched the server via `Start-Process`, so its stdout —
+  **the AC1 verdict this AC is read from** — went nowhere, and every run leaked an orphan holding UDP
+  7777. Also hardcoded per-machine paths. Server now runs `--headless` in the foreground with logs to
+  `lan-logs/`; cleanup is role-aware and on by default.
+
+**Two things to fix before the next attempt:**
+1. **Method.** No client survives an unattended run under a phone-driven remote session. Either run the
+   machines locally, or set both to never sleep / never lock-on-disconnect and leave the sessions alone.
+   A single-machine `loopback-desync-smoke.ps1` control run should be done first to prove the harness
+   yields a multi-window PASS with no remoting involved.
+2. **Scenario.** Both runs used **`alpha_map_01`** (the zero-config `ScenarioPath` default), **not**
+   `map_02_iron_crossing.json` — the canonical P2.4 pinned by Resolved Decision #3, which AC4's wording
+   ("the canonical P2.4 scenario") requires. Set `ScenarioPath` identically on both machines, or amend
+   Resolved Decision #3 to accept `alpha_map_01`. As written, a green run on `alpha_map_01` does not
+   satisfy AC4.
+
+**Standing hazard for the next attempt:** `AiOpponentSystem` plays `Faction.Player2` unconditionally
+(`AiOpponentSystem.cs:32`; registered as system [14] in every `SimulationHost`; `AiDifficulty` has no
+`None`), so in a 2-human match the AI co-pilots the human Player2's faction — and its scorer runs on
+`float`, which `AiOpponentSystem.cs:253-254` states does not unblock lockstep MP pending the float→Fixed
+migration (DW-204 / Story 10.11). A sustained run is therefore also a live test of that float debt: if a
+desync appears with no F9 pressed, suspect this first.
