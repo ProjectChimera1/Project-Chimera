@@ -1,6 +1,6 @@
 ---
 project: Project Chimera
-last_touched: 2026-08-07
+last_touched: 2026-08-08
 phase: Phase 5 — Polish & 1.0
 status: Active
 ---
@@ -15,11 +15,34 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-**Run `bmad-loop run --epic 15`.** The loop is stopped, the tree is clean and 15-13 is `done`, so a fresh run picks up **15-14 — host-side hero identity enforcement / attested deployment (DW-200)**, the largest remaining Epic-15 item. The other two open keys are **15-21** (creator-authorable hero attribute system — folds BOTH `SimChecksum` and `CanonicalModelHash`, so it re-records at the end of its own story per the batch rule and must not be queued behind anything) and **15-23** (generation-validated entity references, DW-775). 15-1 stays `blocked` by Alec's deferral.
+**Build DW-908 (AI control follows slot occupancy), then re-run the two-machine LAN gate.** Alec's stated
+goal for the next session is *"to be able to properly test this lan game"* — and DW-908 is the one thing
+standing between here and that. The rig itself is ready and proven (see the 2026-08-08 block): both
+machines build, the canonical scenario is committed, the launcher works, and the gate produced a real
+verdict. What it produced was a **desync at tick 660**, because `AiOpponentSystem` co-pilots the human's
+Player2 faction and its scorer is float.
 
-**The in-engine gate is no longer a blocker for Godot-coupled stories** — the DW-882 seam landed 2026-08-07, so a dev session can drive and observe a real match. Two operating notes for whoever runs it: freeze game time before asserting sim state, and the bridge is still single-client, so close idle Claude sessions before an in-engine run.
+DW-908 is a **story, not a bundle** — its `implementation-constraint:` line is load-bearing: the client
+constructs its sim host at `MainScene.cs:487` during `_Ready`, long before the lobby decides
+online-vs-offline, so a constructor argument cannot work. The gate must be a per-match flag, which means a
+peer that sets it differently desyncs — so it wants folding into `StartStateHash`/`MatchAgreementHash` so
+`HandshakeGate.CheckStart` REJECTS a disagreement before tick 0 instead of desyncing 600 ticks later. That
+fold moves `StartStateHash.AlgoVersion` and re-records the start-state golden, so it re-records at the end
+of its own story per the batch rule.
 
-Read the **2026-08-07** block below first.
+**Then:** re-run `godot/tools/lan-desync-smoke.ps1` per `lan-determinism-runbook.md` and expect sustained
+clean windows past tick 660 with `0 desync`. Record that summary in story 1-9b's Change Log — that closes
+FR-39, the #1 pre-ship gate, carried since Epic 1.
+
+**Also available, unblocked, no code needed:** A5-E9 leg (b), **live Nakama** — the same two-machine rig
+plus `docs/server-deploy/docker-compose.yml` on the LAN. Highest-value target there is **DW-435**, the
+flagged soft-lock risk that could lock every player out of every online match.
+
+**bmad-loop is stopped**, tree clean. A fresh `bmad-loop run --epic 15` picks up the remaining Epic-15
+keys (**15-21**, **15-23**); **15-14** is `blocked` (DW-200, needs Alec's trust-mechanism decision) and
+**15-1** stays `blocked` by Alec's deferral.
+
+Read the **2026-08-08** block below first.
 
 <details><summary>Superseded Next Action (Story 15-3 — now done)</summary>
 
@@ -35,7 +58,73 @@ Read the **2026-08-06 (later)** block below first — the earlier same-day block
 
 ---
 
-## Current State (2026-08-07) — read this first
+## Current State (2026-08-08) — read this first
+
+**Headline: FR-39 ran for the first time, and it caught a real desync.** The #1 pre-ship gate — two
+physical machines in lockstep, carried un-run since Epic 1 and named in A5-E9 as the top accepted risk —
+was executed end to end on a PC (RTX 3060, server + Player1) and a laptop (GTX 1650, Player2) over LAN,
+on `map_02_iron_crossing`.
+
+```
+[Determinism] tick  60 .. 600: all 2 peers matched, windows #1-#10
+[Determinism] tick 660: GLOBAL DESYNC - no canonical hash. Broadcasting terminal HALT.
+[Determinism] MATCH SUMMARY: 11 windows compared, 1 desync, 0 abandoned - FAIL.
+```
+
+**Both AC4 halves are demonstrated.** The clean-PASS half outright — 10 consecutive matching windows over
+600 ticks, double the required ≥5/≥300, across a committed delay change, both HUD hashes reading
+`0x75F90131` at tick 588. The terminal-HALT half by a **real** divergence rather than the F9 injection:
+"MATCH HALTED — Simulation desync detected at tick 660" appeared on **both** machines simultaneously
+(Alec confirmed the laptop). That is stronger evidence than the synthetic drill, which remains unfired.
+
+**FR-39 is NOT closed, and the blocker is DW-908.** The desync is the float AI, which makes **DW-204**
+(severity high, open since 2026-06-09, *"illegal in lockstep MP until converted"*) **proven live rather
+than predicted**. Attribution is solid: the AI is the only float system in the sim; the human placed
+nothing (zero `Placement mode` lines in the client log, which also rules out DW-405); P2 is
+`AiOpponentSystem.AI_FACTION` and is the faction that diverged. **Decisive:** the divergence point MOVES
+between runs on identical inputs — windows #1–#9 hashed byte-identically across two separate runs, yet one
+diverged before tick 600 and the other stayed clean at 600 and went by 660. A deterministic logic bug
+reproduces at the same tick; float nondeterminism does not.
+
+**DW-908 (high) — Alec's framing, and it is the right one.** Not "the AI runs online": the AI is bound to
+a **constant** (`AI_FACTION = Faction.Player2`) instead of to **who occupies the slot**, so it co-pilots a
+human's faction. Offline the pairing coincidentally holds (`ActiveSlotsInLaunchOrder` sorts the lone Human
+to Player1); online `AssignedRoster` seats peers by arrival with no Human/AI concept at all. An AI filling
+a genuinely vacant slot *should* play it — that is why an "online off-switch" is the wrong shape and would
+have to be undone to support 2 humans + 1 AI. **No story or epic covers this**; Story 10.11 / DW-204 is
+the float→Fixed migration and is silent on ownership.
+
+**Six defects found in two evenings, five of them impossible to find from one machine:**
+- **DW-905** (closed) — Terrain3D's GDExtension binaries were excluded from the repo by a `bin/`
+  .gitignore rule, so a fresh clone had **no terrain**; Godot disabled the addon and rewrote the tracked
+  `project.godot`. Would have desynced for reasons unrelated to determinism. Residual → **DW-907**.
+- **DW-906** (closed) — the LAN launcher hid its own verdict (`Start-Process` detached the server, so the
+  `[Determinism]` output went nowhere) and leaked a port-holding orphan every run.
+- **DW-907** (open) — nothing verifies that a fresh clone produces a working build. Two instances in two
+  subsystems (Terrain3D, the gitignored `nakama-modules/build`) makes it a class.
+- **DW-908** (open, high) — the AI ownership bug above.
+- **DW-204 / DW-739** — now carry `proven-live:` evidence.
+
+**Tooling now in place for the next run:** the launcher is ASCII-only (it would not parse under
+`powershell -File`, i.e. Windows PowerShell 5.1, because UTF-8 arrows decoded to `’` — a string
+delimiter); logs are UTF-8 in `lan-logs/`; cleanup is role-aware and on by default; there is a port
+pre-flight that names the owning PID; paths auto-derive. The runbook is rewritten against what actually
+happens, including a new §10 recording what is already proven so the next run does not re-derive it.
+
+**Two operating lessons worth carrying:**
+1. **`PASS` is not the number to read — the window count is.** The server prints PASS on zero desyncs even
+   when it compared almost nothing; an earlier run logged `1 windows compared … PASS`, which is truthful
+   and worthless. <5 windows is an aborted run.
+2. **Close the CLIENTS before the server.** `MATCH SUMMARY` is emitted on match end, not server stop —
+   stopping the server first cost this session the verdict line of a 9-window run.
+
+**Not verified:** anything requiring a remote session. A minimised/backgrounded remote desktop stops the
+client's `_Process` and the server drops that peer as a timeout — that ended both 2026-08-07 attempts, at
+ticks 94 and 114.
+
+---
+
+## Current State (2026-08-07)
 
 **Headline: the in-engine gate stopped being a wall.** Story 15-13 escalated CRITICAL because its diff touched
 `src/UI/**` and the behaviour was unobservable over the GDScript-only bridge (DW-882). Alec's call was to BUILD the
