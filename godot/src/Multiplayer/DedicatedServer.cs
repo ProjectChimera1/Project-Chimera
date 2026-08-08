@@ -484,10 +484,21 @@ namespace ProjectChimera.Multiplayer
                             // one line on the FIRST drop, then one per RATE_LIMIT_LOG_EVERY — so a real flood can't
                             // spam the console, yet a low-volume drop still leaves a trace. Gated on dropped > 0 so an
                             // (unreachable-while-sized-to-MAX_SLOTS) out-of-range slot never logs a "0 dropped" line.
+                            // DW-912: this drop is MATCH-FATAL and must never read as routine housekeeping again. A
+                            // TickCommands packet is the only carrier of that slot's orders for its tick;
+                            // MergedTickBuilder waits for ALL players with no deadline, and the client never resends
+                            // (the merged-arrival ring's sticky HasSent). So one drop here = that tick is never
+                            // emitted = EVERY client hangs on it forever. The 2026-08-08 LAN run died exactly this
+                            // way — this line was a GD.Print reading like a benign anti-spam notice. PrintErr, and
+                            // say what it costs.
                             long dropped = _rateLimiter.DroppedCount(slot);
                             if (dropped == 1 || (dropped > 0 && dropped % RATE_LIMIT_LOG_EVERY == 0))
-                                GD.Print($"[Server] Command-rate throttle active on slot {slot} " +
-                                         $"({dropped} packets dropped this match).");
+                                GD.PrintErr($"[Server] MATCH-FATAL: command-rate throttle dropped a TickCommands " +
+                                            $"packet from slot {slot} ({dropped} this match, cap " +
+                                            $"{_rateLimiter.MaxPerWindow}/{_rateLimiter.WindowMs} ms). That slot's " +
+                                            $"orders for one tick are gone and are never resent — the merge for that " +
+                                            $"tick can never complete, so every client will hang on it. A client " +
+                                            $"exceeding the cap is paced wrong (see LockstepPacer / DW-912), not spamming.");
                         }
                     }
                     break;

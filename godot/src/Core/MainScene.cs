@@ -186,6 +186,24 @@ namespace ProjectChimera.Core
         /// <summary>Story 11.3: seconds between periodic autosaves (SP-only).</summary>
         private const float AUTOSAVE_INTERVAL_SECONDS = 120f;
 
+        /// <summary>DW-912: the ONLINE fixed-timestep budget. The online branch of <c>_Process</c> steps the sim off
+        /// this pacer at 30 Hz instead of once per rendered frame — see <see cref="Multiplayer.LockstepPacer"/> for why
+        /// frame-paced lockstep deadlocked the match against the server's command-rate throttle.</summary>
+        private readonly Multiplayer.LockstepPacer _onlinePacer = new();
+
+        /// <summary>DW-912: the exec tick the online stall diagnostic is currently timing, and when it started (ms).
+        /// A lockstep stall that never clears is the signature of a command packet that was accepted by the transport
+        /// but never reached the merge — the failure mode that hung the 2026-08-08 LAN run with no diagnostic at all.
+        /// Reported ONCE per stuck tick so a genuine slow peer cannot spam the console.</summary>
+        private uint  _stallTick;
+        private ulong _stallStartMs;
+        private bool  _stallTickReported;
+
+        /// <summary>DW-912: how long the sim may sit on one exec tick before the stall is called out. Comfortably
+        /// longer than any legitimate hitch (the ENet peer budget itself is 20 s) but far short of a human giving up,
+        /// so a genuine deadlock names itself while both machines are still up and observable.</summary>
+        private const ulong ONLINE_STALL_REPORT_MS = 3_000;
+
         /// <summary>DW-467: the off-thread save writer — serializes + disk-writes an already-captured save buffer on a
         /// background FIFO chain so IssueSave (and the 120 s autosave inside _Process) never blocks the game thread on
         /// <c>SaveGameFile.Write</c> / <c>File.WriteAllBytes</c> / <c>File.Replace</c>. Lazily created over
@@ -1377,6 +1395,40 @@ namespace ProjectChimera.Core
         private readonly System.Diagnostics.Stopwatch _frameStallWatch = System.Diagnostics.Stopwatch.StartNew();
         private double _worstFrameMs;
 
+        /// <summary>
+        /// DW-912 — name an online stall that has outlived any plausible hitch, ONCE per stuck exec tick.
+        ///
+        /// <para>A lockstep client that cannot advance looks identical whether the peer is merely slow or the tick is
+        /// permanently unresolvable, and the 2026-08-08 LAN run hung with no client-side trace at all: the merged
+        /// packet for tick 64 was never going to arrive (a throttled command packet, never resent), yet the only
+        /// symptom was a frozen HUD. This turns that silence into a line naming the exact tick — which is directly
+        /// comparable against the server's own log for the same tick.</para>
+        /// </summary>
+        private void ReportOnlineStall(uint tick)
+        {
+            // A terminal server-ordered HALT also refuses to advance, but deliberately leaves IsStalling false (it
+            // carries its own overlay — UX-DR64e). Never report that as a stuck tick.
+            if (!_ctx.Lockstep.IsStalling) return;
+
+            ulong nowMs = Time.GetTicksMsec();
+
+            if (tick != _stallTick) // a different tick than we were timing — the sim progressed; re-arm
+            {
+                _stallTick         = tick;
+                _stallStartMs      = nowMs;
+                _stallTickReported = false;
+                return;
+            }
+
+            if (_stallTickReported || nowMs - _stallStartMs < ONLINE_STALL_REPORT_MS) return;
+
+            _stallTickReported = true;
+            GD.PrintErr($"[Lockstep] STALLED {(nowMs - _stallStartMs) / 1000} s on exec tick {tick} — the server has " +
+                        $"not broadcast the merged command packet for it. The sim cannot advance until EVERY player's " +
+                        $"orders for tick {tick} reach the merge, and the client never resends. If the server logged " +
+                        $"'Command-rate throttle active', that packet died there and this match will not recover.");
+        }
+
         public override void _Process(double delta)
         {
             if (_headless || _bootAborted || _bootPending) return; // dedicated server: no presentation context; _bootAborted = fail-safe reload pending; _bootPending = phase run not yet built _ctx handles
@@ -1472,10 +1524,30 @@ namespace ProjectChimera.Core
                 }
                 else if (_ctx.Lockstep.IsOnline)
                 {
-                    // Online: only step the sim when both peers' commands for this tick have arrived.
-                    // Flush() sends local commands, polls transport, and returns true when ready.
-                    if (_ctx.Lockstep.Flush(_host.CurrentTick))
+                    // Online: a FIXED 30 Hz timestep (LockstepPacer), gated per tick on the server's merged command
+                    // stream. Flush() sends this tick's local commands, polls the transport, and returns true once
+                    // the merged packet for CurrentTick has arrived.
+                    //
+                    // DW-912: this used to be one Flush + one StepOnce per RENDERED FRAME, so the online sim advanced
+                    // at the frame rate — ~252 ticks/sec on a 252 FPS machine (an ~8× fast-forward), which also meant
+                    // ~252 command packets/sec, straight through the dedicated server's 60/sec anti-spam throttle.
+                    // The 61st packet was silently dropped, MergedTickBuilder never completed that tick's fan-in, and
+                    // both machines hung forever at tick 64 (= 60 admitted + INPUT_DELAY 4). The pacer makes the send
+                    // rate a property of the tick rate instead of the GPU, and banks nothing across a stall so the
+                    // recovery can never fire the same burst. See LockstepPacer for the full derivation.
+                    _onlinePacer.Accumulate((float)delta);
+
+                    while (_onlinePacer.HasTickBudget)
+                    {
+                        if (!_ctx.Lockstep.Flush(_host.CurrentTick))
+                        {
+                            _onlinePacer.Stall();
+                            ReportOnlineStall(_host.CurrentTick);
+                            break;
+                        }
+                        _onlinePacer.ConsumeTick();
                         _host.StepOnce();
+                    }
                 }
                 else
                 {
@@ -2833,6 +2905,10 @@ namespace ProjectChimera.Core
             _gameSpeed = 1f;
             _paused    = false;
             _autosaveAccum = 0f; // Story 11.3 — reset the autosave timer on return to Edit
+            // DW-912 — a new match must never inherit the previous one's banked sim time or its stuck-tick
+            // diagnostic state (every match-end path funnels through this Play→Edit reset).
+            _onlinePacer.Reset();
+            _stallTick = 0; _stallStartMs = 0; _stallTickReported = false;
             _reopenMenuAfterSettings = false;
             _gameOver     = false;
             _playFrames   = 0;

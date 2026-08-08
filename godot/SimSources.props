@@ -66,6 +66,13 @@
          DelayMath precedent) so the Story-9.3 client gate — keying, the stall/apply predicate, bootstrap/delay-gap
          seeding — is Tier-1 unit-testable (MergedArrivalRingTests). Pure integer/byte state, no float. -->
     <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\MergedArrivalRing.cs" LinkBase="Sim\Multiplayer" />
+    <!-- DW-912: the Godot-free ONLINE fixed-timestep pacer (the MergedArrivalRing precedent) — the frame→tick
+         budget + the "a stall banks nothing" rule that keeps the client's command-packet rate a property of the
+         30 Hz tick rate rather than of the frame rate. The frame-paced online loop it replaces sent ~252
+         packets/sec on a 252 FPS machine, tripped the server's 60/sec anti-spam throttle, and deadlocked the
+         match at tick 64 with no recovery path. Tier-1 tested (LockstepPacerTests) so the send-rate bound is a
+         pinned property, not a comment. Wall-clock pacing — never folded into SimChecksum. -->
+    <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\LockstepPacer.cs" LinkBase="Sim\Multiplayer" />
     <!-- DW-447: the Godot-free independent per-peer sim (own SimulationHost + deterministic scripted orders +
          real per-tick SimChecksum) shared by the in-Godot LoopbackDesyncSelfTest AND the Tier-1
          IndependentPeerSimQuorumTests — so "N independent sims compute + compare their own checksums" is
