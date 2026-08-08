@@ -377,11 +377,17 @@ driven to `MAX_DELAY` = 12 (`→ 12 ticks at tick 99`) immediately before
    machines locally, or set both to never sleep / never lock-on-disconnect and leave the sessions alone.
    A single-machine `loopback-desync-smoke.ps1` control run should be done first to prove the harness
    yields a multi-window PASS with no remoting involved.
-2. **Scenario.** Both runs used **`alpha_map_01`** (the zero-config `ScenarioPath` default), **not**
-   `map_02_iron_crossing.json` — the canonical P2.4 pinned by Resolved Decision #3, which AC4's wording
-   ("the canonical P2.4 scenario") requires. Set `ScenarioPath` identically on both machines, or amend
-   Resolved Decision #3 to accept `alpha_map_01`. As written, a green run on `alpha_map_01` does not
-   satisfy AC4.
+2. **Scenario. — RESOLVED same day.** Both runs used **`alpha_map_01`** (the zero-config `ScenarioPath`
+   default), **not** `map_02_iron_crossing.json`, the canonical P2.4 pinned by Resolved Decision #3 that
+   AC4's wording ("the canonical P2.4 scenario") requires — so a green run would not have satisfied AC4.
+   Also worth recording: `alpha_map_01` is **asymmetric** (slot 0 starts 200 ore + 100 crystal, slot 1
+   only 100 ore), while `map_02_iron_crossing` is symmetric (both slots 200 ore, bases mirrored at
+   x=±50). Fixed by committing `ScenarioPath = "res://resources/data/scenarios/map_02_iron_crossing.json"`
+   as an override on the `MainScene` root in `scenes/main.tscn`, so both machines take it from git rather
+   than a hand-edit that could differ per machine. Verified by booting a client and reading
+   `[MainScene] Loaded scenario: "Iron Crossing" (map_02_iron_crossing)` — a wrong export name would have
+   been ignored SILENTLY and fallen back to the old default. Canonical hashes now: scenario `0xCF0128F3`,
+   start-state `0x5231ED0610A3186A`, match-agreement `0x771C516961CEBD73`.
 
 **Standing hazard for the next attempt:** `AiOpponentSystem` plays `Faction.Player2` unconditionally
 (`AiOpponentSystem.cs:32`; registered as system [14] in every `SimulationHost`; `AiDifficulty` has no

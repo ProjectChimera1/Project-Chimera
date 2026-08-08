@@ -92,13 +92,30 @@ The match scenario is the `ScenarioPath` **export** on the `MainScene` root node
 picker. Both clients load whatever `ScenarioPath` points to.
 
 - **Canonical P2.4 = `res://resources/data/scenarios/map_02_iron_crossing.json`** (symmetric 2-player —
-  no advantaged slot; economy + combat to exercise the sim). To use it: open `scenes/main.tscn` in the
-  Godot editor, select the `MainScene` root, set **ScenarioPath** to
-  `res://resources/data/scenarios/map_02_iron_crossing.json`, and save. Commit it so **both** machines
-  pick up the identical value (or set it identically on each).
-- **Zero-config fallback = `alpha_map_01.json`** — the `ScenarioPath` **default**. If you change nothing,
-  both machines load this. (Both scenarios are verified valid + deterministic by
+  no advantaged slot; economy + combat to exercise the sim). **As of 2026-08-07 this is COMMITTED as the
+  `ScenarioPath` override on the `MainScene` root in `scenes/main.tscn`**, so both machines pick it up
+  from git and there is nothing to set by hand. Verified live: the client logs
+  `[MainScene] Loaded scenario: "Iron Crossing" (map_02_iron_crossing)`.
+- **Expected hashes with the canonical scenario** — both machines must print these identically at boot,
+  and both lobby slots must Ready at the same match-agreement hash:
+
+  | | |
+  |---|---|
+  | Scenario hash | `0xCF0128F3` |
+  | Start-state hash (algo v2) | `0x5231ED0610A3186A` |
+  | Match-agreement hash (algo v3) | `0x771C516961CEBD73` |
+
+  If a machine prints `0x8D79360D` / `Alpha Skirmish`, it is on the **old default** — it has not pulled,
+  or its `main.tscn` was overwritten (see the warning below).
+- **The old zero-config fallback was `alpha_map_01.json`**, the C# default in `MainScene.cs:218`. Note it
+  is **asymmetric** — slot 0 starts with 200 ore + 100 crystal, slot 1 with only 100 ore — which is why
+  it is not the canonical gate scenario. (Both scenarios are verified valid + deterministic by
   `CanonicalScenarioTests`.)
+
+> ⚠ **If the Godot editor has `main.tscn` open, do not save the scene** until you reload it. The editor
+> holds the version it loaded at startup; saving would write that back and silently drop the committed
+> `ScenarioPath` override, putting that machine back on `alpha_map_01` while the other stays on Iron
+> Crossing — a guaranteed content-hash mismatch at Ready.
 
 > **CRITICAL invariant:** both machines must use the **same** `ScenarioPath`. Different scenario files =
 > guaranteed desync. The lobby helps catch this — at Ready it compares scenario hashes and **blocks** the
