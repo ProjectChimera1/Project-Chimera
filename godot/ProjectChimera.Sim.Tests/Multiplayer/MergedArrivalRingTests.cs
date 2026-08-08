@@ -177,20 +177,68 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
         }
 
         [Fact]
-        public void SeedDelayGap_Grow_SeedsExactlyOldPlus1ThroughNew()
+        public void SeedDelayGap_Grow_SeedsExactlyOldThroughNewMinus1()
         {
             var ring = new MergedArrivalRing();
             const uint currentTick = 100;
             ring.SeedDelayGap(currentTick, oldDelay: 4, newDelay: 8);
 
-            Assert.False(ring.IsReady(104), "currentTick+oldDelay is NOT part of the gap (already in flight)");
-            for (uint t = 105; t <= 108; t++)
+            Assert.False(ring.IsReady(103),
+                "currentTick+oldDelay-1 was issued by the PREVIOUS exec tick — in flight, not part of the gap");
+            for (uint t = 104; t <= 107; t++)
             {
                 Assert.True(ring.IsReady(t), $"gap tick {t} must be seeded");
                 Assert.Equal(0, ring.LenFor(t));
                 Assert.True(ring.HasSent(t));
             }
-            Assert.False(ring.IsReady(109), "currentTick+newDelay+1 is past the gap and must stall");
+            Assert.False(ring.IsReady(108),
+                "currentTick+newDelay is the FIRST tick sent under the new delay — seeding it would discard real orders");
+        }
+
+        /// <summary>
+        /// DW-914 — the property the old bounds violated, stated as the thing that actually matters rather than as
+        /// a pair of endpoints: across a growing delay change, EVERY tick the sim must execute is either sent for by
+        /// the client or seeded empty — never neither (a permanent deadlock, which froze the 2026-08-08 LAN runs at
+        /// tick 215 and 902) and never both (the seed marks the tick locally-sent, silently suppressing a real
+        /// bundle of orders).
+        ///
+        /// <para>The schedule is modelled exactly as <c>LockstepManager.Flush</c> drives it: the commit happens
+        /// inside the flush for <c>applyTick</c> and BEFORE that flush computes its issue tick, so exec ticks below
+        /// <c>applyTick</c> issue at the old delay and <c>applyTick</c> onward issue at the new one.</para>
+        /// </summary>
+        [Theory]
+        [InlineData(2, 3)]   // the exact change observed on the rig — a one-tick gap
+        [InlineData(2, 5)]
+        [InlineData(4, 8)]
+        [InlineData(2, 12)]  // MIN_DELAY -> MAX_DELAY, the widest gap possible
+        [InlineData(11, 12)]
+        public void DelayGrow_LeavesEveryTickEitherSentOrSeeded_NeverNeitherNeverBoth(int oldDelay, int newDelay)
+        {
+            const uint applyTick = 100;
+            var ring = new MergedArrivalRing();
+
+            // Every issue tick the client actually transmits a bundle for, either side of the change. The
+            // pre-change window must reach back at least MAX_DELAY exec ticks, or a large oldDelay leaves ticks
+            // looking unsent purely because the model never simulated the frame that issued them.
+            const uint lookback = DelayMath.MAX_DELAY + 2;
+            var sentFor = new System.Collections.Generic.HashSet<uint>();
+            for (uint exec = applyTick - lookback; exec < applyTick; exec++) sentFor.Add(exec + (uint)oldDelay);
+            for (uint exec = applyTick; exec <= applyTick + lookback; exec++) sentFor.Add(exec + (uint)newDelay);
+
+            ring.SeedDelayGap(applyTick, oldDelay, newDelay);
+
+            for (uint t = applyTick; t <= applyTick + (uint)newDelay; t++)
+            {
+                bool seeded = ring.IsReady(t);
+                bool sent   = sentFor.Contains(t);
+
+                Assert.True(seeded || sent,
+                    $"tick {t} is neither sent for nor seeded — no merged packet can ever exist for it and every " +
+                    $"client deadlocks here (delay {oldDelay}->{newDelay} at {applyTick}).");
+                Assert.False(seeded && sent,
+                    $"tick {t} is BOTH seeded empty and sent for — the seed marks it locally-sent, so the client's " +
+                    $"real orders for it are silently discarded (delay {oldDelay}->{newDelay} at {applyTick}).");
+            }
         }
 
         [Fact]

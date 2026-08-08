@@ -885,7 +885,10 @@ namespace ProjectChimera.Multiplayer
                 // Both peers pre-seed the gap as empty and do NOT send for it; the server therefore never
                 // emits a merged packet for these ticks, so the client self-seeds an empty merged (len 0 →
                 // the applier no-ops) exactly as it does for the bootstrap-gap ticks (Story 9.3 / DW-390:
-                // the gap arithmetic lives in the Tier-1-tested MergedArrivalRing.SeedDelayGap). NOTE the
+                // the gap arithmetic lives in the Tier-1-tested MergedArrivalRing.SeedDelayGap). DW-914: note
+                // this commit runs BEFORE this same flush computes its issue tick, which is exactly why the gap
+                // opens at currentTick+oldDelay — the old delay's last send was issued by the PREVIOUS exec tick.
+                // Getting that boundary wrong by one deadlocked live matches; see SeedDelayGap. NOTE the
                 // DW-417 asymmetry: a mid-match DROP is deliberately NOT seeded — the server keeps the merged
                 // stream flowing via injection (FrozenSlotInjector), so the ring fills from arriving packets
                 // alone (pinned by ClientDropFlushGateTests).

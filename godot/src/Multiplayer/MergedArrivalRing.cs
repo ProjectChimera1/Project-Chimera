@@ -141,15 +141,28 @@ namespace ProjectChimera.Multiplayer
 
         /// <summary>
         /// A GROWING delay change maturing at <paramref name="currentTick"/> opens a gap no peer sends for:
-        /// ticks <paramref name="currentTick"/>+<paramref name="oldDelay"/>+1 ..
-        /// <paramref name="currentTick"/>+<paramref name="newDelay"/> (inclusive). Both peers pre-seed the gap as
+        /// ticks <paramref name="currentTick"/>+<paramref name="oldDelay"/> ..
+        /// <paramref name="currentTick"/>+<paramref name="newDelay"/>−1 (inclusive). Both peers pre-seed the gap as
         /// empty so the client self-fills where the server never emits. A shrink (<paramref name="newDelay"/> ≤
-        /// <paramref name="oldDelay"/>) seeds nothing — the already-buffered ticks execute normally.
+        /// <paramref name="oldDelay"/>) seeds nothing — those issue ticks were already sent under the old delay and
+        /// simply arrive as normal merged packets.
+        ///
+        /// <para><b>DW-914 — the bounds were one tick too high and it deadlocked live matches.</b> The commit
+        /// happens INSIDE the flush for <paramref name="currentTick"/>, BEFORE that flush computes its issue tick,
+        /// so the last tick ever sent under the old delay is the one issued by the PREVIOUS exec tick:
+        /// <c>(currentTick−1) + oldDelay</c> = <c>currentTick + oldDelay − 1</c>. The first tick sent under the new
+        /// delay is <c>currentTick + newDelay</c>. The hole between them therefore OPENS at
+        /// <c>currentTick + oldDelay</c>, not at <c>currentTick + oldDelay + 1</c>. Seeding the old range broke it
+        /// at both ends: <c>currentTick+oldDelay</c> was left unseeded and unsent, so every client stalled on it
+        /// forever, while <c>currentTick+newDelay</c> was seeded empty even though the client DOES send for it —
+        /// marking it locally-sent, suppressing that real bundle, and silently discarding a tick of orders. Observed
+        /// on the 2026-08-08 LAN rig: a 2→3 change committed at tick 213 froze both machines at 215, and one
+        /// committed at tick 900 froze them at 902 — <c>A+oldDelay</c> exactly, twice.</para>
         /// </summary>
         internal void SeedDelayGap(uint currentTick, int oldDelay, int newDelay)
         {
-            for (uint gap = currentTick + (uint)oldDelay + 1;
-                 gap <= currentTick + (uint)newDelay; gap++)
+            for (uint gap = currentTick + (uint)oldDelay;
+                 gap < currentTick + (uint)newDelay; gap++)
                 SeedEmpty(gap);
         }
 
