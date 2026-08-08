@@ -417,8 +417,9 @@ photographed).
 REAL divergence rather than an F9 injection: the server broadcast the terminal HALT and the client
 showed **"MATCH HALTED — Simulation desync detected at tick 660. The match cannot continue."** with the
 attributed tick. A genuine desync exercising the same path is better evidence than a synthetic one.
-**Owed:** confirmation that the LAPTOP also displayed the overlay (only the PC was photographed), and
-the F9 drill itself remains unfired if the letter of AC4 is to be satisfied rather than its intent.
+**CONFIRMED 2026-08-08 (Alec):** the LAPTOP displayed "MATCH HALTED" at the same moment as the PC, so
+AC4's "**both** machines show the terminal HALT" clause is satisfied. The F9 drill itself remains
+unfired if the letter of AC4 is wanted rather than its intent.
 
 **THE FINDING — DW-204 stopped being a prediction.** The desync is the float AI, and DW-204 (severity
 high, open since the 2026-06-09 review) called it exactly: *"All Score* methods still use float/Math.*;
@@ -448,3 +449,24 @@ That re-run is the real close of FR-39.
 **Operational note.** The FIRST run of this session logged 9 clean windows and its `MATCH SUMMARY` was
 LOST, because the server was stopped before the clients — the summary is emitted on match end, not on
 server stop. Close clients first. Now warned in the runbook §5 and in the launcher's own banner.
+
+### 2026-08-08 (later) - AC4 disposition + the real blocker, restated correctly
+
+**Both halves of AC4 are now demonstrated on two physical machines.** Clean-PASS: 10 windows / 600
+ticks / 0 desync. Terminal-HALT: fired by a real divergence, overlay confirmed on **both** machines.
+
+**FR-39 still does not close, and the reason is DW-908, not the gate.** Alec's diagnosis (2026-08-08)
+reframed it and is the correct one: the problem is not "the AI runs online", it is that
+`AiOpponentSystem` is bound to a **constant** (`AI_FACTION = Faction.Player2`) instead of to **who
+occupies the slot** - so it co-pilots a human's faction in any match where a human holds Player2. An AI
+filling a genuinely vacant slot *should* play it; the bug is that occupancy is never consulted. Offline
+the pairing coincidentally holds (`ActiveSlotsInLaunchOrder` sorts the lone Human to Player1); online
+`AssignedRoster` seats peers by arrival with no Human/AI concept at all.
+
+**No story or epic covers this** as of 2026-08-08 - Story 10.11 / DW-204 is the float->Fixed migration
+and is silent on ownership. DW-908 carries the closure shape and the sequencing: the cheap
+occupancy rule unblocks the FR-39 re-run and moves no goldens; the full "AI fills a vacant slot,
+possibly more than one" feature needs its own story (`SkirmishSetup.cs:20` - "one AI per match today").
+
+**The close of FR-39 is therefore:** land DW-908's occupancy rule -> re-run the two-machine gate ->
+expect sustained clean windows past tick 660 with `0 desync` -> record that summary here.
