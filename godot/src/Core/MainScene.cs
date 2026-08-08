@@ -1121,10 +1121,27 @@ namespace ProjectChimera.Core
                     {
                         var pos = new FixedVec3(
                             Fixed.FromFloat(hit.X), Fixed.Zero, Fixed.FromFloat(hit.Z));
-                        _buildSys.QueueWorkerBuild(
-                            _pendingBuildWorkerId, _pendingBuildType, pos,
-                            buildFaction, _resources, _world,
-                            _ctx.CombatEvents); // Story 11.4 (FR-74): surface a guard-sourced build denial cue
+
+                        // DW-405 — route the placement through the lockstep seam like EVERY other order site, instead
+                        // of mutating the sim here. This call used to be `_buildSys.QueueWorkerBuild(...)` directly:
+                        // online, that spent ore and created a building in the CLICKING client's sim only, and the
+                        // order never reached the wire — so the two peers' (already folded) BuildingStore and
+                        // ResourceStore diverged the instant anyone built anything. It killed the 2026-08-08 LAN run
+                        // at tick 8160 after 135 clean cross-peer windows.
+                        //
+                        // The `?? true` idiom is the shared one: EnqueueOrder returns false when the order was handed
+                        // to the network (the merged echo will apply it on every peer at the same exec tick), and a
+                        // null Lockstep / offline returns true meaning "apply it locally right now". So single-player
+                        // behaviour is byte-identical to before, and online the identical guards run on both machines.
+                        if (_ctx.Lockstep?.EnqueueOrder(
+                                _pendingBuildWorkerId, UnitCommand.PlaceBuilding,
+                                pos.X, pos.Z, (byte)_pendingBuildType) ?? true)
+                        {
+                            _buildSys.QueueWorkerBuild(
+                                _pendingBuildWorkerId, _pendingBuildType, pos,
+                                buildFaction, _resources, _world,
+                                _ctx.CombatEvents); // Story 11.4 (FR-74): surface a guard-sourced build denial cue
+                        }
                     }
                     else
                     {

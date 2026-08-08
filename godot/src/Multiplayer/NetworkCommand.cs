@@ -371,6 +371,34 @@ namespace ProjectChimera.Multiplayer
                 return;
             }
 
+            // DW-405: PlaceBuilding names the WORKER ENTITY (== id), so — like UseItem/DropItem and unlike the
+            // Train/Revive/BuyItem building-command family — it is dispatched AFTER the ownership guard above.
+            // Dispatching it before would let a player spend an ENEMY faction's ore and plant buildings for them.
+            //
+            // This is the seam whose ABSENCE was the defect: MainScene called BuildingSystem.QueueWorkerBuild
+            // directly, so an online client's placement spent resources and created a building in its OWN sim only
+            // and was never replicated. Both stores are folded into SimChecksum, so it was a guaranteed desync the
+            // moment anyone built anything — observed live on the 2026-08-08 LAN rig at tick 8160, after 135 clean
+            // cross-peer windows, the instant a building was placed on the joining client.
+            //
+            // The faction is expectedFaction (the command's authoritative owner), NEVER a packet byte. The building
+            // type rides the spare Slot byte (BuildingType is a byte enum — the CastAbility trick, no wire widening);
+            // the site rides TargetX/TargetZ as Fixed raw (the Move encoding). Every guard that matters — worker
+            // liveness, is-a-worker, stun/root, prerequisites, affordability — already lives inside QueueWorkerBuild
+            // and now runs identically on every peer at the same exec tick, which is what makes this deterministic.
+            // Applied immediately even if the wire queued flag is set: there is no queued-build path today, and
+            // appending it to the order ring would land PlaceBuilding in CommandState via ApplyActiveOrder, which no
+            // per-tick router cases. `buildings` null ⇒ deterministic no-op (golden/replay), like Train.
+            if (cmd == UnitCommand.PlaceBuilding)
+            {
+                if (buildings == null) { WarnSystemlessDrop(log, cmd, o.UnitId, expectedFaction, nameof(BuildingSystem)); return; }
+                buildings.QueueWorkerBuildCommand(
+                    id, (BuildingType)o.Slot,
+                    new FixedVec3(Fixed.FromRaw(o.TargetX), Fixed.Zero, Fixed.FromRaw(o.TargetZ)),
+                    expectedFaction, world, events);
+                return;
+            }
+
             // Story 2.12 (AC1.2): a Shift-issued (queued) order APPENDS to the entity's order ring and does NOT touch
             // CommandState — OrderQueueSystem pops + dispatches it when the active order completes. A plain (non-flagged)
             // order CLEARS the ring (replace semantics) then applies immediately through the shared core, so a fresh

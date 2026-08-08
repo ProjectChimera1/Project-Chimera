@@ -15,9 +15,11 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-**Run the two-machine FR-39 gate. Both machines just need `git pull` + a rebuild - nothing else is queued.**
+**FR-39 is SCORED (135 clean cross-peer windows, 2026-08-08 — see the newest Current State block). Re-run it
+INTERACTIVELY: both players building, moving and fighting.** DW-405 was the thing that made an interactive run
+impossible and it is now fixed, so the "do not build while scoring" rule below is RETIRED.
 
-Two blockers were closed this session and both are pushed (`790e00a0`). Start here, cold:
+Both machines need `git pull` + a rebuild + a full Godot relaunch (C# is not hot-loaded). Start here, cold:
 
 ```powershell
 # BOTH machines
@@ -42,9 +44,14 @@ Then, per `godot/tools/lan-determinism-runbook.md`: PC window A = `-Role server`
 count, never the `PASS`. `single-reporter ... INCONCLUSIVE` means a peer is still being dropped - that is
 DW-911(b), not a determinism result. Close the CLIENTS before the server or the `MATCH SUMMARY` line is lost.
 
-**Do NOT place buildings while scoring.** DW-405 (unreplicated worker-build) is a live desync source; the
-2026-08-08 run could only pin the blame on the AI because its logs had ZERO `Placement mode` lines. Move, fight,
-gather - do not build.
+**~~Do NOT place buildings while scoring.~~ RETIRED 2026-08-08** — DW-405 is closed. Placement is now a real
+`UnitCommand.PlaceBuilding` wire order that replicates to every peer, so building during a scored run is not
+only allowed, it is the point: an interactive run is the only version of this gate that tests anything.
+
+**Verify BOTH machines report the same commit before every run** — `git rev-parse --short HEAD`. Two runs were
+lost on 2026-08-08 to a stale peer, one of them because a push never landed. A mixed build sails through the
+handshake (`PROTOCOL_VERSION` only bumps on wire-format changes) and then deadlocks a hundred ticks later, and
+the two machines freeze on DIFFERENT ticks — which is itself the tell, since a shared bug freezes both on the same one.
 
 **If a peer still drops:** paste the `[FrameStall]` and `[NavBake]` lines from the weaker machine. They were
 added for exactly this and turn DW-911(b) from a hypothesis into a number.
@@ -62,6 +69,64 @@ since Epic 1. Note a clean run does **not** close **DW-204**: the AI's scorer is
 ---
 
 *Session type: bmad (prescribed workflow in active execution)*
+
+---
+
+## Current State (2026-08-08, evening) — read this first
+
+**FR-39 IS SCORED. The #1 pre-ship gate, carried since Epic 1, passed on two real machines.**
+
+**135 consecutive CROSS-PEER ATTESTED windows, tick 60 → tick 8100, every one `all 2 peers matched`** — ~4.5
+minutes of continuous two-machine lockstep across ~40 server-dictated input-delay renegotiations spanning 2–8
+ticks, PC (Wi-Fi, RTX 3060) + laptop (wired, GTX 1650). The bar was ≥5 windows past tick 660; it cleared 27×
+over. The run ended in a HALT at tick 8160 — that was DW-405 firing on a deliberate building placement (below),
+not a determinism failure. Supersedes every "still unscored" note in the blocks beneath this one.
+
+Getting there took **three defects found and closed in one sitting**, all of them in front of the gate:
+
+| DW | What it was | Signature |
+|---|---|---|
+| **DW-912** | The ONLINE sim stepped once per RENDERED FRAME, not on the fixed-timestep accumulator | 252 FPS → 252 tps → 252 pkt/s past the server's 60/s throttle → silent drop → **both machines froze at tick 64** (= 60 admitted + INPUT_DELAY 4) |
+| **DW-914** | The delay-GROW gap seed was off by one | Every WIDENING delay change froze the match at **`applyTick + oldDelay`** — 213→215, then 900→902 |
+| **DW-405** | Worker-build placement mutated the sim directly, never reaching the wire | **GLOBAL DESYNC at 8160**, the instant a building was placed. Predicted in the ledger on 2026-07-30, reproduced exactly |
+
+**Master: DW-912 `abf9d246`, DW-914 `caa12234`, DW-405 pending commit. Tier-1 6387 passed / 0 failed / 1
+skipped. No golden moved by any of the three.**
+
+**Three lessons worth more than the fixes.**
+
+1. **A cap and the thing it caps must be pinned to each other in a TEST.** `CommandRateLimiter`'s 60/window was
+   derived correctly from "1 packet/tick at 30 tps" — in a *comment*. Nothing failed when the premise stopped
+   being true. `LockstepPacerTests` now asserts the paced rate directly against `MAX_COMMANDS_PER_WINDOW`.
+2. **A test can pin a bug's own false premise.** DW-914 had a test —
+   `SeedDelayGap_Grow_SeedsExactlyOldPlus1ThroughNew` — that asserted the wrong bounds, including
+   `Assert.False(ring.IsReady(104), "currentTick+oldDelay is NOT part of the gap")`. Green for the life of the
+   code. It was replaced with a PROPERTY (every tick is either sent-for or seeded; never neither, never both),
+   verified to fail on all 5 delay pairs against the old bounds.
+3. **A symmetric bug freezes both machines on the SAME tick.** Two machines stopping one tick apart (117/116)
+   meant they disagreed about where the gap was — i.e. different builds. Two runs were lost to a stale peer,
+   once because a push never landed. `git rev-parse --short HEAD` on both machines before every run.
+
+**Still open, in priority order:**
+
+- **DW-913** (new, high) — a single lost `TickCommands` packet still deadlocks the match forever: no resend, no
+  server deadline. DW-912 made it unreachable in legitimate play; it did not make the protocol survive one. The
+  fix is a bounded client resend (`MergedTickBuilder.Submit` is already idempotent per `(slot,tick)`, so the
+  receive side needs no change).
+- **A build-identity gate** (not yet filed) — `PROTOCOL_VERSION` only bumps on wire-format changes and
+  `MatchAgreementHash` covers content, not the binary. Two clients running materially different lockstep logic
+  agree on everything, start, and deadlock later. Folding a build id into `MatchAgreementHash` would reject a
+  mismatched pair at the lobby, fail-closed — the same mechanism DW-908 used for the AI plan.
+- **DW-911(b)** — now visible as intermittent 0.2–0.5 s "Waiting for peer…" pauses that recover cleanly. **May
+  not be a code defect at all**: `[FrameStall]` only fires above 250 ms and measures LOCAL frame time, so a
+  network stall leaves it SILENT while a main-thread block makes it LOUD. The PC is the Wi-Fi machine and that
+  duration matches a reliable-UDP retransmit profile. **Run the wired A/B before spending a story on it.**
+- **DW-204** — the AI's float scorer. A clean gate does NOT close it; it is merely *contained* (no AI online).
+  It must land before an AI may fill a vacant slot in a lockstep match.
+
+**Next:** re-run the gate WITH both players building, moving and fighting. That is the version of FR-39 worth
+having — DW-405 was the thing that made an interactive run impossible, and it is now fixed. Close the CLIENTS
+before the server to capture the `MATCH SUMMARY` line.
 
 ---
 

@@ -1298,6 +1298,34 @@ namespace ProjectChimera.Economy
         }
 
         /// <summary>
+        /// DW-405 — the ORDER-PATH entry point for worker construction: the thin, exec-tick wrapper that
+        /// <see cref="OrderApplier"/> calls for a <see cref="UnitCommand.PlaceBuilding"/> order, mirroring the
+        /// <see cref="TrainUnitCommand"/> / <see cref="SetRallyCommand"/> / <see cref="ReviveHeroCommand"/> naming and
+        /// shape for every other building-family command.
+        ///
+        /// <para>It exists so that placement has EXACTLY ONE way into the simulation. Before it,
+        /// <c>MainScene</c>'s placement click called <see cref="QueueWorkerBuild"/> directly — spending resources and
+        /// creating a building in the local sim without ever going near the lockstep wire. Both stores fold into
+        /// <c>SimChecksum</c>, so any online build was an immediate, guaranteed desync (seen live at tick 8160 of the
+        /// 2026-08-08 LAN run, after 135 clean cross-peer windows).</para>
+        ///
+        /// <para>The resource store is this system's OWN injected <see cref="_resources"/>, never a caller-supplied
+        /// one — the sim-authoritative store every other <c>*Command</c> method spends from. <paramref name="world"/>
+        /// is passed per-call because <see cref="BuildingSystem"/> deliberately holds no <see cref="EntityWorld"/>
+        /// field (it receives one per <see cref="Tick"/>). All the real guards — worker liveness, is-a-worker,
+        /// stun/root, prerequisites, affordability, store capacity — stay where they already are, inside
+        /// <see cref="QueueWorkerBuild"/>, so they now run identically on every peer at the same exec tick instead of
+        /// on one machine at click time.</para>
+        /// </summary>
+        /// <param name="expectedFaction">The command's authoritative owning faction (from the merged stream's slot),
+        /// NEVER a value read out of a packet payload.</param>
+        /// <returns>The new building id, or -1 if any guard refused (a deterministic no-op on every peer alike).</returns>
+        public int QueueWorkerBuildCommand(int workerId, BuildingType type, FixedVec3 position,
+                                           Faction expectedFaction, EntityWorld world,
+                                           CombatEventQueue? events = null)
+            => QueueWorkerBuild(workerId, type, position, expectedFaction, _resources, world, events);
+
+        /// <summary>
         /// Returns the sparse resolved cost map to place the given building type for the faction (Story 4.3 —
         /// was ore-only; buildings never charged crystal, a latent gap this fixes). Falls back to a fresh empty map
         /// (free placement) when no definition is found — a fresh instance per call (review patch), not a shared
