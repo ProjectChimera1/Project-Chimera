@@ -117,6 +117,18 @@ namespace ProjectChimera.Core.Bootstrap
             // host match this stays false and the DelayProposal negotiation remains the 2-player behavior.
             _ctx.Lockstep.ServerDictatedDelay = _ctx.LobbyUi.ServerDictated;
 
+            // DW-908 — establish the AI-controlled faction set for THIS (online) match, before anything ticks. The
+            // value is _ctx.OnlineAiPlan, resolved once at load and already folded into the MatchAgreementHash both
+            // peers just agreed on — so the plan the sim runs is the plan the handshake gated, not a re-derivation.
+            //
+            // Pre-DW-908 the AI was hardwired to Faction.Player2 and ticked unconditionally, so a peer who joined into
+            // slot 1 (Player2) had an AI co-piloting their own faction — and because that AI's scorer is float
+            // (DW-204), the two machines' AIs made the same decisions at DIFFERENT ticks and the FR-39 gate desynced
+            // at tick 660. Both branches below (player AND spectator) go through this one assignment: a spectator's
+            // client ticks the same shared sim, so an AI left armed there desyncs just as readily.
+            _ctx.Host.SetAiControlPlan(_ctx.OnlineAiPlan);
+            GD.Print($"[MainScene] Online match — AI control plan: {_ctx.OnlineAiPlan} (AI active this match: {_ctx.Host.Ai.IsActive}).");
+
             // Wire path-request delegates to FlowFieldBridge — deterministic, no NavServer.
             _ctx.Lockstep.OnRequestPath        = (id, x, z) => _ctx.FlowFieldBridge.RequestPath(id, new Vector3(x, 0f, z));
             _ctx.Lockstep.OnRequestAttackMove  = (id, x, z) => _ctx.FlowFieldBridge.RequestAttackMove(id, new Vector3(x, 0f, z));
@@ -347,6 +359,15 @@ namespace ProjectChimera.Core.Bootstrap
                 // Story 11.2 (FR-66): give the replay the folded WinStateStore so a recorded Concede order latches the
                 // conceding faction's VERDICT_LOST identically to the live match (the one-switch parity rule).
                 _ctx.ReplayPlayer.WinState = _ctx.Host.WinState;
+                // DW-908: replay playback runs the OFFLINE plan — the pre-DW-908 behaviour, restored explicitly rather
+                // than inherited. Replay never routes through ResetToAuthoredStart (ModeTransitionResetPolicy returns
+                // None when hasReplay), so without this a replay loaded AFTER an online match in the same session would
+                // play back with the AI disarmed while the recording ran it, and diverge. The .chmr header carries no
+                // AI-plan field, so a replay of an ONLINE match (recorded with the AI off) still plays back with it on
+                // — a pre-existing reproduction gap for online replays, filed as a DW-908 residual rather than guessed
+                // at here; it is unchanged by this fix, and online replays were already unreproducible under DW-204's
+                // float AI.
+                _ctx.Host.SetAiControlPlan(AI.AiControlPlan.OfflineDefault);
 
                 if (_ctx.ReplayStatusLabel != null)
                 {

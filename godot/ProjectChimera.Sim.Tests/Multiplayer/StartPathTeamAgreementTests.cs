@@ -114,7 +114,8 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
         /// peers in these tests is the per-slot team layout.</summary>
         private static ulong Agreement(ScenarioData model) =>
             MatchAgreementHash.Compute(InitialDelay, model, Heroes(),
-                NoFactions, AbilityRegistry.Empty, ItemRegistry.Empty, DamageTable.Default);
+                NoFactions, AbilityRegistry.Empty, ItemRegistry.Empty, DamageTable.Default,
+                ProjectChimera.AI.AiControlPlan.None); // DW-908: the online plan — this file varies the TEAM layout only
 
         // ── 1. The premise: the model hash is BLIND to a team-only disagreement ───
 

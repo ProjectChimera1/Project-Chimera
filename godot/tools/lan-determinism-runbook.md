@@ -54,7 +54,18 @@ Both must hold for the gate to be green.
    timeout. This is not a theoretical risk — it ended both 2026-08-07 attempts (at tick 94 and tick 114).
    If you must drive the machines remotely, set **both** to never sleep, never blank the display, and
    **not to lock on disconnect**, then start the run and leave the sessions strictly alone.
-7. **Start a FRESH server for every match.** A server reused across matches carries frozen-slot and tick
+7. **BOTH machines must be on the SAME COMMIT and rebuilt (DW-908, 2026-08-08).** `MatchAgreementHash.AlgoVersion`
+   moved **3 → 4** when the AI-controlled faction set began folding into the handshake value. A peer on an older
+   build now computes a different match hash and is **REJECTED at the lobby** with a start-state-mismatch message
+   listing both hashes. That rejection is the gate doing its job, not a defect — `git pull` and
+   `dotnet build godot/godot.csproj` on the stale machine and re-run. Confirm agreement by eye before Ready:
+   both consoles must print the same `[MainScene] Match-agreement hash (algo v4): 0x…`.
+8. **Confirm the AI is disarmed before you score the run (DW-908).** Each client prints, at match start:
+   `[MainScene] Online match — AI control plan: AiControlPlan(none) (AI active this match: False).`
+   If either machine prints anything else, stop — the AI is live in a lockstep match and any desync you
+   then observe is DW-204's float scorer, not new information. (This is what HALTed the 2026-08-07/08 run
+   at tick 660.)
+9. **Start a FRESH server for every match.** A server reused across matches carries frozen-slot and tick
    state from the previous one (DW-598, DW-599, DW-600). The launcher now cleans stale instances by
    default; do not defeat it with `-NoClean` unless you know why.
 

@@ -615,6 +615,16 @@ namespace ProjectChimera.Sim.Tests.Sim
                     // Readonly difficulty-derived config — "Difficulty weights are readonly and intentionally
                     // preserved" (ResetForMatch doc); both instances derive identical values from the same level.
                     "_aggressionWeight", "_techWeight", "_attackThreshold", "_attackCooldownMax",
+                    // DW-908 — the per-match AI-CONTROL PLAN (which factions an AI drives) is deliberately
+                    // PRESERVED by ResetForMatch, so it belongs in shape (1) of this class's allowlist taxonomy:
+                    // launch-owned config a reset must not touch. It is owned by the launch paths
+                    // (MatchLifecycleController.OnMatchStart online, MainScene.ResetToAuthoredStartCore offline),
+                    // and the ONLINE path reaches SimulationHost.ClearForReset AFTER OnMatchStart has set it — so a
+                    // reset that "helpfully" restored the {Player2} default here would re-arm the AI on the JOINING
+                    // HUMAN's own faction, which is the exact defect DW-908 exists to close (it desynced the first
+                    // FR-39 two-machine run at tick 660). The preserve-across-reset behaviour this exempts is
+                    // asserted positively, not merely excused, by AiControlPlanTests.ClearForReset_PreservesTheControlPlan.
+                    "_plan",
                 },
             };
         }

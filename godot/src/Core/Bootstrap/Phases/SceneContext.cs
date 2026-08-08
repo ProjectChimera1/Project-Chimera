@@ -56,6 +56,21 @@ namespace ProjectChimera.Core.Bootstrap
         /// <see cref="EntityWorld.DEFAULT_RNG_SEED"/>; the online path pins it back to DEFAULT (all peers agree) until
         /// the Epic-9 seed handshake supplies a networked seed.</summary>
         public ulong LiveMatchSeed = EntityWorld.DEFAULT_RNG_SEED;
+        /// <summary>
+        /// DW-908: the AI-controlled faction set an ONLINE match on this client will run — resolved ONCE in
+        /// <c>MainScene._Ready</c> and stored here so exactly one value is both (a) folded into
+        /// <c>MatchAgreementHash</c> and (b) pushed into the sim by <c>MatchLifecycleController.OnMatchStart</c>.
+        ///
+        /// <para>One field, not two derivations: that is what makes the handshake fold load-bearing rather than
+        /// decorative. If the hash folded one resolution and the sim ran another, a peer could agree at the handshake
+        /// and still diverge — the exact failure DW-908's implementation note warns about.</para>
+        ///
+        /// <para>Empty (<see cref="AI.AiControlPlan.None"/>) for every online match today: the lobby seats every slot
+        /// with a connected peer and marks none as AI, so no faction resolves to AI-driven. The OFFLINE plan is a
+        /// different value (<see cref="AI.AiControlPlan.OfflineDefault"/>) established on the offline reset path —
+        /// offline behaviour is unchanged by DW-908 and moves no golden.</para>
+        /// </summary>
+        public AI.AiControlPlan OnlineAiPlan = AI.AiControlPlan.None;
         public FactionDefinition?[] SlotFactionDefs = null!;
         /// <summary>DW-229: a <c>_Ready</c>-time clone of the seeded per-slot faction defs
         /// (<c>[Player1=_factionDef, Player2=_factionDef2, rest null]</c>). The shared

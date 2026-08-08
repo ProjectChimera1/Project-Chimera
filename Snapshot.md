@@ -15,24 +15,38 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
 
 ## Next Action
-**Build DW-908 (AI control follows slot occupancy), then re-run the two-machine LAN gate.** Alec's stated
-goal for the next session is *"to be able to properly test this lan game"* — and DW-908 is the one thing
-standing between here and that. The rig itself is ready and proven (see the 2026-08-08 block): both
-machines build, the canonical scenario is committed, the launcher works, and the gate produced a real
-verdict. What it produced was a **desync at tick 660**, because `AiOpponentSystem` co-pilots the human's
-Player2 faction and its scorer is float.
+**RUN THE TWO-MACHINE FR-39 GATE. DW-908 is built, tested and closed — nothing else is in the way.**
 
-DW-908 is a **story, not a bundle** — its `implementation-constraint:` line is load-bearing: the client
-constructs its sim host at `MainScene.cs:487` during `_Ready`, long before the lobby decides
-online-vs-offline, so a constructor argument cannot work. The gate must be a per-match flag, which means a
-peer that sets it differently desyncs — so it wants folding into `StartStateHash`/`MatchAgreementHash` so
-`HandshakeGate.CheckStart` REJECTS a disagreement before tick 0 instead of desyncing 600 ticks later. That
-fold moves `StartStateHash.AlgoVersion` and re-records the start-state golden, so it re-records at the end
-of its own story per the batch rule.
+The blocker named in the previous Next Action is gone. `AiOpponentSystem` no longer plays a faction a human
+occupies: AI control is now a per-match `AiControlPlan` (a faction bitmask) resolved from slot OCCUPANCY, it
+is folded into `MatchAgreementHash` (**AlgoVersion 3 → 4**) so peers that disagree are rejected at the
+handshake instead of desyncing, and a single-machine loopback run confirmed both peers logging
+`AI active this match: False` and the identical `Match-agreement hash (algo v4): 0xD9E709768053087C`.
+**Tier-1 6355 passed / 0 failed / 1 skipped; no golden moved; `StartStateHash` stayed at v2.**
 
-**Then:** re-run `godot/tools/lan-desync-smoke.ps1` per `lan-determinism-runbook.md` and expect sustained
-clean windows past tick 660 with `0 desync`. Record that summary in story 1-9b's Change Log — that closes
-FR-39, the #1 pre-ship gate, carried since Epic 1.
+**Do this, on both machines:**
+1. `git pull` on the laptop, then `dotnet build godot/godot.csproj` on BOTH — the hash algo version moved, so
+   a stale peer will now be REJECTED at the handshake with a start-state-mismatch message rather than
+   desyncing. That rejection is the fix working; it is not a new bug.
+2. Run `godot/tools/lan-desync-smoke.ps1` per `lan-determinism-runbook.md` — server + client on the PC,
+   client on the laptop.
+3. **Play the match for 300+ ticks and read the WINDOW COUNT, not the PASS.** Expect sustained clean windows
+   **past tick 660** (where it HALTed last time) with `0 desync`. Close the CLIENTS before the server or the
+   `MATCH SUMMARY` line is lost.
+4. Record that summary in story **1-9b**'s Change Log — that closes **FR-39**, the #1 pre-ship gate, carried
+   since Epic 1.
+
+**What a clean run past 660 proves and does not prove.** It proves the AI is no longer co-piloting a human
+and no longer injecting float nondeterminism into a live match. It does NOT close **DW-204** (the AI's
+scorer is still float) — that debt is now *contained* rather than fixed: the AI simply does not run online.
+DW-204 must land before an AI may ever fill a vacant slot in a lockstep match.
+
+**If it still desyncs**, the AI is exonerated by construction — both clients log `AI active this match:
+False`, so the cause is elsewhere. Grep both client logs for `Placement mode` (DW-405) before anything else.
+
+**Residuals filed, not forgotten:** **DW-909** (the offline AI seat is still the constant {Player2}; the AI
+is still a singleton, so a 3rd AI player is unbuildable — this is the feature Alec said he *wants*) and
+**DW-910** (the `.chmr` header carries no AI plan, so an online replay plays back with the AI armed).
 
 **Also available, unblocked, no code needed:** A5-E9 leg (b), **live Nakama** — the same two-machine rig
 plus `docs/server-deploy/docker-compose.yml` on the LAN. Highest-value target there is **DW-435**, the

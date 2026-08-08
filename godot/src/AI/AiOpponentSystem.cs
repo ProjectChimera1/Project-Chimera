@@ -29,6 +29,13 @@ namespace ProjectChimera.AI
     {
         // ── Constants ─────────────────────────────────────────────────────────
 
+        /// <summary>
+        /// The faction this singleton AI plays WHEN it is active. DW-908: this is no longer the whole story — what
+        /// it used to be, and the defect, was that it was the ONLY story: the AI drove Player2 whether or not a human
+        /// occupied that slot. WHETHER it plays at all is now the per-match <see cref="_plan"/>
+        /// (<see cref="AiControlPlan"/>); this constant remains only as "which faction the single AI instance drives",
+        /// which is what DW-908 leg (3) removes when the system stops being a singleton keyed to one faction.
+        /// </summary>
         private const Faction AI_FACTION = Faction.Player2;
 
         /// <summary>DW-439/DW-445 — the fixed per-faction slot span the <see cref="AllianceStore"/> mask is sized to
@@ -125,6 +132,24 @@ namespace ProjectChimera.AI
         /// </summary>
         private readonly AllianceStore? _alliances;
 
+        /// <summary>
+        /// DW-908 — the per-match AI-controlled faction set. <see cref="Tick"/> is a NO-OP when this plan does not
+        /// name <see cref="AI_FACTION"/>, which is how "the AI never acts for a faction a human occupies" is enforced.
+        ///
+        /// <para><b>Why per-match MUTABLE and not a constructor argument.</b> The client constructs its
+        /// <c>SimulationHost</c> in <c>MainScene._Ready</c>, long before the lobby decides online-vs-offline (the
+        /// main menu is not even wired yet at that point), so at construction time it cannot know whether this will
+        /// be an online match. The launch paths therefore ESTABLISH the plan: <c>MatchLifecycleController.OnMatchStart</c>
+        /// for an online match, <c>MainScene.ResetToAuthoredStartCore</c> for the offline editor loop.</para>
+        ///
+        /// <para><b>Default = <see cref="AiControlPlan.OfflineDefault"/> ({Player2}).</b> Every golden scenario and
+        /// Tier-1 fixture builds a host without touching the plan, so they run byte-identically to before DW-908 —
+        /// no golden re-records. The fail-closed half of this change lives in the handshake, not in this default:
+        /// the plan's mask is folded into <c>MatchAgreementHash</c> (v3→4), so peers that disagree about who the AI
+        /// controls are rejected before tick 0.</para>
+        /// </summary>
+        private AiControlPlan _plan = AiControlPlan.OfflineDefault;
+
         // ── Tracked state ─────────────────────────────────────────────────────
 
         /// <summary>IDs of all AI-owned production buildings (Barracks / ArcheryRange / SiegeWorkshop).</summary>
@@ -166,6 +191,12 @@ namespace ProjectChimera.AI
         /// decision state (<see cref="_productionBuildingIds"/>, <see cref="_cmdCenterExpId"/>,
         /// <see cref="_attackCooldown"/>) survives the reset and makes the next Play diverge from a fresh boot,
         /// desyncing the folded SimChecksum. Difficulty weights are readonly and intentionally preserved.
+        ///
+        /// <para>DW-908: the control PLAN is likewise preserved, deliberately. This reset runs from
+        /// <c>SimulationHost.ClearForReset</c>, which the online entry path reaches AFTER
+        /// <c>MatchLifecycleController.OnMatchStart</c> has established the online plan — clearing it here would
+        /// re-arm the AI on a human's faction on the very transition this defect exists to prevent. The plan is
+        /// owned by the launch paths, not by the per-match state reset.</para>
         /// </summary>
         public void ResetForMatch()
         {
@@ -205,8 +236,35 @@ namespace ProjectChimera.AI
 
         // ── ISimSystem ────────────────────────────────────────────────────────
 
+        /// <summary>
+        /// DW-908 — establish the per-match AI-controlled faction set. Called by the launch paths
+        /// (<c>MatchLifecycleController.OnMatchStart</c> online, <c>MainScene.ResetToAuthoredStartCore</c> offline),
+        /// never mid-match: the value is folded into <c>MatchAgreementHash</c> and gated before tick 0, so changing
+        /// it after the handshake would silently invalidate the agreement both peers started from.
+        /// </summary>
+        public void SetControlPlan(AiControlPlan plan) => _plan = plan;
+
+        /// <summary>DW-908 — the per-match AI-controlled faction set currently in force. Read by the host's
+        /// diagnostics and by the Tier-1 guards that assert the folded plan and the running plan are one value.</summary>
+        public AiControlPlan ControlPlan => _plan;
+
+        /// <summary>DW-908 — whether this AI acts at all this match: true iff the per-match plan names the faction
+        /// this singleton drives. False ⇒ <see cref="Tick"/> is a whole-system no-op.</summary>
+        public bool IsActive => _plan.Controls(AI_FACTION);
+
         public void Tick(EntityWorld world, Fixed dt)
         {
+            // DW-908 — the ownership gate. The AI drives AI_FACTION only when THIS match's plan says that faction is
+            // AI-driven; online, every seated slot is a human, so the plan is empty and the whole system is inert.
+            //
+            // The early return is deliberately the FIRST statement, before PruneDeadBuildings and before the training
+            // drain: an inactive AI must not train, spend, build or command ANYTHING, because those are exactly the
+            // writes that (a) co-piloted a human's own faction and (b) fed the float scorer whose per-machine drift
+            // desynced the FR-39 two-machine match at tick 660 (DW-204). Its untouched decision state
+            // (_productionBuildingIds / _cmdCenterExpId / _attackCooldown) lives outside every store and is not folded
+            // into SimChecksum, so skipping the tick moves no checksum by itself.
+            if (!IsActive) return;
+
             PruneDeadBuildings();
 
             // Continuous training — always drain idle production buildings first.

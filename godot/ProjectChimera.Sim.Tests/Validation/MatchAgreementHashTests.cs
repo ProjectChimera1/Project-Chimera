@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using ProjectChimera.Core;             // Fixed, HeroStore, HeroId, FactionRegistry
 using ProjectChimera.Core.Definitions; // MatchAgreementHash, RulesetHash, StartStateHash, ContentHash, ScenarioData
 using ProjectChimera.Combat;           // DamageTable
+using ProjectChimera.AI;               // AiControlPlan (DW-908)
+using ProjectChimera.Multiplayer;      // HandshakeGate (DW-908: the fold must actually BLOCK, not merely differ)
 using Xunit;
 
 namespace ProjectChimera.Sim.Tests.Validation
@@ -48,10 +50,14 @@ namespace ProjectChimera.Sim.Tests.Validation
         /// null default, closing the split-brain fold-empty-content hole). This terse test wrapper supplies explicit
         /// EMPTIES by default so a test that isn't exercising the content fold reads cleanly, while the content tests
         /// pass real content positionally.</summary>
+        /// <summary>DW-908 — the AI-plan param defaults to the ONLINE plan (<see cref="AiControlPlan.None"/>) here, the
+        /// value a real online peer folds; the plan tests pass a populated one explicitly.</summary>
         private static ulong Agree(int delay, ScenarioData m, HeroStore h,
-            IReadOnlyList<FactionDefinition>? f = null, AbilityRegistry? a = null, ItemRegistry? i = null, DamageTable? d = null)
+            IReadOnlyList<FactionDefinition>? f = null, AbilityRegistry? a = null, ItemRegistry? i = null, DamageTable? d = null,
+            AiControlPlan? ai = null)
             => MatchAgreementHash.Compute(delay, m, h,
-                f ?? EmptyFactions, a ?? AbilityRegistry.Empty, i ?? ItemRegistry.Empty, d ?? DamageTable.Default);
+                f ?? EmptyFactions, a ?? AbilityRegistry.Empty, i ?? ItemRegistry.Empty, d ?? DamageTable.Default,
+                ai ?? AiControlPlan.None);
 
         [Fact]
         public void Compute_IsDeterministic_AndNonZero()
@@ -109,6 +115,7 @@ namespace ProjectChimera.Sim.Tests.Validation
             int[] teamIds = AllianceSeeder.ComputeTeamIds(model); // Story 9.14: fold the CANONICAL seeded team-id mask, faction-indexed
             for (int fi = 1; fi < teamIds.Length; fi++)
                 h = Mix(h, teamIds[fi]);
+            h = Mix(h, AiControlPlan.None.Mask); // DW-908: the AI-controlled faction set, folded beside the roster (the Agree wrapper's online plan)
             h = MixULong(h, StartStateHash.Compute(model, heroes));
             ulong expected = h == 0UL ? 1UL : h;
 
@@ -155,10 +162,63 @@ namespace ProjectChimera.Sim.Tests.Validation
         // ── Story 9.14: the per-slot team folds into the handshake hash (a team mismatch fails the start closed) ──
 
         [Fact]
-        public void AlgoVersion_IsThree_AfterContentFold()
+        public void AlgoVersion_IsPinned()
         {
-            // Story 9.16: bumped 2→3 when ContentHash folded in after the ruleset.
-            Assert.Equal(3, MatchAgreementHash.AlgoVersion);
+            // Version-NEUTRAL name (the DW-194 hygiene rule) — the assertion is the pin, and the per-version rationale
+            // lives on the constant's own XML doc. DW-908: bumped 3→4 when the AI-controlled faction set folded in.
+            Assert.Equal(4, MatchAgreementHash.AlgoVersion);
+        }
+
+        // ── DW-908: the AI-controlled faction set folds into the handshake value ──
+
+        [Fact]
+        public void DifferentAiControlPlan_MovesTheHash()
+        {
+            // THE fail-closed property this fold exists for. Two peers that disagree about who the AI drives — the
+            // exact disagreement that let an AI co-pilot the joining human's Player2 and desync the FR-39 gate at
+            // tick 660 — must produce DIFFERENT agreement values, so HandshakeGate blocks the start pre-tick-0
+            // instead of the match diverging 600 ticks in.
+            var m = BuildModel();
+            ulong noAi   = Agree(4, m, TwoHeroes(), ai: AiControlPlan.None);
+            ulong aiOnP2 = Agree(4, m, TwoHeroes(), ai: AiControlPlan.OfflineDefault);
+
+            Assert.NotEqual(noAi, aiOnP2);
+            Assert.NotNull(HandshakeGate.CheckStart(noAi, aiOnP2)); // and the gate actually BLOCKS on it
+        }
+
+        [Fact]
+        public void SameAiControlPlan_ComposesToAnAllow()
+        {
+            var m = BuildModel();
+            Assert.Null(HandshakeGate.CheckStart(
+                Agree(4, m, TwoHeroes(), ai: AiControlPlan.None),
+                Agree(4, m, TwoHeroes(), ai: AiControlPlan.None)));
+        }
+
+        [Fact]
+        public void AiControlPlan_OnDifferentFactions_MovesTheHash()
+        {
+            // Not just "AI vs no AI" — WHICH faction the AI drives is folded too, so a future multi-AI lobby (leg 1/3)
+            // cannot seat the AI differently on two peers and still agree.
+            var m = BuildModel(players: 3);
+            Assert.NotEqual(
+                Agree(4, m, TwoHeroes(), ai: AiControlPlan.Of(Faction.Player2)),
+                Agree(4, m, TwoHeroes(), ai: AiControlPlan.Of(Faction.Player3)));
+        }
+
+        [Fact]
+        public void RosterFactions_MatchesTheFoldedRosterWalk()
+        {
+            // DW-908 extracted RosterFactions from the fold so the online AI plan's "who occupies a slot" set and the
+            // hash's roster walk are ONE derivation. Pin that they still agree — a second walk drifting from this one
+            // is precisely how the folded plan and the running plan would come apart.
+            ScenarioData m = BuildModel(players: 3);
+            Faction[] roster = MatchAgreementHash.RosterFactions(m);
+
+            Assert.Equal(3, roster.Length);
+            for (int slot = 0; slot < roster.Length; slot++)
+                Assert.Equal(FactionRegistry.ToFaction(slot), roster[slot]);
+            Assert.Empty(MatchAgreementHash.RosterFactions(null)); // null model ⇒ empty roster, never a throw
         }
 
         [Fact]

@@ -706,11 +706,22 @@ namespace ProjectChimera.Core
             if (_ctx.SlotFactionDefs != null)
                 foreach (Definitions.FactionDefinition? fd in _ctx.SlotFactionDefs)
                     if (fd != null) loadedFactions.Add(fd);
+            // DW-908: resolve — ONCE, here — the AI-controlled faction set an ONLINE match on this client would run,
+            // and store it on the context. The SAME stored value is folded into the hash below and pushed into the sim
+            // by MatchLifecycleController.OnMatchStart, so the agreement both peers gate on is literally the plan the
+            // sim executes. Today the online lobby has no AI-slot concept (AssignedRoster models arrival order only)
+            // and seats every slot with a connected peer, so the marked-AI set is empty and this resolves to None —
+            // i.e. no AI runs in an online match, which is the fix for the AI co-piloting the joining human's Player2.
+            _ctx.OnlineAiPlan = AI.AiControlPlan.ForOnlineMatch(
+                System.Array.Empty<Faction>(),                                       // AI-marked seats: none exist online yet (DW-908 leg 1)
+                Definitions.MatchAgreementHash.RosterFactions(hashModel));           // human-occupied: every active slot
             _ctx.LobbyUi.MatchAgreementHash = (_ctx.ScenarioApplied && hashModel != null)
                 ? Definitions.MatchAgreementHash.Compute(
                     ProjectChimera.Multiplayer.LockstepManager.INPUT_DELAY, hashModel, _host.Heroes,
-                    loadedFactions, _ctx.AbilityRegistry, _host.ItemRegistry, _ctx.DamageTable)
+                    loadedFactions, _ctx.AbilityRegistry, _host.ItemRegistry, _ctx.DamageTable,
+                    _ctx.OnlineAiPlan)
                 : 0UL;
+            GD.Print($"[MainScene] Online AI control plan: {_ctx.OnlineAiPlan}");
             // Story 9.16: cache the LOCAL per-domain content breakdown for the handshake-block "which domain" surfacing.
             _ctx.LobbyUi.ContentBreakdown = (_ctx.ScenarioApplied && hashModel != null)
                 ? Definitions.ContentHash.Describe(loadedFactions, _ctx.AbilityRegistry, _host.ItemRegistry, _ctx.DamageTable).ToString()
@@ -2584,6 +2595,15 @@ namespace ProjectChimera.Core
 
             // 3. Clear every store to its authored-start (post-ctor) state — in place, no host reconstruction.
             _host.ClearForReset();
+
+            // 3-ai. DW-908: re-establish the OFFLINE AI control plan. This path is offline BY CONSTRUCTION —
+            //     ModeTransitionResetPolicy returns AuthoredStart only when !isOnline && !hasReplay — so it can and
+            //     must assert the offline pairing rather than inherit whatever the last match left behind. Without it,
+            //     playing an online match and then F5-ing an offline playtest in the SAME session would silently run
+            //     with no AI at all (OnMatchStart set the empty online plan and nothing put it back), turning a
+            //     desync fix into an "the AI stopped working" bug. AiOpponentSystem.ResetForMatch deliberately
+            //     PRESERVES the plan (the online path needs that), which is exactly why this re-assert belongs here.
+            _host.SetAiControlPlan(AI.AiControlPlan.OfflineDefault);
 
             // 3-seed. DW-17 / DW-225: mint a fresh per-match seed and re-seed the live world to it AFTER ClearForReset
             //     (which re-seeds to DEFAULT_RNG_SEED to preserve the "a cleared world == a fresh EntityWorld" invariant

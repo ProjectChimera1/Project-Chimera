@@ -487,6 +487,15 @@ namespace ProjectChimera.Core.Sim
         /// same state <see cref="ClearForReset"/> resets via <c>ResetForMatch</c>). Read-only handle.</summary>
         public AiOpponentSystem Ai => _ai;
 
+        /// <summary>
+        /// DW-908 — establish THIS match's AI-controlled faction set (see <see cref="AiControlPlan"/>). The host
+        /// exposes it as a first-class seam rather than leaving callers to reach through <see cref="Ai"/>, because
+        /// the value is handshake-gated: it is folded into <c>MatchAgreementHash</c> and must be the SAME value on
+        /// every peer. Defaults to <see cref="AiControlPlan.OfflineDefault"/> at construction, so a caller that never
+        /// calls this (every golden, every Tier-1 fixture, the headless server) behaves exactly as it did pre-DW-908.
+        /// </summary>
+        public void SetAiControlPlan(AiControlPlan plan) => _ai.SetControlPlan(plan);
+
         /// <summary>Story 11.3 — restore the wrapped loop's tick counter to a saved value on load (SP save/load).
         /// Delegates to <see cref="SimulationLoop.RestoreTick"/>; the checksum store wiring is untouched.</summary>
         public void RestoreTick(uint tick) => _loop.RestoreTick(tick);

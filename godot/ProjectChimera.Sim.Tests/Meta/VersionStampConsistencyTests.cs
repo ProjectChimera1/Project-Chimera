@@ -190,9 +190,11 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// initial (AlgoVersion + RulesetHash + initial-delay + faction-count + roster + StartStateHash). Story 9.14
         /// bumped v1→v2: the per-slot TEAM ordinal now folds beside each roster ordinal (a team mismatch fails the
         /// start closed). Story 9.16 bumped v2→v3: <see cref="ContentHash"/> (the loaded content definitions) now
-        /// folds in immediately after RulesetHash (a content-byte mismatch fails the start closed). A bump changes
-        /// the handshake value — update this pin in the same commit.</summary>
-        private const int ExpectedMatchAgreementHashAlgoVersion = 3;
+        /// folds in immediately after RulesetHash (a content-byte mismatch fails the start closed). DW-908 bumped
+        /// v3→v4: the AI-CONTROLLED FACTION SET (<see cref="AI.AiControlPlan.Mask"/>) now folds beside the roster, so
+        /// peers that disagree about who the AI drives are rejected pre-tick-0 instead of desyncing mid-match. A bump
+        /// changes the handshake value — update this pin in the same commit.</summary>
+        private const int ExpectedMatchAgreementHashAlgoVersion = 4;
 
         /// <summary>Story 9.16 — the net-new content-definitions fingerprint (factions/units/buildings/research, the
         /// ability + item registries, the damage table) folded into <see cref="MatchAgreementHash"/>. v1 = initial.

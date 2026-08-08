@@ -74,7 +74,8 @@ namespace ProjectChimera.Sim.Tests.Validation
         }
 
         private static ulong Hash(List<FactionDefinition> f, AbilityRegistry a, ItemRegistry i, DamageTable d)
-            => MatchAgreementHash.Compute(4, Model(), Heroes(), f, a, i, d);
+            => MatchAgreementHash.Compute(4, Model(), Heroes(), f, a, i, d,
+                                          ProjectChimera.AI.AiControlPlan.None); // DW-908: the online plan — this file varies CONTENT only
 
         [Fact]
         public void IdenticalContent_ComposesToAnAllow()
