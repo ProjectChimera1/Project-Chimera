@@ -68,6 +68,11 @@ param(
 
 $ErrorActionPreference = 'Continue'
 
+# Godot writes UTF-8. Without this the console decodes it as the legacy OEM codepage and every arrow
+# in the server's output arrives mangled ("Peer connected GammaaringE slot 0"), in the console AND in
+# the log. Affects only how we READ Godot's bytes; nothing about the match changes.
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
+
 # -- Paths ---------------------------------------------------------------------------------------
 # This script lives in <repo>/godot/tools, so the Godot project dir is its parent.
 $Proj     = Split-Path $PSScriptRoot -Parent
@@ -144,13 +149,24 @@ if ($Role -eq 'server') {
     Write-Host '  ==> Allow inbound UDP 7777 through Windows Firewall on this machine.' -ForegroundColor Yellow
     Write-Host '  ==> Find this machine''s LAN IP with  ipconfig  (IPv4) for machine B.' -ForegroundColor Yellow
     Write-Host '  Watch below for [Determinism] window lines and the final MATCH SUMMARY.' -ForegroundColor Green
-    Write-Host '  Ctrl+C to stop the server.' -ForegroundColor DarkGray
+    Write-Host ''
+    Write-Host '  TO END THE RUN: close the CLIENT windows FIRST, wait for the MATCH SUMMARY line' -ForegroundColor Yellow
+    Write-Host '  to appear here, and only THEN Ctrl+C this server. The summary is emitted on match' -ForegroundColor Yellow
+    Write-Host '  end; killing the server first skips it and you lose the verdict (hit 2026-08-07).' -ForegroundColor Yellow
     Write-Host '============================================================================' -ForegroundColor Green
     Write-Host ''
 
-    # FOREGROUND + tee. Blocking is correct here: this console is the server's console, and its
-    # stdout is the verdict. Do NOT Start-Process this - that is fault (1) above.
-    & $Godot --headless --path $Proj -- --port $Port 2>&1 | Tee-Object -FilePath $log
+    # FOREGROUND. Blocking is correct here: this console is the server's console, and its stdout is
+    # the verdict. Do NOT Start-Process this - that is fault (1) above.
+    #
+    # Console + file by hand rather than Tee-Object: Tee-Object on Windows PowerShell 5.1 has no
+    # -Encoding parameter and writes UTF-16LE, which makes the log awkward for grep/git/any text tool
+    # (it reads as "[ D e t e r m i n i s m ]"). Add-Content -Encoding UTF8 exists in 5.1 and gives a
+    # plain UTF-8 log, and writing per line means the log is complete even if the server is killed.
+    & $Godot --headless --path $Proj -- --port $Port 2>&1 | ForEach-Object {
+        Write-Host $_
+        Add-Content -Path $log -Value $_ -Encoding UTF8
+    }
 
 } else {
 

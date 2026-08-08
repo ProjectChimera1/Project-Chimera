@@ -7,7 +7,7 @@ status: Active
 
 # Project Chimera — Snapshot
 
-**Last Touched:** `2026-08-07`
+**Last Touched:** `2026-08-08`
 
 ## Current Phase
 **Phase 5 — Polish & 1.0** (Months 25-31 of GDD roadmap)
@@ -205,7 +205,7 @@ RTT measurement via Ping/Pong + negotiated delay changes via DelayProposal packe
 - [x] Host + join on LAN. Watch Godot Output on both machines. — 2026-08-07
 - [ ] Within 2s of match start: both machines should log `[Lockstep] RTT sample: Xms` and a smoothed RTT. — **not observed**; no `RTT sample` line appeared in either client log, though the delay controller clearly acted on RTT. Check whether that log line still exists before re-testing.
 - [x] On LAN (~1-5ms RTT): target delay = `ceil(2.5ms / 33ms) + 1 = 2`. Both machines should log `[Lockstep] Delay: 4 → 2 ticks` within ~5s. — 2026-08-07, observed on BOTH machines, and server-side as `Dictating → 2 ticks, applyAtTick 40` + `committed (all 2 players ACKed)`
-- [ ] Play for 300+ ticks. Checksums must stay in sync (same HUD hash on both machines). The delay reduction must NOT cause desync. — **NOT MET.** Best run compared **1 window** (tick 60, `0xE4FE8ED9`, agreed) before both peers dropped. This is the remaining blocker for FR-39.
+- [x] Play for 300+ ticks. Checksums must stay in sync (same HUD hash on both machines). The delay reduction must NOT cause desync. — **2026-08-08: 10 consecutive matching windows over 600 ticks** on `map_02_iron_crossing`, across a committed delay change at tick 57; both HUD hashes read `0x75F90131` at tick 588. Then a **REAL desync at tick 660** → terminal HALT on both machines. Summary: `11 windows compared, 1 desync, 0 abandoned — FAIL`. The 600-tick clean stretch satisfies the ≥300-tick bar; the desync is the **float AI** (DW-204 proven live, DW-908 filed) and is why FR-39 is not yet closed.
 - [x] Optionally: to test high-latency path, add artificial latency (e.g. `tc netem` on Linux) and verify delay increases toward MAX_DELAY=12. — 2026-08-07, reached MAX_DELAY=12 (`applyAtTick 99`) — **not** via `tc netem` but via a genuinely stalled peer, which is the same code path and arguably a better test.
 
 **HUD wiring (optional, low priority):**
@@ -287,7 +287,7 @@ RTT measurement via Ping/Pong + negotiated delay changes via DelayProposal packe
 |------|--------|-------|
 | Drop in audio .ogg files | 📋 | `res://resources/audio/sfx/` — AudioManager already wired |
 | mod.io Inspector setup | 📋 | Select MainScene → set `Mod Io Game Id` + `Mod Io Api Key`; walkthrough at `docs/modio-setup-guide.md` |
-| P2.4 LAN test | 🔨 | **ATTEMPTED 2026-08-07 on two machines — NOT PASSED** (1 comparison window; needs ≥5 / 300+ ticks, and the F9 HALT drill never fired). Note: the old "(P2P mode)" label here was **stale** — the pinned topology is the **dedicated server** (runbook §2 / story 1-9b Resolved Decision #2), since the checksum quorum lives there and there is no listen-server mode. Blocker is method (no client survives an unattended phone-driven remote session), not code. See story 1-9b Change Log. |
+| P2.4 LAN test | 🔨 | **RUN 2026-08-08 on two machines. 10 clean windows / 600 ticks, then a REAL desync at tick 660 → terminal HALT on both.** Summary `11 windows compared, 1 desync, 0 abandoned — FAIL`. Both AC4 halves demonstrated (clean-PASS outright; terminal-HALT by a genuine desync rather than the F9 injection). NOT closed: the desync is the **float AI** — DW-204 proven live, **DW-908** filed (the AI cannot be switched off, so any long online match desyncs). Close FR-39 by gating the AI off online and re-running. Note the old "(P2P mode)" label was **stale** — the pinned topology is the **dedicated server** (runbook §2 / 1-9b Resolved Decision #2). See story 1-9b Change Log. |
 | P0.3 Iron Pact art | 📋 | Hunyuan3D or Tripo — 8 GLBs to replace box placeholders (external work) |
 | Terrain texture painting | 📋 | Set Terrain3D textures via Godot Inspector (Terrain3D → Assets) — procedural via ClassDB doesn't persist |
 | Utility AI decision system | ✅ | VERIFIED in-engine 2026-06-20 (alpha_map_01/Normal, ~290s) — all 4 deadlock ACs pass, no deadlock. `e3e48bc` resolves the 2026-06-09 FAIL. |

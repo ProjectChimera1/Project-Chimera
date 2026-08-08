@@ -395,3 +395,56 @@ driven to `MAX_DELAY` = 12 (`→ 12 ticks at tick 99`) immediately before
 `float`, which `AiOpponentSystem.cs:253-254` states does not unblock lockstep MP pending the float→Fixed
 migration (DW-204 / Story 10.11). A sustained run is therefore also a live test of that float debt: if a
 desync appears with no F9 pressed, suspect this first.
+
+### 2026-08-08 — AC4 second attempt. **Clean-PASS half MET. Terminal-HALT half MET (by a REAL desync). A live MP desync found.**
+
+Same rig, canonical scenario this time: PC (RTX 3060) = server + Player1, laptop (GTX 1650) = Player2,
+`map_02_iron_crossing` (match hash `0x771C516961CEBD73`), commit `c916c9f6`. Full log:
+`lan-logs/2026-08-08_00-27-02-server.log`.
+
+```
+[Determinism] tick  60 .. tick 600: all 2 peers matched, windows #1-#10, no desync
+[Determinism] tick 660: GLOBAL DESYNC - no canonical hash. Broadcasting terminal HALT.
+[Determinism] MATCH SUMMARY: 11 windows compared, 1 desync, 0 abandoned - FAIL.
+```
+
+**AC4 clean-PASS half: MET.** 10 consecutive matching windows over 600 ticks — double the required
+≥5 windows / ≥300 ticks — on the canonical P2.4 scenario, across a committed delay change
+(2 ticks at tick 57). Both clients' HUD hashes matched (`0x75F90131` at tick 588 on both machines,
+photographed).
+
+**AC4 terminal-HALT half: MET, and by something stronger than the drill.** The overlay fired from a
+REAL divergence rather than an F9 injection: the server broadcast the terminal HALT and the client
+showed **"MATCH HALTED — Simulation desync detected at tick 660. The match cannot continue."** with the
+attributed tick. A genuine desync exercising the same path is better evidence than a synthetic one.
+**Owed:** confirmation that the LAPTOP also displayed the overlay (only the PC was photographed), and
+the F9 drill itself remains unfired if the letter of AC4 is to be satisfied rather than its intent.
+
+**THE FINDING — DW-204 stopped being a prediction.** The desync is the float AI, and DW-204 (severity
+high, open since the 2026-06-09 review) called it exactly: *"All Score* methods still use float/Math.*;
+illegal in lockstep MP until converted."* Attribution:
+- The AI is the only float-based system inside the sim.
+- The human placed nothing — the client log has **zero** `Placement mode` lines, which also rules out
+  DW-405's unreplicated worker-build as the cause.
+- P2 (`AiOpponentSystem.AI_FACTION`) is the faction whose state visibly diverged: in the preceding run
+  the two clients read `Buildings: 3` vs `Buildings: 4` at the same tick 588 while P2 showed 0 ore and
+  3 units on BOTH — two AIs that had each spent down but completed a build at different ticks.
+- **Decisive:** the divergence point MOVES between runs on identical inputs. Windows #1-#9 hashed
+  byte-identically across two separate runs, yet one diverged before tick 600 and the other stayed
+  clean at 600 and diverged by 660. A deterministic logic bug reproduces at the same tick every time;
+  hardware/JIT float nondeterminism does not.
+
+**Consequence for this story.** FR-39 cannot be *reliably* closed while the AI is in the loop — any
+sufficiently long match will desync — and there is no way to switch it off today (`AiDifficulty` has no
+`None`; `SimulationHost.cs:354` registers it unconditionally; `MainScene.AiLevel` defaults to `Normal`).
+Filed as **DW-908** with the cheap fix: gate the AI off for online matches, which also fixes the
+separate co-pilot bug (`AI_FACTION` is hardcoded to `Player2`, so in a 2-human match the AI plays the
+human's faction) and moves no goldens, unlike adding an enum member.
+
+**Recommended AC4 disposition (Alec's call):** treat the clean-PASS half as MET and the HALT half as
+MET-in-substance, then re-run after DW-908 to get a sustained clean window count with no desync at all.
+That re-run is the real close of FR-39.
+
+**Operational note.** The FIRST run of this session logged 9 clean windows and its `MATCH SUMMARY` was
+LOST, because the server was stopped before the clients — the summary is emitted on match end, not on
+server stop. Close clients first. Now warned in the runbook §5 and in the launcher's own banner.

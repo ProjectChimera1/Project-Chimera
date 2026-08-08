@@ -189,6 +189,13 @@ build — give the sim real work. Let the match run long enough that the **adapt
 - **Each client HUD (top line):** `… Hash 0x........  ONLINE`. The hash on **both** machines must be the
   **same value** at the same tick, every window.
 
+> ⚠ **ENDING THE RUN — ORDER MATTERS.** The `MATCH SUMMARY` is emitted when the **match ends**, not when
+> the server stops. Close the **CLIENT** windows first, watch the summary appear in the server console,
+> and only **then** `Ctrl+C` the server. Killing the server first skips the summary entirely and you lose
+> the verdict — that happened on 2026-08-07 to a run that had already logged **9 clean windows**. The
+> individual `[Determinism] … window #k` lines survive in `lan-logs/`, so the evidence is not lost, but
+> the one-line aggregate is gone and cannot be reconstructed after the fact.
+
 If the summary says `… 0 desync, 0 abandoned — PASS` and the HUD hashes matched throughout →
 **determinism PASS.**
 
