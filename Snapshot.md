@@ -12,7 +12,7 @@ status: Active
 ## Current Phase
 **Phase 5 — Polish & 1.0** (Months 25-31 of GDD roadmap)
 
-Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay.
+Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay. **Session 22 scored FR-39 on two machines** — the #1 pre-ship gate, carried since Epic 1 — after closing DW-912, DW-914 and DW-405.
 
 ## Next Action
 **FR-39 is SCORED (135 clean cross-peer windows, 2026-08-08 — see the newest Current State block). Re-run it
@@ -48,16 +48,19 @@ DW-911(b), not a determinism result. Close the CLIENTS before the server or the 
 `UnitCommand.PlaceBuilding` wire order that replicates to every peer, so building during a scored run is not
 only allowed, it is the point: an interactive run is the only version of this gate that tests anything.
 
-**Verify BOTH machines report the same commit before every run** — `git rev-parse --short HEAD`. Two runs were
-lost on 2026-08-08 to a stale peer, one of them because a push never landed. A mixed build sails through the
-handshake (`PROTOCOL_VERSION` only bumps on wire-format changes) and then deadlocks a hundred ticks later, and
-the two machines freeze on DIFFERENT ticks — which is itself the tell, since a shared bug freezes both on the same one.
+**Verify BOTH machines report the same commit before every run** — `git rev-parse --short HEAD` must read
+**`939c8ea3`** or later on each. Two runs were lost on 2026-08-08 to a stale peer, one of them because a push
+never landed (so the laptop's `git pull` truthfully answered "Already up to date"). A mixed build sails through
+the handshake — `PROTOCOL_VERSION` only bumps on WIRE-format changes — and deadlocks a hundred ticks later,
+presenting exactly like "the fix didn't work". The tell: a shared bug freezes both machines on the SAME tick, so
+peers stopping on DIFFERENT ticks means different code. **DW-915 exists to make this impossible.**
 
 **If a peer still drops:** paste the `[FrameStall]` and `[NavBake]` lines from the weaker machine. They were
 added for exactly this and turn DW-911(b) from a hypothesis into a number.
 
-Record the `MATCH SUMMARY` in story **1-9b**'s Change Log - that closes **FR-39**, the #1 pre-ship gate, carried
-since Epic 1. Note a clean run does **not** close **DW-204**: the AI's scorer is still float, now merely
+**FR-39 itself is already scored** — the 2026-08-08 evidence (135 windows, tick 60→8100) belongs in story
+**1-9b**'s Change Log, which is already marked `done`. What is outstanding is the INTERACTIVE run and its
+`MATCH SUMMARY` line. Note that neither closes **DW-204**: the AI's scorer is still float, now merely
 *contained* (it does not run online). DW-204 must land before an AI may fill a vacant slot in a lockstep match.
 
 **Also available, unblocked, no code needed:** A5-E9 leg (b), **live Nakama** - the same two-machine rig plus
@@ -113,10 +116,12 @@ skipped. No golden moved by any of the three.**
   server deadline. DW-912 made it unreachable in legitimate play; it did not make the protocol survive one. The
   fix is a bounded client resend (`MergedTickBuilder.Submit` is already idempotent per `(slot,tick)`, so the
   receive side needs no change).
-- **A build-identity gate** (not yet filed) — `PROTOCOL_VERSION` only bumps on wire-format changes and
-  `MatchAgreementHash` covers content, not the binary. Two clients running materially different lockstep logic
-  agree on everything, start, and deadlock later. Folding a build id into `MatchAgreementHash` would reject a
-  mismatched pair at the lobby, fail-closed — the same mechanism DW-908 used for the AI plan.
+- **DW-915** (new, high) — nothing detects a MISMATCHED BUILD. `PROTOCOL_VERSION` only bumps on wire-format
+  changes and `MatchAgreementHash` covers content, not the binary, so two clients running materially different
+  lockstep logic agree on everything, start, and deadlock later. **It cost two of this session's runs.** Fold a
+  build identity (the sim assembly's MVID is the cheapest) into `MatchAgreementHash` so the lobby rejects a
+  mismatched pair fail-closed — the same mechanism DW-908 used for the AI plan. Strong candidate for next
+  session: it is small, it reuses tested machinery, and it removes the highest-friction failure on the rig.
 - **DW-911(b)** — now visible as intermittent 0.2–0.5 s "Waiting for peer…" pauses that recover cleanly. **May
   not be a code defect at all**: `[FrameStall]` only fires above 250 ms and measures LOCAL frame time, so a
   network stall leaves it SILENT while a main-thread block makes it LOUD. The PC is the Wi-Fi machine and that
