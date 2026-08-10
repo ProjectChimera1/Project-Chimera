@@ -296,6 +296,32 @@ namespace ProjectChimera.UI
                                     _buildings.Position[i].Z.ToFloat());
         }
 
+        /// <summary>DW-928 — should building <paramref name="i"/>'s LIVE overlay (construction progress bar) be
+        /// hidden? Stricter than <see cref="HiddenByFog"/>: the building MESH persists once EXPLORED (the remembered
+        /// shell), but a progress bar updates in real time — rendering it through fog leaks the enemy's build
+        /// progress live (2026-08-10 field report: Blue watched Red's barracks bar fill through unexplored fog).
+        /// Own/allied always show; an enemy's bar shows only while its cell is currently VISIBLE — the same live-info
+        /// rule units use in <c>MultiMeshBridge</c>.</summary>
+        private bool HiddenLiveOverlay(int i)
+        {
+            if (_fog == null) return false;
+            if (_revealAll?.Invoke() ?? false) return false;
+            if (_fog.RevealsFaction(_buildings.FactionOf[i])) return false;
+
+            return !_fog.IsVisible(_buildings.Position[i].X.ToFloat(),
+                                   _buildings.Position[i].Z.ToFloat());
+        }
+
+        /// <summary>DW-928 — should building <paramref name="i"/>'s rally marker be hidden? An enemy's rally flag is
+        /// their private waypoint — no RTS reveals it under ANY fog state, so the test is pure faction reveal (own /
+        /// allied / spectator only), independent of exploration.</summary>
+        private bool HiddenRallyMarker(int i)
+        {
+            if (_fog == null) return false;
+            if (_revealAll?.Invoke() ?? false) return false;
+            return !_fog.RevealsFaction(_buildings.FactionOf[i]);
+        }
+
         /// <summary>DW-927 — FNV-1a fold of the exact (alive index, fog-hidden?) set, so <see cref="Rebuild"/> notices
         /// any change in WHICH buildings render, not merely how many (a count collides on the match-start viewer-flip
         /// swap — see <see cref="_lastFogSignature"/>). Same O(64) per-frame cost as the count it replaces (the
@@ -391,7 +417,9 @@ namespace ProjectChimera.UI
         {
             for (int i = 0; i < _buildings.Count; i++)
             {
-                if (!_buildings.Alive[i] || !_buildings.IsUnderConstruction(i))
+                // DW-928: the bar is LIVE information — hide it for an enemy building the viewer cannot currently
+                // see, or Blue watches Red's build progress fill through unexplored fog.
+                if (!_buildings.Alive[i] || !_buildings.IsUnderConstruction(i) || HiddenLiveOverlay(i))
                 {
                     if (_bars[i].Visible) _bars[i].Visible = false;
                     continue;
@@ -437,7 +465,8 @@ namespace ProjectChimera.UI
                 // (or a new expansion) is standard macro — the sim already honors it (SetRallyCommand has no type
                 // gate, and SpawnTrainedUnit walks a trained worker to the rally under DW-634), so the MARKER has to
                 // render or the player is steering a rally point they cannot see.
-                if (!_buildings.Alive[i] || !_buildings.HasRallyPoint[i])
+                // DW-928: an enemy's rally flag is their private waypoint — never rendered, regardless of fog state.
+                if (!_buildings.Alive[i] || !_buildings.HasRallyPoint[i] || HiddenRallyMarker(i))
                 {
                     if (_rallyMarkers[i].Visible) _rallyMarkers[i].Visible = false;
                     continue;
