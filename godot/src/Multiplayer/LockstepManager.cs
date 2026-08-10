@@ -201,6 +201,11 @@ namespace ProjectChimera.Multiplayer
         /// <summary>Active input-delay ticks (adapted from RTT measurements).</summary>
         public int CurrentDelay => _currentDelay;
 
+        /// <summary>DW-924 — the smoothed ping to the server, in ms, for the on-screen net readout. A player watching
+        /// two machines side-by-side can now tell WHICH one's link is jittering without reading logs. Read-only
+        /// presentation seam over the same EWMA the adaptive input delay already maintains.</summary>
+        public float SmoothedRttMs => _smoothedRttMs;
+
         // ── Deps ──────────────────────────────────────────────────────────────
 
         private readonly ENetTransport _transport;

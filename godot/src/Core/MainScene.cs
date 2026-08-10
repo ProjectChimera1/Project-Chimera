@@ -1100,6 +1100,37 @@ namespace ProjectChimera.Core
         public override void _ExitTree()
         {
             _saveWriter?.WaitForIdle(10_000);
+
+            // DW-924 — the LAN rig ends matches by closing the window, so the return-to-Edit funnel (the other
+            // histogram dump site) never runs there. Without this, the very runs the histogram exists for would
+            // never print one. Verified on a graceful window close: teardown prints DO reach the redirected log.
+            // (A hard console-window kill loses them — nothing can dump through a TerminateProcess.)
+            DumpFrameHistogram();
+        }
+
+        /// <summary>DW-924 — print the match frame-time histogram once, then clear it (making every dump site
+        /// idempotent). No-op when no online frames were sampled.</summary>
+        private void DumpFrameHistogram()
+        {
+            if (_frameProbe.SampledFrames > 0)
+                GD.Print("[FrameHistogram] " + _frameProbe.Summary());
+            _frameProbe.ResetMatch();
+        }
+
+        /// <summary>
+        /// DW-924 — stamp application focus transitions with the current sim tick. The field render-cost bursts
+        /// happen only in real two-machine sessions, where one operator alt-tabs between two computers all match;
+        /// no solo reproduction rig does that. One log line per transition makes the correlation (or its absence)
+        /// readable in a single run's log. Presentation-only; skipped on the dedicated server (no window).
+        /// </summary>
+        public override void _Notification(int what)
+        {
+            base._Notification(what);
+            if (_headless || _bootAborted || _bootPending) return;
+            if (what == NotificationApplicationFocusIn)
+                _frameProbe.NoteFocusChange(gained: true,  tick: _host?.CurrentTick ?? 0);
+            else if (what == NotificationApplicationFocusOut)
+                _frameProbe.NoteFocusChange(gained: false, tick: _host?.CurrentTick ?? 0);
         }
 
         /// <summary>
@@ -1423,6 +1454,13 @@ namespace ProjectChimera.Core
         /// PRESENTATION instead of guessed at. Wall-clock observation; never folded, never read by the sim.</summary>
         private readonly System.Diagnostics.Stopwatch _simStepWatch = new();
 
+        /// <summary>DW-924 — splits DW-919's "presentation" bucket into render CPU / render GPU / GC / page faults /
+        /// focus-transition age, per frame, because the 2026-08-10 field bursts (80–150 ms frames, tick-locked across
+        /// matches) could not be reproduced under ANY synthetic load on the same machine and build — the next real
+        /// two-machine run has to name the phase itself. Attached lazily on the first ONLINE frame; offline play never
+        /// touches it. Wall-clock observation only; never folded, never read by the sim.</summary>
+        private readonly ProjectChimera.UI.FramePhaseProbe _frameProbe = new();
+
         /// <summary>
         /// DW-919 — how long a lockstep stall must PERSIST before the "Waiting for peer…" banner appears, in ms.
         /// A lockstep client is gated on the network every tick by design, so sub-threshold stalls are the normal
@@ -1592,6 +1630,13 @@ namespace ProjectChimera.Core
                     // loop separates them without a profiler: simMs high ⇒ the tick is too expensive; simMs low with
                     // a long frame ⇒ presentation (render, bridges, VFX). Stopwatch is wall-clock observation only —
                     // never folded, never read by the sim.
+                    //
+                    // DW-924 — and when it IS presentation, the probe splits that further (render cpu/gpu, GC,
+                    // page faults, focus age), sampled every online frame so the numbers riding a [Catchup] line
+                    // describe the same previous frame its frameMs does.
+                    _frameProbe.EnsureAttached(GetViewport());
+                    _frameProbe.SampleFrame(frameMs);
+
                     _simStepWatch.Restart();
 
                     while (_onlinePacer.HasTickBudget)
@@ -1617,7 +1662,8 @@ namespace ProjectChimera.Core
                         GD.Print($"[Catchup] {ticksThisFrame} sim ticks in one {frameMs:F0} ms frame at tick " +
                                  $"{_host.CurrentTick} — sim {simMs:F0} ms ({simMs / ticksThisFrame:F1} ms/tick), " +
                                  $"presentation {System.Math.Max(0.0, frameMs - simMs):F0} ms " +
-                                 $"(worst {_worstCatchupTicks} ticks, {_catchupFrames} such frames this match).");
+                                 $"(worst {_worstCatchupTicks} ticks, {_catchupFrames} such frames this match)." +
+                                 _frameProbe.CatchupSuffix());
                     }
                 }
                 else
@@ -2087,7 +2133,13 @@ namespace ProjectChimera.Core
             // ── Line 1: performance / sim state ──────────────────────────────
             string checksumStr = _host.LastChecksum == 0 ? "—"
                 : $"0x{_host.LastChecksum:X8}";
-            string onlineTag = _ctx.Lockstep.IsOnline ? "  ONLINE" : "";
+            // DW-924 — surface ping + input delay next to FPS while online (Alec's ask from the 2026-08-10 field
+            // runs: two machines side-by-side, no way to tell whose link is jittering without reading logs). The
+            // smoothed RTT is the same EWMA the adaptive delay negotiates from, so the number on screen IS the
+            // number the server steers by.
+            string onlineTag = _ctx.Lockstep.IsOnline
+                ? $"  ONLINE  ping {_ctx.Lockstep.SmoothedRttMs:F0} ms  delay {_ctx.Lockstep.CurrentDelay}"
+                : "";
 
             // Story 11.2 — the offline speed/pause indicator on the clock line (presentation-only; the online branch is
             // peer-gated and never scales/pauses, so it shows nothing here).
@@ -2999,6 +3051,10 @@ namespace ProjectChimera.Core
             // diagnostic state (every match-end path funnels through this Play→Edit reset).
             _onlinePacer.Reset();
             _stallTick = 0; _stallStartMs = 0; _stallTickReported = false;
+
+            // DW-924 — dump the match's frame-time histogram (the "unpleasant to play" number, quantified per run)
+            // and clear it for the next match. Only prints when an online match actually sampled frames.
+            DumpFrameHistogram();
             _reopenMenuAfterSettings = false;
             _gameOver     = false;
             _playFrames   = 0;
