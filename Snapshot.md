@@ -75,7 +75,33 @@ added for exactly this and turn DW-911(b) from a hypothesis into a number.
 
 ---
 
-## Current State (2026-08-08, evening) — read this first
+## Current State (2026-08-10, midday) — read this first
+
+**The online match is correct AND playable — five defects closed in one overnight+morning session, live with
+Alec at the controls.** Master `8ae45634`, both machines synced. Full detail per DW in the ledger; next session's
+brief is **`dev-scratch/next-session-waiting-for-peer.md`** (the DW-924 continuation — read it before anything).
+
+| DW | What closed |
+|---|---|
+| **DW-925** | Esc never opened the in-match menu online — MatchChatOverlay ate every Esc while visible. Now consumes only while typing. |
+| **DW-926** | HUD ping was frozen at the 267 ms EWMA seed — client pings never ran in server-dictated mode. Now live on both machines. |
+| **DW-927** | The invisible own command center — BuildingBridge's fog dirty test compared a COUNT, and the match-start viewer flip swaps the render-worthy set at equal count. Now an FNV set-signature. Field-confirmed same day. |
+| **DW-928** | Construction bars + rally flags drew through fog (live-intel leak). Bars: enemy needs live vision; enemy rally flags never render. |
+| **DW-924** | OPEN — the 80–145 ms frame bursts. Renderer exonerated with numbers (gpu ~6 ms of a 145 ms frame, gc 0, faults 0, on BOTH machines); every frame now self-attributes via the `[phase:]` tail, `[FrameProbe]` prints the present environment, `[FrameHistogram]` quantifies each match. Next: Vulkan A/B + the ExclusiveFullscreen-despite-windowed-settings mismatch. |
+
+Also filed **DW-929** (open): selecting an ENEMY building offers its train card with a live buy button — test
+whether the order path actually spends ore before trusting a UI-only fix.
+
+**Rig facts the probe surfaced**: clients run ExclusiveFullscreen although settings say windowed; the PC pairs
+144 Hz + 60 Hz displays on D3D12; burst windows repeat at the same MATCH ticks across machines and nights.
+
+Tier-1 **6392 / 0 / 1** throughout; no golden moved (every change presentation-only or read-only seams).
+Outstanding process debt: the formal `/godot-verify` gate pass on DW-917/920/921/923 (+ 925/927/928 verify
+lines) — all field-confirmed, scripted pass never run; carried in the next-session brief.
+
+---
+
+## Current State (2026-08-08, evening)
 
 **FR-39 IS SCORED. The #1 pre-ship gate, carried since Epic 1, passed on two real machines.**
 
