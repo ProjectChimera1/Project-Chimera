@@ -77,7 +77,10 @@ namespace ProjectChimera.Core.Bootstrap
             // Flow field pathfinding — deterministic replacement for NavServer3D. The bridge is added to the
             // tree here so _Process runs; its Initialize() is the FlowFieldInit phase (after ScenarioLoad, so
             // the obstacle map has all buildings).
-            var flowFieldSys    = new FlowFieldSystem();
+            // DW-916: the flow-field system is SIM-owned (SimulationHost) — the obstacle map and field cache are read
+            // by the index-3 steering system inside the tick, so the presentation may configure it but must not own
+            // its lifetime. The bridge is now a pure Vector3→Fixed adapter and holds no path state.
+            var flowFieldSys    = _ctx.Host.FlowFields;
             var flowFieldBridge = new FlowFieldBridge();
             _ctx.Scene.AddChild(flowFieldBridge);
             _ctx.FlowFieldSys    = flowFieldSys;

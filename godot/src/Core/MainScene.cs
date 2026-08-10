@@ -1412,6 +1412,13 @@ namespace ProjectChimera.Core
         private readonly System.Diagnostics.Stopwatch _frameStallWatch = System.Diagnostics.Stopwatch.StartNew();
         private double _worstFrameMs;
 
+        /// <summary>DW-916 — how many frames this match executed MORE THAN ONE sim tick, and the worst such count.
+        /// Pure observation (never folded, never read by the sim): a frame that multi-steps means this machine is
+        /// behind 30 Hz, which is the precondition for any frame-paced sim write to diverge from a peer that is
+        /// keeping up. Reported per occurrence and summarised on match end.</summary>
+        private int _catchupFrames;
+        private int _worstCatchupTicks;
+
         /// <summary>
         /// DW-912 — name an online stall that has outlived any plausible hitch, ONCE per stuck exec tick.
         ///
@@ -1554,6 +1561,15 @@ namespace ProjectChimera.Core
                     // recovery can never fire the same burst. See LockstepPacer for the full derivation.
                     _onlinePacer.Accumulate((float)delta);
 
+                    // DW-916 — count the ticks this ONE frame executes. A frame that steps more than once is the
+                    // signature of a machine falling behind the 30 Hz tick rate, and it is the condition under which
+                    // any remaining frame-paced write into the sim would diverge from a peer that is keeping up. It
+                    // is deliberately reported at >1 tick, NOT at the 250 ms FRAME_STALL_REPORT_MS threshold: the
+                    // number that matters is 33.3 ms (one tick), and the 2026-08-09 desync run logged ZERO
+                    // [FrameStall] lines while multi-stepping repeatedly — the diagnostic was 7.5x too coarse to see
+                    // the thing that killed the match.
+                    int ticksThisFrame = 0;
+
                     while (_onlinePacer.HasTickBudget)
                     {
                         if (!_ctx.Lockstep.Flush(_host.CurrentTick))
@@ -1564,6 +1580,16 @@ namespace ProjectChimera.Core
                         }
                         _onlinePacer.ConsumeTick();
                         _host.StepOnce();
+                        ticksThisFrame++;
+                    }
+
+                    if (ticksThisFrame > 1)
+                    {
+                        _catchupFrames++;
+                        _worstCatchupTicks = System.Math.Max(_worstCatchupTicks, ticksThisFrame);
+                        GD.Print($"[Catchup] {ticksThisFrame} sim ticks in one {frameMs:F0} ms frame at tick " +
+                                 $"{_host.CurrentTick} (worst {_worstCatchupTicks}, {_catchupFrames} such frames this " +
+                                 $"match) — this machine is behind the 30 Hz tick rate.");
                     }
                 }
                 else
@@ -2814,7 +2840,8 @@ namespace ProjectChimera.Core
             }
 
             // 4b. DW-157 (Story 14.8): force the flow-field static obstacle mask to take effect THIS Play. The
-            //     per-frame FlowFieldBridge.CheckBuildingChanges only rebuilds obstacles when the BUILDING set changed
+            //     per-tick FlowFieldSteeringSystem building poll (DW-916; was a per-frame poll in FlowFieldBridge)
+            //     only rebuilds obstacles when the BUILDING set changed
             //     — an obstacle-only edit leaves buildings identical across the reset, so without this explicit rebuild
             //     the refreshed static mask injected above would never be OR'd into the obstacle map until a building
             //     placement/destruction happened to trigger a rebuild. Unconditional: on the fallback branch the mask

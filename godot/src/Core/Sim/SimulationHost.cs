@@ -14,7 +14,11 @@ namespace ProjectChimera.Core.Sim
 {
     /// <summary>
     /// Net-new, Godot-free composition root for the simulation (Story 1.8a / AR-6). It owns the SoA stores,
-    /// the canonical 18-system tick order (DW-265 / Story 15.12 inserted <c>EnergyRegenSystem</c> at index 5, immediately
+    /// the canonical 19-system tick order (DW-916 inserted <c>FlowFieldSteeringSystem</c> at index 3, immediately
+    /// before <c>MovementSystem</c>, shifting every later index by one — flow-field path following used to run in
+    /// <c>FlowFieldBridge._Process</c>, i.e. once per RENDERED FRAME, so a frame over 33.3 ms let the online pacer
+    /// step up to 4 ticks against ONE steering refresh and the folded Position diverged from a peer that was not
+    /// stalling; DW-265 / Story 15.12 inserted <c>EnergyRegenSystem</c> at index 6, immediately
     /// before <c>AbilityCastSystem</c>, shifting every later index by one; DW-766 appended <c>DeathFeedDrainSystem</c> at index 17 — past the LAST
     /// <c>DeathFeed</c> producer, so the feed is genuinely empty at the checksum boundary; Story 7.11 inserted <c>WinConditionSystem</c> at index 14, after
     /// <c>AiOpponentSystem</c> and immediately before <c>ScenarioDirector</c>; Story 3.13 inserted
@@ -98,6 +102,19 @@ namespace ProjectChimera.Core.Sim
         public CombatEventQueue CombatEvents { get; }
         public MatchStats MatchStats { get; }
         public BuildingSystem BuildSys { get; }
+        /// <summary>
+        /// DW-916 — the flow-field obstacle map + bounded field cache. Sim-owned (it was built in the presentation
+        /// bootstrap and mutated off a per-frame poll). The bootstrap still injects the static blocked mask and the
+        /// per-slot building footprint source into it; the sim owns WHEN it is rebuilt (on the tick, via
+        /// <see cref="Steering"/>), which is what makes two peers compute a field against the same obstacle map.
+        /// </summary>
+        public FlowFieldSystem FlowFields { get; }
+        /// <summary>
+        /// DW-916 — per-tick flow-field path following (spine index 3, immediately before <c>MovementSystem</c>).
+        /// Exposed so the order-dispatch seam (<c>LockstepManager</c>/<c>ReplayPlayer</c> → <c>FlowFieldBridge</c>)
+        /// can issue Move/AttackMove/Cancel against sim-owned path state instead of presentation arrays.
+        /// </summary>
+        public FlowFieldSteeringSystem Steering { get; }
         /// <summary>Story 4.9 — the faction-scoped research order path (start/cancel/tick/complete + future-spawn
         /// catch-up). Exposed like <see cref="BuildSys"/> so apply sites can route
         /// <c>OrderApplier.Apply(..., research: ResearchSys)</c>.</summary>
@@ -214,6 +231,11 @@ namespace ProjectChimera.Core.Sim
             Alliances        = new AllianceStore();     // Story 7.12 — per-faction team-id mask (default FFA); folded into SimChecksum (v20). Story 9.14: built BEFORE Fog/Combat/Projectile so they can read the mask (shared vision + allied combat exclusion).
             Fog              = new FogOfWarSystem(Faction.Player1, Alliances); // Story 9.14 — shared-team vision unions allied sight (presentation-only, unfolded)
             BuildSys         = new BuildingSystem(Buildings, Resources, factionDef1, factionDef2, MatchStats, Heroes, _revivalRuntime);
+            // DW-916 — the flow-field obstacle map + field cache, and the per-TICK steering system that reads them.
+            // Both are Godot-free, so the sim owns them outright: the obstacle rebuild and the per-unit field/goal
+            // used to be presentation state polled once per rendered frame, which is what desynced the LAN gate.
+            FlowFields       = new FlowFieldSystem();
+            Steering         = new FlowFieldSteeringSystem(FlowFields, Buildings);
             Research         = new ResearchStore(); // Story 4.9 — mid-match-mutable; folded into SimChecksum (v14, Story 4.10)
             Vars             = new DslVarTable();     // Story 7.3 — typed/scoped variables + timers; folded into SimChecksum (v16); init from ScenarioData at apply
             LoopState        = new DslLoopState();    // Story 7.6 — loop fuel + batched continuation rows; folded into SimChecksum (v17)
@@ -310,53 +332,61 @@ namespace ProjectChimera.Core.Sim
                 // DW-207: World is passed so the system can subscribe World.OnDestroy and release a dying worker's
                 // reserved gatherer slot (the leak the skip-dead main loop structurally cannot see).
                 new GatheringSystem(Nodes, Resources, Buildings, MatchStats, World),       // [2] GatheringSystem   (Economy) — Buildings (4.7): requires_structure gate
-                new MovementSystem(),                                                     // [3] MovementSystem    (Navigation)
+                // ── DW-916 flow-field path following. Immediately BEFORE MovementSystem, which seeks toward the
+                //    MoveTarget written here, and AFTER GatheringSystem so an active flow field still wins over the
+                //    idle-gather sweep's target (the pre-fix precedence). This ran in FlowFieldBridge._Process — once
+                //    per RENDERED FRAME — while the online pacer may step up to LockstepPacer.MAX_CATCHUP_TICKS = 4
+                //    ticks in one frame, so every tick past the first steered off a stale position and the folded
+                //    Position diverged from any peer that was not stalling. Sim-paced here: one refresh per tick, on
+                //    every peer, in replay. ──
+                Steering,                                                                 // [3] FlowFieldSteeringSystem (Navigation, DW-916)
+                new MovementSystem(),                                                     // [4] MovementSystem    (Navigation)
                 // ── Story 2.12 shift-queue advance. Immediately AFTER MovementSystem so a queued
                 //    movement order's arrival is detected fresh THIS tick, and BEFORE AbilityCastSystem so a popped
                 //    CastAbility order fires the same tick. Pops the head of each unit's completed order and dispatches
                 //    it through the shared OrderApplier.ApplyActiveOrder (no second command→state path — FR-74/AC1). ──
-                new OrderQueueSystem(),                                                    // [4] OrderQueueSystem  (Core, FR-74)
+                new OrderQueueSystem(),                                                    // [5] OrderQueueSystem  (Core, FR-74)
                 // ── DW-265 / Story 15.12 energy regen. Immediately BEFORE AbilityCastSystem, so a unit may cast with
                 //    energy regenerated THIS tick. Writes only the already-folded Energy array (no SimChecksum bump);
                 //    with every shipped unit at regen_rate=0 the per-tick write is a byte-identical no-op. Holds the
                 //    RegenPerTick seam Story 15.21 extends. ──
-                new EnergyRegenSystem(),                                                   // [5] EnergyRegenSystem  (Effects, DW-265)
+                new EnergyRegenSystem(),                                                   // [6] EnergyRegenSystem  (Effects, DW-265)
                 // ── Story 2.4a ability-cast spine. Immediately BEFORE ModifierSystem, so a cast that
                 //    installs a buff is recomputed by ModifierSystem and read by CombatSystem the
                 //    SAME tick. Ticks per-slot cooldowns down, consumes the pending-cast intent, runs the effect graph. ──
-                abilitySys,                                                               // [6] AbilityCastSystem  (Effects, FR-11)
+                abilitySys,                                                               // [7] AbilityCastSystem  (Effects, FR-11)
                 // ── AR-9 effective-stat recompute. Immediately before CombatSystem, so combat & projectile-spawn
                 //    damage read freshly-recomputed Effective* stats the SAME tick a modifier changes them. Drives the
                 //    ModifierStore (Story 2.2b) each tick (periods/expiry) then recomputes. ──
-                modSys,                                                                   // [7] ModifierSystem    (Effects, AR-9)
+                modSys,                                                                   // [8] ModifierSystem    (Effects, AR-9)
                 // Story 2.6: the on-hit rider needs the ability registry (index→graph) + the ModifierStore (apply leaf).
                 // Story 3.13: the DeathFeed threads a lethal hitscan's victim to the XP runtime.
                 new CombatSystem(Projectiles, CombatEvents, MatchStats, damageTable,
-                                 registry ?? AbilityRegistry.Empty, Modifiers, Buildings, _deathFeed, Alliances), // [8] Buildings (2.9a): anti-building combat; DeathFeed (3.13); Alliances (9.14): allied acquisition/force-fire exclusion
+                                 registry ?? AbilityRegistry.Empty, Modifiers, Buildings, _deathFeed, Alliances), // [9] Buildings (2.9a): anti-building combat; DeathFeed (3.13); Alliances (9.14): allied acquisition/force-fire exclusion
                 new ProjectileSystem(Projectiles, CombatEvents, MatchStats, damageTable,
-                                     Buildings, _deathFeed, Alliances),                  // [9] Buildings (2.9a): ranged shells; DeathFeed (3.13); Alliances (9.14): allied splash exclusion
+                                     Buildings, _deathFeed, Alliances),                  // [10] Buildings (2.9a): ranged shells; DeathFeed (3.13); Alliances (9.14): allied splash exclusion
                 // ── Story 3.13 hero XP runtime. Immediately AFTER ProjectileSystem so it drains the SAME
                 //    tick's recorded deaths (combat + projectile impacts) → credits hostile heroes in range → advances
                 //    level → reconciles growth via the folded ModifierStore. Clears the feed at end-of-tick. ──
                 // Story 3.14: also drives hero death-detection, the revival countdown, and respawn (via the shared spawn
                 // hook + the resolved revival rule + BuildingStore); announcements ride CombatEvents.
-                heroXp,                                                                   // [10] HeroXpSystem (Combat, FR-7)
+                heroXp,                                                                   // [11] HeroXpSystem (Combat, FR-7)
                 // ── Story 3.15 item / inventory. AFTER the combat/projectile/hero-XP cluster: death-drops
                 //    happen synchronously at KillEntity (via the OnDestroy hook, during the combat/projectile indices) and
                 //    hero respawn happens in HeroXpSystem, so a revived hero is already empty when this resolves pickups.
                 //    Runs after MovementSystem so it steers a pickup-bound hero from a current position. ──
-                ItemSys,                                                                  // [11] ItemSystem       (Combat, FR-64)
-                new SupplySystem(Resources),                                              // [12] SupplySystem      (Economy)
-                Fog,                                                                      // [13] FogOfWarSystem    (Core)
+                ItemSys,                                                                  // [12] ItemSystem       (Combat, FR-64)
+                new SupplySystem(Resources),                                              // [13] SupplySystem      (Economy)
+                Fog,                                                                      // [14] FogOfWarSystem    (Core)
                 // DW-439/DW-445: Alliances threaded in so the AI's target/raze/threat classification is team-aware —
                 // without it a teamed AI ordered attacks onto its own ally, combat's Story-9.14 allied guard rejected
                 // them, and its whole force reverted to Idle every tick. Null/FFA ⇒ byte-identical to pre-fix.
-                _ai = new AiOpponentSystem(Buildings, Resources, BuildSys, aiLevel, Alliances), // [14] AI opponent (plays Player2)
+                _ai = new AiOpponentSystem(Buildings, Resources, BuildSys, aiLevel, Alliances), // [15] AI opponent (plays Player2)
                 // ── Story 7.11 win-condition evaluator. Immediately AFTER AiOpponentSystem (so it sees post-death
                 //    alive counts) and immediately BEFORE ScenarioDirector (so the director's OnVictory escape hatch
                 //    still runs last). Reads final entity/building state, writes the folded WinStateStore verdict. ──
-                WinCon,                                                                   // [15] WinConditionSystem (Core, FR-win)
-                ScenarioDirector,                                                         // [16] ScenarioDirector — the LAST producer
+                WinCon,                                                                   // [16] WinConditionSystem (Core, FR-win)
+                ScenarioDirector,                                                         // [17] ScenarioDirector — the LAST producer
                 // ── DW-766 end-of-tick DeathFeed drain. Registered LAST, past every producer: the store's DW-325
                 //    ceiling-collapse kill is reachable from ItemSystem [11] and ScenarioDirector [16] holds the feed in
                 //    its run_effect EffectContext, so HeroXpSystem's own [10] Clear could not make the feed empty at the
@@ -364,20 +394,20 @@ namespace ProjectChimera.Core.Sim
                 //    Credits the residue in the SAME tick (folded hero XP no longer lands late) and clears. ANY future
                 //    system that can kill must be registered BEFORE this one; the loop's tick-boundary assertion
                 //    (EnableTickBoundaryInvariants, armed below) fails loudly if one is not. ──
-                new DeathFeedDrainSystem(heroXp),                                          // [17] DeathFeedDrainSystem — runs LAST
+                new DeathFeedDrainSystem(heroXp),                                          // [18] DeathFeedDrainSystem — runs LAST
             };
 
             // ── Story 7.13 — wire the transient sim-event feed to its four PRODUCERS (all tick before the director,
-            //    index 16). Setters (not ctor params) keep the systems' construction signatures untouched (no test/
-            //    golden churn). CombatSystem [8] / ProjectileSystem [9] / HeroXpSystem [10] are retrieved from the
+            //    index 17). Setters (not ctor params) keep the systems' construction signatures untouched (no test/
+            //    golden churn). CombatSystem [9] / ProjectileSystem [10] / HeroXpSystem [11] are retrieved from the
             //    fixed-order array (SystemOrderTest pins the indices); the two field-held systems wire directly. ──
             BuildSys.SetDslSimEvents(DslSimEvents);
             BuildSys.SetCombatEvents(CombatEvents); // Story 11.4 (FR-74): production-completion cue rides the non-folded queue
             BuildSys.SetResourceNodes(Nodes);       // DW-207: QueueWorkerBuild releases the interrupted worker's gather slot
             abilitySys.SetDslSimEvents(DslSimEvents);
-            ((CombatSystem)_systems[8]).SetDslSimEvents(DslSimEvents);
-            ((ProjectileSystem)_systems[9]).SetDslSimEvents(DslSimEvents);
-            ((HeroXpSystem)_systems[10]).SetDslSimEvents(DslSimEvents);
+            ((CombatSystem)_systems[9]).SetDslSimEvents(DslSimEvents);
+            ((ProjectileSystem)_systems[10]).SetDslSimEvents(DslSimEvents);
+            ((HeroXpSystem)_systems[11]).SetDslSimEvents(DslSimEvents);
 
             _loop = new SimulationLoop(World, _systems);
             // DW-766 — arm the end-of-tick invariant: after every system has ticked, the transient DeathFeed must be
@@ -389,7 +419,7 @@ namespace ProjectChimera.Core.Sim
             // The sim spine's only host-side log in 1.8a: a one-shot construction diagnostic through the
             // injected seam. NullLogSink no-ops it (tests/server → zero effect on the golden); GodotLogSink
             // prints it for MainScene. NEVER a per-tick log (D6).
-            _log.Info("[SimulationHost] Sim spine constructed (18 systems; ResearchSystem at index 1, OrderQueueSystem at index 4, EnergyRegenSystem at index 5, AbilityCastSystem at index 6, ModifierSystem at index 7, HeroXpSystem at index 10, ItemSystem at index 11, WinConditionSystem at index 15, DeathFeedDrainSystem at index 17).");
+            _log.Info("[SimulationHost] Sim spine constructed (19 systems; ResearchSystem at index 1, FlowFieldSteeringSystem at index 3, MovementSystem at index 4, OrderQueueSystem at index 5, EnergyRegenSystem at index 6, AbilityCastSystem at index 7, ModifierSystem at index 8, HeroXpSystem at index 11, ItemSystem at index 12, WinConditionSystem at index 16, DeathFeedDrainSystem at index 18).");
         }
 
         /// <summary>
@@ -430,6 +460,12 @@ namespace ProjectChimera.Core.Sim
             Alliances.Clear();      // Story 7.12 — folded team-id mask; restore FFA so a re-apply starts from the default (9.15 re-seeds teams)
             TriggerEnabled.Clear(); // Story 7.13 — folded trigger-enabled mask; empty so a re-apply's LoadScenario re-seeds it non-additively (Count 0 → folds nothing until then)
             TriggerFireLog.Clear(); // Story 7.15 — non-folded observation buffer; empty so a re-apply's LoadScenario re-seeds fire counts/ring non-additively
+            // DW-916 — per-unit flow-field paths + the field cache are now SIM state, so the reset owns them like
+            // any other store. Without this a recycled entity slot would inherit the prior occupant's active path
+            // (the SoA-recycle trap) and the cache would serve fields computed against the previous scenario's
+            // obstacle map. The building baseline is re-synced by the FlowFieldInit phase after the re-apply.
+            Steering.ClearAll();
+            FlowFields.InvalidateCache();
             DslSimEvents.Clear();   // Story 7.13 — transient sim-event feed (empty at reset)
             WinCon.ResetConfig();   // Review P10 — the win-condition APPLY-TIME config lives outside every store; a Clear
                                     // without a re-Configure must not leave a stale preset pointed at zeroed counters

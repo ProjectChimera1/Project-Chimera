@@ -13,7 +13,7 @@ using Xunit;
 namespace ProjectChimera.Sim.Tests.Sim
 {
     /// <summary>
-    /// Pins the canonical 18-system tick order that <see cref="SimulationHost"/> owns (Story 1.8a / AR-6;
+    /// Pins the canonical 19-system tick order that <see cref="SimulationHost"/> owns (Story 1.8a / AR-6;
     /// DW-265 / Story 15.12 inserted <see cref="EnergyRegenSystem"/> at index 5, immediately before
     /// <see cref="AbilityCastSystem"/>, shifting every system after it down by one;
     /// DW-766 appended <see cref="DeathFeedDrainSystem"/> at index 16, past the LAST <c>DeathFeed</c> producer;
@@ -44,21 +44,22 @@ namespace ProjectChimera.Sim.Tests.Sim
             typeof(BuildingSystem),    // [0]
             typeof(ResearchSystem),    // [1]  ← Story 4.9 research order path, immediately after BuildingSystem
             typeof(GatheringSystem),   // [2]
-            typeof(MovementSystem),    // [3]
-            typeof(OrderQueueSystem),  // [4]  ← Story 2.12 shift-queue advance (FR-74), after Movement / before EnergyRegen
-            typeof(EnergyRegenSystem), // [5]  ← DW-265 / Story 15.12 energy regen, immediately before AbilityCastSystem
-            typeof(AbilityCastSystem), // [6]  ← Story 2.4a ability-cast spine (FR-11), immediately before ModifierSystem
-            typeof(ModifierSystem),    // [7]  ← AR-9 effective-stat recompute (Story 2.2a), immediately before Combat
-            typeof(CombatSystem),      // [8]
-            typeof(ProjectileSystem),  // [9]
-            typeof(HeroXpSystem),      // [10] ← Story 3.13 hero XP runtime, immediately after ProjectileSystem
-            typeof(ItemSystem),        // [11] ← Story 3.15 item / inventory, after the combat/projectile/hero-XP cluster
-            typeof(SupplySystem),      // [12]
-            typeof(FogOfWarSystem),    // [13]
-            typeof(AiOpponentSystem),  // [14]
-            typeof(WinConditionSystem),// [15] ← Story 7.11 win-condition evaluator, after AI / before ScenarioDirector
-            typeof(ScenarioDirector),  // [16]  the LAST DeathFeed producer (run_effect graphs kill through its EffectContext)
-            typeof(DeathFeedDrainSystem), // [17] ← DW-766 end-of-tick DeathFeed drain — runs LAST, past every producer
+            typeof(FlowFieldSteeringSystem), // [3] ← DW-916 per-TICK flow-field path following, immediately before Movement
+            typeof(MovementSystem),    // [4]
+            typeof(OrderQueueSystem),  // [5]  ← Story 2.12 shift-queue advance (FR-74), after Movement / before EnergyRegen
+            typeof(EnergyRegenSystem), // [6]  ← DW-265 / Story 15.12 energy regen, immediately before AbilityCastSystem
+            typeof(AbilityCastSystem), // [7]  ← Story 2.4a ability-cast spine (FR-11), immediately before ModifierSystem
+            typeof(ModifierSystem),    // [8]  ← AR-9 effective-stat recompute (Story 2.2a), immediately before Combat
+            typeof(CombatSystem),      // [9]
+            typeof(ProjectileSystem),  // [10]
+            typeof(HeroXpSystem),      // [11] ← Story 3.13 hero XP runtime, immediately after ProjectileSystem
+            typeof(ItemSystem),        // [12] ← Story 3.15 item / inventory, after the combat/projectile/hero-XP cluster
+            typeof(SupplySystem),      // [13]
+            typeof(FogOfWarSystem),    // [14]
+            typeof(AiOpponentSystem),  // [15]
+            typeof(WinConditionSystem),// [16] ← Story 7.11 win-condition evaluator, after AI / before ScenarioDirector
+            typeof(ScenarioDirector),  // [17]  the LAST DeathFeed producer (run_effect graphs kill through its EffectContext)
+            typeof(DeathFeedDrainSystem), // [18] ← DW-766 end-of-tick DeathFeed drain — runs LAST, past every producer
         };
 
         /// <summary>
@@ -72,7 +73,7 @@ namespace ProjectChimera.Sim.Tests.Sim
             new FactionDefinition());
 
         [Fact]
-        public void Systems_AreTheEighteenCanonicalSystems_InExactOrder()
+        public void Systems_AreTheNineteenCanonicalSystems_InExactOrder()
         {
             IReadOnlyList<ISimSystem> systems = BuildHost().Systems;
 
