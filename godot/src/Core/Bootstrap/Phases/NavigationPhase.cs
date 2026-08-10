@@ -95,6 +95,16 @@ namespace ProjectChimera.Core.Bootstrap
             flowFieldSys.SetBuildingFootprintSource(
                 BuildingNavFootprint.ObstacleExtentSource(_ctx.Buildings, ResolveBuildingDef));
 
+            // DW-923: give the fog its building vision source, reusing the SAME per-slot ResolveBuildingDef closure
+            // (read at CALL time, so it is fine that ScenarioLoad has not populated SlotFactionDefs yet). Buildings
+            // previously emitted zero vision because the fog never read BuildingStore at all — harmless while the fog
+            // only tinted terrain, but once DW-920 made it OCCLUDE entities a base with no unit nearby went dark.
+            // vision_range is already an authored, ContentHash-folded field: BuildingDefinition extends
+            // UnitDefinition, so it inherits it.
+            _ctx.Fog.SetBuildingVisionSource(
+                _ctx.Buildings,
+                slot => ResolveBuildingDef(slot)?.VisionRange ?? 0f);
+
             // NavObstacleManager watches BuildingStore and rebakes on any change. Kept on the context so
             // TerrainBrush can call MarkDirty() after sculpting.
             // DW-169: the definition resolver + asset registry let it derive a building's footprint from its def

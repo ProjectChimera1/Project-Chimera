@@ -572,6 +572,13 @@ namespace ProjectChimera.Sim.Tests.Sim
                     // Per-client presentation setting (unfolded; toggling it can never desync) — preserved across
                     // the reset by design, like _faction.
                     ClearCompletenessSweep.BackingField("SharedTeamVision"),
+                    // DW-923 — bootstrap-lifetime WIRING (SetBuildingVisionSource, injected once by NavigationPhase),
+                    // not per-match state. Same category as _alliances above. Clearing these on reset would silently
+                    // disable building vision for every match after the first Edit↔Play cycle, because nothing
+                    // re-wires them: the phase runs once at scene setup. The per-match fog state is the Grid alone,
+                    // which Reset() does wipe.
+                    "_buildings",
+                    "_buildingVisionOf",
                 },
             };
         }

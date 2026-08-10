@@ -291,6 +291,31 @@ namespace ProjectChimera.Core.Sim
                 buildingSlots[bi] = placedSlot;
             }
 
+            // DW-922 — report what actually landed in the store, per faction. A player reported starting without a
+            // command center on BOTH screens; the scenario authored one per slot, the applier maps slot→faction as
+            // (Slot + 1), and the renderer is symmetric for Player1/Player2, so nothing in the code reproduces it and
+            // there was no way to tell a MISSING building from a merely UNSEEN one after the fact. One line at apply
+            // time is the difference between "did it spawn?" being a hypothesis and a fact — the DW-918 lesson,
+            // applied before the next run rather than after it. Apply-time only (never per tick), and it reads
+            // already-placed state, so it cannot affect the sim or SimChecksum.
+            if (buildingsArr.Length > 0)
+            {
+                var perFaction = new System.Text.StringBuilder();
+                for (int f = 1; f <= 2; f++)
+                {
+                    int placed = 0, commandCenters = 0;
+                    for (int slot = 0; slot < _host.Buildings.Count; slot++)
+                    {
+                        if (!_host.Buildings.Alive[slot]) continue;
+                        if ((int)_host.Buildings.FactionOf[slot] != f) continue;
+                        placed++;
+                        if (_host.Buildings.Type[slot] == BuildingType.CommandCenter) commandCenters++;
+                    }
+                    perFaction.Append($" Player{f}={placed} building(s), {commandCenters} CC;");
+                }
+                _log.Info($"[ScenarioApplier] Placed {buildingsArr.Length} authored building(s) →{perFaction}");
+            }
+
             // ── 4. Units ──────────────────────────────────────────────────────
             // Story 7.11: capture each placed unit's spawned entity id, index-aligned to the authored Units array,
             // so an Assassination preset can resolve its leader_unit_index to a runtime entity id (-1 = not spawned).

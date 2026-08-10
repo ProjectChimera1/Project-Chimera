@@ -46,6 +46,15 @@ namespace ProjectChimera.Core
         /// Optional (null ⇒ no allied faction, single-viewer fog exactly as pre-9.14).</summary>
         private readonly AllianceStore? _alliances;
 
+        /// <summary>DW-923 — the building store scanned for structure vision. Null ⇒ buildings emit no vision
+        /// (byte-identical to pre-DW-923, when the fog never read this store at all).</summary>
+        private BuildingStore? _buildings;
+
+        /// <summary>DW-923 — per-slot building vision radius in world units, resolved from the authored
+        /// <c>vision_range</c> by an injected delegate (the DW-570 footprint-source precedent) so this sim-layer
+        /// file needs no faction registry. Null ⇒ no building vision.</summary>
+        private System.Func<int, float>? _buildingVisionOf;
+
         /// <summary>Story 9.14 — when true (default) AND an alliance mask is present, the local fog UNIONS the vision of
         /// every ALLIED faction's units (a teammate's scouted area is revealed on your fog). When false, only the
         /// viewer's own faction lights the fog. Presentation-only — the fog Grid is NOT folded into
@@ -111,6 +120,53 @@ namespace ProjectChimera.Core
 
                 StampCircle(wx, wz, radius);
             }
+
+            StampBuildings();
+        }
+
+        /// <summary>
+        /// DW-923 — stamp each of the viewer's (or an ally's) alive BUILDINGS as a vision source, the way WC3 and
+        /// every other RTS does: your base lights the ground around it, so your own town is not sitting in the dark
+        /// and a structure is a real scouting investment.
+        ///
+        /// <para>Before this the fog stamped from ENTITIES ONLY and never read <see cref="BuildingStore"/> at all, so
+        /// buildings emitted exactly zero vision. That was invisible while fog merely tinted terrain; once DW-920 made
+        /// the fog actually OCCLUDE things, a base with no nearby unit went dark.</para>
+        ///
+        /// <para>Radius comes from the authored <c>vision_range</c> on the building's definition — which already
+        /// exists, because <c>BuildingDefinition</c> extends <c>UnitDefinition</c>, and is already folded by
+        /// <c>ContentHash</c>. It is resolved through an INJECTED per-slot delegate (the DW-570
+        /// <c>SetBuildingFootprintSource</c> precedent) so this sim-layer file never has to reach for a faction
+        /// registry. No source wired, or a non-positive radius ⇒ nothing stamped, byte-identical to pre-DW-923.</para>
+        ///
+        /// <para>Presentation-only: the Grid is not folded into <c>SimChecksum</c>, so per-client fog cannot desync.</para>
+        /// </summary>
+        private void StampBuildings()
+        {
+            if (_buildings == null || _buildingVisionOf == null) return;
+
+            for (int slot = 0; slot < _buildings.Count; slot++)
+            {
+                if (!_buildings.Alive[slot]) continue;
+                if (!RevealsFaction(_buildings.FactionOf[slot])) continue;
+
+                float radius = _buildingVisionOf(slot);
+                if (radius <= 0f) continue; // unauthored / deliberately blind structure
+
+                StampCircle(_buildings.Position[slot].X.ToFloat(),
+                            _buildings.Position[slot].Z.ToFloat(),
+                            radius);
+            }
+        }
+
+        /// <summary>
+        /// DW-923 — inject the building vision source: the store to scan and a per-SLOT radius resolver (world units)
+        /// reading the slot's authored <c>vision_range</c>. Wired once at scenario setup. Pass nulls to disable.
+        /// </summary>
+        public void SetBuildingVisionSource(BuildingStore? buildings, System.Func<int, float>? visionOf)
+        {
+            _buildings        = buildings;
+            _buildingVisionOf = visionOf;
         }
 
         /// <summary>
