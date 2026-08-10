@@ -5,7 +5,7 @@ namespace ProjectChimera.Core
     /// </summary>
     public enum BuildingType : byte
     {
-        CommandCenter = 0,  // +10 supply cap; no production
+        CommandCenter = 0,  // +10 supply cap; trains the "Worker" category (DW-917)
         Barracks      = 1,  // Produces infantry combat units
         ArcheryRange  = 2,  // Produces ranged combat units (future)
         SiegeWorkshop = 3,  // Produces siege units (future)

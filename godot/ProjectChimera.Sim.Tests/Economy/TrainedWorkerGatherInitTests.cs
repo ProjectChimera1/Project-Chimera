@@ -115,18 +115,37 @@ namespace ProjectChimera.Sim.Tests.Economy
         }
 
         [Fact]
-        public void CommandCenter_CannotTrain_SoTheCustomProducerIsTheOnlyReachableWorkerPath()
+        public void CommandCenter_TrainsAWorker_ThatEntersTheGatherLoop()
         {
-            // Pins WHY the fix's reachability story is what it is. CategoryForBuilding maps the built-in
-            // BuildingType.CommandCenter to "Worker", but TrainUnit hard-rejects a CommandCenter outright, so that
-            // mapping can never reach SpawnTrainedUnit. The ONLY live worker-training path is the Story-6.8 authored
-            // Custom producer covered above — if this guard ever flips (a CommandCenter gains a train surface), the
-            // residue write above is what keeps those workers gathering.
+            // DW-917 — this test used to pin the OPPOSITE: TrainUnit hard-rejected a CommandCenter, so the built-in
+            // CommandCenter→"Worker" mapping in CategoryForBuilding could never reach SpawnTrainedUnit and the only
+            // live worker-training path was the Story-6.8 authored Custom producer. That made a match un-macroable —
+            // a player could never replace a lost worker or expand their economy past the starting hand. The gate is
+            // gone; the DW-205 residue write covered above is what keeps these workers gathering rather than
+            // auto-acquiring targets like combat units.
             var (sys, _, resources, world) = Harness(WorkerProducerFaction());
             int b = sys.PlaceBuildingDirect(BuildingType.CommandCenter, Faction.Player1, V(0, 0), preBuilt: true);
 
-            Assert.False(sys.TrainUnit(b, resources));
-            Assert.Equal(-1, SpawnNext(sys, world)); // nothing was queued, so nothing spawns
+            Assert.True(sys.TrainUnit(b, resources));
+
+            int w = SpawnNext(sys, world);
+            Assert.True(w >= 0);
+            Assert.Equal(UnitCategory.Worker, world.CategoryOf[w]);              // the CC's category really is Worker
+            Assert.Equal(GatherState.Idle, world.GatherState[w]);                // DW-205 residue, on the CC path too
+            Assert.Equal(Fixed.FromFloat(20f).Raw, world.CarryCapacity[w].Raw);
+        }
+
+        [Fact]
+        public void CommandCenter_TrainingAMeleeUnit_IsStillCrossCategoryRejected()
+        {
+            // DW-917 widened WHICH buildings may train, never the category guard. A crafted/stale chosen index for a
+            // Melee unit at a Worker producer must still hard-reject, spending nothing (the Story 1.12 faction-guard
+            // lesson) — otherwise the CC becomes a universal producer.
+            var (sys, _, resources, world) = Harness(WorkerProducerFaction());
+            int b = sys.PlaceBuildingDirect(BuildingType.CommandCenter, Faction.Player1, V(0, 0), preBuilt: true);
+
+            Assert.False(sys.TrainUnit(b, resources, chosenUnitIndex: 1)); // index 1 = melee_a
+            Assert.Equal(-1, SpawnNext(sys, world));                        // nothing queued → nothing spawns
         }
 
         [Fact]

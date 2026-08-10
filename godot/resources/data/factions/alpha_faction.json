@@ -28,7 +28,7 @@
       "cost_crystal": 0,
       "supply": 1,
       "mesh_scale": 0.95,
-      "train_time": 8.0,
+      "train_time": 6.0,
       "vision_range": 7.0,
       "abilities": [
         "matter_infusion",

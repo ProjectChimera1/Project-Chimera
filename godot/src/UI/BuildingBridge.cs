@@ -357,8 +357,12 @@ namespace ProjectChimera.UI
         {
             for (int i = 0; i < _buildings.Count; i++)
             {
-                if (!_buildings.Alive[i] || !_buildings.HasRallyPoint[i]
-                    || _buildings.Type[i] == BuildingType.CommandCenter)
+                // DW-917: the CommandCenter used to be excluded here because it could not produce, so a rally point
+                // on it was meaningless decoration. It trains workers now, and rallying the hall at a specific mine
+                // (or a new expansion) is standard macro — the sim already honors it (SetRallyCommand has no type
+                // gate, and SpawnTrainedUnit walks a trained worker to the rally under DW-634), so the MARKER has to
+                // render or the player is steering a rally point they cannot see.
+                if (!_buildings.Alive[i] || !_buildings.HasRallyPoint[i])
                 {
                     if (_rallyMarkers[i].Visible) _rallyMarkers[i].Visible = false;
                     continue;

@@ -105,8 +105,10 @@ namespace ProjectChimera.Sim.Tests.Economy
             => Assert.Equal(CommandCardSurface.Train, SurfaceOfBuiltIn(type));
 
         [Fact]
-        public void CommandCenter_DerivesNone()
-            => Assert.Equal(CommandCardSurface.None, SurfaceOfBuiltIn(BuildingType.CommandCenter));
+        public void CommandCenter_DerivesTrain()
+            // DW-917: the CommandCenter is a real producer (the "Worker" category) and so derives a Train surface.
+            // It previously derived None, which is why no worker could ever be trained.
+            => Assert.Equal(CommandCardSurface.Train, SurfaceOfBuiltIn(BuildingType.CommandCenter));
 
         // ── Custom producer + single-capability derivations ────────────────────────────────────────────
 

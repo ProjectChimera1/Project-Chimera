@@ -30,7 +30,7 @@ namespace ProjectChimera.Economy
     /// The single active command-card producer surface a building renders (this story). Every building resolves to
     /// exactly ONE of these via <see cref="BuildingSystem.ResolveCommandCardSurface"/>, so the command card renders
     /// that one grid and hides the rest — no two producer grids can overlap (DW-90). <see cref="None"/> = no producer
-    /// grid (a CommandCenter or an explicit <c>command_card_producer:"none"</c>).
+    /// grid (an explicit <c>command_card_producer:"none"</c>; DW-917 gave the CommandCenter a real Train surface).
     /// </summary>
     public enum CommandCardSurface { None, Train, Research, Shop, Revive }
 
@@ -452,11 +452,21 @@ namespace ProjectChimera.Economy
             return string.IsNullOrEmpty(pc) ? "Melee" : pc;
         }
 
-        /// <summary>The four built-in enum building types that produce trainable combat/economy units (a CommandCenter
-        /// is deliberately excluded — it surfaces supply only, never a train grid). The train-surface eligibility test
-        /// this story shares between the derivation and the Custom-producer widening.</summary>
+        /// <summary>
+        /// The built-in enum building types that produce trainable units. The train-surface eligibility test shared
+        /// between the derivation and the Custom-producer widening.
+        ///
+        /// <para>DW-917: the <see cref="BuildingType.CommandCenter"/> is now one of them. It always mapped to the
+        /// "Worker" category (<see cref="CategoryForBuilding(BuildingType)"/>) and every shipped faction authors
+        /// <c>produces_category: "Worker"</c> on it, but three separate gates — here, <see cref="GetProductionUnit"/>,
+        /// <see cref="GetProductionUnits"/> — plus a hard <c>return false</c> at the top of <see cref="TrainUnit"/>
+        /// made that mapping unreachable, so a player could never train another worker and a match was capped at its
+        /// starting economy. The gates are gone; nothing else about the type changes (it still grants
+        /// <c>supply_bonus</c>, and the command card still shows the supply readout alongside the train grid).</para>
+        /// </summary>
         private static bool IsBuiltInProducer(BuildingType type) =>
-            type == BuildingType.Barracks
+            type == BuildingType.CommandCenter
+            || type == BuildingType.Barracks
             || type == BuildingType.ArcheryRange
             || type == BuildingType.SiegeWorkshop
             || type == BuildingType.Aviary;
@@ -538,7 +548,6 @@ namespace ProjectChimera.Economy
                                                   Faction faction = Faction.Player1,
                                                   string? definitionId = null)
         {
-            if (type == BuildingType.CommandCenter) return null;
             string category = definitionId != null
                 ? CategoryForBuilding(type, faction, definitionId)
                 : CategoryForBuilding(type);
@@ -556,8 +565,6 @@ namespace ProjectChimera.Economy
                                                                         Faction faction = Faction.Player1,
                                                                         string? definitionId = null)
         {
-            if (type == BuildingType.CommandCenter)
-                return new List<(int, UnitDefinition)>();
             var fdef = GetFactionDef(faction);
             if (fdef == null)
                 return new List<(int, UnitDefinition)>();
@@ -587,7 +594,6 @@ namespace ProjectChimera.Economy
             if (!_buildings.Alive[buildingId]) return false;
             if (_buildings.IsUnderConstruction(buildingId)) return false;
             var bType = _buildings.Type[buildingId];
-            if (bType == BuildingType.CommandCenter) return false;
             // Story 11.6: append to the first empty queue slot (depth-5). With all 5 slots occupied the queue is full —
             // a reason-less denial cue at the building (the player clicked a full producer); no spend, nothing queued.
             int freeSlot = _buildings.FirstEmptySlot(buildingId);

@@ -81,7 +81,9 @@ namespace ProjectChimera.Sim.Tests.Economy
             Assert.Equal(3, sys.GetProductionUnits(BuildingType.Barracks).Count);     // Melee
             Assert.Equal(2, sys.GetProductionUnits(BuildingType.ArcheryRange).Count); // Ranged
             Assert.Single(sys.GetProductionUnits(BuildingType.Aviary));               // Air (Task 4 arm has teeth)
-            Assert.Empty(sys.GetProductionUnits(BuildingType.CommandCenter));         // trains nothing
+            // DW-917: the CommandCenter enumerates the "Worker" category (it returned an empty list before, which
+            // is what left the command card with no train grid). TestFaction() authors exactly one Worker.
+            Assert.Single(sys.GetProductionUnits(BuildingType.CommandCenter));        // Worker
         }
 
         // ── Task 2 — per-unit selection: trains the CHOSEN unit, not first-of-category ─────────────────

@@ -1081,7 +1081,10 @@ namespace ProjectChimera.UI
             _panel.AddChild(_constructionLabel);
 
             // ── Supply label (CommandCenter) ──────────────────────────────────
-            _supplyLabel = MakeLabel(new Vector2(10f, 58f), 13,
+            // DW-917: the CommandCenter now renders a TRAIN grid (worker production), whose queue strip occupies
+            // y 48-70 and whose picker buttons start at y 74 — so the supply readout moved off the old (10, 58) slot
+            // it shared with _constructionLabel and onto the free right half of the title row.
+            _supplyLabel = MakeLabel(new Vector2(270f, 10f), 13,
                                     new Color(0.75f, 0.80f, 1.00f));
             _supplyLabel.Visible = false;
             _panel.AddChild(_supplyLabel);
