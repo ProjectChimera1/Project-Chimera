@@ -1326,6 +1326,14 @@ namespace ProjectChimera.UI
                 var btn = new Button();
                 btn.Position = new Vector2(10f + i * 102f, 74f);
                 btn.Size     = new Vector2(98f, 70f);
+                // DW-921: a 98 px button holds far less text than these labels carry ("Command Center (free)",
+                // "Siege Workshop [need: Sigil Forge]"), and a Godot Button neither wraps nor clips by default — the
+                // overflow drew straight across the neighbouring buttons and disappeared under their opaque
+                // backgrounds, so the worker card read as one smear of overlapping words. Wrap inside the button's
+                // own 70 px height, then clip whatever still will not fit. The four producer grids and the Story
+                // 11.6 queue strip already did exactly this; the build and ability grids were the two that missed it.
+                btn.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+                btn.ClipText     = true;
 
                 var bType = WORKER_BUILD_TYPES[i]; // capture for lambda
                 btn.Pressed += () => OnBuildBtnPressed(bType);
@@ -1448,6 +1456,10 @@ namespace ProjectChimera.UI
                 var btn = new Button();
                 btn.Position = new Vector2(10f + i * 102f, 40f);
                 btn.Size     = new Vector2(98f, 70f);
+                // DW-921: see the build grid — "Matter Infusion [need crystal]" overran its 98 px button and was
+                // painted over by the next ability's background, which is the overlap in the lower-left card.
+                btn.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+                btn.ClipText     = true;
 
                 int slot = i; // capture for lambda (per-slot index, not the loop variable)
                 btn.Pressed += () => OnAbilityBtnPressed(slot);

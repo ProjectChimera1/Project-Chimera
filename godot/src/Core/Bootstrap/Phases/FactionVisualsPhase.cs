@@ -63,6 +63,17 @@ namespace ProjectChimera.Core.Bootstrap
             // resolves to its ingested mesh, mirroring the unit bridge.
             buildingBridge.Initialize(_ctx.Buildings, p1Def, p2Def, p1Color, p2Color, _ctx.AssetRegistry);
 
+            // DW-920 — thread the fog into the three entity renderers so enemy units and structures are OCCLUDED,
+            // not merely dimmed by the terrain overlay. Before this, fog painted the ground while every enemy unit
+            // and building drew at full brightness on top of it, so both players watched the other's entire build
+            // order and army movements — the opposite of what fog is for. RevealAll is late-bound to the fog bridge
+            // (the DW-406 minimap pattern), so a spectator / eliminated-player reveal opens the 3D view, the minimap
+            // and the fog plane together rather than drifting apart.
+            System.Func<bool> revealAll = () => _ctx.FogBridge?.RevealAll ?? false;
+            unitP1.SetRevealAllSource(revealAll);
+            unitP2.SetRevealAllSource(revealAll);
+            buildingBridge.SetFogSource(_ctx.Fog, revealAll);
+
             // Keep the editor placement tool in sync with the slot factions so click-to-spawn in Edit mode
             // produces the same mesh + stats the bridges render (Camera wired it with defaults pre-scenario).
             _ctx.Placer.SetFactionDefs(p1Def, p2Def);

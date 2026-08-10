@@ -24,6 +24,18 @@ namespace ProjectChimera.UI
     {
         private BuildingStore _buildings = null!;
 
+        /// <summary>DW-920 — the viewer's fog. Null ⇒ no occlusion (byte-identical to pre-DW-920).</summary>
+        private ProjectChimera.Core.FogOfWarSystem? _fog;
+
+        /// <summary>DW-920 — late-bound spectator reveal-all getter (mirrors <c>FogOfWarBridge.RevealAll</c>, the
+        /// DW-406 pattern) so a revealed observer view shows enemy structures like the minimap does.</summary>
+        private System.Func<bool>? _revealAll;
+
+        /// <summary>DW-920 — how many enemy buildings passed the fog test last frame. <see cref="Rebuild"/> is
+        /// change-driven (alive count / construction), and fog exploration is neither, so without this a structure
+        /// scouted for the first time would not appear until some UNRELATED building event happened to redraw.</summary>
+        private int _lastFogRevealed = -1;
+
         // Two MultiMesh instances per RENDER BUCKET (P1 / P2). Story 6.8: buckets are keyed by the authored
         // BuildingDefinition.Id (see _bucketOf), NOT the closed BuildingType enum, so a BuildingType.Custom building
         // renders through its own bucket instead of being dropped at enum index 5.
@@ -233,7 +245,12 @@ namespace ProjectChimera.UI
             bool countChanged = aliveCount != _lastSeenCount;
             bool hasConstruction = HasActiveConstruction();
 
-            if (countChanged || hasConstruction || _constructionDirty)
+            // DW-920: fog exploration changes without any building event, so fold it into the dirty test.
+            int  fogRevealed  = CountFogRevealed();
+            bool fogChanged   = fogRevealed != _lastFogRevealed;
+            _lastFogRevealed  = fogRevealed;
+
+            if (countChanged || hasConstruction || _constructionDirty || fogChanged)
             {
                 _lastSeenCount     = aliveCount;
                 _constructionDirty = hasConstruction; // keep dirty until all done
@@ -242,6 +259,44 @@ namespace ProjectChimera.UI
 
             UpdateProgressBars();
             UpdateRallyMarkers();
+        }
+
+        /// <summary>
+        /// DW-920 — inject the viewer's fog and the spectator reveal-all getter. Both optional; omitted, buildings
+        /// render exactly as they did before fog occlusion existed.
+        /// </summary>
+        public void SetFogSource(ProjectChimera.Core.FogOfWarSystem? fog, System.Func<bool>? revealAll = null)
+        {
+            _fog             = fog;
+            _revealAll       = revealAll;
+            _lastFogRevealed = -1; // force one rebuild so the new source takes effect immediately
+        }
+
+        /// <summary>
+        /// DW-920 — should building <paramref name="i"/> be hidden from the viewer? Enemy structures use EXPLORED,
+        /// not VISIBLE: once you have scouted a building you keep seeing it even after vision lapses, which is the
+        /// standard RTS rule (and the reason units take the opposite test in <c>MultiMeshBridge</c> — an army that
+        /// walks into the dark must disappear, a base you found does not). Own/allied buildings are never hidden.
+        /// </summary>
+        private bool HiddenByFog(int i)
+        {
+            if (_fog == null) return false;
+            if (_revealAll?.Invoke() ?? false) return false;
+            if (_fog.RevealsFaction(_buildings.FactionOf[i])) return false;
+
+            return !_fog.IsExplored(_buildings.Position[i].X.ToFloat(),
+                                    _buildings.Position[i].Z.ToFloat());
+        }
+
+        /// <summary>DW-920 — count the enemy buildings currently passing the fog test, so <see cref="Rebuild"/> can
+        /// notice a newly scouted structure. O(64); cheaper than rebuilding every frame.</summary>
+        private int CountFogRevealed()
+        {
+            if (_fog == null) return 0;
+            int n = 0;
+            for (int i = 0; i < _buildings.Count; i++)
+                if (_buildings.Alive[i] && !HiddenByFog(i)) n++;
+            return n;
         }
 
         // ── Rebuild building MultiMeshes ──────────────────────────────────────
@@ -253,6 +308,7 @@ namespace ProjectChimera.UI
             for (int i = 0; i < _buildings.Count; i++)
             {
                 if (!_buildings.Alive[i]) continue;
+                if (HiddenByFog(i)) continue; // DW-920 — same test in BOTH passes or the write cursor overruns
                 int fi = FactionIndex(_buildings.FactionOf[i]);
                 if (fi < 0 || !TryBucket(i, out int t)) continue;
                 counts[t, fi]++;
@@ -272,6 +328,7 @@ namespace ProjectChimera.UI
             for (int i = 0; i < _buildings.Count; i++)
             {
                 if (!_buildings.Alive[i]) continue;
+                if (HiddenByFog(i)) continue; // DW-920 — same test in BOTH passes or the write cursor overruns
                 int fi = FactionIndex(_buildings.FactionOf[i]);
                 if (fi < 0 || !TryBucket(i, out int t)) continue;
 

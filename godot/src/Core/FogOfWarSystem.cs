@@ -67,6 +67,21 @@ namespace ProjectChimera.Core
         /// </summary>
         public void SetViewer(Faction faction) => _faction = faction;
 
+        /// <summary>
+        /// True when <paramref name="f"/>'s entities are the VIEWER'S OWN to see unconditionally — the viewer's
+        /// faction, or (with shared-team vision and a mask present) an allied one. Anything else is an enemy whose
+        /// entities must be occluded by the fog.
+        ///
+        /// <para>DW-920: this is the single predicate for "whose stuff do I see". It was previously inlined in the
+        /// vision-stamp loop only, so the fog knew who to reveal FOR but no renderer knew who to hide — enemy units
+        /// and buildings drew at full brightness through unexplored fog, which is why a player could watch the
+        /// opponent's whole build order. Presentation-only (the Grid is unfolded), so using it in a renderer can
+        /// never affect <c>SimChecksum</c>.</para>
+        /// </summary>
+        public bool RevealsFaction(Faction f) =>
+            f == _faction
+            || (SharedTeamVision && _alliances != null && _alliances.AreAllied(_faction, f));
+
         // ── ISimSystem ────────────────────────────────────────────────────────
 
         public void Tick(EntityWorld world, Fixed dt)
@@ -84,10 +99,7 @@ namespace ProjectChimera.Core
                 // shared-team vision is enabled and a mask is present (union of teammate sight). Null mask / toggle off
                 // ⇒ only the own-faction path, byte-identical to pre-9.14. Presentation-only (unfolded), so this NEVER
                 // affects any SimChecksum.
-                Faction f = world.FactionOf[id];
-                bool reveal = f == _faction
-                           || (SharedTeamVision && _alliances != null && _alliances.AreAllied(_faction, f));
-                if (!reveal) continue;
+                if (!RevealsFaction(world.FactionOf[id])) continue;
 
                 float wx = world.Position[id].X.ToFloat();
                 float wz = world.Position[id].Z.ToFloat();

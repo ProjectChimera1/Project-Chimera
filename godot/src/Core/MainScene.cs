@@ -1419,6 +1419,22 @@ namespace ProjectChimera.Core
         private int _catchupFrames;
         private int _worstCatchupTicks;
 
+        /// <summary>DW-919 — times just the online step loop, so a catch-up burst can be attributed to the SIM or to
+        /// PRESENTATION instead of guessed at. Wall-clock observation; never folded, never read by the sim.</summary>
+        private readonly System.Diagnostics.Stopwatch _simStepWatch = new();
+
+        /// <summary>
+        /// DW-919 — how long a lockstep stall must PERSIST before the "Waiting for peer…" banner appears, in ms.
+        /// A lockstep client is gated on the network every tick by design, so sub-threshold stalls are the normal
+        /// resting state, not a fault; announcing them made the banner strobe continuously. 400 ms is ~12 ticks at
+        /// 30 Hz — well past any ordinary jitter, still fast enough to explain a real freeze before the player
+        /// starts wondering. The banner clears immediately on the first advanced tick (no linger).
+        /// </summary>
+        private const ulong STALL_BANNER_DELAY_MS = 400UL;
+
+        /// <summary>Wall-clock ms at which the current uninterrupted stall began (0 = not stalling).</summary>
+        private ulong _stallVisibleSinceMs;
+
         /// <summary>
         /// DW-912 — name an online stall that has outlived any plausible hitch, ONCE per stuck exec tick.
         ///
@@ -1570,6 +1586,14 @@ namespace ProjectChimera.Core
                     // the thing that killed the match.
                     int ticksThisFrame = 0;
 
+                    // DW-919 — split the frame into SIM time and everything else. A catch-up burst says the machine
+                    // is behind 30 Hz but not WHY: 3-4 ticks inside a 117 ms frame is ~30 ticks/sec, i.e. the sim is
+                    // keeping pace while only ~8 frames render, and the cost could be either side. Timing the step
+                    // loop separates them without a profiler: simMs high ⇒ the tick is too expensive; simMs low with
+                    // a long frame ⇒ presentation (render, bridges, VFX). Stopwatch is wall-clock observation only —
+                    // never folded, never read by the sim.
+                    _simStepWatch.Restart();
+
                     while (_onlinePacer.HasTickBudget)
                     {
                         if (!_ctx.Lockstep.Flush(_host.CurrentTick))
@@ -1583,13 +1607,17 @@ namespace ProjectChimera.Core
                         ticksThisFrame++;
                     }
 
+                    _simStepWatch.Stop();
+
                     if (ticksThisFrame > 1)
                     {
+                        double simMs = _simStepWatch.Elapsed.TotalMilliseconds;
                         _catchupFrames++;
                         _worstCatchupTicks = System.Math.Max(_worstCatchupTicks, ticksThisFrame);
                         GD.Print($"[Catchup] {ticksThisFrame} sim ticks in one {frameMs:F0} ms frame at tick " +
-                                 $"{_host.CurrentTick} (worst {_worstCatchupTicks}, {_catchupFrames} such frames this " +
-                                 $"match) — this machine is behind the 30 Hz tick rate.");
+                                 $"{_host.CurrentTick} — sim {simMs:F0} ms ({simMs / ticksThisFrame:F1} ms/tick), " +
+                                 $"presentation {System.Math.Max(0.0, frameMs - simMs):F0} ms " +
+                                 $"(worst {_worstCatchupTicks} ticks, {_catchupFrames} such frames this match).");
                     }
                 }
                 else
@@ -2170,7 +2198,25 @@ namespace ProjectChimera.Core
             }
 
             // ── Stall banner ──────────────────────────────────────────────────
-            _ctx.StallBanner.Visible = _ctx.Lockstep.IsOnline && _ctx.Lockstep.IsStalling;
+            // DW-919: `IsStalling` is an INSTANTANEOUS flag — LockstepManager.Flush sets it on any frame where the
+            // merged packet for the current tick has not arrived yet. In a HEALTHY lockstep match that happens
+            // constantly and briefly (the client is gated on the network every single tick by design), so binding
+            // the banner straight to it made "Waiting for peer…" strobe on and off perpetually and read as though
+            // the match were broken when it was merely doing its job. Require the stall to PERSIST past a hitch the
+            // player would not otherwise notice before saying anything, and drop it the instant the sim advances.
+            bool stalling = _ctx.Lockstep.IsOnline && _ctx.Lockstep.IsStalling;
+            if (!stalling)
+            {
+                _stallVisibleSinceMs = 0UL;
+            }
+            else if (_stallVisibleSinceMs == 0UL)
+            {
+                _stallVisibleSinceMs = Time.GetTicksMsec();
+            }
+
+            _ctx.StallBanner.Visible =
+                stalling && _stallVisibleSinceMs != 0UL
+                         && Time.GetTicksMsec() - _stallVisibleSinceMs >= STALL_BANNER_DELAY_MS;
         }
 
         // ── Worker build placement ────────────────────────────────────────────

@@ -35,6 +35,15 @@ namespace ProjectChimera.UI
         private System.Func<float> _alphaSource = () => 0f;
         private Faction            _faction;
 
+        /// <summary>DW-920 — the viewer's fog. Null ⇒ no occlusion (byte-identical to pre-DW-920: every unit of this
+        /// bridge's faction always draws), which is what the editor / non-fogged callers want.</summary>
+        private ProjectChimera.Core.FogOfWarSystem? _fog;
+
+        /// <summary>DW-920 — late-bound "reveal everything" getter, mirroring <c>FogOfWarBridge.RevealAll</c> the way
+        /// <c>MinimapBridge</c> does (DW-406). Late-bound rather than copied so a spectator / eliminated-player
+        /// reveal flips the 3D units, the minimap and the fog plane together instead of drifting apart.</summary>
+        private System.Func<bool>? _revealAll;
+
         // One MultiMeshInstance3D per unit type (index == EntityWorld.MeshType).
         private MultiMeshInstance3D[] _mmi          = null!;
         private float[]               _scale        = null!; // per-type uniform mesh scale
@@ -57,6 +66,7 @@ namespace ProjectChimera.UI
             _renderWorld = host.World;
             _alphaSource = () => host.InterpolationAlpha;
             _faction = faction;
+            _fog = host.Fog; // DW-920 — host truth, so SetViewer/SharedTeamVision changes are picked up live
 
             var units = factionDef.Units;
             _typeCount = Mathf.Max(1, units.Count);
@@ -145,12 +155,23 @@ namespace ProjectChimera.UI
             float alpha       = _alphaSource();
             int   simCount    = world.HighWaterMark;
 
+            // DW-920 — fog occlusion. This bridge draws ONE faction; when that faction is not the viewer's own (nor
+            // an ally under shared-team vision), each of its units is drawn only while its cell is currently VISIBLE.
+            // Without this the fog was terrain paint only: every enemy unit rendered at full brightness through
+            // unexplored fog, so both players could watch the other's entire build order and army movements. A
+            // spectator / post-elimination observer sets RevealAll and sees everything, exactly as the minimap does
+            // (the DW-406 late-bound getter pattern, so every site that flips reveal stays in sync).
+            bool fogThisFaction = _fog != null
+                               && !_fog.RevealsFaction(_faction)
+                               && !(_revealAll?.Invoke() ?? false);
+
             // Pass 1 — count alive faction entities per mesh type.
             System.Array.Clear(_counts, 0, _typeCount);
             for (int i = 0; i < simCount; i++)
             {
                 if (!world.IsAlive(i)) continue;
                 if (world.FactionOf[i] != _faction) continue;
+                if (fogThisFaction && !IsUnderVision(world, i)) continue;
                 _counts[TypeOf(world, i)]++;
             }
 
@@ -170,6 +191,8 @@ namespace ProjectChimera.UI
             {
                 if (!world.IsAlive(i)) continue;
                 if (world.FactionOf[i] != _faction) continue;
+                // Must use the SAME test as pass 1, or the cursor overruns the InstanceCount pass 1 sized.
+                if (fogThisFaction && !IsUnderVision(world, i)) continue;
 
                 int t = TypeOf(world, i);
 
@@ -184,6 +207,22 @@ namespace ProjectChimera.UI
                 _mmi[t].Multimesh.SetInstanceTransform(_cursor[t]++, new Transform3D(basis, pos));
             }
         }
+
+        /// <summary>
+        /// DW-920 — inject the spectator/observer reveal-all getter (mirrors <c>FogOfWarBridge.RevealAll</c>). Wired
+        /// by the rendering bootstrap after the fog bridge exists; unset ⇒ never reveals, so fog applies normally.
+        /// </summary>
+        public void SetRevealAllSource(System.Func<bool> revealAll) => _revealAll = revealAll;
+
+        /// <summary>
+        /// DW-920 — is entity <paramref name="id"/> standing in a cell the viewer can currently SEE? Units use
+        /// VISIBLE (not EXPLORED): an enemy unit is only drawn while something of the viewer's actually watches it,
+        /// so it vanishes when it walks back into the dark rather than leaving a ghost. Buildings take the opposite
+        /// rule in <c>BuildingBridge</c> (remembered once explored), which is the standard RTS split.
+        /// Sampled at the unit's CURRENT position, matching the fog stamp's own sampling.
+        /// </summary>
+        private bool IsUnderVision(EntityWorld world, int id) =>
+            _fog!.IsVisible(world.Position[id].X.ToFloat(), world.Position[id].Z.ToFloat());
 
         /// <summary>Clamp the stored mesh type into the valid range (defensive: unknown → type 0).</summary>
         private int TypeOf(EntityWorld world, int id)
