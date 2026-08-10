@@ -31,10 +31,17 @@ namespace ProjectChimera.UI
         /// DW-406 pattern) so a revealed observer view shows enemy structures like the minimap does.</summary>
         private System.Func<bool>? _revealAll;
 
-        /// <summary>DW-920 — how many enemy buildings passed the fog test last frame. <see cref="Rebuild"/> is
-        /// change-driven (alive count / construction), and fog exploration is neither, so without this a structure
-        /// scouted for the first time would not appear until some UNRELATED building event happened to redraw.</summary>
-        private int _lastFogRevealed = -1;
+        /// <summary>DW-927 — the FNV-1a signature of the exact (alive, fog-hidden?) building SET last frame; a
+        /// sentinel of 0 forces the first rebuild. DW-920 originally tracked how MANY buildings passed the fog test —
+        /// a count — and the match-start transition falsified it: the Edit/lobby phase stamps the fog grid with the
+        /// DEFAULT viewer's (Player1's) vision, the bridge builds its fill from that state, and then match start wipes
+        /// the grid and retargets the viewer to the local faction. On the Player2 machine that SWAPS which command
+        /// center is render-worthy (enemy's out, own in) while the COUNT stays equal — so no rebuild fired and the
+        /// pre-match Player1 fill rendered for the entire match: the enemy CC drawn on unexplored ground, the
+        /// player's OWN command center invisible (2026-08-10 field report + laptop screenshot). The Player1 machine
+        /// survived only by coincidence (its flip is P1→P1). A set signature cannot collide on a swap the way a
+        /// count does, so any change in WHICH buildings pass — viewer flips, grid wipes, scouting — now redraws.</summary>
+        private long _lastFogSignature;
 
         // Two MultiMesh instances per RENDER BUCKET (P1 / P2). Story 6.8: buckets are keyed by the authored
         // BuildingDefinition.Id (see _bucketOf), NOT the closed BuildingType enum, so a BuildingType.Custom building
@@ -246,9 +253,10 @@ namespace ProjectChimera.UI
             bool hasConstruction = HasActiveConstruction();
 
             // DW-920: fog exploration changes without any building event, so fold it into the dirty test.
-            int  fogRevealed  = CountFogRevealed();
-            bool fogChanged   = fogRevealed != _lastFogRevealed;
-            _lastFogRevealed  = fogRevealed;
+            // DW-927: as a SET signature, never a count — an equal-count swap (the match-start viewer flip) must redraw.
+            long fogSignature = FogPassSignature();
+            bool fogChanged   = fogSignature != _lastFogSignature;
+            _lastFogSignature = fogSignature;
 
             if (countChanged || hasConstruction || _constructionDirty || fogChanged)
             {
@@ -267,9 +275,9 @@ namespace ProjectChimera.UI
         /// </summary>
         public void SetFogSource(ProjectChimera.Core.FogOfWarSystem? fog, System.Func<bool>? revealAll = null)
         {
-            _fog             = fog;
-            _revealAll       = revealAll;
-            _lastFogRevealed = -1; // force one rebuild so the new source takes effect immediately
+            _fog              = fog;
+            _revealAll        = revealAll;
+            _lastFogSignature = 0L; // sentinel — force one rebuild so the new source takes effect immediately
         }
 
         /// <summary>
@@ -288,15 +296,25 @@ namespace ProjectChimera.UI
                                     _buildings.Position[i].Z.ToFloat());
         }
 
-        /// <summary>DW-920 — count the enemy buildings currently passing the fog test, so <see cref="Rebuild"/> can
-        /// notice a newly scouted structure. O(64); cheaper than rebuilding every frame.</summary>
-        private int CountFogRevealed()
+        /// <summary>DW-927 — FNV-1a fold of the exact (alive index, fog-hidden?) set, so <see cref="Rebuild"/> notices
+        /// any change in WHICH buildings render, not merely how many (a count collides on the match-start viewer-flip
+        /// swap — see <see cref="_lastFogSignature"/>). Same O(64) per-frame cost as the count it replaces (the
+        /// per-building <see cref="HiddenByFog"/> calls are identical); the PropRenderer signature precedent. Never 0
+        /// for any non-empty set in practice; 0 is reserved as the force-rebuild sentinel.</summary>
+        private long FogPassSignature()
         {
-            if (_fog == null) return 0;
-            int n = 0;
-            for (int i = 0; i < _buildings.Count; i++)
-                if (_buildings.Alive[i] && !HiddenByFog(i)) n++;
-            return n;
+            unchecked
+            {
+                long h = 1469598103934665603L; // FNV-1a 64-bit offset basis
+                const long prime = 1099511628211L;
+                for (int i = 0; i < _buildings.Count; i++)
+                {
+                    if (!_buildings.Alive[i]) continue;
+                    h = (h ^ i) * prime;
+                    h = (h ^ (HiddenByFog(i) ? 1 : 0)) * prime;
+                }
+                return h;
+            }
         }
 
         // ── Rebuild building MultiMeshes ──────────────────────────────────────
