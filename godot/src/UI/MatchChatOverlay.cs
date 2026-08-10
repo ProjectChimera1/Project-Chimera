@@ -112,9 +112,17 @@ namespace ProjectChimera.UI
                     break;
 
                 case Key.Escape:
+                    // DW-925: consume Esc ONLY while the chat input line is actually open. This overlay is Visible
+                    // for the entire online match, and the old unconditional SetInputAsHandled here ate EVERY Esc
+                    // press before MainScene._UnhandledInput could open the in-match menu — so "Quit to Menu" was
+                    // unreachable by keyboard in every online match (offline was immune: the overlay is hidden
+                    // there, which is why no offline playtest ever caught it). Idle Esc now falls through to the
+                    // menu toggle; Esc while typing still closes the input line and stops there.
                     if (_inputOpen)
+                    {
                         CloseInput();
-                    GetViewport().SetInputAsHandled();
+                        GetViewport().SetInputAsHandled();
+                    }
                     break;
             }
         }

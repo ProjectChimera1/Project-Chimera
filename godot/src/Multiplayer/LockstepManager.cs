@@ -489,10 +489,15 @@ namespace ProjectChimera.Multiplayer
                 CommitDelayChange(currentTick, _pendingNewDelay);
 
             // ── Periodic RTT ping ─────────────────────────────────────────────
-            // Story 9.4: in server-dictated mode the SERVER measures RTT (it pings us and we echo Pong); this
-            // client must NOT run its own ping→propose loop — two clients each scheduling a change from their own
-            // RTT would pick different delays and desync. The delay only ever mutates via a DelayDirective.
-            if (!ServerDictatedDelay && currentTick - _lastPingSentTick >= PING_INTERVAL_TICKS)
+            // Story 9.4 said "in server-dictated mode the SERVER measures RTT" and gated the ping entirely — but
+            // the danger was never the MEASUREMENT, it was the propose loop (two clients each scheduling a delay
+            // change from their own RTT would pick different delays and desync). That loop is hard-guarded inside
+            // MaybeProposeDelayChange (ServerDictatedDelay ⇒ return). DW-924: the full gate left the client-side
+            // RTT EWMA at its 267 ms initial seed for every LAN match — the HUD ping readout displayed a constant
+            // on both machines. The client now always measures (one reliable ping per ~2 s, echoed by the server's
+            // Story 9.4 "never leave an inbound probe unanswered" arm; well inside the receive-edge rate budget);
+            // the delay itself still only ever mutates via a server DelayDirective in dictated mode.
+            if (currentTick - _lastPingSentTick >= PING_INTERVAL_TICKS)
                 SendPing(currentTick);
 
             uint issueTick = currentTick + (uint)_currentDelay;
@@ -796,7 +801,8 @@ namespace ProjectChimera.Multiplayer
             // Exponential weighted moving average.
             _smoothedRttMs = _smoothedRttMs * (1f - RTT_ALPHA) + rttSample * RTT_ALPHA;
 
-            GD.Print($"[Lockstep] RTT sample: {rttSample:F0}ms  smoothed: {_smoothedRttMs:F0}ms");
+            // DW-924: no per-sample print — pings now run every ~2 s for the whole match (a print here would be
+            // ~150 log lines per match), and the HUD ping readout displays the live smoothed value already.
             MaybeProposeDelayChange();
         }
 
