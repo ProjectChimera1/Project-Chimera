@@ -7,13 +7,15 @@ using ProjectChimera.Core.Definitions;
 namespace ProjectChimera.UI
 {
     /// <summary>
-    /// Keeps NavigationRegion3D source geometry in sync with placed buildings so that
-    /// path queries correctly route around building footprints.
+    /// Keeps NavigationRegion3D source geometry in sync with placed buildings: each alive building gets a
+    /// StaticBody3D child on the NavigationRegion3D node.
     ///
-    /// Each alive building gets a StaticBody3D child on the NavigationRegion3D node.
-    /// When any building is added or destroyed the navmesh is re-baked synchronously.
-    /// Baking is a rare event (player building placement) so a main-thread sync bake
-    /// is acceptable.
+    /// <para>DW-918 — the navmesh itself is NO LONGER RE-BAKED (see <see cref="BakeEnabled"/>). The original premise
+    /// ("so that path queries correctly route around building footprints") no longer holds: flow fields replaced
+    /// NavigationServer3D for unit pathfinding, so nothing queries this navmesh, while the synchronous bake blocked
+    /// the main thread — and the ENet poll with it — for 136-180 ms per building change. "Baking is a rare event so a
+    /// main-thread sync bake is acceptable" was the assumption that hung both peers of the 2026-08-10 LAN run: in
+    /// lockstep, frequency is irrelevant, because ONE bake long enough to miss the poll deadlocks the match.</para>
     ///
     /// When a Terrain3D node is provided, baking uses Terrain3D.generate_nav_mesh_source_geometry
     /// so the walkable surface matches the heightmap. Without terrain, falls back to
@@ -28,6 +30,19 @@ namespace ProjectChimera.UI
 
         /// <summary>Optional Terrain3D node. When non-null, rebakes use generate_nav_mesh_source_geometry.</summary>
         private Node3D? _terrain;
+
+        /// <summary>
+        /// DW-918 — whether a building change re-bakes the NavigationServer3D navmesh. FALSE by default: nothing
+        /// queries that navmesh (flow fields replaced NavServer3D pathfinding; the lone <c>MapGetPath</c> caller,
+        /// <c>PathRequestSystem</c>, never receives a request), while each bake blocks the main thread — and therefore
+        /// the ENet poll — for 136-180 ms, which is what hung both peers of the 2026-08-10 LAN run on exec tick 304.
+        /// Flip it to true only if a real navmesh consumer comes back, and never during an online match.
+        /// </summary>
+        public bool BakeEnabled { get; set; }
+
+        /// <summary>One-shot latch so the skip notice is logged once per match, never per building change (D6: no
+        /// per-tick logging).</summary>
+        private bool _bakeSkipNoted;
 
         // One StaticBody3D per building slot (null = slot unused or building dead)
         private readonly StaticBody3D?[] _bodies = new StaticBody3D?[BuildingStore.MAX_BUILDINGS];
@@ -103,11 +118,43 @@ namespace ProjectChimera.UI
             if (_dirty)
             {
                 _dirty = false;
-                // Synchronous bake on the main thread — building placement is a rare event.
-                if (_terrain != null)
-                    RebakeWithTerrain();
-                else
-                    _region.BakeNavigationMesh(false); // legacy: flat StaticBody3D ground
+
+                // DW-918 — THE BAKE IS OFF BY DEFAULT BECAUSE NOTHING QUERIES THE NAVMESH.
+                //
+                // The premise in this file's header ("path queries correctly route around building footprints") is
+                // stale: FlowFieldBridge replaced NavigationServer3D for unit pathfinding, and the ONLY
+                // NavigationServer3D.MapGetPath call left in the codebase is in PathRequestSystem, which is
+                // constructed and parented but never receives a request — LockstepManager/ReplayPlayer/SelectionSystem
+                // all route to the flow field. There is no NavigationAgent3D anywhere and no other reader of
+                // _region. So every rebake was a 136-180 ms SYNCHRONOUS main-thread block producing a mesh nobody
+                // reads.
+                //
+                // That cost is not cosmetic: the main thread also owns the ENet poll, so a bake stalls the lockstep
+                // client mid-match. On the 2026-08-10 LAN run a barracks placement at ~tick 300 fired repeated bakes;
+                // the client's orders for tick 304 never reached the merge, MergedTickBuilder waits for ALL players
+                // with no deadline, and BOTH machines hung forever on exec tick 304 until the server timed the peer
+                // out. That is the mechanism behind DW-911(b), which had been a hypothesis until the [NavBake]
+                // diagnostic put a number on it.
+                //
+                // The obstacle BODIES above are still maintained (they are cheap, and they are exactly the source
+                // geometry a restored bake would parse), so re-enabling is a one-line flip of BakeEnabled the day
+                // something genuinely needs a queryable navmesh again.
+                if (BakeEnabled)
+                {
+                    // Synchronous bake on the main thread — see the warning above before turning this on in a
+                    // match: it blocks the ENet poll for as long as it runs.
+                    if (_terrain != null)
+                        RebakeWithTerrain();
+                    else
+                        _region.BakeNavigationMesh(false); // legacy: flat StaticBody3D ground
+                }
+                else if (!_bakeSkipNoted)
+                {
+                    _bakeSkipNoted = true;
+                    GD.Print("[NavBake] Rebake SKIPPED (DW-918): the NavigationServer3D navmesh has no query " +
+                             "consumer — flow fields replaced it — and a synchronous bake blocks the ENet poll. " +
+                             "Obstacle bodies are still maintained; set NavObstacleManager.BakeEnabled to restore.");
+                }
             }
         }
 
