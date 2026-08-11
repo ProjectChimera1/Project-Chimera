@@ -79,7 +79,8 @@ namespace ProjectChimera.Sim.Tests.Server
             // discriminates fold-once (3) from fold-twice (5): both would emit here, at different delays.
             Assert.False(c.TryComputeDirective(100u, 0u, out _, out _));
             Assert.True(c.TryComputeDirective(100u + (uint)DelayController.SHRINK_STREAK_TICKS, 0u, out int delay, out _));
-            Assert.Equal(3, delay); // the fold-once value; 5 would mean the duplicate was folded too
+            Assert.Equal(3, delay); // the fold-once value; a folded duplicate would spike the jitter track
+                                    // (DW-933) and urgent-grow to MAX_DELAY at the first evaluation instead
         }
 
         [Fact]
@@ -90,14 +91,15 @@ namespace ProjectChimera.Sim.Tests.Server
             c.RecordPong(0, seq0, nowMs: 1_000u, senderMs: 900u);  // RTT 100 folds
 
             byte seq1 = c.NextPingSeq();                            // new probe re-arms the per-slot guard
-            c.RecordPong(0, seq1, nowMs: 2_000u, senderMs: 1_000u); // RTT 1000 folds → EWMA 212.5 → target 5
+            c.RecordPong(0, seq1, nowMs: 2_000u, senderMs: 1_000u); // RTT 1000 folds → EWMA 212.5
 
-            // DW-931: a +1 grow is damped — arm the streak, then the directive issues after GROW_STREAK_TICKS.
-            // (If the re-arm failed the EWMA would still read 100 ms → a SHRINK target, which cannot emit this
-            // early — the Assert.True below would fail either way.)
-            Assert.False(c.TryComputeDirective(100u, 0u, out _, out _));
-            Assert.True(c.TryComputeDirective(100u + (uint)DelayController.GROW_STREAK_TICKS, 0u, out int delay, out _));
-            Assert.Equal(5, delay);
+            // DW-933: the 100→1000 swing also spikes the jitter track (deviation 900 → jitter 225), so the
+            // EFFECTIVE RTT (212.5 + 4·225 = 1112.5 ms) targets MAX_DELAY — an urgent grow that emits on the
+            // FIRST evaluation, bypassing the DW-931 streak. (If the re-arm failed the EWMA would still read
+            // 100 ms with ZERO jitter → a shrink target, which cannot emit this early — the Assert.True below
+            // would fail either way, so the fold-discrimination is preserved.)
+            Assert.True(c.TryComputeDirective(100u, 0u, out int delay, out _));
+            Assert.Equal(DelayMath.MAX_DELAY, delay);
         }
 
         // ── DW-396: the RTT delta is wrap-safe uint arithmetic (uint-truncated clock on both ends) ──

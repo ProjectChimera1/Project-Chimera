@@ -14,7 +14,9 @@ namespace ProjectChimera.Multiplayer.Server
     /// Responsibilities:
     ///   • Own the RTT-probe ping sequence (<see cref="NextPingSeq"/>) and fold each slot's seq-guarded,
     ///     wrap-safe Pong echo into its smoothed RTT EWMA (<see cref="RecordPong"/> / <see cref="RecordRtt"/>).
-    ///   • Compute ONE dictated delay for the whole match from the MAX active-slot RTT via the existing
+    ///   • Compute ONE dictated delay for the whole match from the MAX active-slot EFFECTIVE RTT — smoothed +
+    ///     <see cref="JITTER_HEADROOM"/>·jitter, the TCP-RTO shape, so a spiky link's delay covers its swing band
+    ///     (DW-933) — via the existing
     ///     <see cref="DelayMath.ComputeTargetDelay"/> (<see cref="TryComputeDirective"/>), emitted only when it
     ///     differs from the last committed value AND no directive is currently pending un-ACKed — and, since
     ///     DW-931, only once the damping gates pass (target-persistence streak, asymmetric grow/shrink dwell,
@@ -93,6 +95,26 @@ namespace ProjectChimera.Multiplayer.Server
         /// this margin, not merely touch it, before a shrink target counts at all.</summary>
         public const float SHRINK_MARGIN_MS = 12f;
 
+        // ── DW-933 jitter-headroom constants ──────────────────────────────────
+        // The smoothed EWMA hides variance: the 2026-08-11 Wi-Fi field run sat at ~60 ms smoothed while samples
+        // swung 55–300 ms (spikes 600+), so the dictated delay covered the MEAN and every spike stalled lockstep
+        // past the 400 ms banner threshold. Fix = TCP's RTO idiom (RFC 6298: RTO = SRTT + 4·RTTVAR): track each
+        // slot's mean absolute RTT deviation alongside its smoothed RTT and dictate from
+        // smoothed + JITTER_HEADROOM·jitter, so a spiky link gets a delay that covers its swing band instead of
+        // stalling on every spike. A steady link's jitter converges to ~0, leaving behavior identical to the
+        // pre-DW-933 controller. Server-side decision only (same shape as DW-931): the wire format, the client's
+        // obey/gap-seed path, and the pending/maturity desync guards are untouched.
+
+        /// <summary>DW-933: EWMA weight for the per-slot jitter (mean absolute deviation) track — TCP's RTTVAR
+        /// beta (¼, RFC 6298). Heavier than <see cref="RTT_ALPHA"/> so headroom reacts to a spike burst within a
+        /// few pongs.</summary>
+        private const float JITTER_ALPHA = 0.25f;
+
+        /// <summary>DW-933: how many jitters of headroom the dictated delay covers above the smoothed RTT —
+        /// TCP's K (RTO = SRTT + 4·RTTVAR). Trades input latency on spiky links for not stalling on every spike;
+        /// lower THIS if a jittery link ever feels too laggy (a steady link is unaffected either way).</summary>
+        public const float JITTER_HEADROOM = 4f;
+
         /// <summary>Number of player slots this controller was constructed with (the match's player count).
         /// Fixed for the match; the LIVE count after mid-match drops is <see cref="ActiveCount"/>.</summary>
         public int Expected { get; }
@@ -107,6 +129,10 @@ namespace ProjectChimera.Multiplayer.Server
 
         private readonly float[] _smoothedRtt;
         private readonly bool[]  _rttSeen;
+
+        /// <summary>DW-933: per-slot EWMA of |sample − smoothed| (TCP RTTVAR shape). Seeded ZERO on a slot's
+        /// first sample — NOT TCP's R/2 — so a steady link behaves exactly as before DW-933 (no golden moves).</summary>
+        private readonly float[] _rttJitter;
 
         // ── RTT-probe (ping/pong) state (DW-395/DW-401) ───────────────────────
         // The ping seq lives IN the controller (not the Godot node) so a rebuilt controller — a second match in
@@ -212,6 +238,7 @@ namespace ProjectChimera.Multiplayer.Server
             _capacity           = slotCapacity;
             _active             = new bool[slotCapacity];
             _smoothedRtt        = new float[slotCapacity];
+            _rttJitter          = new float[slotCapacity];
             _rttSeen            = new bool[slotCapacity];
             _acked              = new bool[slotCapacity];
             _pongFolded         = new bool[slotCapacity];
@@ -290,7 +317,8 @@ namespace ProjectChimera.Multiplayer.Server
         }
 
         /// <summary>
-        /// Fold a fresh RTT sample for <paramref name="slot"/> into its smoothed EWMA. A stale/invalid sample
+        /// Fold a fresh RTT sample for <paramref name="slot"/> into its smoothed EWMA and its jitter
+        /// (mean-absolute-deviation) EWMA (DW-933). A stale/invalid sample
         /// (non-positive or implausibly large) is ignored. Inactive/out-of-range slots are ignored
         /// (transport-authoritative slot — never trusted from a packet byte).
         /// </summary>
@@ -302,10 +330,15 @@ namespace ProjectChimera.Multiplayer.Server
             if (!_rttSeen[slot])
             {
                 _smoothedRtt[slot] = rttMs;
+                _rttJitter[slot]   = 0f; // DW-933: zero-seed (see field doc) — a steady link stays byte-identical
                 _rttSeen[slot]     = true;
             }
             else
             {
+                // DW-933: fold the deviation against the smoothed value BEFORE this sample moves it (RFC 6298
+                // order — RTTVAR measures how far samples land from the current estimate, not the next one).
+                float deviation    = Math.Abs(rttMs - _smoothedRtt[slot]);
+                _rttJitter[slot]   = _rttJitter[slot] * (1f - JITTER_ALPHA) + deviation * JITTER_ALPHA;
                 _smoothedRtt[slot] = _smoothedRtt[slot] * (1f - RTT_ALPHA) + rttMs * RTT_ALPHA;
             }
         }
@@ -326,6 +359,7 @@ namespace ProjectChimera.Multiplayer.Server
             _activeCount--;
             _rttSeen[slot]     = false;
             _smoothedRtt[slot] = 0f;
+            _rttJitter[slot]   = 0f;
             _acked[slot]       = false;
             _pongFolded[slot]  = false;
         }
@@ -384,7 +418,9 @@ namespace ProjectChimera.Multiplayer.Server
         /// measured RTT, no directive is already pending un-ACKed, the PRIOR committed directive has matured (been
         /// APPLIED) on all clients (<paramref name="confirmedTick"/> — the merged fan-in high-water — has passed its
         /// applyAtTick plus the MAX_DELAY submission→exec lead), the computed delay differs from the last
-        /// committed value, AND the DW-931 damping gates pass: the candidate target has held continuously for
+        /// committed value (the target is computed from the max active-slot EFFECTIVE RTT — smoothed +
+        /// <see cref="JITTER_HEADROOM"/>·jitter, DW-933 — so a spiky link is covered across its swing band),
+        /// AND the DW-931 damping gates pass: the candidate target has held continuously for
         /// <see cref="GROW_STREAK_TICKS"/>/<see cref="SHRINK_STREAK_TICKS"/> frontier ticks, at least
         /// <see cref="GROW_DWELL_TICKS"/>/<see cref="SHRINK_DWELL_TICKS"/> ticks have passed since the last
         /// committed change landed, and (for a shrink) the smoothed RTT clears the boundary by
@@ -418,19 +454,22 @@ namespace ProjectChimera.Multiplayer.Server
                 _maturingApplyTick = 0;                                // matured (applied) on all clients — clear the gate
             }
 
-            // Dictate from the WORST (max) ACTIVE-slot RTT so the delay covers the highest-latency live player
-            // (a deactivated slot's stale RTT must not keep the whole match at its dead peer's delay — DW-400).
-            float maxRtt = 0f;
+            // Dictate from the WORST (max) ACTIVE-slot EFFECTIVE RTT — smoothed + JITTER_HEADROOM·jitter
+            // (DW-933) — so the delay covers the highest-latency live player INCLUDING its swing band, not just
+            // its mean (a deactivated slot's stale RTT must not keep the whole match at its dead peer's delay —
+            // DW-400). On a steady link jitter ≈ 0 and this reduces to the pre-DW-933 smoothed-only dictate.
+            float maxEffRtt = 0f;
             bool any = false;
             for (int s = 0; s < _capacity; s++)
             {
                 if (!_active[s] || !_rttSeen[s]) continue;
                 any = true;
-                if (_smoothedRtt[s] > maxRtt) maxRtt = _smoothedRtt[s];
+                float effective = _smoothedRtt[s] + JITTER_HEADROOM * _rttJitter[s];
+                if (effective > maxEffRtt) maxEffRtt = effective;
             }
             if (!any) return false; // no RTT measured yet → nothing to dictate
 
-            int target = DelayMath.ComputeTargetDelay(maxRtt); // already clamped to [MIN_DELAY, MAX_DELAY]
+            int target = DelayMath.ComputeTargetDelay(maxEffRtt); // already clamped to [MIN_DELAY, MAX_DELAY]
 
             // ── DW-931 damping (deliberately AFTER the pending/maturity gates so their semantics stay intact) ──
             if (target == _lastCommittedDelay)
@@ -443,10 +482,11 @@ namespace ProjectChimera.Multiplayer.Server
             bool urgent = grow && target - _lastCommittedDelay >= URGENT_GROW_STEP;
             if (!urgent)
             {
-                // Shrink deadband: the smoothed RTT must clear the shrink boundary by SHRINK_MARGIN_MS, not merely
-                // touch it. ComputeTargetDelay is monotonic non-decreasing (pinned by DelayMathTests), so probing
-                // it with the margin added asks "would a slightly-worse RTT still want the committed delay?".
-                if (!grow && DelayMath.ComputeTargetDelay(maxRtt + SHRINK_MARGIN_MS) >= _lastCommittedDelay)
+                // Shrink deadband: the effective RTT must clear the shrink boundary by SHRINK_MARGIN_MS, not
+                // merely touch it. ComputeTargetDelay is monotonic non-decreasing (pinned by DelayMathTests), so
+                // probing it with the margin added asks "would a slightly-worse RTT still want the committed
+                // delay?". Probing the EFFECTIVE value (DW-933) means residual jitter also holds a shrink back.
+                if (!grow && DelayMath.ComputeTargetDelay(maxEffRtt + SHRINK_MARGIN_MS) >= _lastCommittedDelay)
                 {
                     _streakTarget = _lastCommittedDelay; // effectively at the boundary → not a candidate
                     return false;

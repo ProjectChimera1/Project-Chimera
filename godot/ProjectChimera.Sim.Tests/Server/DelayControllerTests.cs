@@ -56,7 +56,9 @@ namespace ProjectChimera.Sim.Tests.Server
             // last-sample-wins mutation would survive them. This distinguishes the two: a 1000ms spike then a 200ms
             // sample blends to 1000*0.875 + 200*0.125 = 900ms (still elevated → a change IS dictated). Under a
             // last-sample-wins mutation the slot would read 200ms (== InitialDelay, per TargetEqualsCommitted above)
-            // and dictate NOTHING.
+            // and dictate NOTHING. (DW-933 weakens that arithmetic — the jitter track would elevate even a
+            // snapped-to-200 slot — so the EXACT smoothing fold is now pinned by
+            // DelayControllerJitterTests.SpikyLink_DictatesAboveTheSmoothedOnlyTarget's mirrored-EWMA equality.)
             var c = new DelayController(Expected, InitialDelay);
             c.RecordRtt(0, 1000f);
             c.RecordRtt(0, 200f); // EWMA → 900ms, NOT 200ms
