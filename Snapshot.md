@@ -1,6 +1,6 @@
 ---
 project: Project Chimera
-last_touched: 2026-08-08
+last_touched: 2026-08-11
 phase: Phase 5 — Polish & 1.0
 status: Active
 ---
@@ -72,6 +72,34 @@ added for exactly this and turn DW-911(b) from a hypothesis into a number.
 ---
 
 *Session type: bmad (prescribed workflow in active execution)*
+
+---
+
+## Current State (2026-08-11, pre-dawn) — read this first
+
+**The "Waiting for peer" burn-down session: four fixes shipped and verified in-engine, and DW-924 finally
+reproduces locally.** Master = the fix commit `bc711913` + the docs commit after it, pushed. Tier-1 **6404 / 0 / 1**
+(baseline + 12 new pins). Next-session brief: **`dev-scratch/next-session-waiting-for-peer.md`** (rewritten —
+read it first; the DW-924 experiment queue is now ALL-LOCAL, no LAN rig needed).
+
+| DW | What happened |
+|---|---|
+| **DW-930** (new) | Every client had run EXCLUSIVE fullscreen since Story 11.7 — Godot 4.6.3/Windows converts a Windowed request into permanent ExclusiveFullscreen when the window was BORN fullscreen (`project.godot` mode=3). Boot is now windowed + persisted-mode reapply + readback tripwire. PC-verified (real game observed Windowed for the first time; fullscreen settings arm honored too). Laptop + borderless arm still owed. |
+| **DW-931** (new, closed) | Server delay controller damped (streak/dwell/deadband/urgent-bypass) — kills the all-match 2↔3 flap whose every widening seeded a felt gap. 11 new Tier-1 pins; rig-observed ≤5 dictates per 8100-tick run, 143/143 determinism windows. |
+| **DW-929** (closed) | Enemy/spectator/replay building cards are info-only (name+HP). Sim was already hard-guarded (now pinned by a wire-level Tier-1 test: crafted non-owned train order spends nothing, spawns nothing). All three arms verified in-engine. |
+| **DW-932** (new, closed) | Replays: 1x now = real 30 tps wall-clock (was ~8.7x at 260 FPS), 8x = 240 tps, verified to the tick; perspective cycling wipes+restamps fog per viewer (no exploration ghosts), paused and running, reveal-all intact. |
+| **DW-924** (open, narrowed) | **The burst class now reproduces on the loopback rig** (couldn't on 08-10). Four-run matrix ELIMINATED window mode AND the vsync/present wait; a second GPU-presenting process (open editor) amplifies ~3–5×; the 08-10-overnight-clean vs today-dirty delta is unexplained (uptime/DWM/MPO state suspected). Next: reboot-retest, MPO kill switch, Windows graphics toggles, PresentMon — all local, ~4 min per experiment. |
+
+Also: the **formal scripted gate passes owed on DW-917/920/921/923 are DONE** (ledger verify lines carry the
+evidence) — the debug seam gained a building/fog/selection half (`DebugBuildingJson`/`DebugFogAt`/
+`DebugSelectBuilding`/`DebugSelectUnit`/`DebugPlaceBuilding`), and `emit_signal("pressed")` tree-walks now drive
+whole menu flows (skirmish setup → match → concede → replays browser). Building-facing in-engine gates no longer
+need a human. DW-925/928 online verify lines still ride the next LAN match.
+
+**For the next two-machine night**: both machines `git pull` + `dotnet build godot\godot.csproj` + full relaunch;
+start from FRESH BOOTS with nothing else rendering (no editor, no hw-accel browser); watch the HUD ping vs the
+banner (network-led vs present-led); `[FrameHistogram]` 67ms+ buckets → 0 is the win condition. All
+pre-2026-08-11 histograms were recorded under ExclusiveFullscreen — re-record, never compare across the boundary.
 
 ---
 

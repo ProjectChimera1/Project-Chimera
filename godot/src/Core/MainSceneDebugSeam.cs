@@ -278,6 +278,87 @@ namespace ProjectChimera.Core
             return SEAM_OK;
         }
 
+        // ────────────────────────────────────────────────────────────────────────────
+        //  BUILDING half (2026-08-11) — added for the combined DW-917/920/921/923/929 in-engine gate pass:
+        //  the original seam covered units only, so a building could not be observed, selected, or placed
+        //  from the bridge and every building-facing verify line was stuck on a human playtest.
+        // ────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>All alive buildings as JSON (READ half — always available). Slot, authored id, enum type, faction,
+        /// position, health, built state and rally point; bounded by <see cref="BuildingStore.MAX_BUILDINGS"/>.</summary>
+        public string DebugBuildingJson()
+        {
+            var arr = new Godot.Collections.Array();
+            if (SeamReady)
+            {
+                BuildingStore b = _ctx.Buildings;
+                for (int i = 0; i < BuildingStore.MAX_BUILDINGS; i++)
+                {
+                    if (!b.Alive[i]) continue;
+                    arr.Add(new Godot.Collections.Dictionary
+                    {
+                        ["slot"]    = i,
+                        ["id"]      = b.DefinitionId[i] ?? "",
+                        ["type"]    = b.Type[i].ToString(),
+                        ["faction"] = (int)b.FactionOf[i],
+                        ["x"]       = b.Position[i].X.ToFloat(),
+                        ["z"]       = b.Position[i].Z.ToFloat(),
+                        ["hp"]      = b.Health[i].ToFloat(),
+                        ["max_hp"]  = b.MaxHealth[i].ToFloat(),
+                        ["built"]   = b.ConstructionTimer[i] <= Fixed.Zero,
+                        ["rally_x"] = b.RallyPoint[i].X.ToFloat(),
+                        ["rally_z"] = b.RallyPoint[i].Z.ToFloat(),
+                    });
+                }
+            }
+            return Json.Stringify(arr);
+        }
+
+        /// <summary>Local-viewer fog state at a world point (READ half): <c>"visible"</c>, <c>"explored"</c> or
+        /// <c>"hidden"</c> (<c>"none"</c> before the scene is wired). This is the DW-920/923 gate probe — it reads the
+        /// same unfolded <c>FogOfWarSystem</c> grid the render bridges consult.</summary>
+        public string DebugFogAt(float x, float z)
+        {
+            if (!SeamReady) return "none";
+            if (_ctx.Fog.IsVisible(x, z))  return "visible";
+            if (_ctx.Fog.IsExplored(x, z)) return "explored";
+            return "hidden";
+        }
+
+        /// <summary>Select a building exactly as a click's fall-through arm does (via
+        /// <c>SelectionSystem.DebugSelectBuilding</c>). Selection is presentation-only local state — what the command
+        /// card reads — so unlike the mutators this is NOT refused online; a click could set it at any time.</summary>
+        public int DebugSelectBuilding(int slot)
+        {
+            if (!DebugSeamEnabled) return SEAM_DISABLED;
+            if (!SeamReady)        return SEAM_NOT_READY;
+            return _ctx.Selection.DebugSelectBuilding(slot) ? SEAM_OK : SEAM_BAD_ENTITY;
+        }
+
+        /// <summary>Single-select a unit exactly as a click's unit arm does. Presentation-only, allowed online
+        /// (see <see cref="DebugSelectBuilding(int)"/>).</summary>
+        public int DebugSelectUnit(int entityId)
+        {
+            if (!DebugSeamEnabled) return SEAM_DISABLED;
+            if (!SeamReady)        return SEAM_NOT_READY;
+            return _ctx.Selection.DebugSelectUnit(entityId) ? SEAM_OK : SEAM_BAD_ENTITY;
+        }
+
+        /// <summary>Place a building for a faction through the same <c>BuildingSystem.PlaceBuildingDirectById</c> the
+        /// scenario/editor paths use (bypasses ore; <paramref name="preBuilt"/> zeroes the construction timer). SETUP
+        /// half: debug + OFFLINE only — this writes the store outside the command stream, exactly the DW-405 desync
+        /// class the wire order exists for. Obstacle routing needs no manual sync (the flow-field obstacle map is
+        /// rebuilt on the tick, per DW-918's closure). Returns the building slot, or a negative seam code.</summary>
+        public int DebugPlaceBuilding(int faction, string buildingId, float x, float z, bool preBuilt)
+        {
+            int guard = GuardMutate();
+            if (guard != SEAM_OK) return guard;
+            int slot = _ctx.BuildSys.PlaceBuildingDirectById(
+                buildingId, (Faction)faction,
+                new FixedVec3(Fixed.FromFloat(x), Fixed.Zero, Fixed.FromFloat(z)), preBuilt);
+            return slot < 0 ? SEAM_BAD_SLOT : slot;
+        }
+
         /// <summary>Look up a unit definition by id across the loaded faction rosters (null when absent).</summary>
         private UnitDefinition? FindUnitDefinition(string unitId)
         {

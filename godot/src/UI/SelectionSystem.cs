@@ -612,6 +612,34 @@ namespace ProjectChimera.UI
 
         // ── Selection ─────────────────────────────────────────────────────────────
 
+        /// <summary>
+        /// DW-882 seam support: select a building exactly as <see cref="TryClickSelect"/>'s fall-through arm does,
+        /// minus the mouse raycast the godot-mcp bridge cannot drive (docs/design/mouse-input-spike.md). Selection is
+        /// presentation-only state, so this is safe online — it is literally what a click sets. Returns false for a
+        /// dead/out-of-range slot.
+        /// </summary>
+        public bool DebugSelectBuilding(int slot)
+        {
+            if (_buildingStore == null || slot < 0 || slot >= BuildingStore.MAX_BUILDINGS ||
+                !_buildingStore.Alive[slot])
+                return false;
+            ClearSelection(); // clears units and SelectedBuildingId, same as the click path
+            _selectedBuildingSlot = slot;
+            _selectedBuildingGen  = _buildingStore.Generation[slot];
+            return true;
+        }
+
+        /// <summary>DW-882 seam support: single-select a unit exactly as <see cref="TryClickSelect"/>'s unit arm does,
+        /// minus the mouse raycast. Returns false for a dead entity.</summary>
+        public bool DebugSelectUnit(int entityId)
+        {
+            if (_world == null || !_world.IsAlive(entityId)) return false;
+            ClearSelection();
+            AddToSelection(entityId, setFocus: true);
+            RebuildSubgroups(resetActive: true); // Story 11.5: single-unit selection → one subgroup
+            return true;
+        }
+
         private void TryClickSelect(Vector2 screenPos)
         {
             Vector3 hit;

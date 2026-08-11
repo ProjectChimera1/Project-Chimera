@@ -1,84 +1,76 @@
-# Next session: the "Waiting for peer…" stalls (DW-924, open)
+# "Waiting for peer…" — state after the 2026-08-11 burn-down session (DW-924 still the quarry)
 
-Project Chimera's online match is now correct AND mostly playable — fog, buildings, menus, ping
-readout all fixed 2026-08-10. What remains is the original render-cost mystery in its final,
-sharpened form: **both machines hit bursts of 135–145 ms frames whose time goes NOWHERE the
-process can see, and every burst window stalls the lockstep long enough to flash the banner.**
+Five deferrals moved this session (master `bc711913` + the docs commit after it): **DW-929, DW-931,
+DW-932 closed with in-engine verification; DW-930 fixed and PC-verified; DW-924 narrowed hard.**
+The formal scripted gate passes owed on DW-917/920/921/923 are DONE (see their ledger verify lines).
+Tier-1: **6404 / 0 / 1** (baseline 6392 + 12 new pins). The debug seam gained a building/fog/selection
+half (`DebugBuildingJson`, `DebugFogAt`, `DebugSelectBuilding/Unit`, `DebugPlaceBuilding`) — building-
+facing gates no longer need a human.
 
-## The measurement that matters (do not re-derive)
+## What changed for the next real match (both machines: git pull + rebuild + relaunch)
 
-Every slow frame now attributes itself in the client logs (DW-924 `FramePhaseProbe`):
+1. **Clients finally run the window mode settings.json asks for** (DW-930). They had run
+   EXCLUSIVE fullscreen since Story 11.7 — a Godot 4.6.3/Windows bug: a boot-created-fullscreen
+   window turns a later Windowed request into permanent ExclusiveFullscreen. Boot is now windowed
+   (`project.godot` mode 0), the persisted mode is reapplied pre-first-frame, and a
+   `[Settings] window mode requested X but engine reports Y` tripwire prints on any future mismatch.
+2. **The delay controller no longer flaps** (DW-931). Streak + asymmetric dwell + deadband: expect
+   ~1–3 renegotiations per match instead of ~40, so almost no widening gap-seed hiccups. Rig-observed:
+   ≤5 dictates per 8100-tick run, 143/143 determinism windows clean.
+3. **Enemy/spectator building cards are info-only** (DW-929), and **replays play at wall-clock with
+   per-perspective fog** (DW-932) — both verified in-engine.
 
-    [Catchup] 3 sim ticks in one 145 ms frame at tick 2343 — sim 0 ms (0.1 ms/tick), presentation 144 ms
-      [phase: render cpu 0.7 + gpu 6.0 ms | gc 0/0/0 +0.0 ms pause | faults +0 | focus 84.3s ago]
+## DW-924: what the four-run rig matrix eliminated (2026-08-11, full table in the ledger entry)
 
-Read that tail: of a 145 ms frame, the GPU worked **6 ms**, render CPU **0.7 ms**, zero GC, zero
-page faults, no focus change. ~138 ms are spent in NO measurable phase. Identical signature on
-the RTX 3060 PC (144 Hz, D3D12) and the GTX 1650 laptop (60 Hz, D3D12). A 150 ms artificial
-process-suspend reproduces the signature EXACTLY (`godot/tools/loopback-suspend-pulse.ps1`), so
-the class is "main thread blocked wholesale by something outside the game": present/swapchain
-stall, DWM/MPO transition, driver, or AV.
+**The burst class now reproduces on the loopback rig** (it could not on 2026-08-10): 70–148 ms
+frames, externally-blocked `[phase:]` signature, on ONE machine, no LAN. That converts DW-924 from
+a two-machine mystery into a local, 4-minute-per-experiment problem.
 
-## Exonerated — do not re-investigate (all with numbers, 2026-08-10 overnight + field)
+- **Eliminated: window mode.** Windowed and ExclusiveFullscreen both burst (14/65 vs 34/34 ≥67 ms
+  frames per 8100 ticks). DW-930 stands as a settings-honesty fix, not the burst cure.
+- **Eliminated: the vsync/present-queue wait.** vsync OFF still bursts (13/11) — the main thread is
+  NOT waiting on the compositor swap; the block is driver/kernel/DWM-scheduler side.
+- **Amplifier found: a second GPU-presenting process.** Editor open ≈ 3–5× more bursts (65 vs 13).
+  On match nights, close everything that renders (editor, hw-accel browsers, overlays).
+- **Open question: why was the 2026-08-10 overnight rig CLEAN (0 in 14k ticks)?** Same script, same
+  map. Suspects: machine uptime/DWM state (known Windows 11 MPO degradation class), driver/pending-
+  update state, thermals.
 
-- The renderer/content: 16M primitives at 265 FPS offline on the same PC; laptop never below 60.
-- Sim tick (0.1 ms), GC, paging (probe fields say 0 on every field burst).
-- Synthetic loads on the exact rig: GPU, 12-core CPU, Wi-Fi saturation, 8 GB touched memory
-  pressure, mouse storms, camera panning, focus churn — ~14,000 loopback ticks, zero frames ≥67 ms.
-  Baseline rig: `godot/tools/loopback-perf-rig.ps1` (a run here is KNOWN-CLEAN; if it ever shows
-  Catchup lines, whatever changed is the cause).
+## Next experiments, ALL local, cheapest first (rig: `godot/tools/loopback-perf-rig.ps1 -Tag <t>`)
 
-## The live clues
+1. **Reboot → immediately `-Tag postboot`.** Clean ⇒ uptime/DWM state is the trigger; the fix for
+   match nights is "fresh boot, nothing else rendering" while the OS-level cause is chased.
+2. **MPO kill switch**: `HKLM\SOFTWARE\Microsoft\Windows\Dwm` → DWORD `OverlayTestMode=5`
+   (24H2+: also `OverlayMinFPS=0`), reboot, re-run (NVIDIA KB a_id/5157). Revert by deleting the key.
+3. **Windows graphics toggles**: Settings → System → Display → Graphics → "Optimizations for
+   windowed games" OFF, Auto-HDR off; exe Properties → "Disable fullscreen optimizations". Re-run.
+4. **PresentMon / WPR wait-analysis** on one burst if 1–3 fail — the probe proves the wait is
+   outside the process, so the next instrument must be OS-level.
+5. `--rendering-driver vulkan` stays a per-run discriminator via `-ExtraArgs` (research consensus:
+   NOT the fix — Godot moved Windows to D3D12 deliberately; Windows Vulkan drivers are the less-
+   maintained path).
 
-1. **Burst windows repeat by MATCH TIME across machines and nights**: ~tick 2340–2970 burst on
-   the laptop (11:21 match) and the PC (01:30 and 02:27 matches, ~tick 2344–2461). Tick 4 in
-   every run (match-start transition). Something match-clocked participates.
-2. **Delay renegotiations cluster inside burst windows** — almost certainly DOWNSTREAM (long
-   frames delay packet sends → server RTT jitter → renegotiation), but the feedback loop
-   (jitter → delay change → gap seed → stall → banner) is what the player FEELS. Worth asking:
-   should the server's delay controller DAMP oscillation (2↔3 flapping all match in the 11:21 log)?
-   **ANSWERED 2026-08-11 → DW-931 (closed):** damping landed inside `DelayController.TryComputeDirective`
-   (persistence streak 60/300 ticks, asymmetric dwell 90/600, 12 ms shrink deadband, ≥2-tick urgent-grow
-   bypass; server-side only, wire + DW-914 gap-seed math untouched). Expect ~1–3 renegotiations per match
-   instead of ~40; the burst root cause itself is still this file's main quarry.
-3. **The environment line** (`[FrameProbe]`) exposed: clients run **ExclusiveFullscreen although
-   settings.json says "windowed"** — find WHY (project.godot mode=3 vs SettingsManager mapping;
-   this mismatch is a bug on its own), and the PC pairs a 144 Hz panel with a 60 Hz one (mixed-
-   refresh DWM interactions are a known stutter class on Windows 11 + D3D12).
-4. Banner sightings now correlate with a live per-machine `ping N ms` HUD readout (DW-926) —
-   watch whether ping jumps WITH the banner (network-led) or stays flat while frames burst
-   (present-led).
+**Success metric unchanged**: `[FrameHistogram]` 67 ms+ buckets → 0 on both machines in a real
+interactive match, and Alec reporting the banner gone. Watch the HUD ping (DW-926): ping jumping
+WITH the banner = network-led; ping flat while frames burst = present-led.
 
-## The A/B experiments queued (cheapest first)
+## Still owed / carried
 
-1. **Vulkan vs D3D12**: `godot/tools/loopback-perf-rig.ps1 -Tag vulkan -ExtraArgs "--rendering-driver vulkan"`
-   first (sanity), then a REAL two-machine match with both clients launched with that flag.
-   D3D12 is the less-mature Godot backend and the whole "externally blocked present" class
-   suspects it. If bursts vanish → flip `rendering_device/driver.windows` and done.
-2. **True windowed / borderless**: fix the ExclusiveFullscreen-despite-windowed-settings bug,
-   re-run — exclusive fullscreen mode transitions are the other prime suspect.
-3. If both fail: Windows Performance Recorder / LatencyMon on the PC during a match — the probe
-   has proven the block is outside the process, so the next instrument must be OS-level.
-
-**Success metric**: the `[FrameHistogram]` line each client prints on window close. The 11:21
-laptop match read `67-100=0 100-150=16 >=150=0` of 36,290 frames. Target: 67ms+ buckets → 0,
-and Alec reporting the banner gone.
+- DW-930: borderless settings arm, external WS_CAPTION check, GTX 1650 laptop confirmation.
+- DW-925 (Esc online) + DW-928 (fog'd bars/rally) verify lines: online-only, ride the next LAN match
+  (field-confirmed 2026-08-10; offline Esc-menu arm re-observed this session).
+- DW-931 field confirmation: real Wi-Fi flap collapse (~40 → ~1–3 dictates).
+- Candidate follow-up from DW-929's review: worker/ability/inventory cards still use `FactionOf == me`
+  alone — a spectator/replay viewer focusing a P1 UNIT sees its live affordances (seatless-viewer
+  class, UI-only). Also DW-930's cosmetic residue: 1920×1080 decorated window overhangs a 1080p work
+  area (clamp to `ScreenGetUsableRect`).
 
 ## Constraints (unchanged)
 
-- Presentation-only changes cannot desync; free hand in `src/UI/**`. Do NOT move work back out
-  of the sim tick (`FlowFieldSteeringTickPacingTests` guards DW-916 at spine index 3).
-- `src/UI/**`, `src/Core/Bootstrap/**`, `MainScene.cs`, `scenes/**` → in-engine gate (godot/CLAUDE.md).
-- Tier-1 baseline **6392 / 0 / 1**; `CanonicalModelHashPerf` alone failing = CPU-contention flake.
+- Presentation-only changes cannot desync; free hand in `src/UI/**`. Never move work out of the sim
+  tick (`FlowFieldSteeringTickPacingTests` guards DW-916).
+- `src/UI/**`, `src/Core/Bootstrap/**`, `MainScene.cs`, `scenes/**`, `project.godot` → in-engine gate.
+- Tier-1 baseline **6404 / 0 / 1**; `CanonicalModelHashPerf` alone failing = CPU-contention flake.
 - The godot-mcp bridge is single-client (127.0.0.1:6550); close idle sessions first.
-
-## Also open (pick up if time allows)
-
-- **DW-929**: selecting an ENEMY building shows its train card with a live buy button — gate the
-  production surface on ownership AND verify the order path rejects non-owned training (if it
-  doesn't, that's an ownership bypass into folded stores — test first, it outranks the UI fix).
-- **Formal in-engine gate pass** on DW-917/920/921/923 (+ verify lines of DW-925/927/928): all
-  field-confirmed by Alec in live matches; the scripted `/godot-verify` pass required by
-  godot/CLAUDE.md was never run. One combined in-engine session covers the whole list.
-- Replay QoL noted in DW-927: perspective cycling shares one sticky fog grid (cosmetic), and
-  replay playback advances at FRAME rate (~8× on a 260 FPS machine) rather than wall-clock.
+- All pre-2026-08-11 `[FrameHistogram]` baselines were recorded under ExclusiveFullscreen — never
+  compare across that boundary without re-recording.
