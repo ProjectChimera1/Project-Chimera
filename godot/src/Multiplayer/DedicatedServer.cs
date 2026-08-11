@@ -235,7 +235,49 @@ namespace ProjectChimera.Multiplayer
             if (err != Error.Ok)
                 GD.PrintErr($"[Server] Failed to listen on port {port}: {err}");
             GD.Print($"[Server] Sim spine: {(SimHost != null ? "validated + held (AR-38)" : "none — relay + quorum only")}.");
+
+            // DW-934: read the HOST machine's network-stability preference once at server start. The server is the
+            // single delay authority (one dictated delay per match; remote clients just obey), so the host's
+            // settings.json is the natural home for the knob — no wire change, no per-client negotiation. Read on
+            // this Godot edge (user:// only resolves here); the Godot-free DelayController receives plain ticks.
+            _delayFloor = ReadStabilityFloor();
+            GD.Print($"[Server] Network stability floor: {_delayFloor} ticks (~{_delayFloor * 33} ms) " +
+                     $"({(_delayFloor <= DelayMath.MIN_DELAY ? "adaptive" : "pinned cushion")}).");
             return err;
+        }
+
+        /// <summary>DW-934: the delay floor for matches this server hosts (set at <see cref="Start"/> from the host
+        /// machine's <c>settings.json</c> <c>network_stability</c>; MIN_DELAY = pure adaptive).</summary>
+        private int _delayFloor = DelayMath.MIN_DELAY;
+
+        /// <summary>
+        /// DW-934: map the host's persisted <c>network_stability</c> to a delay floor in ticks via
+        /// <see cref="Server.DelayController.StabilityFloorTicks"/>. Fail-soft: a missing/corrupt settings.json
+        /// (headless first run) logs and falls back to pure adaptive — never blocks the server from starting.
+        /// </summary>
+        private static int ReadStabilityFloor()
+        {
+            try
+            {
+                string path = ProjectSettings.GlobalizePath("user://settings.json");
+                if (System.IO.File.Exists(path))
+                {
+                    // The same lenient read shape SettingsManager.Load uses (comments + trailing commas tolerated),
+                    // through the Godot-free FromJson seam so normalization (unknown value → responsive) applies.
+                    var opts = new System.Text.Json.JsonSerializerOptions
+                    {
+                        ReadCommentHandling = System.Text.Json.JsonCommentHandling.Skip,
+                        AllowTrailingCommas = true,
+                    };
+                    var settings = Core.Definitions.SettingsData.FromJson(System.IO.File.ReadAllText(path), opts);
+                    return Server.DelayController.StabilityFloorTicks(settings.NetworkStability);
+                }
+            }
+            catch (System.Exception ex)
+            {
+                GD.PrintErr($"[Server] Could not read network_stability from settings.json: {ex.Message} — using adaptive.");
+            }
+            return Server.DelayController.StabilityFloorTicks(null);
         }
 
         // ── Godot loop ────────────────────────────────────────────────────────────
@@ -681,8 +723,11 @@ namespace ProjectChimera.Multiplayer
                 // measured RTT genuinely shifts the target. Constructed from the SAME slot map the gate + roster
                 // used (DW-397) so RTT/ACK indexing tracks the actual occupied slots, sized to the transport's slot
                 // bound so a high slot id can never run off the end.
+                // DW-934: the stability floor (read at Start from the host's settings.json) rides in here; the
+                // initial baseline stays INPUT_DELAY because that is what the clients hard-start at — a floor above
+                // it drives an urgent first directive within a probe or two of match start (the one renegotiation).
                 _delayController = new Server.DelayController(
-                    arrivalSlots, ServerTransport.MAX_SLOTS, LockstepManager.INPUT_DELAY);
+                    arrivalSlots, ServerTransport.MAX_SLOTS, LockstepManager.INPUT_DELAY, _delayFloor);
 
                 // DW-401: the delay-frontier fields are SIBLINGS of the controller and must reset with it — a
                 // second match in one server process would otherwise compute its first directive's applyAtTick

@@ -20,8 +20,10 @@ namespace ProjectChimera.Core.Definitions
         /// endpoint fields (server/Nakama host/port/key), whose null-string values <see cref="MigrateForward"/>
         /// normalizes to "". Story 11.7: bumped 2→3 for the six video fields (resolution/window mode/vsync/quality
         /// preset/UI scale), whose enum strings <see cref="MigrateForward"/> normalizes to their default on an unknown
-        /// value and whose <c>ui_scale</c> it clamps to [0.75, 1.5].</summary>
-        public const int CurrentSchemaVersion = 3;
+        /// value and whose <c>ui_scale</c> it clamps to [0.75, 1.5]. DW-934: bumped 3→4 for
+        /// <see cref="NetworkStability"/>, whose enum string <see cref="MigrateForward"/> normalizes to
+        /// <c>responsive</c> on an unknown value.</summary>
+        public const int CurrentSchemaVersion = 4;
 
         /// <summary>Story 8.1: the persisted schema version. An older <c>settings.json</c> that predates this field
         /// deserializes to <c>0</c>; <see cref="MigrateForward"/> stamps <see cref="CurrentSchemaVersion"/> so a
@@ -203,6 +205,18 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("nakama_key")]
         public string NakamaKey { get; set; } = "";
 
+        /// <summary>DW-934: the network-stability preference — one of <c>responsive</c> (pure adaptive delay, the
+        /// pre-DW-934 behavior; snappiest, but a Wi-Fi spike bigger than the current cushion stalls the match) /
+        /// <c>balanced</c> (input delay never drops below 6 ticks ≈ 200 ms) / <c>stable</c> (floor 9 ticks ≈ 300 ms —
+        /// the WC3-era cushion: commands feel heavier but spikes up to the cushion are absorbed silently). Read by
+        /// the machine RUNNING THE SERVER at server start (<c>DedicatedServer.Start</c> →
+        /// <c>DelayController.StabilityFloorTicks</c>) — the server dictates ONE delay for the whole match, so the
+        /// host's setting governs and remote clients simply obey, exactly like every other delay directive (no wire
+        /// change, structurally nil desync risk). An unknown value is reset to <c>responsive</c> by
+        /// <see cref="MigrateForward"/>.</summary>
+        [JsonPropertyName("network_stability")]
+        public string NetworkStability { get; set; } = "responsive";
+
         // ── Onboarding ────────────────────────────────────────────────────────
 
         /// <summary>Story 5.9 (NFR-2): whether the first-time "Your First Scenario" guided onboarding overlay has
@@ -273,6 +287,11 @@ namespace ProjectChimera.Core.Definitions
                 WindowMode = "windowed";
             if (QualityPreset is not ("low" or "medium" or "high"))
                 QualityPreset = "medium";
+
+            // DW-934: reset an unknown network-stability enum string to the adaptive default (same shape as the
+            // window-mode / quality-preset normalization above).
+            if (NetworkStability is not ("responsive" or "balanced" or "stable"))
+                NetworkStability = "responsive";
             // Guard NaN/Inf before clamping — Math.Clamp passes NaN straight through, which would become a NaN
             // ContentScaleFactor and blank the UI; a non-finite value falls back to the 1.0 default.
             UiScale = float.IsFinite(UiScale) ? System.Math.Clamp(UiScale, 0.75f, 1.5f) : 1.0f;

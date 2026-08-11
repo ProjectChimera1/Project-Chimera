@@ -115,6 +115,32 @@ namespace ProjectChimera.Multiplayer.Server
         /// lower THIS if a jittery link ever feels too laggy (a steady link is unaffected either way).</summary>
         public const float JITTER_HEADROOM = 4f;
 
+        // ── DW-934 stability-floor constants ──────────────────────────────────
+        // The adaptive path (smoothed + jitter, DW-933) is REACTIVE: it learns a link's swing band from ~0.5 Hz
+        // probes, so the first spike of every cluster still lands before the cushion widens. The stability floor
+        // is the WC3 answer — a fixed fat cushion that needs no detection because it is always there. The host's
+        // settings.json `network_stability` picks it (DedicatedServer.Start → StabilityFloorTicks); the dictated
+        // delay simply never drops below the floor, and the adaptive path still grows ABOVE it when even the
+        // floor can't cover the measured band.
+
+        /// <summary>DW-934: the `balanced` floor — the delay never dictates below 6 ticks (200 ms at 30 Hz).</summary>
+        public const int BALANCED_FLOOR_TICKS = 6;
+
+        /// <summary>DW-934: the `stable` floor — 9 ticks (300 ms), the WC3-era command-latency cushion.</summary>
+        public const int STABLE_FLOOR_TICKS = 9;
+
+        /// <summary>
+        /// DW-934: map the persisted <c>network_stability</c> enum string to a delay floor in ticks. Closed
+        /// vocabulary; anything unknown (including null/absent) falls back to the pure-adaptive pre-DW-934
+        /// behavior (<see cref="DelayMath.MIN_DELAY"/> — a floor the target can never be below anyway).
+        /// </summary>
+        public static int StabilityFloorTicks(string? networkStability) => networkStability switch
+        {
+            "balanced" => BALANCED_FLOOR_TICKS,
+            "stable"   => STABLE_FLOOR_TICKS,
+            _          => DelayMath.MIN_DELAY, // "responsive" / unknown / null → pure adaptive
+        };
+
         /// <summary>Number of player slots this controller was constructed with (the match's player count).
         /// Fixed for the match; the LIVE count after mid-match drops is <see cref="ActiveCount"/>.</summary>
         public int Expected { get; }
@@ -133,6 +159,10 @@ namespace ProjectChimera.Multiplayer.Server
         /// <summary>DW-933: per-slot EWMA of |sample − smoothed| (TCP RTTVAR shape). Seeded ZERO on a slot's
         /// first sample — NOT TCP's R/2 — so a steady link behaves exactly as before DW-933 (no golden moves).</summary>
         private readonly float[] _rttJitter;
+
+        /// <summary>DW-934: the dictated delay never drops below this (clamped into [MIN_DELAY, MAX_DELAY] at
+        /// construction). MIN_DELAY = no floor = pre-DW-934 behavior.</summary>
+        private readonly int _minDelayFloor;
 
         // ── RTT-probe (ping/pong) state (DW-395/DW-401) ───────────────────────
         // The ping seq lives IN the controller (not the Godot node) so a rebuilt controller — a second match in
@@ -214,8 +244,10 @@ namespace ProjectChimera.Multiplayer.Server
         /// today's slot layout. Sugar over the slot-map constructor.</param>
         /// <param name="initialDelay">The delay the match starts at (LockstepManager.INPUT_DELAY) — the baseline the
         /// first dictated value is compared against so no directive is emitted until the target genuinely changes.</param>
-        public DelayController(int expected, int initialDelay)
-            : this(DenseSlots(expected), expected, initialDelay)
+        /// <param name="minDelayFloor">DW-934: the stability floor (see the slot-map ctor). Defaults to
+        /// MIN_DELAY = no floor.</param>
+        public DelayController(int expected, int initialDelay, int minDelayFloor = DelayMath.MIN_DELAY)
+            : this(DenseSlots(expected), expected, initialDelay, minDelayFloor)
         {
         }
 
@@ -228,7 +260,12 @@ namespace ProjectChimera.Multiplayer.Server
         /// <param name="playerSlots">The occupied player slots (distinct, each in [0, slotCapacity)); ≥ 1 entry.</param>
         /// <param name="slotCapacity">The exclusive upper bound on slot ids this controller indexes.</param>
         /// <param name="initialDelay">The delay the match starts at (see the dense constructor).</param>
-        public DelayController(IReadOnlyList<int> playerSlots, int slotCapacity, int initialDelay)
+        /// <param name="minDelayFloor">DW-934: the stability floor — the dictated delay never drops below this.
+        /// Clamped into [MIN_DELAY, MAX_DELAY]; the default (MIN_DELAY) is a no-op floor, the pre-DW-934 behavior.
+        /// Note the INITIAL delay is untouched (clients hard-start at LockstepManager.INPUT_DELAY): a floor above
+        /// it simply drives an urgent first directive within the first probe or two of the match.</param>
+        public DelayController(IReadOnlyList<int> playerSlots, int slotCapacity, int initialDelay,
+                               int minDelayFloor = DelayMath.MIN_DELAY)
         {
             if (playerSlots == null || playerSlots.Count < 1)
                 throw new ArgumentException("playerSlots must contain at least one slot.", nameof(playerSlots));
@@ -244,6 +281,7 @@ namespace ProjectChimera.Multiplayer.Server
             _pongFolded         = new bool[slotCapacity];
             _lastCommittedDelay = initialDelay;
             _streakTarget       = initialDelay; // DW-931: no candidate in progress at match start
+            _minDelayFloor      = DelayMath.ClampDelay(minDelayFloor); // DW-934: an out-of-band floor is banded
 
             for (int i = 0; i < playerSlots.Count; i++)
             {
@@ -469,7 +507,9 @@ namespace ProjectChimera.Multiplayer.Server
             }
             if (!any) return false; // no RTT measured yet → nothing to dictate
 
-            int target = DelayMath.ComputeTargetDelay(maxEffRtt); // already clamped to [MIN_DELAY, MAX_DELAY]
+            // DW-934: the stability floor — the target never dictates below it (a no-op at the default floor,
+            // since ComputeTargetDelay already clamps to ≥ MIN_DELAY).
+            int target = Math.Max(DelayMath.ComputeTargetDelay(maxEffRtt), _minDelayFloor);
 
             // ── DW-931 damping (deliberately AFTER the pending/maturity gates so their semantics stay intact) ──
             if (target == _lastCommittedDelay)
@@ -486,7 +526,10 @@ namespace ProjectChimera.Multiplayer.Server
                 // merely touch it. ComputeTargetDelay is monotonic non-decreasing (pinned by DelayMathTests), so
                 // probing it with the margin added asks "would a slightly-worse RTT still want the committed
                 // delay?". Probing the EFFECTIVE value (DW-933) means residual jitter also holds a shrink back.
-                if (!grow && DelayMath.ComputeTargetDelay(maxEffRtt + SHRINK_MARGIN_MS) >= _lastCommittedDelay)
+                // (The floor applies here too so the probe agrees with the target computation above — without it
+                // a committed-at-floor delay would read as "shrinkable" and re-arm the streak pointlessly.)
+                if (!grow && Math.Max(DelayMath.ComputeTargetDelay(maxEffRtt + SHRINK_MARGIN_MS), _minDelayFloor)
+                             >= _lastCommittedDelay)
                 {
                     _streakTarget = _lastCommittedDelay; // effectively at the boundary → not a candidate
                     return false;

@@ -239,11 +239,40 @@ namespace ProjectChimera.Sim.Tests.Definitions
         }
 
         [Fact]
-        public void SchemaVersion_IsStampedTo3_OnLoad()
+        public void SchemaVersion_IsStampedTo4_OnLoad()
         {
+            // DW-934 bumped 3→4 for the network_stability field.
             var reloaded = SettingsData.FromJson("{ }", Opts);
-            Assert.Equal(3, reloaded.SchemaVersion);
-            Assert.Equal(3, SettingsData.CurrentSchemaVersion);
+            Assert.Equal(4, reloaded.SchemaVersion);
+            Assert.Equal(4, SettingsData.CurrentSchemaVersion);
+        }
+
+        // ── DW-934 — the network-stability preference (the server-side delay floor) ──────────────
+
+        [Fact]
+        public void NetworkStability_DefaultsResponsive_AndAbsentFromOldFileLandsThere()
+        {
+            Assert.Equal("responsive", new SettingsData().NetworkStability);
+            var reloaded = SettingsData.FromJson("{ \"camera_speed\": 1.0 }", Opts);
+            Assert.Equal("responsive", reloaded.NetworkStability);
+        }
+
+        [Theory]
+        [InlineData("responsive")]
+        [InlineData("balanced")]
+        [InlineData("stable")]
+        public void NetworkStability_ValidValues_RoundTripVerbatim(string value)
+        {
+            string json = JsonSerializer.Serialize(new SettingsData { NetworkStability = value }, Opts);
+            Assert.Contains("\"network_stability\"", json); // snake_case key
+            Assert.Equal(value, SettingsData.FromJson(json, Opts).NetworkStability);
+        }
+
+        [Fact]
+        public void NetworkStability_UnknownValue_ResetsToResponsive()
+        {
+            var reloaded = SettingsData.FromJson("{ \"network_stability\": \"ultra-stable\" }", Opts);
+            Assert.Equal("responsive", reloaded.NetworkStability);
         }
 
         [Theory]
