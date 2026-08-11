@@ -28,7 +28,8 @@ namespace ProjectChimera.Multiplayer
             return winnerFaction > 0 ? $"Player {winnerFaction} won" : "no victor";
         }
 
-        /// <summary>Clamp a requested playback speed (sim ticks/frame) to the supported 1..8 range (0 → 1, 9 → 8).</summary>
+        /// <summary>Clamp a requested playback speed (DW-932: wall-clock multiplier — 1x = real-time 30 tps) to the
+        /// supported 1..8 range (0 → 1, 9 → 8).</summary>
         public static int ClampSpeed(int speed) => speed < 1 ? 1 : speed > 8 ? 8 : speed;
     }
 }

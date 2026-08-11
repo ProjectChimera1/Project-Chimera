@@ -70,6 +70,12 @@ namespace ProjectChimera.Core.Bootstrap
             commandCard.OnWorkerBuildRequested += _ctx.Scene.EnterBuildPlacementMode;
             // Story 9.5: same late-bound local-faction getter as the selection system.
             commandCard.SetLocalFaction(() => _ctx.Lockstep?.EffectiveLocalFaction ?? Faction.Player1);
+            // DW-929 (review): "viewer owns no seat" — an online spectator OR an active replay playback session
+            // (the same `_ctx.ReplayPlayer != null` flag MainScene._Process/WinConditionPhase key on; nulled at
+            // replay finish/teardown, so a later live match reads false again). EffectiveLocalFaction clamps both
+            // to Player1, so without this term the card would treat P1's buildings as OWNED and render their full
+            // production surface to a seatless viewer. Late-bound closure like the faction getter above.
+            commandCard.SetSpectatorView(() => (_ctx.Lockstep?.IsSpectator ?? false) || _ctx.ReplayPlayer != null);
             _ctx.CommandCard = commandCard;
         }
     }

@@ -1,6 +1,8 @@
 #nullable enable
 using System.Collections.Generic;
 using ProjectChimera.Core;                 // EntityWorld, Faction, UnitOrder, UnitCommand, Fixed, EntityFlags
+using ProjectChimera.Core.Definitions;      // FactionDefinition, UnitDefinition (DW-929 wire-level Train harness)
+using ProjectChimera.Economy;               // BuildingSystem, BuildingStore, BuildingType (DW-929)
 using ProjectChimera.Multiplayer;           // TickCommandPacket, MergedTickPacket
 using ProjectChimera.Multiplayer.Server;    // MergedTickBuilder, MergedTickApplier
 using Xunit;
@@ -181,6 +183,65 @@ namespace ProjectChimera.Sim.Tests.Server
             MergedTickApplier.Apply(merged, len, world); // winState omitted (null)
 
             Assert.True((world.Flags[p2Unit] & EntityFlags.Moving) != 0); // the co-bundled Move still applied
+        }
+
+        [Fact]
+        public void Train_AgainstNonOwnedBuilding_ViaMergedWire_SpendsNothingSpawnsNothing()
+        {
+            // DW-929 — the wire-level end-to-end proof that a crafted NON-OWNED train order is a deterministic
+            // no-op: the P2 sub-bundle of a REAL merged packet (built through MergedTickBuilder, decoded by
+            // MergedTickPacket.TryRead) names P1's barracks with UnitCommand.Train. The per-sub-bundle faction is
+            // what the server re-stamps from the transport-authoritative slot, so this models the strongest attack
+            // a client can mount — and BuildingSystem.TrainUnitCommand's ownership guard must reject it with NO
+            // spend (either faction), NO enqueue, and NO spawn. Closes the coverage gap between
+            // ProductionSelectionTests.OrderApplier_Train_WrongFaction_RejectedByOwnershipGuard (direct
+            // OrderApplier call, no wire) and AntiCheatGuard_DropsOrderAgainstAnotherFactionsUnit (wire, but only
+            // a Move with no BuildingSystem wired).
+            var world     = new EntityWorld();
+            var buildings = new BuildingStore();
+            var resources = new ResourceStore(Fixed.FromInt(10000));
+            var factionDef = new FactionDefinition { Id = "test", DisplayName = "Test" };
+            factionDef.Units.Add(new UnitDefinition { Id = "melee_a", Category = "Melee", Hp = 100f }); // index 0
+            var sys = new BuildingSystem(buildings, resources, factionDef);
+
+            int b = sys.PlaceBuildingDirect(BuildingType.Barracks, Faction.Player1, FixedVec3.Zero, preBuilt: true);
+            int p1Unit = world.Create(new FixedVec3(Fixed.Zero, Fixed.Zero, Fixed.Zero), Faction.Player1, Fixed.FromInt(50), Fixed.FromInt(3));
+
+            Fixed p1OreBefore = resources.Ore[(int)Faction.Player1];
+            Fixed p2OreBefore = resources.Ore[(int)Faction.Player2];
+            int   aliveBefore = CountAlive(world);
+
+            // P1's sub-bundle carries a benign Move (proves the packet decoded + applied); P2's names P1's
+            // barracks with Train (TargetX = chosen unit index as RAW int — the Story 2.8 wire encoding).
+            byte[] merged = BuildMerged(1u,
+                Move(p1Unit, Fixed.FromInt(3).Raw, Fixed.FromInt(4).Raw),
+                new UnitOrder(b, UnitCommand.Train, Fixed.FromRaw(0), Fixed.Zero), out int len);
+
+            MergedTickApplier.Apply(merged, len, world, buildings: sys);
+
+            // The co-bundled legitimate P1 order applied — the packet was decoded, not dropped wholesale.
+            Assert.Equal(Fixed.FromInt(3), world.MoveTarget[p1Unit].X);
+            Assert.Equal(Fixed.FromInt(4), world.MoveTarget[p1Unit].Z);
+
+            // NO spend on either side (raw compare) and NO enqueue in any of the barracks' queue slots.
+            Assert.Equal(p1OreBefore.Raw, resources.Ore[(int)Faction.Player1].Raw);
+            Assert.Equal(p2OreBefore.Raw, resources.Ore[(int)Faction.Player2].Raw);
+            int head = buildings.HeadIndex(b);
+            for (int s = 0; s < BuildingStore.QUEUE_DEPTH; s++)
+                Assert.Equal(0, buildings.ProductionQueue[head + s]);
+
+            // NO spawn: ticking the building system past any full TrainTime creates no entity.
+            sys.Tick(world, Fixed.FromInt(100));
+            Assert.Equal(aliveBefore, CountAlive(world));
+        }
+
+        /// <summary>Count alive entities (DW-929 no-spawn assertion helper).</summary>
+        private static int CountAlive(EntityWorld world)
+        {
+            int n = 0;
+            for (int i = 0; i < world.HighWaterMark; i++)
+                if (world.IsAlive(i)) n++;
+            return n;
         }
 
         [Fact]

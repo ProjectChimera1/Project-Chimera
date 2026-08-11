@@ -37,6 +37,10 @@ stall, DWM/MPO transition, driver, or AV.
    frames delay packet sends → server RTT jitter → renegotiation), but the feedback loop
    (jitter → delay change → gap seed → stall → banner) is what the player FEELS. Worth asking:
    should the server's delay controller DAMP oscillation (2↔3 flapping all match in the 11:21 log)?
+   **ANSWERED 2026-08-11 → DW-931 (closed):** damping landed inside `DelayController.TryComputeDirective`
+   (persistence streak 60/300 ticks, asymmetric dwell 90/600, 12 ms shrink deadband, ≥2-tick urgent-grow
+   bypass; server-side only, wire + DW-914 gap-seed math untouched). Expect ~1–3 renegotiations per match
+   instead of ~40; the burst root cause itself is still this file's main quarry.
 3. **The environment line** (`[FrameProbe]`) exposed: clients run **ExclusiveFullscreen although
    settings.json says "windowed"** — find WHY (project.godot mode=3 vs SettingsManager mapping;
    this mismatch is a bug on its own), and the PC pairs a 144 Hz panel with a 60 Hz one (mixed-

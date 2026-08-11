@@ -16,7 +16,9 @@ namespace ProjectChimera.Multiplayer.Server
     ///     wrap-safe Pong echo into its smoothed RTT EWMA (<see cref="RecordPong"/> / <see cref="RecordRtt"/>).
     ///   • Compute ONE dictated delay for the whole match from the MAX active-slot RTT via the existing
     ///     <see cref="DelayMath.ComputeTargetDelay"/> (<see cref="TryComputeDirective"/>), emitted only when it
-    ///     differs from the last committed value AND no directive is currently pending un-ACKed.
+    ///     differs from the last committed value AND no directive is currently pending un-ACKed — and, since
+    ///     DW-931, only once the damping gates pass (target-persistence streak, asymmetric grow/shrink dwell,
+    ///     shrink deadband; a grow of ≥ <see cref="URGENT_GROW_STEP"/> ticks bypasses streak + dwell).
     ///   • Drive the all-N-ACK commit state machine (<see cref="RecordAck"/> / <see cref="AllAcked"/> /
     ///     <see cref="Commit"/>): a new directive cannot be issued until every ACTIVE player has ACKed the pending
     ///     one. A slot that drops mid-match is excused via <see cref="DeactivateSlot"/> (DW-400) and a pending
@@ -54,6 +56,42 @@ namespace ProjectChimera.Multiplayer.Server
         /// <see cref="DeactivateSlot"/>).
         /// </summary>
         public const int ACK_TIMEOUT_TICKS = 300;
+
+        // ── DW-931 damping constants (tick units at 30 Hz) ────────────────────
+        // The undamped comparator re-dictated the instant the EWMA'd worst-slot RTT crossed a tick boundary; the
+        // delay-2/3 boundary sits at smoothed RTT = 66.7 ms, exactly where a LAN match with frame bursts oscillates
+        // (2↔3 flapped ~40 times in 4.5 min in the 2026-08-10 11:21 field log). Every widening change costs each
+        // client a (newDelay−oldDelay)-tick gap seed in which that player's input cannot land — the felt hiccup —
+        // so a target must now PERSIST (streak), respect a minimum spacing (dwell, asymmetric: grow fast / shrink
+        // slowly), and clear the shrink boundary by a margin (deadband). A grow of ≥ URGENT_GROW_STEP bypasses
+        // streak + dwell: growing is the safe direction (too-small delay stalls every tick; too-large only adds
+        // input latency). Server-side decision only — the wire format and the client's obey/gap-seed path are
+        // untouched, so damping cannot desync.
+
+        /// <summary>DW-931: frontier ticks a +1 GROW target must hold continuously before it is dictated
+        /// (2 s ≈ 2 ping samples). Bypassed by an urgent grow (≥ <see cref="URGENT_GROW_STEP"/>).</summary>
+        public const int GROW_STREAK_TICKS = 60;
+
+        /// <summary>DW-931: frontier ticks a SHRINK target must hold continuously before it is dictated (10 s) —
+        /// shrinking is the risky direction, so it must prove itself far longer than a grow.</summary>
+        public const int SHRINK_STREAK_TICKS = 300;
+
+        /// <summary>DW-931: minimum frontier ticks after the last committed change's applyAtTick before another
+        /// GROW directive (3 s). The match's FIRST directive is exempt so match-start adaptation stays prompt.</summary>
+        public const int GROW_DWELL_TICKS = 90;
+
+        /// <summary>DW-931: minimum frontier ticks after the last committed change's applyAtTick before a SHRINK
+        /// directive (20 s) — each renegotiation is felt (gap seed + reliable directive/ACK traffic), so the
+        /// calm-down direction is deliberately slow. Lower THIS (not the streak) if it ever feels laggy.</summary>
+        public const int SHRINK_DWELL_TICKS = 600;
+
+        /// <summary>DW-931: a grow of at least this many ticks bypasses streak + dwell — a real RTT jump must
+        /// widen fast, and growing is the safe direction.</summary>
+        public const int URGENT_GROW_STEP = 2;
+
+        /// <summary>DW-931: shrink deadband (~⅓ tick of RTT) — the smoothed RTT must clear the shrink boundary by
+        /// this margin, not merely touch it, before a shrink target counts at all.</summary>
+        public const float SHRINK_MARGIN_MS = 12f;
 
         /// <summary>Number of player slots this controller was constructed with (the match's player count).
         /// Fixed for the match; the LIVE count after mid-match drops is <see cref="ActiveCount"/>.</summary>
@@ -109,6 +147,25 @@ namespace ProjectChimera.Multiplayer.Server
         // on a slow client (→ two clients holding different delays → command-slot divergence → desync).
         private uint _maturingApplyTick;
 
+        // ── DW-931 damping state ──────────────────────────────────────────────
+        // The streak clock is measured in FRONTIER TICKS, not evaluation calls: TryComputeDirective runs per frame
+        // but the EWMA only moves on ~1 Hz pongs, so tick-time is the correct persistence clock and per-frame
+        // calling stays harmless. All tick deltas use unchecked modular uint subtraction (the DW-396 idiom).
+
+        /// <summary>The candidate target currently accumulating a persistence streak (== the committed delay when
+        /// no candidate is in progress). Reset to the committed value on every commit and on any evaluation whose
+        /// target returns to the committed value — a dip back to committed restarts the clock from zero.</summary>
+        private int _streakTarget;
+
+        /// <summary>The frontier tick at which <see cref="_streakTarget"/> was first observed (streak start).</summary>
+        private uint _streakSinceTick;
+
+        /// <summary>The applyAtTick of the last committed delay change — the dwell clock's base.</summary>
+        private uint _lastChangeTick;
+
+        /// <summary>False until the first directive commits — exempts the match's FIRST change from dwell.</summary>
+        private bool _anyChangeCommitted;
+
         /// <summary>The delay the server has last confirmed all players committed (starts at the initial delay).</summary>
         public int LastCommittedDelay => _lastCommittedDelay;
 
@@ -159,6 +216,7 @@ namespace ProjectChimera.Multiplayer.Server
             _acked              = new bool[slotCapacity];
             _pongFolded         = new bool[slotCapacity];
             _lastCommittedDelay = initialDelay;
+            _streakTarget       = initialDelay; // DW-931: no candidate in progress at match start
 
             for (int i = 0; i < playerSlots.Count; i++)
             {
@@ -310,6 +368,9 @@ namespace ProjectChimera.Multiplayer.Server
             applyAtTick         = _pendingApplyTick;
             _lastCommittedDelay = _pendingDelay;
             _maturingApplyTick  = _pendingApplyTick + (uint)DelayMath.MAX_DELAY; // same gate Commit sets
+            _lastChangeTick     = _pendingApplyTick;    // DW-931: a force-commit arms the dwell clock too
+            _anyChangeCommitted = true;
+            _streakTarget       = _lastCommittedDelay;  // DW-931: the next candidate re-proves from scratch
             _pending            = false;
             return true;
         }
@@ -322,8 +383,13 @@ namespace ProjectChimera.Multiplayer.Server
         /// <paramref name="currentTick"/> + <see cref="SafeMargin"/>) ONLY when: at least one ACTIVE slot has a
         /// measured RTT, no directive is already pending un-ACKed, the PRIOR committed directive has matured (been
         /// APPLIED) on all clients (<paramref name="confirmedTick"/> — the merged fan-in high-water — has passed its
-        /// applyAtTick plus the MAX_DELAY submission→exec lead), and the computed delay differs from the last
-        /// committed value. Otherwise returns <c>false</c> without changing state. On emission the pending directive
+        /// applyAtTick plus the MAX_DELAY submission→exec lead), the computed delay differs from the last
+        /// committed value, AND the DW-931 damping gates pass: the candidate target has held continuously for
+        /// <see cref="GROW_STREAK_TICKS"/>/<see cref="SHRINK_STREAK_TICKS"/> frontier ticks, at least
+        /// <see cref="GROW_DWELL_TICKS"/>/<see cref="SHRINK_DWELL_TICKS"/> ticks have passed since the last
+        /// committed change landed, and (for a shrink) the smoothed RTT clears the boundary by
+        /// <see cref="SHRINK_MARGIN_MS"/>. A grow of ≥ <see cref="URGENT_GROW_STEP"/> ticks bypasses streak +
+        /// dwell. Otherwise returns <c>false</c>. On emission the pending directive
         /// is stored, its ACK set is reset, and the ACK-timeout clock (<see cref="CheckAckTimeout"/>) starts.
         /// </summary>
         /// <param name="currentTick">The server's current frontier tick (highest submitted) — the base the safe
@@ -365,7 +431,42 @@ namespace ProjectChimera.Multiplayer.Server
             if (!any) return false; // no RTT measured yet → nothing to dictate
 
             int target = DelayMath.ComputeTargetDelay(maxRtt); // already clamped to [MIN_DELAY, MAX_DELAY]
-            if (target == _lastCommittedDelay) return false;    // no change needed
+
+            // ── DW-931 damping (deliberately AFTER the pending/maturity gates so their semantics stay intact) ──
+            if (target == _lastCommittedDelay)
+            {
+                _streakTarget = target; // back at the committed value → any in-progress streak restarts from zero
+                return false;           // no change needed
+            }
+
+            bool grow   = target > _lastCommittedDelay;
+            bool urgent = grow && target - _lastCommittedDelay >= URGENT_GROW_STEP;
+            if (!urgent)
+            {
+                // Shrink deadband: the smoothed RTT must clear the shrink boundary by SHRINK_MARGIN_MS, not merely
+                // touch it. ComputeTargetDelay is monotonic non-decreasing (pinned by DelayMathTests), so probing
+                // it with the margin added asks "would a slightly-worse RTT still want the committed delay?".
+                if (!grow && DelayMath.ComputeTargetDelay(maxRtt + SHRINK_MARGIN_MS) >= _lastCommittedDelay)
+                {
+                    _streakTarget = _lastCommittedDelay; // effectively at the boundary → not a candidate
+                    return false;
+                }
+
+                // Target-persistence streak: the SAME candidate target must hold continuously (in frontier ticks).
+                if (target != _streakTarget)
+                {
+                    _streakTarget    = target;
+                    _streakSinceTick = currentTick;
+                    return false; // new candidate — start proving itself
+                }
+                uint held = unchecked(currentTick - _streakSinceTick); // wrap-safe modular delta (DW-396 idiom)
+                if (held < (uint)(grow ? GROW_STREAK_TICKS : SHRINK_STREAK_TICKS)) return false;
+
+                // Dwell: minimum frontier distance since the last committed change landed (its applyAtTick).
+                if (_anyChangeCommitted &&
+                    unchecked(currentTick - _lastChangeTick) < (uint)(grow ? GROW_DWELL_TICKS : SHRINK_DWELL_TICKS))
+                    return false;
+            }
 
             _pending             = true;
             _pendingDelay        = target;
@@ -419,6 +520,9 @@ namespace ProjectChimera.Multiplayer.Server
             // high-water passes applyAtTick + MAX_DELAY, which guarantees every client's exec has passed applyAtTick
             // (i.e. the change is APPLIED everywhere), not merely submitted (PATCH 1a maturity gate, corrected).
             _maturingApplyTick  = _pendingApplyTick + (uint)DelayMath.MAX_DELAY;
+            _lastChangeTick     = _pendingApplyTick;    // DW-931: dwell is measured from where the change LANDS
+            _anyChangeCommitted = true;
+            _streakTarget       = _lastCommittedDelay;  // DW-931: the next candidate re-proves from scratch
             _pending            = false;
             return true;
         }

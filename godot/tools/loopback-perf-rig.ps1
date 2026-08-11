@@ -2,7 +2,11 @@
 # stdout/stderr redirected per client so [Catchup]/[FrameProbe]/[FrameHistogram] lines are
 # greppable afterwards. Baseline established 2026-08-10: this rig produces ZERO frames >=67 ms
 # in ~14,000 ticks — if a run here suddenly shows Catchup bursts, whatever changed is the cause.
-# The -ExtraArgs seam exists for the D3D12-vs-Vulkan A/B: -ExtraArgs "--rendering-driver vulkan".
+# The -ExtraArgs seam exists for the D3D12-vs-Vulkan A/B: -ExtraArgs "--rendering-driver vulkan"
+# (the project ships d3d12; that flag is the per-run flip, no project.godot edit needed).
+# 2026-08-11 (DW-930): boot mode is now Windowed and settings finally take effect — every run before
+# this date (including the KNOWN-CLEAN baseline above) executed under EXCLUSIVE fullscreen despite
+# settings.json "windowed". Re-record the baseline before comparing histograms across that boundary.
 # Sibling: loopback-suspend-pulse.ps1 forces genuine long frames on a client (verifies the
 # DW-924 [phase:] suffix fires and shows the "externally blocked" signature).
 param(

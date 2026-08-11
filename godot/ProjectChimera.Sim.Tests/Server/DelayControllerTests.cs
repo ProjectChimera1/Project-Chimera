@@ -1,4 +1,5 @@
 #nullable enable
+using System;
 using ProjectChimera.Multiplayer;         // DelayMath (MIN/MAX_DELAY)
 using ProjectChimera.Multiplayer.Server;   // DelayController
 using Xunit;
@@ -137,7 +138,18 @@ namespace ProjectChimera.Sim.Tests.Server
             // Maturity requires the SUBMISSION high-water to pass applyAtTick + MAX_DELAY (the submission→exec lead),
             // not merely applyAtTick — otherwise a lagging client could still be pre-apply. See the dedicated pin below.
             uint matured = a1 + (uint)DelayMath.MAX_DELAY + 1u;
-            Assert.True(c.TryComputeDirective(matured + 50u, confirmedTick: matured, out int d2, out _));
+
+            // DW-931: the new lower target is a SHRINK, which is now damped — the first matured evaluation only
+            // ARMS the persistence streak (maturity assertions above are byte-identical; only damping withholds here).
+            uint armTick = matured + 50u;
+            Assert.False(c.TryComputeDirective(armTick, confirmedTick: matured, out _, out _));
+
+            // The shrink issues once the target has held SHRINK_STREAK_TICKS AND SHRINK_DWELL_TICKS have passed
+            // since the prior change landed (a1). One tick before the later bound: still withheld.
+            uint emitTick = Math.Max(armTick + (uint)DelayController.SHRINK_STREAK_TICKS,
+                                     a1 + (uint)DelayController.SHRINK_DWELL_TICKS);
+            Assert.False(c.TryComputeDirective(emitTick - 1u, confirmedTick: matured, out _, out _));
+            Assert.True(c.TryComputeDirective(emitTick, confirmedTick: matured, out int d2, out _));
             Assert.NotEqual(d1, d2);
         }
 
@@ -161,9 +173,18 @@ namespace ProjectChimera.Sim.Tests.Server
             Assert.False(c.TryComputeDirective(a1 + 5u, confirmedTick: a1, out _, out _));      // confirmed == applyAtTick (must PASS it)
             Assert.True(c.AwaitingMaturity);
 
-            // Once the confirmed high-water PASSES applyAtTick + MAX_DELAY, the new directive issues.
+            // Once the confirmed high-water PASSES applyAtTick + MAX_DELAY, the maturity gate clears. The new lower
+            // target is a SHRINK, now damped (DW-931): the first matured evaluation only ARMS the streak…
             uint matured = a1 + (uint)DelayMath.MAX_DELAY + 1u;
-            Assert.True(c.TryComputeDirective(matured + 50u, confirmedTick: matured, out int d2, out _));
+            uint armTick = matured + 50u;
+            Assert.False(c.TryComputeDirective(armTick, confirmedTick: matured, out _, out _));
+            Assert.False(c.AwaitingMaturity); // …but the maturity gate itself HAS cleared — only damping withholds now
+
+            // …and the directive issues once SHRINK_STREAK_TICKS have been held and SHRINK_DWELL_TICKS have passed
+            // since the prior change landed (a1).
+            uint emitTick = Math.Max(armTick + (uint)DelayController.SHRINK_STREAK_TICKS,
+                                     a1 + (uint)DelayController.SHRINK_DWELL_TICKS);
+            Assert.True(c.TryComputeDirective(emitTick, confirmedTick: matured, out int d2, out _));
             Assert.NotEqual(d1, d2);
             Assert.False(c.AwaitingMaturity);
         }
@@ -196,8 +217,18 @@ namespace ProjectChimera.Sim.Tests.Server
                 Assert.True(c.AwaitingMaturity);
             }
 
-            // One tick past applyAtTick + MAX_DELAY → every client's exec has provably passed applyAtTick → issue.
-            Assert.True(c.TryComputeDirective(a1 + 100u, confirmedTick: a1 + (uint)DelayMath.MAX_DELAY + 1u, out _, out _));
+            // One tick past applyAtTick + MAX_DELAY → every client's exec has provably passed applyAtTick → the
+            // MATURITY gate clears. The lower target is a SHRINK, now damped (DW-931): the first cleared
+            // evaluation arms the streak, and the directive issues after streak + dwell. The maturity assertions
+            // above are byte-identical — that gate is the desync guard, not the damping.
+            uint confirmedPast = a1 + (uint)DelayMath.MAX_DELAY + 1u;
+            uint armTick = a1 + 100u;
+            Assert.False(c.TryComputeDirective(armTick, confirmedTick: confirmedPast, out _, out _));
+            Assert.False(c.AwaitingMaturity); // cleared on that call — only damping withholds from here
+
+            uint emitTick = Math.Max(armTick + (uint)DelayController.SHRINK_STREAK_TICKS,
+                                     a1 + (uint)DelayController.SHRINK_DWELL_TICKS);
+            Assert.True(c.TryComputeDirective(emitTick, confirmedTick: confirmedPast, out _, out _));
             Assert.False(c.AwaitingMaturity);
         }
 

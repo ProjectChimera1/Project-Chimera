@@ -43,6 +43,18 @@ namespace ProjectChimera.UI
         /// <summary>Story 9.5: inject the live local-faction getter (see <see cref="CameraPhase"/>).</summary>
         public void SetLocalFaction(System.Func<Faction> getter) => _localFaction = getter;
 
+        // DW-929 (review): "this viewer owns NO seat" — true for an online spectator (LockstepManager.IsSpectator)
+        // and for an active replay playback session. EffectiveLocalFaction CLAMPS both to Player1 (LocalFactionPolicy),
+        // which is correct for fog/minimap reference views but must NOT read as ownership here: without this flag a
+        // spectator/replay viewer selecting a Player1 building satisfied `faction == viewer` and got P1's FULL
+        // production surface (supply, live queue, research progress, ENABLED train buttons) while P2 stayed info-only.
+        // Defaults false so every offline/single-player path and any un-wired instance are byte-identical to today.
+        private System.Func<bool> _spectatorView = () => false;
+
+        /// <summary>DW-929 (review): inject the "viewer owns no seat" getter (spectator OR replay playback); the card
+        /// renders info-only for EVERY building while it returns true. Wired by <see cref="CameraPhase"/>.</summary>
+        public void SetSpectatorView(System.Func<bool> getter) => _spectatorView = getter;
+
         // ── Building card UI nodes ─────────────────────────────────────────────
 
         private Panel  _panel              = null!;
@@ -307,7 +319,7 @@ namespace ProjectChimera.UI
                 && _world.HeroIndex[focusId] != EntityWorld.HERO_NONE;
             _inventoryPanel.Visible = inventorySelected;
 
-            if (buildingSelected) RefreshCard(bId);
+            if (buildingSelected) RefreshCard(bId, me, _spectatorView());
             if (workerSelected)   RefreshWorkerCard(focusId);
             if (abilitySelected)  RefreshAbilityCard(focusId);
             if (inventorySelected) RefreshInventoryCard(focusId);
@@ -315,7 +327,7 @@ namespace ProjectChimera.UI
 
         // ── Card update ───────────────────────────────────────────────────────
 
-        private void RefreshCard(int bId)
+        private void RefreshCard(int bId, Faction viewer, bool spectatorView)
         {
             var bType   = _buildings.Type[bId];
             var faction = _buildings.FactionOf[bId];
@@ -334,6 +346,34 @@ namespace ProjectChimera.UI
 
             _titleLabel.Text = $"{typeName}  [{(faction == Faction.Player1 ? "P1" : "P2")}]";
             _hpLabel.Text    = $"HP: {(int)hp} / {(int)maxHp}";
+
+            // DW-929: a NON-OWNED building shows the info panel ONLY (name + HP). The production surface leaked
+            // real intel (enemy supply used/cap, live queue contents + head countdown, research progress,
+            // construction countdown — the DW-928 leak family) and rendered "live" train buttons whose affordability
+            // was computed against the ENEMY'S resources. Every Issue* handler already rejects a non-owned building
+            // (and the sim seam rejects independently via BuildingSystem.TrainUnitCommand's faction guard), so the
+            // buttons were dead clicks — this gate fixes the rendered surface to match. Same predicate the Issue*
+            // handlers use (faction vs the hoisted local faction), PLUS the seatless-viewer term (review fix):
+            // EffectiveLocalFaction clamps a spectator/replay viewer to Player1 (LocalFactionPolicy — correct for
+            // fog/minimap reference views), so `faction == viewer` ALONE granted them P1's full production surface
+            // while P2 stayed info-only. `spectatorView` (LockstepManager.IsSpectator OR an active ReplayPlayer,
+            // wired by CameraPhase) forces info-only for EVERY building when the viewer owns no seat. An online
+            // spectator's clicks were always dead (EnqueueOrder rejects IsSpectator), but a REPLAY viewer's were
+            // NOT: the lockstep manager is offline during playback, so a visible P1 train button would have
+            // apply-now'd a real local order into the re-simmed world — hiding the surface closes that path too.
+            // Presentation-only — no sim read/write changes.
+            bool owned = !spectatorView && faction == viewer;
+            if (!owned)
+            {
+                _supplyLabel.Visible       = false;
+                _constructionLabel.Visible = false;
+                HideTrainButtons();
+                HideQueueStrip();
+                HideReviveButtons();
+                HideShopButtons();
+                HideResearchButtons();
+                return;
+            }
 
             // While under construction, show only the construction progress
             if (_buildings.IsUnderConstruction(bId))

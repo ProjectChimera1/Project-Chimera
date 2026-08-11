@@ -74,7 +74,11 @@ namespace ProjectChimera.Sim.Tests.Server
             // the EWMA to 212.5 ms → target 5. Must be ignored (one sample per slot per probe).
             c.RecordPong(0, seq, nowMs: 1_000u, senderMs: 0u);
 
-            Assert.True(c.TryComputeDirective(100u, 0u, out int delay, out _));
+            // DW-931: a 1-step change is damped — the first evaluation arms the persistence streak, and the
+            // directive issues once it has held (no prior commit, so no dwell). The dictated VALUE still
+            // discriminates fold-once (3) from fold-twice (5): both would emit here, at different delays.
+            Assert.False(c.TryComputeDirective(100u, 0u, out _, out _));
+            Assert.True(c.TryComputeDirective(100u + (uint)DelayController.SHRINK_STREAK_TICKS, 0u, out int delay, out _));
             Assert.Equal(3, delay); // the fold-once value; 5 would mean the duplicate was folded too
         }
 
@@ -88,7 +92,11 @@ namespace ProjectChimera.Sim.Tests.Server
             byte seq1 = c.NextPingSeq();                            // new probe re-arms the per-slot guard
             c.RecordPong(0, seq1, nowMs: 2_000u, senderMs: 1_000u); // RTT 1000 folds → EWMA 212.5 → target 5
 
-            Assert.True(c.TryComputeDirective(100u, 0u, out int delay, out _));
+            // DW-931: a +1 grow is damped — arm the streak, then the directive issues after GROW_STREAK_TICKS.
+            // (If the re-arm failed the EWMA would still read 100 ms → a SHRINK target, which cannot emit this
+            // early — the Assert.True below would fail either way.)
+            Assert.False(c.TryComputeDirective(100u, 0u, out _, out _));
+            Assert.True(c.TryComputeDirective(100u + (uint)DelayController.GROW_STREAK_TICKS, 0u, out int delay, out _));
             Assert.Equal(5, delay);
         }
 
@@ -107,7 +115,10 @@ namespace ProjectChimera.Sim.Tests.Server
             // the wrap: 5 - 0xFFFF_FFF0 ≡ 21 (mod 2^32).
             c.RecordPong(0, seq, nowMs: 5u, senderMs: 0xFFFF_FFF0u);
 
-            Assert.True(c.TryComputeDirective(100u, 0u, out int delay, out _));
+            // DW-931: the resulting SHRINK is damped — arm, then emit after the shrink streak (no dwell: first
+            // change). A wrap-unsafe fold would have rejected the sample → NOTHING folds → both calls false.
+            Assert.False(c.TryComputeDirective(100u, 0u, out _, out _));
+            Assert.True(c.TryComputeDirective(100u + (uint)DelayController.SHRINK_STREAK_TICKS, 0u, out int delay, out _));
             Assert.Equal(DelayMath.MIN_DELAY, delay); // 21 ms RTT → the floor (a genuine, sane sample)
         }
 

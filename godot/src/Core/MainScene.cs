@@ -147,7 +147,7 @@ namespace ProjectChimera.Core
 
         // ── Replay playback controls (Story 9.11) — presentation-only; NEVER touch sim state or the checksum ──
         private bool _replayPaused;
-        private int  _replaySpeed = 1;   // sim ticks stepped per frame (1/2/4/8)
+        private int  _replaySpeed = 1;   // DW-932: wall-clock speed multiplier (1x = real-time 30 tps), 1/2/4/8
         private int  _replaySeekTo = -1; // >=0 → fast render-free re-sim to this tick, then clear
         /// <summary>DW-431: the pure view-perspective state machine (-1 = reveal-all; 0..N-1 = roster[i] fog
         /// viewer) — extracted so the begin/cycle/end-of-session transitions are Tier-1 testable; MainScene keeps
@@ -190,6 +190,15 @@ namespace ProjectChimera.Core
         /// this pacer at 30 Hz instead of once per rendered frame — see <see cref="Multiplayer.LockstepPacer"/> for why
         /// frame-paced lockstep deadlocked the match against the server's command-rate throttle.</summary>
         private readonly Multiplayer.LockstepPacer _onlinePacer = new();
+
+        /// <summary>DW-932: the REPLAY fixed-timestep budget — a second <see cref="Multiplayer.LockstepPacer"/>
+        /// instance so replay playback advances off the wall clock (30 tps at 1x) instead of once-per-rendered-frame
+        /// (the DW-912 defect shape: on a 260 FPS machine "1x" played at ~8.7x). The speed multiplier scales the
+        /// ACCUMULATED delta, so 2x/8x are 60/240 tps on any frame rate. Note: LockstepPacer.MAX_CATCHUP_TICKS = 4
+        /// caps steps at 4/frame, so 8x reaches full rate only at ≥60 FPS — below that it gracefully degrades to
+        /// 4×FPS ticks/sec (deliberate; raising the cap is an online-path decision, not a replay one). Never
+        /// accumulated while paused or seeking, so resume can never fire a catch-up burst (the offline-pause rule).</summary>
+        private readonly Multiplayer.LockstepPacer _replayPacer = new();
 
         /// <summary>DW-912: the exec tick the online stall diagnostic is currently timing, and when it started (ms).
         /// A lockstep stall that never clears is the signature of a command packet that was accepted by the transport
@@ -1381,6 +1390,7 @@ namespace ProjectChimera.Core
             _replayPaused = false;
             _replaySpeed  = 1;
             _replaySeekTo = -1;
+            _replayPacer.Reset(); // DW-932: a new replay session never inherits a stale wall-clock bank
             _replayView.BeginSession();
             if (_ctx.FogBridge != null) _ctx.FogBridge.RevealAll = true;
         }
@@ -1388,7 +1398,8 @@ namespace ProjectChimera.Core
         /// <summary>Pause / resume replay stepping.</summary>
         public void ReplayTogglePause() => _replayPaused = !_replayPaused;
 
-        /// <summary>Set the replay speed (sim ticks stepped per frame): 1/2/4/8. Resumes if paused.</summary>
+        /// <summary>Set the replay speed (DW-932: wall-clock multiplier — 1x = real-time 30 tps): 1/2/4/8.
+        /// Resumes if paused.</summary>
         public void ReplaySetSpeed(int speed)
         {
             _replaySpeed  = ReplayFormat.ClampSpeed(speed);
@@ -1419,6 +1430,23 @@ namespace ProjectChimera.Core
                 if (_ctx.FogBridge != null) _ctx.FogBridge.RevealAll = false;
                 _ctx.Fog.SetViewer(rp!.Roster[perspective]);
             }
+
+            // DW-932: wipe the shared fog grid on EVERY cycle. SetViewer is a pure _faction assignment — the one
+            // Grid keeps every EXPLORED cell stamped under every previous viewer, so cycling P1→P2 showed P2's fog
+            // with P1's exploration ghosts baked in (live matches never leak because match start wipes the grid;
+            // perspective cycling had no equivalent). Wiping on the reveal-all arm too keeps the NEXT flip clean —
+            // the grid keeps stamping for the last SetViewer faction even while RevealAll displays everything.
+            // Deliberate trade: the new viewer's explored HISTORY is discarded (only current vision restamps);
+            // true per-viewer history would need N grids or a re-sim — out of scope for this cosmetic fix.
+            // Reset is a pure Array.Clear of the unfolded Grid — never folded into SimChecksum, cannot desync.
+            _ctx.Fog.Reset();
+
+            // DW-932: while PAUSED the sim-loop's FogOfWarSystem tick (which restamps within one tick when running)
+            // will not run, so the wipe above would show all-black until resume. One manual restamp fixes it. Safe
+            // outside the sim loop ONLY because FogOfWarSystem.Tick mutates nothing but the unfolded Grid (dt is
+            // unused by StampCircle) — if fog ever gains a folded field, this call becomes a desync hazard: remove it.
+            if (_replayPaused && perspective >= 0)
+                _ctx.Fog.Tick(_host.World, SimulationLoop.FixedDt);
         }
 
         /// <summary>Human-readable label for the current replay perspective (for the controls overlay).</summary>
@@ -1569,11 +1597,19 @@ namespace ProjectChimera.Core
                     }
                     else if (!_replayPaused)
                     {
-                        int steps = _replaySpeed < 1 ? 1 : _replaySpeed;
-                        for (int s = 0; s < steps && !rp.IsFinished; s++)
+                        // DW-932: wall-clock pacing (the DW-912 pattern, second pacer instance). This used to step
+                        // `_replaySpeed` ticks per RENDERED FRAME — on a 260 FPS machine "1x" played at ~8.7x. Now
+                        // the speed multiplies the ACCUMULATED real delta, so 1x = 30 tps and 8x = 240 tps on any
+                        // frame rate (8x needs ≥60 FPS to hit full rate under MAX_CATCHUP_TICKS = 4 — see the pacer
+                        // field). No Accumulate while paused (the branch above) ⇒ no catch-up burst on resume, the
+                        // offline-pause rule. Flush always returns true for a replay (recorded commands never
+                        // stall), so no Stall() arm is needed.
+                        _replayPacer.Accumulate((float)delta * _replaySpeed);
+                        while (_replayPacer.HasTickBudget && !rp.IsFinished)
                         {
                             rp.Flush(_host.CurrentTick);
                             _host.StepOnce();
+                            _replayPacer.ConsumeTick();
                         }
                     }
 
@@ -1583,6 +1619,9 @@ namespace ProjectChimera.Core
                         _ctx.ReplayPlayer = null;
                         if (_ctx.ReplayStatusLabel != null) _ctx.ReplayStatusLabel.Visible = false;
                         _ctx.ReplayControls?.SetActive(false);
+                        // DW-932: drop any banked wall-clock time so a new replay that starts without passing
+                        // through the Play→Edit reset never inherits a stale bank.
+                        _replayPacer.Reset();
                         // DW-431: a viewer who cycled to a single-player perspective must not be left with that
                         // player's fog-of-war baked onto the frozen final frame until F5 / return-to-Edit — reset
                         // the perspective and restore the reveal-all end-of-replay view (the session default the
@@ -3070,6 +3109,7 @@ namespace ProjectChimera.Core
             // reset now goes through the pure state machine — same -1/reveal-all value as before).
             _ctx.ReplayControls?.SetActive(false);
             _replayPaused = false; _replaySpeed = 1; _replaySeekTo = -1; _replayView.EndSession();
+            _replayPacer.Reset(); // DW-932 — same rule as _onlinePacer above: no stale bank across sessions
 
             // Reset spectator fog reveal + the Story 7.12 per-player defeat banner.
             if (_ctx.FogBridge != null) _ctx.FogBridge.RevealAll = false;

@@ -148,6 +148,30 @@ namespace ProjectChimera.UI
             };
             DisplayServer.WindowSetMode(mode);
 
+            // ── DW-930 (DW-924 clue 3) readback tripwire ──
+            // Godot 4.6.3/Windows engine bug: a window CREATED fullscreen (project.godot window/size/mode=3)
+            // converts any later Windowed request into ExclusiveFullscreen — permanently; no in-process call
+            // escapes it. The boot default is therefore Windowed (window/size/mode=0) and settings drive the
+            // mode from there, where every transition works. This readback is the tripwire: if a future change
+            // reintroduces a fullscreen boot (export preset, editor write-back), every log names the regression.
+            DisplayServer.WindowMode reported = DisplayServer.WindowGetMode();
+            if (reported != mode)
+            {
+                GD.PrintErr($"[Settings] window mode requested {mode} but engine reports {reported}");
+
+                // One deferred retry — harmless, and can help platforms where the first set lands late.
+                // Do NOT rely on it: on the 4.6.3 Windows fullscreen-boot bug no retry ever escapes.
+                DisplayServer.WindowMode wanted = mode;
+                Callable.From(() =>
+                {
+                    DisplayServer.WindowSetMode(wanted);
+                    DisplayServer.WindowMode after = DisplayServer.WindowGetMode();
+                    if (after != wanted)
+                        GD.PrintErr(
+                            $"[Settings] deferred window-mode retry failed: requested {wanted}, engine reports {after}");
+                }).CallDeferred();
+            }
+
             // ── Resolution — only meaningful in true Windowed mode. Borderless (WindowMode.Fullscreen) and exclusive
             //    fullscreen own their own sizing, so a WindowSetSize there fights the mode. Clamp to the current
             //    screen so a settings.json carrying a larger resolution than the display (e.g. 4K persisted, opened on
