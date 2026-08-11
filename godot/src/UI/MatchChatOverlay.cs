@@ -167,11 +167,15 @@ namespace ProjectChimera.UI
             if (string.IsNullOrEmpty(msg)) return;
             if (_lockstep == null) return;
 
-            // Optimistically echo own message (we won't receive our own packet back
-            // in P2P mode — dedicated server broadcasts back to sender too, but
-            // showing it immediately feels better). Same formatter as the receive path,
-            // so the local echo can never disagree with how a peer renders us.
-            AddMessage(MatchChatFormat.ChatLine(_localFaction, msg));
+            // DW-935 (the DW-419 class, match-chat half): optimistic local echo ONLY on the P2P path. There no
+            // peer sends our line back, so the echo is the only way we see it; on the dedicated path the server
+            // rebroadcasts chat to EVERY peer including the sender (ServerPacketRelay.RestampChat →
+            // BroadcastReliable), so echoing here rendered the sender's own line TWICE (2026-08-11 field
+            // report) — exactly the lobby-chat bug DW-419 fixed, unfixed in this overlay. ServerDictatedDelay
+            // is the live "a dedicated server is relaying" signal (set for dedicated players AND spectators).
+            // Same formatter as the receive path, so the P2P echo can never disagree with how a peer renders us.
+            if (!_lockstep.ServerDictatedDelay)
+                AddMessage(MatchChatFormat.ChatLine(_localFaction, msg));
 
             _lockstep.SendChat(msg);
 
