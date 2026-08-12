@@ -290,7 +290,7 @@ development_status:
   #   To resume: Alec present, either interactively as one story or split 15-1a (Godot-free core,
   #   Tier-1 + new loopback harness) / 15-1b (in-engine wiring + "Rejoining..." UX). Flip back to
   #   `backlog` ONLY for the 15-1a half; the whole story cannot reach `done` unattended.
-  15-1-mp-reconnect-v1-command-log-rejoin-fast-forward-catch-up-fr-79-dw-2: blocked
+  15-1-mp-reconnect-v1-command-log-rejoin-fast-forward-catch-up-fr-79-dw-2: in-progress
   15-2-map-size-determinism-unification-raw-heightmap-read-dw-160-dw-146-dw-162: done
   15-3-status-effects-become-real-modifier-period-honesty: done
   # RETIRED 2026-08-06: 15-4, 15-5, 15-6, 15-7, 15-8, 15-9 (thematic sweep containers) — see the
@@ -346,7 +346,7 @@ development_status:
   #       enforcement, human-present on the two-machine rig) — versus deferring the whole story like 15.1.
   #       Flip back to `backlog` ONLY for a 15-14a half. The full rail cannot reach `done` unattended.
   #   DW-200 stays `open` with a 2026-08-07 `seen-again` note recording this finding.
-  15-14-host-side-hero-identity-enforcement-attested-deployment-dw-200: blocked
+  15-14-host-side-hero-identity-enforcement-attested-deployment-dw-200: backlog
   15-15-mp-surfaces-godot-free-mp-test-extraction: done
   # 15-21 added 2026-08-03 from the DW-265 decision. NOT burn-down: no DW ids, no bundles (like 15-1 and 15-10).
   #   DW-265 asked "should energy regenerate?"; Alec answered "yes, with an Intelligence mechanic driving it" —
@@ -404,6 +404,7 @@ development_status:
   #   "no consumer" claim was false and is corrected everywhere it landed.)
   15-22-phase-c-batched-golden-re-baseline: done
   15-23-generation-validated-entity-references-dw-775: done
+  15-24-attribute-system-2-expanded-vocab-rolls-veterancy-editor: backlog
   epic-15-retrospective: optional
 
 action_items:
