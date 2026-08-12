@@ -34,7 +34,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         public void AlgoVersion_IsPinned() => Assert.Equal(16, CanonicalModelHash.AlgoVersion);
 
         [Fact]
-        public void SimChecksumAlgoVersion_IsPinned() => Assert.Equal(24, ProjectChimera.Core.SimChecksum.AlgoVersion);
+        public void SimChecksumAlgoVersion_IsPinned() => Assert.Equal(25, ProjectChimera.Core.SimChecksum.AlgoVersion);
 
         [Fact]
         public void PresentButton_MovesHashVsNoUi()

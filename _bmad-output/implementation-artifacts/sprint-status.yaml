@@ -403,7 +403,7 @@ development_status:
   #   and hard-rejects a mismatch, so every bump invalidates older saves - the spec's original
   #   "no consumer" claim was false and is corrected everywhere it landed.)
   15-22-phase-c-batched-golden-re-baseline: done
-  15-23-generation-validated-entity-references-dw-775: backlog
+  15-23-generation-validated-entity-references-dw-775: done
   epic-15-retrospective: optional
 
 action_items:

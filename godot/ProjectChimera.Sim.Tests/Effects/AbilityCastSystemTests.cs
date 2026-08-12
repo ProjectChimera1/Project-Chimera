@@ -82,6 +82,37 @@ namespace ProjectChimera.Sim.Tests.Effects
         }
 
         [Fact]
+        public void TargetUnitCast_TargetRecycledBeforeConsumption_RefusesAtomically()
+        {
+            // Story 15-23 (DW-775): a TargetUnit cast's PendingCastTarget is a PACKED entity ref (packed at issue),
+            // resolved by TryResolveRef inside the tick. The dead-target test above covers plain death; this is the
+            // ABA half — the target's slot RECYCLES into a NEW unit inside the lockstep delay window, so an
+            // IsAlive-only guard would pass and the fireball would land on the slot's new occupant. The generation
+            // mismatch must refuse the cast atomically instead.
+            var h = new CastHarness(AbilityTestAbilities.FireballSingle());
+            int caster = h.Caster("fireball", energy: 50, pos: V(0, 0, 0));
+            int target = h.World.Create(V(3, 0, 0), Faction.Player2, Fixed.FromInt(200), Fixed.FromInt(3));
+
+            // Arm the intent through the real order path with the PACKED payload — but do NOT tick yet.
+            OrderApplier.Apply(h.World,
+                new UnitOrder(caster, UnitCommand.CastAbility, Fixed.FromRaw(0), Fixed.FromRaw(h.World.PackRef(target))),
+                Faction.Player1);
+            Assert.Equal((byte)0, h.World.PendingCastSlot[caster]); // the cast intent IS queued (slot 0)
+
+            // The target dies and its slot recycles before this tick consumes the cast (LIFO free list → same id).
+            h.World.Destroy(target);
+            int occupant = h.World.Create(V(3, 0, 0), Faction.Player2, Fixed.FromInt(200), Fixed.FromInt(3));
+            Assert.Equal(target, occupant); // same slot, generation bumped — a bare-id + IsAlive check would pass
+
+            h.Cast.Tick(h.World, SimulationLoop.FixedDt);
+
+            Assert.Equal(Fixed.FromInt(200).Raw, h.World.Health[occupant].Raw); // the NEW occupant was never fireballed
+            Assert.Equal(Fixed.FromInt(50).Raw,  h.World.Energy[caster].Raw);   // energy NOT debited (atomic refuse)
+            Assert.Equal(0, h.Cooldown(caster));                                // cooldown NOT started
+            Assert.Equal(EntityWorld.NO_PENDING_CAST, h.World.PendingCastSlot[caster]); // intent still consumed (one-shot)
+        }
+
+        [Fact]
         public void TargetUnitCast_WithNoTarget_RefusesAtomically()
         {
             // A TargetUnit cast carrying target -1 (no unit chosen) is unfulfillable → atomic no-op, not a self-cast.

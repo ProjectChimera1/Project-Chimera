@@ -38,7 +38,7 @@ namespace ProjectChimera.Core
         UseItem    = 16, // Use the consumable in an inventory slot. WIRE: UnitId = hero entity, TargetX = inventory slot index (raw int). Handled by OrderApplier **AFTER** the IsAlive/FactionOf entity-ownership guard — UnitId names the HERO ENTITY, NOT a building, so it is deliberately NOT the Train/Revive pre-guard pattern: dispatching before the guard would let a player force an ENEMY hero to use items (the 3.15 anti-cheat fix; pinned by ItemSystemTests' foreign-faction rejection tests). It then delegates to ItemSystem.UseItemCommand. NEVER persists as a CommandState.
         DropItem   = 17, // Drop the item in an inventory slot back onto the ground. WIRE: UnitId = hero entity, TargetX = inventory slot index (raw int). Handled by OrderApplier **AFTER** the IsAlive/FactionOf entity-ownership guard, for the same anti-cheat reason as UseItem (never the building-command pre-guard pattern), then delegates to ItemSystem.DropItemCommand. NEVER persists as a CommandState.
         // ── Story 3.16 (item authoring, shop buildings, inventory UI): appended AFTER DropItem. Values 0-17 stay FROZEN for replay back-compat. Enum stays <= 0x3F. ──
-        BuyItem    = 18, // Buy a stocked item at a SHOP building (UnitId = shop buildingId, like Train/Revive). WIRE: TargetX = stock index (raw int), TargetZ = buying hero entity id (raw int). Handled by OrderApplier BEFORE the entity-ownership guard (UnitId names a building); the building-ownership + sells_items capability + stock/proximity/free-slot/affordability guards and the atomic spend + mint live in BuildingSystem.BuyItemCommand at exec-tick. NEVER persists as a CommandState. `buildings`/`items` null ⇒ deterministic no-op.
+        BuyItem    = 18, // Buy a stocked item at a SHOP building (UnitId = shop buildingId, like Train/Revive). WIRE: TargetX = stock index (raw int), TargetZ = buying hero's PACKED entity ref (Story 15-23 — packed at issue; a hero slot recycled in the delay window denies instead of redirecting). Handled by OrderApplier BEFORE the entity-ownership guard (UnitId names a building); the building-ownership + sells_items capability + stock/proximity/free-slot/affordability guards and the atomic spend + mint live in BuildingSystem.BuyItemCommand at exec-tick. NEVER persists as a CommandState. `buildings`/`items` null ⇒ deterministic no-op.
         // ── Story 4.9 (research order path): appended AFTER BuyItem. Values 0-18 stay FROZEN for replay back-compat. Enum stays <= 0x3F. ──
         StartResearch = 19, // Start a research order at a producing BUILDING (UnitId = buildingId, like Train/Revive/BuyItem). WIRE: TargetX = the chosen research's index into FactionDefinition.Research (mirrors Train's chosenUnitIndex semantics — a global list index, not building-local). Handled by OrderApplier BEFORE the entity-ownership guard; the building-ownership + AvailableResearch/in-progress/max-level/prerequisite/affordability guards and the deterministic exec-tick spend live in ResearchSystem.StartResearchCommand. NEVER persists as a CommandState.
         CancelResearch = 20, // Cancel the issuing faction's in-progress research order (UnitId = any owned building, like Train/Revive/BuyItem — research state is faction-wide, not building-scoped). TargetX is unused/reserved. Handled by OrderApplier BEFORE the entity-ownership guard; the building-ownership guard + refund + state clear live in ResearchSystem.CancelResearchCommand. NEVER persists as a CommandState.
@@ -311,7 +311,15 @@ namespace ProjectChimera.Core
         public readonly Fixed[] EffectiveMaxHealth;
         public readonly Faction[] FactionOf;
         public readonly FixedVec3[] MoveTarget;   // Where entity is heading
-        public readonly int[] AttackTarget;        // Entity ID of attack target (-1 = none)
+        /// <summary>
+        /// The live combat target as a PACKED entity ref (<see cref="PackRef"/>; -1 = none). Story 15-23 (DW-775):
+        /// this is a cross-tick holder (the retained auto-acquired target), so it stores generation-stamped refs and
+        /// <c>CombatSystem.ValidateOrClearTarget</c> resolves it via <see cref="TryResolveRef"/> each tick — a slot
+        /// recycled into ANY new occupant (friendly, allied, or another hostile) is dropped, never inherited.
+        /// Golden-neutral at generation 0 (<c>PackRef(id) == id</c>). NOT folded (the pre-15-23 posture: divergence
+        /// surfaces transitively via Health/Position); persisted as packed (EA.AttackTarget).
+        /// </summary>
+        public readonly int[] AttackTarget;
         public readonly Fixed[] AttackCooldown;    // Time until next attack
         public readonly Fixed[] AttackRange;
         /// <summary>Authored base attack damage — immutable in-tick; source for the effective recompute. The ONE modifier-affected stat sourced from <see cref="ProjectChimera.Core.Definitions.UnitDefinition"/> via <see cref="ApplyUnitDefinition"/> (Story 2.2a / AR-9).</summary>
@@ -618,11 +626,17 @@ namespace ProjectChimera.Core
 
         // --- Persistent command targets / patrol route (Story 1.12, DG-1 / FR-53) ---
         /// <summary>
-        /// PERSISTENT, player-issued target this unit's command references: the enemy id for AttackTarget,
-        /// the friendly id for Follow (-1 = none). Distinct from <see cref="AttackTarget"/>, which is the
-        /// TRANSIENT live combat target recomputed each tick by the spatial hash. One array serves both
-        /// command states because a unit is in exactly one CommandState at a time, so the two uses never
-        /// overlap. Folded into <see cref="SimChecksum"/> (v4).
+        /// PERSISTENT, player-issued target this unit's command references: the enemy ref for AttackTarget,
+        /// the friendly ref for Follow (-1 = none). Distinct from <see cref="AttackTarget"/>, which is the
+        /// live combat target recomputed each tick by the spatial hash. One array serves several command
+        /// states because a unit is in exactly one CommandState at a time, so the uses never overlap.
+        /// <para>Story 15-23 (DW-775): ALL id-shaped payloads here are PACKED refs in their own id space —
+        /// entity refs (<see cref="PackRef"/>) for AttackTarget/Follow, packed BuildingStore refs for
+        /// AttackBuilding (Story 2.13 D-3), packed ItemStore refs for PickupItem (Story 3.15) — packed at
+        /// ISSUE time (SelectionSystem / AI / DSL), blind-stored by OrderApplier, and resolved by the per-tick
+        /// consumer (<c>TryResolveRef</c>), so a recycled slot reverts the order instead of retargeting the
+        /// new occupant. Golden-neutral at generation 0. Folded into <see cref="SimChecksum"/> (v4; packed
+        /// values since v25).</para>
         /// </summary>
         public readonly int[] CommandTarget;
 
@@ -1034,6 +1048,16 @@ namespace ProjectChimera.Core
             {
                 id = _freeList[--_freeCount];
                 Generation[id]++; // DW-184: bump so stale packed refs to the prior occupant fail TryResolveRef
+                // Story 15-23 review: fail LOUDLY at the same bound the save-load gate enforces (SaveGameState
+                // rejects a Generation lane above MAX_PACKABLE_GENERATION). Past this bound PackRef shifts into
+                // the sign bit and every FRESH ref to this slot's live occupant silently stops resolving —
+                // targeting would quietly degrade hours before persistence ever noticed. Unreachable in real play
+                // (~524k recycles of ONE slot ≈ 4.85 h of single-slot churn at 30 tps), but a creator DSL trigger
+                // loop can author it, and a deterministic same-tick throw on every peer beats silent decay.
+                if (Generation[id] > MAX_PACKABLE_GENERATION)
+                    throw new InvalidOperationException(
+                        $"Entity slot {id} recycled past MAX_PACKABLE_GENERATION ({MAX_PACKABLE_GENERATION}) — " +
+                        "packed refs to it would stop resolving (see EntityWorld.PackRef).");
             }
             else if (_nextId < MAX_ENTITIES)
             {
@@ -1617,6 +1641,29 @@ namespace ProjectChimera.Core
         {
             id = packed & REF_SLOT_MASK; // low 12 bits — always ≥ 0
             return IsAlive(id) && Generation[id] == (packed >> REF_SLOT_BITS);
+        }
+
+        /// <summary>
+        /// Story 15-23 (DW-775) — <see cref="PackRef"/> that passes the <c>-1</c> "no target" sentinel through
+        /// unchanged, for the holder-write sites where the id may legitimately be absent
+        /// (<c>AttackTarget[i] = PackRefOrNone(target)</c>). Never call with a positive id that is out of range.
+        /// </summary>
+        public int PackRefOrNone(int id) => id < 0 ? -1 : PackRef(id);
+
+        /// <summary>
+        /// Story 15-23 (DW-775) — the ATTRIBUTION resolve: like <see cref="TryResolveRef"/> but WITHOUT the
+        /// liveness term. Returns true iff the slot is in bounds, was ever allocated, and the generation still
+        /// matches — i.e. the reference still denotes the SAME entity, alive or corpse. Kill credit and caster
+        /// identity must survive the death of the attacker (a unit that lands a killing blow and dies the same
+        /// tick still owns the kill — `event.killer` relies on it), but must NEVER transfer to a recycled slot's
+        /// new occupant. Targeting paths keep the strict <see cref="TryResolveRef"/>; payload/attribution paths
+        /// (projectile SourceId, modifier caster, the DW-548 carry rail's killer) use this and degrade to -1 on a
+        /// generation mismatch.
+        /// </summary>
+        public bool TryResolveRefIncludingDead(int packed, out int id)
+        {
+            id = packed & REF_SLOT_MASK;
+            return packed >= 0 && id < _nextId && Generation[id] == (packed >> REF_SLOT_BITS);
         }
 
         /// <summary>

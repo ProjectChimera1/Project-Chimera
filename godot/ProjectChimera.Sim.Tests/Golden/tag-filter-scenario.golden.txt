@@ -1,6 +1,6 @@
 # Project Chimera — tag-filter golden-checksum baseline (Story 2.11, AC6.2) — CROSS-PLATFORM SAFE (integer/Fixed only).
 # Format: "<tick> <hashHex8>" per line — tick decimal, hash 8 uppercase hex digits (no 0x).
-# checksum_algo_version: 24
+# checksum_algo_version: 25
 # Pins the SimChecksum (v8) sequence for TagFilterScenario.Build() (one stationary P1 caster casts a Self tag_counter ability = Sequence[ SearchArea(Neutral, require_tag:Mechanical)->Damage, SearchArea(Neutral, require_tag:Organic)->Heal, SearchArea(Neutral)->Damage(require_tag:Mechanical leaf gate) ] via a CastAbility UnitOrder every 40 ticks, over a Mechanical/Organic/untagged Neutral set; Player2 empty so the AI no-ops) stepped via StepOnce at ChecksumInterval=1. First golden exercising the Story-2.11 tag axis — the Mechanical unit's HP drops each cast, the pre-damaged Organic unit's HP rises, the untagged unit is untouched. All hashed fields integer/Fixed → byte-identical Win↔Linux; NOT Windows-gated, compared on both CI legs.
 # Samples: 300 (one line per sim tick).
 # Re-baseline (intentional behavior change only): set CHIMERA_GOLDEN_RECORD=1, run `dotnet test --filter FullyQualifiedName~TagFilterGolden`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit.

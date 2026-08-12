@@ -1,6 +1,6 @@
 # Project Chimera — ground-cast golden-checksum baseline (Story 15.11, DW-280) — CROSS-PLATFORM SAFE (integer/Fixed only).
 # Format: "<tick> <hashHex8>" per line — tick decimal, hash 8 uppercase hex digits (no 0x).
-# checksum_algo_version: 24
+# checksum_algo_version: 25
 # Pins the SimChecksum sequence for GroundCastScenario.Build() (one far-away P1 caster casts a GroundPoint ground_nuke [SearchArea(Neutral) → Damage] at a 3-dummy Neutral cluster via a CastAbility UnitOrder carrying the two Fixed ground coords at tick 1; Player2 empty so the AI no-ops) stepped via StepOnce at ChecksumInterval=1. First golden with a LIVE ground-target cast — exercises the ground-point wire→PendingCast plumbing, the SearchArea centred on the ground point, and the ability-cooldown tick-down. All hashed fields integer/Fixed → byte-identical Win↔Linux; NOT Windows-gated, compared on both CI legs.
 # Samples: 300 (one line per sim tick).
 # Re-baseline (intentional behavior change only): set CHIMERA_GOLDEN_RECORD=1, run `dotnet test --filter FullyQualifiedName~GroundCastGolden`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit.

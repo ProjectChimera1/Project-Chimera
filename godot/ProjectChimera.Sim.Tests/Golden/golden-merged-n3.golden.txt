@@ -1,6 +1,6 @@
 # Project Chimera — server-authoritative merged-tick N=3 golden (Story 9.7).
 # Format: "<tick> <hashHex8>" per line — tick decimal, hash 8 uppercase hex digits (no 0x).
-# checksum_algo_version: 24
+# checksum_algo_version: 25
 # Pins the SimChecksum sequence for a fixed 3-faction world driven by a deterministic per-tick N-faction UnitOrder stream (movable units + an order-SENSITIVE bump-event fold g=g*3+v) through the REAL MergedTickBuilder + MergedTickApplier (the full N-way wire merge round-trip).
 # Samples: 300 (one line per sim tick).
 # Re-baseline (intentional behavior change only): set CHIMERA_GOLDEN_RECORD=1, run `dotnet test --filter FullyQualifiedName~MergedTickN3`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit. NEVER record the existing goldens.

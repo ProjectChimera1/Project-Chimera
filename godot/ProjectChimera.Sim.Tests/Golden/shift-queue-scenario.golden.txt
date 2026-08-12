@@ -1,6 +1,6 @@
 # Project Chimera — shift-queue golden-checksum baseline (Story 2.12, AC2.4 / AC3.5) — CROSS-PLATFORM SAFE (integer/Fixed only).
 # Format: "<tick> <hashHex8>" per line — tick decimal, hash 8 uppercase hex digits (no 0x).
-# checksum_algo_version: 24
+# checksum_algo_version: 25
 # Pins the SimChecksum (v9) sequence for ShiftQueueScenario.Build() (one stationary P1 unit given a Shift-queued 3-waypoint Move chain drained by OrderQueueSystem, plus a P1 Barracks issued SetRally + Train so a grunt spawns and walks to rally; Player2 empty so the AI no-ops) stepped via StepOnce at ChecksumInterval=1. First golden exercising the v9 per-entity order-queue fold + the per-building rally fold (D-1). All hashed fields integer/Fixed → byte-identical Win<->Linux; NOT Windows-gated, compared on both CI legs. Doubles as the AC3.5 loopback proof.
 # Samples: 300 (one line per sim tick).
 # Re-baseline (intentional behavior change only): set CHIMERA_GOLDEN_RECORD=1, run `dotnet test --filter FullyQualifiedName~ShiftQueueGolden`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit.

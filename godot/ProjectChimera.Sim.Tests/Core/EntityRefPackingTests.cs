@@ -54,6 +54,38 @@ namespace ProjectChimera.Sim.Tests.Core
             Assert.False(w.TryResolveRef(packed, out _));        // dead ⇒ the ref no longer resolves
         }
 
+        // ── Story 15-23 (DW-775): the sentinel-safe pack + the ATTRIBUTION resolve ──────────────────────────────
+
+        [Fact]
+        public void PackRefOrNone_PassesTheNoneSentinelThrough_AndPacksLiveIds()
+        {
+            var w = new EntityWorld();
+            int id = Spawn(w, Faction.Player1);
+            Assert.Equal(-1, w.PackRefOrNone(-1));           // "no target" survives the pack unchanged
+            Assert.Equal(w.PackRef(id), w.PackRefOrNone(id));
+        }
+
+        [Fact]
+        public void TryResolveRefIncludingDead_Corpse_ResolvesButRecycled_DoesNot()
+        {
+            // The attribution rule: kill credit / caster identity survives the holder's DEATH (a unit that lands
+            // a killing blow and dies the same tick still owns the kill) but never survives a RECYCLE (the slot's
+            // new occupant must not inherit it).
+            var w = new EntityWorld();
+            int id = Spawn(w, Faction.Player1);
+            int packed = w.PackRef(id);
+
+            w.Destroy(id); // corpse — freed but not recycled
+            Assert.False(w.TryResolveRef(packed, out _));                     // targeting: gone
+            Assert.True(w.TryResolveRefIncludingDead(packed, out int corpse)); // attribution: still HIM
+            Assert.Equal(id, corpse);
+
+            int reborn = Spawn(w, Faction.Player2);                            // the slot recycles
+            Assert.Equal(id, reborn);
+            Assert.False(w.TryResolveRefIncludingDead(packed, out _));        // attribution: degraded, never the occupant
+            Assert.False(w.TryResolveRefIncludingDead(-1, out _));            // the sentinel resolves false
+        }
+
         [Fact]
         public void PackRef_AfterSameFactionRecycle_StaleRefFailsResolve_CurrentRefResolves()
         {

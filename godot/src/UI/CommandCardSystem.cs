@@ -977,15 +977,18 @@ namespace ProjectChimera.UI
         /// entity <paramref name="heroEntity"/> (Story 3.16). Mirrors <see cref="IssueReviveCommand"/>: online ENQUEUED
         /// (spend + mint happen once at exec-tick); offline applied via the SAME OrderApplier the replay/online paths use,
         /// passing BOTH <c>buildings</c> and <c>items</c> so the offline mint fires. WIRE: TargetX = stock index (raw int),
-        /// TargetZ = buying hero entity id (raw int). Only the LOCAL player's own shop (the local faction).</summary>
+        /// TargetZ = buying hero's PACKED entity ref (Story 15-23 — the AttackTarget/Follow/CastAbility issue
+        /// convention: a hero slot recycled inside the delay window denies at exec instead of buying into the wrong
+        /// hero's inventory). Only the LOCAL player's own shop (the local faction).</summary>
         private void IssueBuyCommand(int bId, int stockIndex, int heroEntity)
         {
             if (bId < 0 || bId >= _buildings.Count) return;
             if (!_buildings.Alive[bId] || _buildings.FactionOf[bId] != _localFaction()) return;
+            int packedHero = _world.PackRefOrNone(heroEntity); // Story 15-23: pack at issue
             bool applyNow = _lockstep?.EnqueueOrder(bId, UnitCommand.BuyItem,
-                                                    Fixed.FromRaw(stockIndex), Fixed.FromRaw(heroEntity)) ?? true;
+                                                    Fixed.FromRaw(stockIndex), Fixed.FromRaw(packedHero)) ?? true;
             if (!applyNow) return; // online: LockstepManager.Flush applies at exec-tick (spend + mint happen THERE, once)
-            var order = new UnitOrder(bId, UnitCommand.BuyItem, Fixed.FromRaw(stockIndex), Fixed.FromRaw(heroEntity));
+            var order = new UnitOrder(bId, UnitCommand.BuyItem, Fixed.FromRaw(stockIndex), Fixed.FromRaw(packedHero));
             OrderApplier.Apply(_world, in order, _localFaction(), buildings: _buildSys, items: _itemSys, events: _combatEvents); // Story 11.4: offline denial cue
         }
 

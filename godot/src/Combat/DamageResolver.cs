@@ -96,8 +96,13 @@ namespace ProjectChimera.Combat
             // Story 7.13 — raise unit_damaged at the single damage-application site (victim / attacker / amount),
             // deterministically into the trigger DSL sim-event feed (fires even if this hit is lethal — the death
             // sequence below then also raises unit_dies). Null feed (bare combat tests) → no-op.
+            // Story 15-23: the attacker rides PACKED (the KillerOf posture) — HeroXpSystem's revival respawn
+            // (system index 11) can Create between this push (index 9/10) and the director's drain (index 17), so a
+            // dead attacker's slot CAN recycle within the tick; the drain resolves it (dead keeps credit, recycled
+            // degrades to -1). The victim (p0) stays raw: it is the occurrence's identity payload, the unit_dies
+            // victim posture.
             ctx.DslSimEvents?.Push(DslSimEventFeed.KindUnitDamaged,
-                (int)world.FactionOf[t] - 1, t, ctx.AttackerId, damage.ToInt());
+                (int)world.FactionOf[t] - 1, t, world.PackRefOrNone(ctx.AttackerId), damage.ToInt());
             if (world.Health[t] <= Fixed.Zero)
             {
                 KillEntity(world, t, ctx.Killer, ctx.Events, ctx.Stats, ctx.Deaths, ctx.AttackerId);
@@ -142,18 +147,23 @@ namespace ProjectChimera.Combat
             // Unreachable from Apply (its own DW-266 guard returns first). Every recorded golden leaves StatusFlagsOf
             // at None, so this branch is never entered there and no checksum moves.
             if ((world.StatusFlagsOf[id] & StatusFlags.Invulnerable) != 0) return;
-            // Story 7.5: the SINGLE write point for the killer-attribution SoA — the attacker entity id (−1 =
-            // unknown) plus the killer faction SNAPSHOTTED as a slot (Neutral → −1; Player1 → 0), written BEFORE
-            // Destroy recycles the slot so ScenarioDirector's death diff can read the unit_dies payload this tick.
+            // Story 7.5: the SINGLE write point for the killer-attribution SoA — the attacker ref (−1 = unknown)
+            // plus the killer faction SNAPSHOTTED as a slot (Neutral → −1; Player1 → 0), written BEFORE Destroy
+            // recycles the slot so ScenarioDirector's death diff can read the unit_dies payload this tick.
+            // Story 15-23 (DW-775): stored PACKED (PackRefOrNone), because the payload is read up to one tick
+            // LATER (the DW-548 carry rail) and a train-spawn can recycle the killer's slot even within this tick —
+            // the event build resolves it with the attribution rule (dead attacker keeps credit; a recycled slot
+            // degrades to −1 rather than crediting the new occupant). Golden-neutral at generation 0.
             // Derived attribution state, NOT folded into SimChecksum (the _prevFlags basis).
-            world.KillerOf[id]        = attackerId;
+            world.KillerOf[id]        = world.PackRefOrNone(attackerId);
             world.KillerFactionOf[id] = (int)killer - 1; // Neutral (0) → −1; player factions → slot
-            // DW-367: record this death in the world's per-tick death LOG (victim id, victim faction slot, killer id,
-            // killer faction slot — snapshotted BEFORE Destroy recycles the slot). ScenarioDirector's unit_dies
-            // source drains the log so a same-tick die→recycle→die on one slot surfaces BOTH kills with their own
-            // attribution — the per-slot SoA above can only ever carry the last one. On capacity overflow the record
-            // deterministically drops and the director's flags-diff fallback covers the slot exactly as before.
-            world.DeathLog.Push(id, (int)world.FactionOf[id] - 1, attackerId, (int)killer - 1);
+            // DW-367: record this death in the world's per-tick death LOG (victim id, victim faction slot, killer
+            // ref (packed — the KillerOf posture above), killer faction slot — snapshotted BEFORE Destroy recycles
+            // the slot). ScenarioDirector's unit_dies source drains the log so a same-tick die→recycle→die on one
+            // slot surfaces BOTH kills with their own attribution — the per-slot SoA above can only ever carry the
+            // last one. On capacity overflow the record deterministically drops and the director's flags-diff
+            // fallback covers the slot exactly as before.
+            world.DeathLog.Push(id, (int)world.FactionOf[id] - 1, world.PackRefOrNone(attackerId), (int)killer - 1);
             events?.Push(CombatEventType.UnitKilled, world.Position[id], world.FactionOf[id], world.FeedbackProfile[id]); // Story 11.4: stamp the victim faction
             stats?.RecordKill(world.FactionOf[id], killer);
             // Story 3.13: record the death for the XP runtime BEFORE Destroy recycles the slot (the corpse's

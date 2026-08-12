@@ -1641,8 +1641,10 @@ namespace ProjectChimera.Core
 
                     for (int k = cursor; k < end; k++)
                     {
-                        int ent = _loopState.RowId(row, k);
-                        if (!world.IsAlive(ent)) continue; // killed since snapshot → skipped at drain time
+                        // Story 15-23 (DW-775): rows hold PACKED refs — killed OR recycled since snapshot is
+                        // skipped at drain time (before 15-23 the IsAlive-only guard let a recycled slot's NEW
+                        // occupant run a trigger body meant for the dead unit).
+                        if (!world.TryResolveRef(_loopState.RowId(row, k), out int ent)) continue;
                         ExecuteItems(batched.Body, world, ent);
                     }
                     _loopState.SetCursor(row, end);
@@ -1696,6 +1698,15 @@ namespace ProjectChimera.Core
             Array.Copy(_baseEvents, grown, _baseEventCount);
             _baseEvents = grown;
         }
+
+        /// <summary>
+        /// Story 15-23 (DW-775) — unpack a PACKED killer ref (KillerOf / DeathLog.KillerAt / the carry rail)
+        /// into the <c>event.killer</c> payload: the original slot id while the generation still matches (alive
+        /// OR corpse — a dead killer keeps its credit), −1 once the slot has been recycled (never the new
+        /// occupant). Pure and deterministic (reads only Generation, itself deterministic).
+        /// </summary>
+        private static int ResolveKillerPayload(EntityWorld world, int packedKiller)
+            => world.TryResolveRefIncludingDead(packedKiller, out int killerId) ? killerId : -1;
 
         /// <summary>DW-548 — hand one post-collect (trigger-phase) death record to the deferred rail so the NEXT
         /// tick's collect emits it. Grows on demand for the DW-674 no-silent-drop reason.</summary>
@@ -1831,21 +1842,26 @@ namespace ProjectChimera.Core
                 {
                     int rec = _deathOrder[deathCursor++];
                     logged = true;
+                    // Story 15-23 (DW-775): killer refs are stored PACKED at KillEntity; resolve here with the
+                    // ATTRIBUTION rule — a killer that DIED since the kill keeps its credit (event.killer still
+                    // names it), a killer slot RECYCLED since the kill degrades to −1 (unknown) instead of naming
+                    // the slot's new occupant. The victim id (p0) is the corpse's identity payload by contract —
+                    // it is emitted as-is (it names WHO died; there is nothing to resolve).
                     if (rec < carryCount)
                         AddBaseEvent("unit_dies", _carryVictimSlot[rec], 0, null,
-                            p0: i, p1: _carryKiller[rec], p2: _carryKillerSlot[rec]);
+                            p0: i, p1: ResolveKillerPayload(world, _carryKiller[rec]), p2: _carryKillerSlot[rec]);
                     else
                     {
                         int lr = rec - carryCount;
                         AddBaseEvent("unit_dies", deathLog.VictimSlotAt(lr), 0, null,
-                            p0: i, p1: deathLog.KillerAt(lr), p2: deathLog.KillerSlotAt(lr));
+                            p0: i, p1: ResolveKillerPayload(world, deathLog.KillerAt(lr)), p2: deathLog.KillerSlotAt(lr));
                     }
                 }
                 if (!logged && wasAlive && !world.IsAlive(i))
                 {
                     int slot = (int)world.FactionOf[i] - 1; // Player1=1 → slot 0
                     AddBaseEvent("unit_dies", slot, 0, null,
-                        p0: i, p1: world.KillerOf[i], p2: world.KillerFactionOf[i]);
+                        p0: i, p1: ResolveKillerPayload(world, world.KillerOf[i]), p2: world.KillerFactionOf[i]);
                 }
             }
             // DW-548 — the deferred rail is CONSUMED by this collect (it can never ghost into a later tick), and the
@@ -1915,8 +1931,13 @@ namespace ProjectChimera.Core
                 int code = _simEventFeed.KindAt(i);
                 string kindName = (uint)code < (uint)SimEventKindNames.Length ? SimEventKindNames[code] : "";
                 if (kindName.Length == 0) continue; // defensive (unknown code)
+                int p1 = _simEventFeed.P1At(i);
+                // Story 15-23: unit_damaged's attacker (p1) is pushed PACKED (DamageResolver) because a revival
+                // respawn (system 11) can recycle a dead attacker's slot between the push (9/10) and this drain —
+                // resolve with the same attribution rule as unit_dies' killer (dead keeps credit, recycled → -1).
+                if (code == DslSimEventFeed.KindUnitDamaged) p1 = ResolveKillerPayload(world, p1);
                 AddBaseEvent(kindName, _simEventFeed.SlotAt(i), 0, null,
-                    p0: _simEventFeed.P0At(i), p1: _simEventFeed.P1At(i), p2: _simEventFeed.P2At(i));
+                    p0: _simEventFeed.P0At(i), p1: p1, p2: _simEventFeed.P2At(i));
             }
             _simEventFeed.Clear();
 
@@ -2851,7 +2872,10 @@ namespace ProjectChimera.Core
                 if (!world.IsAlive(i)) continue;
                 if (fb.Faction >= 0 && (int)world.FactionOf[i] != fb.Faction + 1) continue;
                 if (useRegion && !_regions.Contains(rIdx, world.Position[i])) continue;
-                if (!_loopState.SnapshotAppend(item.BatchRow, i)) break; // deterministic lowest-id truncation
+                // Story 15-23 (DW-775): snapshot PACKED refs — the row drains across MULTIPLE ticks, and a snapshot
+                // slot recycled between fire and drain must be skipped, not run against the slot's new occupant.
+                // Golden-neutral at generation 0 (PackRef(i) == i, so a recycle-free scenario folds identically).
+                if (!_loopState.SnapshotAppend(item.BatchRow, world.PackRef(i))) break; // deterministic lowest-id truncation
             }
         }
 

@@ -305,8 +305,28 @@ namespace ProjectChimera.Core
         ///        fail-closed — a re-record marker does NOT get a separate save-only world-format version, because
         ///        a save that silently resumes under corrected sim behaviour is worse than one that refuses to
         ///        open. Rationale and the revisit-before-1.0 condition live at SaveGameFile.Read's version gate.
+        ///   v25 — Story 15-23 (DW-775): generation-validated entity references. Like v24 this is NOT a fold
+        ///        set/order change — no array enters or leaves the hashed set — but unlike v24 it is a fold VALUE
+        ///        SEMANTICS change, not a pure re-record marker: three already-folded lanes now carry PACKED
+        ///        generation-stamped entity refs instead of raw ids — CommandTarget's AttackTarget/Follow halves
+        ///        (v4 lane; packed at issue), the order-queue TargetX/TargetZ entity payloads (v9 lanes; packed at
+        ///        issue, stored verbatim from the wire), and DslLoopState._rowIds (v17; packed at snapshot). At
+        ///        generation 0 a packed ref is bit-identical to the raw id (PackRef(id) == id), so a scenario that
+        ///        never holds a ref to a RECYCLED slot folds byte-identically to v24 — only ticks where a held
+        ///        target/queued order/loop row references a generation>0 slot move, plus the deliberate behavior
+        ///        closes: a held AttackTarget / forced target / followed unit / queued order / in-flight shell /
+        ///        modifier caster / batched loop row whose slot recycled is now DROPPED/degraded (never inherited
+        ///        by the new occupant — the DW-444/DW-446 residual, both pinned tests consciously flipped), and
+        ///        kill/caster attribution degrades to -1 on recycle while a dead-but-not-recycled attacker keeps
+        ///        its credit (TryResolveRefIncludingDead). AttackTarget / ProjectileStore.TargetId+SourceId /
+        ///        ModifierStore._casterId / KillerOf also hold packed refs but stay UNFOLDED (their pre-15-23
+        ///        posture — divergence surfaces transitively). EntityWorld.Generation itself stays UNFOLDED
+        ///        (deterministic recycle sequence; the DW-184 posture, pinned by EntityRefPackingTests).
+        ///        The bump also fail-closes every pre-15-23 save (DW-874 keep-one-constant policy: persisted lanes
+        ///        now carry packed values, and PROTOCOL_VERSION 3→4 / ReplayRecorder.VERSION 5→6 reject mixed wire
+        ///        peers and stale replays for the same raw-vs-packed reason).
         /// </summary>
-        public const int AlgoVersion = 24;
+        public const int AlgoVersion = 25;
 
         /// <summary>
         /// Compute a full-state checksum for desync detection.

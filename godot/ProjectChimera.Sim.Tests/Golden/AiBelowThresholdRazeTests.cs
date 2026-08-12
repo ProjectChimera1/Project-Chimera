@@ -155,7 +155,11 @@ namespace ProjectChimera.Sim.Tests.Golden
             resources.FactionBase[(int)Faction.Player1] = new FixedVec3(Fixed.FromInt(10), Fixed.Zero, Fixed.Zero);
 
             host.ScenarioDirector.LoadScenario(new ScenarioData());
-            return new GoldenHarness(host, p2cc);
+            // DW-862: PerturbTargetId is an ENTITY id by contract; this fixture used to hand it `p2cc` — a
+            // BuildingStore SLOT. Nothing in this class reads the field, so pass the explicit "no perturbation
+            // target" sentinel (-1, the win-and-ai-dead-guards convention): a future perturbation test written
+            // against this harness now fails loudly on the sentinel instead of silently perturbing entity 0.
+            return new GoldenHarness(host, -1);
         }
 
         private static int CountFactionBuildings(GoldenHarness h, Faction f)

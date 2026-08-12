@@ -404,8 +404,12 @@ namespace ProjectChimera.Effects
                 hasGroundPoint = true;
                 target         = -1;
             }
-            else if (target < 0 || !world.IsAlive(target))
+            else if (target < 0 || !world.TryResolveRef(target, out target))
             {
+                // Story 15-23 (DW-775): a TargetUnit cast carries a PACKED entity ref (packed at issue), so a target
+                // whose slot was RECYCLED inside the lockstep delay window / while the cast sat Shift-queued refuses
+                // atomically here — never redirecting the cast onto the slot's new occupant. TryResolveRef also
+                // covers plain death (the pre-15-23 IsAlive term). On success `target` is the RESOLVED live id.
                 _events?.PushDenied(world.Position[id], faction, DenialReason.InvalidTarget); // Story 11.4: no valid target
                 return;
             }

@@ -340,12 +340,15 @@ namespace ProjectChimera.UI
             => _lockstep?.EnqueueOrder(unitId, cmd, Fixed.Zero, Fixed.Zero) ?? true;
 
         /// <summary>
-        /// Route a targeted command (AttackTarget/Follow): packs the TARGET ENTITY id into TargetX as a RAW int
-        /// via Fixed.FromRaw — NEVER Fixed.FromFloat, which would round the id through float and corrupt it
+        /// Route a targeted command (AttackTarget/Follow): carries the target ref in TargetX as a RAW int via
+        /// Fixed.FromRaw — NEVER Fixed.FromFloat, which would round the value through float and corrupt it
         /// (and break determinism). Read back at apply time as o.TargetX. Story 1.12.
+        /// <para>Story 15-23: for an ENTITY target the caller passes a PACKED generation-stamped ref
+        /// (<c>_world.PackRef</c>), never a bare id — a raw id would be misread as a gen-0 ref and silently go
+        /// stale-blind at generation &gt; 0. Building/item targets pass their own store's packed ref as before.</para>
         /// </summary>
-        private bool EnqueueTargetedCommand(int unitId, UnitCommand cmd, int targetEntityId)
-            => _lockstep?.EnqueueOrder(unitId, cmd, Fixed.FromRaw(targetEntityId), Fixed.Zero) ?? true;
+        private bool EnqueueTargetedCommand(int unitId, UnitCommand cmd, int targetRef)
+            => _lockstep?.EnqueueOrder(unitId, cmd, Fixed.FromRaw(targetRef), Fixed.Zero) ?? true;
 
         /// <summary>
         /// Issue a Shift-queued (append) order (Story 2.12, AC1.2). Sets the wire's <see cref="UnitOrderFlags.Queued"/>
@@ -953,19 +956,24 @@ namespace ProjectChimera.UI
         /// </summary>
         private void IssueAttackTargetCommand(int enemyId, bool queued = false)
         {
+            // Story 15-23 (DW-775): carry a PACKED, generation-stamped entity ref (the IssueAttackBuildingCommand
+            // pattern) so a slot recycled between issue and consumption — including the lockstep delay window and
+            // however long the order sits Shift-queued — fails TryResolveRef in the tick (clean revert) instead of
+            // ABA-retargeting the new occupant. Golden-neutral at generation 0 (packed == id).
+            int packedEnemy = _world.PackRef(enemyId);
             foreach (int id in _selectedList)
             {
                 if (!_world.IsAlive(id) || id == _pickupHeroExclusion) continue; // Story 3.16: skip a pickup hero
-                // Story 2.12: a Shift-queued attack appends to the ring (the enemy id packs into TargetX as a raw int).
+                // Story 2.12: a Shift-queued attack appends to the ring (the packed ref rides TargetX as a raw int).
                 if (queued)
                 {
-                    IssueQueuedOrder(id, UnitCommand.AttackTarget, Fixed.FromRaw(enemyId), Fixed.Zero);
+                    IssueQueuedOrder(id, UnitCommand.AttackTarget, Fixed.FromRaw(packedEnemy), Fixed.Zero);
                     continue;
                 }
-                if (!EnqueueTargetedCommand(id, UnitCommand.AttackTarget, enemyId)) continue; // online plain: queued
+                if (!EnqueueTargetedCommand(id, UnitCommand.AttackTarget, packedEnemy)) continue; // online plain: queued
                 // Offline plain: apply through the SAME shared OrderApplier the lockstep/replay paths use (Review,
                 // Story 1.12) — never a hand-rolled copy that could silently drift. The applier clears the ring (replace).
-                var atkOrder = new UnitOrder(id, UnitCommand.AttackTarget, Fixed.FromRaw(enemyId), Fixed.Zero);
+                var atkOrder = new UnitOrder(id, UnitCommand.AttackTarget, Fixed.FromRaw(packedEnemy), Fixed.Zero);
                 OrderApplier.Apply(_world, in atkOrder, _world.FactionOf[id]);
             }
             if (_world.IsAlive(enemyId)) ConfirmOrder(_world.Position[enemyId].ToGodotVector3(), queued); // Story 11.4: ack + marker at the target
@@ -1035,13 +1043,16 @@ namespace ProjectChimera.UI
         /// </summary>
         private void IssueFollowCommand(int friendlyId)
         {
+            // Story 15-23 (DW-775): packed entity ref, exactly like IssueAttackTargetCommand — a Follow order whose
+            // target slot recycles (even into a NEW same-faction unit) drops to Idle instead of escorting a stranger.
+            int packedFriendly = _world.PackRef(friendlyId);
             foreach (int id in _selectedList)
             {
                 if (!_world.IsAlive(id)) continue;
                 if (id == friendlyId) continue; // a unit cannot follow itself
-                if (!EnqueueTargetedCommand(id, UnitCommand.Follow, friendlyId)) continue; // online: queued
+                if (!EnqueueTargetedCommand(id, UnitCommand.Follow, packedFriendly)) continue; // online: queued
                 // Offline: apply through the shared OrderApplier (Review, Story 1.12) — same path as Patrol.
-                var followOrder = new UnitOrder(id, UnitCommand.Follow, Fixed.FromRaw(friendlyId), Fixed.Zero);
+                var followOrder = new UnitOrder(id, UnitCommand.Follow, Fixed.FromRaw(packedFriendly), Fixed.Zero);
                 OrderApplier.Apply(_world, in followOrder, _world.FactionOf[id]);
             }
             if (_world.IsAlive(friendlyId)) ConfirmOrder(_world.Position[friendlyId].ToGodotVector3()); // Story 11.4: ack + marker at the escorted unit
@@ -1123,12 +1134,16 @@ namespace ProjectChimera.UI
             // the shared ApplyActiveOrder core. A plain (non-Shift) cast is unflagged → clears the ring + casts now.
             var wireCmd = queued ? (UnitCommand)((byte)UnitCommand.CastAbility | UnitOrderFlags.Queued)
                                  : UnitCommand.CastAbility;
-            // Story 15.11: slot → the wire's dedicated byte; TargetX = 0 (unused for TargetUnit/Self), TargetZ = targetId.
+            // Story 15-23 (DW-775): a UNIT-target cast carries a PACKED entity ref (the AttackTarget/Follow issue
+            // convention) so a target slot recycled in the delay window / while Shift-queued refuses atomically at
+            // TryCast instead of casting onto the new occupant. Self/None's -1 sentinel passes through unchanged.
+            int packedTarget = _world.PackRefOrNone(targetEntityId);
+            // Story 15.11: slot → the wire's dedicated byte; TargetX = 0 (unused for TargetUnit/Self), TargetZ = targetRef.
             // Online: EnqueueOrder returns false (queued). Offline (_lockstep == null): the ?? true yields apply-now.
             bool applyNow = _lockstep?.EnqueueOrder(casterId, wireCmd,
-                                                    Fixed.Zero, Fixed.FromRaw(targetEntityId), (byte)slot) ?? true;
+                                                    Fixed.Zero, Fixed.FromRaw(packedTarget), (byte)slot) ?? true;
             if (!applyNow) return; // online: LockstepManager.Flush will apply it later
-            var order = new UnitOrder(casterId, wireCmd, Fixed.Zero, Fixed.FromRaw(targetEntityId), (byte)slot);
+            var order = new UnitOrder(casterId, wireCmd, Fixed.Zero, Fixed.FromRaw(packedTarget), (byte)slot);
             OrderApplier.Apply(_world, in order, _world.FactionOf[casterId]);
         }
 

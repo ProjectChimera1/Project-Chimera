@@ -149,11 +149,14 @@ namespace ProjectChimera.Sim.Tests.Effects
         /// pre-filters <c>slot &gt;= AbilityCount</c> at input time), then tick once. This is how the DW-285 tests
         /// reach <c>AbilityCastSystem</c>'s OWN tick-side "no such slot" guard — the one that catches an
         /// AbilityCount that shrank between the order and the tick.
+        /// <para>Story 15-23: <c>PendingCastTarget</c> holds PACKED entity refs (packed at issue in production), so
+        /// this harness packs too — at generation 0 the value is bit-identical to the raw id, but a test staging a
+        /// RECYCLED (gen &gt; 0) target would otherwise arm a raw id the consumer misreads as a stale gen-0 ref.</para>
         /// </summary>
         public void PendSlotAndTick(int casterId, int slot, int targetId)
         {
             World.PendingCastSlot[casterId]   = (byte)slot;
-            World.PendingCastTarget[casterId] = targetId;
+            World.PendingCastTarget[casterId] = World.PackRefOrNone(targetId);
             Cast.Tick(World, SimulationLoop.FixedDt);
         }
 

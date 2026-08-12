@@ -39,7 +39,11 @@ namespace ProjectChimera.Multiplayer
         // v5 (Story 15.11, DW-280): the UnitOrder wire stride widened 11→12 (the ability slot moved to its own byte so
         //   a CastAbility can carry a ground point). A v4 body decoded at the v5 stride would misalign every order after
         //   the first — so v4 (and earlier) are HARD-REJECTED at the version gate ("please re-record"), never decoded.
-        public const ushort VERSION = 5;
+        // v6 (Story 15-23, DW-775): SEMANTIC change, identical stride — entity-target order payloads
+        //   (AttackTarget/Follow TargetX; TargetUnit CastAbility TargetZ) are PACKED generation-stamped refs, packed
+        //   at issue. A v5 body replayed on a v6 build would re-interpret raw ids as gen-0 packed refs and diverge
+        //   on any recycled-slot target — HARD-REJECTED at the version gate ("please re-record"), never decoded.
+        public const ushort VERSION = 6;
 
         /// <summary>Legacy (pre-v4) EOF sentinel — retained only so the hard-reject tests can hand-write old headers.</summary>
         public const uint EOF_SENTINEL = 0xFFFFFFFFu;

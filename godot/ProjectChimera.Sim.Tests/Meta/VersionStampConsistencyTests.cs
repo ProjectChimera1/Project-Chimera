@@ -89,7 +89,10 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// (D-1). v8 (Story 2.6): folded per-entity EffectiveArmor (the buffable armor stat). v7 (Story 2.4a): folded
         /// per-entity AbilityCooldownTicks (count-driven). v6 (Story 2.2b): Effective* / Energy / StatusFlagsOf +
         /// the ModifierStore instance state.</summary>
-        private const int ExpectedSimChecksumAlgoVersion = 24;
+        /// <summary>Story 15-23 (DW-775): 24→25 — generation-validated entity refs; folded id lanes
+        /// (CommandTarget entity halves, order-queue entity payloads, DslLoopState rows) now carry PACKED refs.
+        /// No fold set/order change; value semantics only (gen-0 packing is bit-identical to raw ids).</summary>
+        private const int ExpectedSimChecksumAlgoVersion = 25;
 
         /// <summary>Load-time canonical start-state hash algorithm version (lobby handshake value).
         /// v3 (Story 2.9b follow-up): folded ScenarioPlayerSlot.StartCrystal (sim-affecting per-slot start-state).
@@ -176,7 +179,10 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// v3 (Story 15.11, DW-280): the coordinated wire bump for the widened 11→12-byte UnitOrder stride (the ability
         /// slot moved to its own byte so a CastAbility can carry a ground point). Still handshake/wire only — the wire is
         /// not a SimChecksum input, so no golden/checksum re-baseline.</summary>
-        private const ushort ExpectedProtocolVersion = 3;
+        /// <summary>Story 15-23 (DW-775): 3→4 — entity-target order payloads (AttackTarget/Follow TargetX,
+        /// TargetUnit CastAbility TargetZ) are PACKED generation-stamped refs; a v3 peer would misinterpret them
+        /// as raw ids and silently diverge on any recycled-slot target, so mixed builds must handshake-reject.</summary>
+        private const ushort ExpectedProtocolVersion = 4;
 
         /// <summary>Story 9.4 — the net-new ruleset-fingerprint hash over the <see cref="EffectCaps"/> structural
         /// caps, folded into <see cref="MatchAgreementHash"/>. v1 = initial (AlgoVersion + every cap in file order).
@@ -209,7 +215,9 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// a header embedding the scenario/ruleset/algo hashes + roster; ReplayPlayer hard-rejects all pre-v4 files).
         /// Story 15.11 (DW-280) bumped 4→5: the UnitOrder wire stride widened 11→12, so a v4 body decoded at the v5
         /// stride would misalign — ReplayPlayer hard-rejects all pre-v5 files at the version gate ("please re-record").</summary>
-        private const ushort ExpectedReplayFormatVersion = 5;
+        /// <summary>Story 15-23 (DW-775): 5→6 — same stride, PACKED entity-target payloads; a v5 replay decoded on
+        /// a v6 build would re-interpret raw ids as gen-0 packed refs and diverge on any recycled-slot target.</summary>
+        private const ushort ExpectedReplayFormatVersion = 6;
 
         /// <summary>Default minimum game version a packaged .chimera.zip declares it requires.</summary>
         private const string ExpectedManifestMinGameVersion = "0.1";

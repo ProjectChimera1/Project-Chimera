@@ -75,6 +75,26 @@ namespace ProjectChimera.Sim.Tests.Combat
         }
 
         [Fact]
+        public void HeroEntityRecycled_LinkFailsClosed_RecycledOccupantEarnsNothing()
+        {
+            // Story 15-23 (DW-775, decision D-6) — the PIN for HeroStore.EntityId's ABA-safety. EntityId is a raw
+            // id, but every reader routes through IsLiveLinkedHero's back-link round-trip: world.HeroIndex[entity]
+            // is a PACKED HeroStore ref and Create() resets it to HERO_NONE on a recycled slot, so a recycled
+            // occupant can never impersonate the hero (no structural change needed — this test is the contract).
+            var f = MakeHero(shareRadius: 10);
+            f.World.Destroy(f.HeroEntity);
+            int occupant = f.World.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            Assert.Equal(f.HeroEntity, occupant);                     // the slot really recycled…
+            Assert.Equal(EntityWorld.HERO_NONE, f.World.HeroIndex[occupant]); // …and Create() severed the link
+
+            f.Deaths.Push(FixedVec3.Zero, Faction.Neutral, Fixed.FromInt(30)); // a bounty right on top of the occupant
+            f.Sys.Tick(f.World, Dt);
+
+            Assert.Equal(Fixed.Zero.Raw, f.Heroes.Xp[f.HeroSlot].Raw); // the hero row banks nothing
+            Assert.Equal(1, f.Heroes.Level[f.HeroSlot]);               // and never levels off a stranger's proximity
+        }
+
+        [Fact]
         public void OutOfRangeDeath_GrantsNothing()
         {
             var f = MakeHero(shareRadius: 3);

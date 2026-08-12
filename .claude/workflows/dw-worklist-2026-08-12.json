@@ -1,0 +1,190 @@
+{
+ "source_triage": "interactive ultracode triage 2026-08-12 (wf_a6ef01c3-47c)",
+ "generated_for": "chimera-dw-burndown quick-fix pass",
+ "waves": [
+  {
+   "wave": 0,
+   "bundles": [
+    {
+     "name": "doc-and-comment-corrections",
+     "dw_ids": [
+      "DW-835",
+      "DW-841",
+      "DW-848",
+      "DW-856",
+      "DW-594",
+      "DW-544",
+      "DW-731",
+      "DW-729",
+      "DW-785",
+      "DW-800",
+      "DW-817",
+      "DW-823",
+      "DW-759",
+      "DW-858",
+      "DW-860",
+      "DW-866"
+     ],
+     "intent": "DW-835: Rewrite the code comment (and DW-442's resolution line in the ledger) to the rationale that holds \u2014 a negative ordinal is a silent-FFA authoring lie, not a handshake divergence; ke | DW-841: Annotate the three goldens: lines as a deliberate field correction (measured zero movement, cite the v24 note) \u2014 ledger text only, no code, no test | DW-848: Rewrite the two comment lines to the post-DW-658 rationale (the skip is defense-in-depth; the invariant is positively pinned by ProductionDestroyRefundTests); comment-only, asserti | DW-856: One-line doc addition to the >= 0 range item noting a zero-length computed step is skipped (cross-ref GatheringSystem.TickWalkStall / CheckedStep.Resolve); doc-only, no test | DW-594: One-line ledger text edit: correct the DW-397 evidence clause to ProtocolMismatch (version-first check on the default-0 version). Doc-only \u2014 no code, no test, no goldens. | DW-544: Create the creator-facing DSL reference (e.g. docs/dsl-reference.md) with a trigger/event persistence-scope section: the re-queue rail persists ONLY fuel-break and batched-suppress | DW-731: Add an explicit 'test-only negative control' comment on IsBlockedOutside pointing at CheckedStepTests (entry's closure option A); no behavior change, no test movement. | DW-729: Correct the three doc sites (+ the test's rationale comment) to state TryGetProperty is last-wins and NodeScan deliberately differs \u2014 doc-only, zero behavior change; test = existin | DW-785: Rewrite both doc passages to name the mechanism, not the release (executor installs into ModifierStore; PeriodCount clamped by EffectCaps.MaxPersistentPeriods), and extend the Modi | DW-800: Doc-only: drop the state count from the prose entirely (per the entry's closure) across the src/AI files and the archived spec markdown; no behaviour, no goldens; optional meta-gre | DW-817: Comment/header-only rewording: state the arming is unconditional since 7.7 and cross-reference BuildDeclMapUniquenessTests; no behavior or test-logic change, no test needed beyond  | DW-823: Re-point the row at the live shared-unit-gate message, or derive it from the validator the way MeshPathBlankRoutesToStepOwningTheItem does; test-only, the routing assertion (Buildi | DW-759: Ledger-only pass: resolve every `location:` path in the legacy-migrated range against the working tree, correct or annotate misses (verification = each path re-resolves; no code or | DW-858: Edit DW-664's `goldens:` line to `none (verified: branch unreachable by any committed golden)`; ledger-text-only, no test. | DW-860: Edit DW-837's `goldens:` line to `none (verified: default-arm only, no golden exercises the asymmetric presets)`; ledger-text-only, no test. | DW-866: Ledger edit: close DW-463 as overtaken by DW-514 (cite the SkirmishLaunchSpawnParityTests pin) and re-file the residual in-engine question ('does Play entry despawn an authored uni",
+     "files": []
+    },
+    {
+     "name": "contentpackager-and-clone-hygiene",
+     "dw_ids": [
+      "DW-716",
+      "DW-717",
+      "DW-727",
+      "DW-821",
+      "DW-907",
+      "DW-556",
+      "DW-502"
+     ],
+     "intent": "DW-716: Snapshot thumbnail/faction/screenshot bytes at enumeration time like the DW-423 hashed inputs; test mutates the on-disk sources inside PackTestHookAfterHash and asserts the package | DW-717: Add a stale-staging sweep (age-gated delete of sibling *.pack.tmp / *.rewrite.tmp) at ScanDirectory or Pack entry; test plants a stale temp file and asserts the sweep removes it wi | DW-727: Delete stagePath (File.Exists-guarded) immediately before the ZipFile.Open at :261, symmetric with RewriteManifest; test pre-creates a stale .pack.tmp FILE at that path and asserts | DW-821: Mirror the assetLeaves HashSet reject for FactionPaths (ArgumentException on a duplicate leaf, same message shape); test: Pack with two faction paths sharing a filename throws, and | DW-907: Meta guard test (AnalyzerGateGuardTests convention): parse godot/addons/terrain_3d/terrain.gdextension [libraries] windows+linux x86_64 entries and assert each path appears in `git | DW-556: Relax the guard to `[ ! -e \"$SRC/.git\" ]` (or `git -C \"$SRC\" rev-parse --git-dir`); verify by invoking the script's guard block from a linked worktree. Shell tooling only \u2014 no C#,  | DW-502: Tooling-only, one file: drop the 3834 fallback \u2014 require OPTS.baselineTests (fail the launch with a clear message if absent) or have the dispatcher measure the Tier-1 count at the ",
+     "files": []
+    },
+    {
+     "name": "ability-validator-authoring-guards",
+     "dw_ids": [
+      "DW-888",
+      "DW-892",
+      "DW-746",
+      "DW-855",
+      "DW-562",
+      "DW-293",
+      "DW-323"
+     ],
+     "intent": "DW-888: DW-488-convention fail-closed load bound in the WalkGraph modifier check: reject period-leaf |Amount| when |Amount| \u00d7 EffectCaps.MaxPeriodicStackScale exceeds Fixed range; test aut | DW-892: Two DW-278-channel located warnings in WalkGraph's Teleport visit (targeting Self/None \u2192 no destination; RequireTag non-None on a GroundPoint ability \u2192 gate can never pass) + warni | DW-746: Add an AbilityValidator located error when period_count > EffectCaps.MaxPersistentPeriods + a negative test; validation-only, shipped content already pinned inside (0,256] by Abili | DW-855: Add one non-fatal DW-278 warning in the modifier walk when the descriptor is all-zero (the descriptor-level equivalent of Modifier.HasNoEffect); fixture pins the warning fires and  | DW-562: Add the shared IsReservedDeviceName reject (and SanitizeId fixed-point charset check) to AbilityValidator's id gate in godot/src/Core/Definitions; Tier-1 test mirrors DefinitionVal | DW-293: in WriteNode's DamageEffect case throw JsonException('damage_type COUNT is an internal sentinel') before WriteEnum, mirroring Read's :272-273 message; test = constructing DamageEff | DW-323: Add DraftNode.Lifelong, capture it in FromEffectNode's PersistentEffect arm, pass it in ToEffectNode; test round-trips a lifelong:true persistent graph draft-and-back and asserts t",
+     "files": []
+    },
+    {
+     "name": "test-meta-and-hygiene",
+     "dw_ids": [
+      "DW-795",
+      "DW-796",
+      "DW-757",
+      "DW-761",
+      "DW-703",
+      "DW-760"
+     ],
+     "intent": "DW-795: Point NullableContextHygieneTests at CSharpSourceScan and delete the private stripper/LineOf; behaviour-neutral test-only refactor, proven by the hygiene suite staying green (optio | DW-796: Route both casts through ReflectionProbe.Read<T> so a type-changed field yields a named diagnostic instead of a bare InvalidCastException; test = mutate a fixture field type and as | DW-757: Confirm each theory's ResearchKey row asserts everything the four Facts did, then delete the four (~30 lines); test = suite stays green, no coverage delta. | DW-761: Doc-only: add the monotonic/bumped-on-clear shape as (3) in the class-level paragraph, citing _generation; no executable change. | DW-703: One line: Assert.NotNull(back.Items) (or back?.Items) before the Length read; the existing test IS the test. | DW-760: Extract a shared RealContentFixture test helper owning data-dir resolution, the floor constant and the guarded load; both classes call it; test = both suites green plus the existin",
+     "files": []
+    },
+    {
+     "name": "player-count-and-meta-guards",
+     "dw_ids": [
+      "DW-830",
+      "DW-831",
+      "DW-768",
+      "DW-753",
+      "DW-890",
+      "DW-864"
+     ],
+     "intent": "DW-830: Either extend both patterns to walk a declarator list or add the entry's proposed red test forbidding multi-declarator `const int` fields carrying player-count-keyword names in src | DW-831: Re-key the allowlist to repo-relative paths and switch the sweep from Path.GetFileName to the path relative to godot/, in a change that owns this file alone; the existing vacuous-p | DW-768: Add `private const ushort ExpectedSaveFormatVersion = 6;` beside the replay pin with a matching assert + same-commit-update message; test is the pin itself. | DW-753: Replace with the GraphEdgeHash-style seed-free FNV-1a-32 fold over X.Raw/Y.Raw/Z.Raw in fixed order; pin the hash of a known vector to a constant (cross-process stability by constr | DW-890: Test-only: pin that the AI takes no state-changing action on the RecordRun fixture (chosen action == Nothing every tick, with an armed control arm), or OS-gate the golden like ai-a | DW-864: Narrow the recipe to `~MergedTickN2` in both the .golden.txt header and MergedTickN2Scenario Header; extend the MultiFactionRebaselineFilterTests-style guard across the MergedTick ",
+     "files": []
+    },
+    {
+     "name": "llm-service-hardening",
+     "dw_ids": [
+      "DW-742",
+      "DW-743",
+      "DW-381",
+      "DW-767",
+      "DW-771",
+      "DW-772"
+     ],
+     "intent": "DW-742: Widen Pass 3 to the threaded per-slot set (context.SlotFactionDefs count) with the 0-or-1 fallback when unthreaded \u2014 the exact DW-627 fallback precedent already in Pass 4 (:534), b | DW-743: Resolve each placement via IsKnownUnitId(u.UnitId, OwnerFactionDef(context.SlotFactionDefs, u.Slot)) with union fallback when defs are null (inert until DW-741 threads them), same  | DW-381: Guard each onComplete enqueue in RunDraftAsync (and the analogous balance path) on !token.IsCancellationRequested; test via the existing LlmServiceLifecycleTests stub-provider patt | DW-767: Add the Income/owner_slot pair to the LLM gate's resource-node pass, mirroring ScenarioValidator's condition and located error string verbatim; test = ValidateScenario rejects a mo | DW-771: Derive the five ore rows from ctx.MapBounds (scale the \u00b125/\u00b115 ring, clamping spacing vs the 15-unit rule at small bounds), keeping byte-identical output at the default 120; update | DW-772: Format ctx.MapBounds with CultureInfo.InvariantCulture (also the sibling interpolation at LLMService.cs:639); test renders BuildMapSystemPrompt under a comma-decimal CultureInfo (d",
+     "files": []
+    },
+    {
+     "name": "rally-and-combat-standdown",
+     "dw_ids": [
+      "DW-689",
+      "DW-690",
+      "DW-687",
+      "DW-672",
+      "DW-707",
+      "DW-732"
+     ],
+     "intent": "DW-689: Bounded stand-down: an unfolded per-entity stall/budget counter (the GatherWalkStallTicks pattern, same NOT-folded/NOT-persisted posture as RallyMovePending per EntityWorld.cs:827) | DW-690: Add RallyMovePending to the EA enum + capture/restore (bool\u2192int array, no fold) with a save/load round-trip test that a mid-leg worker keeps its rally; at minimum rewrite the Entit | DW-687: In RemoveSlot recompute the union (excludeSlot) before the stat revert; in Apply OR mod.Status before ApplyStatDeltas \u2014 one file + a two-arm test pinning both orderings. Latent con | DW-672: Parameterize the existing WiringSeams() reflection discovery over the system types SimulationHost wires post-construction (AbilityCastSystem, CombatSystem, ProjectileSystem, HeroXp | DW-707: Call _host.FlushMatchDiagnostics() at the end of ScenarioApplier.Apply + a Tier-1 test that a load producing catch-up refusals emits the aggregate line at load end, not at the next | DW-732: After CheckedStep.Resolve, if resolved == pos (hard-stop) zero world.Velocity[i] (optionally set it to actual displacement/dt on a slide); test = wall-pressed unit asserts Velocity",
+     "files": []
+    },
+    {
+     "name": "walk-stall-and-gather-followups",
+     "dw_ids": [
+      "DW-804",
+      "DW-805",
+      "DW-834"
+     ],
+     "intent": "DW-804: Add a GatherWalkStallTicks entity save lane in the DW-581 shape (capture/restore/Validate + FormatVersion bump) and bucket it in EntityWorldSaveCompletenessTests; test = save/load  | DW-805: Doc-only closure per the entry's first arm: rewrite the conservatism argument in the true direction (a shorter step is a prefix and can be CLEAR where the full step hard-stops; sep | DW-834: Hoist one `(StatusFlagsOf[i] & GATHER_BLOCKING) != 0 \u2192 continue` gate above the switch in Tick (covers all four arms), correct the class-doc claims at :43-47/:56-70; Tier-1 tests: ",
+     "files": []
+    },
+    {
+     "name": "save-restore-and-lifecycle-clamps",
+     "dw_ids": [
+      "DW-692",
+      "DW-598",
+      "DW-833",
+      "DW-410",
+      "DW-499"
+     ],
+     "intent": "DW-692: Per-field zero-floor at restore with a short consumer note each (negative ceiling \u2192 DW-491 surface, negative armor \u2192 added damage) + a tampered-blob restore test per field; no-op o | DW-598: Add MergedArrivalRing.Clear() (wipe _arrived/_localSent/_tickFor/_len) and call it in SeedInitialTicks before SeedBootstrap; MergedArrivalRingTests: TryStore a tick, Clear, assert  | DW-833: Latch the recorder unusable before throwing (set _closed = true, matching the entry's 'a throw means the recording is compromised' reading) or hoist the argument-shaped count check | DW-410: Mirror CheckAckTimeout into DropController (tick-bounded force-commit over ACKed survivors, same 300-frontier-tick bound), surface through DropCoordinator, and pump it beside the e | DW-499: Add a Godot-free MatchSeedProducer.TryPinnedSeed (reads a CHIMERA_MATCH_SEED env var, parsed fail-closed) consulted inside Produce \u2014 or as a Produce overload so the MainScene call ",
+     "files": []
+    },
+    {
+     "name": "loader-and-definition-guards",
+     "dw_ids": [
+      "DW-748",
+      "DW-386",
+      "DW-696",
+      "DW-780",
+      "DW-814",
+      "DW-134",
+      "DW-172",
+      "DW-639"
+     ],
+     "intent": "DW-748: Null-guard Units and scan to the first non-null element (mirror GetUnit) + a regression test deserializing \"units\": null and [null, {...}]; pure Core/Definitions, no goldens. | DW-386: Add ResearchSystem.SetFactionDef mirroring BuildingSystem.cs:167 and call it beside ScenarioApplier.cs:199; test: apply a scenario declaring slot>=2 with a resolved def, assert the | DW-696: Derive both discovery globs from '\"*\" + FactionFileSuffix' (or a shared FactionFiles helper) + a test asserting a suffix change moves all three sites together. | DW-780: Hoist ReadAllText into a local, run CostDuplicateKeyGuard.Scan first, `continue` (drop-on-fail, matching the method's never-throws posture) when it reports duplicates; test drives  | DW-814: Add a located `if (s is null) return ValidationResult.Fail($\"scenario.player_slots[{i}] is null.\")` to the Validate loop and `is null \u2192 continue` in both ComputeTeamIds loops; test | DW-134: Extract a Godot-free 'SettingsJson.Options' static in src/Core/Definitions; SettingsManager._jsonOpts and both test files reference it (the SettingsManager edit is a one-line compi | DW-172: One Godot-free BuildingStore.CreateFromDefinition(def, pos, faction, buildingId, ...) (or static policy class) that both call sites delegate to \u2014 CreateEditorBuilding is already a  | DW-639: Test-only source-scan pin per the established DW-626/DW-86 CommandApplyParityTests pattern: [CallerFilePath]-resolved read of SlotFactionResolver.cs asserting the ValidateComplete ",
+     "files": []
+    },
+    {
+     "name": "wizard-and-editor-core-routing",
+     "dw_ids": [
+      "DW-776",
+      "DW-735",
+      "DW-150"
+     ],
+     "intent": "DW-776: Add `case \"faction\": return FactionDefinerStep.NameColor;` (the DW-116 raw_json precedent); test asserts StepForError(\"faction\", \"faction is null.\") == NameColor alongside the exis | DW-735: Add `case \"faction\": return FactionDefinerStep.NameColor;` with the raw_json-style comment (:218-220 precedent) + one routing test. | DW-150: Extract the tool's float world\u2192cell / cell-centre math into a Godot-free helper (single-file test include per the StartSlotMath/HeightmapCellMapping precedent), delegate in Pathabi",
+     "files": []
+    },
+    {
+     "name": "dsl-and-director-hardening",
+     "dw_ids": [
+      "DW-754",
+      "DW-734",
+      "DW-686",
+      "DW-850",
+      "DW-818",
+      "DW-762",
+      "DW-786",
+      "DW-694",
+      "DW-695"
+     ],
+     "intent": "DW-754: Add `.ThenBy(e => e.Wire)` at TriggerGraph.cs:1056 (or make CompareTo total); pin with a build-order-independence test constructing two duplicate-topology/different-Wire edges in b | DW-734: Extract a single ClearTransients() called by both the early-out and the trigger-bearing path, plus a reflection red test enumerating the director's per-tick transient state and ass | DW-686: Add a defensive `if (!RequeueEligible(idx)) return;` early-return at the top of RequeueEdgeEventsFor; test pins that a disabled/fired/cooling trigger persists zero rows through it  | DW-850: Add a DslSimEventFeed field + Count==0 compare to EnableTickBoundaryInvariants/AssertTickBoundaryInvariants (the DW-766 seam); test mirrors DeathFeedDrainInvariantTests: a producer | DW-818: Add DW-645-style anchors around CurrentOrderComplete's switch and extend CombatCommandSwitchCompletenessTests with a third audit requiring every DeclaredPersisting command to appea | DW-762: Machinery change in the one shared sweep file: snapshot fresh-side field values before/after NormalizeFresh and fail any normalized field that no longer diverges from dirty pre-Cle | DW-786: Re-verify each of the seven DW-324 scope items against current source (Modifier.cs:48 confirmed stale; EffectCaps.cs already clean) and re-file whatever is still stale as fresh DWs | DW-694: Reword the reject message + comments to the portability framing (shared content unopenable where the reservation IS enforced), update the substring-pinning tests, and correct DW-45 | DW-695: Add UnitDefinitionValidator.IsReservedDeviceName to AbilityValidator's id rules with a located error + Tier-1 test that id 'con' is rejected; the panel's existing validate-gated sa",
+     "files": []
+    },
+    {
+     "name": "shop-research-and-misc-sim",
+     "dw_ids": [
+      "DW-705",
+      "DW-751",
+      "DW-763",
+      "DW-740",
+      "DW-873",
+      "DW-725"
+     ],
+     "intent": "DW-705: Pre-spend deny in BuildingSystem.BuyItemCommand (a ModifierStore free-slot query for stat items, reusing the pickup's deny posture so no new enum member) + a capped-hero-buy test a | DW-751: Tally per-faction/per-research when |cumulative.Raw| exceeds Modifier.MaxStatDeltaTotalRaw in BuildCumulativeModifier and emit one aggregated warn line at the match boundary (DW-62 | DW-763: Extend the DW-626 pin shape: resolve both src/UI files, assert `items:\\s*_itemSys` at the BuyItem apply site and at all three SelectionSystem sites, with the same rename-canary ass | DW-740: One test: 3-slot lobby (human t1, AI t1, AI t2) \u2192 SkirmishSetupToScenario.Build \u2192 AllianceSeeder.Seed \u2192 assert AreAllied(P1,P2) true and AreAllied(P1,P3) false; test-only, Godot-fr | DW-873: Capture the pre-remap base ScenarioData in Launch and derive per-slot expected row count + spot set from it (allow unit-id remap, forbid row loss); negative test = a MapUnitId that | DW-725: One-line rename AlgoVersion_IsTwo \u2192 AlgoVersion_IsPinned; no behavior change, no new test needed.",
+     "files": []
+    }
+   ]
+  }
+ ]
+}

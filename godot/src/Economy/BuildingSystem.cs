@@ -1150,7 +1150,7 @@ namespace ProjectChimera.Economy
         /// full mint failure after the spend REFUNDS (net-zero, deterministic). Returns true when an item was bought.
         /// <paramref name="items"/> null ⇒ deterministic no-op (golden/replay-without-items paths, like <c>buildings</c>).
         /// </summary>
-        public bool BuyItemCommand(int buildingId, Faction expectedFaction, int stockIndex, int heroEntityId,
+        public bool BuyItemCommand(int buildingId, Faction expectedFaction, int stockIndex, int heroEntityRef,
                                    ItemSystem? items, CombatEventQueue? events = null)
         {
             ResourceStore resources = _resources;
@@ -1173,8 +1173,10 @@ namespace ProjectChimera.Economy
             ItemDefinition? def = items.Registry.TryGet(defIndex);
             if (def == null) { Deny(events, shopPos, expectedFaction, DenialReason.InvalidTarget); return false; }
 
-            // Buyer: a live hero owned by the same faction.
-            if (!items.TryResolveHero(heroEntityId, out int heroSlot)) { Deny(events, shopPos, expectedFaction, DenialReason.InvalidTarget); return false; }
+            // Buyer: a live hero owned by the same faction. Story 15-23: the wire carries a PACKED entity ref
+            // (packed at issue), so a hero slot recycled inside the lockstep delay window fails the resolve and the
+            // buy is denied — never redirected to the slot's new occupant. TryResolveHero yields the RESOLVED id.
+            if (!items.TryResolveHero(heroEntityRef, out int heroSlot, out int heroEntityId)) { Deny(events, shopPos, expectedFaction, DenialReason.InvalidTarget); return false; }
             if (items.HeroFaction(heroEntityId) != expectedFaction)    { Deny(events, shopPos, expectedFaction, DenialReason.InvalidTarget); return false; }
 
             // Proximity: the buyer must be within shop_radius of the shop (long-widened raw squared distance — cannot

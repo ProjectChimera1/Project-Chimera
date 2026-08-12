@@ -77,9 +77,16 @@ namespace ProjectChimera.Combat
         /// <summary>The item registry this system resolves defs against (Story 3.16 — the shop resolves stock ids here).</summary>
         public ItemRegistry Registry => _registry;
 
-        /// <summary>Resolve a hero ENTITY id to its live <see cref="HeroStore"/> slot (alive + hero-linked). False for a
-        /// dead entity or a non-hero. The shop-buy guard uses this to validate the buyer.</summary>
-        public bool TryResolveHero(int heroEntityId, out int heroSlot) => ResolveHeroSlot(heroEntityId, out heroSlot);
+        /// <summary>Resolve a PACKED hero entity ref (Story 15-23 — <c>EntityWorld.PackRef</c>, packed at issue by
+        /// <c>IssueBuyCommand</c>) to its live <see cref="HeroStore"/> slot + RESOLVED entity id. False for a dead
+        /// entity, a non-hero, or a slot RECYCLED since issue (generation mismatch — the buy must never redirect to
+        /// whatever hero now occupies the slot). The shop-buy guard uses this to validate the buyer.</summary>
+        public bool TryResolveHero(int heroEntityRef, out int heroSlot, out int heroEntityId)
+        {
+            heroSlot = -1;
+            if (!_world.TryResolveRef(heroEntityRef, out heroEntityId)) return false;
+            return ResolveHeroSlot(heroEntityId, out heroSlot);
+        }
 
         /// <summary>The buyer's world position (Story 3.16 shop-radius proximity check). Caller must have resolved the hero.</summary>
         public FixedVec3 HeroPosition(int heroEntityId) => _world.Position[heroEntityId];

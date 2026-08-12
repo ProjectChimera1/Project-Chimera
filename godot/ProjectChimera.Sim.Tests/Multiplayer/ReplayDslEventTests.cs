@@ -28,7 +28,7 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
                    scenarioHash: 0x11UL, rulesetHash: 0x22UL, modelAlgoVersion: CanonicalModelHash.AlgoVersion, roster: Roster2);
 
         [Fact]
-        public void ReplayFormatVersion_IsCurrent() => Assert.Equal(5, ReplayRecorder.VERSION); // Story 15.11 bumped 4→5 (12-byte wire)
+        public void ReplayFormatVersion_IsCurrent() => Assert.Equal(6, ReplayRecorder.VERSION); // Story 15-23 bumped 5→6 (packed entity-target payloads; 15.11 bumped 4→5)
 
         private static ScenarioVariable IntVar(string name) =>
             new() { Name = name, Type = DslValueType.Int, Scope = VarScope.Global, Initial = Fixed.Zero };

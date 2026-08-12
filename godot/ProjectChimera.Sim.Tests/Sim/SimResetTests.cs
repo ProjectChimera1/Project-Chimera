@@ -849,7 +849,7 @@ namespace ProjectChimera.Sim.Tests.Sim
         [Fact]
         public void HashAlgoVersions_AreUnchanged()
         {
-            Assert.Equal(24, SimChecksum.AlgoVersion);
+            Assert.Equal(25, SimChecksum.AlgoVersion);
             Assert.Equal(16, CanonicalModelHash.AlgoVersion); // bump history: CanonicalModelHash.AlgoVersion's XML doc
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }

@@ -1,6 +1,6 @@
 # Project Chimera — 8-faction expansion golden-checksum baseline (Story 9.2 / DW-387).
 # Format: "<tick> <hashHex8>" per line — tick decimal, hash 8 uppercase hex digits (no 0x).
-# checksum_algo_version: 24
+# checksum_algo_version: 25
 # Pins the SimChecksum sequence for MultiFaction8Scenario.Build() (8 active factions via FactionRegistry(8); Player2 starved so no float-ARITHMETIC AI branch is reachable — its DW-838 raze from tick 281 is constant-scored, so this stays cross-platform safe; fence asserted by MultiFactionAiFenceTests) stepped via StepOnce at ChecksumInterval=1.
 # Samples: 300 (one line per sim tick).
 # Re-baseline (intentional behavior change only): set CHIMERA_GOLDEN_RECORD=1, run `dotnet test --filter FullyQualifiedName~MultiFactionExpansion`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit.

@@ -167,6 +167,78 @@ namespace ProjectChimera.Sim.Tests.Effects
             Assert.Equal((int)Faction.Player2 - 1, world.DeathLog.KillerSlotAt(0));
         }
 
+        // ── 3b. Story 15-23 (DW-775): the stored caster is a PACKED ref — attribution survives the caster's
+        //        death (corpse keeps its identity) but DEGRADES to −1 on a slot recycle (never the new occupant) ──
+
+        [Fact]
+        public void PeriodPulse_CasterDied_StillRunsWithTheCorpseIdentity()
+        {
+            var (world, _, store, _, stats) = Wire();
+            // Put the caster on a RECYCLED slot (generation 1) so its packed ref differs from the bare id — the
+            // KillerOf assertion below then proves the packed round-trip, not an identity that holds at gen 0 anyway.
+            int scaffold = Unit(world, Faction.Player2, maxHp: 100, x: 0);
+            world.Destroy(scaffold);
+            int caster = Unit(world, Faction.Player2, maxHp: 100, x: 0);
+            Assert.Equal(scaffold, caster);                 // LIFO recycle — same slot, generation bumped to 1
+            int host = Unit(world, Faction.Player1, maxHp: 10, x: 5);
+
+            // A persistent DoT whose period is a lethal DamageEffect (25 magic vs 10 HP), first boundary at tick 2.
+            store.InstallPersistent(host, new PersistentEffect(
+                                        initialEffect: null,
+                                        periodEffect: new DamageEffect(Fixed.FromInt(25), DamageType.Magic),
+                                        expireEffect: null,
+                                        periodTicks: 2, periodCount: 3),
+                                    casterId: caster, casterFaction: Faction.Player2);
+
+            int packedCaster = world.PackRef(caster);       // == the ref the install packed (Destroy never bumps Generation)
+            Assert.NotEqual(caster, packedCaster);          // generation 1 ⇒ packed ≠ bare id (the round-trip has teeth)
+            world.Destroy(caster);                          // the caster DIES (slot NOT recycled) before the first pulse
+
+            store.Advance(world, Dt); // tick 1 — no boundary yet
+            Assert.True(world.IsAlive(host));
+            store.Advance(world, Dt); // tick 2 — the pulse fires, resolved AS THE CORPSE
+
+            Assert.False(world.IsAlive(host));              // the pulse still damaged (killed) the host
+            // Kill credit names the DEAD caster: KillEntity re-packs the resolved id at its (unchanged) death
+            // generation, so KillerOf carries exactly the ref packed at install; the low 12 bits are its slot id.
+            Assert.Equal(packedCaster, world.KillerOf[host]);
+            Assert.Equal(caster, world.KillerOf[host] & ((1 << EntityWorld.REF_SLOT_BITS) - 1));
+            Assert.Equal((int)Faction.Player2 - 1, world.KillerFactionOf[host]);
+            Assert.Equal(1, stats.Kills(Faction.Player2));  // the corpse's faction keeps the credit
+        }
+
+        [Fact]
+        public void PeriodPulse_CasterRecycled_RunsAsUnknownCaster()
+        {
+            var (world, _, store, _, stats) = Wire();
+            int caster = Unit(world, Faction.Player2, maxHp: 100, x: 0);
+            int host   = Unit(world, Faction.Player1, maxHp: 10, x: 5);
+
+            store.InstallPersistent(host, new PersistentEffect(
+                                        initialEffect: null,
+                                        periodEffect: new DamageEffect(Fixed.FromInt(25), DamageType.Magic),
+                                        expireEffect: null,
+                                        periodTicks: 2, periodCount: 3),
+                                    casterId: caster, casterFaction: Faction.Player2);
+
+            world.Destroy(caster);
+            int occupant = Unit(world, Faction.Player1, maxHp: 100, x: 0); // recycles the caster's slot
+            Assert.Equal(caster, occupant);                                 // same slot, generation bumped
+
+            store.Advance(world, Dt); // tick 1 — no boundary yet
+            store.Advance(world, Dt); // tick 2 — the pulse STILL fires…
+
+            Assert.False(world.IsAlive(host));                              // …and still damages (kills) the host
+            Assert.True(world.IsAlive(occupant));                           // the occupant was never touched by the DoT
+            Assert.Equal(Fixed.FromInt(100).Raw, world.Health[occupant].Raw);
+            // …but attribution DEGRADES: the packed caster ref no longer matches the recycled slot's generation,
+            // so the pulse runs as caster −1 (unknown) — NEVER as the slot's new occupant.
+            Assert.Equal(-1, world.KillerOf[host]);
+            Assert.Equal((int)Faction.Player2 - 1, world.KillerFactionOf[host]); // faction credit is stored BY VALUE
+            Assert.Equal(1, stats.Kills(Faction.Player2));
+            Assert.Equal(0, stats.Kills(Faction.Player1));                   // the occupant's faction earns nothing
+        }
+
         // ── 4. The bail is a BREAK, not a RETURN — higher-id entities still pulse on the killing tick ──
 
         [Fact]

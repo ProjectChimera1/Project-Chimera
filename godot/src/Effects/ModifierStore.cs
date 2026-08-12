@@ -238,8 +238,9 @@ namespace ProjectChimera.Effects
                         // DW-490: attribution follows the INSTANCE, not the re-caster — _casterId/_casterFaction are
                         // recorded once at install and a stack never rewrites them, so a collapsing stack credits the
                         // same caster the instance's period pulses (RunEffectAgainst) already resolve with.
+                        // Story 15-23: the stored ref is PACKED — resolve with the attribution rule (dead ok, recycle → −1).
                         ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta, mod.ArmorDelta,
-                                        isApply: true, _casterId[eslot], _casterFaction[eslot]); // each stack re-adds
+                                        isApply: true, ResolveCasterPayload(eslot), _casterFaction[eslot]); // each stack re-adds
                         // DW-325 re-entrancy: a stack that collapsed the ceiling to 0 killed the host → ClearEntity
                         // already wiped its slots; don't write status (or refresh eslot's duration below) on a dead slot.
                         if (!_world.IsAlive(targetId)) return true;
@@ -270,7 +271,10 @@ namespace ProjectChimera.Effects
             _modifierId[slot]    = mod.Id;
             _modifier[slot]      = mod;
             _persistent[slot]    = null;
-            _casterId[slot]      = casterId;
+            // Story 15-23 (DW-775): the caster is held PACKED for the modifier's whole lifetime — a period pulse /
+            // ceiling-collapse kill resolves it with the attribution rule (dead caster keeps credit; a RECYCLED
+            // slot degrades to −1 instead of acting as the new occupant). Golden-neutral at generation 0.
+            _casterId[slot]      = _world.PackRefOrNone(casterId);
             _casterFaction[slot] = casterFaction;
             _stackCount[slot]    = 1;
             // DW-270: 0 is stored VERBATIM, so Advance decrements it to −1 and expires it at the end of the next
@@ -281,8 +285,9 @@ namespace ProjectChimera.Effects
 
             // DW-490: the instance's OWN recorded caster (just written above) is the attribution a ceiling-collapse
             // death inside ApplyStatDeltas credits — the same pair a period pulse from this slot resolves with.
+            // Story 15-23: resolved back from the just-packed ref — byte-identical to the raw casterId here.
             ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta, mod.ArmorDelta,
-                            isApply: true, _casterId[slot], _casterFaction[slot]);
+                            isApply: true, ResolveCasterPayload(slot), _casterFaction[slot]);
             // DW-325 re-entrancy: a ceiling-collapse kill inside ApplyStatDeltas fired OnDestroy→ClearEntity, wiping
             // this host's slots/status/accumulators. Bail before writing status onto the dead (recycled) slot.
             if (!_world.IsAlive(targetId)) return true;
@@ -315,7 +320,7 @@ namespace ProjectChimera.Effects
             _modifierId[slot]    = 0;     // no stacking identity (scanned out of Apply via _modifier == null)
             _modifier[slot]      = null;
             _persistent[slot]    = pe;
-            _casterId[slot]      = casterId;
+            _casterId[slot]      = _world.PackRefOrNone(casterId); // Story 15-23: packed (the InstallNewSlot posture)
             _casterFaction[slot] = casterFaction;
             _stackCount[slot]    = 1;
             _remainingTicks[slot] = PERMANENT; // lifetime is governed by the period count, not a duration countdown
@@ -521,7 +526,8 @@ namespace ProjectChimera.Effects
                 ApplyStatDeltas(hostId, -(mod.AttackDamageDelta * stacks),
                                         -(mod.MaxHealthDelta * stacks),
                                         -(mod.MoveSpeedDelta * stacks),
-                                        -(mod.ArmorDelta * stacks), isApply: false, _casterId[slot], _casterFaction[slot]);
+                                        -(mod.ArmorDelta * stacks), isApply: false,
+                                        ResolveCasterPayload(slot), _casterFaction[slot]); // Story 15-23: packed → attribution resolve
                 // DW-325 re-entrancy: reverting a +MaxHealth contribution can drop the ceiling to 0 and kill the host →
                 // OnDestroy→ClearEntity already wiped its slots; bail before the status-union/compact touch dead slots
                 // (mirrors the existing post-expire-effect guard above).
@@ -741,8 +747,17 @@ namespace ProjectChimera.Effects
         /// a Modifier instance).</summary>
         public PersistentEffect? PersistentRefAt(int id, int slot) => _persistent[id * EffectCaps.MaxModifiersPerEntity + slot];
 
-        /// <summary>Story 11.3 capture: the caster entity id recorded at this slot.</summary>
+        /// <summary>Story 11.3 capture: the caster ref recorded at this slot — a PACKED entity ref since Story
+        /// 15-23 (persisted verbatim; the restore path writes it back verbatim, never re-packs).</summary>
         public int CasterIdAt(int id, int slot) => _casterId[id * EffectCaps.MaxModifiersPerEntity + slot];
+
+        /// <summary>
+        /// Story 15-23 (DW-775) — unpack the slot's PACKED caster ref for attribution/execution:
+        /// the original id while the generation matches (alive OR corpse — a dead caster keeps its identity and
+        /// kill credit), −1 once the slot recycled (never the new occupant). Pure read; deterministic.
+        /// </summary>
+        private int ResolveCasterPayload(int slot)
+            => _world.TryResolveRefIncludingDead(_casterId[slot], out int casterId) ? casterId : -1;
 
         /// <summary>Story 11.3 capture: the caster faction recorded at this slot.</summary>
         public Faction CasterFactionAt(int id, int slot) => _casterFaction[id * EffectCaps.MaxModifiersPerEntity + slot];
@@ -1089,7 +1104,11 @@ namespace ProjectChimera.Effects
 
             // DW-272: pulseScale is the Multiply-mode magnitude multiplier (default(Fixed) ⇒ the EffectContext ctor
             // normalizes it to Fixed.One, so every non-Multiply pulse is byte-identical to the pre-15.12 run).
-            var ctx = new EffectContext(_world, _casterId[slot], targetId, _casterFaction[slot],
+            // Story 15-23 (DW-775): the stored caster ref is PACKED — resolve with the attribution rule, so a pulse
+            // whose caster DIED still runs with the corpse's identity (caster-relative Self/Ally exclusion, kill
+            // credit), while a caster slot RECYCLED since install runs as caster −1 (unknown) instead of acting as
+            // the slot's new occupant. Every CasterId consumer is −1-safe (equality tests / IsAlive-guarded reads).
+            var ctx = new EffectContext(_world, ResolveCasterPayload(slot), targetId, _casterFaction[slot],
                                         _damageTable, spatial: null, _events, _stats, modifierStore: this,
                                         pulseScale: pulseScale);
             _executor.Run(effect, in ctx);

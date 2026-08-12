@@ -341,10 +341,10 @@ namespace ProjectChimera.Combat
                         // CommandTarget / MoveTarget / Moving untouched so the order is still there when the debuff
                         // expires and the combatant switch takes the unit back. AttackTarget is cleared rather than
                         // frozen because nothing re-validates it while this arm runs (unlike the disarmed unit, which
-                        // still ticks the full combatant body every tick) — a held id would go stale, and DW-184's
-                        // recycle trap turns a stale entity id into an ABA retarget. Nothing is lost: CommandTarget
-                        // still holds the forced target, and TickAttackTargetCombat restores AttackTarget from it on
-                        // the first post-debuff tick.
+                        // still ticks the full combatant body every tick). Nothing is lost: CommandTarget still holds
+                        // the forced target — and since Story 15-23 it is a PACKED ref, so however long the pause
+                        // lasts, TickAttackTargetCombat's TryResolveRef on the first post-debuff tick reverts a
+                        // recycled slot to Idle instead of force-firing the new occupant (DW-869 closed).
                         world.AttackTarget[i] = -1;
                         world.Flags[i]       &= ~EntityFlags.Attacking;
                         break;
@@ -371,7 +371,7 @@ namespace ProjectChimera.Combat
 
             int target = ValidateOrClearTarget(world, i);
             if (target < 0) target = _spatialHash.FindNearestEnemy(world, i, _alliances);
-            world.AttackTarget[i] = target;
+            world.AttackTarget[i] = world.PackRefOrNone(target); // Story 15-23: held as a packed ref (gen-0 ⇒ == target)
 
             if (target < 0)
             {
@@ -434,7 +434,7 @@ namespace ProjectChimera.Combat
 
             int target = ValidateOrClearTarget(world, i);
             if (target < 0) target = _spatialHash.FindNearestEnemy(world, i, _alliances);
-            world.AttackTarget[i] = target;
+            world.AttackTarget[i] = world.PackRefOrNone(target); // Story 15-23: held as a packed ref (gen-0 ⇒ == target)
 
             if (target < 0)
             {
@@ -464,16 +464,18 @@ namespace ProjectChimera.Combat
 
         private void TickAttackTargetCombat(EntityWorld world, int i, Fixed dt)
         {
-            int forced = world.CommandTarget[i];
-            // Invalid if: no target (-1), dead/out-of-range (IsAlive short-circuits before the FactionOf index so a
-            // bad id never reads out of bounds), itself, or a SAME-faction unit. The faction/self guard (Review
-            // Option A, Story 1.12) blocks force-firing your own units — reachable when a killed enemy's slot is
-            // recycled into a friendly before this tick, or via a crafted order. Same-faction ONLY: a Neutral is
-            // still a valid force-fire target (the golden relies on it).
+            int forcedRef = world.CommandTarget[i];
+            // Invalid if: no target (-1), dead / recycled (Story 15-23: CommandTarget holds a PACKED entity ref —
+            // TryResolveRef bounds-checks, requires liveness AND a generation match, so a slot recycled into ANY
+            // new occupant fails here instead of being force-fired, closing DW-775's forced half and DW-869's
+            // stale-ref-through-the-DW-664-pause window in one guard), itself, or a SAME-faction unit. The
+            // faction/self guard (Review Option A, Story 1.12) blocks force-firing your own units even without a
+            // recycle. Same-faction ONLY: a Neutral is still a valid force-fire target (the golden relies on it).
             // Story 9.14: also reject force-firing an ALLIED faction (AreAllied covers same-faction too when a mask is
             // present). Neutral stays force-fireable — AreAllied(Player,Neutral)==false. Null mask / FFA ⇒ only the
-            // same-faction term applies, byte-identical to pre-9.14. The allied read is guarded by the IsAlive term above.
-            if (forced < 0 || !world.IsAlive(forced) || forced == i || world.FactionOf[forced] == world.FactionOf[i]
+            // same-faction term applies, byte-identical to pre-9.14. The allied read is guarded by the resolve above.
+            if (forcedRef < 0 || !world.TryResolveRef(forcedRef, out int forced) || forced == i
+                || world.FactionOf[forced] == world.FactionOf[i]
                 || (_alliances != null && _alliances.AreAllied(world.FactionOf[i], world.FactionOf[forced])))
             {
                 // AC3 — forced target gone/invalid: clear and resume normal Idle acquire-nearest THIS tick (no
@@ -489,8 +491,9 @@ namespace ProjectChimera.Combat
             TickCooldown(world, i, dt);
 
             // Force-fire: target is exactly the player-issued enemy, regardless of any nearer enemy (the AC2
-            // distinction from Idle's nearest-enemy acquisition).
-            world.AttackTarget[i] = forced;
+            // distinction from Idle's nearest-enemy acquisition). Story 15-23: seed the held slot with the SAME
+            // packed ref the order carries (already generation-stamped at issue time).
+            world.AttackTarget[i] = forcedRef;
 
             Fixed sqrDist  = FixedVec3.SqrDistance(world.Position[i], world.Position[forced]);
             Fixed sqrRange = world.AttackRange[i] * world.AttackRange[i];
@@ -566,7 +569,7 @@ namespace ProjectChimera.Combat
 
             int target = ValidateOrClearTarget(world, i);
             if (target < 0) target = _spatialHash.FindNearestEnemy(world, i, _alliances);
-            world.AttackTarget[i] = target;
+            world.AttackTarget[i] = world.PackRefOrNone(target); // Story 15-23: held as a packed ref (gen-0 ⇒ == target)
 
             if (target < 0)
             {
@@ -636,11 +639,13 @@ namespace ProjectChimera.Combat
 
         private void TickFollowCombat(EntityWorld world, int i, Fixed dt)
         {
-            int friendly = world.CommandTarget[i];
-            // Drop to Idle if the followed unit is gone (-1 / dead / out-of-range — IsAlive short-circuits before
-            // the FactionOf index), is itself, or is no longer SAME-faction (a recycled slot now holding an
-            // enemy/neutral). Follow tracks a friendly only (Review, Story 1.12).
-            if (friendly < 0 || !world.IsAlive(friendly) || friendly == i || world.FactionOf[friendly] != world.FactionOf[i])
+            int friendlyRef = world.CommandTarget[i];
+            // Drop to Idle if the followed unit is gone: -1 / dead / RECYCLED (Story 15-23: CommandTarget holds a
+            // PACKED entity ref, so TryResolveRef fails on a generation mismatch — before DW-775 a slot recycled
+            // into a NEW same-faction unit was silently followed as if it were the original), is itself, or is no
+            // longer SAME-faction. Follow tracks a friendly only (Review, Story 1.12).
+            if (friendlyRef < 0 || !world.TryResolveRef(friendlyRef, out int friendly) || friendly == i
+                || world.FactionOf[friendly] != world.FactionOf[i])
             {
                 // Followed unit gone/invalid — drop to Idle (AC4b).
                 world.CommandState[i]  = UnitCommand.Idle;
@@ -688,7 +693,7 @@ namespace ProjectChimera.Combat
                 target = -1;
             }
             if (target < 0) target = _spatialHash.FindNearestEnemyWithin(world, i, acquireRange, _alliances);
-            world.AttackTarget[i] = target;
+            world.AttackTarget[i] = world.PackRefOrNone(target); // Story 15-23: held as a packed ref (gen-0 ⇒ == target)
 
             if (target < 0)
             {
@@ -765,31 +770,34 @@ namespace ProjectChimera.Combat
         }
 
         /// <summary>
-        /// Returns the current AttackTarget if it is still a LEGAL target, or clears it and returns -1.
+        /// Returns the current AttackTarget's RESOLVED entity id if it is still a LEGAL target, or clears the
+        /// held ref and returns -1. <see cref="EntityWorld.AttackTarget"/> stores PACKED refs (Story 15-23).
         ///
-        /// <para>DW-446 — "still legal" is not the same as "still alive". Entity ids are RECYCLED (EntityWorld keeps a
-        /// LIFO free list), so between two ticks the slot a unit is holding as its auto-acquired target can be
-        /// re-allocated to a brand-new unit of MY OWN faction or of an ALLIED one (a teammate training into a freed
-        /// enemy slot in a 2v2). Acquisition already excludes both (<see cref="SpatialHash.FindNearestEnemy"/>) and the
-        /// per-tick FORCED paths re-check both every tick (<see cref="TickAttackTargetCombat"/>,
-        /// <see cref="TickAttackBuildingCombat"/>) — Story 9.14 simply never guarded the RETAINED path, so the
-        /// attacker would fire on the now-friendly occupant for a tick, violating "an ally is never auto-attacked".
-        /// Clearing here hands the caller straight back to <c>FindNearestEnemy</c>, which re-acquires a legal target in
-        /// the same tick, so there is no stutter.</para>
+        /// <para>DW-446 → DW-775 — "still legal" is not the same as "still alive". Entity ids are RECYCLED
+        /// (EntityWorld keeps a LIFO free list), so between two ticks the slot a unit is holding as its
+        /// auto-acquired target can be re-allocated to a brand-new unit. DW-446 closed the friendly/allied
+        /// half of that class with faction re-checks; Story 15-23 (DW-775) closes the remaining half — a slot
+        /// recycled into a DIFFERENT HOSTILE faction — by holding a generation-stamped ref and resolving it
+        /// here: <see cref="EntityWorld.TryResolveRef"/> fails on death OR recycle, so the new occupant is
+        /// never silently inherited. Clearing hands the caller straight back to <c>FindNearestEnemy</c>, which
+        /// re-acquires a legal target in the same tick (possibly the recycled successor — as a CONSCIOUS
+        /// nearest-enemy acquisition, not an inheritance), so there is no stutter.</para>
         ///
-        /// <para>The same-faction term is unconditional (that recycle-into-friendly gap pre-dates alliances — see the
-        /// force-fire guard's comment); the allied term is a no-op under a null / FFA mask. Every recorded golden holds
-        /// only cross-faction targets acquired through the allied-aware pickers, so no checksum moves.</para>
+        /// <para>The faction terms are kept on the resolved id: generation matching proves SAME OCCUPANT, and
+        /// the phased/faction/allied state of that same occupant can still change legitimately (DW-938 phasing;
+        /// future conversion mechanics). The same-faction term is unconditional; the allied term is a no-op
+        /// under a null / FFA mask. Golden-neutral at generation 0 (PackRef(id) == id).</para>
         /// </summary>
         private int ValidateOrClearTarget(EntityWorld world, int id)
         {
-            int target = world.AttackTarget[id];
-            if (target < 0) return target;
+            int packed = world.AttackTarget[id];
+            if (packed < 0) return packed;
 
-            // IsAlive comes FIRST and short-circuits, so a stale/out-of-range id never indexes FactionOf.
+            // TryResolveRef bounds-checks, requires liveness AND a generation match, so a stale/out-of-range/
+            // recycled ref never indexes FactionOf and never resolves to a new occupant (DW-775).
             // DW-938: a target that PHASED into a building since acquisition is dropped like a death — the
             // acquisition paths already exclude phased units (SpatialHash), this guards the RETAINED path.
-            if (!world.IsAlive(target)
+            if (!world.TryResolveRef(packed, out int target)
                 || (world.Flags[target] & EntityFlags.Phased) != 0
                 || world.FactionOf[target] == world.FactionOf[id]
                 || (_alliances != null && _alliances.AreAllied(world.FactionOf[id], world.FactionOf[target])))
@@ -875,7 +883,7 @@ namespace ProjectChimera.Combat
                 // ProjectileSystem on hit.
                 _projectiles.Spawn(
                     world.Position[attacker],
-                    target,
+                    world.PackRef(target),           // Story 15-23 (DW-775): PACKED entity ref — a slot recycled in flight fails TryResolveRef and the shell drops (gen-0 ⇒ == target)
                     world.Position[target],
                     world.EffectiveAttackDamage[attacker],
                     world.DamageTypeOf[attacker],
@@ -884,7 +892,7 @@ namespace ProjectChimera.Combat
                     world.ProjectileSpeed[attacker], // Story 3.12 — per-unit projectile speed
                     world.SplashRadius[attacker],
                     world.FeedbackProfile[attacker], // Story 2.7 SD-4: snapshot the firing unit's override (attacker id is lost by impact)
-                    sourceId: attacker);             // Story 7.5 — snapshot the attacker id beside Owner for kill attribution at impact
+                    sourceId: world.PackRef(attacker)); // Story 7.5 kill attribution; 15-23: packed — credit survives the attacker's death, never a recycle
             }
             else
             {
@@ -946,7 +954,7 @@ namespace ProjectChimera.Combat
                     world.SplashRadius[attacker],
                     world.FeedbackProfile[attacker],
                     targetIsBuilding: true,         // Story 2.9a (Task 4b)
-                    sourceId: attacker);            // Story 7.5 — snapshot the attacker id (parity with the unit-target spawn)
+                    sourceId: world.PackRef(attacker)); // Story 7.5 attribution; 15-23: packed (parity with the unit-target spawn)
             }
             else
             {

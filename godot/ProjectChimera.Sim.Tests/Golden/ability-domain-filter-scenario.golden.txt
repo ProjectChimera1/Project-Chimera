@@ -1,6 +1,6 @@
 # Project Chimera — ability-domain-filter golden-checksum baseline (Story 2.9a, AC6) — CROSS-PLATFORM SAFE (integer/Fixed only).
 # Format: "<tick> <hashHex8>" per line — tick decimal, hash 8 uppercase hex digits (no 0x).
-# checksum_algo_version: 24
+# checksum_algo_version: 25
 # Pins the SimChecksum (v8) sequence for AbilityDomainFilterScenario.Build() (a caster casts a Self SearchArea(Air) → Damage every 40 ticks; the domain filter hits only the flier and spares the co-located ground unit; Player2 empty so the AI no-ops) stepped via StepOnce at ChecksumInterval=1. Integer/Fixed → byte-identical Win↔Linux.
 # Samples: 300 (one line per sim tick).
 # Re-baseline (intentional behavior change only): set CHIMERA_GOLDEN_RECORD=1, run `dotnet test --filter FullyQualifiedName~AbilityDomainFilterGolden`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit.

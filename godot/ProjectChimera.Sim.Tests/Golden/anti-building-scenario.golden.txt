@@ -1,6 +1,6 @@
 # Project Chimera — anti-building golden-checksum baseline (Story 2.9a, AC2) — CROSS-PLATFORM SAFE (integer/Fixed only).
 # Format: "<tick> <hashHex8>" per line — tick decimal, hash 8 uppercase hex digits (no 0x).
-# checksum_algo_version: 24
+# checksum_algo_version: 25
 # Pins the SimChecksum (v8) sequence for AntiBuildingScenario.Build() (a melee + a ranged Siege unit ordered onto a Neutral building via CommandState=AttackBuilding; the ranged unit chases + fires real projectiles; Player2 empty so the AI no-ops) stepped via StepOnce at ChecksumInterval=1. Captures the Fortified matrix damage, the projectile flight, and the building's Destroy (folded Health/Alive). Integer/Fixed → byte-identical Win↔Linux; compared on both CI legs.
 # Samples: 300 (one line per sim tick).
 # Re-baseline (intentional behavior change only): set CHIMERA_GOLDEN_RECORD=1, run `dotnet test --filter FullyQualifiedName~AntiBuildingGolden`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit.

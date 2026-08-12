@@ -160,7 +160,9 @@ namespace ProjectChimera.Sim.Tests.Golden
             world.CommandState[defender] = UnitCommand.Stop;
 
             host.ScenarioDirector.LoadScenario(new ScenarioData());
-            return new GoldenHarness(host, p2cc);
+            // DW-862: `p2cc` is a BuildingStore SLOT, not an entity id — nothing here reads PerturbTargetId, so
+            // pass the explicit "no perturbation target" sentinel (see AiBelowThresholdRazeTests for the rationale).
+            return new GoldenHarness(host, -1);
         }
 
         /// <summary>Player2 units the AI has conscripted into a wave aimed at its exposed attack destination.</summary>

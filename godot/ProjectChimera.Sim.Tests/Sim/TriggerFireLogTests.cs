@@ -179,7 +179,7 @@ namespace ProjectChimera.Sim.Tests.Sim
             // which passed the buffer into SimChecksum.Compute stays neutral — that regression is guarded instead by
             // the AlgoVersion pin below plus the golden/re-baseline suite, which would move if the fold changed.)
             Assert.Equal(withoutBuffer, withBuffer); // the fire-log write does not perturb the fold
-            Assert.Equal(24, SimChecksum.AlgoVersion);
+            Assert.Equal(25, SimChecksum.AlgoVersion);
         }
 
         // ── Exec→authored mapping (overlay names + click-to-navigate) under non-default trigger priority ──

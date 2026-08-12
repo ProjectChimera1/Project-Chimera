@@ -140,6 +140,35 @@ namespace ProjectChimera.Sim.Tests.Dsl
         }
 
         [Fact]
+        public void BatchedRow_SlotRecycledBetweenFireAndDrain_IsSkipped_NotRunAgainstTheOccupant()
+        {
+            // Story 15-23 (DW-775): the row snapshots PACKED refs and the drain resolves them via TryResolveRef.
+            // The kill-mid-drain test above covers plain death; this is the ABA half — a snapshotted unit dies AND
+            // its slot recycles into a brand-new unit between director ticks, so the pre-15-23 IsAlive-only guard
+            // would pass and run the trigger body against the slot's NEW occupant. The generation mismatch must
+            // skip the row instead.
+            (ScenarioDirector director, DslVarTable vars, _, EntityWorld world, int[] units) = Build(25);
+
+            director.Tick(world, Fixed.One); // fire + snapshot (25 packed refs)
+            director.Tick(world, Fixed.One); // drain 0..9
+
+            int victim = units[12];          // in the NEXT batch
+            world.Destroy(victim);
+            int occupant = world.Create(new FixedVec3(Fixed.FromInt(12), Fixed.Zero, Fixed.Zero),
+                Faction.Player1, Fixed.FromInt(10), Fixed.One);
+            Assert.Equal(victim, occupant);  // LIFO recycle — same id, generation bumped; the slot IS alive again
+
+            director.Tick(world, Fixed.One); // drain 10..19 — the recycled ref is skipped at drain time
+            director.Tick(world, Fixed.One); // drain 20..24 → completion
+
+            Assert.Equal(1, vars.GetInt("done", 0));                          // the drip still completed
+            Assert.True(world.IsAlive(occupant));
+            // The body (DirectHpDelta −1) never touched the occupant: 10 HP intact. RED pre-15-23 (9 HP).
+            Assert.Equal(Fixed.FromInt(10).Raw, world.Health[occupant].Raw);
+            Assert.Equal(24, CountDamaged(world, units));                     // every OTHER snapshotted unit drained
+        }
+
+        [Fact]
         public void ContinuationRowFold_MovesTheChecksum_WhileDraining()
         {
             (ScenarioDirector director, DslVarTable vars, DslLoopState loop, EntityWorld world, _) = Build(25);

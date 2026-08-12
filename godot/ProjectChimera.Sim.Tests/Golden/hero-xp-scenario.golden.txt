@@ -1,6 +1,6 @@
 # Project Chimera — hero-xp golden-checksum baseline (Story 3.13) — CROSS-PLATFORM SAFE (integer/Fixed only).
 # Format: "<tick> <hashHex8>" per line — tick decimal, hash 8 uppercase hex digits (no 0x).
-# checksum_algo_version: 24
+# checksum_algo_version: 25
 # Pins the SimChecksum (v11) sequence for HeroXpScenario.Build() (a deployed hero killing hostile bounty-carrying Neutral units in range, crossing curve thresholds → level-ups + ModifierStore stat growth; Player2 empty so the AI no-ops) stepped via StepOnce at ChecksumInterval=1. All hashed fields integer/Fixed → byte-identical Win↔Linux; compared on both CI legs.
 # Samples: 300 (one line per sim tick).
 # Re-baseline (intentional behavior change only): set CHIMERA_GOLDEN_RECORD=1, run `dotnet test --filter FullyQualifiedName~HeroXpGolden`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit.

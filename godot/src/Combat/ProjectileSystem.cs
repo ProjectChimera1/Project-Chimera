@@ -93,22 +93,24 @@ namespace ProjectChimera.Combat
                 }
                 else
                 {
-                    // DW-444: a live SLOT is not by itself a valid primary target. Entity ids are RECYCLED
-                    // (EntityWorld keeps a LIFO free list), so between this shell's spawn and its impact the slot can
-                    // be re-allocated to a brand-new unit — including one of the owner's OWN units or an ALLIED
-                    // faction's (a teammate training into a freed enemy slot in a 2v2). Mirror ApplySplash's
-                    // own-faction + AreAllied guard here, via the SAME shared friend test, so the primary and splash
-                    // halves of one impact can never disagree about who is friendly. A friendly occupant is treated
-                    // exactly like "the target died in flight": stop tracking it, coast to the last known position and
-                    // drop harmlessly (no damage, no impact event, no splash) — which is what the original target
-                    // dying without a recycle already does. Null mask / FFA ⇒ only the same-faction term applies;
-                    // Neutral is never allied so it stays a legal target. No recorded golden recycles a slot into a
-                    // friendly under an in-flight shell, so no checksum moves.
-                    targetAlive = world.IsAlive(targetId) && !IsFriendlyToOwner(world, _store.Owner[i], targetId);
+                    // DW-444 → DW-775 (Story 15-23): a live SLOT is not by itself a valid primary target. Entity ids
+                    // are RECYCLED (EntityWorld keeps a LIFO free list), so between this shell's spawn and its impact
+                    // the slot can be re-allocated to a brand-new unit. TargetId now holds a PACKED entity ref
+                    // (mirroring the building half below): TryResolveRef validates bounds + Alive + GENERATION, so a
+                    // slot recycled into ANY new occupant — friendly, allied, or a DIFFERENT HOSTILE faction (the
+                    // half DW-444 left open) — fails to resolve and the shell is treated exactly like "the target
+                    // died in flight": stop tracking, coast to the last known position and drop harmlessly (no
+                    // damage, no impact event, no splash). The friend test stays on top (shared with ApplySplash, so
+                    // the primary and splash halves of one impact can never disagree about who is friendly) for the
+                    // no-recycle case where the SAME occupant's allegiance is what matters. Golden-neutral at
+                    // generation 0 (PackRef(id) == id).
+                    targetAlive = world.TryResolveRef(targetId, out int targetEnt)
+                                  && !IsFriendlyToOwner(world, _store.Owner[i], targetEnt);
                     if (targetAlive)
                     {
-                        _store.LastKnownPos[i] = world.Position[targetId];
-                        goalPos = world.Position[targetId];
+                        targetId = targetEnt; // the RESOLVED live id — ApplyHit below indexes with it
+                        _store.LastKnownPos[i] = world.Position[targetEnt];
+                        goalPos = world.Position[targetEnt];
                     }
                     else
                     {
@@ -167,10 +169,14 @@ namespace ProjectChimera.Combat
                           _store.Position[projId], world.FactionOf[targetId], _store.Feedback[projId]); // Story 2.7 SD-4: firing unit's override, snapshotted at Spawn; Story 11.4: stamp the victim faction
 
             // Primary hit uses the armor SNAPSHOT captured at spawn (_store.TargetArmor), not live armor.
-            // Story 7.5: the attacker id snapshotted at Spawn rides along for kill attribution (event.killer).
+            // Story 7.5: the attacker ref snapshotted at Spawn rides along for kill attribution (event.killer).
+            // Story 15-23 (DW-775): SourceId is a PACKED ref resolved with the ATTRIBUTION rule — a dead-but-not-
+            // recycled attacker keeps its kill credit (a unit that dies after firing the killing shot still owns the
+            // kill), while a RECYCLED slot degrades to -1 (unknown) instead of crediting the new occupant.
+            int attributedSource = world.TryResolveRefIncludingDead(_store.SourceId[projId], out int srcEnt) ? srcEnt : -1;
             var ctx = new DamageContext(world, targetId, _store.TargetArmor[projId],
                                         _store.Owner[projId], _table, _events, _stats, _deaths,
-                                        attackerId: _store.SourceId[projId], dslSimEvents: _dslSimEvents);
+                                        attackerId: attributedSource, dslSimEvents: _dslSimEvents);
             DamageResolver.Apply(in ctx, _store.Damage[projId], _store.DmgType[projId]);
 
             // AoE splash: deal same damage to all other enemies within splash radius
@@ -233,9 +239,12 @@ namespace ProjectChimera.Combat
                 if (distSqr > radiusSqr) continue;
 
                 // Secondary splash targets use LIVE armor (caller-supplied), and emit no pre-hit event.
-                // Story 7.5: splash is part of the same impact — the spawn-snapshotted source id credits its kills too.
+                // Story 7.5: splash is part of the same impact — the spawn-snapshotted source ref credits its kills
+                // too. Story 15-23: the same attribution resolve as the primary half (dead-ok, recycle → -1).
+                int splashSource = world.TryResolveRefIncludingDead(_store.SourceId[projId], out int splashSrcEnt)
+                                   ? splashSrcEnt : -1;
                 var ctx = new DamageContext(world, i, world.ArmorTypeOf[i], owner, _table, _events, _stats, _deaths,
-                                            attackerId: _store.SourceId[projId], dslSimEvents: _dslSimEvents);
+                                            attackerId: splashSource, dslSimEvents: _dslSimEvents);
                 DamageResolver.Apply(in ctx, damage, dmgType);
             }
         }

@@ -18,7 +18,13 @@ namespace ProjectChimera.Combat
         // --- SoA ---
         public readonly bool[]       Alive        = new bool[MAX_PROJECTILES];
         public readonly FixedVec3[]  Position     = new FixedVec3[MAX_PROJECTILES];
-        public readonly int[]        TargetId     = new int[MAX_PROJECTILES];   // entity ID
+        /// <summary>
+        /// The tracked target as a PACKED ref (−1 = none): a packed ENTITY ref (<c>EntityWorld.PackRef</c>) when
+        /// <see cref="TargetIsBuilding"/> is false (Story 15-23 / DW-775 — a slot recycled mid-flight fails
+        /// <c>TryResolveRef</c> and the shell drops harmlessly), or a packed BUILDING ref (<c>BuildingStore.PackRef</c>)
+        /// when true (Story 2.13 AC3.4). Golden-neutral at generation 0. NOT folded; persisted (PA.TargetId).
+        /// </summary>
+        public readonly int[]        TargetId     = new int[MAX_PROJECTILES];
         public readonly FixedVec3[]  LastKnownPos = new FixedVec3[MAX_PROJECTILES];
         public readonly Fixed[]      Damage       = new Fixed[MAX_PROJECTILES];
         public readonly DamageType[] DmgType       = new DamageType[MAX_PROJECTILES];
@@ -47,11 +53,12 @@ namespace ProjectChimera.Combat
         /// </summary>
         public readonly bool[]       TargetIsBuilding = new bool[MAX_PROJECTILES];
         /// <summary>
-        /// Story 7.5: the firing unit's ENTITY id, snapshotted at <see cref="Spawn"/> beside <see cref="Owner"/>
-        /// (−1 = unknown). Passed to <c>DamageContext.AttackerId</c> at impact so a lethal projectile hit credits
-        /// its killer (<c>event.killer</c>). May be stale by impact (the shooter can die/recycle mid-flight) — the
-        /// payload is an opaque raw handle, documented as such. NOT folded (ProjectileStore is never a SimChecksum
-        /// input); a recycled slot is always overwritten at Spawn.
+        /// Story 7.5: the firing unit's PACKED entity ref (Story 15-23), snapshotted at <see cref="Spawn"/> beside
+        /// <see cref="Owner"/> (−1 = unknown). Resolved at impact with the ATTRIBUTION rule
+        /// (<c>EntityWorld.TryResolveRefIncludingDead</c>) into <c>DamageContext.AttackerId</c>: a shooter that DIED
+        /// mid-flight keeps its kill credit (<c>event.killer</c>), while a slot RECYCLED mid-flight degrades to −1
+        /// (unknown) instead of crediting the new occupant (DW-775). NOT folded (ProjectileStore is never a
+        /// SimChecksum input); a recycled slot is always overwritten at Spawn.
         /// </summary>
         public readonly int[]        SourceId         = new int[MAX_PROJECTILES];
         /// <summary>

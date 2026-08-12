@@ -236,6 +236,13 @@ namespace ProjectChimera.Sim.Tests.Dsl
         /// at T+1 before the director runs. Pre-fix BOTH deaths were lost — the T kill because the log was wiped, the
         /// T+1 kill because <c>_prevFlags</c> had already snapshotted the slot dead so the alive gate swallowed its
         /// record. Both must now surface, each with its own attribution, oldest first.
+        ///
+        /// <para><b>Story 15-23 (DW-775) attribution update.</b> The deferred record's killer here is slot 0
+        /// itself (the run_effect caster == the victim), and slot 0 is RECYCLED before the record emits — so its
+        /// <c>event.killer</c> now degrades to −1 (unknown) instead of naming id 0, which by emit time denotes the
+        /// slot's NEW occupant (the T+1 victim). Emitting 0 would let a creator's <c>event.killer == 0</c>
+        /// comparison match a unit that never killed anything — the exact ABA misattribution 15-23 closes. The
+        /// between-ticks attacker (id 1, never recycled) keeps its credit unchanged.</para>
         /// </summary>
         [Fact]
         public void TriggerPhaseKillAtT_ThenRecycleAndDieAtT1_SurfacesBothDeathsInKillOrder()
@@ -244,8 +251,8 @@ namespace ProjectChimera.Sim.Tests.Dsl
             var declMap = DeclMap(vars);
             TriggerGraph g = TriggerPhaseKiller("killer");
             g.Merge(Counter("reader", "event.victim >= 0", "total", declMap));
-            g.Merge(Counter("trig", "event.killer == 0", "byTrigger", declMap));   // run_effect: caster == victim id 0
-            g.Merge(Counter("atk",  "event.killer == 1", "byAttacker", declMap));  // the between-ticks attacker, id 1
+            g.Merge(Counter("trig", "event.killer == -1", "byTrigger", declMap));  // run_effect killer's slot RECYCLED → degraded to unknown (DW-775)
+            g.Merge(Counter("atk",  "event.killer == 1", "byAttacker", declMap));  // the between-ticks attacker, id 1 (never recycled — credit kept)
             g.Merge(Sequencer("order", "seq", declMap));
 
             (ScenarioDirector director, DslVarTable table) = Build(new ScenarioData
@@ -271,10 +278,10 @@ namespace ProjectChimera.Sim.Tests.Dsl
             director.Tick(world, Fixed.One);
 
             Assert.Equal(2, table.GetInt("total", 0));      // RED pre-fix: 0 — both deaths were lost
-            Assert.Equal(1, table.GetInt("byTrigger", 0));  // the deferred trigger-phase kill, with its own killer
-            Assert.Equal(1, table.GetInt("byAttacker", 0)); // the recycled occupant's kill keeps its own
-            // Order: deferred (killer id 0 → digit 1) BEFORE this tick's log record (killer id 1 → digit 2).
-            Assert.Equal(12, table.GetInt("seq", 0));
+            Assert.Equal(1, table.GetInt("byTrigger", 0));  // the deferred kill emits, killer degraded to −1 (recycled)
+            Assert.Equal(1, table.GetInt("byAttacker", 0)); // the recycled occupant's kill keeps its own live killer
+            // Order: deferred (killer −1 → digit 0) BEFORE this tick's log record (killer id 1 → digit 2): "02" = 2.
+            Assert.Equal(2, table.GetInt("seq", 0));
         }
 
         /// <summary>

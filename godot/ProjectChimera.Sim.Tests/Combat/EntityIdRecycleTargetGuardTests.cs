@@ -1,6 +1,7 @@
 #nullable enable
 using ProjectChimera.Combat;
 using ProjectChimera.Core;
+using ProjectChimera.Multiplayer;
 using Xunit;
 
 namespace ProjectChimera.Sim.Tests.Combat
@@ -112,30 +113,58 @@ namespace ProjectChimera.Sim.Tests.Combat
         }
 
         [Fact]
-        public void HeldAutoTarget_RecycledIntoAnotherEnemy_KeepsFiring_GuardIsNotOverBroad()
+        public void HeldAutoTarget_RecycledIntoAnotherEnemy_IsDroppedThenConsciouslyReacquired()
         {
-            // The guard must clear ONLY on a friendly occupant. A slot recycled into a still-hostile faction stays a
-            // legal target (the pre-existing ABA behaviour DW-446 deliberately left alone), so combat does not stall.
+            // Story 15-23 (DW-775) — the conscious flip of the pre-15-23 "KeepsFiring" pin. The held ref to the
+            // recycled slot is DROPPED (generation mismatch — the inheritance is gone), and the same tick's
+            // FindNearestEnemy re-acquires the still-hostile occupant as a fresh nearest-enemy acquisition. Combat
+            // does not stall (the WC3 feel is preserved), but the held ref now carries the SUCCESSOR's generation —
+            // proof it went through re-acquisition, not inheritance.
             var w = new EntityWorld();
             var combat = new CombatSystem(new ProjectileStore(), alliances: P1P2Allied());
             int atk = Attacker(w, V(0, 0), Faction.Player1);
             int foe = Victim(w, V(2, 0), Faction.Player3);
 
             combat.Tick(w, Dt);
+            Assert.Equal(w.PackRef(foe), w.AttackTarget[atk]); // gen 0: packed == raw
             int successor = RecycleSlot(w, foe, V(2, 0), Faction.Player4); // still an enemy of P1/P2
 
             combat.Tick(w, Dt);
 
-            Assert.Equal(successor, w.AttackTarget[atk]);
-            Assert.True(w.Health[successor] < FullHp);
+            Assert.Equal(1, w.Generation[successor]);              // the slot really recycled
+            Assert.Equal(w.PackRef(successor), w.AttackTarget[atk]); // held at the NEW generation — re-acquired, not inherited
+            Assert.True(w.Health[successor] < FullHp);             // and legitimately engaged
             Assert.Equal(EntityFlags.Attacking, w.Flags[atk] & EntityFlags.Attacking);
         }
 
         [Fact]
-        public void HeldAutoTarget_RecycledIntoNeutral_IsStillAttacked()
+        public void HeldAutoTarget_Reacquisition_PicksNearestEnemy_NeverTheInheritedSlot()
         {
-            // Neutral is never allied to a player faction (AreAllied(P1, Neutral) == false), so a Neutral occupant is
-            // still a legal auto-target — the guard must not degrade into "clear on any non-enemy".
+            // Story 15-23 — the observable difference between inheritance and re-acquisition. The recycled
+            // successor sits FARTHER than a fresh legal enemy: silent inheritance would keep firing at the
+            // successor (it is inside weapon range); the DW-775 drop + re-acquire picks the NEAREST enemy instead.
+            var w = new EntityWorld();
+            var combat = new CombatSystem(new ProjectileStore(), alliances: P1P2Allied());
+            int atk = Attacker(w, V(0, 0), Faction.Player1);
+            int foe = Victim(w, V(2, 0), Faction.Player3);
+
+            combat.Tick(w, Dt);
+            int successor = RecycleSlot(w, foe, V(8, 0), Faction.Player4); // hostile, in range 10, but FAR
+            int nearer    = Victim(w, V(3, 0), Faction.Player3);          // a fresh, closer legal enemy
+
+            combat.Tick(w, Dt);
+
+            Assert.Equal(w.PackRef(nearer), w.AttackTarget[atk]); // nearest-enemy acquisition, not the stale slot
+            Assert.True(w.Health[nearer] < FullHp);
+            Assert.Equal(FullHp, w.Health[successor]);            // the recycled occupant was never struck
+        }
+
+        [Fact]
+        public void HeldAutoTarget_RecycledIntoNeutral_IsReacquiredAsNeutral()
+        {
+            // Neutral is never allied to a player faction (AreAllied(P1, Neutral) == false), so a Neutral occupant
+            // is still a legal auto-target — the re-acquisition must not degrade into "ignore any non-enemy".
+            // Story 15-23: reached via drop + FindNearestEnemy (the held ref carries the new generation).
             var w = new EntityWorld();
             var combat = new CombatSystem(new ProjectileStore(), alliances: P1P2Allied());
             int atk = Attacker(w, V(0, 0), Faction.Player1);
@@ -146,8 +175,145 @@ namespace ProjectChimera.Sim.Tests.Combat
 
             combat.Tick(w, Dt);
 
-            Assert.Equal(neutral, w.AttackTarget[atk]);
+            Assert.Equal(w.PackRef(neutral), w.AttackTarget[atk]);
             Assert.True(w.Health[neutral] < FullHp);
+        }
+
+        // ── Story 15-23 (DW-775): the FORCED paths — CommandTarget as a packed ref ────────────────────────────────
+
+        [Fact]
+        public void ForcedAttack_TargetRecycledIntoAnotherEnemy_RevertsTheOrder_InsteadOfForceFiringTheOccupant()
+        {
+            // A player force-fired a SPECIFIC enemy. That enemy's slot recycled into a DIFFERENT hostile unit.
+            // Pre-15-23 the order silently transferred (the occupant passed every faction guard); now the packed
+            // CommandTarget fails TryResolveRef and the order reverts to Idle — the unit may then AUTO-acquire the
+            // occupant as a fresh Idle acquisition, but the forced order itself is gone.
+            var w = new EntityWorld();
+            var combat = new CombatSystem(new ProjectileStore(), alliances: P1P2Allied());
+            int atk = Attacker(w, V(0, 0), Faction.Player1);
+            int foe = Victim(w, V(2, 0), Faction.Player3);
+
+            OrderApplier.ApplyActiveOrder(w, atk, UnitCommand.AttackTarget, w.PackRef(foe), 0);
+            combat.Tick(w, Dt);
+            Assert.True(w.Health[foe] < FullHp); // the forced order engaged
+
+            int successor = RecycleSlot(w, foe, V(2, 0), Faction.Player4);
+
+            combat.Tick(w, Dt);
+
+            Assert.Equal(UnitCommand.Idle, w.CommandState[atk]); // the forced order reverted…
+            Assert.Equal(-1, w.CommandTarget[atk]);              // …and the stale ref was cleared
+        }
+
+        [Fact]
+        public void Follow_TargetRecycledIntoNewFriendly_DropsToIdle_InsteadOfEscortingAStranger()
+        {
+            // Follow tracks ONE friendly. Its slot recycling into a brand-new same-faction unit used to pass the
+            // guard (same faction ⇒ accepted) — the escort silently switched to a stranger. The packed ref drops it.
+            var w = new EntityWorld();
+            var combat = new CombatSystem(new ProjectileStore());
+            int escort = Victim(w, V(0, 0), Faction.Player1);
+            int leader = Victim(w, V(5, 0), Faction.Player1);
+
+            OrderApplier.ApplyActiveOrder(w, escort, UnitCommand.Follow, w.PackRef(leader), 0);
+            combat.Tick(w, Dt);
+            Assert.Equal(UnitCommand.Follow, w.CommandState[escort]); // tracking
+
+            int stranger = RecycleSlot(w, leader, V(5, 0), Faction.Player1); // NEW friendly in the same slot
+
+            combat.Tick(w, Dt);
+
+            Assert.Equal(UnitCommand.Idle, w.CommandState[escort]);
+            Assert.Equal(-1, w.CommandTarget[escort]);
+            _ = stranger; // never followed
+        }
+
+        [Fact]
+        public void QueuedAttackOrder_TargetRecycledBeforePop_Fizzles_AndTheQueueContinues()
+        {
+            // The order ring is the longest-lived raw-id holder pre-15-23: a Shift-queued attack could sit for
+            // arbitrarily many ticks. The packed payload fails consumption after a recycle: the popped order
+            // reverts to Idle (exactly like "the target died"), and the ring's NEXT order dispatches.
+            var w = new EntityWorld();
+            var combat = new CombatSystem(new ProjectileStore(), alliances: P1P2Allied());
+            var queue  = new OrderQueueSystem();
+            int atk = Attacker(w, V(0, 0), Faction.Player1);
+            int foe = Victim(w, V(30, 0), Faction.Player3); // far away — not auto-acquirable from (0,0)
+
+            // Plain Move to the CURRENT position (arrives instantly — no MovementSystem needed in this harness),
+            // then a queued forced attack on foe, then a queued Hold.
+            var move = new UnitOrder(atk, UnitCommand.Move, Fixed.Zero, Fixed.Zero);
+            OrderApplier.Apply(w, in move, Faction.Player1);
+            var queuedAtk = new UnitOrder(atk, (UnitCommand)((byte)UnitCommand.AttackTarget | UnitOrderFlags.Queued),
+                                          Fixed.FromRaw(w.PackRef(foe)), Fixed.Zero);
+            OrderApplier.Apply(w, in queuedAtk, Faction.Player1);
+            var queuedHold = new UnitOrder(atk, (UnitCommand)((byte)UnitCommand.HoldPosition | UnitOrderFlags.Queued),
+                                           Fixed.Zero, Fixed.Zero);
+            OrderApplier.Apply(w, in queuedHold, Faction.Player1);
+            Assert.Equal(2, w.OrderQueueCount[atk]);
+
+            // The queued target dies and its slot recycles into ANOTHER enemy before the queue ever pops.
+            int successor = RecycleSlot(w, foe, V(30, 0), Faction.Player4);
+
+            // Stop completes immediately → pop the queued attack → its packed ref fails → revert to Idle (same
+            // tick, via CombatSystem) → next tick the queue pops the Hold. The successor is NEVER engaged (it is
+            // far outside acquisition range, so only inheritance could have attacked it).
+            for (int t = 0; t < 4; t++) { queue.Tick(w, Dt); combat.Tick(w, Dt); }
+
+            Assert.Equal(UnitCommand.HoldPosition, w.CommandState[atk]); // the queue continued past the fizzled order
+            Assert.Equal(0, w.OrderQueueCount[atk]);                     // fully drained
+            Assert.Equal(FullHp, w.Health[successor]);                   // the recycled occupant was never force-fired
+        }
+
+        // ── Story 15-23 (DW-775): kill ATTRIBUTION — dead keeps credit, recycled degrades ─────────────────────────
+
+        [Fact]
+        public void ProjectileSource_DeadButNotRecycled_KeepsKillCredit()
+        {
+            // A unit that dies after firing the killing shot still owns the kill (event.killer names it) — the
+            // attribution resolve is generation-match-only, NOT liveness-gated.
+            var w = new EntityWorld();
+            var store = new ProjectileStore();
+            var system = new ProjectileSystem(store);
+
+            int shooter = Victim(w, V(5, 0), Faction.Player1);
+            int foe     = Victim(w, V(0, 0), Faction.Player3);
+            int p = store.Spawn(V(0, 0), w.PackRef(foe), V(0, 0), Fixed.FromInt(200), DamageType.Normal,
+                                ArmorType.Unarmored, Faction.Player1, speed: Fixed.FromInt(18),
+                                sourceId: w.PackRef(shooter));
+
+            w.Destroy(shooter); // the shooter dies mid-flight — slot freed but NOT recycled
+
+            system.Tick(w, Dt);
+
+            Assert.False(w.IsAlive(foe));                 // lethal hit landed
+            Assert.Equal(w.PackRef(shooter), w.KillerOf[foe]); // credit kept (packed, same generation)
+            Assert.Equal(shooter, w.DeathLog.KillerAt(0) & ((1 << EntityWorld.REF_SLOT_BITS) - 1));
+            _ = p;
+        }
+
+        [Fact]
+        public void ProjectileSource_RecycledMidFlight_DegradesKillCreditToUnknown()
+        {
+            // The shooter's slot recycles into a NEW unit before impact: the kill must NOT be credited to the new
+            // occupant — attribution degrades to −1 (unknown).
+            var w = new EntityWorld();
+            var store = new ProjectileStore();
+            var system = new ProjectileSystem(store);
+
+            int shooter = Victim(w, V(5, 0), Faction.Player1);
+            int foe     = Victim(w, V(0, 0), Faction.Player3);
+            int p = store.Spawn(V(0, 0), w.PackRef(foe), V(0, 0), Fixed.FromInt(200), DamageType.Normal,
+                                ArmorType.Unarmored, Faction.Player1, speed: Fixed.FromInt(18),
+                                sourceId: w.PackRef(shooter));
+
+            int bystander = RecycleSlot(w, shooter, V(5, 0), Faction.Player1); // an innocent takes the slot
+
+            system.Tick(w, Dt);
+
+            Assert.False(w.IsAlive(foe));
+            Assert.Equal(-1, w.KillerOf[foe]); // PackRefOrNone(-1): the resolve degraded, the innocent is not credited
+            _ = (p, bystander);
         }
 
         // ── DW-444: the in-flight projectile's PRIMARY / direct-hit target ─────────────────────────────────────────
@@ -222,8 +388,13 @@ namespace ProjectChimera.Sim.Tests.Combat
         }
 
         [Fact]
-        public void Projectile_PrimaryTargetRecycledIntoAnotherEnemy_StillDetonates_GuardIsNotOverBroad()
+        public void Projectile_PrimaryTargetRecycledIntoAnotherEnemy_DropsHarmlessly()
         {
+            // Story 15-23 (DW-775) — the conscious flip of the pre-15-23 "StillDetonates" pin. The shell tracked a
+            // SPECIFIC unit; that unit is gone (its slot merely recycled into a different hostile). The packed
+            // TargetId fails TryResolveRef, so the shell coasts to the last known position and drops — exactly the
+            // died-in-flight arm, and exactly what the building half has done since Story 2.13. Nobody is struck:
+            // the occupant was never the shot's target.
             var w = new EntityWorld();
             var store = new ProjectileStore();
             var system = new ProjectileSystem(store, alliances: P1P2Allied());
@@ -231,12 +402,12 @@ namespace ProjectChimera.Sim.Tests.Combat
             int foe = Victim(w, V(0, 0), Faction.Player3);
             int p   = SpawnImpactingShell(store, V(0, 0), foe, Faction.Player1);
 
-            int successor = RecycleSlot(w, foe, V(0, 0), Faction.Player4); // still hostile → the shell still lands
+            int successor = RecycleSlot(w, foe, V(0, 0), Faction.Player4); // hostile occupant — but not the target
 
             system.Tick(w, Dt);
 
-            Assert.True(w.Health[successor] < FullHp);
-            Assert.False(store.Alive[p]);
+            Assert.Equal(FullHp, w.Health[successor]); // dropped harmlessly, never transferred
+            Assert.False(store.Alive[p]);              // and the shell still retires (no orbiting leak)
         }
 
         [Fact]

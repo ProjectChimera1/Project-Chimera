@@ -1,6 +1,6 @@
 # Project Chimera — applier-driven golden replay baseline (Story 1.8b).
 # Format: "<tick> <hashHex8>" per line — tick decimal, hash 8 uppercase hex digits (no 0x).
-# checksum_algo_version: 24
+# checksum_algo_version: 25
 # Pins the SimChecksum sequence for an alpha_map_01-mirroring ScenarioData applied through the Godot-free ScenarioApplier (Validated<ScenarioData> -> Apply), stepped via StepOnce at ChecksumInterval=1.
 # Samples: 300 (one line per sim tick).
 # Re-baseline (intentional behavior change only): set CHIMERA_GOLDEN_RECORD=1, run `dotnet test --filter FullyQualifiedName~GoldenApplier`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit. NEVER record the existing two goldens.

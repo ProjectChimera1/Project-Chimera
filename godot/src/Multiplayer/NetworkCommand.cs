@@ -298,10 +298,12 @@ namespace ProjectChimera.Multiplayer
             }
 
             // Story 3.16: BuyItem ALSO names a SHOP BUILDING (UnitId = buildingId) — handle it beside Train/Revive, BEFORE
-            // the entity guard, for the same reason. The stock index rides TargetX and the buying hero entity id rides
-            // TargetZ, both RAW ints (read directly, NEVER via .ToFloat()). BuildingSystem.BuyItemCommand does the
-            // building-ownership + sells_items + stock/proximity/free-slot/affordability guards and the atomic exec-tick
-            // spend + mint. NEVER persists as a CommandState. `buildings`/`items` null ⇒ deterministic no-op (golden/replay).
+            // the entity guard, for the same reason. The stock index rides TargetX (raw int) and the buying hero's PACKED
+            // entity ref (Story 15-23 — packed at issue) rides TargetZ; both read directly, NEVER via .ToFloat().
+            // BuildingSystem.BuyItemCommand resolves the packed buyer (a hero slot recycled in the delay window denies,
+            // never redirects) and does the building-ownership + sells_items + stock/proximity/free-slot/affordability
+            // guards and the atomic exec-tick spend + mint. NEVER persists as a CommandState. `buildings`/`items` null ⇒
+            // deterministic no-op (golden/replay).
             if (cmd == UnitCommand.BuyItem)
             {
                 if (buildings == null) { WarnSystemlessDrop(log, cmd, o.UnitId, expectedFaction, nameof(BuildingSystem)); return; }
@@ -493,9 +495,13 @@ namespace ProjectChimera.Multiplayer
                 }
                 case UnitCommand.AttackTarget:
                 {
-                    // The forced enemy id rides in TargetX as a RAW int (Fixed.FromRaw at issue time) — read it
-                    // back directly, never via .ToFloat() (that path is float and would corrupt the id). Seed the
-                    // transient AttackTarget too; CombatSystem.TickAttackTargetCombat drives MoveTarget each tick
+                    // The forced enemy ref rides in TargetX as a RAW int (Fixed.FromRaw at issue time) — read it
+                    // back directly, never via .ToFloat() (that path is float and would corrupt the id). Story
+                    // 15-23 (DW-775): the payload is a PACKED entity ref (EntityWorld.PackRef at issue — the
+                    // AttackBuilding/PickupItem convention), blind-stored here and resolved by
+                    // TickAttackTargetCombat's TryResolveRef in-tick, so a slot recycled inside the lockstep delay
+                    // window (or while Shift-queued) reverts instead of force-firing the new occupant. Seed the
+                    // held AttackTarget with the same packed ref; CombatSystem drives MoveTarget each tick
                     // (the target moves), so we do NOT request a one-shot path here.
                     world.CommandTarget[id] = targetX;
                     world.AttackTarget[id]  = targetX;
@@ -518,7 +524,8 @@ namespace ProjectChimera.Multiplayer
                 }
                 case UnitCommand.Follow:
                 {
-                    // Friendly id packed in TargetX as a raw int. CombatSystem.TickFollowCombat drives movement.
+                    // Friendly PACKED entity ref in TargetX as a raw int (Story 15-23 — packed at issue, resolved
+                    // by TickFollowCombat's TryResolveRef). CombatSystem.TickFollowCombat drives movement.
                     world.CommandTarget[id] = targetX;
                     world.Flags[id]        &= ~EntityFlags.Attacking;
                     ClearPatrolRoute(world, id);
@@ -594,7 +601,7 @@ namespace ProjectChimera.Multiplayer
                     // rides its OWN wire byte (<see cref="UnitOrder.Slot"/>), freeing TargetX/TargetZ to carry the
                     // MODE-DEPENDENT payload that we store RAW here WITHOUT interpreting (AbilityCastSystem.TryCast
                     // interprets it by ab.ParsedTargeting inside the tick):
-                    //   • TargetUnit → TargetX = 0,        TargetZ = target entity id (raw int, -1 = none)
+                    //   • TargetUnit → TargetX = 0,        TargetZ = target PACKED entity ref (Story 15-23; -1 = none)
                     //   • GroundPoint → TargetX = ground X, TargetZ = ground Z (both Fixed raw)
                     //   • Self/None  → TargetX = 0,        TargetZ = -1
                     // Read back directly as raw ints, NEVER via .ToFloat() (that path is float and would corrupt the
@@ -879,7 +886,14 @@ namespace ProjectChimera.Multiplayer
         /// <see cref="UnitCommand.CastAbility"/> can carry an 8-byte ground point). A v2 build and a v3 build have
         /// different order strides, so they cannot interoperate — the fail-closed version check at the lobby
         /// rejects the mismatch, and <c>ReplayRecorder.VERSION</c> (4→5) rejects a v4 replay at its own gate.</remarks>
-        public const ushort PROTOCOL_VERSION = 3;
+        /// <remarks>Story 15-23 (DW-775): bumped 3→4 — a SEMANTIC wire change with an identical byte layout: the
+        /// entity-target payloads of <see cref="UnitCommand.AttackTarget"/>/<see cref="UnitCommand.Follow"/>
+        /// (TargetX) and a TargetUnit <see cref="UnitCommand.CastAbility"/> (TargetZ) now carry PACKED,
+        /// generation-stamped entity refs (<c>EntityWorld.PackRef</c> at issue — the AttackBuilding/PickupItem
+        /// convention) instead of raw ids. A v3 peer would interpret a packed ref from a v4 peer as a raw id (and
+        /// vice versa) and silently diverge on any recycled-slot target, so the handshake must reject the mix;
+        /// <c>ReplayRecorder.VERSION</c> (5→6) rejects v5 replays for the same reason.</remarks>
+        public const ushort PROTOCOL_VERSION = 4;
 
         /// <summary>
         /// DW-419/DW-420 — Hello role flag: the sender is a DEDICATED SERVER (not a P2P host). Tells the client

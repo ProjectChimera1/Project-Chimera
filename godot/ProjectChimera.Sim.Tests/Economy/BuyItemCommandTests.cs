@@ -105,6 +105,34 @@ namespace ProjectChimera.Sim.Tests.Economy
             Assert.Equal(Fixed.FromInt(25), h.World.EffectiveAttackDamage[e]);
         }
 
+        // ── Story 15-23 (DW-775): the buyer rides the wire as a PACKED entity ref ──
+        [Fact]
+        public void Buy_HeroEntityRecycledIntoAnotherHero_DeniesInsteadOfRedirecting()
+        {
+            // Hero A's buy order is in the lockstep delay window when A dies and hero B's fresh entity recycles
+            // A's slot (LIFO free list — same id, generation +1, and the HeroIndex back-link now names B's row).
+            // Pre-15-23 the raw id resolved to B and the purchase minted into the WRONG hero's folded inventory;
+            // the packed ref fails the generation match and the buy denies atomically instead.
+            var h = Build();
+            var (a, aSlot) = MintHero(h, 100, 2, 0);
+            int packedA = h.World.PackRef(a); // captured at issue time, while A is alive
+            h.World.Destroy(a);
+            var (b, bSlot) = MintHero(h, 200, 2, 0);
+            Assert.Equal(a, b); // the slot really recycled into hero B's entity
+            int oreBefore = Ore(h);
+
+            bool ok = h.BuildSys.BuyItemCommand(h.ShopId, Faction.Player1, RingStock, packedA, h.Sys, h.Events);
+
+            Assert.False(ok);                // denied…
+            Assert.Equal(oreBefore, Ore(h)); // …with zero spend (atomic reject)
+            Assert.Equal(HeroStore.INVENTORY_EMPTY, h.Heroes.Inventory[bSlot * HeroStore.INVENTORY_SLOTS + 0]); // B got nothing
+            _ = aSlot;
+
+            // The guard is generation-exact, never over-broad: a CURRENT packed ref to B buys normally.
+            Assert.True(h.BuildSys.BuyItemCommand(h.ShopId, Faction.Player1, RingStock, h.World.PackRef(b), h.Sys, h.Events));
+            Assert.NotEqual(HeroStore.INVENTORY_EMPTY, h.Heroes.Inventory[bSlot * HeroStore.INVENTORY_SLOTS + 0]);
+        }
+
         // ── Unaffordable → reject, no spend, no mint ──
         [Fact]
         public void Buy_Unaffordable_RejectsWithNoSpend()

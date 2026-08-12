@@ -34,7 +34,10 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// Entity id of the designated perturbation target (the worker). The worker is a gatherer
         /// (GatherState != Inactive), so CombatSystem never touches its health — a +1 raw injection
         /// therefore persists for the remainder of the run, giving AC3 a clean, permanently-divergent
-        /// signal. Always equal to <see cref="GoldenScenario.PerturbTargetId"/>.
+        /// signal. Always equal to <see cref="GoldenScenario.PerturbTargetId"/> for the base scenario.
+        /// <para>DW-862: this is an ENTITY id — never a BuildingStore slot (the two id spaces are not
+        /// interchangeable). A fixture that designates no perturbation target passes <c>-1</c>, which any
+        /// future perturbation test fails on LOUDLY (negative index) instead of perturbing the wrong entity.</para>
         /// </summary>
         public int PerturbTargetId { get; }
 

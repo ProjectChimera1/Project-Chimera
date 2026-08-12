@@ -263,7 +263,7 @@ namespace ProjectChimera.Sim.Tests.Economy
                                    sourceDef: heroDef, ownerFaction: Faction.Player1);
             world.HeroIndex[e] = heroes.PackRef(slot);
 
-            bool ok = buildSys.BuyItemCommand(shop, Faction.Player1, stockIndex: 0, heroEntityId: e,
+            bool ok = buildSys.BuyItemCommand(shop, Faction.Player1, stockIndex: 0, heroEntityRef: e, // gen-0: packed == raw (Story 15-23)
                                               items: itemSys, events: events);
 
             Assert.False(ok);

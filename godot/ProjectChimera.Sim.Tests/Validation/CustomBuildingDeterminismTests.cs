@@ -26,7 +26,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         public void AlgoVersions_AreUnchanged() // reinterpret-Type needs no bump
         {
             Assert.Equal(16, CanonicalModelHash.AlgoVersion); // bump history: CanonicalModelHash.AlgoVersion's XML doc
-            Assert.Equal(24, SimChecksum.AlgoVersion);
+            Assert.Equal(25, SimChecksum.AlgoVersion);
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
 

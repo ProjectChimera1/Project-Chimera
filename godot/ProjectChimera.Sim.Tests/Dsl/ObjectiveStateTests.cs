@@ -78,7 +78,7 @@ namespace ProjectChimera.Sim.Tests.Dsl
         public void ObjectiveTransition_ReplaysByteIdentical_AcrossTwoSeededRuns_NoSimChecksumBump()
         {
             // No bump — objective state rides the existing v16 DslVarTable fold.
-            Assert.Equal(24, SimChecksum.AlgoVersion);
+            Assert.Equal(25, SimChecksum.AlgoVersion);
 
             uint FoldAfterTick()
             {

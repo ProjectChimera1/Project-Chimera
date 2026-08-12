@@ -455,7 +455,7 @@ namespace ProjectChimera.Sim.Tests.Persistence
         [Fact]
         public void SaveLoad_LeavesHashAlgoVersionsUnchanged()
         {
-            Assert.Equal(24, SimChecksum.AlgoVersion);
+            Assert.Equal(25, SimChecksum.AlgoVersion);
             Assert.Equal(16, CanonicalModelHash.AlgoVersion);
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
@@ -570,6 +570,41 @@ namespace ProjectChimera.Sim.Tests.Persistence
             // The CURRENT handle still resolves, so the fix rejects staleness rather than rejecting everything.
             Assert.True(resumed.World.TryResolveRef(resumed.World.PackRef(RecycledEntitySlot), out int live));
             Assert.Equal(RecycledEntitySlot, live);
+        }
+
+        [Fact]
+        public void PackedHeldRefs_SurviveSaveLoad_AtNonZeroGeneration()
+        {
+            // Story 15-23 (DW-775): AttackTarget and CommandTarget are HELD packed entity refs (persisted verbatim
+            // as EA.AttackTarget / EA.CommandTarget raw ints). At a non-zero generation the packed form differs from
+            // the bare id, so a save path that re-derived, truncated, or re-packed either lane — or dropped the
+            // Generation lane it resolves against — would break the held order across the boundary. Hold both refs
+            // at generation 1 across a full file round-trip and require them to still RESOLVE to the same slot.
+            Harness saved = BuildApplied();
+            Step(saved.Host, SaveAtTick);
+
+            RecycleEntitySlot(saved.Host); // slot 3 → generation 1
+            EntityWorld w = saved.Host.World;
+            int attacker = 0; // the first scenario-placed worker (the file's entity-0 convention)
+            Assert.True(w.IsAlive(attacker));
+            int packed = w.PackRef(RecycledEntitySlot);
+            Assert.NotEqual(RecycledEntitySlot, packed); // generation 1 ⇒ packed ≠ bare id (the round-trip has teeth)
+            w.AttackTarget[attacker]  = packed;
+            w.CommandTarget[attacker] = packed;
+            w.CommandState[attacker]  = UnitCommand.AttackTarget;
+
+            SimulationHost resumed = SaveThenLoadIntoFresh(saved, null, out _);
+            EntityWorld r = resumed.World;
+
+            Assert.Equal(1, r.Generation[RecycledEntitySlot]);          // the generation lane round-tripped
+            Assert.Equal(packed, r.AttackTarget[attacker]);             // both packed lanes round-tripped VERBATIM
+            Assert.Equal(packed, r.CommandTarget[attacker]);
+            Assert.Equal(UnitCommand.AttackTarget, r.CommandState[attacker]);
+            // The property those lanes exist for: the held refs still resolve to the SAME slot after the boundary.
+            Assert.True(r.TryResolveRef(r.AttackTarget[attacker], out int t));
+            Assert.Equal(RecycledEntitySlot, t);
+            Assert.True(r.TryResolveRef(r.CommandTarget[attacker], out int ct));
+            Assert.Equal(RecycledEntitySlot, ct);
         }
 
         [Fact]
