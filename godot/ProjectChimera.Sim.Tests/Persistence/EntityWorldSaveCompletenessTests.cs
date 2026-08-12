@@ -53,9 +53,8 @@ namespace ProjectChimera.Sim.Tests.Persistence
             // DW-80 — the Streaming closed-gate grace streak. A resumed save restarts the window, which is
             // behaviourally indistinguishable from a fresh boot re-seeking the same node.
             nameof(EntityWorld.GateClosedTicks),
-            // DW-532 — the MovingToResource stall streak / yielded sentinel. Same posture; the one known residual
-            // (a stranded worker returning as "holding") is documented on the field and bounded.
-            nameof(EntityWorld.GatherWalkStallTicks),
+            // (DW-532's GatherWalkStallTicks used to sit here. DW-804 gave it a real save lane — 0 is not a neutral
+            // default for that field, it MEANS "holds a node slot" — so it is now proved by the sweep below instead.)
             // DW-634 — the outstanding rally first leg. A resumed save forgets an in-flight rally and auto-gathers,
             // which is what a pre-DW-634 save already did.
             nameof(EntityWorld.RallyMovePending),
