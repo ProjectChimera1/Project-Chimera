@@ -11,7 +11,7 @@ namespace ProjectChimera.Core.Definitions
     /// Tier-1 testable / AOT-clean.
     ///
     /// <para>This is CATALOG DATA only. Story 8.1 persists the creator's provider/model/baseUrl choice into
-    /// <see cref="SettingsData"/>; Story 8.2's provider-abstraction + four-state UI is what CONSUMES this list (the
+    /// <see cref="SettingsData"/>; Story 8.2's provider-abstraction + availability UI is what CONSUMES this list (the
     /// per-provider model dropdown, the free-text override, the base-URL default). The persisted model
     /// (<see cref="SettingsData.LlmModel"/>) can be a curated pick OR a free-text override — this list never
     /// constrains what can be saved, it only offers curated defaults.</para>

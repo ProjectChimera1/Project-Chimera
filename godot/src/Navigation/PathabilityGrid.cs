@@ -83,6 +83,16 @@ namespace ProjectChimera.Navigation
         /// walls). Identical to <see cref="IsBlocked"/> whenever <paramref name="fromCell"/> is a CLEAR cell (a
         /// blocked destination is then necessarily a different cell), so the validated-map path is byte-identical.
         /// Same clamped integer cell lookup — no floating point, no OOB read.
+        ///
+        /// <para><b>DW-731 — TEST-ONLY NEGATIVE CONTROL. This predicate has no production caller and must not
+        /// acquire one.</b> DW-147 replaced <c>MovementSystem</c>'s endpoint-only test with the swept
+        /// <see cref="IsBlockedOnSegmentOutside"/> (extracted behind <c>Navigation.CheckedStep</c> by DW-648); a
+        /// src-wide scan finds this method referenced only by its own declaration and the doc comments below. It is
+        /// deliberately kept ALIVE because <c>CheckedStepTests</c> uses it as the negative control proving the SWEPT
+        /// check is what rejects a tunnelling step — the endpoint predicate accepts that same step, which is the whole
+        /// point of DW-147. Deleting it in a dead-code sweep would silently make that proof vacuous, so replace the
+        /// control (e.g. move the endpoint predicate into the test project) before removing it, and route any NEW
+        /// movement caller through <see cref="IsBlockedOnSegmentOutside"/> instead.</para>
         /// </summary>
         public bool IsBlockedOutside(int fromCell, Fixed x, Fixed z)
         {

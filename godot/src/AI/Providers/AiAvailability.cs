@@ -10,6 +10,14 @@ namespace ProjectChimera.AI.Providers
     /// <see cref="Unreachable"/>/<see cref="FailedValidation"/> require a network round-trip (Test-connection or a
     /// failed generate). In every unavailable state the editor stays fully usable manually — only the AI affordance
     /// is disabled and explained.
+    ///
+    /// <para>DW-800 — describe this surface by its SPLIT (config-derived vs network round-trip), never by a member
+    /// COUNT. It shipped documented with the original count baked into the prose, then grew twice (DW-370's
+    /// <see cref="HostRestricted"/>, DW-589's <see cref="HostNotAllowlisted"/>) while 36 comment sites across the AI
+    /// stack kept quoting the original number — which is exactly what misled the next reader deciding whether a new
+    /// member was safe to add. Re-pinning the number at the current one would only reset that clock, so adding a
+    /// member means adding a <see cref="AiAvailabilityMessages.Describe"/> arm and nothing else: there is no count to
+    /// keep in sync. <c>AiAvailabilityStateCountProseTests</c> keeps it that way.</para>
     /// </summary>
     public enum AiAvailability
     {
@@ -82,7 +90,7 @@ namespace ProjectChimera.AI.Providers
 
     /// <summary>
     /// Story 8.3 — the single failure→availability mapping shared by <c>AiAvailabilityEvaluator.TestConnectionAsync</c>
-    /// and the <c>LLMService</c> generate path, so a runtime generation failure is voiced with the SAME four-state
+    /// and the <c>LLMService</c> generate path, so a runtime generation failure is voiced with the SAME availability
     /// microcopy Test-connection uses instead of a raw adapter string. A network/timeout failure is
     /// <see cref="AiAvailability.Unreachable"/>; a reached-but-unhealthy answer (bad status / malformed body) is
     /// <see cref="AiAvailability.FailedValidation"/>. Only ever called on a non-Ok result.

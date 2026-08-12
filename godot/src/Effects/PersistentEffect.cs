@@ -6,11 +6,16 @@ namespace ProjectChimera.Effects
     /// <see cref="PeriodTicks"/> for <see cref="PeriodCount"/> periods, and a final pulse on expiry. It is the
     /// third of the exactly-three composition nodes (AC1).
     ///
-    /// The TYPE is defined in Story 2.1 so the closed vocabulary is complete, but its periodic EXECUTION resolves
-    /// against the ModifierStore and lands in Story 2.2b. In 2.1 the executor recognizes the type and fail-closes
-    /// (throws) rather than mutating a nonexistent store; <c>EffectBounds.Validate</c> still walks its sub-effects
-    /// for the depth/structure check. <see cref="InitialEffect"/>, <see cref="PeriodEffect"/>, and
-    /// <see cref="ExpireEffect"/> are optional (null = no pulse at that phase).
+    /// DW-785 — the MECHANISM, not the release (the DW-663 rule: a version-scoped claim rots the moment the version
+    /// moves and gives a reader nothing to check). <c>EffectExecutor</c> hands this node to
+    /// <c>ModifierStore.InstallPersistent</c>, which runs <see cref="InitialEffect"/> immediately on the store's OWN
+    /// dedicated executor and schedules <see cref="PeriodEffect"/>/<see cref="ExpireEffect"/> from there. The one
+    /// thing the executor still fail-closes on is a MISSING store: an <c>EffectContext</c> with a null
+    /// <c>ModifierStore</c> throws rather than silently no-op'ing. <c>EffectBounds.Validate</c> walks the sub-effects
+    /// for the depth/structure check, and the Story 2.3 <c>AbilityValidator</c> AC5 fence rejects install leaves,
+    /// nested persistents and <c>SearchAreaEffect</c> inside any phase, so no loadable ability can re-enter that
+    /// executor. <see cref="InitialEffect"/>, <see cref="PeriodEffect"/>, and <see cref="ExpireEffect"/> are optional
+    /// (null = no pulse at that phase).
     /// </summary>
     public sealed class PersistentEffect : CompositionEffect
     {
@@ -26,7 +31,9 @@ namespace ProjectChimera.Effects
         /// <summary>Ticks between periodic pulses.</summary>
         public readonly int PeriodTicks;
 
-        /// <summary>Number of periodic pulses (bounded by <c>EffectCaps.MaxPersistentPeriods</c> in 2.2b).</summary>
+        /// <summary>Number of periodic pulses. Authored freely here; <c>ModifierStore.InstallPersistent</c> is what
+        /// bounds it, clamping the installed schedule into <c>[0, EffectCaps.MaxPersistentPeriods]</c> (DW-785 — the
+        /// clamp is the mechanism, the release number was not).</summary>
         public readonly int PeriodCount;
 
         /// <summary>

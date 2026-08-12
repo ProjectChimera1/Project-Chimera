@@ -409,7 +409,7 @@ namespace ProjectChimera.AI
                     string msg    = $"Create a trigger for: {description}";
 
                     // Route through the selected provider only (Story 8.3). A synchronous-unavailable case
-                    // (no provider / no key / bad host) short-circuits with the four-state message and NO network call.
+                    // (no provider / no key / bad host) short-circuits with the availability message and NO network call.
                     if (!LlmProviderFactory.TryCreate(settings, _secretStore, _http,
                             out ILLMProvider? provider, out AiAvailability failure))
                     {
@@ -423,8 +423,8 @@ namespace ProjectChimera.AI
                     if (!result.Ok)
                     {
                         // The selected provider's failure is surfaced — never masked by another provider — and voiced
-                        // with the SAME four-state microcopy Test-connection uses (Story 8.3), not a raw adapter string,
-                        // so the async failure half of the four-state availability UX matches the synchronous half.
+                        // with the SAME availability microcopy Test-connection uses (Story 8.3), not a raw adapter string,
+                        // so the async failure half of the availability UX matches the synchronous half.
                         _queue.Enqueue(() => onComplete(null,
                             AiAvailabilityMessages.Describe(AiAvailabilityMap.FromFailure(result.Failure))));
                         return;
@@ -721,7 +721,7 @@ play_sound      — sound_id (string)");
                     string msg    = $"Create a map scenario for: {description}";
 
                     // Route through the selected provider only (Story 8.3). Synchronous-unavailable short-circuits
-                    // with the four-state message and NO network call.
+                    // with the availability message and NO network call.
                     if (!LlmProviderFactory.TryCreate(settings, _secretStore, _http,
                             out ILLMProvider? provider, out AiAvailability failure))
                     {
@@ -734,7 +734,7 @@ play_sound      — sound_id (string)");
 
                     if (!result.Ok)
                     {
-                        // Story 8.3: voice the runtime failure with the shared four-state microcopy (see the trigger path).
+                        // Story 8.3: voice the runtime failure with the shared availability microcopy (see the trigger path).
                         _queue.Enqueue(() => onComplete(null,
                             AiAvailabilityMessages.Describe(AiAvailabilityMap.FromFailure(result.Failure))));
                         return;
@@ -1158,7 +1158,7 @@ play_sound      — sound_id (string)");
         // Story 8.4 — AI entity drafts (unit / ability / hero / faction)
         //
         // A provider-backed EDITABLE-DRAFT framework mirroring GenerateTriggerAsync/GenerateScenarioAsync: the four
-        // kinds share the SAME no-fallback / four-state / StripMarkdown pipeline (see RunDraftAsync) and each draft is
+        // kinds share the SAME no-fallback / availability / StripMarkdown pipeline (see RunDraftAsync) and each draft is
         // gated by the EXISTING per-kind validator (UnitDefinitionValidator / AbilityLoader+AbilityValidator /
         // FactionValidator) — never a fork, never a weakened gate. No second float→Fixed path is introduced:
         //   • ability drafts deserialize through ContentJson.Options (FixedJsonConverter quantizes at parse, rejects
@@ -1264,7 +1264,7 @@ play_sound      — sound_id (string)");
         // ══════════════════════════════════════════════════════════════════════
         // Story 8.5 — AI balance analysis (editable, per-field suggestions)
         //
-        // A provider-backed CRITIQUE flow mirroring the 8.4 draft framework: it rides the SAME no-fallback / four-state /
+        // A provider-backed CRITIQUE flow mirroring the 8.4 draft framework: it rides the SAME no-fallback / availability /
         // StripMarkdown pipeline (RunDraftAsync) and returns an EDITABLE BalanceReport of per-field BalanceSuggestions.
         // Nothing is auto-applied — the creator reviews/edits/discards each suggestion, and applying one routes the
         // proposed value through BalanceSuggestionApplier.TryApply, which re-gates it with the EXISTING
@@ -1386,8 +1386,8 @@ play_sound      — sound_id (string)");
 
         /// <summary>
         /// The shared draft pipeline (factored from <see cref="GenerateTriggerAsync"/>): snapshot settings on the caller
-        /// thread, then on a worker thread run <c>TryCreate</c> (four-state + NO request on false) → <c>GenerateAsync</c>
-        /// → <c>!Ok</c> four-state via <see cref="AiAvailabilityMap.FromFailure"/> → <see cref="StripMarkdown"/> →
+        /// thread, then on a worker thread run <c>TryCreate</c> (the availability gate + NO request on false) → <c>GenerateAsync</c>
+        /// → <c>!Ok</c> availability mapping via <see cref="AiAvailabilityMap.FromFailure"/> → <see cref="StripMarkdown"/> →
         /// <paramref name="validate"/> → enqueue the callback. The selected provider is authoritative — no fallback.
         /// Every callback is marshalled through the existing <see cref="_queue"/>/<see cref="DrainEvents"/> seam.
         /// </summary>
@@ -1406,7 +1406,7 @@ play_sound      — sound_id (string)");
             {
                 try
                 {
-                    // Synchronous-unavailable (no provider / no key / bad host) short-circuits with the four-state
+                    // Synchronous-unavailable (no provider / no key / bad host) short-circuits with the availability
                     // message and NO network call.
                     if (!LlmProviderFactory.TryCreate(settings, _secretStore, _http,
                             out ILLMProvider? provider, out AiAvailability failure))
@@ -1420,7 +1420,7 @@ play_sound      — sound_id (string)");
 
                     if (!result.Ok)
                     {
-                        // The selected provider's failure is surfaced (never masked) with the shared four-state microcopy.
+                        // The selected provider's failure is surfaced (never masked) with the shared availability microcopy.
                         _queue.Enqueue(() => onComplete(null,
                             AiAvailabilityMessages.Describe(AiAvailabilityMap.FromFailure(result.Failure))));
                         return;

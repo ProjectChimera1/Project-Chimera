@@ -7,7 +7,7 @@ using ProjectChimera.Core.Definitions;
 namespace ProjectChimera.AI.Providers
 {
     /// <summary>
-    /// Story 8.2 — the Godot-free availability evaluator. Splits the four-state classification along its natural
+    /// Story 8.2 — the Godot-free availability evaluator. Splits the availability classification along its natural
     /// seam:
     /// <list type="bullet">
     ///   <item><see cref="EvaluateConfig"/> — synchronous, config-derived: <see cref="AiAvailability.NoProvider"/> /
@@ -70,7 +70,7 @@ namespace ProjectChimera.AI.Providers
                 return AiAvailability.Healthy;
 
             // Story 8.3: the failure→state mapping is now the shared AiAvailabilityMap so the generate path and
-            // Test-connection classify identically (a runtime failure is voiced with the same four-state microcopy).
+            // Test-connection classify identically (a runtime failure is voiced with the same availability microcopy).
             return AiAvailabilityMap.FromFailure(result.Failure);
         }
     }

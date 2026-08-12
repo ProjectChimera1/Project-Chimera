@@ -40,7 +40,7 @@ namespace ProjectChimera.CreationSuite
         private LLMService?          _llm;
         private MapGeneratorContext  _context = new();
 
-        // Story 8.2 — availability status: the AI Generate affordance is gated on the four-state evaluator; the
+        // Story 8.2 — availability status: the AI Generate affordance is gated on the availability evaluator; the
         // surrounding editor stays usable in every state. Config-derived (synchronous) on open.
         private ProjectChimera.AI.Providers.AiAvailabilityEvaluator? _aiEvaluator;
         private ProjectChimera.Core.Definitions.ISecretStore?        _aiSecretStore;
@@ -113,7 +113,7 @@ namespace ProjectChimera.CreationSuite
         }
 
         /// <summary>Story 8.2 — drive the AI-availability status line + Generate gating from the config-derived
-        /// (synchronous) evaluator. In every unavailable state the four-state message shows and Generate disables,
+        /// (synchronous) evaluator. In every unavailable state the availability message shows and Generate disables,
         /// while the surrounding editor stays usable. A null evaluator (older wiring) leaves AI enabled as before.</summary>
         private void RefreshAvailability()
         {
@@ -219,7 +219,7 @@ namespace ProjectChimera.CreationSuite
             headerRow.AddChild(closeBtn);
             root.AddChild(headerRow);
 
-            // Story 8.2 — AI-availability status line (four-state); hidden until Initialize wires the evaluator.
+            // Story 8.2 — AI-availability status line; hidden until Initialize wires the evaluator.
             _aiAvailLabel = new Label
             {
                 Text = "",

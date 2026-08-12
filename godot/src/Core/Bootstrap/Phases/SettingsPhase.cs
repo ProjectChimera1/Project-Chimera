@@ -35,7 +35,7 @@ namespace ProjectChimera.Core.Bootstrap
             _ctx.SecretStore = secretStore;
 
             // Story 8.2: one shared HttpClient (short Test-connection timeout + a UA) feeds the Godot-free
-            // availability evaluator. Test-connection / the four-state UI run through this; nothing here touches the
+            // availability evaluator. Test-connection / the availability UI run through this; nothing here touches the
             // deterministic sim. Timeout is short so a Test-connection against an unreachable host fails fast.
             // AllowAutoRedirect=false: the host allowlist is enforced against the INITIAL base URL only, so a 302 from
             // an allowlisted host would otherwise silently follow to an arbitrary host — and .NET does NOT strip the

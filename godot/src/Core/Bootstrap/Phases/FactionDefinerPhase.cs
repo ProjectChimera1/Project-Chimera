@@ -28,7 +28,7 @@ namespace ProjectChimera.Core.Bootstrap
             _ctx.FactionDefinerPanel = new FactionDefinerPanel();
             _ctx.Scene.AddChild(_ctx.FactionDefinerPanel);
 
-            // Story 8.4: also pass the LLM service + four-state evaluator + secret store (all present on SceneContext
+            // Story 8.4: also pass the LLM service + availability evaluator + secret store (all present on SceneContext
             // since SettingsPhase/TriggerEditorPhase run earlier) so the wizard offers an AI faction draft; nullable —
             // a null evaluator hides the AI row and leaves the manual wizard fully usable (older-wiring fallback).
             _ctx.FactionDefinerPanel.Initialize(_ctx.GameState,

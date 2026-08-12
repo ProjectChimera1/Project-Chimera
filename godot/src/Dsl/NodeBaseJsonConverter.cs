@@ -1020,11 +1020,24 @@ namespace ProjectChimera.Dsl
         /// <c>JsonElement.TryGetProperty(string)</c> per allow-listed field — and every such call transcodes the
         /// managed name to UTF-8 and re-walks the document's property list. On the pathological max-caps fixture
         /// (~4000 nodes) that scanning alone measured ~45 ms of a ~76 ms parse; resolving the same fields against
-        /// this scan measures ~6 ms. Purely a cost change (DW-356): the scan preserves TryGetProperty's
-        /// FIRST-occurrence semantics for a duplicated name, is built BEFORE any validation so
-        /// <see cref="ReadKind"/> still runs ahead of the allow-list pass, and enumerates in document order so
-        /// <see cref="RejectUnknownProperties"/> reports the SAME first offending property. Parse output — and
-        /// therefore every hash/golden folded from it — is byte-identical.</para>
+        /// this scan measures ~6 ms. The scan resolves a duplicated name to its FIRST occurrence, is built BEFORE any
+        /// validation so <see cref="ReadKind"/> still runs ahead of the allow-list pass, and enumerates in document
+        /// order so <see cref="RejectUnknownProperties"/> reports the SAME first offending property. Parse OUTPUT —
+        /// and therefore every hash/golden folded from it — is byte-identical.</para>
+        ///
+        /// <para><b>DW-729 — first-wins is a DELIBERATE divergence from <c>JsonElement.TryGetProperty</c>, not parity
+        /// with it.</b> DW-356 documented the scan as preserving "TryGetProperty's first-occurrence semantics";
+        /// TryGetProperty is LAST-wins. <c>JsonDocument</c> walks its row table BACKWARD from <c>EndObject</c>, so for
+        /// <c>{"kind":"a","kind":"b"}</c> it returns <c>"b"</c> while <c>EnumerateObject</c> yields <c>a</c> then
+        /// <c>b</c> (pinned by <c>NodeBaseJsonConverterScanTests</c>). The divergence is observable only through
+        /// <see cref="ReadKind"/> — the one read that runs before <see cref="RejectUnknownProperties"/>, and therefore
+        /// the one that selects which branch's allow-list applies — and it changes only WHICH located message a
+        /// duplicated <c>kind</c> produces, never accept/reject: every kind branch calls
+        /// <see cref="RejectUnknownProperties"/> and the fall-through throws "unknown node kind", so a duplicate is
+        /// rejected either way. The sibling <c>EffectNodeJsonConverter</c> still resolves via <c>TryGetProperty</c>
+        /// and is therefore genuinely last-wins; the two closed-node converters DISAGREE on this point, deliberately
+        /// documented rather than silently assumed equal. Anyone adding a read AHEAD of the allow-list pass must
+        /// re-derive the message it produces rather than assume BCL parity.</para>
         ///
         /// <para>The names/values buffers are per-node locals (no shared/thread-static state, so the converter stays
         /// re-entrant); peak extra memory is one node's property names, which the transient
@@ -1070,9 +1083,11 @@ namespace ProjectChimera.Dsl
                 return new NodeScan(names, values, n);
             }
 
-            /// <summary>The FIRST property named <paramref name="prop"/> (ordinal) — exactly what
-            /// <c>JsonElement.TryGetProperty</c> returns when a name is duplicated (duplicates are themselves a
-            /// located reject in <see cref="RejectUnknownProperties"/>).</summary>
+            /// <summary>The FIRST property named <paramref name="prop"/> (ordinal). DW-729: this is NOT what
+            /// <c>JsonElement.TryGetProperty</c> returns for a duplicated name — that walks the row table backward
+            /// and returns the LAST occurrence — it is a deliberate divergence, harmless because a duplicate is a
+            /// located reject in <see cref="RejectUnknownProperties"/> either way (see the class doc for the one
+            /// observable consequence, the <see cref="ReadKind"/> pre-pass).</summary>
             public bool TryGet(string prop, out JsonElement value)
             {
                 for (int i = 0; i < _count; i++)

@@ -1,4 +1,7 @@
 #nullable enable
+using System;
+using System.Collections.Generic;
+using System.IO;
 using ProjectChimera.Core;
 using ProjectChimera.Navigation;
 using Xunit;
@@ -269,6 +272,59 @@ namespace ProjectChimera.Sim.Tests.Navigation
                 "the mover never reached the wall, so this parity run never exercised a rejected step.");
             Assert.True(w.Position[u].X.Raw < 0,
                 $"the mover ended east of the wall (X={w.Position[u].X.ToFloat()}) — the guard did not hold.");
+        }
+
+        // ── DW-731: the endpoint predicate stays TEST-ONLY ───────────────────────
+
+        [Fact]
+        public void EndpointOnlyPredicate_HasNoProductionCaller_SoTheNegativeControlStaysHonest()
+        {
+            // NegativeControl_TheEndpointOnlyPredicate_WouldHaveAcceptedTheTunnellingStep is only a proof of the
+            // SWEPT check while IsBlockedOutside is what production no longer uses. DW-147 moved every movement
+            // rejection onto IsBlockedOnSegmentOutside (behind CheckedStep since DW-648); if a new src caller
+            // appears, that caller is tunnellable and the control above quietly stops meaning anything.
+            string src = Path.Combine(LocateGodotRoot(), "src");
+            var callers = new List<string>();
+
+            foreach (string file in Directory.EnumerateFiles(src, "*.cs", SearchOption.AllDirectories))
+            {
+                string[] lines = File.ReadAllLines(file);
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    string line = lines[i];
+                    string trimmed = line.TrimStart();
+                    if (trimmed.StartsWith("//", StringComparison.Ordinal)
+                        || trimmed.StartsWith("///", StringComparison.Ordinal)
+                        || trimmed.StartsWith("*", StringComparison.Ordinal))
+                        continue;                                            // doc/comment reference — not a caller
+                    if (!line.Contains("IsBlockedOutside", StringComparison.Ordinal)) continue;
+                    if (line.Contains("public bool IsBlockedOutside", StringComparison.Ordinal)) continue; // the declaration
+                    callers.Add($"{Path.GetFileName(file)}:{i + 1}: {line.Trim()}");
+                }
+            }
+
+            Assert.True(callers.Count == 0,
+                "PathabilityGrid.IsBlockedOutside acquired a production caller. It is the endpoint-only predicate "
+                + "DW-147 replaced: it samples the two endpoints and TUNNELS a one-cell-thick wall at any step at or "
+                + "beyond the 2-unit cell size. Route the new caller through CheckedStep.Resolve / "
+                + "IsBlockedOnSegmentOutside instead. It survives in src ONLY as CheckedStepTests' negative control "
+                + "(DW-731):\n  " + string.Join("\n  ", callers));
+        }
+
+        /// <summary>Walk up from the test-assembly directory to the <c>godot/</c> dir (the one holding both
+        /// <c>src</c> and <c>scenes</c>) — the <c>StartPathTeamAgreementTests.LocateGodotRoot</c> precedent.</summary>
+        private static string LocateGodotRoot()
+        {
+            var dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null)
+            {
+                if (Directory.Exists(Path.Combine(dir.FullName, "src")) &&
+                    Directory.Exists(Path.Combine(dir.FullName, "scenes")))
+                    return dir.FullName;
+                dir = dir.Parent;
+            }
+            throw new DirectoryNotFoundException(
+                $"Could not locate the godot/ root (a dir with both src/ and scenes/) above {AppContext.BaseDirectory}");
         }
     }
 }

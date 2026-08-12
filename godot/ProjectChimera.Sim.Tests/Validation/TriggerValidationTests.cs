@@ -1548,14 +1548,20 @@ namespace ProjectChimera.Sim.Tests.Validation
             AssertRejectedAtBothGates(m, "forked");
         }
 
-        // ── Duplicate declarations with loop constructs (review P7) ─────────────
+        // ── Duplicate declarations, loop constructs present (review P7; arming is unconditional since 7.7) ──
 
         [Fact]
         public void DuplicateArrayDeclaration_WithLoopConstructs_IsRejectedAtBothGates()
         {
-            // The backstop previously armed the duplicate-name reject only when expressions existed (anyExpr);
-            // a duplicate-declared array + a loop and NO expressions would gate loop_var/array typing against
-            // the FIRST declaration while runtime Resolve may bind another. Now loop constructs arm it too.
+            // DW-817 — the rationale, corrected. At 7.6 the backstop armed the duplicate-name reject only when
+            // expressions existed (anyExpr), and this case (a duplicate-declared array + a loop, NO expressions)
+            // was the hole: loop_var/array typing gated against the FIRST declaration while runtime Resolve may
+            // bind another. The 7.7 gate/backstop reconciliation removed that arming condition entirely —
+            // LoadScenario now passes requireUnique: true UNCONDITIONALLY, so EVERY load rejects a duplicate name,
+            // loop constructs or not (see BuildDeclMap's own doc, and BuildDeclMapUniquenessTests, which covers the
+            // loop-FREE half and fails if that call site ever becomes conditional again). This row is therefore the
+            // loop-carrying instance of a rule that no longer keys off loops at all — kept because it is the exact
+            // shape the 7.6 hole had.
             ScenarioData m = BaseModel();
             m.Variables = new[] { IntArray("arr", 8), IntArray("arr", 4), LocalInt("v") };
             TriggerGraph g = SingleTrigger(out int id);
