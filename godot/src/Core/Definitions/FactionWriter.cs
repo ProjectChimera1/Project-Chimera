@@ -374,6 +374,23 @@ namespace ProjectChimera.Core.Definitions
             return root.ToJsonString(IndentedOptions);
         }
 
+        /// <summary>
+        /// Story 15-21: persist the faction-level <c>attribute_model</c> as a TARGETED root-key patch (the 3.4
+        /// posture — never a whole-faction re-serialize). Like the <c>hero</c> block the model is fully FORM-owned
+        /// (preset apply + the mapping editor), so a deterministic POCO re-serialize of just this key is correct:
+        /// write <c>root["attribute_model"]</c> when non-null, drop the key when null. Every other faction key —
+        /// buildings, signature_mechanic, … — stays exactly as the creator wrote it.
+        /// </summary>
+        public static string SyncFactionAttributeModel(string factionJson, AttributeModelDefinition? model)
+        {
+            if (factionJson is null) throw new InvalidOperationException("faction JSON is null.");
+            JsonNode root = JsonNode.Parse(factionJson)
+                            ?? throw new InvalidOperationException("faction JSON did not parse to an object.");
+            if (model == null) ((JsonObject)root).Remove("attribute_model");
+            else root["attribute_model"] = JsonNode.Parse(JsonSerializer.Serialize(model, HeroSerializeOptions));
+            return root.ToJsonString(IndentedOptions);
+        }
+
         // ── Story 4.5: the buildings[] counterpart to the units machinery above ────────────────────────────────
 
         /// <summary>

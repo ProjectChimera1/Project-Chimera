@@ -811,7 +811,222 @@ namespace ProjectChimera.CreationSuite
             AddHeroAbilityRow(parent, "Ultimate", "hero.ultimate_ability", "Ultimate Ability",
                 "The hero's ultimate ability — must differ from the signature. Pick a defined ability or (none).",
                 () => h.UltimateAbility, v => h.UltimateAbility = v, def);
+
+            BuildHeroAttributesSection(parent, def); // Story 15-21
         }
+
+        // ── Story 15-21: the creator-authorable attribute model + per-hero attribute values ─────────────────────
+
+        /// <summary>Directory of the shipped attribute-model presets (WC3/PoE/D3/D4/Last Epoch/Grim Dawn/Torchlight).</summary>
+        private const string ATTRIBUTE_MODELS_DIR = "res://resources/data/attribute-models";
+
+        /// <summary>The hero card's "Attributes" section (Story 15-21): a faction-level PRESET picker (applies a
+        /// shipped attribute model to <c>_faction.AttributeModel</c> — undoable), then, when a model is declared,
+        /// the per-hero PRIMARY selector + one Base/Per-level row pair per declared attribute, and the faction's
+        /// derived-stat mapping editor (attribute × closed-vocabulary stat × per-point, add/remove rows). Every
+        /// mutation routes through the shared undo/validate/save path; the model itself persists with the faction
+        /// JSON on Save (the same <c>PersistSync</c> write the unit rides). Attribute-list editing beyond the
+        /// presets (add/rename/remove declared attributes) is the raw faction-JSON hatch for now — recorded in the
+        /// story spec as the deliberate v1 seam.</summary>
+        private void BuildHeroAttributesSection(Control parent, UnitDefinition def)
+        {
+            AddSection(parent, "Attributes");
+            AddAttributePresetRow(parent, def);
+
+            AttributeModelDefinition? model = _faction?.AttributeModel;
+            var declared = new System.Collections.Generic.List<string>();
+            if (model?.Attributes != null)
+                foreach (AttributeDeclaration a in model.Attributes)
+                    if (!string.IsNullOrWhiteSpace(a?.Id)) declared.Add(a!.Id!);
+
+            if (declared.Count == 0)
+            {
+                var hint = new Label
+                {
+                    Text = "No attribute model declared — pick a preset above, or author attribute_model in the faction JSON.",
+                    AutowrapMode = TextServer.AutowrapMode.WordSmart,
+                };
+                parent.AddChild(hint);
+                return;
+            }
+
+            // Primary attribute (the WC3 "primary feeds attack damage" selector — meaningful when the model maps it).
+            var primaryItems = new System.Collections.Generic.List<string> { "(none)" };
+            primaryItems.AddRange(declared);
+            AddSelect(parent, "Primary", "attribute_model", "Primary Attribute",
+                "This hero's primary attribute. Mapping rows targeting 'primary' (e.g. the WC3 +damage rule) follow this choice.",
+                primaryItems.ToArray(),
+                () => string.IsNullOrEmpty(HeroAttrs(def).Primary) ? "(none)" : HeroAttrs(def).Primary!,
+                v => HeroAttrs(def).Primary = v == "(none)" ? null : v, def);
+
+            // Per declared attribute: base value + per-level auto-growth (decision D-2 — WC3 auto-allocation).
+            foreach (string attrId in declared)
+            {
+                string id = attrId; // capture per iteration
+                AddNumFloat(parent, $"{id} base", "attribute_model", $"{id} — base",
+                    $"The hero's {id} at level 1. Contributes to derived stats per the faction's mapping below.",
+                    1, () => GetAttr(HeroAttrs(def).Base, id), v => HeroAttrs(def).Base![id] = v, def);
+                AddNumFloat(parent, $"{id} / level", "attribute_model", $"{id} — per level",
+                    $"How much {id} this hero gains automatically per level above 1 (the WC3 auto-growth model).",
+                    0.1, () => GetAttr(HeroAttrs(def).PerLevel, id), v => HeroAttrs(def).PerLevel![id] = v, def);
+            }
+
+            BuildDerivedMappingRows(parent, def, model!, declared);
+        }
+
+        /// <summary>The preset picker: "(keep current)" + every shipped attribute-model JSON. Applying replaces the
+        /// FACTION's <c>attribute_model</c> (deep-cloned so undo restores the exact prior object) and refreshes the
+        /// section so the attribute rows re-derive from the new declarations.</summary>
+        private void AddAttributePresetRow(Control parent, UnitDefinition def)
+        {
+            var labels = new System.Collections.Generic.List<string> { "(keep current)" };
+            var files = new System.Collections.Generic.List<string>();
+            string dir = ProjectSettings.GlobalizePath(ATTRIBUTE_MODELS_DIR);
+            if (System.IO.Directory.Exists(dir))
+            {
+                var sorted = new System.Collections.Generic.List<string>(System.IO.Directory.GetFiles(dir, "*.json"));
+                sorted.Sort(StringComparer.Ordinal); // deterministic order (never filesystem order)
+                foreach (string f in sorted)
+                {
+                    try
+                    {
+                        using var doc = System.Text.Json.JsonDocument.Parse(System.IO.File.ReadAllText(f));
+                        string name = doc.RootElement.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
+                        labels.Add(string.IsNullOrEmpty(name) ? System.IO.Path.GetFileNameWithoutExtension(f) : name);
+                        files.Add(f);
+                    }
+                    catch (Exception e) { GD.Print($"[UnitCard] skipped unreadable attribute preset {f}: {e.Message}"); }
+                }
+            }
+
+            OptionButton sel = ChimeraComponents.Select(labels.ToArray());
+            sel.Selected = 0;
+            sel.ItemSelected += idx =>
+            {
+                if (_building || idx == 0) return;
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(System.IO.File.ReadAllText(files[(int)idx - 1]));
+                    var model = System.Text.Json.JsonSerializer.Deserialize<AttributeModelDefinition>(
+                        doc.RootElement.GetProperty("attribute_model").GetRawText(), FactionDefinition.JsonOptions);
+                    if (model == null || _faction == null) return;
+                    AttributeModelDefinition? old = _faction.AttributeModel;
+                    AttributeModelDefinition nu = model;
+                    Action applyNew = () => _faction.AttributeModel = nu;
+                    Action applyOld = () => _faction.AttributeModel = old;
+                    applyNew();
+                    UnitDefinition t = def;
+                    PushHistory(() => { applyNew(); GoToUnit(t); }, () => { applyOld(); GoToUnit(t); });
+                    OnLiveChanged("attribute_model");
+                    Refresh(); // the attribute rows re-derive from the new declarations
+                }
+                catch (Exception e) { GD.Print($"[UnitCard] failed to apply attribute preset: {e.Message}"); }
+            };
+            AttachFieldTip(sel, "Attribute preset",
+                "Replace the faction's attribute model with a shipped preset (WC3, PoE, Diablo, …) as a starting point, then tune the mapping rows below. Applies to every hero of this faction.");
+            AddFieldRow(parent, "Preset", sel, MakeBadge("attribute_model"));
+        }
+
+        /// <summary>The faction's derived-stat mapping editor: one row per rule — [attribute ∪ "primary"] × the
+        /// CLOSED stat vocabulary (<see cref="AttributeStats.Ids"/> — the authoring composer consumes the same
+        /// closed set the validator gates, the DW-942 5th-consumer rule) × per-point — plus remove/add. Rules edit
+        /// the FACTION model (shared by every hero of the faction), so each mutation refreshes the section.</summary>
+        private void BuildDerivedMappingRows(Control parent, UnitDefinition def, AttributeModelDefinition model,
+                                             System.Collections.Generic.List<string> declared)
+        {
+            AddSection(parent, "Derived stats");
+            model.Derived ??= new System.Collections.Generic.List<DerivedStatRule>();
+
+            var attrChoices = new System.Collections.Generic.List<string>(declared) { "primary" };
+            for (int i = 0; i < model.Derived.Count; i++)
+            {
+                int ruleIdx = i;
+                DerivedStatRule rule = model.Derived[i];
+                var row = new HBoxContainer();
+
+                OptionButton attrSel = ChimeraComponents.Select(attrChoices.ToArray());
+                int curAttr = attrChoices.IndexOf(rule.Attribute ?? "");
+                if (curAttr >= 0) attrSel.Selected = curAttr;
+                attrSel.ItemSelected += idx => MutateRule(def, rule, r => r.Attribute = attrChoices[(int)idx],
+                    (r, old) => r.Attribute = old.Attribute);
+
+                OptionButton statSel = ChimeraComponents.Select(AttributeStats.Ids);
+                if (AttributeStats.TryIndexOf(rule.Stat, out int curStat)) statSel.Selected = curStat;
+                statSel.ItemSelected += idx => MutateRule(def, rule, r => r.Stat = AttributeStats.Ids[(int)idx],
+                    (r, old) => r.Stat = old.Stat);
+
+                // Step 0.0001 — per-point values for energy_regen are PER-TICK amounts (an int hero's whole regen
+                // is ~0.002/tick), and a coarse SpinBox step would snap them to 0 on display AND on edit
+                // (Godot Range.value rounds to step). Four decimals covers the smallest sensible per-tick rate.
+                SpinBox perPoint = ChimeraComponents.NumInput(value: rule.PerPoint, min: 0, max: 255, step: 0.0001);
+                perPoint.ValueChanged += v =>
+                {
+                    if (_building) return;
+                    float old = rule.PerPoint;
+                    rule.PerPoint = (float)v;
+                    UnitDefinition t = def;
+                    PushHistory(() => { rule.PerPoint = (float)v; GoToUnit(t); }, () => { rule.PerPoint = old; GoToUnit(t); });
+                    OnLiveChanged("attribute_model");
+                };
+
+                Button remove = new Button { Text = "✕", TooltipText = "Remove this mapping rule" };
+                remove.Pressed += () =>
+                {
+                    if (_building) return;
+                    DerivedStatRule removed = model.Derived[ruleIdx];
+                    Action applyNew = () => model.Derived.Remove(removed);
+                    Action applyOld = () => model.Derived.Insert(Math.Min(ruleIdx, model.Derived.Count), removed);
+                    applyNew();
+                    UnitDefinition t = def;
+                    PushHistory(() => { applyNew(); GoToUnit(t); }, () => { applyOld(); GoToUnit(t); });
+                    OnLiveChanged("attribute_model");
+                    Refresh();
+                };
+
+                row.AddChild(attrSel); row.AddChild(statSel); row.AddChild(perPoint); row.AddChild(remove);
+                AddFieldRow(parent, i == 0 ? "Mapping" : "", row, MakeBadge("attribute_model"));
+            }
+
+            Button add = new Button { Text = "+ Add rule", TooltipText = "Add a derived-stat mapping rule (attribute × stat × per-point)" };
+            add.Pressed += () =>
+            {
+                if (_building || declared.Count == 0) return;
+                var rule = new DerivedStatRule { Attribute = declared[0], Stat = AttributeStats.Ids[0], PerPoint = 1f };
+                Action applyNew = () => model.Derived!.Add(rule);
+                Action applyOld = () => model.Derived!.Remove(rule);
+                applyNew();
+                UnitDefinition t = def;
+                PushHistory(() => { applyNew(); GoToUnit(t); }, () => { applyOld(); GoToUnit(t); });
+                OnLiveChanged("attribute_model");
+                Refresh();
+            };
+            parent.AddChild(add);
+        }
+
+        /// <summary>One rule mutation through the shared undo path (snapshot-restore via a shallow copy).</summary>
+        private void MutateRule(UnitDefinition def, DerivedStatRule rule, Action<DerivedStatRule> apply,
+                                Action<DerivedStatRule, DerivedStatRule> revert)
+        {
+            if (_building) return;
+            var old = new DerivedStatRule { Attribute = rule.Attribute, Stat = rule.Stat, PerPoint = rule.PerPoint };
+            apply(rule);
+            UnitDefinition t = def;
+            PushHistory(() => { apply(rule); GoToUnit(t); }, () => { revert(rule, old); GoToUnit(t); });
+            OnLiveChanged("attribute_model");
+        }
+
+        /// <summary>The hero's attribute block, created on first touch (dictionaries guaranteed non-null).</summary>
+        private static HeroAttributesDefinition HeroAttrs(UnitDefinition def)
+        {
+            HeroDefinition h = def.Hero!;
+            h.Attributes ??= new HeroAttributesDefinition();
+            h.Attributes.Base ??= new System.Collections.Generic.Dictionary<string, float>();
+            h.Attributes.PerLevel ??= new System.Collections.Generic.Dictionary<string, float>();
+            return h.Attributes;
+        }
+
+        private static float GetAttr(System.Collections.Generic.Dictionary<string, float>? map, string key)
+            => map != null && map.TryGetValue(key, out float v) ? v : 0f;
 
         /// <summary>A hero ability-slot Select: a leading "(none)" (⇒ null, the unauthored/valid state) then every ability
         /// in the catalog, storing the ability id (NOT its display label). An out-of-catalog current id (an unknown ref
@@ -1204,6 +1419,9 @@ namespace ProjectChimera.CreationSuite
             {
                 string current = File.ReadAllText(abs);
                 string patched = FactionWriter.SyncFactionUnits(current, _faction.Units);
+                // Story 15-21: the faction-level attribute model rides the same Save (its own targeted root-key
+                // patch — preset apply / mapping edits would otherwise look saved and silently drop on disk).
+                patched = FactionWriter.SyncFactionAttributeModel(patched, _faction.AttributeModel);
                 File.WriteAllText(tmp, patched);
                 _ = FactionDefinition.LoadFromFile(tmp);   // self-check: refuse to report "Saved" for a file that won't reload
                 File.Move(tmp, abs, overwrite: true);

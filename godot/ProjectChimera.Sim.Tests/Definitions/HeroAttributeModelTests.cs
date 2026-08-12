@@ -393,6 +393,31 @@ namespace ProjectChimera.Sim.Tests.Definitions
                 Assert.True(AttributeStats.TryIndexOf(rule.Stat, out _), $"{file}: stat '{rule.Stat}' not in the closed vocabulary");
         }
 
+        // ── FactionWriter: the targeted attribute_model root-key patch (the 3.4 no-whole-reserialize posture) ────
+
+        [Fact]
+        public void SyncFactionAttributeModel_PatchesOnlyItsKey_AndRoundTrips()
+        {
+            const string factionJson = "{\n  \"id\": \"f\",\n  \"display_name\": \"F\",\n  \"signature_mechanic\": \"keep_me_verbatim\",\n  \"units\": [ { \"id\": \"u1\", \"hp\": 50 } ],\n  \"buildings\": []\n}";
+
+            string patched = FactionWriter.SyncFactionAttributeModel(factionJson, Wc3Model());
+            Assert.Contains("\"attribute_model\"", patched);
+            Assert.Contains("keep_me_verbatim", patched);      // faction-level keys untouched
+            Assert.Contains("\"hp\": 50", patched);            // units untouched
+
+            // Round-trip: the lenient faction loader reads the patched model back structurally intact.
+            var def = System.Text.Json.JsonSerializer.Deserialize<FactionDefinition>(patched, FactionDefinition.JsonOptions)!;
+            Assert.NotNull(def.AttributeModel);
+            Assert.Equal(3, def.AttributeModel!.Attributes!.Count);
+            Assert.Equal(5, def.AttributeModel.Derived!.Count);
+            Assert.Equal("primary", def.AttributeModel.Derived[4].Attribute);
+
+            // Null model drops the key (a model-less faction re-emits without churn).
+            string cleared = FactionWriter.SyncFactionAttributeModel(patched, null);
+            Assert.DoesNotContain("attribute_model", cleared);
+            Assert.Contains("keep_me_verbatim", cleared);
+        }
+
         [Fact]
         public void HeroDefinitionClone_DeepCopiesAttributes()
         {
