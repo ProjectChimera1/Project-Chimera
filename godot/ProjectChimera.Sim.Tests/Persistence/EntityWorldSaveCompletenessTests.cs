@@ -56,9 +56,13 @@ namespace ProjectChimera.Sim.Tests.Persistence
             // DW-532 — the MovingToResource stall streak / yielded sentinel. Same posture; the one known residual
             // (a stranded worker returning as "holding") is documented on the field and bounded.
             nameof(EntityWorld.GatherWalkStallTicks),
-            // DW-634 — the outstanding rally first leg. A resumed save forgets an in-flight rally and auto-gathers,
-            // which is what a pre-DW-634 save already did.
-            nameof(EntityWorld.RallyMovePending),
+            // DW-689 — the rally stand-down NO-PROGRESS budget and its best-approach mark. A resumed save restarts
+            // the window (counter 0 == unarmed, which is exactly what EntityWorld.Create leaves and what the first
+            // stand-down tick after the load re-arms from the worker's restored position), costing a genuinely stuck
+            // worker at most one further grace window. The rally LEG itself survives — DW-690 persists
+            // RallyMovePending — so this is the GatherWalkStallTicks posture, not the DW-690 defect repeated.
+            nameof(EntityWorld.RallyStandDownTicks),
+            nameof(EntityWorld.RallyGoalBestSqr),
         };
 
         /// <summary>

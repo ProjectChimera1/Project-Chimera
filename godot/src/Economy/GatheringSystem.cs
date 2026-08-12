@@ -40,6 +40,12 @@ namespace ProjectChimera.Economy
     /// node the player rallied to. Pre-fix the sweep overwrote the rally MoveTarget on the very next tick, so a rally
     /// could never direct new workers to a specific mine.
     ///
+    /// DW-689 bounds that stand-down. Its "superseded" escape (any command state other than the rally's own Move)
+    /// cannot fire in the SIMULATION layer, so a worker rallied to an UNREACHABLE point stood down forever and never
+    /// gathered again. <see cref="EntityWorld.RallyStandDownTicks"/> counts consecutive ticks of no progress toward the
+    /// goal against the best-approach mark in <see cref="EntityWorld.RallyGoalBestSqr"/>; after
+    /// <see cref="RALLY_STANDDOWN_GRACE_TICKS"/> the leg is released and the worker rejoins the sweep.
+    ///
     /// DW-619 — a <see cref="StatusFlags.Stunned"/>/<see cref="StatusFlags.Rooted"/> worker PRODUCES NOTHING. The
     /// DW-266 status pass reached MovementSystem/CombatSystem/AbilityCastSystem but never the economy, so a stun
     /// anchored a worker standing at its node and then let it keep mining out of that node at full rate — the stun
@@ -110,6 +116,30 @@ namespace ProjectChimera.Economy
         /// <see cref="ReleaseGatherSlot"/> can tell a holder from a yielder without a second array.
         /// </summary>
         public const int SLOT_YIELDED = -1;
+
+        /// <summary>
+        /// DW-689 — how many CONSECUTIVE ticks a worker standing down for its rally first leg (DW-634) may fail to get
+        /// any CLOSER to its rally <see cref="EntityWorld.CommandGoal"/> before the leg is declared unwinnable, the
+        /// one-shot <see cref="EntityWorld.RallyMovePending"/> is released and the worker rejoins the ordinary
+        /// nearest-node sweep. Whole ticks, sourced from <see cref="SimulationLoop.TICKS_PER_SECOND"/> exactly like
+        /// <see cref="STREAMING_GATE_GRACE_TICKS"/> and <see cref="WALK_STALL_GRACE_TICKS"/>.
+        ///
+        /// <para>The freeze this bounds: DW-634's stand-down releases only on ARRIVAL or when the rally's own
+        /// <see cref="UnitCommand.Move"/> is superseded, and NOTHING in the simulation layer takes a rallied worker out
+        /// of Move (CombatSystem's gatherer normalization rewrites every command except Move; OrderQueueSystem skips an
+        /// empty queue; ClearWorkerBuild fires only from Build; the Move→Stop writers are presentation-side and gated
+        /// tighter than the arrival radius). A worker rallied into a <c>PathabilityGrid</c>-blocked region is
+        /// hard-stopped at the boundary by <c>MovementSystem</c>, so its arrival test can never pass and it stood in
+        /// Idle for the whole match — a silent, permanent loss of its economic function.</para>
+        ///
+        /// <para>THREE seconds, not the one second DW-80/DW-532 use, and deliberately so: those two windows yield a
+        /// node RESERVATION (cheap, self-healing, re-claimed on arrival), whereas a false positive here DISCARDS the
+        /// player's explicit rally order — the very thing DW-634 exists to protect. Three seconds of zero NET progress
+        /// toward the goal (the mark is the best distance reached, so cumulative ground counts and only a single raw
+        /// tick of improvement anywhere in the window re-arms it) cannot be produced by a worker that is genuinely
+        /// walking, including one being jostled through a crowd at the production building's door.</para>
+        /// </summary>
+        public const int RALLY_STANDDOWN_GRACE_TICKS = SimulationLoop.TICKS_PER_SECOND * 3;
 
         private readonly ResourceNodeStore _nodes;
         private readonly ResourceStore     _resources;
@@ -189,14 +219,47 @@ namespace ProjectChimera.Economy
                 // ARRIVAL is the PURE-SIM goal test OrderQueueSystem uses — SqrDistance(Position, CommandGoal) against
                 // the shared ArrivalTuning radius — never EntityFlags.Moving or the presentation Move→Stop flip, both
                 // of which are presentation-written and would diverge headless-golden vs live-client.
-                bool arrived = FixedVec3.SqrDistance(world.Position[id], world.CommandGoal[id])
-                               <= ArrivalTuning.GoalArriveRadiusSqr;
+                Fixed goalSqr = FixedVec3.SqrDistance(world.Position[id], world.CommandGoal[id]);
+                bool arrived  = goalSqr <= ArrivalTuning.GoalArriveRadiusSqr;
                 // SUPERSEDED: any command state other than the rally's own Move means something else took the worker
                 // (a Stop/Idle from CombatSystem's gatherer normalization, ClearWorkerBuild's Idle after a build, a
                 // fresh player order). The rally leg is over, and gating on an arrival that may never come would park
                 // the worker in Idle forever.
-                if (world.CommandState[id] == UnitCommand.Move && !arrived) return;
+                if (world.CommandState[id] == UnitCommand.Move && !arrived)
+                {
+                    // DW-689 — THE STAND-DOWN IS BOUNDED. The escape above ("superseded") cannot fire in the SIMULATION
+                    // layer: nothing there ever takes a rallied worker out of UnitCommand.Move (see
+                    // RALLY_STANDDOWN_GRACE_TICKS for the full enumeration). So a rally point inside a
+                    // PathabilityGrid-blocked region — where MovementSystem hard-stops the worker at the blocked-cell
+                    // boundary and SqrDistance can never fall inside the arrival radius — returned here on every tick
+                    // FOREVER: FindBestNode/AssignToNode unreachable, the worker never gathering again, where pre-DW-634
+                    // it was re-targeted to the nearest node on the very next tick.
+                    //
+                    // The bound is a NO-PROGRESS test, not a timer: release only when the leg PROVABLY cannot complete.
+                    // RallyGoalBestSqr holds the CLOSEST approach so far, so cumulative ground counts (a single raw tick
+                    // of improvement anywhere in the window re-arms it) and separation jitter against a wall cannot keep
+                    // resetting the budget — a jittering worker must beat its own best, which converges. Subsumes every
+                    // stall cause at once (grid hard stop, zeroed move speed, a cleared Moving flag) with no grid probe
+                    // and no dt.
+                    //
+                    // A counter of 0 means UNARMED — the fresh-Create/Clear state, and the state a resumed save comes
+                    // back in (DW-690 persists the pending flag but not this budget) — so the window arms itself here
+                    // from the worker's REAL current distance and needs no sentinel and no Array.Fill.
+                    if (world.RallyStandDownTicks[id] == 0 || goalSqr < world.RallyGoalBestSqr[id])
+                    {
+                        world.RallyGoalBestSqr[id]    = goalSqr; // new best (or the first mark) — restart the window
+                        world.RallyStandDownTicks[id] = 1;
+                        return;
+                    }
+                    if (++world.RallyStandDownTicks[id] < RALLY_STANDDOWN_GRACE_TICKS) return;
+                    // Budget spent: fall THROUGH to the release below and on into the unchanged nearest-node logic, so
+                    // this tick both ends the leg and re-employs the worker (no extra idle tick).
+                }
                 world.RallyMovePending[id] = false;
+                // The leg is over however it ended (arrived / superseded / DW-689 release) — disarm the budget so a
+                // later rally on this same entity starts a clean window.
+                world.RallyStandDownTicks[id] = 0;
+                world.RallyGoalBestSqr[id]    = Fixed.Zero;
             }
 
             int node = FindBestNode(world.Position[id], world.FactionOf[id]);

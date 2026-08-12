@@ -239,34 +239,73 @@ namespace ProjectChimera.Sim.Tests.Navigation
         public void MovementSystem_PositionAfterEachTick_EqualsTheHelperAppliedToItsOwnIntegratedStep()
         {
             // The extraction's proof: MovementSystem's post-tick Position is EXACTLY
-            // CheckedStep.Resolve(grid, prePos, prePos + velocity*dt) on every tick — including the ticks where the
-            // wall actually rejects the step. If the integrator ever grew a second, divergent copy of the rejection
-            // (the DW-648 failure mode), this parity breaks.
+            // CheckedStep.Resolve(grid, prePos, prePos + <the step it integrated>) on every tick — including the ticks
+            // where the wall actually rejects the step. If the integrator ever grew a second, divergent copy of the
+            // rejection (the DW-648 failure mode), this parity breaks.
+            //
+            // DW-732 — the integrated step is read off a MIRROR world holding the identical mover on a NULL grid, not
+            // reconstructed from EntityWorld.Velocity. Velocity used to be a faithful record of the DESIRED step;
+            // DW-732 now zeroes it whenever the guard refuses the step, so reconstructing `integrated` from it would
+            // make this parity trivially true on exactly the ticks that matter (both sides collapsing to the pre-step
+            // position). The mirror is also strictly STRONGER than the old reading: with a null grid Resolve is the
+            // identity, so the mirror's post-tick Position IS the unrejected step, and the comparison now proves the
+            // two runs agree on the whole VELOCITY SOLUTION as well as on the rejection.
             var w = new EntityWorld();
             var move = new MovementSystem();
             PathabilityGrid wall = ColumnWall(64);
             w.SetPathabilityGrid(wall);
 
+            var mirrorWorld = new EntityWorld();   // no SetPathabilityGrid ⇒ Pathability == null ⇒ Resolve is identity
+            var mirrorMove = new MovementSystem();
+
             int u = w.Create(V(-20, 0, 0), Faction.Player1, Fixed.FromInt(40), Fixed.FromInt(150));
             w.MoveTarget[u] = V(40, 0, 0);
             w.Flags[u] |= EntityFlags.Moving;
 
-            int rejections = 0;
+            int m = mirrorWorld.Create(V(-20, 0, 0), Faction.Player1, Fixed.FromInt(40), Fixed.FromInt(150));
+            mirrorWorld.MoveTarget[m] = V(40, 0, 0);
+            mirrorWorld.Flags[m] |= EntityFlags.Moving;
+
+            int rejections = 0, refusedSteps = 0;
             for (int t = 0; t < 200; t++)
             {
                 FixedVec3 pre = w.Position[u];
-                move.Tick(w, Dt);
-                FixedVec3 post = w.Position[u];
+                // Re-seed the mirror from the guarded world's REAL pre-step state every tick, so the two integrate the
+                // same step and can never drift apart once the wall stops one of them.
+                mirrorWorld.Position[m] = pre;
+                mirrorWorld.Flags[m] = w.Flags[u];
 
-                FixedVec3 integrated = pre + w.Velocity[u] * Dt;
+                move.Tick(w, Dt);
+                mirrorMove.Tick(mirrorWorld, Dt);
+
+                FixedVec3 post = w.Position[u];
+                FixedVec3 integrated = mirrorWorld.Position[m];   // the unrejected step this very tick
                 FixedVec3 expected = CheckedStep.Resolve(wall, pre, integrated);
                 AssertPos(expected, post, $"tick {t + 1}");
 
                 if (post.X.Raw != integrated.X.Raw || post.Z.Raw != integrated.Z.Raw) rejections++;
+
+                if (post.X.Raw == pre.X.Raw && post.Z.Raw == pre.Z.Raw)
+                {
+                    refusedSteps++;
+                    // DW-732 — a step the guard refused must not leave the seek velocity standing. Pre-fix the mover
+                    // reported a non-zero Velocity forever while its Position never moved a raw tick, so a save taken
+                    // here recorded a wall-stuck unit as travelling at full speed.
+                    Assert.True(w.Velocity[u] == FixedVec3.Zero,
+                        $"tick {t + 1}: the guard refused the step (Position unchanged) but Velocity is still " +
+                        $"({w.Velocity[u].X.ToFloat()}, {w.Velocity[u].Z.ToFloat()}) — DW-732.");
+                    // …and the control proves that is the GUARD's doing, not the mover giving up: the unguarded
+                    // mirror, from the identical state, is still seeking at full speed on this same tick.
+                    Assert.False(mirrorWorld.Velocity[m] == FixedVec3.Zero,
+                        $"tick {t + 1}: the unguarded mirror also reported zero velocity, so the assertion above " +
+                        "proves nothing about the guard.");
+                }
             }
 
             Assert.True(rejections > 0,
                 "the mover never reached the wall, so this parity run never exercised a rejected step.");
+            Assert.True(refusedSteps > 0,
+                "no tick was refused outright, so the DW-732 zero-velocity assertion above never ran.");
             Assert.True(w.Position[u].X.Raw < 0,
                 $"the mover ended east of the wall (X={w.Position[u].X.ToFloat()}) — the guard did not hold.");
         }
