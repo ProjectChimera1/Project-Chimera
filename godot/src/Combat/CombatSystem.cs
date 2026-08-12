@@ -130,6 +130,14 @@ namespace ProjectChimera.Combat
             for (int i = 0; i < count; i++)
             {
                 if ((world.Flags[i] & EntityFlags.Alive) == 0) continue;
+                // DW-938: a PHASED unit (builder inside its construction site) takes no combat action and holds no
+                // target. Above the stun gate — it is even more absent than stunned.
+                if ((world.Flags[i] & EntityFlags.Phased) != 0)
+                {
+                    world.AttackTarget[i] = -1;
+                    world.Flags[i]       &= ~EntityFlags.Attacking;
+                    continue;
+                }
                 // DW-266 — STUN GATE. A stunned unit is fully incapacitated: no cooldown tick, no acquisition, no
                 // chase, no attack, no on-hit rider (all of which live below this line). Sits ABOVE the gatherer and
                 // zero-damage guards so it covers EVERY alive entity, worker included. It drops the attack target and
@@ -684,12 +692,14 @@ namespace ProjectChimera.Combat
 
             if (target < 0)
             {
-                // Story 2.13 (AC1.3) — no enemy UNIT noticed: try to AUTO-ACQUIRE an in-WEAPON-range enemy
-                // BUILDING before resuming toward the goal (deliberately still weapon range, not acquisition —
-                // widening it would park armies at every outlying structure near the path; see the DW-936 ledger
-                // entry). Per Decision D-2 the raze reverts to Idle (the AttackBuilding guard's →Idle), not back
-                // to AttackMove; the AI re-waves idle units.
-                int bId = FindNearestEnemyBuildingInRange(world, i);
+                // Story 2.13 (AC1.3) + DW-936 follow-up — no enemy UNIT noticed: AUTO-ACQUIRE an enemy BUILDING
+                // within the ACQUISITION radius before resuming toward the goal (2026-08-12 field report: WC3
+                // attack-move engages anything hostile it passes, buildings included — the original weapon-range
+                // gate made armies walk straight past enemy structures). Units still take PRIORITY (this branch
+                // only runs with no unit noticed); TickAttackBuildingCombat's own chase leg closes the distance.
+                // Per Decision D-2 the raze reverts to Idle (the AttackBuilding guard's →Idle), not back to
+                // AttackMove; the AI re-waves idle units, and an idle player unit auto-engages what is around it.
+                int bId = FindNearestEnemyBuildingWithin(world, i, acquireRange);
                 if (bId >= 0)
                 {
                     world.CommandState[i]  = UnitCommand.AttackBuilding;
@@ -777,7 +787,10 @@ namespace ProjectChimera.Combat
             if (target < 0) return target;
 
             // IsAlive comes FIRST and short-circuits, so a stale/out-of-range id never indexes FactionOf.
+            // DW-938: a target that PHASED into a building since acquisition is dropped like a death — the
+            // acquisition paths already exclude phased units (SpatialHash), this guards the RETAINED path.
             if (!world.IsAlive(target)
+                || (world.Flags[target] & EntityFlags.Phased) != 0
                 || world.FactionOf[target] == world.FactionOf[id]
                 || (_alliances != null && _alliances.AreAllied(world.FactionOf[id], world.FactionOf[target])))
             {
@@ -798,13 +811,20 @@ namespace ProjectChimera.Combat
         /// unit cannot hit structures. Range gate: <c>SqrDistance(Position, building.Position) &lt;= AttackRange²</c>.
         /// </summary>
         private int FindNearestEnemyBuildingInRange(EntityWorld world, int i)
+            => FindNearestEnemyBuildingWithin(world, i, world.AttackRange[i]);
+
+        /// <summary>DW-936 follow-up (2026-08-12 field report): the same building search at an EXPLICIT radius —
+        /// AttackMove acquires buildings at its ACQUISITION radius (WC3: attack-move engages anything hostile it
+        /// passes, buildings included), while Idle keeps the weapon-range gate (Story 2.13 D-6 unchanged). The
+        /// weapon-range signature is sugar over this, so the two can never drift.</summary>
+        private int FindNearestEnemyBuildingWithin(EntityWorld world, int i, Fixed range)
         {
             if (_buildings == null) return -1;
             // A unit whose attack_domains exclude Structure never auto-acquires a building (matches the explicit
             // AttackBuilding guard's Structure-domain gate — TickAttackBuildingCombat).
             if ((world.AttackDomainOf[i] & AttackDomain.Structure) == AttackDomain.None) return -1;
 
-            Fixed   sqrRange  = world.AttackRange[i] * world.AttackRange[i];
+            Fixed   sqrRange  = range * range;
             Faction myFaction = world.FactionOf[i];
             FixedVec3 myPos   = world.Position[i];
 

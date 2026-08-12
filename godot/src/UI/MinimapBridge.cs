@@ -21,8 +21,8 @@ namespace ProjectChimera.UI
     ///        currently VISIBLE (own dots always), so the minimap leaks nothing the main view hides.
     ///   4. Border drawn by MinimapBridge._Draw().
     ///
-    /// Click-to-pan: LMB on the minimap instantly pans the RTS camera pivot to the
-    /// corresponding world XZ position. Hold and drag also works.
+    /// Click/drag-to-pan: RETIRED (DW-940, 2026-08-12 — camera moves on arrow keys only). LMB on the minimap is
+    /// consumed (never falls through to the 3D world); Alt+LMB still pings.
     ///
     /// Coordinate mapping:
     ///   World [-HALF_MAP .. +HALF_MAP] ↔ minimap pixel [0 .. SIZE].
@@ -281,20 +281,19 @@ namespace ProjectChimera.UI
                     return;
                 }
 
-                // A plain (Alt-free) press starts a fresh pan gesture and self-heals a latch stranded by a release
-                // delivered outside this Control.
+                // A plain (Alt-free) press self-heals a latch stranded by a release delivered outside this Control.
+                // DW-940: click-to-pan is RETIRED (2026-08-12, Alec's control scheme: camera moves on ARROW KEYS
+                // ONLY — no edge scroll, no minimap jump). The click is still consumed (never falls through to the
+                // 3D world as a unit order); Alt+LMB pings above are untouched. _camCtrl stays wired for the
+                // camera-view box drawn on the dot overlay.
                 _pingGesture = false;
-                if (_camCtrl == null) return;
-                _camCtrl.PanTo(MinimapToWorld(mb.Position));
                 AcceptEvent();
             }
             else if (@event is InputEventMouseMotion motion &&
                      (motion.ButtonMask & MouseButtonMask.Left) != 0)
             {
                 if (_pingGesture) { AcceptEvent(); return; } // dragging after a ping must not pan
-                if (_camCtrl == null) return;
-                _camCtrl.PanTo(MinimapToWorld(motion.Position));
-                AcceptEvent();
+                AcceptEvent(); // DW-940: drag-to-pan retired with click-to-pan (see above)
             }
         }
 
@@ -339,6 +338,7 @@ namespace ProjectChimera.UI
             for (int i = 0; i < cap; i++)
             {
                 if (!_world.IsAlive(i)) continue;
+                if ((_world.Flags[i] & EntityFlags.Phased) != 0) continue; // DW-938: inside a building — no dot
                 float wx = _world.Position[i].X.ToFloat();
                 float wz = _world.Position[i].Z.ToFloat();
                 bool  own = _world.FactionOf[i] == me;

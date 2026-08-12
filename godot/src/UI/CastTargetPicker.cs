@@ -37,6 +37,7 @@ namespace ProjectChimera.UI
             for (int i = 0; i < cap; i++)
             {
                 if (!world.IsAlive(i)) continue;
+                if ((world.Flags[i] & EntityFlags.Phased) != 0) continue; // DW-938: inside a building — untargetable
                 if (!Matches(world, i, localFaction, casterId, affinity)) continue;
                 FixedVec3 pos = world.Position[i];
                 float dx = pos.X.ToFloat() - hitX;

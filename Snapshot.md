@@ -100,6 +100,18 @@ Two gameplay defects Alec reported from the working match are FIXED, TESTED, and
 Tier-1: **6431 / 0 / 1** (08-11 baseline 6404 → +10 DW-933/934, +6 DW-936, +5 DW-937, +5 settings, +1 net test
 churn). Full solution builds clean. Master pushed through the DW-936/937 commit.
 
+**SAME-DAY ROUND 2 (Alec's field test of round 1 — six more reports, all fixed, Tier-1 now 6440/0/1):**
+
+| DW | What happened |
+|---|---|
+| **DW-936** (follow-ups) | (a) Attack-move now acquires enemy BUILDINGS at the acquisition radius too (units keep priority — WC3 order). (b) The "run past the enemy then turn back" overshoot: FlowFieldSteeringSystem was overwriting the combat chase's MoveTarget with the goal-ward path point every tick; steering now YIELDS while an engagement target is held (field kept cached for the post-kill resume). |
+| **DW-938** (new, closed) | **Builders PHASE INTO the site** (WC3 orc-peon model — supersedes DW-937's pause): unselectable/untargetable/un-orderable while building (SpatialHash+renderer+minimap+selection+OrderApplier all skip `EntityFlags.Phased`), pop back out beside the finished building. **Cancel Construction button** on the under-construction card: proper wire order (`UnitCommand.CancelConstruction`=25), 100% refund re-resolved from the same cost map the build debited, builder pops out. Phased rides the persisted Flags lane — no save-format change. |
+| **DW-939** (new, closed) | **Placement overlap rejected** — footprint half-extent-sum test (authored nav_footprint or the guarded default, sim-legal only) above every debit, `InvalidLocation` denial cue. Worker path only; scenario/editor direct placement stays permissive. Follow-up filed: red ghost tint on invalid spots. |
+| **DW-940** (new, closed) | **Controls**: attack-move is now **A+LMB** (was Q); camera pans on **ARROW KEYS ONLY** — WASD pan, edge scroll, the E toggle, and minimap click/drag-to-pan all retired (Alt+click minimap ping kept). Freeing A was exactly why WASD had to go; S stops being double-booked with Stop. |
+
+The DW-648 position-writer audit gained the two DW-938 placement-teleport writes (justified in its Sanctioned
+table). No golden moved in round 2. **Save compat note: round 1 already bumped saves to v6.**
+
 **Next session / next match:** (1) both machines pull + rebuild + relaunch — Alec field-tests attack-move,
 builder commitment, and single-render chat; (2) consider `responsive` now the PC is wired; (3) DW-924 (frame
 bursts) is STILL OPEN — network-led stalls are gone, so any residual banner is now a clean DW-924 signal; the

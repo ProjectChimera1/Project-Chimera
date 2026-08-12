@@ -170,6 +170,7 @@ namespace ProjectChimera.UI
             for (int i = 0; i < simCount; i++)
             {
                 if (!world.IsAlive(i)) continue;
+                if ((world.Flags[i] & EntityFlags.Phased) != 0) continue; // DW-938: inside a building — invisible
                 if (world.FactionOf[i] != _faction) continue;
                 if (fogThisFaction && !IsUnderVision(world, i)) continue;
                 _counts[TypeOf(world, i)]++;
@@ -190,6 +191,7 @@ namespace ProjectChimera.UI
             for (int i = 0; i < simCount; i++)
             {
                 if (!world.IsAlive(i)) continue;
+                if ((world.Flags[i] & EntityFlags.Phased) != 0) continue; // DW-938 — SAME test as pass 1 (cursor!)
                 if (world.FactionOf[i] != _faction) continue;
                 // Must use the SAME test as pass 1, or the cursor overruns the InstanceCount pass 1 sized.
                 if (fogThisFaction && !IsUnderVision(world, i)) continue;

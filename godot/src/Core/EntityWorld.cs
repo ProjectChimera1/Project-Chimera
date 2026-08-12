@@ -50,6 +50,8 @@ namespace ProjectChimera.Core
         CancelTrain = 23, // Cancel a queued/in-progress production order at a BUILDING (UnitId = buildingId, like Train/SetRally/Revive). WIRE: TargetX = the queue slot index (raw int, 0-4; read directly, NEVER via .ToFloat() — the packed-int lesson). Handled by OrderApplier BEFORE the entity-ownership guard (UnitId names a building, not an entity); the building-ownership + slot-range/empty guards and the deterministic 100% refund + remove/shift live in BuildingSystem.CancelTrainCommand at exec-tick. `buildings` null ⇒ deterministic no-op (golden/replay). NEVER persists as a CommandState.
         // ── DW-405 (FR-39): appended AFTER CancelTrain. Values 0-23 stay FROZEN for replay back-compat. Enum stays <= 0x3F (bits 6-7 are the wire queued flag). ──
         PlaceBuilding = 24, // Order a WORKER to construct a building — the wire form of what MainScene used to do by mutating the sim directly. WIRE: UnitId = the WORKER ENTITY, Slot = (byte)BuildingType (the CastAbility spare-byte trick — BuildingType is a byte enum, so the fixed 12-byte UnitOrder needs no widening), TargetX/TargetZ = the ground point (Fixed raw, the Move encoding). Handled by OrderApplier **AFTER** the IsAlive/FactionOf entity-ownership guard — UnitId names an ENTITY, not a building, so it is deliberately NOT the Train/Revive pre-guard pattern: dispatching before the guard would let a player spend an ENEMY faction's ore and plant buildings on their behalf (the same anti-cheat reason UseItem/DropItem sit after the guard). Applied immediately even when the wire queued flag is set — there is no queued-build path today, and routing it through the order ring would land PlaceBuilding in CommandState via ApplyActiveOrder, which no per-tick router cases. A fire-and-forget INTENT like CastAbility: it NEVER persists as a CommandState itself — BuildingSystem.QueueWorkerBuild writes UnitCommand.Build (which does persist, and already has arms everywhere) once its status/prereq/affordability guards pass. `buildings` null ⇒ deterministic no-op (golden/replay-without-buildings).
+        // ── DW-938 (cancel construction): appended AFTER PlaceBuilding. Values 0-24 stay FROZEN for replay back-compat. Enum stays <= 0x3F (bits 6-7 are the wire queued flag). ──
+        CancelConstruction = 25, // Cancel an UNDER-CONSTRUCTION building (UnitId = buildingId, like Train/CancelTrain/SetRally/Revive). WIRE: TargetX/TargetZ unused/reserved (0). Handled by OrderApplier BEFORE the entity-ownership guard (UnitId names a building, not an entity); the building-ownership anti-cheat + under-construction guard, the deterministic exec-tick 100% cost refund (re-resolved from the def, the CancelTrain pattern), the builder release (pop-out, DW-938) and the Destroy live in BuildingSystem.CancelConstructionCommand. `buildings` null ⇒ deterministic no-op (golden/replay). NEVER persists as a CommandState.
     }
 
     /// <summary>
@@ -135,6 +137,7 @@ namespace ProjectChimera.Core
                 case UnitCommand.Concede:        // names a faction, not an entity
                 case UnitCommand.CancelTrain:    // building order
                 case UnitCommand.PlaceBuilding:  // DW-405 — intent: QueueWorkerBuild writes UnitCommand.Build instead
+                case UnitCommand.CancelConstruction: // DW-938 — building order (refund + release + destroy at exec-tick)
                     return false;
 
                 default:
@@ -169,6 +172,13 @@ namespace ProjectChimera.Core
         Alive = 1 << 0,
         Moving = 1 << 1,
         Attacking = 1 << 2,
+        /// <summary>DW-938: the unit is INSIDE a building (a builder constructing its site — the WC3 phase-in
+        /// model). While set the unit is invisible, unselectable, untargetable and un-orderable: SpatialHash
+        /// excludes it (so no acquisition/splash finds it), FindNearestEnemyGlobal/ValidateOrClearTarget skip it,
+        /// MovementSystem/CombatSystem skip it, OrderApplier drops orders to it, and every presentation loop
+        /// (renderer/minimap/selection) hides it. Set on build-site arrival, cleared (with a pop-out reposition)
+        /// by ClearWorkerBuild on completion/cancel/site-destruction. Rides the already-persisted Flags lane.</summary>
+        Phased = 1 << 3,
     }
 
     /// <summary>

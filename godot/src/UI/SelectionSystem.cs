@@ -568,8 +568,10 @@ namespace ProjectChimera.UI
                     ResetPendingCommandClicks();
                     IssueHoldCommand();
                 }
-                else if (key.Keycode == Key.Q && _selectedSet.Count > 0)
+                else if (key.Keycode == Key.A && _selectedSet.Count > 0)
                 {
+                    // DW-940: A+LMB (was Q+LMB) — the WC3 attack-move chord. The A key was freed by moving camera
+                    // pan to the arrow keys only (RtsCameraController, same DW).
                     ResetPendingCommandClicks();
                     _awaitingAttackMoveClick = true;
                     GD.Print("[Selection] Attack-Move: click a destination.");
@@ -683,6 +685,7 @@ namespace ProjectChimera.UI
             for (int i = 0; i < cap; i++)
             {
                 if (!_world.IsAlive(i)) continue;
+                if ((_world.Flags[i] & EntityFlags.Phased) != 0) continue; // DW-938: inside a building — unselectable
                 if (_world.FactionOf[i] != me) continue; // only select own units
 
                 var sim = _world.Position[i];
@@ -1209,6 +1212,7 @@ namespace ProjectChimera.UI
             for (int i = 0; i < cap; i++)
             {
                 if (!_world.IsAlive(i)) continue;
+                if ((_world.Flags[i] & EntityFlags.Phased) != 0) continue; // DW-938: inside a building — unselectable
                 if (_world.FactionOf[i] != me) continue; // only select own units
                 var pos = _world.Position[i];
                 float dx = pos.X.ToFloat() - worldHit.X;
@@ -1289,16 +1293,19 @@ namespace ProjectChimera.UI
         {
             if (_selectedSet.Count == 0) return;
 
+            // DW-938: a unit that PHASES into a building leaves the selection like a death — otherwise a selected
+            // builder stays invisibly selected and keyboard commands would target it (it is un-orderable sim-side,
+            // but the UI must agree with the sim about what is commandable).
             int before = _selectedList.Count;
-            _selectedList.RemoveAll(id => !_world.IsAlive(id));
-            _selectedSet.RemoveWhere(id => !_world.IsAlive(id));
+            _selectedList.RemoveAll(id => !_world.IsAlive(id) || (_world.Flags[id] & EntityFlags.Phased) != 0);
+            _selectedSet.RemoveWhere(id => !_world.IsAlive(id) || (_world.Flags[id] & EntityFlags.Phased) != 0);
 
             // Story 11.5: a death is NOT a fresh selection — rebuild the subgroup structure but PRESERVE/clamp the
             // active-subgroup index rather than resetting it to 0. Only when membership actually shrank.
             if (_selectedList.Count != before)
                 RebuildSubgroups(resetActive: false);
 
-            if (_focusId >= 0 && !_world.IsAlive(_focusId))
+            if (_focusId >= 0 && (!_world.IsAlive(_focusId) || (_world.Flags[_focusId] & EntityFlags.Phased) != 0))
             {
                 // Reassign focus to the (clamped) active subgroup's first live member, else the first selected unit.
                 int reassigned = FirstActiveSubgroupMember();

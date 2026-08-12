@@ -133,6 +133,42 @@ namespace ProjectChimera.Sim.Tests.Combat
         }
 
         [Fact]
+        public void EnemyBuilding_InsideAcquisition_BeyondWeaponRange_IsEngaged()
+        {
+            // DW-936 follow-up (2026-08-12 field report): WC3 attack-move engages anything hostile it passes,
+            // BUILDINGS included. An enemy building 8u off the path (outside the 2u weapon, inside the 12u
+            // acquisition radius, no enemy units around) must flip the unit to AttackBuilding — whose own chase
+            // leg closes the distance — instead of being walked past.
+            var w = new EntityWorld();
+            var buildings = new ProjectChimera.Core.BuildingStore();
+            var combat = new CombatSystem(new ProjectileStore(), buildings: buildings);
+            int atk = AttackMover(w, V(0, 0), goal: V(30, 0));
+            int b = buildings.Create(V(0, 8), Faction.Player2, ProjectChimera.Core.BuildingType.Barracks);
+
+            combat.Tick(w, Dt);
+
+            Assert.Equal(UnitCommand.AttackBuilding, w.CommandState[atk]);
+            Assert.Equal(buildings.PackRef(b), w.CommandTarget[atk]);
+        }
+
+        [Fact]
+        public void EnemyUnit_TakesPriorityOverAnEnemyBuilding_InTheAcquisitionSet()
+        {
+            // WC3 priority: units first — the building branch only runs when no enemy UNIT was noticed.
+            var w = new EntityWorld();
+            var buildings = new ProjectChimera.Core.BuildingStore();
+            var combat = new CombatSystem(new ProjectileStore(), buildings: buildings);
+            int atk = AttackMover(w, V(0, 0), goal: V(30, 0));
+            buildings.Create(V(0, 6), Faction.Player2, ProjectChimera.Core.BuildingType.Barracks); // NEARER building
+            int foe = Enemy(w, V(0, 8));                                                            // farther unit
+
+            combat.Tick(w, Dt);
+
+            Assert.Equal(UnitCommand.AttackMove, w.CommandState[atk]); // not flipped to AttackBuilding
+            Assert.Equal(foe, w.AttackTarget[atk]);                    // the unit is the engagement
+        }
+
+        [Fact]
         public void LongWeapon_NeverBlinderThanItsOwnReach()
         {
             // An exotic weapon LONGER than the acquisition constant: the effective noticing radius is

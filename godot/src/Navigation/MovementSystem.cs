@@ -64,6 +64,9 @@ namespace ProjectChimera.Navigation
             for (int i = 0; i < count; i++)
             {
                 if ((world.Flags[i] & EntityFlags.Alive) == 0) continue;
+                // DW-938: a PHASED unit (builder inside its construction site) is spatially absent — no seek, no
+                // separation, and (via the SpatialHash phased exclusion) neighbours don't steer around it either.
+                if ((world.Flags[i] & EntityFlags.Phased) != 0) continue;
 
                 // DW-266 — STATUS ANCHOR (stun / root). A unit carrying either status may not change position this
                 // tick: it is exempted from seek AND separation, exactly like the Hold anchor below, so neither its

@@ -79,6 +79,9 @@ namespace ProjectChimera.UI
         private const int MAX_QUEUE_SLOTS = BuildingStore.QUEUE_DEPTH;
         private Button[] _queueBtns        = System.Array.Empty<Button>();
         private Label  _constructionLabel  = null!;  // "Under Construction  Xs"
+        // DW-938: the cancel-construction affordance on an own under-construction building (100% refund + the
+        // phased builder pops back out, both sim-side at exec-tick via UnitCommand.CancelConstruction).
+        private Button _cancelConstructionBtn = null!;
 
         // ── Hero revival (Story 3.14) ──────────────────────────────────────────
         // Injected via SetReviveDeps (like SetLockstep). Null until wired → the revive affordance is inert.
@@ -365,8 +368,9 @@ namespace ProjectChimera.UI
             bool owned = !spectatorView && faction == viewer;
             if (!owned)
             {
-                _supplyLabel.Visible       = false;
-                _constructionLabel.Visible = false;
+                _supplyLabel.Visible           = false;
+                _constructionLabel.Visible     = false;
+                _cancelConstructionBtn.Visible = false; // DW-938: never on a foreign/spectated card
                 HideTrainButtons();
                 HideQueueStrip();
                 HideReviveButtons();
@@ -383,6 +387,7 @@ namespace ProjectChimera.UI
                 float progress  = duration > 0f ? (1f - remaining / duration) * 100f : 100f;
                 _constructionLabel.Text    = $"Under Construction  {remaining:F1}s  ({progress:F0}%)";
                 _constructionLabel.Visible = true;
+                _cancelConstructionBtn.Visible = true; // DW-938: own + under construction — cancellable
                 HideTrainButtons();
                 HideReviveButtons();       // Story 3.14: also clear any revive buttons left over from a prior selection
                 HideShopButtons();         // Story 3.16: clear any shop buttons left over from a prior selection
@@ -392,7 +397,8 @@ namespace ProjectChimera.UI
                 return;
             }
 
-            _constructionLabel.Visible = false;
+            _constructionLabel.Visible     = false;
+            _cancelConstructionBtn.Visible = false; // DW-938: construction is complete — nothing to cancel
 
             bool isCC = bType == BuildingType.CommandCenter;
             // The single active producer surface (this story): the sim resolves ONE of Train/Research/Shop/Revive/None
@@ -905,6 +911,28 @@ namespace ProjectChimera.UI
             OrderApplier.Apply(_world, in order, _localFaction(), buildings: _buildSys, events: _combatEvents);
         }
 
+        private void OnCancelConstructionPressed()
+            => IssueCancelConstructionCommand(_selection.SelectedBuildingId);
+
+        /// <summary>
+        /// DW-938 — issue a CancelConstruction command for building <paramref name="bId"/>. Mirrors
+        /// <see cref="IssueCancelTrainCommand"/> exactly: online it is ENQUEUED (the deterministic exec-tick refund,
+        /// builder pop-out and Destroy happen once, THERE); offline it applies immediately via the SAME OrderApplier
+        /// the replay/online paths use. Only the LOCAL player's own under-construction building cancels.
+        /// WIRE: UnitId = buildingId; TargetX/TargetZ unused.
+        /// </summary>
+        private void IssueCancelConstructionCommand(int bId)
+        {
+            if (bId < 0 || bId >= _buildings.Count) return;
+            if (!_buildings.Alive[bId] || _buildings.FactionOf[bId] != _localFaction()) return;
+            if (!_buildings.IsUnderConstruction(bId)) return;
+            bool applyNow = _lockstep?.EnqueueOrder(bId, UnitCommand.CancelConstruction,
+                                                    Fixed.Zero, Fixed.Zero) ?? true;
+            if (!applyNow) return; // online: LockstepManager.Flush applies it at exec-tick (refund happens THERE, once)
+            var order = new UnitOrder(bId, UnitCommand.CancelConstruction, Fixed.Zero, Fixed.Zero);
+            OrderApplier.Apply(_world, in order, _localFaction(), buildings: _buildSys, events: _combatEvents);
+        }
+
         private void OnReviveSlotPressed(int slot)
         {
             if (slot < 0 || slot >= _reviveHeroSlots.Length) return;
@@ -1119,6 +1147,18 @@ namespace ProjectChimera.UI
                                            new Color(0.95f, 0.80f, 0.20f));
             _constructionLabel.Visible = false;
             _panel.AddChild(_constructionLabel);
+
+            // ── Cancel construction (DW-938) — shown only while the OWN selected building is under construction.
+            //    Full refund + builder pop-out happen sim-side at exec-tick (BuildingSystem.CancelConstructionCommand).
+            _cancelConstructionBtn = new Button
+            {
+                Text     = "Cancel Construction",
+                Position = new Vector2(10f, 80f),
+                Size     = new Vector2(170f, 26f),
+                Visible  = false,
+            };
+            _cancelConstructionBtn.Pressed += OnCancelConstructionPressed;
+            _panel.AddChild(_cancelConstructionBtn);
 
             // ── Supply label (CommandCenter) ──────────────────────────────────
             // DW-917: the CommandCenter now renders a TRAIN grid (worker production), whose queue strip occupies

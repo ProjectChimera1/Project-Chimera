@@ -44,6 +44,9 @@ namespace ProjectChimera.Navigation
             for (int i = 0; i < cap; i++)
             {
                 if (!world.IsAlive(i)) { _entityCell[i] = -1; continue; }
+                // DW-938: a PHASED unit (a builder inside its construction site) is spatially absent — excluding
+                // it here removes it from acquisition, splash-radius queries and the separation sample at once.
+                if ((world.Flags[i] & EntityFlags.Phased) != 0) { _entityCell[i] = -1; continue; }
                 int cell = WorldToCell(world.Position[i]);
                 _entityCell[i] = cell;
                 if (cell >= 0) _cellCount[cell]++;
@@ -162,6 +165,7 @@ namespace ProjectChimera.Navigation
             {
                 if (j == id) continue;
                 if (!world.IsAlive(j)) continue;
+                if ((world.Flags[j] & EntityFlags.Phased) != 0) continue; // DW-938: inside a building — untargetable
                 if (world.FactionOf[j] == myFaction) continue;
                 // Story 9.14: skip an ALLIED faction (never chase an ally to contact). Null / FFA ⇒ no-op.
                 if (alliances != null && alliances.AreAllied(myFaction, world.FactionOf[j])) continue;

@@ -71,6 +71,13 @@ namespace ProjectChimera.Sim.Tests.Meta
             ["Combat/ProjectileStore.cs"] = (1,
                 "Projectile spawn position. A ProjectileStore slot is not an EntityWorld entity."),
 
+            ["Economy/BuildingSystem.cs"] = (2,
+                "DW-938 builder phase-in/pop-out: TickWorkerArrival teleports the arrived builder INTO the site " +
+                "centre (the building's own audited placement cell), and ClearWorkerBuild pops it back out beside " +
+                "the site by a deterministic constant offset. Both are PLACEMENT teleports of a unit that is " +
+                "spatially absent while phased (excluded from the SpatialHash/MovementSystem) — not movement steps; " +
+                "sweeping them through CheckedStep would refuse the intentional into-the-footprint teleport."),
+
             ["Combat/ProjectileSystem.cs"] = (2,
                 "In-flight shell advance (the step-to-goal snap and the normal advance). Deliberately NOT swept: " +
                 "pathability is a GROUND constraint and a projectile flies over walls — routing shells through " +

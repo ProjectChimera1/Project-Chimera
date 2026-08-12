@@ -7,17 +7,18 @@ namespace ProjectChimera.UI
     /// A Camera3D child orbits it at a configurable pitch and distance.
     ///
     /// Controls:
-    ///   Pan:    WASD or arrow keys, plus edge-scroll when mouse nears viewport edge
+    ///   Pan:    ARROW KEYS ONLY (DW-940 — WASD, edge-scroll and minimap click-pan all retired 2026-08-12)
     ///   Zoom:   Scroll wheel
     ///   Rotate: Hold middle mouse + drag horizontally
     ///   Tilt:   Hold middle mouse + drag vertically
-    ///   E:      Toggle edge-of-screen panning on/off
+    ///   E:      (retired, DW-940 — was the edge-scroll toggle; the key now falls through unconsumed)
     /// </summary>
     public partial class RtsCameraController : Node3D
     {
         [Export] public float PanSpeed { get; set; } = 30.0f;
-        [Export] public float EdgeScrollMargin { get; set; } = 20.0f; // px
-        /// <summary>Whether edge-of-screen panning is active. Off by default (avoids the camera flinging
+        [Export] public float EdgeScrollMargin { get; set; } = 20.0f; // px — RETIRED (DW-940), kept for scene compat
+        /// <summary>RETIRED (DW-940): edge scrolling no longer exists — the property remains so scenes/settings that
+        /// set it keep loading, but HandlePan never reads it. Whether edge-of-screen panning is active. Off by default (avoids the camera flinging
         /// to a corner on load); toggle it on in-game with E.</summary>
         [Export] public bool EdgeScrollEnabled { get; set; } = false;
         [Export] public float ZoomStep { get; set; } = 8.0f;
@@ -67,14 +68,8 @@ namespace ProjectChimera.UI
 
         public override void _UnhandledInput(InputEvent @event)
         {
-            if (@event is InputEventKey key && key.Pressed && !key.Echo
-                && key.Keycode == Key.E)
-            {
-                EdgeScrollEnabled = !EdgeScrollEnabled;
-                GD.Print($"[Camera] Edge scroll {(EdgeScrollEnabled ? "ON" : "OFF")}");
-                GetViewport().SetInputAsHandled();
-                return;
-            }
+            // DW-940: the E edge-scroll toggle is RETIRED with edge scrolling itself (see HandlePan) — E no longer
+            // does anything here, so the key falls through unconsumed for future bindings.
 
             if (@event is InputEventMouseButton mb)
             {
@@ -125,26 +120,18 @@ namespace ProjectChimera.UI
 
             Vector3 move = Vector3.Zero;
 
-            // WASD / arrows — but NOT while typing into a text field. HandlePan polls Input.IsKeyPressed directly,
-            // which bypasses GUI focus, so without this guard every letter typed into an editor field (id, name, …)
-            // would also drive the camera (a→left, d→right, arrows→cursor+pan). Suppress keyboard pan whenever a
-            // LineEdit/TextEdit owns focus (this also covers a SpinBox's internal LineEdit).
+            // ARROW KEYS ONLY (DW-940, 2026-08-12 — Alec's control scheme). WASD pan is retired: A is now the
+            // attack-move chord (SelectionSystem), S was always double-booked with the Stop command, and W/D go
+            // with them for a coherent scheme. Edge scroll and minimap click/drag-pan are retired in the same DW —
+            // the camera moves on arrows (plus middle-mouse orbit + wheel zoom), full stop.
+            // Still NOT while typing into a text field: HandlePan polls Input.IsKeyPressed directly, which
+            // bypasses GUI focus, so arrows would otherwise cursor+pan inside editor fields.
             if (!IsTypingInTextField())
             {
-                if (Input.IsKeyPressed(Key.W) || Input.IsKeyPressed(Key.Up))    move += forward;
-                if (Input.IsKeyPressed(Key.S) || Input.IsKeyPressed(Key.Down))  move -= forward;
-                if (Input.IsKeyPressed(Key.A) || Input.IsKeyPressed(Key.Left))  move -= right;
-                if (Input.IsKeyPressed(Key.D) || Input.IsKeyPressed(Key.Right)) move += right;
-            }
-
-            // Edge scroll (only when enabled and no middle-mouse drag to avoid fighting)
-            if (EdgeScrollEnabled && !_middleHeld)
-            {
-                var rect = GetViewport()?.GetVisibleRect() ?? new Rect2(Vector2.Zero, Vector2.Zero);
-                if (_mousePos.X < EdgeScrollMargin)               move -= right;
-                if (_mousePos.X > rect.Size.X - EdgeScrollMargin) move += right;
-                if (_mousePos.Y < EdgeScrollMargin)               move += forward;
-                if (_mousePos.Y > rect.Size.Y - EdgeScrollMargin) move -= forward;
+                if (Input.IsKeyPressed(Key.Up))    move += forward;
+                if (Input.IsKeyPressed(Key.Down))  move -= forward;
+                if (Input.IsKeyPressed(Key.Left))  move -= right;
+                if (Input.IsKeyPressed(Key.Right)) move += right;
             }
 
             if (move.LengthSquared() > 0.001f)

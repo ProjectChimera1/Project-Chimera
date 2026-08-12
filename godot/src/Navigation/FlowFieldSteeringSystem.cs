@@ -152,6 +152,15 @@ namespace ProjectChimera.Navigation
                     continue;
                 }
 
+                // DW-936 follow-up (2026-08-12 field report — "units run PAST the enemy, then turn back"): while an
+                // attack-moving unit holds an engagement target, COMBAT owns MoveTarget (the chase leg aims at the
+                // enemy). This pass used to overwrite it every tick with the field's goal-ward look-ahead point, so
+                // the unit kept marching down the path THROUGH the fight and only doubled back once something else
+                // broke the tug-of-war. Yield — but KEEP the field cached, so when the engagement ends
+                // (kill/leash → ResumeAttackMove) the unit resumes the pathed route instead of a blind direct seek.
+                if (cmd == UnitCommand.AttackMove && world.AttackTarget[i] >= 0)
+                    continue;
+
                 FixedVec3 pos   = world.Position[i];
                 FixedVec3 goal  = _goals[i];
                 FlowField field = _fields[i]!;

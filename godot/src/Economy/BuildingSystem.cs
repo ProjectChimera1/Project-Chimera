@@ -226,6 +226,23 @@ namespace ProjectChimera.Economy
             }
         }
 
+        /// <summary>DW-939: the default placement half-extents when a building has no (valid) authored
+        /// <c>nav_footprint</c> — half of the guarded 5×3×5 default the whole footprint policy bottoms out at
+        /// (<c>BuildingNavFootprint</c>'s default; that class is presentation-side, so the values are mirrored here
+        /// as load-time constants rather than referenced). X/Z only — placement is a ground-plane test.</summary>
+        private static readonly Fixed DEFAULT_PLACEMENT_HALF = Fixed.FromFloat(2.5f);
+
+        /// <summary>DW-939: a def's placement half-extents — the authored <c>nav_footprint</c> halved when valid
+        /// (the shared <see cref="BuildingDefinition.TryGetNavFootprint"/> rule), else the guarded default. Sim-legal
+        /// (Fixed from authored floats, one quantization per call site; no mesh AABB — that half of the resolution
+        /// policy is presentation-only and per-machine).</summary>
+        private static (Fixed halfX, Fixed halfZ) PlacementHalfExtents(BuildingDefinition? def)
+        {
+            if (def != null && def.TryGetNavFootprint(out float fx, out _, out float fz))
+                return (Fixed.FromFloat(fx / 2f), Fixed.FromFloat(fz / 2f));
+            return (DEFAULT_PLACEMENT_HALF, DEFAULT_PLACEMENT_HALF);
+        }
+
         /// <summary>DW-937: clear the Build command of every worker assigned to completed site
         /// <paramref name="buildingId"/> (ascending-id, deterministic) — they resume gathering via the existing
         /// <see cref="ClearWorkerBuild"/> disposal.</summary>
@@ -239,6 +256,33 @@ namespace ProjectChimera.Economy
                 if (_buildings.TryResolveRef(world.BuildTarget[i], out int b) && b == buildingId)
                     ClearWorkerBuild(world, i);
             }
+        }
+
+        /// <summary>
+        /// DW-938 — apply a lockstep <see cref="UnitCommand.CancelConstruction"/> command at exec-tick. Mirrors
+        /// <see cref="CancelTrainCommand"/>'s shape: the building-ownership anti-cheat guard (a player may cancel
+        /// ONLY their OWN building; a foreign/dead/out-of-range/already-complete cancel is a SILENT deterministic
+        /// no-op), then a deterministic 100% refund of the building's cost — RE-RESOLVED from the def via
+        /// <see cref="GetBuildingCost"/>, the SAME map <see cref="QueueWorkerBuild"/> debited, so refund == spend
+        /// on every peer and in replay — then the builder release (<see cref="ReleaseBuildersOf"/> pops a phased
+        /// builder back out beside the site, DW-938) and finally <see cref="BuildingStore.Destroy"/> (which also
+        /// tears down/refunds any production queue via the DW-658 hook — vacuous for an under-construction site).
+        /// Returns true iff a construction was cancelled.
+        /// </summary>
+        public bool CancelConstructionCommand(int buildingId, Faction expectedFaction, EntityWorld world,
+                                              CombatEventQueue? events = null)
+        {
+            if (buildingId < 0 || buildingId >= _buildings.Count) return false;
+            if (!_buildings.Alive[buildingId]) return false;
+            if (_buildings.FactionOf[buildingId] != expectedFaction) return false; // anti-cheat: own building only (SILENT)
+            if (!_buildings.IsUnderConstruction(buildingId)) return false;         // completed buildings are not cancellable
+
+            // Refund BEFORE Destroy (the building's Type/FactionOf are still readable), release BEFORE Destroy
+            // (ReleaseBuildersOf resolves the builder's packed ref against the still-alive slot).
+            _resources.Add(expectedFaction, GetBuildingCost(_buildings.Type[buildingId], expectedFaction));
+            ReleaseBuildersOf(world, buildingId);
+            _buildings.Destroy(buildingId);
+            return true;
         }
 
         // ── Supply cap ────────────────────────────────────────────────────────
@@ -1222,14 +1266,18 @@ namespace ProjectChimera.Economy
                     continue;
                 }
 
-                // Check proximity to building centre — an ARRIVED builder anchors at the site edge (DW-937): pin
-                // MoveTarget to its own position and drop the Moving flag so MovementSystem neither walks it into
-                // the footprint centre (the old MoveTarget) nor lets separation shove it out of presence range.
+                // Check proximity to building centre — an ARRIVED builder PHASES INTO the site (DW-938, the WC3
+                // model; supersedes DW-937's stand-at-the-edge anchor): teleport to the building centre, set the
+                // Phased flag (invisible / unselectable / untargetable / un-orderable — every consumer skips it),
+                // clear Moving. The DW-937 presence gate keeps passing trivially (distance 0), and because the
+                // builder can no longer be selected or ordered, the pull-away pause path is unreachable from the
+                // UI — construction cannot be orphaned by a stray click (the 2026-08-12 field complaint).
                 Fixed sqr = FixedVec3.SqrDistance(world.Position[i], _buildings.Position[bId]);
-                if (sqr <= WORKER_BUILD_ARRIVE_SQR)
+                if (sqr <= WORKER_BUILD_ARRIVE_SQR && (world.Flags[i] & EntityFlags.Phased) == 0)
                 {
-                    world.MoveTarget[i] = world.Position[i];
-                    world.Flags[i]     &= ~EntityFlags.Moving;
+                    world.Position[i]   = _buildings.Position[bId];
+                    world.MoveTarget[i] = _buildings.Position[bId];
+                    world.Flags[i]      = (world.Flags[i] | EntityFlags.Phased) & ~EntityFlags.Moving;
                 }
             }
         }
@@ -1254,6 +1302,19 @@ namespace ProjectChimera.Economy
         /// </summary>
         private void ClearWorkerBuild(EntityWorld world, int workerId)
         {
+            // DW-938: a builder that had PHASED INTO the site pops back out beside it (deterministic constant
+            // offset from where it stands — the building centre; on the destroyed-site path the centre is where
+            // the worker already is). Cleared BEFORE the gather-resume below so the resumed leg walks a visible,
+            // selectable worker.
+            if ((world.Flags[workerId] & EntityFlags.Phased) != 0)
+            {
+                world.Flags[workerId]   &= ~EntityFlags.Phased;
+                world.Position[workerId] = new FixedVec3(
+                    world.Position[workerId].X + SPAWN_OFFSET,
+                    world.Position[workerId].Y,
+                    world.Position[workerId].Z + SPAWN_OFFSET);
+            }
+
             world.CommandState[workerId] = UnitCommand.Idle;
             world.BuildTarget[workerId]  = -1;
 
@@ -1312,6 +1373,27 @@ namespace ProjectChimera.Economy
             {
                 events?.PushDenied(position, faction, DenialReason.PrereqMissing); // Story 11.4: guard-sourced reason
                 return -1;
+            }
+
+            // DW-939 — PLACEMENT OVERLAP GATE (2026-08-12 field report: buildings could be stacked on top of each
+            // other). Reject when the new site's footprint overlaps ANY alive building's footprint (axis-aligned,
+            // half-extent sum on X and Z), ABOVE every debit so the refusal is atomic. Footprints come from the
+            // SIM-LEGAL half of the resolution policy only — the authored nav_footprint (Core.Definitions) with the
+            // guarded 5×3×5 default — never the presentation mesh AABB (float, per-machine). Deliberately runs ONLY
+            // on the worker-build path: PlaceBuildingDirect stays permissive (scenario/editor authoring freedom).
+            var (newHalfX, newHalfZ) = PlacementHalfExtents(bdef);
+            for (int b = 0; b < _buildings.Count; b++)
+            {
+                if (!_buildings.Alive[b]) continue;
+                var (bHalfX, bHalfZ) = PlacementHalfExtents(
+                    GetFactionDef(_buildings.FactionOf[b])?.GetBuilding(_buildings.DefinitionId[b]));
+                Fixed dx = position.X - _buildings.Position[b].X; if (dx < Fixed.Zero) dx = -dx;
+                Fixed dz = position.Z - _buildings.Position[b].Z; if (dz < Fixed.Zero) dz = -dz;
+                if (dx < newHalfX + bHalfX && dz < newHalfZ + bHalfZ)
+                {
+                    events?.PushDenied(position, faction, DenialReason.InvalidLocation);
+                    return -1;
+                }
             }
 
             // Story 4.3: sparse cost-map spend (was ore-only — buildings never charged crystal, a latent gap this

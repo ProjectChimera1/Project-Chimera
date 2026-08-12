@@ -262,6 +262,18 @@ namespace ProjectChimera.Multiplayer
                 return;
             }
 
+            // DW-938: CancelConstruction ALSO names a BUILDING (UnitId = buildingId) — handle it beside
+            // Train/CancelTrain, BEFORE the entity-ownership guard, for the same reason. BuildingSystem's command
+            // method does the building-ownership anti-cheat + under-construction guards, the deterministic
+            // exec-tick 100% refund, the builder pop-out and the Destroy. NEVER persists as a CommandState.
+            // `buildings` null → deterministic no-op (golden/replay-without-buildings paths, like Train).
+            if (cmd == UnitCommand.CancelConstruction)
+            {
+                if (buildings == null) { WarnSystemlessDrop(log, cmd, o.UnitId, expectedFaction, nameof(BuildingSystem)); return; }
+                buildings.CancelConstructionCommand(o.UnitId, expectedFaction, world, events);
+                return;
+            }
+
             // Story 2.12 (AC3): SetRally ALSO names a BUILDING (UnitId = buildingId) — handle it beside Train, BEFORE
             // the entity guard, for the same reason. The rally point rides TargetX/TargetZ as Fixed raw (the Move
             // encoding); BuildingSystem.SetRallyCommand does the bounds + Alive + faction anti-cheat check then writes
@@ -352,6 +364,11 @@ namespace ProjectChimera.Multiplayer
             int id = o.UnitId;
             if (!world.IsAlive(id)) return;
             if (world.FactionOf[id] != expectedFaction) return; // anti-cheat: only command your own units
+            // DW-938: a PHASED unit (a builder inside its construction site) is un-orderable — the UI cannot
+            // select it, so a wire order naming it is stale (issued the tick it phased) or crafted. Dropping here
+            // keeps the phase inviolable: without this, a Move order would flip its CommandState off Build and
+            // leave an invisible, walking unit (and an orphaned site). Deterministic: Flags is sim state.
+            if ((world.Flags[id] & EntityFlags.Phased) != 0) return;
 
             // Story 3.15: UseItem / DropItem name the HERO ENTITY (== id, not a building like Train/Revive), so they are
             // gated by the ownership guard ABOVE — NOT dispatched by the building-command pre-guard pattern. Placing them

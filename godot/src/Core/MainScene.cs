@@ -2285,7 +2285,7 @@ namespace ProjectChimera.Core
             {
                 if (_ctx.EditorDock != null) _ctx.EditorDock.Visible = false;   // play: authoring UI out of the way
                 _ctx.ControlsLabel.Text =
-                    "F5=Edit   R-Click=Move   Q+Click=AttackMove   S=Stop   H=Hold   1-9=Groups   Esc=Deselect";
+                    "F5=Edit   R-Click=Move   A+Click=AttackMove   S=Stop   H=Hold   1-9=Groups   Arrows=Camera   Esc=Deselect";
             }
 
             // ── Stall banner ──────────────────────────────────────────────────
