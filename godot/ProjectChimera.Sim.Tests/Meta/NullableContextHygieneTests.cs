@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Text;
 using System.Text.RegularExpressions;
 using Xunit;
 
@@ -75,7 +74,7 @@ namespace ProjectChimera.Sim.Tests.Meta
                 string text = File.ReadAllText(path);
                 if (DeclaresNullableEnable(text)) continue;   // inside an annotations context — CS8632 impossible.
 
-                string code = StripCommentsAndLiterals(text);
+                string code = CSharpSourceScan.StripCommentsAndLiterals(text);
                 foreach ((int line, string snippet) in ReferenceTypeAnnotations(code))
                     offenders.Add($"{Relative(root, path)}({line}): {snippet}");
             }
@@ -169,7 +168,7 @@ namespace ProjectChimera.Sim.Tests.Meta
                                        || SimReferenceTypeNames.Contains(bare);
                     if (!isReference) continue;
 
-                    yield return (LineOf(code, m.Index), Collapse(m.Value));
+                    yield return (CSharpSourceScan.LineOf(code, m.Index), Collapse(m.Value));
                 }
             }
         }
@@ -185,14 +184,6 @@ namespace ProjectChimera.Sim.Tests.Meta
             return parts[parts.Length - 1].Trim();
         }
 
-        private static int LineOf(string text, int index)
-        {
-            int line = 1;
-            for (int i = 0; i < index && i < text.Length; i++)
-                if (text[i] == '\n') line++;
-            return line;
-        }
-
         private static string Collapse(string s) => Regex.Replace(s, @"\s+", " ").Trim();
 
         private static string Relative(string root, string path) =>
@@ -200,103 +191,10 @@ namespace ProjectChimera.Sim.Tests.Meta
                 ? path.Substring(root.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Replace('\\', '/')
                 : path;
 
-        /// <summary>
-        /// Blank out comments, string/char literals and (verbatim, interpolated, raw) string bodies, preserving every
-        /// newline so reported line numbers stay accurate. Without this a <c>// Foo? bar;</c> comment or a
-        /// <c>"Foo? bar,"</c> literal would be reported as a real annotation.
-        /// </summary>
-        private static string StripCommentsAndLiterals(string text)
-        {
-            var sb = new StringBuilder(text.Length);
-            int i = 0;
-            while (i < text.Length)
-            {
-                char c = text[i];
-
-                // line comment
-                if (c == '/' && i + 1 < text.Length && text[i + 1] == '/')
-                {
-                    while (i < text.Length && text[i] != '\n') { sb.Append(' '); i++; }
-                    continue;
-                }
-                // block comment
-                if (c == '/' && i + 1 < text.Length && text[i + 1] == '*')
-                {
-                    sb.Append("  "); i += 2;
-                    while (i < text.Length && !(text[i] == '*' && i + 1 < text.Length && text[i + 1] == '/'))
-                    {
-                        sb.Append(text[i] == '\n' ? '\n' : ' '); i++;
-                    }
-                    if (i < text.Length) { sb.Append("  "); i += 2; }
-                    continue;
-                }
-                // raw string literal ("""…""") — match the opening quote run length
-                if (c == '"' && i + 2 < text.Length && text[i + 1] == '"' && text[i + 2] == '"')
-                {
-                    int run = 0;
-                    while (i + run < text.Length && text[i + run] == '"') run++;
-                    for (int k = 0; k < run; k++) { sb.Append(' '); i++; }
-                    while (i < text.Length)
-                    {
-                        if (text[i] == '"')
-                        {
-                            int close = 0;
-                            while (i + close < text.Length && text[i + close] == '"') close++;
-                            if (close >= run) { for (int k = 0; k < close; k++) { sb.Append(' '); i++; } break; }
-                            for (int k = 0; k < close; k++) { sb.Append(' '); i++; }
-                            continue;
-                        }
-                        sb.Append(text[i] == '\n' ? '\n' : ' '); i++;
-                    }
-                    continue;
-                }
-                // verbatim string (@"…" / $@"…" / @$"…") — "" is an escaped quote, backslash is literal
-                if (c == '@' && i + 1 < text.Length && (text[i + 1] == '"' || (text[i + 1] == '$' && i + 2 < text.Length && text[i + 2] == '"')))
-                {
-                    sb.Append(' '); i++;                                  // '@'
-                    if (text[i] == '$') { sb.Append(' '); i++; }          // '$'
-                    sb.Append(' '); i++;                                  // opening quote
-                    while (i < text.Length)
-                    {
-                        if (text[i] == '"')
-                        {
-                            if (i + 1 < text.Length && text[i + 1] == '"') { sb.Append("  "); i += 2; continue; }
-                            sb.Append(' '); i++; break;
-                        }
-                        sb.Append(text[i] == '\n' ? '\n' : ' '); i++;
-                    }
-                    continue;
-                }
-                // regular / interpolated string
-                if (c == '"' || (c == '$' && i + 1 < text.Length && text[i + 1] == '"'))
-                {
-                    if (c == '$') { sb.Append(' '); i++; }
-                    sb.Append(' '); i++;                                  // opening quote
-                    while (i < text.Length && text[i] != '"' && text[i] != '\n')
-                    {
-                        if (text[i] == '\\' && i + 1 < text.Length) { sb.Append("  "); i += 2; continue; }
-                        sb.Append(' '); i++;
-                    }
-                    if (i < text.Length && text[i] == '"') { sb.Append(' '); i++; }
-                    continue;
-                }
-                // char literal
-                if (c == '\'')
-                {
-                    sb.Append(' '); i++;
-                    while (i < text.Length && text[i] != '\'' && text[i] != '\n')
-                    {
-                        if (text[i] == '\\' && i + 1 < text.Length) { sb.Append("  "); i += 2; continue; }
-                        sb.Append(' '); i++;
-                    }
-                    if (i < text.Length && text[i] == '\'') { sb.Append(' '); i++; }
-                    continue;
-                }
-
-                sb.Append(c); i++;
-            }
-            return sb.ToString();
-        }
+        // DW-795 — the comment/literal stripper and the index→line helper used to live here as a private,
+        // functionally identical TWIN of Meta/CSharpSourceScan. Two copies of a source-stripping heuristic drift,
+        // and a drifted stripper silently weakens whichever guard is behind it (this one). Both now route through
+        // the shared implementation; SharedTestHelperTwinGuardTests keeps a third copy from reappearing.
 
         /// <summary>godot/src — two directories up from this file (…/ProjectChimera.Sim.Tests/Meta/), then into src.</summary>
         private static string SrcRoot([CallerFilePath] string thisFilePath = "")

@@ -648,68 +648,15 @@ namespace ProjectChimera.Sim.Tests.Definitions
         }
 
         // ── Story 4.8: available_research round-trips exactly like prerequisites ──────────────────────────────
-
-        [Fact]
-        public void SyncFactionBuildings_AuthoredAvailableResearch_RoundTrips()
-        {
-            FactionDefinition f = Parse(Faction);
-            BuildingDefinition barracks = f.GetBuilding("barracks")!;
-            barracks.AvailableResearch = new[] { "r1" };
-
-            string outJson = FactionWriter.SyncFactionBuildings(Faction, f.Buildings);
-
-            Assert.Contains("available_research", BuildingJson(outJson, "barracks"));
-            FactionDefinition reloaded = Parse(outJson);
-            Assert.Equal(new[] { "r1" }, reloaded.GetBuilding("barracks")!.AvailableResearch);
-        }
-
-        [Fact]
-        public void SyncFactionBuildings_OmittedAvailableResearch_IsNotWritten()
-        {
-            // available_research omitted (default empty array) must NOT balloon the key — every existing building
-            // round-trips byte-identically, mirroring prerequisites' omit-on-default discipline.
-            FactionDefinition f = Parse(Faction);
-            f.GetBuilding("barracks")!.Hp = 850f;   // touch a different field
-            string outJson = FactionWriter.SyncFactionBuildings(Faction, f.Buildings);
-
-            Assert.DoesNotContain("available_research", BuildingJson(outJson, "barracks"));
-        }
-
-        [Fact]
-        public void PatchFactionBuildingJson_Update_AuthoredAvailableResearch_RoundTrips()
-        {
-            // Review-pass fix: AvailableResearch's round-trip was only exercised via SyncFactionBuildings/Create;
-            // the single-target PatchFactionBuildingJson Update path (BuildingEditKind.Update) was untested for
-            // this field. Mirrors the Update-path structure of the units[] tests above
-            // (e.g. Update_ChangesOnlyTheEditedField_PreservesEverythingElse), applied to the buildings[] surface.
-            BuildingDefinition edited = Parse(Faction).GetBuilding("barracks")!;
-            edited.AvailableResearch = new[] { "r1", "r2" };
-
-            string outJson = FactionWriter.PatchFactionBuildingJson(Faction,
-                new BuildingEdit { Kind = BuildingEditKind.Update, TargetId = "barracks", Def = edited });
-
-            FactionDefinition reloaded = Parse(outJson);
-            Assert.Equal(new[] { "r1", "r2" }, reloaded.GetBuilding("barracks")!.AvailableResearch);
-            // Untouched fields preserved (the reconcile is surgical, not a wholesale rewrite).
-            Assert.Equal(800f, reloaded.GetBuilding("barracks")!.Hp);
-        }
-
-        [Fact]
-        public void PatchFactionBuildingJson_Create_WritesAvailableResearch()
-        {
-            var fresh = new BuildingDefinition
-            {
-                Id = "lab", Category = "Structure", Hp = 300f,
-                ConstructionTime = 10f, SupplyBonus = 0, ProducesCategory = "None",
-                AvailableResearch = new[] { "armor_up", "speed_up" },
-            };
-            string outJson = FactionWriter.PatchFactionBuildingJson(Faction,
-                new BuildingEdit { Kind = BuildingEditKind.Create, Def = fresh });
-
-            FactionDefinition reloaded = Parse(outJson);
-            BuildingDefinition b = reloaded.GetBuilding("lab")!;
-            Assert.Equal(new[] { "armor_up", "speed_up" }, b.AvailableResearch);
-        }
+        //
+        //    DW-757 — the four single-field available_research Facts that used to sit here (Sync/authored,
+        //    Sync/omitted, Patch-Update/authored, Patch-Create) were DELETED, not lost: every behaviour each one
+        //    asserted is asserted by the ResearchKey row of the DW-82 theories below, which drive the SAME bodies
+        //    through BOTH keys and add three surfaces the Facts never touched (the cleared→explicit-[] case, the
+        //    SerializeBuildingClean escape hatch, and the two-keys-do-not-clobber-each-other parity fact). The one
+        //    place the theories were WEAKER — the omitted-key check asserted the quoted token `"available_research"`
+        //    where the deleted Fact asserted the bare word — was tightened to the bare word first, so this deletion
+        //    removes ~30 lines of duplication with a strictly non-decreasing assertion set.
 
         // ── DW-82: prerequisites' OWN round-trip, proven by the SAME body that proves available_research's ─────
         //
@@ -762,7 +709,11 @@ namespace ProjectChimera.Sim.Tests.Definitions
             f.GetBuilding("barracks")!.Hp = 850f;   // touch a different field
             string outJson = FactionWriter.SyncFactionBuildings(Faction, f.Buildings);
 
-            Assert.DoesNotContain($"\"{key}\"", BuildingJson(outJson, "barracks"));
+            // DW-757 — the BARE key, not the quoted token: absence of `available_research` anywhere in the object
+            // is strictly stronger than absence of `"available_research"` (it also catches the key leaking in as a
+            // VALUE), and it is exactly what the deleted single-field Fact asserted. Keeping the stronger form is
+            // what makes that deletion lossless.
+            Assert.DoesNotContain(key, BuildingJson(outJson, "barracks"));
         }
 
         [Theory]
