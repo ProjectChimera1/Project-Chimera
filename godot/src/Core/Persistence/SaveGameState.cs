@@ -715,8 +715,21 @@ namespace ProjectChimera.Core.Persistence
                 w.Position[i] = new FixedVec3(Fixed.FromRaw(px[i]), Fixed.FromRaw(py[i]), Fixed.FromRaw(pz[i]));
                 w.PrevPosition[i] = w.Position[i]; // transient — seeded to Position (SnapshotPositions overwrites next tick)
                 w.Velocity[i] = new FixedVec3(Fixed.FromRaw(vx[i]), Fixed.FromRaw(vy[i]), Fixed.FromRaw(vz[i]));
-                w.BaseMoveSpeed[i] = Fixed.FromRaw(bms[i]); w.EffectiveMoveSpeed[i] = Fixed.FromRaw(ems[i]);
-                w.Health[i] = Fixed.FromRaw(hp[i]); w.BaseMaxHealth[i] = Fixed.FromRaw(bmh[i]); w.EffectiveMaxHealth[i] = Fixed.FromRaw(emh[i]);
+                // DW-692: EffectiveMoveSpeed is re-applied through ModifierSystem's ZERO-FLOOR (see the DW-643 note
+                // below for why THIS overlay is the one writer that escapes it). Consumer: MovementSystem multiplies
+                // the unit vector toward the goal by this speed (`toTarget.Normalized() * speed`, and the max-speed
+                // clamp re-multiplies by it), so a NEGATIVE value steers the unit directly AWAY from its own move
+                // target — it accelerates backwards forever and can never arrive, which no order can undo.
+                w.BaseMoveSpeed[i] = Fixed.FromRaw(bms[i]);
+                w.EffectiveMoveSpeed[i] = Fixed.Max(Fixed.Zero, Fixed.FromRaw(ems[i]));
+                // DW-692: EffectiveMaxHealth likewise. Consumer: it is the CEILING every Health write clamps into —
+                // `Fixed.Clamp(h, Fixed.Zero, EffectiveMaxHealth[id])` = `Max(0, Min(ceiling, h))`, so a negative
+                // ceiling collapses the next heal / DirectHpDelta / research-reconcile to EXACTLY 0 HP while the
+                // entity stays ALIVE. That is the 0-HP zombie DW-325/DW-491 declare impossible, and it slips the
+                // ceiling-collapse death rail too: that rail only fires on an above-zero → zero TRANSITION, and a
+                // ceiling restored already-negative was never above zero, so no death is ever raised.
+                w.Health[i] = Fixed.FromRaw(hp[i]); w.BaseMaxHealth[i] = Fixed.FromRaw(bmh[i]);
+                w.EffectiveMaxHealth[i] = Fixed.Max(Fixed.Zero, Fixed.FromRaw(emh[i]));
                 w.FactionOf[i] = (Faction)fac[i];
                 w.MoveTarget[i] = new FixedVec3(Fixed.FromRaw(mtx[i]), Fixed.FromRaw(mty[i]), Fixed.FromRaw(mtz[i]));
                 w.AttackTarget[i] = at[i]; w.AttackCooldown[i] = Fixed.FromRaw(ac[i]); w.AttackRange[i] = Fixed.FromRaw(ar[i]);
@@ -731,9 +744,18 @@ namespace ProjectChimera.Core.Persistence
                 // authored source ModifierSystem re-derives Effective from, and the validator already bounds it to
                 // [0, 32768) at load, so flooring it here would only mask a corrupt blob at a different field.
                 // A well-formed save is non-negative, so this is a no-op on one and no golden moves.
+                // DW-692 closed the same hole at the three SIBLING effective stats (MoveSpeed / MaxHealth / Armor
+                // above), each with its own consumer reasoning rather than a blanket floor — so all FOUR fields
+                // ModifierSystem.RecomputeEntity floors are now floored on this overlay too, and every Base_ stays
+                // deliberately raw for the same authored-source reason.
                 w.BaseAttackDamage[i] = Fixed.FromRaw(bad[i]);
                 w.EffectiveAttackDamage[i] = Fixed.Max(Fixed.Zero, Fixed.FromRaw(ead[i]));
-                w.BaseArmor[i] = Fixed.FromRaw(bar[i]); w.EffectiveArmor[i] = Fixed.FromRaw(ear[i]);
+                // DW-692: EffectiveArmor likewise. Consumer: DamageTable.FinalDamage is
+                // `max(0, amount*matrix − flatArmor)`, so a NEGATIVE armor is SUBTRACTED-negative — it ADDS that much
+                // damage to every hit the unit takes, silently turning a defensive stat into a damage amplifier
+                // (worse than merely disabling the unit, which is what a negative attack damage does).
+                w.BaseArmor[i] = Fixed.FromRaw(bar[i]);
+                w.EffectiveArmor[i] = Fixed.Max(Fixed.Zero, Fixed.FromRaw(ear[i]));
                 w.AttackSpeed[i] = Fixed.FromRaw(asp[i]); w.Energy[i] = Fixed.FromRaw(en[i]); w.MaxEnergy[i] = Fixed.FromRaw(men[i]); w.RegenRate[i] = Fixed.FromRaw(rgn[i]);
                 w.StatusFlagsOf[i] = (StatusFlags)sf[i]; w.DamageTypeOf[i] = (DamageType)dt[i]; w.ArmorTypeOf[i] = (ArmorType)art[i];
                 w.VisionRange[i] = Fixed.FromRaw(vr[i]); w.Elevation[i] = Fixed.FromRaw(el[i]); w.SplashRadius[i] = Fixed.FromRaw(spl[i]);

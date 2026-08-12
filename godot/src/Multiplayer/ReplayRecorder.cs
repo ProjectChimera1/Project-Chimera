@@ -59,6 +59,17 @@ namespace ProjectChimera.Multiplayer
         private readonly BinaryWriter _writer;
         private bool _closed;
 
+        /// <summary>
+        /// DW-833 — latched the moment either <see cref="RecordTick"/> ceiling guard throws. A throw means the
+        /// recording is COMPROMISED (the caller handed the recorder more than the frozen envelope can carry), so the
+        /// recorder refuses every later <see cref="RecordTick"/> instead of writing a file that silently omits the
+        /// rejected orders and diverges from the live match at that tick — the exact silent-drop class DW-432/DW-604
+        /// made fail-loud. Distinct from <see cref="_closed"/> on purpose: the file is still FINALISED normally
+        /// (buffered tick flushed, trailer written, handle released) so everything recorded before the fault stays
+        /// durable and readable — only the trailer's <c>completed</c> flag is forced false (see <see cref="Close(int,bool)"/>).
+        /// </summary>
+        private bool _faulted;
+
         // Per-tick sub-bundle accumulation (flushed as one MergedTickPacket frame on tick advance / Close). Sized to
         // the frozen MergedTickPacket ceilings so a full tick always fits.
         private readonly Faction[]   _bufFactions   = new Faction[MergedTickPacket.MERGED_MAX_SUBBUNDLES];
@@ -97,6 +108,13 @@ namespace ProjectChimera.Multiplayer
 
         /// <summary>Highest tick recorded so far (written into the result trailer).</summary>
         public uint FinalTick { get; private set; }
+
+        /// <summary>
+        /// DW-833 — true once a <see cref="RecordTick"/> ceiling guard threw. The recording is compromised: every
+        /// later <see cref="RecordTick"/> is refused and <see cref="Close(int,bool)"/> can only write an INCOMPLETE
+        /// trailer. Lets a caller that catches the exception see the recorder's state instead of guessing.
+        /// </summary>
+        public bool IsFaulted => _faulted;
 
         // ── Construction ──────────────────────────────────────────────────────────
 
@@ -137,10 +155,60 @@ namespace ProjectChimera.Multiplayer
         /// (fail loud, never silently drop) on EITHER frozen-envelope ceiling: a single tick accumulating more than
         /// <see cref="MergedTickPacket.MERGED_MAX_SUBBUNDLES"/> sub-bundles (DW-432), or a single sub-bundle
         /// carrying more than <see cref="TickCommandPacket.MAX_ORDERS"/> orders (DW-604).
+        ///
+        /// <para><b>DW-833 — a throw is ATOMIC and TERMINAL.</b> Both ceiling checks run before the tick-advance
+        /// flush and the buffer init, so a rejected call leaves the recorder byte-for-byte as it found it (pre-fix
+        /// they ran after both, so a caller that caught the exception continued into a tick whose buffer the
+        /// REJECTED call had opened). And because either throw means the caller fed the recorder more than the
+        /// frozen envelope carries, the recorder latches itself <see cref="IsFaulted"/>: every later
+        /// <see cref="RecordTick"/> is a no-op and <see cref="Close(int,bool)"/> can only write an INCOMPLETE
+        /// trailer, so a caught-and-ignored throw can never yield a file that looks complete while silently missing
+        /// the rejected orders.</para>
         /// </summary>
         public void RecordTick(uint tick, Faction faction, UnitOrder[] buf, int baseIdx, int count)
         {
-            if (_closed || count <= 0) return;
+            // DW-833 (latch half): a prior ceiling throw invalidated the recording — refuse rather than continue and
+            // write a file that silently omits the rejected orders.
+            if (_closed || _faulted || count <= 0) return;
+
+            // ── DW-833 (atomicity half): BOTH ceiling guards run BEFORE the tick-advance flush and the buffer init,
+            // so a REJECTED call mutates nothing at all — RecordTick is exception-atomic. Pre-fix they ran after
+            // both, so a caller that caught the exception continued into a tick whose buffer the rejected call had
+            // opened (_hasBuffered/_bufTick/_bufCount already re-pointed at it).
+            //
+            // The sub-bundle slot this call WOULD occupy, computed without touching state: the live count when the
+            // call continues the buffered tick, else 0 — because a differing tick flushes and re-opens at 0, and an
+            // empty buffer starts at 0. Identical to the post-flush `_bufCount` the store below uses.
+            int wouldBeSlot = (_hasBuffered && tick == _bufTick) ? _bufCount : 0;
+
+            // DW-432: the recorder's stated invariant is "never silently discard", so a tick accumulating more
+            // per-faction sub-bundles than the frozen MergedTickPacket envelope carries must fail LOUD — the
+            // pre-fix silent `return` would drop the overflowing faction's orders and write a divergent replay
+            // (the exact silent-drop class the v4 format is fail-closed against). Unreachable in ≤8-slot play
+            // (MERGED_MAX_SUBBUNDLES == FactionRegistry.PLAYER_COUNT and the merged stream feeds one sub-bundle
+            // per faction per tick), so this is a tripwire for a future >8-slot mode, never a live branch.
+            if (wouldBeSlot >= MergedTickPacket.MERGED_MAX_SUBBUNDLES)
+            {
+                _faulted = true; // DW-833 — the recording is compromised from here on
+                throw new InvalidOperationException(
+                    $"ReplayRecorder: tick {tick} accumulated more than {MergedTickPacket.MERGED_MAX_SUBBUNDLES} " +
+                    "per-faction sub-bundles — refusing to silently drop orders from the recording " +
+                    "(RecordTick is called once per faction per tick from the merged stream).");
+            }
+            // DW-604: the SAME "never silently discard" invariant on the adjacent ceiling. The pre-fix line silently
+            // clamped `count` to MAX_ORDERS, truncating the tail of an over-long sub-bundle — the recording would
+            // then diverge from the live match at the first dropped order, with no error anywhere. Unreachable on
+            // the live path today (MergedTickPacket.TryRead rejects a sub-bundle with count > MAX_ORDERS outright,
+            // before MergedTickApplier fires the record hook), so this is a tripwire for a future caller that feeds
+            // the recorder from somewhere other than the validated merged stream — never a live branch.
+            if (count > TickCommandPacket.MAX_ORDERS)
+            {
+                _faulted = true; // DW-833 — the recording is compromised from here on
+                throw new InvalidOperationException(
+                    $"ReplayRecorder: tick {tick} sub-bundle for faction {faction} carries {count} orders, past the " +
+                    $"frozen {TickCommandPacket.MAX_ORDERS}-order TickCommandPacket ceiling — refusing to silently " +
+                    "truncate orders out of the recording.");
+            }
 
             // Tick advanced — flush the previous tick's accumulated sub-bundles as one merged frame.
             if (_hasBuffered && tick != _bufTick)
@@ -152,29 +220,6 @@ namespace ProjectChimera.Multiplayer
                 _hasBuffered = true;
                 _bufCount    = 0;
             }
-
-            // DW-432: the recorder's stated invariant is "never silently discard", so a tick accumulating more
-            // per-faction sub-bundles than the frozen MergedTickPacket envelope carries must fail LOUD — the
-            // pre-fix silent `return` would drop the overflowing faction's orders and write a divergent replay
-            // (the exact silent-drop class the v4 format is fail-closed against). Unreachable in ≤8-slot play
-            // (MERGED_MAX_SUBBUNDLES == FactionRegistry.PLAYER_COUNT and the merged stream feeds one sub-bundle
-            // per faction per tick), so this is a tripwire for a future >8-slot mode, never a live branch.
-            if (_bufCount >= MergedTickPacket.MERGED_MAX_SUBBUNDLES)
-                throw new InvalidOperationException(
-                    $"ReplayRecorder: tick {tick} accumulated more than {MergedTickPacket.MERGED_MAX_SUBBUNDLES} " +
-                    "per-faction sub-bundles — refusing to silently drop orders from the recording " +
-                    "(RecordTick is called once per faction per tick from the merged stream).");
-            // DW-604: the SAME "never silently discard" invariant on the adjacent ceiling. The pre-fix line silently
-            // clamped `count` to MAX_ORDERS, truncating the tail of an over-long sub-bundle — the recording would
-            // then diverge from the live match at the first dropped order, with no error anywhere. Unreachable on
-            // the live path today (MergedTickPacket.TryRead rejects a sub-bundle with count > MAX_ORDERS outright,
-            // before MergedTickApplier fires the record hook), so this is a tripwire for a future caller that feeds
-            // the recorder from somewhere other than the validated merged stream — never a live branch.
-            if (count > TickCommandPacket.MAX_ORDERS)
-                throw new InvalidOperationException(
-                    $"ReplayRecorder: tick {tick} sub-bundle for faction {faction} carries {count} orders, past the " +
-                    $"frozen {TickCommandPacket.MAX_ORDERS}-order TickCommandPacket ceiling — refusing to silently " +
-                    "truncate orders out of the recording.");
 
             int slot = _bufCount;
             _bufFactions[slot]    = faction;
@@ -197,11 +242,18 @@ namespace ProjectChimera.Multiplayer
         /// Safe to call multiple times.
         /// </summary>
         /// <param name="winnerFaction">The winning faction id (1-based player number; 0 = no victor / incomplete).</param>
-        /// <param name="completed">True when the match reached a resolved end; false for an interrupted recording.</param>
+        /// <param name="completed">True when the match reached a resolved end; false for an interrupted recording.
+        /// DW-833: FORCED false once <see cref="IsFaulted"/> — a recording a ceiling guard rejected orders from can
+        /// never be honestly labelled complete, whatever the caller passes.</param>
         public void Close(int winnerFaction, bool completed)
         {
             if (_closed) return;
             _closed = true;
+
+            // DW-833: still finalise a faulted recording — the ticks written before the fault are durable and worth
+            // keeping, and skipping this would leak the file handle with the last frame unflushed. Only the honesty
+            // bit changes: a compromised recording is written INCOMPLETE.
+            if (_faulted) completed = false;
 
             if (_hasBuffered) FlushTick();
 

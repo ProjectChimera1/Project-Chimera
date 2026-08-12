@@ -28,11 +28,26 @@ namespace ProjectChimera.Multiplayer.Server
     /// waits on an ACK that can no longer arrive (DW-409). At N=2 a second drop means no survivor remains — the
     /// adapter emits the terminal summary instead.
     ///
+    /// DW-410 closes the remaining liveness hole in that machine: a survivor that stays transport-connected but hung
+    /// is never pruned and never ACKs, so before this the freeze stayed pending FOREVER and every other survivor +
+    /// spectator stalled. <see cref="CheckAckTimeout"/> is the tick-bounded escalation — force-commit the freeze over
+    /// the survivors that DID ACK and report the ones that did not, so the caller can drop them in turn and the match
+    /// keeps making progress.
+    ///
     /// Everything here is tick-counted — <c>applyAtTick</c> is a sim tick number, never wall-clock — so the whole
     /// freeze path is deterministic and never folds into <c>SimChecksum</c>.
     /// </summary>
     public sealed class DropController
     {
+        /// <summary>
+        /// DW-410 — how many ticks of the caller's freeze clock a pending drop directive may await its survivor ACKs
+        /// before <see cref="CheckAckTimeout"/> force-commits it. 300 ticks = 10 s at 30 Hz, the same bound
+        /// <see cref="DelayController.ACK_TIMEOUT_TICKS"/> uses, and far beyond any sane ACK round-trip on a reliable
+        /// channel — so it only fires when a still-connected survivor never ACKs at all (a survivor that genuinely
+        /// disconnects is pruned sooner, and precisely, via <see cref="RemoveSurvivor"/>).
+        /// </summary>
+        public const int ACK_TIMEOUT_TICKS = 300;
+
         /// <summary>Number of player slots this controller tracks — [1, ...].</summary>
         public int Expected { get; }
 
@@ -51,6 +66,15 @@ namespace ProjectChimera.Multiplayer.Server
         private uint _pendingApplyTick;
         private readonly bool[] _isSurvivor; // which slots must ACK the pending directive
         private readonly bool[] _acked;      // which survivors have ACKed it
+
+        // ── DW-410 ACK-timeout state ──────────────────────────────────────────
+        // The deadline clock is armed LAZILY, on the first CheckAckTimeout call after a directive goes pending,
+        // rather than captured inside NotifyDrop. That is deliberate: NotifyDrop's `applyAtTick` is read from the
+        // MERGED-EMISSION frontier, which is exactly the frontier the un-committed freeze has STALLED — measuring the
+        // deadline against it would compare two different clocks and could never elapse. Arming from the pump's own
+        // clock makes the elapsed measurement self-consistent in whatever unit the caller pumps (see CheckAckTimeout).
+        private bool _timeoutArmed;
+        private uint _timeoutBaseTick;
 
         /// <param name="expected">Number of player slots (in [1, ...]).</param>
         public DropController(int expected)
@@ -105,6 +129,7 @@ namespace ProjectChimera.Multiplayer.Server
             _pending            = true;
             _pendingDroppedSlot = slot;
             _pendingApplyTick   = applyAtTick;
+            _timeoutArmed       = false; // DW-410 — a fresh directive gets a fresh deadline (armed at the next pump)
             return true;
         }
 
@@ -172,13 +197,82 @@ namespace ProjectChimera.Multiplayer.Server
         public bool Commit()
         {
             if (!AllAcked()) return false;
+            CommitPending();
+            return true;
+        }
+
+        // ── DW-410: the un-ACKed-freeze deadline ──────────────────────────────
+
+        /// <summary>
+        /// DW-410 — bound the un-ACKed FREEZE window, the drop-domain mirror of
+        /// <see cref="DelayController.CheckAckTimeout"/>. Today the freeze commits only on
+        /// <see cref="AllAcked"/> over the survivor set, with no deadline: ONE survivor that is
+        /// transport-connected but hung (never sends <c>DropAck</c>) leaves the freeze uncommitted forever, so
+        /// <c>FrozenSlotInjector</c> never runs and every other survivor plus every spectator stalls indefinitely.
+        /// Once <paramref name="currentTick"/> has advanced <see cref="ACK_TIMEOUT_TICKS"/> past the deadline base,
+        /// the pending freeze is COMMITTED over the survivors that did ACK and the ones that did not are reported in
+        /// <paramref name="hungSurvivors"/> so the caller can treat them as dropped in turn — the match always makes
+        /// progress. (Aborting the match instead is deliberately NOT the escalation: that hands one hung client the
+        /// power to end everyone's game, the hostage dynamic the whole freeze-and-continue policy removes.)
+        ///
+        /// <para>Safe for the same reason the delay-side force-commit is: the transport is RELIABLE, so every
+        /// still-connected survivor RECEIVED the broadcast <c>DropDirective</c>; the ACK is bookkeeping, and the
+        /// freeze itself is applied at a tick-counted <c>applyAtTick</c> every peer already holds.</para>
+        ///
+        /// <para><b>The clock.</b> <paramref name="currentTick"/> is whatever monotonic tick-rate counter the caller
+        /// pumps; the deadline base is armed on the FIRST call after a directive goes pending, so the measurement is
+        /// self-consistent in the caller's own unit. It deliberately must NOT be the merged-emission frontier: an
+        /// uncommitted freeze is precisely what stalls that frontier (survivors run at most `delay` ticks ahead and
+        /// then stop), so a deadline measured against it could never elapse and this guard would be inert. All deltas
+        /// use unchecked modular <c>uint</c> subtraction (the DW-396 idiom) so a wrapped clock still measures right.</para>
+        /// </summary>
+        /// <param name="currentTick">The caller's freeze-deadline clock (monotonic, ~sim-rate).</param>
+        /// <param name="droppedSlot">The slot whose freeze was force-committed (−1 when nothing fired).</param>
+        /// <param name="applyAtTick">That freeze's committed idle-from tick (0 when nothing fired).</param>
+        /// <param name="hungSurvivors">Recorded survivors that never ACKed, ascending by slot — empty when nothing
+        /// fired. Never null.</param>
+        /// <returns><c>true</c> when a freeze was force-committed on this call.</returns>
+        public bool CheckAckTimeout(uint currentTick, out int droppedSlot, out uint applyAtTick,
+                                    out int[] hungSurvivors)
+        {
+            droppedSlot = -1; applyAtTick = 0; hungSurvivors = Array.Empty<int>();
+
+            if (!_pending)
+            {
+                _timeoutArmed = false; // nothing pending — the next directive arms a fresh deadline
+                return false;
+            }
+            if (!_timeoutArmed)
+            {
+                _timeoutArmed    = true;
+                _timeoutBaseTick = currentTick;
+                return false;
+            }
+            if (unchecked(currentTick - _timeoutBaseTick) < (uint)ACK_TIMEOUT_TICKS) return false;
+
+            // Ascending slot order — the deterministic contract, and the order the caller escalates them in.
+            var hung = new List<int>();
+            for (int s = 0; s < Expected; s++)
+                if (_isSurvivor[s] && !_acked[s]) hung.Add(s);
+
+            droppedSlot   = _pendingDroppedSlot;
+            applyAtTick   = _pendingApplyTick;
+            hungSurvivors = hung.ToArray();
+            CommitPending();
+            return true;
+        }
+
+        /// <summary>Finalize the pending directive unconditionally (the shared tail of <see cref="Commit"/> and the
+        /// <see cref="CheckAckTimeout"/> force-commit) — freeze the slot, record its applyAtTick, clear pending.</summary>
+        private void CommitPending()
+        {
             int slot = _pendingDroppedSlot;
             _dropped[slot]         = true;
             _frozenApplyTick[slot] = _pendingApplyTick;
             _frozenSlots.Add(slot); // COMMIT order (ascending only incidentally at N=2); no consumer depends on order
             _pending            = false;
             _pendingDroppedSlot = -1;
-            return true;
+            _timeoutArmed       = false; // DW-410 — the deadline dies with the directive it bounded
         }
     }
 }
