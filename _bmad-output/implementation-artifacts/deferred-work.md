@@ -1182,7 +1182,8 @@ source_spec: `_bmad-output/implementation-artifacts/spec-5-9-added-your-first-sc
 location: `godot/ProjectChimera.Sim.Tests/Definitions/SettingsDataRoundTripTests.cs` (local `Opts` `JsonSerializerOptions`); `godot/src/UI/SettingsManager.cs` (`_jsonOpts`, the real Load/Save options — a Godot `Node`, hence unloadable in the Godot-free `ProjectChimera.Sim.Tests` assembly).
 reason: summary: the round-trip test hand-rolls a `JsonSerializerOptions` that is currently byte-for-byte identical to `SettingsManager._jsonOpts` (verified: `WriteIndented` / `ReadCommentHandling.Skip` / `AllowTrailingCommas`), but nothing enforces that they stay in sync. If `SettingsManager`'s real options later gain a naming policy or converter, `HasSeenOnboarding` (or any field's) persistence could regress while this "round-trip" suite stays green, because the suite validates the DTO in isolation, not the real serializer. Flagged by the Blind Hunter and Verification Gap layers. This matches the spec's own Verification plan (which specified a DTO round-trip) and is bounded by an architectural constraint — `SettingsManager` is a Godot `Node` that cannot be constructed in the headless sim test assembly — so it is a real latent gap rather than a deviation this story introduced. LOW consequence today (options are identical).
 closure: extract the shared `JsonSerializerOptions` into a Godot-free static (e.g. a `SettingsSerialization.Options` in `src/Core/Definitions`) that both `SettingsManager` and the test reference, so divergence becomes impossible; or add a guard test that reflects over `SettingsManager`'s options once the type is reachable. Low priority.
-status: open
+status: done 2026-08-12
+resolution: closed via workflow burn-down bundle loader-and-definition-guards. One Godot-free SettingsJson.Options; SettingsManager's _jsonOpts is now an alias of it and both Tier-1 round-trip suites reference the same instance instead of hand-rolled replicas.
 
 ### DW-135: Onboarding step 1's curated template ids dead-end when the boot-time faction lacks worker/infantry/archer
 source_spec: `_bmad-output/implementation-artifacts/spec-5-9-added-your-first-scenario-guided-onboarding-15-min-playable.md`
@@ -1328,7 +1329,8 @@ origin: code review of spec-6-5 (pathability; VG5), 2026-07-14 (epic-6 bmad-loop
 location: godot/src/CreationSuite/PathabilityTool.cs (private WorldToCell/CellCenter vs FlowField's)
 severity: low
 reason: They agree today (Mathf.FloorToInt == Fixed.ToInt() arithmetic shift, verified), but a future change to the sim mapping would silently desync what the editor paints from what the sim blocks. Fix: route the tool's cell mapping through the shared FlowField methods or a shared Godot-free helper.
-status: open
+status: done 2026-08-12
+resolution: closed via workflow burn-down bundle wizard-and-editor-core-routing. Extracted godot/src/CreationSuite/PathabilityCellMapping.cs (Godot-free, single-file Compile Include in the test csproj) which DELEGATES to FlowField.WorldToCell/CellCenter rather than mirroring them, so there is exactly one implementation; it also clamps the world coordinate to the covered range BEFORE the Fixed conversion, so a huge or non-finite ground point lands on the edge cell instead of wrapping Fixed.FromInt. Pinned by a value suite plus a source guard, since the defect is duplication and a value test alone cannot see a regression.
 
 ### DW-151: Group move/duplicate/paste re-derives placements lossily (worker overrides, pre_built, node collection/owner fields)
 
@@ -1538,7 +1540,8 @@ origin: code review of spec-6-8 (custom placement; Blind + Verification-Gap), 20
 location: godot/src/Economy/BuildingSystem.cs (PlaceBuildingDirectById) + godot/src/UI/EntityPlacer.cs (CreateEditorBuilding) — already diverge cosmetically (ShopStock nullable vs Array.Empty)
 severity: medium
 reason: Both blocks map a BuildingDefinition's Hp/SupplyBonus/ConstructionTime/shop/revive into Create with the same logic; both currently correct (Create null-coalesces) but the duplication is the exact drift class the A2 single-mapper rule exists to prevent on the unit side. Fix: extract one BuildingStore.CreateFromDefinition(def, pos, faction, id) helper called from both sim and editor placement (also unlocks the DW-173 fix).
-status: open
+status: done 2026-08-12
+resolution: closed via workflow burn-down bundle loader-and-definition-guards. New BuildingStore.CreateFromDefinition(def, pos, faction, buildingId); PlaceBuildingDirectById and EntityPlacer.CreateEditorBuilding both collapse to a one-line delegation, behaviour-identical. The by-BuildingType PlaceBuildingDirect overload is a third hand-copy left un-folded on purpose and re-filed as DW-972.
 
 ### DW-173: Group-move undo of a building restores identity but not def-derived stats — stale stats if the LIFO slot is reused
 
@@ -2216,7 +2219,8 @@ origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-9-2-expand-the-faction-player-model-to-8-and-audit-every-int-faction-site.md`
 location: BuildingSystem.cs:82-83
 reason: BuildingSystem/ResearchSystem `_factions` arrays are now sized 9 but their ctors still populate only Player1/Player2, so a Player5-8 building/researcher resolves a null faction def (no production/research options) until lobby slot-assignment wires per-slot defs; runtime SetFactionDef already supports arbitrary in-range slots. — Evidence: src/Economy/BuildingSystem.cs:82-83, ResearchSystem.cs:62-63. Full per-slot faction-def population is Story 9.7 (Nakama matchmaking / server-side slot assignment) territory.
-status: open
+status: done 2026-08-12
+resolution: closed via workflow burn-down bundle loader-and-definition-guards. Added ResearchSystem.SetFactionDef (the exact twin of BuildingSystem.SetFactionDef) and called it beside the existing BuildSys call in ScenarioApplier's player-slot loop, so a Player3..Player8 researcher no longer resolves a NULL def; deliberately no ResearchStore.EnsureCapacity in the seam (row length drives SimChecksum's v14 inner fold and every consumer already grows lazily), pinned by a test that every row length is untouched after Apply.
 
 ### DW-387: The N=3/N=8 determinism tests are two-run in-process only (no committed cross-process golden), so a cross-platform…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -5329,7 +5333,8 @@ origin: workflow burn-down run, 2026-08-04
 location: godot/src/Core/Bootstrap/Phases/SlotFactionResolver.cs:62 (excluded by godot/ProjectChimera.Sim.Tests SimSources.props line 140)
 severity: medium
 reason: SlotFactionResolver lives under src/Core/Bootstrap/Phases/**, which SimSources.props explicitly <Compile Remove>s from the Godot-free Tier-1 assembly, so the registry threading DW-327 added on that leg is verified by CODE-READ ONLY - the same constraint that drove the FactionLaunchGate extraction in Story 14.4. A future edit that drops `, abilityRegistry` there re-opens half of DW-327 with the whole test suite passing. Closure options: extract the per-slot diagnostic into a Godot-free helper beside FactionLaunchGate, or add a Tier-2 GdUnit4 test. Not attempted in the bundle because extracting a new type for a one-line diagnostic was out of proportion to the recorded scope.
-status: open
+status: done 2026-08-12
+resolution: closed via workflow burn-down bundle loader-and-definition-guards. Test-only source-scan pin over src/Core/Bootstrap/Phases/SlotFactionResolver.cs per the DW-626/DW-86 CommandApplyParityTests pattern (comments stripped): the Resolve signature, the single FactionValidator.ValidateComplete( call and the single ResolveAbilities( call must each still carry abilityRegistry.
 
 ### DW-640: Stale comment: MainScene claims no skirmish/lobby picker screen exists yet, but Story 11.1 shipped one that ignores the discovery list
 origin: workflow burn-down run, 2026-08-04
@@ -5689,7 +5694,8 @@ origin: workflow burn-down run, 2026-08-05
 location: godot/src/Core/ScenarioDirector.cs — RequeueEdgeEventsFor vs RequeueEligible
 severity: low
 reason: RequeueEdgeEventsForSkippedSweepTail filters candidates through RequeueEligible(j), but RequeueEdgeEventsFor documents that 'gate state was already checked by the caller' and checks nothing itself. DW-543 added a third call site, so the undocumented-in-code precondition is now load-bearing in three places. It is correct today (all three call sites sit below the enabled/fired/cooldown gates), but a future call site that forgets would silently persist rows for gate-blocked triggers, breaking the authored-semantics/polled-parity rule DW-349 established. Not fixed in the scenariodirector-fuel-requeue bundle because it is a hardening change to DW-349's arm rather than either of that bundle's entries. Closure = a defensive RequeueEligible(idx) assertion (or early-return) inside RequeueEdgeEventsFor, with a test pinning that a gate-blocked trigger never persists rows through it.
-status: open
+status: done 2026-08-12
+resolution: closed via workflow burn-down bundle dsl-and-director-hardening. Added `if (!RequeueEligible(idx)) return;` - not merely defensive, since the per-occurrence dispatch loop re-checks only _triggerFired/_triggerCooldown, so a trigger whose own action ran disable_trigger on ITSELF carried a stale enabled-verdict into the batched-suppression / fuel-halt arms and persisted a redelivery row for a gate-blocked trigger.
 
 ### DW-687: The DW-620 Invulnerable guard reads a STALE status union on BOTH ModifierStore paths — a collapse during removal is wrongly refused, and a collapse during install is wrongly allowed
 origin: post-merge review of the DW-620/DW-623/DW-634/DW-636 burn-down merge, 2026-08-05
@@ -5749,21 +5755,24 @@ origin: workflow burn-down run, 2026-08-05
 location: _bmad-output/implementation-artifacts/deferred-work.md (DW-454's reason/resolution text) and godot/src/Core/Definitions/UnitDefinitionValidator.cs:192-194 (the shipped message text)
 severity: low
 reason: Probed empirically while scoping DW-528: on Win11 26200 (this dev machine) File.WriteAllText succeeds for `con.json`, `con.json.tmp` and bare `con`, and `cmd /c "echo x> con.json"` likewise creates a real file — the DOS-device reservation is NOT enforced for file creation on this platform build. DW-454's premise ("the Win32 filesystem rejects it… caught only by the generic catch, so the user sees an opaque generic Save failed") and its located user-facing message ("the filesystem rejects it as a file basename") are therefore inaccurate on the primary platform as it exists today; the without-the-fix RED run for DW-528 confirmed it, with Finish reporting SUCCESS and writing the file rather than throwing. The guards remain worth keeping as a PORTABILITY policy — authored content is meant to be shared, and such a file stays unopenable wherever the reservation IS enforced — so this is a wording/premise correction, NOT a request to revert any guard. Not fixed in DW-528's bundle because DW-454 is closed and its exact message substrings are pinned by existing tests, so rewording a closed entry's shipped text is a separate change with its own test edits. DW-528's new message and code comments already state the measured behaviour instead. Closure = reword UnitDefinitionValidator's reserved-name message (and DW-454's ledger text) to the portability framing, updating the tests that pin the old substrings.
-status: open
+status: done 2026-08-12
+resolution: closed via workflow burn-down bundle dsl-and-director-hardening. Single-sourced the reject sentence as UnitDefinitionValidator.ReservedDeviceNameMessage(id) - the unit/building gate and BOTH item gates were hand-writing their own copy, pipe list included - and reworded it from the non-reproducing local-write-failure claim to the real portability cost, with the measured evidence recorded in code. The ledger half (DW-454's overclaimed reason text) is out of a bundle's scope and re-filed as DW-976.
 
 ### DW-695: AbilityEditorPanel writes `{id}.json` with no reserved-device check — DW-454's defect class at an uncovered fourth surface, and here the id IS the bare basename
 origin: workflow burn-down run, 2026-08-05
 location: godot/src/CreationSuite/AbilityEditorPanel.cs:696-701 (`fileId = SanitizeId(def.Id)` then `ProjectSettings.GlobalizePath($"res://resources/data/abilities/{fileId}.json")`)
 severity: medium
 reason: DW-454 wired IsReservedDeviceName into the item sim gate, the item editor gate and the unit/building gate; DW-528 added the filename-level companion for the faction wizard. The ability editor was covered by none of them and AbilityValidator has no equivalent rule, so an ability id of `con` / `nul` / `com1` / `aux` passes the charset check and becomes a literal `con.json`. This is strictly WORSE than the faction wizard's case that DW-528 closed, because there is no `_faction`-style suffix decorating the basename — the reserved word IS the whole basename before the first dot. Per DW-694 the practical impact on this dev machine is portability rather than a local write failure, but the authored artifact is exactly the kind of content meant to be shared. Not fixed inside DW-528's bundle because the file is Godot-coupled (`using Godot`, ProjectSettings) and outside that bundle's two named files, so a change there needs the in-engine gate. Closure = call UnitDefinitionValidator.IsReservedDeviceFileName on the assembled `{fileId}.json` (or add the rule to AbilityValidator so the sim gate catches it too), with a located error on the id field.
-status: open
+status: done 2026-08-12
+resolution: closed via workflow burn-down bundle dsl-and-director-hardening. Added the reserved-device rule to AbilityValidator's id checks with a located `ability '<id>'.id: ...` error quoting the shared sentence, on the SIM validator rather than only the Godot-coupled panel so the panel's validate-gated Save and the content-load path both inherit it; covered by an over-rejection control and an agreement test tying the arm to the shared helper. The separate missing charset rule is re-filed as DW-978.
 
 ### DW-696: The `*_faction.json` naming convention is now expressed in three unlinked places, so changing it in one would make saved factions silently undiscoverable
 origin: workflow burn-down run, 2026-08-05
 location: godot/src/Core/Definitions/FactionDefinition.cs:361 and godot/src/Core/Skirmish/SkirmishCatalog.cs:170 (discovery globs) vs godot/src/Core/Definitions/FactionDefinerWizardCore.cs (the new FactionFileSuffix constant)
 severity: low
 reason: The two discovery globs are hand-copied string literals; DW-528's bundle added a named constant for the WRITE side only (deliberately, since that entry is about that seam being an obvious future edit point). Nothing ties the three together, so changing the suffix in one place would let the wizard save a faction file that every picker then fails to discover — the user-visible symptom is a save-and-vanish with no error anywhere, the worst class of silent failure for authored content. Mitigated but not closed by that bundle: the globs are cross-referenced in the constant's doc comment and a test pins the constant to the `*_faction.json` shape end-to-end. Not folded because both readers are load-path files outside that bundle's declared file scope. Closure = have both discovery sites derive their glob from the single constant (or a shared FactionFiles helper), with a test that a suffix change moves all three together.
-status: open
+status: done 2026-08-12
+resolution: closed via workflow burn-down bundle loader-and-definition-guards. New FactionFiles.Suffix / FactionFiles.DiscoveryGlob compile-time constants; the wizard's FactionFileSuffix and BOTH discovery globs now derive from them instead of hand-copied "*_faction.json" literals.
 
 ### DW-697: DW-356's proposed streaming-Utf8JsonReader closure is measurably SLOWER — whole-document parse costs 3x the per-node transient JsonDocuments
 origin: workflow burn-down run, 2026-08-05
@@ -6037,14 +6046,16 @@ origin: workflow burn-down run, 2026-08-05
 location: godot/src/Core/ScenarioDirector.cs:1362-1380 (Tick, the `_execs.Count == 0` early-out)
 severity: medium
 reason: The DeathLog leak fixed under DW-551 is the fourth instance of one pattern, not a one-off: this early-out has needed a hand-added Clear() for every transient rail introduced since Story 7.13 (_simEventFeed, then the player_chat rail, then DW-349's requeue rail, now the DeathLog), and each was added reactively AFTER the rail shipped and something noticed. There is no test and no structural device that forces the next per-tick rail to be drained on both the trigger-bearing and trigger-less paths, so the next one will leak the same way and the leak will again be invisible until a downstream invariant (a capacity ceiling, a persistence assert) trips on a trigger-free map. Closure = a red test that enumerates the director's transient per-tick state by reflection and asserts it is empty after a trigger-less tick, or route every rail through a single ClearTransients() helper that both paths call.
-status: open
+status: done 2026-08-12
+resolution: closed via workflow burn-down bundle dsl-and-director-hardening. Extracted ScenarioDirector.ClearTransients(world) as the single drain point for the trigger-less early-out (statement order preserved) and added DirectorTransientRailCensusTests: reflection over every director field, each rail-shaped one classified drained-or-exempt-with-a-reason, asserted against a live trigger-less tick with a non-vacuity check. The census immediately found 4 unanticipated rail-shaped fields.
 
 ### DW-735: The `faction` field path is the last StepForError gap - it still lands on the BuildingsTech sniff-default
 origin: workflow burn-down run, 2026-08-05
 location: godot/src/Core/Definitions/FactionDefinerWizardCore.cs (StepForError's `switch (fieldPath)`), against the two `("faction", "faction is null.")` producers at godot/src/Core/Definitions/FactionValidator.cs:79 and FactionDefinerWizardCore.TryFinish's null-def guard
 severity: low
 reason: Exact same defect class as DW-114/DW-116 - a known, named field path that misroutes the creator to a step with no relevant UI - but `faction` is named in neither entry's scope nor in the factiondefiner-steproute-hardening bundle's intent, so fixing it there would have been an unrequested behaviour change. NameColor (the first step) is the natural target, matching the raw_json precedent set by DW-116's closure. Low impact: a null FactionDefinition is unreachable from the wizard (the panel always holds a live _draft) and TryFinish's own guard fires before the validator's, so no current caller observes the misroute. Closure = add `case "faction": return FactionDefinerStep.NameColor;` with the same comment convention as the raw_json case.
-status: open
+status: done 2026-08-12
+resolution: closed via workflow burn-down bundle wizard-and-editor-core-routing. Closed by the same one-line edit as DW-776 (they are duplicate entries for one defect): FactionDefinerWizardCore.StepForError now has an explicit `case "faction"` returning NameColor instead of falling through to the Buildings & Tech sniff-default. The duplicate-filing hygiene gap is re-filed as DW-973.
 
 ### DW-736: `hero_unit_id` routes to Roster, but the hero picker and its (none)-clear button live on the AI Preset step
 origin: workflow burn-down run, 2026-08-05
@@ -6139,7 +6150,8 @@ origin: workflow burn-down run, 2026-08-05
 location: godot/src/Core/Definitions/FactionDefinition.cs:237 - `public UnitDefinition? PrimaryUnit => Units.Count > 0 ? Units[0] : null;`
 severity: medium
 reason: The same defect class DW-103 swept and DW-629 finished, but named by neither entry and outside the faction-definition-null-guard bundle's stated scope (its intent named GetBuilding only). Two faults: `Units.Count` NREs on a malformed `"units": null` (the settable property means a JSON null overwrites the `= new()` default, exactly as proven for Buildings under DW-629), and even with a non-null list it hands back `Units[0]` verbatim - so a `"units": [null, {...}]` document returns a NULL UnitDefinition as the faction's primary unit, pushing the NRE onto the caller instead of skipping to the first real entry. Reachable by the same callers that motivated DW-629: any path bypassing FactionValidator.Validate's structural pre-check (direct JsonSerializer.Deserialize, hand-built defs in tests/tools, the Story 6.8 scenario-buildings gate). Closure = `if (Units == null) return null;` plus a scan to the first non-null element, mirroring GetUnit, with its own regression test.
-status: open
+status: done 2026-08-12
+resolution: closed via workflow burn-down bundle loader-and-definition-guards. FactionDefinition.PrimaryUnit now mirrors GetUnit - a null Units list returns null instead of NRE'ing, and null elements are skipped instead of being handed back as the primary unit; no production consumer today, so this is pure hardening.
 
 ### DW-749: NavigationPhase.FindBuilding's caller-side Buildings-null workaround is now redundant
 origin: workflow burn-down run, 2026-08-05
@@ -6182,7 +6194,8 @@ origin: workflow burn-down run, 2026-08-05
 location: godot/src/Dsl/GraphEdge.cs:86 (CompareTo) and godot/src/Dsl/TriggerGraph.cs:1028 (ToCanonicalJson)
 severity: medium
 reason: Two data edges sharing a (Src,SrcPort,Dst,DstPort) topology tuple but differing in Wire compare EQUAL, so ToCanonicalJson's `DataEdges.OrderBy(e => e)` leaves their relative order to sort stability, which means authoring order - and two structurally-equal graphs built in different orders could therefore serialize to DIFFERENT bytes, directly weakening the documented byte-identity claim. CanonicalModelHash.MixTriggerGraph already guards itself with an explicit `.ThenBy(x => x.Wire)`; ToCanonicalJson does not, so the hash is safe and only the serialization is exposed. Whether such a pair is actually reachable depends on GraphStructureGate's forked-data-edge rules, which the DW-337 bundle did not fully audit, so this may be unreachable in practice - that audit is part of the work. The caveat was documented on the DataEdges property but the sort was NOT changed: altering canonical emission order is a serialization-format change needing its own scoped entry, not a drive-by inside a hashing bundle. Closure = audit reachability, then either add the `.ThenBy(e => e.Wire)` tiebreak to ToCanonicalJson or make CompareTo itself a total order, and pin it with a build-order-independence test.
-status: open
+status: done 2026-08-12
+resolution: closed via workflow burn-down bundle dsl-and-director-hardening. Made DataEdge.CompareTo total by adding Wire as the final key, so IComparable and IEquatable agree and ToCanonicalJson's byte-identity claim holds for a duplicate-topology/different-wire pair; CanonicalModelHash.MixTriggerGraph's explicit .ThenBy(x => x.Wire) is now a redundant no-op producing a byte-identical fold, kept and documented as belt-and-braces.
 
 ### DW-755: An edge into a curated-away port is un-drawable AND un-deletable in the T3 editor - the status message says 'fix or delete it' with no affordance to do either
 origin: workflow burn-down run, 2026-08-05
@@ -6242,7 +6255,8 @@ origin: workflow burn-down run, 2026-08-05
 location: godot/ProjectChimera.Sim.Tests/Sim/ClearCompletenessSweep.cs (AssertClearRestoresFreshState, step 2 - the NormalizeFresh hook)
 severity: medium
 reason: NormalizeFresh runs on the FRESH instance after dirtying, and the machinery only re-checks per-field divergence afterwards. A fixture that normalized fresh INTO the dirty state - e.g. by replaying the store's own Clear() on the fresh side, which looks like the obvious way to match a retained buffer - would still satisfy the divergence precondition on some other field (Count) while making the field it was actually written for vacuous, and nothing would flag it. The sweep is the load-bearing guard for reset completeness across 25 store cases, so a hook that can quietly disarm one field per fixture is a real hole in a test-of-tests. The DW-584 bundle avoided the hazard by hand (its fresh buffer is Poked directly, never routed through Reset()/Clear()) but nothing enforces that on the next fixture. Closure = have the machinery verify each normalized field still diverges pre-Clear, or forbid NormalizeFresh from invoking the store's own reset path. Out of DW-584's recorded scope (removal of one exemption) and it is a machinery-level change to a shared sweep used by 25 cases, so recorded rather than attempted in-bundle.
-status: open
+status: done 2026-08-12
+resolution: closed via workflow burn-down bundle dsl-and-director-hardening. Implemented the intended machinery change: the audit now snapshots both instances around the NormalizeFresh hook (deep-copying arrays/lists/dicts so an in-place mutation is visible) and enforces three rules - the hook must move something, may touch the FRESH side only, and must leave every field it touched still diverging from dirty. A dead hook previously shipped silently GREEN.
 
 ### DW-763: The offline-vs-online silent-no-op gap DW-626 closes for `research:` is still unpinned for the `items:` handle at the offline item apply sites
 origin: workflow burn-down run, 2026-08-05
@@ -6348,7 +6362,8 @@ origin: workflow burn-down run, 2026-08-05
 location: godot/src/Core/Definitions/FactionDefinerWizardCore.cs (StepForError switch) vs the ('faction', 'faction is null.') errors at FactionDefinerWizardCore.cs:397 and FactionValidator.cs:79
 severity: low
 reason: DW-114/DW-116 established the invariant that every field path an error-producing surface can name is EXPLICIT in the StepForError switch rather than relying on the shared-path sniff-default, precisely because that default lands the author on a step with no control for the field. The `faction` path is a hole in that invariant: both TryFinish's null-def guard and FactionValidator.Validate's null-def guard emit it, and it falls through to Buildings & Tech. By the DW-116 raw_json precedent the defensible landing spot is NameColor (the first step). Left alone deliberately by the faction-wizard-mesh-path-routing bundle: it is a different field path from that bundle's mesh_path axis, it is only reachable with a null draft (which the panel never holds today, so it is latent not live), and widening the switch is DW-114 territory.
-status: open
+status: done 2026-08-12
+resolution: closed via workflow burn-down bundle wizard-and-editor-core-routing. Added `case "faction": return FactionDefinerStep.NameColor;` to FactionDefinerWizardCore.StepForError per the DW-116 raw_json precedent, plus a doc paragraph recording that the DW-114 invariant is now closed. DW-735 is the SAME defect filed twice by the same 2026-08-05 run, so this one edit closed both; the duplicate-filing hygiene gap is re-filed as DW-973.
 
 ### DW-777: GatherWalkStallTicks has no save lane, so a save taken while a worker is stranded lets it decrement a gather slot it never took
 origin: workflow burn-down run, 2026-08-05
@@ -6376,7 +6391,8 @@ origin: workflow burn-down run, 2026-08-05
 location: godot/src/Core/Skirmish/SkirmishCatalog.cs:178
 severity: medium
 reason: A third faction-file reader (Godot-free, drop-on-fail like LoadSelectableFromDirectory) that calls JsonSerializer.Deserialize<FactionDefinition> directly, so a duplicated cost key still binds last-wins for the skirmish roster catalog even though both FactionDefinition entry points now reject it. Adoption is ~3 lines (hoist the ReadAllText into a local, run CostDuplicateKeyGuard.Scan, continue), but the file is not in the loader-duplicate-key-fail-closed bundle's named scope - its intent names the two DTO properties plus FactionDefinition - so it was recorded rather than widened into.
-status: open
+status: done 2026-08-12
+resolution: closed via workflow burn-down bundle loader-and-definition-guards. SkirmishCatalog.ScanFactions now hoists ReadAllText into a local and drops any file CostDuplicateKeyGuard.Scan reports on, so all three faction-file readers agree (throw / exclude-with-reason / drop).
 
 ### DW-781: The bare single-definition parse paths do not yet run CostDuplicateKeyGuard
 origin: workflow burn-down run, 2026-08-05
@@ -6419,7 +6435,8 @@ origin: workflow burn-down run, 2026-08-05
 location: _bmad-output/implementation-artifacts/deferred-work.md, DW-324 block (status: done 2026-08-03)
 severity: medium
 reason: DW-324's reason list explicitly named "ModifierStore.cs:39 describes the re-entrancy guard as unbuilt without noting the validator fence" and closed done, but half that item had been satisfied since 57dd610a (2026-06-26) and the other half (the 2.2b framing) was never touched - i.e. the sweep bundle closed on an item it did not read. DW-663 recovered that one line. The remaining seven items in DW-324's scope were NOT re-verified and may carry the same class of residue: EffectCaps.cs:8/79/87, Modifier.cs:48, ServerChecksumCollector.cs:11/22-23, AbilityEditorPanel.Advanced.cs:280-281, ScenarioLoadPhase.cs:440, scripts/lan-desync-smoke.ps1. Closure = re-verify each of the seven against current source and re-file whatever is still stale; the ledger entry itself is append-only and must not be reopened.
-status: open
+status: done 2026-08-12
+resolution: closed via workflow burn-down bundle dsl-and-director-hardening. Re-verified all seven residual DW-324 scope items against current source: six are clean (EffectCaps.cs, ServerChecksumCollector.cs, AbilityEditorPanel.Advanced.cs:303/514, ScenarioLoadPhase.cs, lan-desync-smoke.ps1, and the FallbackMirror-vs-alpha_map_01 agreement test). The one stale item - Modifier.cs's StatusFlags "Reserved set" doc, false since all five flags are live - is corrected and backed by StatusFlagEnforcementCensusTests pinning each flag to a named enforcing file.
 
 ### DW-787: Five more allowlisted player-count constants are copied literals whose own justification says they mirror a sanctioned constant
 origin: workflow burn-down run, 2026-08-05
@@ -6623,7 +6640,8 @@ origin: workflow burn-down run, 2026-08-05
 location: godot/src/Core/Definitions/ScenarioValidator.cs:283-287 (player-slots loop); mirrored in godot/src/Core/AllianceSeeder.cs:65-68 (ComputeTeamIds)
 severity: medium
 reason: Found while fixing DW-442; out of that bundle's scope (null-element hygiene, not team validation). CONFIRMED by a throwaway probe, not inferred: JSON `"player_slots": [null]` deserializes to a null element, and `Validate` then dereferences `s.Slot` with no null guard -> NullReferenceException, while the class doc states "It is pure: it NEVER throws and NEVER logs". Every sibling loop (props, cameras, water, regions, resources) has an explicit `if (x is null) return ValidationResult.Fail(...)` guard; the player-slots loop is the only one missing it. AllianceSeeder.Seed/ComputeTeamIds throw on the same input too, reachable un-validated from LobbyUi.RebuildSlotGrid. The gap is already believed closed elsewhere in the file: CheckSpawnsNotBlocked carries the comment "Validate() already located a null element; never NRE here" (cs:1430), which is false. Closure = add the located null-element guard to the player-slots loop and a `continue` to the seeder's mapping. The CollectDiagnostics API added under DW-442 is already null-element safe, pinned by Diagnostics_AreNullElementSafe_AndAscending.
-status: open
+status: done 2026-08-12
+resolution: closed via workflow burn-down bundle loader-and-definition-guards. Added the located `scenario.player_slots[{i}] is null.` guard the player-slots loop was the only collection loop missing, the same guard in CollectAdvisories' slot walk, and null-element continues on BOTH AllianceSeeder.ComputeTeamIds loops - CheckSpawnsNotBlocked's "Validate() already located a null element" comment is now true.
 
 ### DW-815: A NEGATIVE authored SearchArea radius is validated-but-inert - the lower-bound sibling of the DW-534 cap
 origin: workflow burn-down run, 2026-08-05
@@ -6652,7 +6670,8 @@ origin: workflow burn-down run, 2026-08-05
 location: godot/src/Core/OrderQueueSystem.cs:66-85 (CurrentOrderComplete)
 severity: low
 reason: Found while fixing DW-645; same defect class, third angle. The switch cases Idle / Move / AttackMove / AttackTarget / AttackBuilding / Follow and routes everything else to `default: return false` - documented as the deliberate Stop/HoldPosition/Patrol/Build stall (Decision #5). A newly appended PERSISTING command therefore silently inherits STALL: any Shift-queued orders behind it never dispatch, with no compiler error and no failing test. Not a live defect today - PickupItem is rescued because ItemSystem.cs:230-231 writes ActiveOrderCmd=Idle on the claim, not by this switch. Closure is cheap now that UnitCommandTraits exists: add DW-645 anchors around this switch and extend CombatCommandSwitchCompletenessTests to require each persisting command to declare completes-or-stalls explicitly. Deliberately NOT fixed in the combat-command-switch-completeness bundle: OrderQueueSystem.cs is outside that bundle's files list (CombatSystem.cs / the UnitCommand enum / tests), and widening the guard to a third switch is new surface area with its own behavioural review.
-status: open
+status: done 2026-08-12
+resolution: closed via workflow burn-down bundle dsl-and-director-hardening. DW-645 guard anchors around OrderQueueSystem.CurrentOrderComplete's switch plus explicit byte-identical arms for the five persisting commands the default: was swallowing (Stop/HoldPosition/Patrol/Build/PickupItem), with a third CombatCommandSwitchCompletenessTests audit, a default:-retention pin and a non-vacuity test that reconstructs the pre-fix shape.
 
 ### DW-819: OrderApplier.ApplyActiveOrder blind-stores CommandState before its switch, so an entity-scoped command with no case persists by omission - a wire-issued Build parks a unit in a state no system completes
 origin: workflow burn-down run, 2026-08-05
@@ -6898,7 +6917,8 @@ origin: workflow burn-down run, 2026-08-06
 location: godot/src/Core/DslSimEventFeed.cs:10-13 and godot/src/Core/Sim/SimulationHost.cs:143-147 ("NOT folded (empty at the checksum boundary, the DeathFeed posture)"); drained + Clear()ed by godot/src/Core/ScenarioDirector.cs:1724-1733 at system index [15]
 severity: medium
 reason: Same class as DW-766, one feed over. The feed's exclusion from SimChecksum rests entirely on being empty at the boundary, its drain sits at a FIXED system index [15], and nothing structurally prevents a system registered after it from pushing. Its contents DO reach folded state (a drained sim event fires triggers that mutate folded DSL vars and WinState), so residue there is the same kind of unhashed input to hashed state. Not latent by luck: the DW-766 bundle's own residue pass had to be made credit-only specifically so it would not push hero_level into this feed from index [16]. Deliberately not fixed in that bundle because its scope is the DeathFeed and extending EnableTickBoundaryInvariants to a second feed would widen a re-baseline-window bundle beyond its named entry. Closure = one field plus one compare in SimulationLoop.EnableTickBoundaryInvariants (the seam now exists), plus a decision on whether the drain should move past every producer the way DeathFeedDrainSystem did.
-status: open
+status: done 2026-08-12
+resolution: closed via workflow burn-down bundle dsl-and-director-hardening. SimulationLoop.EnableTickBoundaryInvariants(deaths, simEvents = null) now also asserts DslSimEventFeed.Count == 0 at the boundary, armed by SimulationHost with its owned instance; the optional parameter keeps every one-argument call site compiling and behaviourally identical. The missing census over the NEXT transient feed is re-filed as DW-979.
 
 ### DW-851: HeroXpSystem.Tick's end-of-pass Clear() discards a DeathRecord its own ReconcileGrowth pushed, so a growth-induced ceiling-collapse kill grants no XP to anyone
 origin: workflow burn-down run, 2026-08-06
@@ -7959,4 +7979,61 @@ origin: workflow burn-down run, 2026-08-12
 location: godot/src/Core/MainScene.cs:2994-2997 (`[MatchSeed] Offline match seed 0x{matchSeed:X16}`)
 severity: low
 reason: MatchSeedProducer.Produce() now returns the pinned value when CHIMERA_MATCH_SEED is set and the log prints it, but nothing tells the operator the seed was PINNED rather than freshly minted, so an accidentally-left-set variable looks like an ordinary launch that happens to repeat - the exact confusion the DW-499 pin exists to remove. The one-line fix is to append a `(PINNED via CHIMERA_MATCH_SEED)` suffix behind MatchSeedProducer.TryPinnedSeed. Deliberately not taken in the save-restore-and-lifecycle-clamps bundle: src/Core/MainScene.cs is inside the enforced in-engine gate, which cannot be run from a parallel worktree (the godot-mcp bridge is single-client), and the bundle intent explicitly preferred keeping that call site unchanged. Closure = make the change in a session that can run the in-engine gate.
+status: open
+
+### DW-972: BuildingSystem.PlaceBuildingDirect (the by-BuildingType overload) is a THIRD hand-copy of the def->BuildingStore.Create mapping DW-172 just de-duplicated
+origin: workflow burn-down run, 2026-08-12
+location: godot/src/Economy/BuildingSystem.cs:1237-1260 (PlaceBuildingDirect, the BuildingType overload) vs godot/src/Core/BuildingStore.cs CreateFromDefinition
+severity: medium
+reason: DW-172's entry and bundle intent name exactly two call sites (PlaceBuildingDirectById + EntityPlacer.CreateEditorBuilding) and both now delegate to the shared mapper, but this third overload still hand-copies the same def->Create stat threading. It was deliberately NOT folded in because a verbatim delegation would be a BEHAVIOUR change, not a refactor: (1) it accepts a caller-forced revivesHeroes argument OR'd with the resolved def's flag, and (2) it passes buildingId: bdef?.Id with no ?? buildingId fallback, so a null def lets Create derive the DefinitionId from the enum via TechTreeChecker.BuildingTypeId(type); it also resolves its def by BuildingType rather than by authored id. Closure = widen the mapper (an optional revive override plus a nullable id) and prove the regression separately. Filed so the class is not considered fully closed - this is still the same 'never hand-copied in a spawn path' shape the unit side bans.
+status: open
+
+### DW-973: DW-735 and DW-776 were the SAME defect filed twice by one burn-down run - the sweep's dedupe check did not catch it
+origin: workflow burn-down run, 2026-08-12
+location: _bmad-output/implementation-artifacts/deferred-work.md (the DW-735 and DW-776 blocks) + .claude/skills/bmad-loop-sweep/deferred-work-format.md (the 'Before appending: dedupe check' section)
+severity: low
+reason: Both entries were filed by the same 2026-08-05 workflow burn-down run, both name FactionDefinerWizardCore.StepForError's missing `faction` case against the same two producers (TryFinish's null-def guard and FactionValidator.Validate's), and both prescribe the identical DW-116 raw_json-precedent remedy - so one edit closed both and each now carries a resolution line naming the other. The format doc's dedupe rule says a repeat gets a `seen-again:` line on the existing entry rather than a second entry, and the ledger is append-only so the pair cannot be merged retroactively. The residual work is the process gap, not the code: a same-run duplicate reached the ledger with nothing catching it, and the next one will cost a second bundle slot the same way. Closure = a dedupe pass over appended entries (same location + same prescribed remedy) at sweep time.
+status: open
+
+### DW-974: PathabilityTool's slope-auto-block panel writes the scenario with no EditorHistory entry, so a following Ctrl+Z undoes an unrelated action
+origin: workflow burn-down run, 2026-08-12
+location: godot/src/CreationSuite/PathabilityTool.cs - BuildUi (the _slopeToggle.Toggled and _slopeThreshold.ValueChanged handlers)
+severity: medium
+reason: Paint strokes push exactly one EditorHistory redo/undo pair, but SlopeAutoBlock and SlopeBlockThreshold are written straight into _scenario with nothing pushed onto the shared stack - so toggling slope auto-block is an un-undoable scenario mutation AND the next Ctrl+Z silently undoes the previous unrelated action instead, the same shared-stack-desync shape as DW-161 and DW-167. Noticed while extracting the cell mapping for DW-150; deliberately not fixed in that bundle because it is unrelated to the mapping-drift axis and it touches editor undo semantics. Closure = push a paired undo/redo command for both writes, or explicitly document them as non-undoable settings.
+status: open
+
+### DW-975: FlowField.WorldToCell's inline comment mis-describes Fixed.ToInt as truncate-toward-zero when an arithmetic right shift FLOORS
+origin: workflow burn-down run, 2026-08-12
+location: godot/src/Navigation/FlowField.cs:64
+severity: low
+reason: The comment reads "ToInt() = Raw >> 16 (truncate toward zero - deterministic)", but an arithmetic right shift floors: Fixed.FromFloat(-0.5f).ToInt() is -1, not 0. The code is correct and the editor side now matches it (that floor behaviour is exactly what DW-150's new PathabilityCellMappingTests pins), so only the comment is wrong - but it is the kind of wrong comment that would talk a future reader into writing a truncating editor-side mapping, which is the drift DW-150 just closed. Doc-only, so filed rather than folded into a fix bundle.
+status: open
+
+### DW-976: DW-454's ledger reason still carries the overclaimed crash symptom DW-694 disproved - the un-doable half of DW-694
+origin: workflow burn-down run, 2026-08-12
+location: _bmad-output/implementation-artifacts/deferred-work.md - the DW-454 block's reason/resolution text
+severity: low
+reason: DW-694 asked for the ledger text to be corrected alongside the shipped reject message. Every code site and both stale test comments were corrected in the dsl-and-director-hardening bundle, but a bundle must not edit this ledger (bookkeeping is a later serial phase), so the ledger half could not land with it. DW-454's reason still says the Win32 filesystem rejects a reserved basename and that it is 'caught only by the generic catch, so the user sees an opaque generic Save failed' - not reproducible on this dev machine (Win11 26200) and already contradicted by DW-528's own resolution text. The ledger is append-only, so closure = a `seen-again:`-style correction line on DW-454 recording the measured behaviour, not a rewrite of its reason.
+status: open
+
+### DW-977: ItemDefinitionValidator carried a hand-copied reserved-basename pipe list, bypassing the UnitDefinitionValidator.ReservedPipeList that DW-528 made public to prevent exactly that
+origin: workflow burn-down run, 2026-08-12
+location: godot/src/Core/Definitions/ItemDefinitionValidator.cs:147 and :227 (pre-fix)
+severity: low
+reason: DW-528 made ReservedPipeList public specifically so 'every surface that rejects a reserved basename quotes the SAME human-readable list instead of hand-copying it', but both item gates still carried a literal 'con|prn|aux|nul|com1-com9|lpt1-lpt9'. Recorded because it was an unlogged live instance of the drift DW-528 said it had closed.
+status: done 2026-08-12
+resolution: fixed opportunistically inside DW-694's single-sourcing in the dsl-and-director-hardening bundle - both item gates now call UnitDefinitionValidator.ReservedDeviceNameMessage, pinned by EveryGate_QuotesTheOneSharedSentence. Filed done rather than open so triage does not re-verify already-landed work.
+
+### DW-978: AbilityValidator has no filename-safe CHARSET rule, only DW-695's new reserved-device rule, so a validated ability id and its own file basename can legitimately differ
+origin: workflow burn-down run, 2026-08-12
+location: godot/src/Core/Definitions/AbilityValidator.cs:82-95 (the identity block)
+severity: medium
+reason: The ability id reaches AbilityEditorPanel's Path.Combine as {SanitizeId(def.Id)}.json, and unlike the unit and item gates the validator never checks SanitizeId(id) == id - the panel sanitizes on the way out instead, so an id with uppercase or punctuation validates but writes to a different basename, and the on-disk name no longer round-trips to the authored id. DW-695's scope was the reserved-device rule and that is what landed. Out of that bundle's scope because adding the charset rule would reject currently-valid in-code definitions and needs its own behavioural review plus a check of every AbilityDefinition fixture. Same class as DW-47 and DW-453 on the item side.
+status: open
+
+### DW-979: The DW-849/DW-766/DW-850 tick-boundary seam still has no census forcing the NEXT host-owned transient feed to be armed or classified exempt
+origin: workflow burn-down run, 2026-08-12
+location: godot/src/Core/SimulationLoop.cs - EnableTickBoundaryInvariants / AssertTickBoundaryInvariants, and SimulationHost's feed-shaped fields
+severity: medium
+reason: DW-766 armed the DeathFeed and DW-850 armed the DslSimEventFeed - two instances of one pattern, each added reactively after the fact, which is exactly the shape DW-734 identified for the ScenarioDirector's transient rails and closed with a reflection census. Nothing structurally requires the next host-owned transient feed to be armed here or recorded as exempt, so the third one will also be found by accident. CombatEventQueue is already a third transient feed excluded from SimChecksum on a similar premise (it is presentation-drained, so the argument differs and it may be legitimately exempt - a census would have to record that reason rather than assume it). Closure = a DW-734-style census over SimulationHost's feed-shaped fields. Deliberately not attempted in the dsl-and-director-hardening bundle because it is new surface beyond DW-850's named entry.
 status: open
