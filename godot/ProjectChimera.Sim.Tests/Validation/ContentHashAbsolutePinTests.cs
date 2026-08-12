@@ -54,11 +54,11 @@ namespace ProjectChimera.Sim.Tests.Validation
         /// after MaxEnergy), a deliberate fold-layout change that moves every unit/building's content hash.</summary>
         private const ulong ExpectedContentHash = 0x74227B59C03CEDE9UL;
 
-        /// <summary>The exact value CanonicalModelHash folds <see cref="FixedModel"/> to (AlgoVersion 15). Re-pinned for
-        /// DW-272 / Story 15.12's AlgoVersion 14→15 bump (the new Modifier.PeriodicStacking fold, mixed after the leading
-        /// AlgoVersion); the fixture carries no modifier, so only the AlgoVersion mix moved this. A behavior-preserving
+        /// <summary>The exact value CanonicalModelHash folds <see cref="FixedModel"/> to (AlgoVersion 16). Re-pinned for
+        /// DW-941's AlgoVersion 15→16 bump (the new building_min_gap fold — the fixture authors none, so it folds the
+        /// resolved 1.0u default; the AlgoVersion mix + the new default fold moved this). A behavior-preserving
         /// refactor must NOT move it again without a further deliberate bump.</summary>
-        private const ulong ExpectedCanonicalModelHash = 0xF3108869386B7199UL;
+        private const ulong ExpectedCanonicalModelHash = 8063299176883624929UL;
 
         [Fact]
         public void ContentHash_FixedFixture_PinsExactValue()

@@ -1366,6 +1366,16 @@ namespace ProjectChimera.Core.Definitions
                 }
             }
 
+            // ── Building min gap (DW-941) — fail-closed when present (the supply-config pattern): a hand-edited
+            // NaN/negative/absurd gap is rejected at the pre-tick gate rather than silently clamped at apply.
+            // Null (every existing scenario) ⇒ the 1.0u WC3-grid default ⇒ nothing to validate. ──
+            if (m.BuildingMinGap is float gap &&
+                (!float.IsFinite(gap) || gap < 0f || gap > 32f))
+                return ValidationResult.Fail(
+                    $"scenario.building_min_gap={gap} must be a finite value in [0, 32] " +
+                    "(0 = footprint chaining allowed; the default when omitted is " +
+                    $"{ScenarioData.DEFAULT_BUILDING_MIN_GAP}).");
+
             // Story 7.7 (proof discipline): every check above passed — mint the proof-of-validation token HERE and
             // only here. This is the codebase's sole `new Validated<ScenarioData>` (ValidatedMintingTests scan).
             return ValidationResult.Pass(new Validated<ScenarioData>(m, _proof));

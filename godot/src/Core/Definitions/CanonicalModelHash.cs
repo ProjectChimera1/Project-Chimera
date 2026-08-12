@@ -184,8 +184,14 @@ namespace ProjectChimera.Core.Definitions
         /// <c>hero-start-state</c> golden re-records. (The SHARED fold also moves <c>ContentHash</c> for any ability
         /// authoring an apply_modifier, which is the intended handshake-reject of pre/post-15.12 content;
         /// <c>ContentHash.AlgoVersion</c> stays 1 — the content-byte difference itself is what rejects.)
-        /// <c>StartStateHash.AlgoVersion</c> stays 2.</summary>
-        public const int AlgoVersion = 15;
+        /// <c>StartStateHash.AlgoVersion</c> stays 2.
+        ///
+        /// <para>16 (DW-941): additionally folds <see cref="ScenarioData.BuildingMinGap"/>'s RESOLVED value (via
+        /// <see cref="ScenarioData.ResolveBuildingMinGap"/> — the same resolver ScenarioApplier pushes onto
+        /// <c>BuildingSystem.MinBuildingGap</c>): it is sim-affecting (it gates worker-placement order acceptance),
+        /// so a lobby mismatch must reject at the handshake instead of desyncing on the first contested placement.
+        /// The Supply-class fix: an omitted field and an explicitly-authored default fold IDENTICALLY.</para></summary>
+        public const int AlgoVersion = 16;
 
         private const ulong Offset = 14695981039346656037UL; // FNV-64 offset basis
         private const ulong Prime  = 1099511628211UL;        // FNV-64 prime
@@ -251,6 +257,11 @@ namespace ProjectChimera.Core.Definitions
             h = MixInt(h, supplyHardCeiling.HasValue ? 1 : 0);
             h = MixInt(h, supplyHardCeiling ?? 0);
             h = MixInt(h, supplyEnabled ? 1 : 0);
+
+            // DW-941 (v16): fold the RESOLVED building-min-gap via the SAME resolver ScenarioApplier pushes onto
+            // BuildingSystem.MinBuildingGap — sim-affecting (gates placement-order acceptance), the Supply-class
+            // fix: omitted and explicitly-authored-default fold identically; invalid values clamp identically.
+            h = MixInt(h, Fixed.FromFloat(ScenarioData.ResolveBuildingMinGap(m.BuildingMinGap)).Raw);
 
             // Sort each collection by a TOTAL order over EVERY folded field (not just a primary key) so neither
             // input/file order NOR a tie on a partial key can move the hash. Numeric sort keys use the same

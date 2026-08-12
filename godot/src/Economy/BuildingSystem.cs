@@ -226,6 +226,61 @@ namespace ProjectChimera.Economy
             }
         }
 
+        /// <summary>DW-941: the default minimum clear gap (world units) between building FOOTPRINTS — the WC3
+        /// grid feel: buildings placed side by side leave a pathable seam. Scenario-authored via
+        /// <c>building_min_gap</c> (0 = chaining/walling allowed; ScenarioApplier pushes it onto
+        /// <see cref="MinBuildingGap"/> at apply). Single-sourced from the ScenarioData resolver so the runtime
+        /// default and the canonical-hash default can never drift. A load-time constant, one quantization.</summary>
+        public static readonly Fixed DEFAULT_BUILDING_GAP =
+            Fixed.FromFloat(ScenarioData.ResolveBuildingMinGap(null));
+
+        /// <summary>DW-941: the live minimum gap between building footprints this match (see
+        /// <see cref="DEFAULT_BUILDING_GAP"/>). Set once at scenario apply — never mid-match, so it needs no fold
+        /// (it is also covered by the CanonicalModelHash fold of the authored field: peers agreeing on the scenario
+        /// agree on the gap).</summary>
+        public Fixed MinBuildingGap { get; set; } = DEFAULT_BUILDING_GAP;
+
+        /// <summary>
+        /// DW-939/DW-941/DW-942 — the SINGLE placement-validity truth, shared by the sim order path
+        /// (<see cref="QueueWorkerBuild"/>) and the presentation ghost tint (MainScene) so the ghost's promise can
+        /// never drift from what the sim accepts (the ghost-is-a-promise rule). True iff <paramref name="position"/>
+        /// can take a <paramref name="type"/> building for <paramref name="faction"/>:
+        ///   • no footprint overlap with any alive building, including <see cref="MinBuildingGap"/> of clearance
+        ///     (DW-939 + DW-941 — axis-aligned half-extent sums on X and Z, deterministic Fixed math);
+        ///   • no BLOCKED pathability cell under the footprint (DW-942 — cliffs/water/props; the same
+        ///     <c>FlowField.WorldToCell</c> mapping the sim's movement uses, integer cell iteration, clamped).
+        /// FOG is deliberately NOT here: the fog grid is per-viewer presentation state (SharedTeamVision is a
+        /// per-client setting), so a fog gate lives at ISSUE time in the UI only — the sim never reads fog.
+        /// </summary>
+        public bool CanPlaceAt(BuildingType type, Faction faction, FixedVec3 position, EntityWorld world)
+        {
+            var (halfX, halfZ) = PlacementHalfExtents(
+                GetFactionDef(faction)?.GetBuilding(TechTreeChecker.BuildingTypeId(type)));
+
+            for (int b = 0; b < _buildings.Count; b++)
+            {
+                if (!_buildings.Alive[b]) continue;
+                var (bHalfX, bHalfZ) = PlacementHalfExtents(
+                    GetFactionDef(_buildings.FactionOf[b])?.GetBuilding(_buildings.DefinitionId[b]));
+                Fixed dx = position.X - _buildings.Position[b].X; if (dx < Fixed.Zero) dx = -dx;
+                Fixed dz = position.Z - _buildings.Position[b].Z; if (dz < Fixed.Zero) dz = -dz;
+                if (dx < halfX + bHalfX + MinBuildingGap && dz < halfZ + bHalfZ + MinBuildingGap)
+                    return false;
+            }
+
+            var grid = world.Pathability;
+            if (grid != null && grid.AnyBlocked)
+            {
+                Navigation.FlowField.WorldToCell(position.X - halfX, position.Z - halfZ, out int c0, out int r0);
+                Navigation.FlowField.WorldToCell(position.X + halfX, position.Z + halfZ, out int c1, out int r1);
+                for (int r = r0; r <= r1; r++)
+                    for (int c = c0; c <= c1; c++)
+                        if (grid.Blocked[r * Navigation.PathabilityGrid.GRID_SIZE + c])
+                            return false;
+            }
+            return true;
+        }
+
         /// <summary>DW-939: the default placement half-extents when a building has no (valid) authored
         /// <c>nav_footprint</c> — half of the guarded 5×3×5 default the whole footprint policy bottoms out at
         /// (<c>BuildingNavFootprint</c>'s default; that class is presentation-side, so the values are mirrored here
@@ -1375,25 +1430,14 @@ namespace ProjectChimera.Economy
                 return -1;
             }
 
-            // DW-939 — PLACEMENT OVERLAP GATE (2026-08-12 field report: buildings could be stacked on top of each
-            // other). Reject when the new site's footprint overlaps ANY alive building's footprint (axis-aligned,
-            // half-extent sum on X and Z), ABOVE every debit so the refusal is atomic. Footprints come from the
-            // SIM-LEGAL half of the resolution policy only — the authored nav_footprint (Core.Definitions) with the
-            // guarded 5×3×5 default — never the presentation mesh AABB (float, per-machine). Deliberately runs ONLY
-            // on the worker-build path: PlaceBuildingDirect stays permissive (scenario/editor authoring freedom).
-            var (newHalfX, newHalfZ) = PlacementHalfExtents(bdef);
-            for (int b = 0; b < _buildings.Count; b++)
+            // DW-939/DW-941/DW-942 — PLACEMENT VALIDITY GATE (stacked buildings, the configurable min gap, and
+            // blocked terrain), ABOVE every debit so the refusal is atomic. The shared CanPlaceAt is the single
+            // truth the ghost tint also reads. Deliberately runs ONLY on the worker-build path:
+            // PlaceBuildingDirect stays permissive (scenario/editor authoring freedom).
+            if (!CanPlaceAt(type, faction, position, world))
             {
-                if (!_buildings.Alive[b]) continue;
-                var (bHalfX, bHalfZ) = PlacementHalfExtents(
-                    GetFactionDef(_buildings.FactionOf[b])?.GetBuilding(_buildings.DefinitionId[b]));
-                Fixed dx = position.X - _buildings.Position[b].X; if (dx < Fixed.Zero) dx = -dx;
-                Fixed dz = position.Z - _buildings.Position[b].Z; if (dz < Fixed.Zero) dz = -dz;
-                if (dx < newHalfX + bHalfX && dz < newHalfZ + bHalfZ)
-                {
-                    events?.PushDenied(position, faction, DenialReason.InvalidLocation);
-                    return -1;
-                }
+                events?.PushDenied(position, faction, DenialReason.InvalidLocation);
+                return -1;
             }
 
             // Story 4.3: sparse cost-map spend (was ore-only — buildings never charged crystal, a latent gap this

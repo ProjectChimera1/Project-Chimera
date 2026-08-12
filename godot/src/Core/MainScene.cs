@@ -111,6 +111,11 @@ namespace ProjectChimera.Core
         private BuildingType _pendingBuildType;
         /// <summary>Semi-transparent ghost mesh shown while the player is picking a placement spot.</summary>
         private MeshInstance3D? _buildGhost;
+        /// <summary>DW-942: the ghost's override material, kept so the per-frame validity tint (green = placeable,
+        /// red = fog/terrain/overlap refusal) swaps a color instead of rebuilding the material.</summary>
+        private StandardMaterial3D? _buildGhostMat;
+        private static readonly Color GHOST_VALID_COL   = new Color(0.30f, 0.80f, 0.30f, 0.45f);
+        private static readonly Color GHOST_INVALID_COL = new Color(0.90f, 0.18f, 0.12f, 0.55f);
 
         // ── Win condition ─────────────────────────────────────────────────────
 
@@ -1159,6 +1164,20 @@ namespace ProjectChimera.Core
                     Faction buildFaction = _ctx.Lockstep?.EffectiveLocalFaction ?? Faction.Player1;
                     if (RaycastFloor(mb.Position, out Vector3 hit))
                     {
+                        // DW-942: refuse an INVALID spot at issue time — the same check tinting the ghost red
+                        // (sim CanPlaceAt + the client-side fog gate) — and KEEP placement mode so the player can
+                        // slide to a valid spot and click again (WC3: error cue, ghost stays on the cursor). The
+                        // sim would reject the overlap/terrain half anyway at exec-tick; the fog half exists ONLY
+                        // here (per-viewer state — never a sim input).
+                        if (!IsGhostPlacementValid(hit))
+                        {
+                            var wpDenied = new FixedVec3(
+                                Fixed.FromFloat(hit.X), Fixed.Zero, Fixed.FromFloat(hit.Z));
+                            _ctx.CombatEvents.PushDenied(wpDenied, buildFaction, DenialReason.InvalidLocation);
+                            GetViewport().SetInputAsHandled();
+                            return; // placement mode stays armed — no CancelBuildPlacement
+                        }
+
                         var pos = new FixedVec3(
                             Fixed.FromFloat(hit.X), Fixed.Zero, Fixed.FromFloat(hit.Z));
 
@@ -1778,8 +1797,20 @@ namespace ProjectChimera.Core
             {
                 if (RaycastFloor(GetViewport().GetMousePosition(), out Vector3 ghostHit))
                 {
-                    _buildGhost.GlobalPosition = new Vector3(ghostHit.X, 1.5f, ghostHit.Z);
+                    // DW-942: the ghost sits EXACTLY where the building will land — Y = 0, the same ground plane
+                    // the placement order encodes (TargetX/TargetZ, Y always Fixed.Zero) and the same feet-pivot
+                    // transform the building renderer uses. The old +1.5 float made the promise read wrong on
+                    // every mesh (the DW-893 GLBs are feet-pivoted).
+                    _buildGhost.GlobalPosition = new Vector3(ghostHit.X, 0f, ghostHit.Z);
                     _buildGhost.Visible = true;
+
+                    // DW-942: WC3-style validity tint — RED when the spot would be refused. Sim reasons (overlap +
+                    // the DW-941 gap, blocked terrain) come from the SAME CanPlaceAt the order path runs (the
+                    // ghost-is-a-promise rule); the fog reason is CLIENT-side only (per-viewer state — the sim
+                    // never reads fog): WC3 requires the spot to have been scouted, so unexplored ground is red.
+                    if (_buildGhostMat != null)
+                        _buildGhostMat.AlbedoColor = IsGhostPlacementValid(ghostHit) ? GHOST_VALID_COL
+                                                                                     : GHOST_INVALID_COL;
                 }
             }
 
@@ -2340,9 +2371,10 @@ namespace ProjectChimera.Core
             Mesh ghostMesh = UI.MeshLoader.LoadFromGlb(ghostDef?.MeshPath ?? "", new Vector3(4f, 3f, 4f),
                                                        new Color(0.3f, 0.8f, 0.3f), _ctx.AssetRegistry);
             var mat = new StandardMaterial3D();
-            mat.AlbedoColor  = new Color(0.3f, 0.8f, 0.3f, 0.45f);
+            mat.AlbedoColor  = GHOST_VALID_COL;
             mat.Transparency = BaseMaterial3D.TransparencyEnum.Alpha;
             mat.ShadingMode  = BaseMaterial3D.ShadingModeEnum.Unshaded;
+            _buildGhostMat       = mat; // DW-942: kept for the per-frame validity tint
             _buildGhost          = new MeshInstance3D();
             _buildGhost.Mesh     = ghostMesh;
             // MaterialOverride, not Mesh.Material: an authored GLB carries its own surface materials, and assigning to
@@ -2361,6 +2393,22 @@ namespace ProjectChimera.Core
                 _ => "Building"
             };
             GD.Print($"[MainScene] Placement mode: {bName} (worker {workerId}) — click to place.");
+        }
+
+        /// <summary>
+        /// DW-942 — the ghost's validity check, ALSO the click gate: the sim half is the SAME
+        /// <c>BuildingSystem.CanPlaceAt</c> the order path runs (overlap + the DW-941 gap + blocked terrain), the
+        /// fog half is client-side only (per-viewer state, never a sim input): the spot must be EXPLORED by the
+        /// local player (WC3 — you can build on scouted grey ground, never on black mask). Spectators never reach
+        /// placement mode, and reveal-all marks nothing explored — the fog test reads the live local grid.
+        /// </summary>
+        private bool IsGhostPlacementValid(Vector3 groundHit)
+        {
+            Faction f = _ctx.Lockstep?.EffectiveLocalFaction ?? Faction.Player1;
+            var pos = new FixedVec3(Fixed.FromFloat(groundHit.X), Fixed.Zero, Fixed.FromFloat(groundHit.Z));
+            if (!_buildSys.CanPlaceAt(_pendingBuildType, f, pos, _world)) return false;
+            if (_ctx.Fog != null && !_ctx.Fog.IsExplored(groundHit.X, groundHit.Z)) return false;
+            return true;
         }
 
         /// <summary>Exit placement mode, hide the ghost, and reset state.</summary>

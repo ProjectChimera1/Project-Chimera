@@ -47,7 +47,10 @@ namespace ProjectChimera.Sim.Tests.Golden
         // Serialize stamps that value into `checksum_algo_version`, so the generated JSON's stamp moved 14->15 — the
         // same additive stamp-change class as every re-record above (the generated map has no modifiers, so the bytes
         // are otherwise unchanged).
-        private const uint GoldenHash = 3825370216u;
+        // DW-941: CanonicalModelHash.AlgoVersion bumped 15->16 (the building_min_gap fold), stamp moved 15->16 —
+        // the same additive stamp-change class (the generated map authors no building_min_gap, so the key is
+        // omitted and the bytes are otherwise unchanged).
+        private const uint GoldenHash = 2680846249u;
 
         [Fact]
         public void SameSeed_TwiceProducesByteIdenticalSerialization_AndMatchesGoldenHash()

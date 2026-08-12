@@ -933,6 +933,35 @@ namespace ProjectChimera.Core.Definitions
         public SupplyConfig? Supply { get; set; }
 
         /// <summary>
+        /// DW-941 — the per-scenario minimum clear gap (world units) between building FOOTPRINTS for in-match
+        /// worker placement. NULL (the default, every existing scenario) ⇒ <c>BuildingSystem.DEFAULT_BUILDING_GAP</c>
+        /// (1.0 — the WC3 grid feel: a pathable seam between adjacent buildings), and the key is OMITTED from
+        /// serialization (the <see cref="Supply"/> omit-when-null precedent — existing scenarios serialize
+        /// byte-identically). 0 permits footprint-to-footprint chaining (deliberate walling); larger values force
+        /// airier bases. Validated (finite, in [0, 32]) by <see cref="ScenarioValidator"/> when present, resolved
+        /// once onto <c>BuildingSystem.MinBuildingGap</c> at scenario apply, and folded into
+        /// <see cref="CanonicalModelHash"/> — sim-affecting (it gates order acceptance), like <see cref="Supply"/>.
+        /// </summary>
+        [JsonPropertyName("building_min_gap")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public float? BuildingMinGap { get; set; }
+
+        /// <summary>DW-941: the default building gap when <see cref="BuildingMinGap"/> is omitted — 1.0 world unit,
+        /// the WC3 grid feel (a pathable seam between adjacent buildings).</summary>
+        public const float DEFAULT_BUILDING_MIN_GAP = 1.0f;
+
+        /// <summary>
+        /// DW-941 — the SINGLE resolution boundary for <see cref="BuildingMinGap"/>, shared by
+        /// <c>ScenarioApplier</c> (the runtime value pushed onto <c>BuildingSystem.MinBuildingGap</c>) and
+        /// <see cref="CanonicalModelHash"/> (the folded value) — the <c>SupplyConfig.Resolve</c> pattern, so
+        /// hash-equality ⇔ runtime-equality both ways: an omitted field and an explicitly-authored default resolve
+        /// (and fold) IDENTICALLY, and a shadow-mode-reachable invalid value (negative/NaN/huge) clamps to the same
+        /// value on every peer. Range [0, 32]: 0 = footprint chaining allowed (deliberate walling).
+        /// </summary>
+        public static float ResolveBuildingMinGap(float? authored)
+            => authored is float g && float.IsFinite(g) ? System.Math.Clamp(g, 0f, 32f) : DEFAULT_BUILDING_MIN_GAP;
+
+        /// <summary>
         /// The per-scenario height-advantage vision toggle (Story 6.3). When true, <c>FogOfWarSystem</c> widens an
         /// elevated unit's stamped vision radius by an elevation-derived per-step bonus
         /// (<see cref="HeightVisionBonusPerStep"/>); when false (the default, every existing scenario) the stamped fog

@@ -31,7 +31,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         // Bump history lives on CanonicalModelHash.AlgoVersion's XML doc, never restated here (DW-583).
         // The pathability folds this file covers are unchanged since the version named in the class summary above.
         [Fact]
-        public void AlgoVersion_IsPinned() => Assert.Equal(15, CanonicalModelHash.AlgoVersion);
+        public void AlgoVersion_IsPinned() => Assert.Equal(16, CanonicalModelHash.AlgoVersion);
 
         [Fact]
         public void AbsentPaint_And_AllClearPaint_HashEqual()

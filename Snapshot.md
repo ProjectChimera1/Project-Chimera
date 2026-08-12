@@ -112,6 +112,17 @@ churn). Full solution builds clean. Master pushed through the DW-936/937 commit.
 The DW-648 position-writer audit gained the two DW-938 placement-teleport writes (justified in its Sanctioned
 table). No golden moved in round 2. **Save compat note: round 1 already bumped saves to v6.**
 
+**ROUND 3 (Alec's round-2 test passed — "all is working great"; the session-closing pair, Tier-1 now 6451/0/1):**
+
+| DW | What happened |
+|---|---|
+| **DW-941** (new, closed) | **`building_min_gap` scenario setting** — min clear distance between building footprints. Default 1.0u (the WC3 grid seam, now also the default in-match feel); author 0 for deliberate wall-chaining. Omit-when-null (existing scenarios byte-identical), validated fail-closed, resolved once at apply, **folded into CanonicalModelHash (AlgoVersion 15→16)** — a lobby mismatch handshake-rejects. The bump re-pinned 16 AlgoVersion tests + 3 exact-value pins and re-recorded the mapgen JSON tripwire + hero-start-state golden (the same pair every AlgoVersion bump re-records). |
+| **DW-942** (new, closed) | **WC3-grade placement ghost** — sits exactly where the building lands (Y=0 feet-pivot, was floating +1.5u), tints RED over unexplored fog / blocked terrain / building overlap+gap, and an invalid click is refused with a denial cue while placement mode STAYS armed. Sim reasons live in the shared `BuildingSystem.CanPlaceAt` (one truth for order path + ghost — including the NEW blocked-terrain refusal, Tier-1 pinned); the fog reason is client-side only (per-viewer state — the sim never reads fog). |
+
+**HANDSHAKE NOTE for the next match: CanonicalModelHash AlgoVersion is now 16 — both machines MUST pull+rebuild
+together or the lobby rejects (by design).** Alec's session-closing test covers the ghost + gap; then this
+session closes and the next epic begins (network saga done, laptop playtest green).
+
 **Next session / next match:** (1) both machines pull + rebuild + relaunch — Alec field-tests attack-move,
 builder commitment, and single-render chat; (2) consider `responsive` now the PC is wired; (3) DW-924 (frame
 bursts) is STILL OPEN — network-led stalls are gone, so any residual banner is now a clean DW-924 signal; the

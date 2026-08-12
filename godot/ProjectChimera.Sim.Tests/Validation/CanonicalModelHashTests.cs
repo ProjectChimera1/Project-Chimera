@@ -66,7 +66,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         // whatever comes next). Do NOT restate a partial history here: a copy that stops short of the pin reads as
         // the current version to anyone skimming, which is exactly how this line rotted (DW-583).
         [Fact]
-        public void AlgoVersion_IsPinned() => Assert.Equal(15, CanonicalModelHash.AlgoVersion);
+        public void AlgoVersion_IsPinned() => Assert.Equal(16, CanonicalModelHash.AlgoVersion);
 
         [Fact]
         public void ReorderedCollections_HashEqual()
@@ -311,6 +311,8 @@ namespace ProjectChimera.Sim.Tests.Validation
             AppendInt(buf, 0);                                 // Supply == null → resolved HardCeiling presence bit (absent → 0)
             AppendInt(buf, 0);                                 // Supply == null → resolved HardCeiling value (ignored when absent → 0)
             AppendInt(buf, 1);                                 // Supply == null → resolved Enabled default (true → 1)
+            // DW-941 (v16): building_min_gap — absent ⇒ the resolved 1.0u WC3-grid default, quantized.
+            AppendInt(buf, Fixed.FromFloat(ScenarioData.ResolveBuildingMinGap(null)).Raw);
             // no slots / nodes / buildings / units
             // Story 7.7 (v8): the trigger/DSL model — every collection folds a count prefix; all empty/absent here.
             AppendInt(buf, 0);                                 // Regions: null → count 0

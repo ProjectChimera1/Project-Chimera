@@ -155,7 +155,10 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// byte-identical apart from this AlgoVersion bump — the ONE named re-baseline: hero-start-state golden
         /// re-recorded (StartStateHash.AlgoVersion stays 2). SimChecksum stays 24 and the per-tick world goldens are
         /// UNTOUCHED (regen_rate defaults to 0 ⇒ the new EnergyRegenSystem is a no-op write).</summary>
-        private const int ExpectedCanonicalModelHashAlgoVersion = 15;
+        /// <summary>DW-941: 15→16 — the building_min_gap fold (sim-affecting: it gates worker-placement order
+        /// acceptance, so a lobby mismatch must handshake-reject). Both machines rebuild together; an old client
+        /// computes a v15 hash and is rejected at the lobby, which is the intended migration impact.</summary>
+        private const int ExpectedCanonicalModelHashAlgoVersion = 16;
 
         /// <summary>Load-time canonical START-STATE hash algorithm version (Story 3.2, AC3) — a NEW, distinct FNV-64
         /// over the full init state = the <see cref="CanonicalModelHash"/> content seed PLUS the HeroStore rows.

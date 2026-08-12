@@ -147,6 +147,11 @@ namespace ProjectChimera.Core.Sim
             // unconditional call, mirroring the RevivalRuntime.Configure line above (the resolver, not the call
             // site, owns the null-means-default logic).
             _host.Resources.ConfigureSupply(s.Supply);
+            // DW-941: resolve the authored building-placement gap onto the placement gate — the single
+            // float→Fixed boundary, done once at apply (the ConfigureSupply pattern; the resolver owns
+            // null-means-default and the clamp, and is the SAME one CanonicalModelHash folds).
+            _host.BuildSys.MinBuildingGap =
+                Fixed.FromFloat(ScenarioData.ResolveBuildingMinGap(s.BuildingMinGap));
 
             // ── Story 6.3: thread the height-advantage vision toggle/bonus + the injected elevation grid into the
             //    EntityWorld BEFORE any spawn, so EntityWorld.Create (which every spawn path funnels through) samples
