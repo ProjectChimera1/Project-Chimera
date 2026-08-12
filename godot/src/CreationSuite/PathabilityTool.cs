@@ -29,7 +29,6 @@ namespace ProjectChimera.CreationSuite
     {
         private const int GS   = FlowField.GRID_SIZE;      // 128
         private const int CS    = FlowField.CELL_SIZE_WORLD; // 2 world units/cell
-        private const int HALF  = FlowField.WORLD_HALF_INT;  // 128
         private const int CELLS = FlowField.CELL_COUNT;      // 16384
 
         // ── Dependencies ──────────────────────────────────────────────────────
@@ -197,7 +196,7 @@ namespace ProjectChimera.CreationSuite
         /// clear in Erase mode) and refresh the overlay live during the drag.</summary>
         private void StampAt(Vector3 hit)
         {
-            WorldToCell(hit.X, hit.Z, out int cc, out int cr);
+            PathabilityCellMapping.WorldToCell(hit.X, hit.Z, out int cc, out int cr);
             int r = _brushRadius;
             for (int dr = -r; dr <= r; dr++)
             {
@@ -259,15 +258,13 @@ namespace ProjectChimera.CreationSuite
             return origin + dir * t;
         }
 
-        /// <summary>World XZ → clamped grid (col, row), mirroring <see cref="FlowField.WorldToCell"/>'s 128²/2-unit/±128
-        /// mapping so the painted cell the author sees matches the cell the validator and sim enforce.</summary>
-        private static void WorldToCell(float wx, float wz, out int col, out int row)
-        {
-            int ix = Mathf.FloorToInt(wx) + HALF;
-            int iz = Mathf.FloorToInt(wz) + HALF;
-            col = Mathf.Clamp(ix / CS, 0, GS - 1);
-            row = Mathf.Clamp(iz / CS, 0, GS - 1);
-        }
+        // DW-150: the world→cell and cell→centre math is NOT re-implemented here. It lives in the Godot-free
+        // PathabilityCellMapping, which delegates straight to FlowField.WorldToCell / FlowField.CellCenter — the
+        // painted cell IS the sim's cell by construction, not by two copies of the arithmetic happening to agree.
+        // This file previously carried a private WorldToCell (Mathf.FloorToInt/Mathf.Clamp) and an inline
+        // "col * CS + 1 - HALF" centre; both were correct but unpinned, so a change to the sim mapping would have
+        // silently desynced what the author paints from what the sim blocks.
+        // PathabilityCellMappingTests.PathabilityToolDelegatesItsCellMapping keeps them from coming back.
 
         private bool IsOverPanel(Vector2 screenPos)
             => _panel != null && _panel.GetGlobalRect().HasPoint(screenPos);
@@ -316,8 +313,8 @@ namespace ProjectChimera.CreationSuite
                 {
                     int idx = row * GS + col;
                     if (!_painted[idx] && !_derived[idx]) continue;
-                    float cx = col * CS + 1 - HALF; // cell centre (mirrors FlowField.CellCenter)
-                    float cz = row * CS + 1 - HALF;
+                    float cx = PathabilityCellMapping.CellCenterX(col); // DW-150: FlowField.CellCenter, not a copy
+                    float cz = PathabilityCellMapping.CellCenterZ(row);
                     _multiMesh.SetInstanceTransform(k++, new Transform3D(Basis.Identity, new Vector3(cx, 0.1f, cz)));
                 }
             }

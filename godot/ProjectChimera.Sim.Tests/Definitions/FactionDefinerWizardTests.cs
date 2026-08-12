@@ -155,10 +155,41 @@ namespace ProjectChimera.Sim.Tests.Definitions
         [InlineData("signature_mechanic", "faction 'x'.signature_mechanic: must be authored.", FactionDefinerStep.AiPreset)]
         [InlineData("signature_mechanic_display", "faction 'x'.signature_mechanic_display: must be authored.", FactionDefinerStep.AiPreset)]
         [InlineData("raw_json", "could not parse JSON: '{' is an invalid start of a property name.", FactionDefinerStep.NameColor)]
+        // DW-735/DW-776: the last field path still riding the sniff-default. "faction is null." names the whole draft,
+        // not a control, so it lands with raw_json on Name & Color — never on Buildings & Tech, which has no UI for it.
+        [InlineData("faction", "faction is null.", FactionDefinerStep.NameColor)]
         public void StepForError_MapsFieldPathAndMessageKindLabel_ToExpectedStep(
             string fieldPath, string message, FactionDefinerStep expected)
         {
             Assert.Equal(expected, FactionDefinerWizardCore.StepForError(fieldPath, message));
+        }
+
+        // ── DW-735/DW-776: the `faction` path, re-derived from BOTH live producers ────────────────────────────
+
+        [Fact]
+        public void NullDraft_RoutesToNameColor_FromEveryLiveProducerOfTheFactionPath()
+        {
+            // The regression: StepForError had no `faction` case, so a null-draft error fell through to the
+            // Buildings & Tech sniff-default — a step with no control for "there is no faction at all". Both
+            // producers are driven for real here (never a hand-typed message) so the assertion cannot go stale if
+            // either guard's wording changes; the routing contract is what is pinned.
+
+            // Producer 1 — FactionDefinerWizardCore.TryFinish's own null-def guard.
+            FactionDefinerFinishResult finish = FactionDefinerWizardCore.TryFinish(null!, Path.GetTempPath());
+            Assert.False(finish.Ok);
+            (string FieldPath, string Message) finishError = Assert.Single(finish.Errors);
+            Assert.Equal("faction", finishError.FieldPath);
+            Assert.Equal(FactionDefinerStep.NameColor, finish.Step);
+            Assert.Equal(FactionDefinerStep.NameColor,
+                FactionDefinerWizardCore.StepForError(finishError.FieldPath, finishError.Message));
+
+            // Producer 2 — FactionValidator.Validate's null-def guard (the LoadFromFile path).
+            FactionValidationResult validation = FactionValidator.Validate(null!);
+            Assert.False(validation.Ok);
+            (string FieldPath, string Message) validatorError =
+                Assert.Single(validation.Errors, e => e.FieldPath == "faction");
+            Assert.Equal(FactionDefinerStep.NameColor,
+                FactionDefinerWizardCore.StepForError(validatorError.FieldPath, validatorError.Message));
         }
 
         [Fact]
