@@ -1735,8 +1735,12 @@ namespace ProjectChimera.Core.Definitions
         /// <para>A null <paramref name="ownerDef"/> (no per-slot faction defs threaded — the default for every legacy
         /// caller and test — or a slot that resolves to no def) means there is nothing to resolve against, so the
         /// check accepts: byte-identical to the pre-DW-240 gate. Mirrors the Story 6.8 building-type amnesty.</para>
+        ///
+        /// <para>DW-743 — INTERNAL, not private, for exactly the reason <see cref="IsKnownBuildingType"/> is: the
+        /// LLM generation gate used to resolve a pre-placed unit id against a FLAT cross-faction union, so it
+        /// promised placements this predicate then refused. Both sites now share this one predicate.</para>
         /// </summary>
-        private static bool IsKnownUnitId(string? unitId, FactionDefinition? ownerDef)
+        internal static bool IsKnownUnitId(string? unitId, FactionDefinition? ownerDef)
         {
             if (ownerDef is null) return true;               // nothing threaded to resolve against ⇒ no-op (6.8 precedent)
             if (string.IsNullOrEmpty(unitId)) return false;  // a blank id can never resolve — the applier would drop it
@@ -1745,8 +1749,10 @@ namespace ProjectChimera.Core.Definitions
 
         /// <summary>DW-240 — the shared located message for an unresolvable unit id. Names the field path, the
         /// offending id, the owning faction (so the author knows WHICH roster was searched), and the slot. Kept in one
-        /// place so the pre-placed and both spawn_unit channels report identically.</summary>
-        private static string UnknownUnitIdError(string path, string? unitId, FactionDefinition? ownerDef, int slot)
+        /// place so the pre-placed and both spawn_unit channels report identically.
+        /// DW-743 — INTERNAL so the LLM generation gate reports the SAME located shape as the load gate that will
+        /// judge the generated map; a second hand-written message there would drift.</summary>
+        internal static string UnknownUnitIdError(string path, string? unitId, FactionDefinition? ownerDef, int slot)
         {
             string faction = string.IsNullOrEmpty(ownerDef?.Id) ? "(unnamed)" : ownerDef!.Id;
             return $"{path}='{unitId}' names no unit in the roster of the faction that owns slot {slot} " +
