@@ -1276,19 +1276,11 @@ namespace ProjectChimera.Economy
         public int PlaceBuildingDirectById(string buildingId, Faction faction,
                                            FixedVec3 position, bool preBuilt)
         {
+            // DW-172: the def→Create stat mapping (Hp / SupplyBonus / ConstructionTime / shop / revive) lives in the
+            // ONE store-side mapper both this sim path and the editor's CreateEditorBuilding delegate to — never
+            // hand-copied per spawn path, the same rule EntityWorld.ApplyUnitDefinition enforces on the unit side.
             BuildingDefinition? bdef = GetFactionDef(faction)?.GetBuilding(buildingId);
-            BuildingType type = TechTreeChecker.BuildingTypeFromId(buildingId) ?? BuildingType.Custom;
-
-            bool revives = bdef?.RevivesHeroes ?? false;
-            (bool sells, string[] stock, Fixed radius) shop = bdef != null
-                ? (bdef.SellsItems, bdef.ShopStock ?? System.Array.Empty<string>(), Fixed.FromFloat(bdef.ShopRadius))
-                : (false, System.Array.Empty<string>(), Fixed.Zero);
-
-            int id = _buildings.Create(position, faction, type, revives, shop.sells, shop.stock, shop.radius,
-                buildingId: bdef?.Id ?? buildingId, // preserve the authored id even when no def resolved
-                health: bdef != null ? Fixed.FromFloat(bdef.Hp) : (Fixed?)null,
-                supplyBonus: bdef?.SupplyBonus,
-                constructionDuration: bdef?.ConstructionTime is float ct ? Fixed.FromFloat(ct) : (Fixed?)null);
+            int id = _buildings.CreateFromDefinition(bdef, position, faction, buildingId);
             if (id < 0) return -1;
             if (preBuilt)
                 _buildings.ConstructionTimer[id] = Fixed.Zero;

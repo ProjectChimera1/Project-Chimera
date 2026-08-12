@@ -295,6 +295,13 @@ namespace ProjectChimera.Core.Definitions
             {
                 ScenarioPlayerSlot s = slots[i];
 
+                // DW-814: the located null-element guard EVERY sibling loop (props/cameras/water/variables/timers/
+                // triggers) already carries. JSON `"player_slots": [null]` deserializes to a null element, so the
+                // `s.Slot` read below NRE'd — breaking this class's documented "It is pure: it NEVER throws and NEVER
+                // logs" contract, and falsifying CheckSpawnsNotBlocked's "Validate() already located a null element"
+                // comment. Fail located, like every other kind.
+                if (s is null) return ValidationResult.Fail($"scenario.player_slots[{i}] is null.");
+
                 if (s.Slot < 0 || s.Slot >= FactionRegistry.PLAYER_COUNT)
                     return ValidationResult.Fail(
                         $"scenario.player_slots[{i}].slot={s.Slot} is out of [0,{FactionRegistry.PLAYER_COUNT}).");
@@ -1416,7 +1423,10 @@ namespace ProjectChimera.Core.Definitions
             // this surfaces the cause up front.
             if (m.PlayerSlots != null)
                 foreach (var s in m.PlayerSlots)
-                    if (OutOfBounds(s.BaseX, s.BaseZ, m.MapBounds))
+                    // DW-814: skip a null element rather than NRE — this advisory channel runs on UN-validated
+                    // mid-edit models (that is its whole point), and its doc contract is "Pure — never throws".
+                    // CollectTeamAdvisories' own slot walk already carries the identical guard.
+                    if (s != null && OutOfBounds(s.BaseX, s.BaseZ, m.MapBounds))
                         advisories.Add(
                             $"Start position P{s.Slot + 1} is outside the current map bounds ({m.MapBounds}).");
 

@@ -155,11 +155,21 @@ namespace ProjectChimera.Core.Skirmish
         }
 
         /// <summary>
-        /// Scan <paramref name="absFactionsDir"/> for <c>*_faction.json</c> files, gate each through
+        /// Scan <paramref name="absFactionsDir"/> for <see cref="FactionFiles.DiscoveryGlob"/> files, gate each through
         /// <see cref="FactionValidator.ValidateComplete"/> (drop-on-fail — the roster-completeness discovery contract),
         /// dedupe by id (first file in ordinal filename order wins), and return one <see cref="FactionEntry"/> each with
         /// its <c>res://</c> path — ordinal-sorted by id (mirrors <see cref="FactionDefinition.LoadSelectableFromDirectory"/>,
         /// which does not expose the source path this story needs). Never throws.
+        ///
+        /// <para>DW-696: the discovery glob is DERIVED from the constant the faction wizard writes files under, never a
+        /// hand-copied literal, so a suffix change can no longer make wizard-saved factions silently undiscoverable here.</para>
+        ///
+        /// <para>DW-780: this is the THIRD faction-file reader, and it runs the SAME DW-537 raw duplicate-cost-key pass
+        /// the other two do (<see cref="FactionDefinition.LoadFromFile"/> throws on it,
+        /// <see cref="FactionDefinition.LoadSelectableFromDirectory"/> excludes-with-reason). Without it a faction whose
+        /// <c>cost</c> block silently last-wins would list as a selectable skirmish faction while both other entry
+        /// points reject it — the same selectable-but-not-launchable split DW-327/DW-537 closed elsewhere. Drop-on-fail,
+        /// matching this method's never-throws posture.</para>
         /// </summary>
         public static IReadOnlyList<FactionEntry> ScanFactions(string absFactionsDir, string resFactionsDir)
         {
@@ -167,18 +177,27 @@ namespace ProjectChimera.Core.Skirmish
                 return System.Array.Empty<FactionEntry>();
 
             string[] files;
-            try { files = Directory.GetFiles(absFactionsDir, "*_faction.json"); }
+            try { files = Directory.GetFiles(absFactionsDir, FactionFiles.DiscoveryGlob); } // DW-696: derived, never hand-copied
             catch { return System.Array.Empty<FactionEntry>(); }
 
             var entries = new List<FactionEntry>();
             var seenIds = new HashSet<string>(System.StringComparer.Ordinal);
             foreach (string file in files.OrderBy(f => f, System.StringComparer.Ordinal))
             {
+                // DW-780: the raw text is hoisted into a local (still inside the try, so an I/O fault keeps the
+                // drop-on-fail path) because the duplicate-key pass below re-walks it — the exact shape
+                // LoadSelectableFromDirectory uses.
+                string text;
                 FactionDefinition? def;
-                try { def = JsonSerializer.Deserialize<FactionDefinition>(File.ReadAllText(file), FactionDefinition.JsonOptions); }
+                try
+                {
+                    text = File.ReadAllText(file);
+                    def = JsonSerializer.Deserialize<FactionDefinition>(text, FactionDefinition.JsonOptions);
+                }
                 catch { continue; } // malformed → skip, scan continues
 
                 if (def is null) continue;
+                if (CostDuplicateKeyGuard.Scan(text).Count > 0) continue;  // DW-780: last-wins cost block → not selectable
                 if (!FactionValidator.ValidateComplete(def).Ok) continue; // incomplete roster → not selectable
                 if (!seenIds.Add(def.Id)) continue;                       // duplicate id → first-file-wins
 

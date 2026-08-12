@@ -56,7 +56,9 @@ namespace ProjectChimera.Core
         /// <see cref="FACTION_COUNT"/>) with the canonical team id per faction — the SAME mapping <see cref="Seed"/>
         /// writes, exposed so the lobby can render a per-slot team glyph keyed by the canonical id. Assumes the array
         /// already carries the FFA default (<c>teamIdByFaction[f]==f</c>); it overwrites only teamed members. Slots
-        /// out of the playable range, or with <c>Team&lt;=0</c>, are left untouched.
+        /// out of the playable range, with <c>Team&lt;=0</c>, or NULL (DW-814 — a malformed
+        /// <c>"player_slots": [null]</c> reaching this un-validated, e.g. from <c>LobbyUi.RebuildSlotGrid</c>), are
+        /// left untouched.
         /// </summary>
         public static void ComputeTeamIds(ScenarioData? model, int[] teamIdByFaction)
         {
@@ -66,6 +68,12 @@ namespace ProjectChimera.Core
             for (int i = 0; i < slots.Length; i++)
             {
                 ScenarioPlayerSlot slot = slots[i];
+                // DW-814: JSON `"player_slots": [null]` deserializes to a null ELEMENT, and this mapping is reachable
+                // UN-validated (LobbyUi.RebuildSlotGrid, the editor's advisory channel), so a null element must be
+                // skipped exactly like an out-of-range one rather than NRE. A skipped element is never written into
+                // the mask AND never lowers a team's canonical id — the same treatment DW-442 documents for an
+                // out-of-range member, and byte-identical to today's behaviour for every well-formed model.
+                if (slot is null) continue;
                 int team = slot.Team;
                 if (team <= 0) continue; // FFA / unassigned — keep the own-faction (self-team) default
 
@@ -79,6 +87,7 @@ namespace ProjectChimera.Core
                 for (int j = 0; j < slots.Length; j++)
                 {
                     ScenarioPlayerSlot other = slots[j];
+                    if (other is null) continue; // DW-814: same null-element skip on the inner canonical scan
                     if (other.Team != team) continue;
                     int otherFaction = other.Slot + 1;
                     if (otherFaction <= 0 || otherFaction >= FACTION_COUNT) continue;
