@@ -98,11 +98,40 @@ namespace ProjectChimera.Combat
         /// full-inventory reject checks this BEFORE any spend). Reuses the pickup <see cref="FirstFreeSlot"/> logic.</summary>
         public bool HeroHasFreeSlot(int heroSlot) => FirstFreeSlot(heroSlot) >= 0;
 
+        /// <summary>
+        /// DW-705 — true when the hero embodied by <paramref name="heroEntityId"/> can actually RECEIVE
+        /// <paramref name="def"/>'s carried stat modifier, i.e. its per-entity <see cref="ModifierStore"/> ring is not
+        /// already at <see cref="EffectCaps.MaxModifiersPerEntity"/>. A non-stat item (null def, or no non-zero delta)
+        /// depends on no ring slot and is always true — exactly the "nothing to apply ⇒ success" arm of
+        /// <see cref="ApplyItemStatModifier"/>, so the two can never disagree about what needs a slot.
+        ///
+        /// <para><b>Why the shop needs this and the pickup does not.</b> <see cref="ResolvePickup"/> applies the
+        /// modifier first and ROLLS BACK on the DW-34 ring refusal, denying with
+        /// <see cref="DenialReason.InventoryFull"/> and leaving the item claimable.
+        /// <see cref="GrantPurchasedItem"/> deliberately does not roll back (its DW-489 audit: a refund with the item
+        /// already minted is a duplication exploit), and it also DISCARDS the refusal — so a modifier-capped hero who
+        /// BUYS a stat item paid the full ore/crystal price for an item that grants nothing, while the same hero
+        /// picking that item off the ground was denied for free. <c>BuildingSystem.BuyItemCommand</c> closes the
+        /// asymmetry by consulting this BEFORE the spend, so the buy is refused atomically with the pickup's own
+        /// reason (no new <see cref="DenialReason"/> member). Read-only, state-free, deterministic.</para>
+        /// </summary>
+        public bool HeroCanCarryStatModifier(int heroEntityId, ItemDefinition? def)
+        {
+            if (def is null || !def.HasStatModifier) return true; // nothing to install ⇒ no ring slot is needed
+            if (!_world.IsAlive(heroEntityId)) return false;      // IsAlive also bounds-checks the id (ModifierStore.Apply's own guard)
+            return _modifiers.CountAt(heroEntityId) < EffectCaps.MaxModifiersPerEntity;
+        }
+
         /// <summary>Mint a PURCHASED item (def index <paramref name="defIndex"/>) directly into the buyer's first free
         /// inventory slot (Story 3.16), REUSING the pickup claim block (ground→held flip, <c>Inventory[]</c> write,
         /// stat-modifier apply). The caller (<c>BuildingSystem.BuyItemCommand</c>) must have already gated
         /// ownership/capability/proximity/free-slot/affordability and SPENT the cost. Returns the packed <c>ItemStore</c>
         /// ref, or -1 when the item store is full / the hero is no longer resolvable (caller then refunds — atomic).
+        /// <para><b>DW-705 — the modifier-ring refusal is still discarded HERE, and must stay pre-checked by the
+        /// caller.</b> The <see cref="ApplyStatModifierIfAny"/> below returns false when a full ring refuses the
+        /// carried stat modifier; rolling that back after the mint is not an option (see the DW-489 note), so the
+        /// caller consults <see cref="HeroCanCarryStatModifier"/> BEFORE the spend and denies there. Any NEW caller of
+        /// this method owes the same pre-check, or it will sell an inert item.</para>
         /// <para><b>DW-489 audit — the buyer may DIE inside this call and that is deliberately NOT a refund.</b> The
         /// stat-modifier apply below inherits <see cref="ModifierStore.Apply"/>'s "may destroy the target"
         /// post-condition (DW-325/DW-491), so a net-negative-MaxHealth purchase can kill its own buyer. When it does,

@@ -492,13 +492,24 @@ namespace ProjectChimera.Core.Sim
         /// be per-spawn spam — a 200-unit scenario load with full modifier rings would emit 200 lines. The refusals
         /// accumulate per faction + per research instead and surface here as ONE line each.
         ///
+        /// <para><b>DW-751</b> adds a second aggregate on the same rail: a research whose banked cumulative outran
+        /// DW-488's per-modifier delivery bound is silently CLAMPED on its way to the units, so the store's number and
+        /// the army's bonus diverge. That is built once per affected unit, so it needs the identical
+        /// tally-and-report-once treatment rather than an inline warn.</para>
+        ///
         /// <para>Called by <see cref="ClearForReset"/> (the per-match teardown) so a tally is never silently
         /// discarded, and public so a bootstrap can flush explicitly at end-of-match or right after a bulk scenario
         /// load. Idempotent and silent when nothing was refused. Diagnostics only: reads and zeroes unfolded
         /// counters, mutates no sim array and pushes no event, so a run that calls it is byte-identical to one that
-        /// does not. Returns the number of refusals reported.</para>
+        /// does not. Returns the total number of aggregated findings reported (0 when clean) — both flushes always
+        /// run, so neither can be skipped by the other reporting first.</para>
         /// </summary>
-        public int FlushMatchDiagnostics() => ResearchSys.FlushSpawnCatchUpDiagnostics();
+        public int FlushMatchDiagnostics()
+        {
+            int refusals = ResearchSys.FlushSpawnCatchUpDiagnostics();   // DW-624
+            int truncations = ResearchSys.FlushCumulativeBoundDiagnostics(); // DW-751
+            return refusals + truncations;
+        }
 
         /// <summary>
         /// Story 3.14 — the respawn hook HeroXpSystem calls when a revival countdown completes. Routes to the
