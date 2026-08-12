@@ -1201,7 +1201,7 @@ namespace ProjectChimera.Core
                         // null Lockstep / offline returns true meaning "apply it locally right now". So single-player
                         // behaviour is byte-identical to before, and online the identical guards run on both machines.
                         if (_ctx.Lockstep?.EnqueueOrder(
-                                _pendingBuildWorkerId, UnitCommand.PlaceBuilding,
+                                _world.PackRef(_pendingBuildWorkerId), UnitCommand.PlaceBuilding, // DW-945: subject packed — a worker that died+recycled in the delay window drops the placement instead of re-tasking the slot's new occupant
                                 pos.X, pos.Z, (byte)_pendingBuildType) ?? true)
                         {
                             _buildSys.QueueWorkerBuild(

@@ -254,7 +254,7 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
         {
             // Story 15.11 (DW-280): the command wire is now the 12-byte UnitOrder (ability slot in its own byte); the
             // replay container format is VERSION 6 (Story 15-23 packed entity-target payloads; 15.11 bumped for the stride).
-            Assert.Equal(6, ReplayRecorder.VERSION);
+            Assert.Equal(7, ReplayRecorder.VERSION);
 
             string path = Path.GetTempFileName();
             try
@@ -300,7 +300,7 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
         {
             // Story 2.12: the queued flag + SetRally ride the command wire (now the 12-byte UnitOrder — Story 15.11);
             // the replay container format is VERSION 6 (Story 15-23 packed entity-target payloads).
-            Assert.Equal(6, ReplayRecorder.VERSION);
+            Assert.Equal(7, ReplayRecorder.VERSION);
 
             string path = Path.GetTempFileName();
             try
@@ -419,7 +419,7 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
             // and DropItem returns the item to the ground, IDENTICALLY through the live apply site (OrderApplier.Apply
             // with items:, the exact line LockstepManager.ApplyOrders calls) and the replay site (ReplayPlayer, Items
             // wired). If EITHER apply site stops forwarding `items`, the item command becomes a no-op and this fails.
-            Assert.Equal(6, ReplayRecorder.VERSION); // Story 15-23: packed entity-target payloads → container VERSION 6 (15.11 took it to 5)
+            Assert.Equal(7, ReplayRecorder.VERSION); // Story 15-23: packed entity-target payloads → container VERSION 6 (15.11 took it to 5)
 
             var useOrder  = new UnitOrder(0, UnitCommand.UseItem,  Fixed.FromRaw(0), Fixed.Zero); // inv slot 0 = potion
             var dropOrder = new UnitOrder(0, UnitCommand.DropItem, Fixed.FromRaw(1), Fixed.Zero); // inv slot 1 = ring

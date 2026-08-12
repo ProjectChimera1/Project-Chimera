@@ -265,6 +265,47 @@ namespace ProjectChimera.Sim.Tests.Combat
             Assert.Equal(FullHp, w.Health[successor]);                   // the recycled occupant was never force-fired
         }
 
+        // ── DW-945: the order's SUBJECT is a packed ref too (the target-side class, closed on the commanded unit) ──
+
+        [Fact]
+        public void OrderSubject_UnitRecycledInsideTheDelayWindow_OrderIsDropped_NotInheritedByTheTrainee()
+        {
+            // The wire scenario: order unit X to move at tick T; X dies at T+1; a same-faction train completion
+            // recycles X's slot at T+2 (LIFO — the just-freed slot is the FIRST reused); the order applies at
+            // T+delay. Pre-DW-945 the guard (IsAlive + faction) passed and the brand-new unit inherited the stale
+            // order — abandoning its rally walk, its queued-order ring wiped. The packed SUBJECT fails
+            // TryResolveRef and the order is dropped on every peer identically.
+            var w = new EntityWorld();
+            int x = Victim(w, V(0, 0), Faction.Player1);
+            var order = new UnitOrder(w.PackRef(x), UnitCommand.Move, Fixed.FromInt(30), Fixed.FromInt(30)); // issued at T
+
+            int trainee = RecycleSlot(w, x, V(0, 0), Faction.Player1); // X dies; a same-faction trainee takes the slot
+            w.MoveTarget[trainee]  = V(5, 5);                          // the trainee's own business (its rally walk)
+            w.CommandState[trainee] = UnitCommand.Move;
+
+            OrderApplier.Apply(w, in order, Faction.Player1);          // the stale order reaches exec-tick
+
+            Assert.Equal(V(5, 5), w.MoveTarget[trainee]);              // untouched — the order was DROPPED
+            Assert.Equal(UnitCommand.Move, w.CommandState[trainee]);
+        }
+
+        [Fact]
+        public void OrderSubject_LiveRecycledSlotUnit_IsStillCommandable_TheGuardIsNotOverBroad()
+        {
+            // A CURRENT packed ref to the occupant of a recycled (generation > 0) slot must command normally —
+            // the guard is generation-exact, never "refuse recycled slots".
+            var w = new EntityWorld();
+            int x = Victim(w, V(0, 0), Faction.Player1);
+            int y = RecycleSlot(w, x, V(0, 0), Faction.Player1);
+            Assert.Equal(1, w.Generation[y]);
+
+            var order = new UnitOrder(w.PackRef(y), UnitCommand.Move, Fixed.FromInt(30), Fixed.FromInt(30));
+            OrderApplier.Apply(w, in order, Faction.Player1);
+
+            Assert.Equal(UnitCommand.Move, w.CommandState[y]);
+            Assert.Equal(Fixed.FromInt(30), w.MoveTarget[y].X);
+        }
+
         // ── Story 15-23 (DW-775): kill ATTRIBUTION — dead keeps credit, recycled degrades ─────────────────────────
 
         [Fact]

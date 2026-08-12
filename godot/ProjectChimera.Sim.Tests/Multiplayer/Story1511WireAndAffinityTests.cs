@@ -19,7 +19,7 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
         // ── 12-byte UnitOrder round-trip (all commands, incl. GroundPoint) ──────────
 
         [Fact]
-        public void UnitOrder_Size_IsTwelve() => Assert.Equal(12, UnitOrder.SIZE);
+        public void UnitOrder_Size_IsFourteen() => Assert.Equal(14, UnitOrder.SIZE); // DW-945: 12->14 (4-byte packed subject ref)
 
         public static IEnumerable<object[]> OrderCases()
         {

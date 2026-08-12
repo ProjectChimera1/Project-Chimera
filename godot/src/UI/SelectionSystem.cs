@@ -277,9 +277,9 @@ namespace ProjectChimera.UI
         /// offline applied now). The target item's packed ref rides TargetX as a RAW int.</summary>
         private void IssuePickupCommand(int heroEntity, int itemRef)
         {
-            if (_lockstep?.EnqueueOrder(heroEntity, UnitCommand.PickupItem, Fixed.FromRaw(itemRef), Fixed.Zero) ?? true)
+            if (_lockstep?.EnqueueOrder(_world.PackRef(heroEntity), UnitCommand.PickupItem, Fixed.FromRaw(itemRef), Fixed.Zero) ?? true) // DW-945
             {
-                var order = new UnitOrder(heroEntity, UnitCommand.PickupItem, Fixed.FromRaw(itemRef), Fixed.Zero);
+                var order = new UnitOrder(_world.PackRef(heroEntity), UnitCommand.PickupItem, Fixed.FromRaw(itemRef), Fixed.Zero);
                 OrderApplier.Apply(_world, in order, _world.FactionOf[heroEntity], events: _combatEvents, items: _itemSys);
             }
         }
@@ -289,9 +289,9 @@ namespace ProjectChimera.UI
         /// a per-slot Use on the exact selected slot.</summary>
         public void IssueUseItemCommand(int heroEntity, int slot)
         {
-            if (_lockstep?.EnqueueOrder(heroEntity, UnitCommand.UseItem, Fixed.FromRaw(slot), Fixed.Zero) ?? true)
+            if (_lockstep?.EnqueueOrder(_world.PackRef(heroEntity), UnitCommand.UseItem, Fixed.FromRaw(slot), Fixed.Zero) ?? true) // DW-945
             {
-                var order = new UnitOrder(heroEntity, UnitCommand.UseItem, Fixed.FromRaw(slot), Fixed.Zero);
+                var order = new UnitOrder(_world.PackRef(heroEntity), UnitCommand.UseItem, Fixed.FromRaw(slot), Fixed.Zero);
                 OrderApplier.Apply(_world, in order, _world.FactionOf[heroEntity], events: _combatEvents, items: _itemSys);
             }
         }
@@ -300,9 +300,9 @@ namespace ProjectChimera.UI
         /// The slot rides TargetX as a RAW int. Public so the HUD inventory grid can drive a per-slot Drop.</summary>
         public void IssueDropItemCommand(int heroEntity, int slot)
         {
-            if (_lockstep?.EnqueueOrder(heroEntity, UnitCommand.DropItem, Fixed.FromRaw(slot), Fixed.Zero) ?? true)
+            if (_lockstep?.EnqueueOrder(_world.PackRef(heroEntity), UnitCommand.DropItem, Fixed.FromRaw(slot), Fixed.Zero) ?? true) // DW-945
             {
-                var order = new UnitOrder(heroEntity, UnitCommand.DropItem, Fixed.FromRaw(slot), Fixed.Zero);
+                var order = new UnitOrder(_world.PackRef(heroEntity), UnitCommand.DropItem, Fixed.FromRaw(slot), Fixed.Zero);
                 OrderApplier.Apply(_world, in order, _world.FactionOf[heroEntity], events: _combatEvents, items: _itemSys);
             }
         }
@@ -330,14 +330,17 @@ namespace ProjectChimera.UI
         {
             var tx = Fixed.FromFloat(dest.X);
             var tz = Fixed.FromFloat(dest.Z);
-            return _lockstep?.EnqueueOrder(unitId, cmd, tx, tz) ?? true;
+            // DW-945: the SUBJECT rides the wire as a PACKED entity ref (packed here at the funnel, resolved by
+            // OrderApplier's subject guard) — a unit that dies and whose slot recycles inside the delay window
+            // drops its stale order instead of handing it to the slot's new occupant.
+            return _lockstep?.EnqueueOrder(_world.PackRef(unitId), cmd, tx, tz) ?? true;
         }
 
         /// <summary>
-        /// Route a stationary command (Stop/Hold) — no destination needed.
+        /// Route a stationary command (Stop/Hold) — no destination needed. DW-945: subject packed at the funnel.
         /// </summary>
         private bool EnqueueStationary(int unitId, UnitCommand cmd)
-            => _lockstep?.EnqueueOrder(unitId, cmd, Fixed.Zero, Fixed.Zero) ?? true;
+            => _lockstep?.EnqueueOrder(_world.PackRef(unitId), cmd, Fixed.Zero, Fixed.Zero) ?? true;
 
         /// <summary>
         /// Route a targeted command (AttackTarget/Follow): carries the target ref in TargetX as a RAW int via
@@ -348,7 +351,7 @@ namespace ProjectChimera.UI
         /// stale-blind at generation &gt; 0. Building/item targets pass their own store's packed ref as before.</para>
         /// </summary>
         private bool EnqueueTargetedCommand(int unitId, UnitCommand cmd, int targetRef)
-            => _lockstep?.EnqueueOrder(unitId, cmd, Fixed.FromRaw(targetRef), Fixed.Zero) ?? true;
+            => _lockstep?.EnqueueOrder(_world.PackRef(unitId), cmd, Fixed.FromRaw(targetRef), Fixed.Zero) ?? true; // DW-945: subject packed
 
         /// <summary>
         /// Issue a Shift-queued (append) order (Story 2.12, AC1.2). Sets the wire's <see cref="UnitOrderFlags.Queued"/>
@@ -361,10 +364,11 @@ namespace ProjectChimera.UI
         private void IssueQueuedOrder(int unitId, UnitCommand cmd, Fixed tx, Fixed tz)
         {
             var wireCmd = (UnitCommand)((byte)cmd | UnitOrderFlags.Queued);
+            int subject = _world.PackRef(unitId); // DW-945: subject packed at the funnel (both paths)
             // Online: EnqueueOrder returns false (deferred to Flush). Offline (_lockstep == null): the ?? true applies now.
-            if (_lockstep?.EnqueueOrder(unitId, wireCmd, tx, tz) ?? true)
+            if (_lockstep?.EnqueueOrder(subject, wireCmd, tx, tz) ?? true)
             {
-                var order = new UnitOrder(unitId, wireCmd, tx, tz);
+                var order = new UnitOrder(subject, wireCmd, tx, tz);
                 OrderApplier.Apply(_world, in order, _world.FactionOf[unitId], events: _combatEvents);
             }
         }
@@ -973,7 +977,7 @@ namespace ProjectChimera.UI
                 if (!EnqueueTargetedCommand(id, UnitCommand.AttackTarget, packedEnemy)) continue; // online plain: queued
                 // Offline plain: apply through the SAME shared OrderApplier the lockstep/replay paths use (Review,
                 // Story 1.12) — never a hand-rolled copy that could silently drift. The applier clears the ring (replace).
-                var atkOrder = new UnitOrder(id, UnitCommand.AttackTarget, Fixed.FromRaw(packedEnemy), Fixed.Zero);
+                var atkOrder = new UnitOrder(_world.PackRef(id), UnitCommand.AttackTarget, Fixed.FromRaw(packedEnemy), Fixed.Zero); // DW-945: subject packed
                 OrderApplier.Apply(_world, in atkOrder, _world.FactionOf[id]);
             }
             if (_world.IsAlive(enemyId)) ConfirmOrder(_world.Position[enemyId].ToGodotVector3(), queued); // Story 11.4: ack + marker at the target
@@ -1006,7 +1010,7 @@ namespace ProjectChimera.UI
                 }
                 if (!EnqueueTargetedCommand(id, UnitCommand.AttackBuilding, packedRef)) continue; // online plain: queued
                 // Offline plain: apply through the SAME shared OrderApplier — identical to AttackTarget (clears the ring).
-                var atkOrder = new UnitOrder(id, UnitCommand.AttackBuilding, Fixed.FromRaw(packedRef), Fixed.Zero);
+                var atkOrder = new UnitOrder(_world.PackRef(id), UnitCommand.AttackBuilding, Fixed.FromRaw(packedRef), Fixed.Zero); // DW-945: subject packed
                 OrderApplier.Apply(_world, in atkOrder, _world.FactionOf[id]);
             }
             if (_buildingStore != null && buildingId >= 0 && buildingId < _buildingStore.Count) // Story 11.4: ack + marker at the target building
@@ -1031,7 +1035,7 @@ namespace ProjectChimera.UI
                 if (!_world.IsAlive(id)) continue;
                 var dest = new Vector3(target.X, 0f, target.Z);
                 if (!EnqueueCommand(id, cmd, dest)) continue; // online: queued (applied later by Flush)
-                var order = new UnitOrder(id, cmd, Fixed.FromFloat(dest.X), Fixed.FromFloat(dest.Z));
+                var order = new UnitOrder(_world.PackRef(id), cmd, Fixed.FromFloat(dest.X), Fixed.FromFloat(dest.Z)); // DW-945: subject packed
                 OrderApplier.Apply(_world, in order, _world.FactionOf[id]);
             }
             ConfirmOrder(target); // Story 11.4: issue-time ack + ground marker at the patrol waypoint
@@ -1052,7 +1056,7 @@ namespace ProjectChimera.UI
                 if (id == friendlyId) continue; // a unit cannot follow itself
                 if (!EnqueueTargetedCommand(id, UnitCommand.Follow, packedFriendly)) continue; // online: queued
                 // Offline: apply through the shared OrderApplier (Review, Story 1.12) — same path as Patrol.
-                var followOrder = new UnitOrder(id, UnitCommand.Follow, Fixed.FromRaw(packedFriendly), Fixed.Zero);
+                var followOrder = new UnitOrder(_world.PackRef(id), UnitCommand.Follow, Fixed.FromRaw(packedFriendly), Fixed.Zero); // DW-945: subject packed
                 OrderApplier.Apply(_world, in followOrder, _world.FactionOf[id]);
             }
             if (_world.IsAlive(friendlyId)) ConfirmOrder(_world.Position[friendlyId].ToGodotVector3()); // Story 11.4: ack + marker at the escorted unit
@@ -1140,10 +1144,10 @@ namespace ProjectChimera.UI
             int packedTarget = _world.PackRefOrNone(targetEntityId);
             // Story 15.11: slot → the wire's dedicated byte; TargetX = 0 (unused for TargetUnit/Self), TargetZ = targetRef.
             // Online: EnqueueOrder returns false (queued). Offline (_lockstep == null): the ?? true yields apply-now.
-            bool applyNow = _lockstep?.EnqueueOrder(casterId, wireCmd,
-                                                    Fixed.Zero, Fixed.FromRaw(packedTarget), (byte)slot) ?? true;
+            bool applyNow = _lockstep?.EnqueueOrder(_world.PackRef(casterId), wireCmd,
+                                                    Fixed.Zero, Fixed.FromRaw(packedTarget), (byte)slot) ?? true; // DW-945: subject packed
             if (!applyNow) return; // online: LockstepManager.Flush will apply it later
-            var order = new UnitOrder(casterId, wireCmd, Fixed.Zero, Fixed.FromRaw(packedTarget), (byte)slot);
+            var order = new UnitOrder(_world.PackRef(casterId), wireCmd, Fixed.Zero, Fixed.FromRaw(packedTarget), (byte)slot);
             OrderApplier.Apply(_world, in order, _world.FactionOf[casterId]);
         }
 
@@ -1163,9 +1167,9 @@ namespace ProjectChimera.UI
             // lockstep input-delay, so it must fire in the ONLINE case too (IssueMoveCommand/SetRallyPoint do the same).
             // Placing it after `if (!applyNow) return;` would skip it exactly when it is most needed.
             _orderMarkers?.Spawn(new Vector3(groundX.ToFloat(), 0f, groundZ.ToFloat()), OrderMarkerTint);
-            bool applyNow = _lockstep?.EnqueueOrder(casterId, wireCmd, groundX, groundZ, (byte)slot) ?? true;
+            bool applyNow = _lockstep?.EnqueueOrder(_world.PackRef(casterId), wireCmd, groundX, groundZ, (byte)slot) ?? true; // DW-945: subject packed
             if (!applyNow) return;
-            var order = new UnitOrder(casterId, wireCmd, groundX, groundZ, (byte)slot);
+            var order = new UnitOrder(_world.PackRef(casterId), wireCmd, groundX, groundZ, (byte)slot);
             OrderApplier.Apply(_world, in order, _world.FactionOf[casterId]);
         }
 

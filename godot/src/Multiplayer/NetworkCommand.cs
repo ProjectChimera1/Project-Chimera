@@ -153,8 +153,16 @@ namespace ProjectChimera.Multiplayer
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public readonly struct UnitOrder
     {
-        /// <summary>Entity ID (fits in ushort — max 4096 entities).</summary>
-        public readonly ushort UnitId;
+        /// <summary>The order's SUBJECT (DW-945, Story 15-23 follow-up): for an ENTITY-subject command this is a
+        /// PACKED generation-stamped ref (<c>EntityWorld.PackRef</c> at issue — 12-bit slot + generation high bits,
+        /// so it no longer fits a ushort), resolved by <see cref="OrderApplier.Apply"/>'s subject guard; a unit
+        /// that died and whose slot was recycled inside the lockstep delay window therefore DROPS its stale order
+        /// instead of handing it to the slot's new occupant (a same-faction trainee abandoning its rally walk was
+        /// the reachable case — the target-side twin of DW-775). For the BUILDING-subject command family
+        /// (Train/CancelTrain/CancelConstruction/SetRally/ReviveHero/BuyItem/Start+CancelResearch) it stays the
+        /// raw BuildingStore slot as before (dispatched before the entity guard; their own guards validate), and
+        /// for DslEvent it is the custom-event registry index (no entity semantics).</summary>
+        public readonly int UnitId;
         /// <summary>The command being issued.</summary>
         public readonly UnitCommand Command;
         /// <summary>World target X (Fixed raw int, 0 for Stop/Hold/Idle; ground X for a GroundPoint cast).</summary>
@@ -167,14 +175,14 @@ namespace ProjectChimera.Multiplayer
 
         public UnitOrder(int unitId, UnitCommand command, Fixed targetX, Fixed targetZ, byte slot = 0)
         {
-            UnitId  = (ushort)unitId;
+            UnitId  = unitId;
             Command = command;
             TargetX = targetX.Raw;
             TargetZ = targetZ.Raw;
             Slot    = slot;
         }
 
-        public const int SIZE = 12; // bytes on the wire (unitId 2 + command 1 + targetX 4 + targetZ 4 + slot 1)
+        public const int SIZE = 14; // bytes on the wire (unitId 4 [DW-945: packed subject ref] + command 1 + targetX 4 + targetZ 4 + slot 1)
     }
 
     // ── OrderApplier (the SINGLE deterministic command→world step) ──────────────
@@ -363,8 +371,14 @@ namespace ProjectChimera.Multiplayer
                 return;
             }
 
-            int id = o.UnitId;
-            if (!world.IsAlive(id)) return;
+            // DW-945 (the DW-775 subject-side twin): every ENTITY-subject order carries a PACKED generation-stamped
+            // ref (packed at issue — the building-family commands above read o.UnitId as a raw building slot and
+            // never reach this line). TryResolveRef bounds-checks, requires liveness AND a generation match, so an
+            // order whose unit died and whose slot was RECYCLED inside the lockstep delay window is DROPPED here —
+            // before 15-23's follow-up a same-faction trainee inherited the dead unit's order (it passed the
+            // IsAlive + faction guards), abandoning its rally walk / wiping its queued-order ring. Deterministic:
+            // every peer resolves the identical wire bytes against identical sim state.
+            if (!world.TryResolveRef(o.UnitId, out int id)) return;
             if (world.FactionOf[id] != expectedFaction) return; // anti-cheat: only command your own units
             // DW-938: a PHASED unit (a builder inside its construction site) is un-orderable — the UI cannot
             // select it, so a wire order naming it is stale (issued the tick it phased) or crafted. Dropping here
@@ -753,12 +767,11 @@ namespace ProjectChimera.Multiplayer
             for (int i = 0; i < orderCount; i++)
             {
                 var o = orders[baseIdx + i];
-                buf[pos++] = (byte)(o.UnitId);
-                buf[pos++] = (byte)(o.UnitId >> 8);
+                WriteInt(buf, ref pos, o.UnitId); // DW-945: 4 bytes — the subject is a PACKED entity ref for unit commands
                 buf[pos++] = (byte)o.Command;
                 WriteInt(buf, ref pos, o.TargetX);
                 WriteInt(buf, ref pos, o.TargetZ);
-                buf[pos++] = o.Slot; // Story 15.11: ability slot (byte 11); 0 for every non-cast command
+                buf[pos++] = o.Slot; // Story 15.11: ability slot; 0 for every non-cast command
             }
 
             return totalBytes;
@@ -784,11 +797,11 @@ namespace ProjectChimera.Multiplayer
 
             for (int i = 0; i < orderCount; i++)
             {
-                ushort unitId = (ushort)(buf[pos] | (buf[pos + 1] << 8)); pos += 2;
+                int unitId = ReadInt(buf, ref pos); // DW-945: 4 bytes — packed subject ref for unit commands
                 var command = (UnitCommand)buf[pos++];
                 int tx = ReadInt(buf, ref pos);
                 int tz = ReadInt(buf, ref pos);
-                byte slot = buf[pos++]; // Story 15.11: ability slot (byte 11)
+                byte slot = buf[pos++]; // Story 15.11: ability slot
                 outOrders[i] = new UnitOrder(unitId, command, Fixed.FromRaw(tx), Fixed.FromRaw(tz), slot);
             }
 
@@ -893,7 +906,11 @@ namespace ProjectChimera.Multiplayer
         /// convention) instead of raw ids. A v3 peer would interpret a packed ref from a v4 peer as a raw id (and
         /// vice versa) and silently diverge on any recycled-slot target, so the handshake must reject the mix;
         /// <c>ReplayRecorder.VERSION</c> (5→6) rejects v5 replays for the same reason.</remarks>
-        public const ushort PROTOCOL_VERSION = 4;
+        /// <remarks>DW-945 (Story 15-23 follow-up, Alec's Q4=b ruling): bumped 4→5 — the UnitOrder stride widened
+        /// 12→14 (the SUBJECT id widened to 4 bytes so it can carry a PACKED generation-stamped entity ref for
+        /// unit commands; building-family commands keep raw slots in the same field). A v4 body decoded at the v5
+        /// stride would misalign every order after the first — fail-closed reject, the 15.11 precedent.</remarks>
+        public const ushort PROTOCOL_VERSION = 5;
 
         /// <summary>
         /// DW-419/DW-420 — Hello role flag: the sender is a DEDICATED SERVER (not a P2P host). Tells the client
@@ -1465,12 +1482,11 @@ namespace ProjectChimera.Multiplayer
                 for (int i = 0; i < count; i++)
                 {
                     var o = ordersFlat[baseIdx + i];
-                    buf[pos++] = (byte)o.UnitId;
-                    buf[pos++] = (byte)(o.UnitId >> 8);
+                    WriteInt(buf, ref pos, o.UnitId); // DW-945: 4 bytes — same 14-byte order encoding as TickCommandPacket
                     buf[pos++] = (byte)o.Command;
                     WriteInt(buf, ref pos, o.TargetX);
                     WriteInt(buf, ref pos, o.TargetZ);
-                    buf[pos++] = o.Slot; // Story 15.11: ability slot (byte 11) — same 12-byte order encoding as TickCommandPacket
+                    buf[pos++] = o.Slot; // Story 15.11: ability slot
                 }
             }
 
@@ -1511,11 +1527,11 @@ namespace ProjectChimera.Multiplayer
                 int baseIdx = b * TickCommandPacket.MAX_ORDERS;
                 for (int i = 0; i < count; i++)
                 {
-                    ushort unitId = (ushort)(buf[pos] | (buf[pos + 1] << 8)); pos += 2;
+                    int unitId = ReadInt(buf, ref pos); // DW-945: 4 bytes — packed subject ref for unit commands
                     var command = (UnitCommand)buf[pos++];
                     int tx = ReadInt(buf, ref pos);
                     int tz = ReadInt(buf, ref pos);
-                    byte slot = buf[pos++]; // Story 15.11: ability slot (byte 11)
+                    byte slot = buf[pos++]; // Story 15.11: ability slot
                     outOrdersFlat[baseIdx + i] = new UnitOrder(unitId, command, Fixed.FromRaw(tx), Fixed.FromRaw(tz), slot);
                 }
                 outFactions[b]    = faction;

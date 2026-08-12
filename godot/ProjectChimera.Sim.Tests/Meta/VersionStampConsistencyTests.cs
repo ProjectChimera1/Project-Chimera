@@ -183,7 +183,7 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// <summary>Story 15-23 (DW-775): 3→4 — entity-target order payloads (AttackTarget/Follow TargetX,
         /// TargetUnit CastAbility TargetZ) are PACKED generation-stamped refs; a v3 peer would misinterpret them
         /// as raw ids and silently diverge on any recycled-slot target, so mixed builds must handshake-reject.</summary>
-        private const ushort ExpectedProtocolVersion = 4;
+        private const ushort ExpectedProtocolVersion = 5; // DW-945: 4->5 — UnitOrder stride 12->14 (4-byte packed SUBJECT ref)
 
         /// <summary>Story 9.4 — the net-new ruleset-fingerprint hash over the <see cref="EffectCaps"/> structural
         /// caps, folded into <see cref="MatchAgreementHash"/>. v1 = initial (AlgoVersion + every cap in file order).
@@ -227,7 +227,7 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// stride would misalign — ReplayPlayer hard-rejects all pre-v5 files at the version gate ("please re-record").</summary>
         /// <summary>Story 15-23 (DW-775): 5→6 — same stride, PACKED entity-target payloads; a v5 replay decoded on
         /// a v6 build would re-interpret raw ids as gen-0 packed refs and diverge on any recycled-slot target.</summary>
-        private const ushort ExpectedReplayFormatVersion = 6;
+        private const ushort ExpectedReplayFormatVersion = 7; // DW-945: 6->7 — same stride change (v6 bodies misalign at v7)
 
         /// <summary>Default minimum game version a packaged .chimera.zip declares it requires.</summary>
         private const string ExpectedManifestMinGameVersion = "0.1";

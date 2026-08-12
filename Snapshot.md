@@ -98,7 +98,7 @@ session close: see the sign-off block appended below when the burn-down lands.
 
 **Tier-1 at last full run: 6504 pass / 0 fail / 1 skip** (baseline 6462 at session start). Release analyzer
 gate clean on every commit. **HANDSHAKE NOTE: SimChecksum 25 / ContentHash 2 / CanonicalModelHash 16 /
-PROTOCOL 4 / replay 6 / save format 7 — both LAN machines must pull+rebuild together (by design), and all
+PROTOCOL 5 / replay 7 / save format 7 (DW-945 widened the order stride 12→14 same-day) — both LAN machines must pull+rebuild together (by design), and all
 pre-session saves/replays are fail-closed rejected.**
 
 **Decisions Alec owes (multiple choice in the session hand-off):** (1) 15-1 reconnect — build the v1

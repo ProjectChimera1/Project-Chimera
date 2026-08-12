@@ -43,7 +43,9 @@ namespace ProjectChimera.Multiplayer
         //   (AttackTarget/Follow TargetX; TargetUnit CastAbility TargetZ) are PACKED generation-stamped refs, packed
         //   at issue. A v5 body replayed on a v6 build would re-interpret raw ids as gen-0 packed refs and diverge
         //   on any recycled-slot target — HARD-REJECTED at the version gate ("please re-record"), never decoded.
-        public const ushort VERSION = 6;
+        // v7 (DW-945): the UnitOrder stride widened 12→14 (4-byte PACKED subject ref). A v6 body decoded at the
+        //   v7 stride would misalign every order after the first — HARD-REJECTED at the version gate, never decoded.
+        public const ushort VERSION = 7;
 
         /// <summary>Legacy (pre-v4) EOF sentinel — retained only so the hard-reject tests can hand-write old headers.</summary>
         public const uint EOF_SENTINEL = 0xFFFFFFFFu;
