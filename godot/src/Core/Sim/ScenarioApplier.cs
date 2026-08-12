@@ -428,6 +428,25 @@ namespace ProjectChimera.Core.Sim
 
             // ── 5. Triggers ────────────────────────────────────────────────────
             _host.ScenarioDirector.LoadScenario(s); // triggers last (same as today)
+
+            // ── 6. End-of-load diagnostics (DW-707, closing DW-624's named "end-of-load flush") ────────────────
+            // Every spawn above ran through EntityWorld.ApplyUnitDefinition, which is where ResearchSystem's
+            // future-spawn research catch-up hook fires; a refusal there is deliberately NOT logged per spawn (a
+            // 200-unit load would emit 200 lines) but accumulated into a per-match tally. DW-624 made
+            // SimulationHost.FlushMatchDiagnostics public precisely so a LOAD path could report that tally, yet the
+            // only wired call site was ClearForReset — which runs BEFORE a re-apply, so a bulk load's refusals
+            // surfaced at the NEXT teardown, one match late and attributed to the wrong scenario. Flushing here, at
+            // the end of the apply, reports them against the load that produced them.
+            //
+            // Last, deliberately: every spawn (units, pre-built buildings, heroes) has happened by this point, so a
+            // refusal from any of them is included. Idempotent and silent when nothing was refused — the
+            // overwhelmingly common case — and the per-match aggregation is unaffected because the flush ZEROES the
+            // tally, so ClearForReset's later flush still reports exactly the refusals accrued since this one.
+            //
+            // DETERMINISM: diagnostics only. FlushSpawnCatchUpDiagnostics reads and zeroes unfolded counters, mutates
+            // no sim array, pushes no event and routes text through the injected ILogSink (NullLogSink in every
+            // headless/Tier-1/golden host), so an apply that calls it is byte-identical to one that does not.
+            _host.FlushMatchDiagnostics();
         }
 
         /// <summary>

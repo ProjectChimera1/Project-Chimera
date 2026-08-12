@@ -199,53 +199,21 @@ namespace ProjectChimera.Sim.Tests.Economy
         /// excludes <c>SetFactionDef(Faction, def)</c> (a two-arg per-slot override, not a seam) and
         /// <c>SetRallyCommand(...)</c> (a bool-returning player ORDER). The parameter type resolves the field, so a
         /// field RENAME cannot break the guard.
+        ///
+        /// <para>DW-672 lifted the discovery rule itself into the shared <see cref="WiringSeamSweep"/> so the FOUR
+        /// other systems <c>SimulationHost</c> wires post-construction (AbilityCastSystem / CombatSystem /
+        /// ProjectileSystem / HeroXpSystem) are swept by the same rule in <c>PostConstructionWiringGuardTests</c>
+        /// rather than being covered for BuildingSystem only. This file keeps the BuildingSystem-specific teeth (the
+        /// node store's identity and the end-to-end release).</para>
         /// </summary>
-        private static IReadOnlyList<(MethodInfo Setter, FieldInfo Field)> WiringSeams()
-        {
-            var seams = new List<(MethodInfo, FieldInfo)>();
-            foreach (MethodInfo m in typeof(BuildingSystem).GetMethods(
-                         BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
-            {
-                if (m.IsSpecialName) continue;                                    // property accessors
-                if (m.ReturnType != typeof(void)) continue;
-                if (!m.Name.StartsWith("Set", StringComparison.Ordinal)) continue;
-
-                ParameterInfo[] ps = m.GetParameters();
-                if (ps.Length != 1) continue;
-
-                Type t = ps[0].ParameterType;
-                if (!t.IsClass || t == typeof(string)) continue;                  // reference-typed collaborators only
-
-                seams.Add((m, RequireSoleFieldOfType(t)));
-            }
-
-            // Deterministic order (reflection's member order is not guaranteed) so a failure message is stable.
-            seams.Sort((a, b) => string.CompareOrdinal(a.Item1.Name, b.Item1.Name));
-            return seams;
-        }
+        private static IReadOnlyList<(MethodInfo Setter, FieldInfo Field)> WiringSeams() =>
+            WiringSeamSweep.Seams(typeof(BuildingSystem));
 
         /// <summary>The single <see cref="BuildingSystem"/> instance field of the given type — the field a
-        /// <c>Set*</c> seam of that parameter type fills. Walks the full base-type chain (private base fields
-        /// included), like the DW-196 clear sweep.</summary>
-        private static FieldInfo RequireSoleFieldOfType(Type fieldType)
-        {
-            var matches = new List<FieldInfo>();
-            foreach (FieldInfo f in ClearCompletenessSweep.InstanceFieldsOf(typeof(BuildingSystem)))
-                if (f.FieldType == fieldType) matches.Add(f);
+        /// <c>Set*</c> seam of that parameter type fills.</summary>
+        private static FieldInfo RequireSoleFieldOfType(Type fieldType) =>
+            WiringSeamSweep.RequireSoleFieldOfType(typeof(BuildingSystem), fieldType);
 
-            Assert.True(matches.Count == 1,
-                $"Expected BuildingSystem to hold EXACTLY ONE {fieldType.Name} field (the one its Set* seam fills) " +
-                $"but found {matches.Count}. The wiring sweep resolves a seam's backing field by parameter type; " +
-                "if a second field of this type is legitimate, teach the sweep how to disambiguate rather than " +
-                "deleting the guard.");
-            return matches[0];
-        }
-
-        private static bool IsAllowlisted(string setterName)
-        {
-            foreach (string s in Allowlist)
-                if (string.Equals(s, setterName, StringComparison.Ordinal)) return true;
-            return false;
-        }
+        private static bool IsAllowlisted(string setterName) => WiringSeamSweep.Contains(Allowlist, setterName);
     }
 }

@@ -297,6 +297,115 @@ namespace ProjectChimera.Sim.Tests.Economy
             Assert.False(h.World.RallyMovePending[w]);
             Assert.Equal(GatherState.MovingToResource, h.World.GatherState[w]);
             Assert.Equal(home, h.World.GatherTarget[w]);
+            Assert.Equal(0, h.World.RallyStandDownTicks[w]);   // DW-689 — the budget is disarmed with the leg
+        }
+
+        // ── DW-689: the stand-down is BOUNDED — the "superseded" valve above cannot fire in the sim layer ──
+
+        /// <summary>
+        /// DW-689 — the defect the valve above could NOT reach. Nothing in the SIMULATION layer ever takes a rallied
+        /// worker out of <see cref="UnitCommand.Move"/>: CombatSystem's gatherer normalization rewrites every command
+        /// EXCEPT Move, OrderQueueSystem skips an empty queue, ClearWorkerBuild fires only from Build, and the only
+        /// Move→Stop writers live in <c>src/UI</c> behind a radius tighter than the arrival test. So the test above
+        /// pins an escape that only a HAND-WRITTEN CommandState can produce, and a worker whose rally it cannot reach
+        /// stood down on every tick FOREVER — never gathering again, a silent permanent loss of its economic function.
+        /// </summary>
+        [Fact]
+        public void RallyPendingWorker_MakingNoProgress_IsReleasedAfterTheGraceWindow_AndAutoGathers()
+        {
+            var h = NewHarness();
+            var (home, _) = TwoNodes(h);
+            int w = TrainRalliedWorker(h);
+            Assert.True(h.World.RallyMovePending[w]);
+
+            // No MovementSystem in this harness ⇒ the worker's position never changes ⇒ it never gets closer to its
+            // rally goal. That is EXACTLY the observable state of a worker hard-stopped against a blocked region, and
+            // the state the whole grace window is measured in.
+            for (int t = 0; t < GatheringSystem.RALLY_STANDDOWN_GRACE_TICKS - 1; t++)
+            {
+                h.Gathering.Tick(h.World, Dt);
+                Assert.True(h.World.RallyMovePending[w]);                     // still honouring the rally…
+                Assert.Equal(GatherState.Idle, h.World.GatherState[w]);       // …so still standing down
+                Assert.Equal(t + 1, h.World.RallyStandDownTicks[w]);          // …and the budget is counting
+            }
+
+            // The budget is spent on this tick: the leg is released and the SAME tick re-employs the worker (no extra
+            // idle tick), through the unchanged nearest-node logic. PRE-FIX this loop could run forever.
+            h.Gathering.Tick(h.World, Dt);
+
+            Assert.False(h.World.RallyMovePending[w]);
+            Assert.Equal(0, h.World.RallyStandDownTicks[w]);                  // disarmed with the leg
+            Assert.Equal(Fixed.Zero.Raw, h.World.RallyGoalBestSqr[w].Raw);
+            Assert.Equal(GatherState.MovingToResource, h.World.GatherState[w]);
+            Assert.Equal(home, h.World.GatherTarget[w]);
+            Assert.Equal(1, h.Nodes.AssignedGatherers[home]);
+        }
+
+        /// <summary>
+        /// The teeth for the bound: a worker that is genuinely CLOSING on its rally must never be released, however
+        /// long the walk takes. A flat timer would have re-introduced DW-634's defect on a delay (a big map, a slowed
+        /// worker); the budget is a NO-PROGRESS test against the best approach reached, so ground gained anywhere in
+        /// the window re-arms it.
+        /// </summary>
+        [Fact]
+        public void RallyPendingWorker_StillClosingOnItsRally_IsNeverReleased_HoweverLongTheWalk()
+        {
+            var h = NewHarness();
+            TwoNodes(h);
+            int w = TrainRalliedWorker(h);
+
+            // Ten grace windows' worth of ticks, creeping one raw Fixed tick closer per tick — the smallest possible
+            // evidence of progress, and far slower than any real mover.
+            FixedVec3 pos = h.World.Position[w];
+            for (int t = 0; t < GatheringSystem.RALLY_STANDDOWN_GRACE_TICKS * 10; t++)
+            {
+                pos = new FixedVec3(Fixed.FromRaw(pos.X.Raw + 1), pos.Y, pos.Z); // toward RallyPos (+X of the spawn)
+                h.World.Position[w] = pos;
+                h.Gathering.Tick(h.World, Dt);
+                Assert.True(h.World.RallyMovePending[w]);
+                Assert.Equal(GatherState.Idle, h.World.GatherState[w]);
+            }
+
+            Assert.Equal(1, h.World.RallyStandDownTicks[w]); // re-armed every tick — never accumulated toward the cap
+        }
+
+        /// <summary>
+        /// DW-689 END-TO-END, through the REAL mover and a REAL <see cref="PathabilityGrid"/>: the ledger's own
+        /// trigger. A rally point behind a blocked region hard-stops the worker at the boundary, so
+        /// <c>SqrDistance(Position, CommandGoal)</c> can never fall inside the arrival radius. Pre-fix the worker sat
+        /// in Idle for the whole match; now the leg is released once it provably cannot complete and the worker
+        /// rejoins the ordinary nearest-node sweep.
+        /// </summary>
+        [Fact]
+        public void RalliedWorker_WhoseRallyIsBehindAWall_EventuallyGathersInsteadOfFreezingForever()
+        {
+            var h = NewHarness();
+            var (home, _) = TwoNodes(h);
+            var movement = new MovementSystem();
+
+            // A full N–S wall one cell thick at column 69 — world X in [10, 12) (grid identity: column c spans
+            // X in [2c-128, 2c-126)). The hall is at X=0 and the rally at X=22, so the leg is cut in two.
+            var mask = new bool[PathabilityGrid.CELL_COUNT];
+            for (int row = 0; row < PathabilityGrid.GRID_SIZE; row++) mask[row * PathabilityGrid.GRID_SIZE + 69] = true;
+            h.World.SetPathabilityGrid(new PathabilityGrid(mask));
+
+            int w = TrainRalliedWorker(h);
+            Assert.True(h.World.RallyMovePending[w]);
+
+            for (int t = 0; t < 1200; t++)
+            {
+                h.Gathering.Tick(h.World, Dt);
+                movement.Tick(h.World, Dt);
+                if (h.World.GatherState[w] != GatherState.Idle) break;
+            }
+
+            // Never arrived (the wall is between it and the rally) — and yet it went back to work.
+            Assert.True(h.World.Position[w].X.Raw < Fixed.FromInt(12).Raw,
+                        "fixture assumption: the worker must still be west of the wall, i.e. it never reached the rally");
+            Assert.True(FixedVec3.SqrDistance(h.World.Position[w], RallyPos) > ArrivalTuning.GoalArriveRadiusSqr);
+            Assert.False(h.World.RallyMovePending[w]);
+            Assert.NotEqual(GatherState.Idle, h.World.GatherState[w]);   // PRE-FIX: Idle forever
+            Assert.Equal(home, h.World.GatherTarget[w]);
         }
     }
 }

@@ -217,8 +217,9 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// <summary>DW-768 (Story 15-21 rider): SaveGameFile.FormatVersion was the ONE fail-closed version gate
         /// with no pin here — a lane-enum edit could ship without its bump and misalign every positional lane in
         /// old saves SILENTLY (the exact class v5/v6/v7 exist to prevent). Story 15-21 bumped 6→7 (the two
-        /// appended hero attribute lanes).</summary>
-        private const ushort ExpectedSaveFormatVersion = 7;
+        /// appended hero attribute lanes); DW-690 bumped 7→8 (the appended per-entity RallyMovePending lane, so a
+        /// worker saved mid-rally keeps its DW-634 stand-down gate across a load).</summary>
+        private const ushort ExpectedSaveFormatVersion = 8;
 
         /// <summary>.chmr replay file-format version. Story 7.9 bumped 2→3 (DslEvent orders). Story 9.11 bumped 3→4
         /// ("replay v2": self-describing tagged body via the frozen MergedTickPacket envelope + a result trailer, and

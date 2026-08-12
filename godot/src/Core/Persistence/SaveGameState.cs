@@ -177,9 +177,17 @@ namespace ProjectChimera.Core.Persistence
             PendingCastPointX, PendingCastPointZ, // Story 15.11 — transient ground-cast point (persisted for the mid-tick save, like PendingCastSlot/Target)
             AuraIdx, OnHitIdx,
             SelfPassiveIdx, HeroIndex, GatherState, GatherTarget, CarryAmount, CarryResType, CarryCapacity, BuildTarget,
-            // DW-581: the per-slot recycle generation backing PackRef/TryResolveRef. Last of the per-entity lanes (a
-            // new lane must stay BEFORE PatrolWpX, which is where the flat-stride half begins for the length checks).
+            // DW-581: the per-slot recycle generation backing PackRef/TryResolveRef.
             Generation,
+            // DW-690 (save format v8): the outstanding rally FIRST LEG of a trained worker. Every other input to
+            // DW-634's gate — Flags/CommandState/MoveTarget/CommandGoal — already round-trips, so dropping this one
+            // made a mid-leg worker reload looking exactly like it was still walking its rally while the gate that
+            // protects the walk came back false: the first GatheringSystem tick then re-targeted it to the node
+            // nearest its MID-LEG position and discarded the player's rally. APPENDED (a mid-enum insert would
+            // silently shift every later lane in an old blob; appending + the FormatVersion 7→8 bump fail-closes
+            // instead) and still BEFORE PatrolWpX, where the flat-stride half begins for Validate's length checks —
+            // this is a plain per-entity lane of length EntHwm.
+            RallyMovePending,
             // flat (stride) arrays — length EntHwm * stride
             PatrolWpX, PatrolWpY, PatrolWpZ, OrderQCmd, OrderQTargetX, OrderQTargetZ, AbilityId, AbilityCd,
             COUNT
@@ -322,6 +330,7 @@ namespace ProjectChimera.Core.Persistence
             var gs = A(EA.GatherState, n); var gt = A(EA.GatherTarget, n); var ca = A(EA.CarryAmount, n);
             var crt = A(EA.CarryResType, n); var cc = A(EA.CarryCapacity, n); var bt = A(EA.BuildTarget, n);
             var gen = A(EA.Generation, n); // DW-581 — per-slot recycle generation (the ABA half of a packed entity ref)
+            var rmp = A(EA.RallyMovePending, n); // DW-690 — the outstanding rally first leg (bool → 0/1, the HasRally precedent)
             EntDefId = new string[n];
 
             for (int i = 0; i < n; i++)
@@ -348,6 +357,7 @@ namespace ProjectChimera.Core.Persistence
                 gs[i] = (int)w.GatherState[i]; gt[i] = w.GatherTarget[i]; ca[i] = w.CarryAmount[i].Raw;
                 crt[i] = (int)w.CarryResourceType[i]; cc[i] = w.CarryCapacity[i].Raw; bt[i] = w.BuildTarget[i];
                 gen[i] = w.Generation[i]; // DW-581
+                rmp[i] = w.RallyMovePending[i] ? 1 : 0; // DW-690
                 EntDefId[i] = w.SourceDefinition[i]?.Id ?? "";
             }
 
@@ -708,6 +718,7 @@ namespace ProjectChimera.Core.Persistence
             var aura = G(EA.AuraIdx); var onhit = G(EA.OnHitIdx); var selfp = G(EA.SelfPassiveIdx); var hidx = G(EA.HeroIndex);
             var gs = G(EA.GatherState); var gt = G(EA.GatherTarget); var ca = G(EA.CarryAmount); var crt = G(EA.CarryResType); var cc = G(EA.CarryCapacity); var bt = G(EA.BuildTarget);
             var gen = G(EA.Generation); // DW-581
+            var rmp = G(EA.RallyMovePending); // DW-690
 
             for (int i = 0; i < n; i++)
             {
@@ -751,6 +762,12 @@ namespace ProjectChimera.Core.Persistence
                 w.GatherState[i] = (GatherState)gs[i]; w.GatherTarget[i] = gt[i]; w.CarryAmount[i] = Fixed.FromRaw(ca[i]);
                 w.CarryResourceType[i] = (ResourceKind)crt[i]; w.CarryCapacity[i] = Fixed.FromRaw(cc[i]); w.BuildTarget[i] = bt[i];
                 w.Generation[i] = gen[i]; // DW-581 — the recycle generation is what keeps a packed ref ABA-safe
+                // DW-690 — restore the DW-634 rally gate. Without it a worker saved mid-leg came back with its
+                // Flags/CommandState/MoveTarget intact but its gate off, so GatheringSystem's very next tick overwrote
+                // MoveTarget with the node nearest its mid-leg position. Its DW-689 stand-down budget is deliberately
+                // NOT persisted (the GatherWalkStallTicks posture): EntityWorld.Create left it at 0 == UNARMED, and the
+                // first stand-down tick after the load re-arms it from the worker's restored position.
+                w.RallyMovePending[i] = rmp[i] != 0;
 
                 // Reference-typed SoA: re-resolve the def by id + faction and set the two ref fields directly (NOT via
                 // ApplyUnitDefinition, which would clobber the just-restored numeric SoA and re-fire the self-passive

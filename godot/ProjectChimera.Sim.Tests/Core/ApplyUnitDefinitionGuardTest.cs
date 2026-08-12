@@ -465,6 +465,34 @@ namespace ProjectChimera.Sim.Tests.Core
             Assert.False(w.RallyMovePending[reused]);
         }
 
+        // ── DW-689 — RallyStandDownTicks / RallyGoalBestSqr are the BOUNDED stand-down budget behind RallyMovePending:
+        //    RUNTIME state written only by GatheringSystem.TickIdle (never def-derived, so ApplyUnitDefinition does not
+        //    touch them — the GateClosedTicks/RallyMovePending posture). A recycled slot must be reset in Create for TWO
+        //    independent reasons: a corpse's nearly-exhausted counter would release a brand-new worker's rally leg after
+        //    a tick or two (re-opening DW-634), and a corpse's best-distance mark — recorded from a completely different
+        //    position — would make the very first stand-down tick read as "no progress". This is the SOLE teeth on those
+        //    two mandatory resets: both fields are UNFOLDED, so no checksum catches an omission, and default(int)==0 /
+        //    default(Fixed)==Zero make the reset lines look redundant. ──
+        [Fact]
+        public void RecycledSlot_CarriesNoPriorRallyStandDownState()
+        {
+            var w = new EntityWorld();
+            int first = w.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
+            // Dirty both, as if the first occupant had been one tick from having its unreachable rally released.
+            w.RallyStandDownTicks[first] = GatheringSystem.RALLY_STANDDOWN_GRACE_TICKS - 1;
+            w.RallyGoalBestSqr[first]    = Fixed.FromInt(999);
+            Assert.NotEqual(0, w.RallyStandDownTicks[first]);
+            Assert.NotEqual(Fixed.Zero.Raw, w.RallyGoalBestSqr[first].Raw);
+
+            w.Destroy(first);
+            int reused = w.Create(FixedVec3.Zero, Faction.Player2, Fixed.FromInt(50), Fixed.FromInt(3));
+            Assert.Equal(first, reused); // same id off the free list
+
+            // The new occupant starts with an UNARMED window — proves the mandatory Create() recycle-reset.
+            Assert.Equal(0, w.RallyStandDownTicks[reused]);
+            Assert.Equal(Fixed.Zero.Raw, w.RallyGoalBestSqr[reused].Raw);
+        }
+
         // ── Story 3.17 — editor delete→undo restore fidelity. SnapshotUnit + RestoreUnit route a def-based unit back
         //    through ApplyUnitDefinition (the A2 mapper), so every def-derived authored field is re-derived — never a
         //    hand-copy that silently drops fields (the recurring RestoreUnit drop-debt). This Tier-1 round-trip guard
