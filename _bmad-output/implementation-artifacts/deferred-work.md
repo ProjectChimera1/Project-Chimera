@@ -2387,7 +2387,8 @@ resolution: Bundle dedicated-server-drop-hardening (workflow burn-down 2026-08-0
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
 source_spec: `_bmad-output/implementation-artifacts/spec-9-6-deterministic-disconnect-freeze-and-continue-drop-policy.md`
 reason: The drop directive/ACK state machine has no ACK timeout or liveness fallback — a surviving player that is transport-connected but hung (never sends DropAck) leaves the freeze forever uncommitted, so FrozenSlotInjector never runs and every other survivor + spectator stalls indefinitely. — Evidence: Commit fires only on AllAcked() over the survivor set; there is no deadline, re-send, or force-commit. At N=2 the blast radius is spectators (the lone survivor is the only ACKer; if it hangs the match is effectively dead anyway), widening at N>=3. This is the disconnect-domain continuation of the 9.4-deferred "no ACK timeout" entry. Closure = a tick-bounded escalation (force-commit over ACKed survivors, or abort to MATCH SUMMARY) consistent with the story's tick-counted stance; sequence with the N-player robustness work (9.7/9.15).
-status: open
+status: done 2026-08-12
+resolution: resolved by sweep bundle save-restore-and-lifecycle-clamps
 
 ### DW-411: The DedicatedServer freeze adapter (FactionToSlot mapping, survivors>0 vs survivors<=0 gating, applyAtTick…
 origin: migrated from flat appender bullet, 2026-07-30 (A1-E11)
@@ -4208,7 +4209,8 @@ source_spec: `_bmad-output/implementation-artifacts/spec-match-seed-plumbing.md`
 location: godot/src/Core/MainScene.cs:2478 (`MatchSeedProducer.Produce(Time.GetTicksUsec())`)
 severity: medium
 reason: The offline Edit→Play reset now mints a fresh wall-clock-entropy seed every launch (the intended per-match behavior), so two runs of the same authored scenario diverge on any tick-time RNG (combat crits, DSL `random`). This is by design for the bundle's stated intent (a per-match seed), but it weakens the project's in-engine A/B verification methodology — the gate discipline relies on comparing arms of a choice, and RNG-touching content can no longer be reproduced run-to-run because there is no debug/env flag to pin the offline seed to a fixed value. Out of the bundle's intent (which asked for a per-match seed, not a repro pin), hence deferred rather than added. — Evidence: adversarial + verification-gap lenses. Closure = an opt-in override (env var or debug setting) read as the offline entropy when set, so a verification/repro run can fix the seed while normal play stays per-match.
-status: open
+status: done 2026-08-12
+resolution: resolved by sweep bundle save-restore-and-lifecycle-clamps
 
 ### DW-500: Sibling loopback-desync-smoke.ps1 (and .cmd) lacks the F9 DEBUG-build banner that lan-desync-smoke.ps1 just gained, leaving the same silent-F9-no-op trap undocumented on the loopback drill
 origin: deferred by review of `_bmad-output/implementation-artifacts/spec-housekeeping-docs-normalization.md`, 2026-08-03
@@ -5003,7 +5005,8 @@ origin: workflow burn-down run, 2026-08-03
 location: godot/src/Multiplayer/LockstepManager.cs (GoOnline/GoSpectate -> SeedInitialTicks; the ring now lives in MergedStreamGate)
 severity: low
 reason: Pre-existing: only ticks 0..delay-1 are re-seeded on match start, so stale arrivals from a prior match at matching tick numbers could satisfy a later match's Flush gate if a manager instance were ever reused across matches. Mitigated today because a scene reload creates a fresh MainScene and manager, which is why it is latent rather than live. Preserved verbatim in the DW-417 MergedStreamGate extraction for behavior parity. Closure = clear the ring on GoOnline/GoSpectate (or on GoOffline) - a match-lifecycle change, separate from the extraction.
-status: open
+status: done 2026-08-12
+resolution: resolved by sweep bundle save-restore-and-lifecycle-clamps
 
 ### DW-599: Reconnect into a frozen slot mid-match races the frozen-slot injector
 origin: workflow burn-down run, 2026-08-03
@@ -5583,7 +5586,8 @@ origin: workflow burn-down run, 2026-08-05
 location: godot/src/Core/Sim/SimulationHost.cs:331-337 (abilitySys.SetDslSimEvents, plus CombatSystem/ProjectileSystem/HeroXpSystem SetDslSimEvents via the fixed-order array)
 severity: low
 reason: The new BuildingSystemWiringGuardTests sweep is BuildingSystem-scoped, as the DW-517 decision specified. AbilityCastSystem, CombatSystem, ProjectileSystem and HeroXpSystem take their DslSimEventFeed through the identical opt-in Set* pattern, so a forgotten wire there is still silently feature-disabling with nothing red — the same failure mode DW-517 closed for one system only. Generalizing WiringSeams() across those systems is a natural follow-up; the new file's discovery rule is already system-agnostic apart from the hard-coded typeof(BuildingSystem).
-status: open
+status: done 2026-08-12
+resolution: resolved by sweep bundle rally-and-combat-standdown
 
 ### DW-673: A conceded faction's parked army still CONTESTS the KotH zone, so no live team can ever hold-win a >=3-faction match
 origin: workflow burn-down run, 2026-08-05
@@ -5692,7 +5696,8 @@ origin: post-merge review of the DW-620/DW-623/DW-634/DW-636 burn-down merge, 20
 location: godot/src/Effects/ModifierStore.cs:443-452 (RemoveSlot runs ApplyStatDeltas BEFORE RecomputeStatusUnion) and :186-190 (Apply runs ApplyStatDeltas BEFORE the `StatusFlagsOf |= mod.Status` write), read against the guard at godot/src/Combat/DamageResolver.cs:144
 severity: medium
 reason: The DW-620 guard puts the flag check inside KillEntity, but both ModifierStore paths mutate stats on one side of the status-union write and therefore hand the guard a flag that does not describe the post-operation host. REMOVE arm (wrongly refused): base MaxHealth 100; install B {id 910, status Invulnerable, max_health_delta +40, duration 60} then A {id 911, max_health_delta -100, permanent} — ceiling 140 then 40, Health clamped to 40. At tick 60 B expires: RemoveSlot -> ApplyStatDeltas(-40) drives the ceiling 40 -> 0, the DW-491 collapse gate is satisfied, KillEntity is REFUSED because StatusFlagsOf still carries the Invulnerable that this very removal is about to clear, and :452 then recomputes the union to None. Final state: alive, EffectiveMaxHealth 0, Health 0, StatusFlags None — the live 0-ceiling zombie DW-325 exists to eliminate, and unreachable by the DW-620 comment's own recovery ("a FRESH collapse once the flag drops") because `ceilingBefore > Fixed.Zero` can never hold again while permanent A is installed; only incoming damage can still kill it, so an unattacked one keeps its faction alive for elimination win conditions indefinitely. APPLY arm (wrongly allowed, the mirror image): a modifier granting Invulnerable together with a net-negative max_health_delta collapses the ceiling at :186 while StatusFlagsOf has not yet been OR-ed at :190, so the modifier KILLS the host it was authored to make death-immune. Distinct from DW-676, which is the definitional pause-vs-cancel question for a host that is GENUINELY immune at collapse time; here the immunity is stale (remove) or not yet installed (apply), and DW-676's deferred-death re-check would not touch the apply arm at all. Uncovered: InvulnerableDeathImmunityTests.CeilingCollapse_KillsTheFormerlyImmuneHost_OnceTheInvulnerabilityExpires expires the -MaxHealth debuff FIRST (duration 1 vs 3), so the hazardous ordering never runs. Latent today — no shipped ability authors a status, so every golden leaves StatusFlagsOf at None — and reachable the moment creator content pairs Invulnerable with a MaxHealth delta. Closure = recompute the status union (or evaluate the guard against the post-operation union) BEFORE the stat revert in RemoveSlot and before the collapse test in Apply, with a two-arm test pinning both orderings.
-status: open
+status: done 2026-08-12
+resolution: resolved by sweep bundle rally-and-combat-standdown
 
 ### DW-688: The DW-634 rally-arrival test wraps int32 past ~181 units — a long rally reports "arrived" on tick 1 and is silently discarded
 origin: post-merge review of the DW-620/DW-623/DW-634/DW-636 burn-down merge, 2026-08-05
@@ -5706,14 +5711,16 @@ origin: post-merge review of the DW-620/DW-623/DW-634/DW-636 burn-down merge, 20
 location: godot/src/Economy/GatheringSystem.cs:133-146 (the RallyMovePending stand-down; the escape at :144 is `CommandState != UnitCommand.Move`)
 severity: medium
 reason: The stand-down clears RallyMovePending only on arrival within GoalArriveRadiusSqr, or when CommandState leaves Move — and nothing in the SIMULATION layer ever takes a rallied worker out of Move. CombatSystem.cs:136-147's gatherer normalization rewrites AttackMove/Stop/HoldPosition/AttackTarget/Patrol/Follow/PatrolAppend/AttackBuilding to Idle but NOT Move, then `continue`s past every other Idle write in that file; OrderQueueSystem skips an entity with an empty queue (a freshly trained worker has one); BuildingSystem.ClearWorkerBuild fires only from CommandState=Build; the only Move->Stop writers are PathRequestSystem.cs:190/:234 and FlowFieldBridge.cs:172, all under src/UI (presentation, absent headless) and all gated on WAYPOINT_REACH_SQR (1.5u), strictly tighter than the 2u arrival test on :138, so they can never fire where :144 has not already passed. Trigger: an authored Custom building with produces_category "Worker" (the only worker producer TrainUnit accepts) rallied to a point inside a PathabilityGrid-blocked region — MovementSystem.cs:195-206 hard-stops the worker at the blocked-cell boundary, so SqrDistance(Position, CommandGoal) never falls inside the radius and TickIdle returns at :144 on every tick forever. FindBestNode/AssignToNode are never reached: the worker never gathers again, a silent permanent loss of its economic function, where pre-DW-634 it was re-targeted to the nearest node on the very next tick. The bundle's own comment at :140-143 claims to prevent exactly this, and its escape test (TrainedWorkerRallyFirstLegTests.RallyPendingWorker_WhoseMoveIsSuperseded_ResumesAutoGatherWithoutReachingTheRally) hand-writes CommandState = Idle, a value the simulation never assigns to this unit on its own. Related but NOT covered by DW-681 (which records the layering gap; its closure — move goal-arrival resolution into a sim system — still only fires ON arrival) or DW-682 (AI placement). Closure = a bounded stand-down (a tick budget or a reachability/no-progress test) that releases the worker to auto-gather when the rally leg provably cannot complete.
-status: open
+status: done 2026-08-12
+resolution: resolved by sweep bundle rally-and-combat-standdown
 
 ### DW-690: RallyMovePending is the one input to its own gate that SaveGameState drops, so a save/load mid-rally reverts the DW-634 fix — and the comment justifying the omission is factually wrong
 origin: post-merge review of the DW-620/DW-623/DW-634/DW-636 burn-down merge, 2026-08-05
 location: godot/src/Core/EntityWorld.cs:681-687 (the "not persisted" rationale) vs godot/src/Core/Persistence/SaveGameState.cs:167 (the EA enum), :266-267/:290-291 (capture), :636/:664-665 (restore)
 severity: low
 reason: SaveGameState round-trips Flags, CommandState, MoveTarget, CommandGoal, GatherState, GatherTarget, CarryAmount, CarryResType, CarryCapacity and BuildTarget, but RallyMovePending is not in the EA enum and comes back false from EntityWorld.Create. A worker autosaved mid-leg therefore reloads looking exactly like it is still walking the rally (Flags/CommandState/MoveTarget all restored) while its gate is off, so the first GatheringSystem tick runs FindBestNode/AssignToNode and overwrites MoveTarget with whatever node is nearest its mid-leg position — the player's explicit rally discarded, the precise defect DW-634 was chartered to fix. The EntityWorld doc defends the omission as "the exact posture of every other field of this worker state machine (GatherState/GatherTarget/CarryAmount/GateClosedTicks are all unfolded)", which conflates UNFOLDED with UNPERSISTED: three of those four ARE persisted and only GateClosedTicks is genuinely absent from EA, so the stated rationale does not hold even though the omission may still be the right call. Closure = either add RallyMovePending to the EA enum/capture/restore (a save-format addition, no fold and no golden movement) or correct the comment to state the real reason for dropping an in-flight rally leg across a load.
-status: open
+status: done 2026-08-12
+resolution: resolved by sweep bundle rally-and-combat-standdown
 
 ### DW-691: The DeathFeed is unthreaded on every EFFECT-GRAPH EffectContext — a hero that lands the last hit through a modifier period or an on-hit rider gains no XP
 origin: post-merge review of the DW-620/DW-623/DW-634/DW-636 burn-down merge, 2026-08-05
@@ -5727,7 +5734,8 @@ origin: workflow burn-down run, 2026-08-05
 location: godot/src/Core/Persistence/SaveGameState.cs:644 (EffectiveMoveSpeed), :645 (EffectiveMaxHealth), :662 (EffectiveArmor)
 severity: medium
 reason: ModifierSystem.RecomputeEntity floors all FOUR effective stats at zero (ModifierSystem.cs:90-94), but the save-restore overlay copies the other three raw exactly as it did EffectiveAttackDamage before DW-643's clamp, so the identical corrupt / tampered / older-build blob vector remains open for them: restore runs no tick and a modifier-free entity is never recomputed, so nothing downstream repairs the value. Deliberately not fixed inside DW-643 because that bundle's intent names only EffectiveAttackDamage, and each sibling has its own downstream consumer to audit before clamping — a negative EffectiveMaxHealth is the ceiling the Health clamp reads (the DW-491/DW-489 lethal-ceiling surface), and a negative EffectiveArmor is SUBTRACTED by DamageResolver, so it would ADD damage rather than merely disable a unit. Closure = reason about what a negative means at each consumer and clamp each with its own test, rather than bolting a blanket floor on alongside an unrelated fix.
-status: open
+status: done 2026-08-12
+resolution: resolved by sweep bundle save-restore-and-lifecycle-clamps
 
 ### DW-693: SelectionSystem spells the combatant predicate a THIRD way and was not routed through DW-643's shared pair
 origin: workflow burn-down run, 2026-08-05
@@ -5833,7 +5841,8 @@ origin: workflow burn-down run, 2026-08-05
 location: godot/src/Core/Sim/ScenarioApplier.cs (Apply) / godot/src/Core/MainScene.cs (ResetToAuthoredStart, after the re-apply); flush defined at godot/src/Core/Sim/SimulationHost.cs (FlushMatchDiagnostics)
 severity: low
 reason: DW-624's ledger text names an "end-of-load flush". SimulationHost.FlushMatchDiagnostics() was made public precisely so a load path could call it, but the only wired call site is ClearForReset, which runs BEFORE a re-apply — so the refusals a 200-unit scenario load produces are reported at the NEXT teardown, one match late. The research-refusal-diagnostics bundle could not close it without leaving its named files: ScenarioApplier.cs was claimed by the parallel wave2-sub4 server-pathability-grid bundle and MainScene.cs is Godot-coupled (in-engine gate). Closure = call FlushMatchDiagnostics() at the end of ScenarioApplier.Apply (or immediately after the re-apply in ResetToAuthoredStart).
-status: open
+status: done 2026-08-12
+resolution: resolved by sweep bundle rally-and-combat-standdown
 
 ### DW-708: Nothing in the sim flushes the DW-624 research-refusal tally on a WIN/LOSS verdict — a match that ends and is never reset never reports
 origin: workflow burn-down run, 2026-08-05
@@ -6013,7 +6022,8 @@ origin: workflow burn-down run, 2026-08-05
 location: godot/src/Navigation/MovementSystem.cs (Velocity is written before the CheckedStep resolution, so a hard-stopped unit keeps its seek velocity)
 severity: low
 reason: MovementSystem writes world.Velocity[i] = velocity and only then resolves the step, so a unit pressed against a wall reports a non-zero Velocity forever while its Position never changes. Verified low impact and deliberately NOT changed in the navigation-position-writer-guard bundle: Velocity is not folded into SimChecksum (no occurrence in SimChecksum.cs) and its only reader in src is the save serializer, so today the sole consequence is a saved match recording a wall-stuck unit as moving. It would become a real defect the moment anything reads Velocity for presentation (walk-animation blending, a movement-based audio cue) or for AI/trigger conditions. Closure = zero (or resolve) Velocity when CheckedStep hard-stops or slides, with its own determinism argument, since it is a behaviour change outside a golden-neutral bundle's remit.
-status: open
+status: done 2026-08-12
+resolution: resolved by sweep bundle rally-and-combat-standdown
 
 ### DW-733: IssueSave's InvalidOperationException catch shows a content-mismatch toast that now mis-describes a second, unrelated failure
 origin: workflow burn-down run, 2026-08-05
@@ -6541,14 +6551,16 @@ origin: post-merge review sweep, workflow burn-down wave 2, 2026-08-05
 location: godot/src/Economy/GatheringSystem.cs:208-218 (the arrival re-claim branch), godot/src/Core/EntityWorld.cs:684-695 (the lane and its recorded residual note), godot/src/Core/Persistence/SaveGameState.cs:325/713 (entity lanes) and :408/808 (AssignedGatherers)
 severity: low
 reason: EntityWorld.GatherWalkStallTicks is deliberately absent from SaveGameState's entity lanes while the node-side AssignedGatherers it pairs with IS captured, restored and SimChecksum-folded, and GatherState/GatherTarget are captured too - so a save taken while a worker holds SLOT_YIELDED restores it as GatherWalkStallTicks == 0, which is the value that MEANS "holds a reservation". EntityWorld.cs:688-693 already records a residual for exactly this array, but it names only the RE-YIELD route (the restored worker stalls again and decrements a slot it never took) and characterises the effect as bounded counter drift. There is a second route that note does not cover and that is not merely a drift: if the restored worker CAN move (the blocked region was rebuilt away by a scenario re-apply, or the save is loaded onto a map whose grid is flat, in which case TickWalkStall returns at :255 and the counter stays 0), it walks to the node and the entire re-claim branch at :208 is skipped - which skips BOTH the `AssignedGatherers >= MaxGatherers` capacity check the DW-532 branch was added to enforce AND the matching `AssignedGatherers[node]++`. CONFIRMED by a throwaway Tier-1 probe (deleted after triage): a worker restored as MovingToResource with GatherTarget = a 1-cap node whose slot another worker already holds enters GatherState.Gathering as a second gatherer while the counter stays at 1. The undercount is then permanent, because TickGathering's carry-full decrement at :366-367 is unconditional: the counter drops one below the number of workers that genuinely took a slot, so FindBestNode admits a further extra gatherer, and the drift accumulates across repeated save/loads in that posture. Weaker in the merged wave than in isolation - DW-581 landed exactly such an entity save lane in this same wave and bumped SaveGameFile.FormatVersion to 2, so this lane could have joined it at no extra save-break cost. Closure = add a GatherWalkStallTicks entity save lane (the DW-581 shape), or make the arrival path unconditionally re-derive the reservation rather than trusting the sentinel, with a save/load round-trip regression over a yielded worker.
-status: open
+status: done 2026-08-12
+resolution: resolved by sweep bundle walk-stall-and-gather-followups
 
 ### DW-805: DW-532's walk-stall probe is not the step MovementSystem integrates, and the comment justifying that is backwards in both clauses
 origin: post-merge review sweep, workflow burn-down wave 2, 2026-08-05
 location: godot/src/Economy/GatheringSystem.cs:235-239 (the method doc's conservatism argument) against :259 (the probe), godot/src/Navigation/MovementSystem.cs:113-118 (arrive slowdown) and :153 (separation)
 severity: low
 reason: The probe is `pos + (node - pos).Normalized() * EffectiveMoveSpeed[id] * dt`. MovementSystem does not take that step: within SLOW_RADIUS (4.0 world units) it damps the speed by `dist / SLOW_RADIUS` before seeking, then ADDS the separation vector, and only then calls the identical CheckedStep.Resolve. Both terms are live for a MovingToResource gatherer - AssignToNode sets MoveTarget to the node position (:502), and TickWalkStall runs while `sqr > ARRIVE_AT_NODE_SQR` (dist > 1.8), so the whole 1.8-to-4.0 band is damped. The doc at :235-239 justifies omitting them with two claims and both are false. (a) "a step that is hard-stopped at this length is hard-stopped at every length in that direction" runs the wrong way: the sweep rejects at the FIRST foreign blocked cell, so a SHORTER step is a strict PREFIX and can be clear where the full-speed probe hard-stops - CONFIRMED directly against CheckedStep with the 11-cell band fixture (from world X -9.0 the 1.5-unit +X step returns `from`, i.e. hard stop, while the 0.5-unit step in the same direction resolves clear). (b) "the arrive-slowdown / separation terms this probe omits can only make the real step SHORTER" is false for separation, which is an added vector (MovementSystem.cs:153) that changes the step's DIRECTION, not just its length, and is the whole velocity whenever the seek term is damped toward zero. So the code's own stated safety argument for writing the SimChecksum-folded AssignedGatherers from this probe does not hold, and a maintainer widening the probe will reason from a false invariant. HONEST SCOPE: the behavioural half is unproven. Two probes failed to produce a false YIELD - a spurious stall tick self-corrects because the streak must be WALK_STALL_GRACE_TICKS CONSECUTIVE ticks and the damped worker closes the gap to the true hard stop within a tick or two, and a full-height band never hard-stops an obliquely approaching worker at all (its Z-only slide stays in the same clear column). The confirmed defect is the wrong load-bearing invariant, not a reproduced economy deviation; the reviewer's crowded-worker scenario is recorded as unreproduced. Also unmodelled by the same probe: MovementSystem's DW-266 status anchor (Stunned/Rooted) and the HoldPosition anchor both skip integration entirely while TickWalkStall still evaluates a full-speed step. Closure = either correct the comment to state the implication in the direction that actually holds and enumerate what the probe does not model, or make the probe consume the same damped-plus-separation velocity MovementSystem integrates.
-status: open
+status: done 2026-08-12
+resolution: resolved by sweep bundle walk-stall-and-gather-followups
 
 ### DW-806: The sibling save stores have no save-completeness guard either - only EntityWorld's per-entity lanes are swept
 origin: workflow burn-down run, 2026-08-05
@@ -6757,14 +6769,16 @@ origin: workflow burn-down run, 2026-08-05
 location: godot/src/Multiplayer/ReplayRecorder.cs:141-168 (RecordTick)
 severity: low
 reason: Both the DW-432 guard and the new DW-604 guard run AFTER the tick-advance flush and the `_hasBuffered`/`_bufTick`/`_bufCount` init, so a caller that catches the exception and keeps recording continues into a tick whose buffer was opened by the rejected call. Harmless as currently designed — the previous tick is already flushed and durable, and both throws mean the recording is compromised so the caller should abort — and moving the argument-shaped DW-604 check above the flush would change the DW-432 guard's structure too, which is why the fail-loud bundle stayed on the one line its intent named. Closure = either hoist both argument-shaped ceiling checks above the flush/init so RecordTick is exception-atomic, or document explicitly that a throw invalidates the recorder and have it latch itself unusable.
-status: open
+status: done 2026-08-12
+resolution: resolved by sweep bundle save-restore-and-lifecycle-clamps
 
 ### DW-834: DW-619's stun/root gate covers only the Gathering arm - a held worker still banks its load and re-claims a node reservation
 origin: post-merge review sweep, workflow burn-down wave 2, 2026-08-05
 location: godot/src/Economy/GatheringSystem.cs:309 (the gate, inside TickGathering) against :407-427 (TickMovingToBase) and :177-205 (TickIdle -> AssignToNode); the invariants it violates are the class doc at :43-47 and the GATHER_BLOCKING doc at :56-70
 severity: medium
 reason: The DW-619 closure is a single early return at the top of TickGathering, but GatheringSystem.Tick dispatches FOUR arms (the switch at :153 - Idle / MovingToResource / Gathering / MovingToBase) and only Gathering is gated. Two of the three claimed invariants therefore do not hold as written. (1) "a Stunned/Rooted worker PRODUCES NOTHING" (:43) and the narrower claim that a Streaming node is "the only way a held worker could still feed its faction" (:64-66): TickMovingToBase has no status test at all - its arrival check is purely positional (SqrDistance vs ARRIVE_AT_BASE_SQR, 3.0 world units), so a worker already in the delivery leg that is stunned or rooted while standing inside the drop-off radius runs CreditKind(CarryResourceType, FactionOf, CarryAmount) at :418 and banks its whole load. CONFIRMED by a throwaway Tier-1 probe (deleted after triage): a worker at (2,0) with the faction base at (0,0), GatherState=MovingToBase and CarryAmount=10, flagged Stunned (and separately Rooted), credits 655360 raw (10 ore) on the very next tick. Reachable in play by an AoE stun or a root landing over the drop-off - the natural counter-play window. It is a ONE-SHOT per stun (the deposit sets GatherState=Idle), so the blast radius is one carry load. (2) "no state transition" and "a status can never cost it its GatherTarget" (the gate comment at :297-308): TickIdle has no status test either, so a held worker in Idle runs FindBestNode + AssignToNode and takes a reservation. CONFIRMED by the same probe: a stunned/rooted worker adjacent to a free 1-cap node drives ResourceNodeStore.AssignedGatherers 0 -> 1 and leaves Idle, i.e. the held worker takes a slot away from a free worker while anchored. Deterministic on every peer, so NOT a desync - but the deposit lands in the SimChecksum-folded resource store and the reservation in the folded AssignedGatherers, and the stun still only half-lands, which is exactly the defect class DW-619 was opened against. Note the interaction with DW-824 (whether Rooted belongs in the mask at all): the Stunned half of both cases stands regardless of how that decides. Closure = either extend the mask test to the Tick dispatch loop (one gate above the switch, covering all four arms) or add the same test to TickMovingToBase and TickIdle, with Tier-1 regressions pinning that a held worker at the drop-off banks nothing and a held Idle worker claims no reservation; then correct the doc claims to name what is actually covered.
-status: open
+status: done 2026-08-12
+resolution: resolved by sweep bundle walk-stall-and-gather-followups
 
 ### DW-835: DW-442's negative-team rejection is recorded against a handshake divergence that cannot occur - MatchAgreementHash folds the canonical mask, not the ordinal
 origin: post-merge review sweep, workflow burn-down wave 2, 2026-08-05
@@ -7889,4 +7903,60 @@ origin: workflow burn-down run, 2026-08-12
 location: godot/src/Core/Bootstrap/Phases/MapGeneratorPhase.cs:32 and godot/src/Core/Bootstrap/Phases/TriggerEditorPhase.cs:39
 severity: medium
 reason: Both phases build MapGeneratorContext / ScenarioContext with UnitIds + MapBounds (+ faction JSON paths) and never set SlotFactionDefs, even though `_ctx.SlotFactionDefs` is right there in the same method - both already iterate it to build the unit-id union. DW-742's widened faction-slot range and DW-743's owner-faction unit-id resolution therefore only fire for callers that thread the defs, which today means tests only: in the shipping editor the AI still caps generated triggers at two players and still validates unit ids against the flat cross-faction union. Both fixes are correct and safely defaulted (null defs reproduce the old behaviour byte-identically), but neither has production effect yet. Threading is DW-741's charter and was outside the llm-service-hardening bundle's named files; DW-741 was not in that run's worklist. Closure = do DW-741, or thread the defs at these two phases directly.
+status: open
+
+### DW-964: DW-689's twin on the COMBAT side - a rallied combat unit whose rally point is unreachable is permanently non-combatant
+origin: workflow burn-down run, 2026-08-12
+location: godot/src/Economy/BuildingSystem.cs:574-581 (RallyMovePending is worker-only by design) read against godot/src/Combat/CombatSystem.cs:198
+severity: high
+reason: Surfaced by the rally-and-combat-standdown bundle while closing DW-689 and deliberately not fixed there. DW-680 hoisted EntityFlags.Moving out of the worker-only branch, so EVERY trained unit now walks its rally with CommandState=Move; CombatSystem's combatant command switch does `case UnitCommand.Move: continue;` (no acquisition, no retaliation) and its non-combatant switch treats Move as deliberately inert. Nothing in the sim layer ever leaves Move - the same enumeration DW-689 rests on - so a combat unit rallied to a point inside a PathabilityGrid-blocked region hard-stops at the boundary and never fights again, never even defending itself. DW-689's no-progress budget cannot cover it: RallyMovePending is worker-only and deliberately so (its only reader is GatheringSystem, which never ticks a non-gatherer), so a combat unit carries no flag to release. Observed, not speculative - both switch labels were read in the current code. Closure = a sim-layer owner of goal-arrival/abandonment for Move (DW-681's charter), not a second copy of the rally budget.
+status: open
+
+### DW-965: DW-732 is closed only for the hard stop - a wall SLIDE still reports the desired steering velocity, not actual displacement/dt
+origin: workflow burn-down run, 2026-08-12
+location: godot/src/Navigation/MovementSystem.cs (immediately after the CheckedStep.Resolve call)
+severity: low
+reason: DW-732's recorded closure says 'zero (or resolve) Velocity when CheckedStep hard-stops OR SLIDES' and the rally-and-combat-standdown bundle intent marked the slide half optional; only the did-not-move case was corrected, and the residual is documented at the call site. Rewriting a slide as (resolved - pos) / dt needs a Fixed division per moving unit per tick on the hot path and - because Fixed division rounds - would move every FLAT-map velocity off its exact steering value, i.e. change the saved Velocity on maps with no grid at all. Left undone deliberately. Revisit if a presentation or AI/trigger consumer of Velocity ever lands (walk-animation blending, movement audio), since a sliding unit then reports a speed it is not travelling at along the blocked axis.
+status: open
+
+### DW-966: SaveGameFile.FormatVersion 7 -> 8 makes every .chsave already on disk unreadable
+origin: workflow burn-down run, 2026-08-12
+location: godot/src/Core/Persistence/SaveGameFile.cs:70
+severity: low
+reason: Recorded alongside DW-690 (and DW-804, which bumped the same constant in the same wave) so it is not rediscovered as a bug. Adding EA.RallyMovePending / EA.GatherWalkStall changes the positional entity-lane count, so a v7 body would misalign; the bump makes pre-bundle saves fail closed at the header with the 'older game version' message rather than loading as corrupt state. This is the intended and correct behaviour for a lane addition (identical to the v5/v6/v7 class) but it is a player-visible consequence: any save file written before this commit cannot be loaded. Closure = nothing to fix; carry it into release notes, or add a migration path if saves ever need to survive a lane addition.
+status: open
+
+### DW-967: TickWalkStall still probes a full-speed step for a worker anchored by HoldPosition - the non-status half of DW-805's unmodelled list
+origin: workflow burn-down run, 2026-08-12
+location: godot/src/Economy/GatheringSystem.cs - TickWalkStall, read against godot/src/Navigation/MovementSystem.cs:89 (the Story 1.12 HoldPosition anchor)
+severity: medium
+reason: DW-834's GATHER_BLOCKING gate closes the STATUS half of DW-805's 'the probe does not model why this worker cannot move' list (Stunned/Rooted no longer reach the arm at all), but the HoldPosition anchor is a CommandState, not a status, and GatheringSystem.Tick only skips CommandState == Build. A MovingToResource gatherer put on Hold is therefore not integrated by MovementSystem while TickWalkStall keeps evaluating a full-speed step against the grid; after WALK_STALL_GRACE_TICKS it writes the SimChecksum-folded AssignedGatherers on a stall the grid never caused. Reachable in play by a player pressing Hold on a walking worker on any map with one blocked cell. Deliberately not fixed in the walk-stall-and-gather-followups bundle: DW-834's recorded closure was the mask above the switch, and adding a CommandState test there is a separate behavioural decision (whether Hold should also suspend the gather cycle, or only the stall watch). The residual is named in TickWalkStall's doc and pinned by WalkStallProbeContractTests' doc guard. DW-938's Phased flag is listed in the same doc but appears unreachable - a phased builder carries CommandState == Build, which the loop already skips.
+status: open
+
+### DW-968: A PERMANENT stun/root now parks a gather-slot reservation forever on the MovingToResource arm too
+origin: workflow burn-down run, 2026-08-12
+location: godot/src/Economy/GatheringSystem.cs - the DW-834 gate above Tick's switch, read against the DW-532 walk-stall window
+severity: low
+reason: The gate's PAUSE-not-cancel contract means a held worker's DW-532 stall streak cannot advance, so the window that exists to hand a stranded worker's slot back can never close while the hold is live. DW-619 already accepted exactly this for the Gathering arm ('holding the reservation while held is correct') and it is the right trade for a timed stun, but a LIFELONG/aura-sourced status on a confined worker re-opens a narrow version of DW-207's starvation for the duration of that modifier. Not fixed in-bundle: choosing between (a) accept it as the cost of the pause contract, (b) let the stall streak run while held, or (c) bound how long a reservation may sit behind a hold, is a design call, and (b) would directly contradict the invariant the walk-stall-and-gather-followups bundle just fixed. Bounded by whether a permanent stun/root is authorable content at all - worth checking against EffectCaps and the Lifelong persistent-effect path in DW-323.
+status: open
+
+### DW-969: DW-410's '300-frontier-tick bound' was a stale premise - the submission frontier PLATEAUS during the stall it is meant to bound, so the literal clock would have shipped an inert guard
+origin: workflow burn-down run, 2026-08-12
+location: godot/src/Multiplayer/DedicatedServer.cs - the DW-410 pump in _Process, plus the new _freezeClockTicks
+severity: medium
+reason: Recorded because the save-restore-and-lifecycle-clamps bundle deliberately deviated from the literal instruction and Alec may want the bound expressed differently. The bundle intent said 'same 300-frontier-tick bound' and .bmad-loop/decisions.json said 'tick-counted, not wall-clock, so the deadline is identical on every peer'; both premises are false here. (a) An UNCOMMITTED freeze is precisely what stalls the merged fan-in - survivors submit at most `delay` (<=12) ticks past the stall and then stop, so _latestSeenTick advances ~12 ticks and plateaus, and a 300-tick deadline measured against it can NEVER elapse. (b) The per-peer-determinism rationale does not apply: DropController is server-only, one instance on one machine, and nothing here folds into SimChecksum. What shipped keeps the 300-TICK bound and the tick UNIT but drives it from a new server-local sim-rate clock (_freezeClockTicks, accumulated from _Process's frame delta - the same posture DelayController's wall-clock RTT already has), so the guard can actually fire; DropController itself stays clock-agnostic and arms its base lazily on the first pump. Open question for Alec: whether ~10 s is the right window before a still-connected player is frozen, or a WC3-style 60 s.
+status: open
+
+### DW-970: DropCoordinator.IssueDirective's survivor-count guard is computed on the UNFILTERED connected set, so it can arm a directive DropController immediately reduces to zero survivors
+origin: workflow burn-down run, 2026-08-12
+location: godot/src/Multiplayer/Server/DropCoordinator.cs - IssueDirective (`if (survivors.Length == 0) return false;`) vs DropController.NotifyDrop (which additionally drops any `_dropped[s]`)
+severity: low
+reason: Pre-existing and out of the save-restore-and-lifecycle-clamps bundle's scope. SurvivingPlayerSlots returns every CONNECTED slot other than the dropped one, including slots already FROZEN; NotifyDrop then filters the frozen ones out of _isSurvivor. So a match where every remaining connected player is already frozen passes the length>0 check and arms a directive AllAcked() can never satisfy - previously a permanent stall. DW-410's new ACK deadline now force-commits it after the bound elapses so it self-heals, which is why scope was not widened, but the guard is still asking the wrong question. Closure = filter frozen slots at the coordinator too, so the count reflects the set DropController will actually wait on.
+status: open
+
+### DW-971: The offline match-seed log line does not say when the DW-499 repro pin is active
+origin: workflow burn-down run, 2026-08-12
+location: godot/src/Core/MainScene.cs:2994-2997 (`[MatchSeed] Offline match seed 0x{matchSeed:X16}`)
+severity: low
+reason: MatchSeedProducer.Produce() now returns the pinned value when CHIMERA_MATCH_SEED is set and the log prints it, but nothing tells the operator the seed was PINNED rather than freshly minted, so an accidentally-left-set variable looks like an ordinary launch that happens to repeat - the exact confusion the DW-499 pin exists to remove. The one-line fix is to append a `(PINNED via CHIMERA_MATCH_SEED)` suffix behind MatchSeedProducer.TryPinnedSeed. Deliberately not taken in the save-restore-and-lifecycle-clamps bundle: src/Core/MainScene.cs is inside the enforced in-engine gate, which cannot be run from a parallel worktree (the godot-mcp bridge is single-client), and the bundle intent explicitly preferred keeping that call site unchanged. Closure = make the change in a session that can run the in-engine gate.
 status: open
