@@ -53,14 +53,15 @@ namespace ProjectChimera.Sim.Tests.Persistence
             // DW-80 — the Streaming closed-gate grace streak. A resumed save restarts the window, which is
             // behaviourally indistinguishable from a fresh boot re-seeking the same node.
             nameof(EntityWorld.GateClosedTicks),
-            // DW-532 — the MovingToResource stall streak / yielded sentinel. Same posture; the one known residual
-            // (a stranded worker returning as "holding") is documented on the field and bounded.
-            nameof(EntityWorld.GatherWalkStallTicks),
+            // (DW-532's GatherWalkStallTicks used to sit here. DW-804 gave it a real save lane — 0 is not a neutral
+            // default for that field, it MEANS "holds a node slot" — so it is now proved by the sweep below instead.
+            // DW-634's RallyMovePending likewise left this list when DW-690 gave it a lane.)
             // DW-689 — the rally stand-down NO-PROGRESS budget and its best-approach mark. A resumed save restarts
             // the window (counter 0 == unarmed, which is exactly what EntityWorld.Create leaves and what the first
             // stand-down tick after the load re-arms from the worker's restored position), costing a genuinely stuck
             // worker at most one further grace window. The rally LEG itself survives — DW-690 persists
-            // RallyMovePending — so this is the GatherWalkStallTicks posture, not the DW-690 defect repeated.
+            // RallyMovePending — so this is the GateClosedTicks posture (a self-arming window), NOT the
+            // GatherWalkStallTicks/DW-804 case where 0 is a load-bearing value.
             nameof(EntityWorld.RallyStandDownTicks),
             nameof(EntityWorld.RallyGoalBestSqr),
         };

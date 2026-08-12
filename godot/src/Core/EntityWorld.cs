@@ -813,17 +813,19 @@ namespace ProjectChimera.Core
         ///
         /// <para>Whole ticks, never dt-accumulated and never wall-clock (the <c>IncomeTicksElapsed</c> discipline), and
         /// the stall test itself is the shared pure-<see cref="Fixed"/> <c>Navigation.CheckedStep.Resolve</c>, so it is
-        /// cross-platform-identical. NOT folded into <see cref="SimChecksum"/> and NOT persisted by
-        /// <c>SaveGameState</c> — the exact <see cref="GateClosedTicks"/> posture (only the node-side
+        /// cross-platform-identical. NOT folded into <see cref="SimChecksum"/> (only the node-side
         /// <c>AssignedGatherers</c> is folded). RUNTIME state, NOT def-derived: defaulted in <see cref="Create"/> (the
         /// mandatory recycle-trap reset), and NOT snapshot residue (a delete→undo restarts the window).</para>
         ///
-        /// <para>The one KNOWN residual of not persisting it: a save taken while a worker is stranded records the node
-        /// counter WITHOUT that worker (it had yielded), but the restore re-applies the world first, so the worker comes
-        /// back at 0 — "holding" — and re-yields a second later, decrementing a slot it never took. Floor-guarded, so
-        /// the counter cannot go negative; the effect is bounded at one extra gatherer admitted to that node, versus the
-        /// permanent capacity LOSS on every map that not bounding the leg at all produced. Closing it properly means a
-        /// save lane for this array (the DW-581 family), deliberately out of scope here.</para>
+        /// <para><b>DW-804 — this lane IS persisted</b> (<c>SaveGameState.EA.GatherWalkStall</c>, save format v9),
+        /// unlike its <see cref="GateClosedTicks"/> sibling. The difference is that 0 is not a neutral default here: it
+        /// is the value that MEANS "this worker holds one of its node's slots". Dropping the lane restored a yielder as
+        /// a holder, and the divergence was not the bounded counter drift originally recorded — a restored worker that
+        /// CAN move (the blocked region rebuilt away, or the save loaded onto a flat grid) walks to the node and skips
+        /// the arrival re-claim branch entirely, which skips BOTH the <c>AssignedGatherers &gt;= MaxGatherers</c>
+        /// capacity check AND the matching increment. It then gathers with no reservation at all, and
+        /// <c>TickGathering</c>'s unconditional carry-full decrement drives the folded counter one BELOW the number of
+        /// workers genuinely holding slots — permanently, and cumulatively across repeated save/loads.</para>
         /// </summary>
         public readonly int[]         GatherWalkStallTicks;
 
@@ -890,8 +892,9 @@ namespace ProjectChimera.Core
         ///
         /// <para>Whole ticks, never dt-accumulated and never wall-clock (the <c>IncomeTicksElapsed</c> discipline), and
         /// the progress test is a pure <see cref="Fixed"/> squared distance, so it is cross-platform-identical. NOT
-        /// folded into <see cref="SimChecksum"/> and NOT persisted by <c>SaveGameState</c> — the exact
-        /// <see cref="GatherWalkStallTicks"/> posture. The one residual of not persisting it: a resumed save restarts
+        /// folded into <see cref="SimChecksum"/> and NOT persisted by <c>SaveGameState</c> — the
+        /// <see cref="GateClosedTicks"/> posture (a self-arming window), NOT the <see cref="GatherWalkStallTicks"/>
+        /// one, which DW-804 gave a real save lane because its 0 is load-bearing. The one residual here: a resumed save restarts
         /// the window, costing a stuck worker at most one further grace window of stand-down (bounded, and the leg
         /// itself survives because DW-690 persists <see cref="RallyMovePending"/>). RUNTIME state, NOT def-derived:
         /// defaulted in <see cref="Create"/> (the mandatory recycle-trap reset), and NOT snapshot residue.</para>
