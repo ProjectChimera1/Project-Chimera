@@ -510,15 +510,23 @@ namespace ProjectChimera.AI
                 if (!knownActions.Contains(trigger.Actions[j].Type))
                     return (null, $"actions[{j}].type='{trigger.Actions[j].Type}' is not a known trigger action type.");
 
-            // Pass 3 — faction slots.
+            // Pass 3 — faction slots (DW-742). The hardcoded 0-or-1 literals this pass used to carry capped every
+            // AI-generated trigger at two players on all three channels, against Alec's recorded DW-189 intent
+            // (trigger-authored maps must support more than two players, and "reject slot >= 2 upstream" is named
+            // there as the option NOT to take). Widened with the EXACT DW-627 fallback precedent Pass 4 uses: when
+            // the caller threaded the trusted per-slot defs, the addressable slot set is the one that array can
+            // address — the SAME range ScenarioValidator's CheckFactionSlot accepts, so the generation gate cannot
+            // refuse a trigger the load gate would take. With nothing threaded (the default, and every shipping
+            // caller until DW-741 populates SlotFactionDefs) the range and all three messages are byte-identical.
+            int maxFactionSlot = MaxTriggerFactionSlot(context);
             foreach (var ev in trigger.Events)
-                if (ev.Faction is not (0 or 1))
-                    return (null, $"Event '{ev.Type}' has invalid faction slot {ev.Faction} (must be 0 or 1).");
+                if (ev.Faction < 0 || ev.Faction > maxFactionSlot)
+                    return (null, $"Event '{ev.Type}' has invalid faction slot {ev.Faction} ({FactionSlotRangeText(maxFactionSlot)}).");
             foreach (var c in trigger.Conditions)
-                if (c.Faction is not (0 or 1))
+                if (c.Faction < 0 || c.Faction > maxFactionSlot)
                     return (null, $"Condition '{c.Type}' has invalid faction slot {c.Faction}.");
             foreach (var a in trigger.Actions)
-                if (a.Faction is not (0 or 1))
+                if (a.Faction < 0 || a.Faction > maxFactionSlot)
                     return (null, $"Action '{a.Type}' has invalid faction slot {a.Faction}.");
 
             // Pass 4 — building type strings (DW-627). Resolved through ScenarioValidator's ONE predicate — the same
@@ -571,6 +579,34 @@ namespace ProjectChimera.AI
 
             return (trigger, null);
         }
+
+        /// <summary>
+        /// DW-742 — the highest faction slot a generated trigger may address, resolved from the SAME trusted per-slot
+        /// def array the DW-627 building-type pass reads. The array is indexed by <c>(int)Faction</c> = slot + 1
+        /// (<see cref="ScenarioValidator.OwnerFactionDef"/>), so a threaded array of <c>Count</c> entries addresses
+        /// slots <c>[0, Count - 2]</c>, capped at the engine's own ceiling (<see cref="Faction.Player8"/> ⇒ slot 7)
+        /// — exactly what <c>ScenarioValidator.CheckFactionSlot</c> accepts for a hand-authored trigger.
+        ///
+        /// <para>Two clamps make this a pure WIDENING and never a tightening:</para>
+        /// <list type="bullet">
+        ///   <item>NULL defs (the default — nothing shipping threads them until DW-741) ⇒ 1, the historical 0-or-1
+        ///         range, so the unthreaded gate is byte-identical to what shipped;</item>
+        ///   <item>a threaded array too short to address slot 1 still yields 1, so threading defs can only ever
+        ///         admit MORE slots, never start rejecting a trigger that passed before.</item>
+        /// </list>
+        /// </summary>
+        internal static int MaxTriggerFactionSlot(ScenarioContext? context)
+        {
+            IReadOnlyList<FactionDefinition?>? defs = context?.SlotFactionDefs;
+            if (defs == null) return 1;
+            return Math.Max(1, Math.Min(defs.Count - 2, (int)Faction.Player8 - 1));
+        }
+
+        /// <summary>DW-742 — the parenthetical the event-channel rejection carries. At the unthreaded default it is
+        /// the historical "must be 0 or 1" verbatim; a widened range names its real upper bound instead of lying about
+        /// a two-player cap the gate no longer enforces.</summary>
+        private static string FactionSlotRangeText(int maxFactionSlot)
+            => maxFactionSlot == 1 ? "must be 0 or 1" : $"must be in [0, {maxFactionSlot}]";
 
         // ── Prompt builder ────────────────────────────────────────────────────
 
@@ -636,7 +672,12 @@ play_sound      — sound_id (string)");
             sb.AppendLine();
             sb.AppendLine("=== SCENARIO CONTEXT ===");
             sb.AppendLine($"Available unit IDs: {string.Join(", ", ctx.UnitIds.Select(id => $"\"{id}\""))}");
-            sb.AppendLine($"Map bounds: positions must be within ±{ctx.MapBounds} on X and Z axes.");
+            // DW-772: MapBounds is a float, so the ambient culture would print a non-integral bound as "120,5" on a
+            // comma-decimal locale — a decimal separator the model can copy straight into the JSON it emits, producing
+            // output that fails to deserialize or deserializes wrong. Formatted invariantly like every other number
+            // these prompt builders emit. Invisible today only because every shipping bound is integral.
+            sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                "Map bounds: positions must be within ±{0} on X and Z axes.", ctx.MapBounds));
             sb.AppendLine();
             sb.AppendLine("=== EXAMPLES ===");
             sb.AppendLine(@"Example 1 — ""When the match starts, give Player 1 an extra 200 ore"":
@@ -879,6 +920,23 @@ play_sound      — sound_id (string)");
                 if (!declaredSlots.Contains(scenario.Units[i].Slot))
                     return (null, $"units[{i}].slot={scenario.Units[i].Slot} references no declared player_slot.");
 
+            // DW-767 — the THIRD "references no declared player_slot" check the load gate makes, and the one the
+            // DW-542 block above shipped without: ScenarioValidator requires an INCOME node's owner_slot to name a
+            // declared slot (an income node has no gathering worker to infer a faction from). The invalid combination
+            // is reachable purely by omission — ScenarioResourceNode.OwnerSlot defaults to -1 while CollectionModel
+            // defaults to "Gather" — so a model that names `"collection_model": "Income"` and leaves owner_slot out
+            // deserializes fine (ContentJson.ModelOutputOptions is deliberately lenient, DW-526), was reported to the
+            // creator as "validated", and was then refused at load with `owner_slot=-1 references no declared
+            // player_slot`. Same condition, same located shape, so "the two gates agree" finally holds on ALL THREE
+            // slot-reference fields rather than two of them.
+            for (int i = 0; i < scenario.ResourceNodes.Length; i++)
+            {
+                ScenarioResourceNode n = scenario.ResourceNodes[i];
+                if (n.CollectionModel == "Income" && !declaredSlots.Contains(n.OwnerSlot))
+                    return (null, $"resource_nodes[{i}].owner_slot={n.OwnerSlot} references no declared player_slot " +
+                        "(required when collection_model=Income).");
+            }
+
             // Force faction JSON paths from the TRUSTED per-slot resolver — LLMs often hallucinate these, and the
             // untrusted file must never dictate the path. RTS default = the existing slot-0/slot-1 mapping.
             foreach (var slot in scenario.PlayerSlots)
@@ -899,13 +957,38 @@ play_sound      — sound_id (string)");
                         " (or a custom building id authored by the owning slot's faction).");
             }
 
-            // Pass 4 — unit IDs.
+            // Pass 4 — unit IDs (DW-743). MapGeneratorContext.UnitIds is the flat UNION of every loaded faction's
+            // roster (MapGeneratorPhase unions them), so the membership test below happily "validates" a
+            // slot-1-faction unit pre-placed on slot 0. The DW-240 load gate resolves a pre-placed unit_id against
+            // the OWNING slot's roster and refuses it (or, post-DW-652, drops that entity), so this is the DW-542
+            // promise-then-refuse defect class for unit ids rather than slots. When the caller threaded the trusted
+            // per-slot defs, resolve each placement through the load gate's ONE predicate against ITS OWN slot's
+            // faction; with nothing threaded (the default, and every shipping caller until DW-741 populates
+            // SlotFactionDefs) the union check and its message are byte-identical to what shipped.
             var validUnits = new HashSet<string>(context.UnitIds, StringComparer.OrdinalIgnoreCase);
             validUnits.Add("worker"); // always present in every faction
-            foreach (var u in scenario.Units)
-                if (!validUnits.Contains(u.UnitId))
-                    return (null, $"Unknown unit_id '{u.UnitId}'. " +
-                        $"Valid: {string.Join(", ", context.UnitIds)}");
+            for (int i = 0; i < scenario.Units.Length; i++)
+            {
+                ScenarioUnit u = scenario.Units[i];
+                FactionDefinition? unitOwnerDef = ScenarioValidator.OwnerFactionDef(context.SlotFactionDefs, u.Slot);
+                if (unitOwnerDef == null)
+                {
+                    // No trusted def for this slot ⇒ nothing to resolve against, so keep the historical union check
+                    // (the same amnesty shape the DW-627 building-type pass applies one level up).
+                    if (!validUnits.Contains(u.UnitId))
+                        return (null, $"Unknown unit_id '{u.UnitId}'. " +
+                            $"Valid: {string.Join(", ", context.UnitIds)}");
+                    continue;
+                }
+                // DW-652's amnesty is mirrored verbatim: a unit the faction really DECLARES but that the closed-set
+                // tag validator removed is not an authoring error — the load gate drops that one entity and loads the
+                // rest of the map, so failing the whole (paid) generation here would re-create the upstream shadow
+                // gate this entry exists to remove, pointing the other way.
+                if (!ScenarioValidator.IsKnownUnitId(u.UnitId, unitOwnerDef)
+                    && !unitOwnerDef.WasUnitDroppedForInvalidTag(u.UnitId))
+                    return (null, ScenarioValidator.UnknownUnitIdError(
+                        $"units[{i}].unit_id", u.UnitId, unitOwnerDef, u.Slot));
+            }
 
             // Pass 5 — position bounds (UNIVERSAL — always runs regardless of the clamp values).
             float bounds = context.MapBounds;
@@ -1000,6 +1083,65 @@ play_sound      — sound_id (string)");
             return aFirst ? new[] { a, b } : new[] { b, a };
         }
 
+        /// <summary>
+        /// DW-771 — the EXAMPLE OUTPUT's five ore rows, derived from <paramref name="mapBounds"/> instead of the
+        /// hardcoded ±25 / ±15 cross the prompt shipped with. Below a bound of 25 that fixed cross violated the
+        /// "±MapBounds" rule printed directly above it and failed <see cref="ValidateScenario"/>'s own pass 5 — the
+        /// model was shown a worked example the gate judging its answer would reject, which is the DW-372 defect one
+        /// level down. Returns the (x, z) half-offsets of the cross; the centre node is always (0, 0).
+        ///
+        /// <para>Three rules, applied in this order:</para>
+        /// <list type="number">
+        ///   <item>SCALE the historical offsets with the bounds (capped at the historical values, exactly as the base
+        ///         ring caps its radius at 45), so a wider bound keeps the shipping layout byte-for-byte;</item>
+        ///   <item>LIFT them to satisfy the prompt's own 15-unit ore-spacing rule, which pass 6 enforces: the binding
+        ///         pairs are the two vertical neighbours (2·z ≥ 15) and each arm against the centre node
+        ///         (x² + z² ≥ 15²). Scaling alone would emit an example that fails that rule instead of the position
+        ///         one — trading one self-contradiction for another;</item>
+        ///   <item>CLAMP to the bounds last, because the position rule quotes an exact coordinate back at the creator
+        ///         while the spacing rule is only reachable at all above a bound of about 11. Below that no 5-node
+        ///         cross can satisfy both, and the in-bounds arm is the one that stays true.</item>
+        /// </list>
+        /// Integer offsets only — the prompt must never carry a locale-dependent decimal separator (DW-772).
+        /// </summary>
+        internal static (int X, int Z) PromptOreOffsets(float mapBounds)
+        {
+            // 25/120 and 15/120 are the shipping cross expressed as a fraction of the shipping bound, so bounds=120
+            // reproduces (25, 15) exactly and every larger bound is capped back onto it.
+            int x = Math.Max(1, (int)Math.Round(Math.Min(25.0, mapBounds * (25.0 / 120.0))));
+            int z = Math.Max(1, (int)Math.Round(Math.Min(15.0, mapBounds * (15.0 / 120.0))));
+
+            const int MinSpacing = 15;                       // the rule the prompt prints and pass 6 enforces
+            z = Math.Max(z, (MinSpacing + 1) / 2);           // the two vertical neighbours are 2·z apart
+            while ((long)x * x + (long)z * z < (long)MinSpacing * MinSpacing) x++;   // each arm vs the centre node
+
+            int bound = Math.Max(1, (int)mapBounds);
+            return (Math.Min(x, bound), Math.Min(z, bound));
+        }
+
+        /// <summary>DW-771 — render the five example ore rows for the given half-offsets, in the shipping order and
+        /// the shipping column alignment, so the two-slot / default-bounds prompt is byte-for-byte what it was.</summary>
+        private static string PromptOreRows(int oreX, int oreZ)
+        {
+            (int X, int Z, int Supply, int Rate)[] rows =
+            {
+                (-oreX,  oreZ, 600, 5),
+                (-oreX, -oreZ, 600, 5),
+                (    0,     0, 900, 7),
+                ( oreX,  oreZ, 600, 5),
+                ( oreX, -oreZ, 600, 5),
+            };
+
+            var lines = new List<string>(rows.Length);
+            for (int i = 0; i < rows.Length; i++)
+                lines.Add(string.Format(CultureInfo.InvariantCulture,
+                    "    {{ \"x\": {0,3}, \"z\": {1,3}, \"supply\": {2}, \"rate\": {3}, \"max_gatherers\": 4 }}{4}",
+                    rows[i].X, rows[i].Z, rows[i].Supply, rows[i].Rate, i == rows.Length - 1 ? "" : ","));
+            // Bare "\n" for the same reason the slot blocks use one — this is spliced into a verbatim literal whose
+            // newlines come from this source file, so the prompt stays byte-identical on every platform.
+            return string.Join("\n", lines);
+        }
+
         // Story 8.3: internal (not private) so the Tier-1 clamp test can assert the prompt reflects the SAME clamp
         // values ValidateScenario gates against (min player slots + max combat units per slot).
         internal static string BuildMapSystemPrompt(MapGeneratorContext ctx)
@@ -1063,6 +1205,10 @@ play_sound      — sound_id (string)");
             string exampleBuildings = string.Join("\n", exampleBuildingRows);
             string exampleUnits     = string.Join("\n", exampleUnitRows);
             string slotChoices      = string.Join("|", Enumerable.Range(0, slotCount));
+            // DW-771 — the ore cross is derived from the SAME bounds the placement rule prints, so the worked example
+            // can no longer contradict the two rules (±MapBounds, 15u ore spacing) stated directly above it.
+            (int oreX, int oreZ)    = PromptOreOffsets(ctx.MapBounds);
+            string exampleOre       = PromptOreRows(oreX, oreZ);
 
             var sb = new StringBuilder();
             sb.AppendLine(
@@ -1093,7 +1239,11 @@ play_sound      — sound_id (string)");
 }}");
             sb.AppendLine();
             sb.AppendLine("=== PLACEMENT RULES ===");
-            sb.AppendLine($"- All x/z positions MUST be within ±{ctx.MapBounds} world units.");
+            // DW-772 — see the sibling note in BuildSystemPrompt: this bound is a float and the ambient culture would
+            // print a comma decimal separator the model echoes into the generated JSON. Every number DW-372 added
+            // here is already InvariantCulture-formatted; this pre-existing line was the last one that was not.
+            sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                "- All x/z positions MUST be within ±{0} world units.", ctx.MapBounds));
             // Story 8.3: reflect the SAME min-player-slots clamp ValidateScenario gates against (RTS default 2).
             // DW-372: the per-player base hints are generated from the SAME ring the schema/example render, so a
             // raised floor names every slot instead of only the historical two.
@@ -1131,11 +1281,7 @@ play_sound      — sound_id (string)");
 {exampleSlots}
   ],
   ""resource_nodes"": [
-    {{ ""x"": -25, ""z"":  15, ""supply"": 600, ""rate"": 5, ""max_gatherers"": 4 }},
-    {{ ""x"": -25, ""z"": -15, ""supply"": 600, ""rate"": 5, ""max_gatherers"": 4 }},
-    {{ ""x"":   0, ""z"":   0, ""supply"": 900, ""rate"": 7, ""max_gatherers"": 4 }},
-    {{ ""x"":  25, ""z"":  15, ""supply"": 600, ""rate"": 5, ""max_gatherers"": 4 }},
-    {{ ""x"":  25, ""z"": -15, ""supply"": 600, ""rate"": 5, ""max_gatherers"": 4 }}
+{exampleOre}
   ],
   ""buildings"": [
 {exampleBuildings}
@@ -1390,6 +1536,17 @@ play_sound      — sound_id (string)");
         /// → <c>!Ok</c> four-state via <see cref="AiAvailabilityMap.FromFailure"/> → <see cref="StripMarkdown"/> →
         /// <paramref name="validate"/> → enqueue the callback. The selected provider is authoritative — no fallback.
         /// Every callback is marshalled through the existing <see cref="_queue"/>/<see cref="DrainEvents"/> seam.
+        ///
+        /// <para>DW-381 — EVERY enqueue is gated on <paramref name="token"/> still being live. The per-kind
+        /// cancellation apparatus (<c>_unitCts</c>/<c>_abilityCts</c>/<c>_heroCts</c>/<c>_factionCts</c>/
+        /// <c>_balanceCts</c>) was cancelled by the superseding press, but only an <see cref="OperationCanceledException"/>
+        /// was ever swallowed — a provider that returned NORMALLY a moment after the cancel still queued its callback,
+        /// so a superseded draft or balance run repainted the editor's rows/forms over the newer one that replaced it.
+        /// The check is made at ENQUEUE time (on the worker thread) rather than inside the queued lambda, so a run
+        /// cancelled after it was queued but before <see cref="DrainEvents"/> ran still delivers exactly the result the
+        /// creator was already promised. Reading <c>IsCancellationRequested</c> is safe on a source
+        /// <see cref="ReplaceTokenSource"/> has cancelled AND disposed — that member short-circuits on the cancelled
+        /// state and never checks disposal (pinned by <c>LlmServiceLifecycleTests</c>).</para>
         /// </summary>
         private void RunDraftAsync<T>(
             string systemPrompt,
@@ -1404,6 +1561,14 @@ play_sound      — sound_id (string)");
 
             Task.Run(async () =>
             {
+                // DW-381: the ONE enqueue seam for this flow — a superseded run drops its callback instead of
+                // repainting over the run that superseded it.
+                void Complete(T? def, string? error)
+                {
+                    if (token.IsCancellationRequested) return;
+                    _queue.Enqueue(() => onComplete(def, error));
+                }
+
                 try
                 {
                     // Synchronous-unavailable (no provider / no key / bad host) short-circuits with the four-state
@@ -1411,7 +1576,7 @@ play_sound      — sound_id (string)");
                     if (!LlmProviderFactory.TryCreate(settings, _secretStore, _http,
                             out ILLMProvider? provider, out AiAvailability failure))
                     {
-                        _queue.Enqueue(() => onComplete(null, AiAvailabilityMessages.Describe(failure)));
+                        Complete(null, AiAvailabilityMessages.Describe(failure));
                         return;
                     }
 
@@ -1421,18 +1586,17 @@ play_sound      — sound_id (string)");
                     if (!result.Ok)
                     {
                         // The selected provider's failure is surfaced (never masked) with the shared four-state microcopy.
-                        _queue.Enqueue(() => onComplete(null,
-                            AiAvailabilityMessages.Describe(AiAvailabilityMap.FromFailure(result.Failure))));
+                        Complete(null, AiAvailabilityMessages.Describe(AiAvailabilityMap.FromFailure(result.Failure)));
                         return;
                     }
 
                     (T? def, string? error) = validate(StripMarkdown(result.Text));
-                    _queue.Enqueue(() => onComplete(def, def == null ? error : null));
+                    Complete(def, def == null ? error : null);
                 }
                 catch (OperationCanceledException) { /* silently dropped */ }
                 catch (Exception ex)
                 {
-                    _queue.Enqueue(() => onComplete(null, ex.Message));
+                    Complete(null, ex.Message);
                 }
             }, token);
         }
