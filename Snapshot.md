@@ -88,6 +88,23 @@ can be closed entirely and the next epic is **Epic 10 — Release Readiness** (t
 | **15-23** (DW-775) | **Generation-validated entity references.** Every cross-tick raw entity id is now a packed, generation-stamped ref: targeting refs (AttackTarget, CommandTarget entity halves, order-queue payloads, PendingCastTarget, BuyItem's buyer, ProjectileStore.TargetId, DSL batched-loop rows) pack at ISSUE — the AttackBuilding/PickupItem wire convention — and resolve at consumption, so a recycled slot reverts/refuses/drops instead of being silently inherited; attribution refs (SourceId, modifier casters, KillerOf/DeathLog + the DW-548 carry rail, unit_damaged's attacker) use the new `TryResolveRefIncludingDead` — a dead attacker keeps its kill credit, a recycled slot degrades to −1. Both DW-775 pinned tests consciously flipped. **SimChecksum.AlgoVersion 24→25** (fold VALUE semantics only; gen-0 packing is bit-identical — the coverage-guard pin 0x32911831 deliberately did NOT move; all 31 goldens re-recorded header-only, ZERO payload movement measured). **PROTOCOL_VERSION 3→4, replay format 5→6, saves fail-closed** (DW-874 policy). 3-lens adversarial review applied in-story (BuyItem wire payload caught + fixed; Generation-overflow loud guard added; residuals re-filed as DW-945/946). Closes DW-775 + riders DW-869, DW-862; files DW-944. |
 | **15-21** (a+b) | **Creator-authorable hero attributes.** Faction-level `attribute_model` (declared attributes + derived-stat mapping; `"primary"` = the WC3 primary-feeds-damage rule) × per-hero `attributes` (primary/base/per_level auto-growth — the WC3 model, D-2). CLOSED 6-stat vocabulary (D-3): hp/dmg/armor/speed ride the existing hero-growth modifier channel; max_energy/energy_regen ride the 15.12 RegenPerTick seam. **ZERO new folded state — SimChecksum stayed 25, zero goldens moved** (attribute values are pure functions of folded Level). ContentHash 1→2 (the hero block left the allowlist — its curve was ALREADY sim-read since 3.13, a real closed handshake gap). SaveGameFile.FormatVersion 6→7. **7 shipped presets** (wc3/poe/diablo3/diablo4/last_epoch/grim_dawn/torchlight) under `resources/data/attribute-models/`. Editor: the Unit Card hero section gains preset picker + per-hero attribute rows + the derived-mapping editor, persisted via a targeted `attribute_model` root-key patch — **in-engine gate PASSED via the bridge** (WC3 preset values read back exactly; a SpinBox step defect caught and fixed during the gate). Riders closed: DW-889, DW-768. |
 
+**SESSION SIGN-OFF (appended at close): the burn-down LANDED — 13/13 bundles merged to master, its
+adversarial review sweep caught + fixed a HIGH defect (the SqrDistance-saturation class, THIRD strike —
+gather rally ordering + FindBestNode parked workers permanently past 181u; DW-984 closed, DW-989 the
+FindNearestEnemyGlobal sibling filed HIGH for the next re-baseline batch since its fix moves goldens).
+LEDGER AT CLOSE: 990 entries, 340 open, **109 closed today**. Tier-1 at close: **6917 / 0 / 1** (session
+started 6462). Save FormatVersion ended at **9** (v8 DW-690 rally lane, v9 DW-804 gather-stall lane — both
+from burn-down bundles). ALSO SHIPPED POST-STORY: DW-945 (order SUBJECT packed on the wire — PROTOCOL 5,
+replay 7), and the RECONNECT BUILD IS UNDERWAY (Alec's Q1/Q2 build-now rulings): spec-15-1 v2-first
+(snapshot+tail, 9 decisions), the two-peer rejoin DETERMINISM CORE **PROVEN in Tier-1**
+(RejoinCatchUpHarnessTests — byte-equal checksums through drop→snapshot→tail-fast-forward→resumed live
+play), MergedTickLog + RejoinTokens landed; REMAINING: server InGame connect branch + thaw APIs + wire
+messages + client flow (spec'd, next block). 15-14 identity follows on the RejoinToken seam. Story 15-24
+(Attribute System 2.0) FULLY SPEC'D from Alec's rulings: all ~65 stats in via the STAT REGISTRY pipeline
+(one entry + one consumer per future stat, tripwire-guarded both ways), shared vocabulary with item
+prefix/suffix affixes (15-24g), deterministic combat dice (15-24b), veterancy, dedicated AI-usable
+Attribute Editor.**
+
 **Deferral burn-down (the other half of Epic 15's charter):** a 20-verifier code-grounded triage swept all
 400 open ledger entries → 15 already-resolved + 5 superseded closed immediately (evidence-cited), 90
 quick-fixes partitioned into 13 bundles (worklist `.claude/workflows/dw-worklist-2026-08-12.json`), 135
