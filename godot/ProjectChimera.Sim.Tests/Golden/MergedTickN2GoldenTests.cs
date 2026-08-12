@@ -16,8 +16,15 @@ namespace ProjectChimera.Sim.Tests.Golden
     ///
     /// A moved golden here (or in any pre-existing golden) is a Block-If, NOT a re-baseline: the rewrite touches
     /// networking, not the sim fold, so <c>SimChecksum.AlgoVersion</c> and every committed golden stay unchanged.
+    ///
+    /// <para><b>Named for its N (DW-864).</b> This class was <c>MergedTickGoldenTests</c>, and the N=2 golden's
+    /// re-baseline recipe named <c>--filter FullyQualifiedName~MergedTick</c> — a SUBSTRING match that also selects
+    /// <see cref="MergedTickN3GoldenTests"/>, the recorder for <c>golden-merged-n3</c> AND <c>golden-merged-n4</c>.
+    /// Following the committed recipe would therefore have silently re-recorded two other pins. The recipe is now
+    /// <c>~MergedTickN2</c>, which requires this class to carry its N in its name, and
+    /// <see cref="MergedTickRebaselineFilterTests"/> keeps every recipe in the family exclusive from now on.</para>
     /// </summary>
-    public class MergedTickGoldenTests
+    public class MergedTickN2GoldenTests
     {
         [Fact]
         public void RecordMergedN2Baseline()
