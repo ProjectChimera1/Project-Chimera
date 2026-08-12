@@ -1,13 +1,19 @@
 ---
 name: bmad-quick-dev
-description: 'Implements any user intent, requirement, story, bug fix or change request by producing clean working code artifacts that follow the project''s existing architecture, patterns and conventions. Use when the user wants to build, fix, tweak, refactor, add or modify any code, component or feature.'
+description: "Deprecated: forwards to bmad-build. Do not use unless invoked by name"
 ---
 
-Run this, substituting `{skill-root}` with the absolute path to this skill's base directory, without changing the cwd:
+# Deprecated Build Alias
 
-```bash
-uv run {skill-root}/render.py
-```
+## On Activation
 
-- **On success:** follow the instruction it prints to stdout; ignore stderr.
-- **On any failure** (including `uv` not being installed): report what it printed and HALT.
+1. Check whether either legacy customization file exists:
+   - `{project-root}/_bmad/custom/bmad-quick-dev.toml`
+   - `{project-root}/_bmad/custom/bmad-quick-dev.user.toml`
+2. If neither legacy file exists, output exactly `bmad-quick-dev is deprecated. Redirecting to bmad-build. Please use bmad-build in the future.`, invoke `bmad-build` exactly once with the user's original input verbatim, then execute no further steps in this shim.
+3. For every legacy file that exists, use its matching new filename:
+   - `{project-root}/_bmad/custom/bmad-quick-dev.toml` becomes `{project-root}/_bmad/custom/bmad-build.toml`.
+   - `{project-root}/_bmad/custom/bmad-quick-dev.user.toml` becomes `{project-root}/_bmad/custom/bmad-build.user.toml`.
+4. If the matching new file does not exist, tell the user that the customization file uses the deprecated name and offer to rename it. Rename it only after explicit approval. If approval is declined or unavailable, or the rename fails, HALT and do not invoke any skill.
+5. If the matching new file already exists, do not overwrite it. Read both files, explain their differences, and propose the exact content for the new file. Resolve conflicting values with the user. Only after the user explicitly approves that content, save and verify the new file, then remove the legacy file. If approval is declined or unavailable, or any operation fails, HALT and do not invoke any skill.
+6. After every detected legacy file has been migrated successfully and no legacy file remains, output exactly `bmad-quick-dev is deprecated. Redirecting to bmad-build. Please use bmad-build in the future.`, invoke `bmad-build` exactly once with the user's original input verbatim, then execute no further steps in this shim.
