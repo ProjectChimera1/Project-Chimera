@@ -45,6 +45,20 @@ namespace ProjectChimera.Sim.Tests.Meta
     /// spot is accepted and small: a player count FOLDED into arithmetic (<c>= 2 * 4</c>) is now invisible — but the
     /// regression this guard exists to catch, a new count restated by hand, is always written <c>= 4;</c>.</para>
     ///
+    /// <para><b>(1d) A declaration is ONE declarator (DW-830/DW-831).</b> Both halves anchor on the
+    /// <c>const int</c> / <c>static readonly int</c> PREFIX, which the second and later declarators of
+    /// <c>const int A = 4, B = 2;</c> do not carry — so <c>B</c> was invisible to the scan. Rather than teach two
+    /// regexes to walk a declarator list (a second, riskier rewrite of a Tier-1 guard), the blind spot is CLOSED
+    /// OFF: <see cref="SourceScan_NoMultiDeclaratorFieldDeclaresAPlayerCountConstant"/> refuses any multi-declarator
+    /// int-constant declaration in <c>src</c> that carries a player-count-semantic NAME, so a count can never be
+    /// written where the scan cannot see it — split it into one declaration per constant and both halves apply
+    /// normally. Separately, allowlist keys are now REPO-RELATIVE PATHS (<c>src/Core/FactionRegistry.cs::NAME</c>),
+    /// not bare basenames: the doc always claimed the key was fully qualified "so a stray same-named constant in an
+    /// UNRELATED file is NOT excused by a bare-name collision", but until DW-831 the qualifier was only the file
+    /// name, so <c>src/A/Transport.cs::MAX_SLOTS</c> and <c>src/B/Transport.cs::MAX_SLOTS</c> would have shared one
+    /// entry and the stray one would have been excused by the sanctioned one. Keys use <c>/</c> separators on every
+    /// platform so the table is not Windows-shaped.</para>
+    ///
     /// <para><b>(2) Bump-invariant.</b> Pins the FactionRegistry chain
     /// (<c>PLAYER_COUNT + 1 == FACTION_ARRAY_SIZE == (int)Player8 + 1 == SLOT_DEFINITIONS_SIZE</c>) and the two-ceiling
     /// policy constants, and asserts <see cref="PlayerCountPolicy"/> DOCUMENTS the 8-player bump — so the raise stays a
@@ -59,25 +73,28 @@ namespace ProjectChimera.Sim.Tests.Meta
     public class NoHardcodedPlayerCountTests
     {
         /// <summary>
-        /// The SANCTIONED player-count constants, keyed by FULLY-QUALIFIED site (<c>FileName.cs::CONST_NAME</c>) so a
-        /// stray same-named constant in an UNRELATED file is NOT excused by a bare-name collision. Adding a new
-        /// player-count constant means adding it HERE with its justification — the deliberate friction that keeps stray
-        /// player-count literals from accreting.
+        /// The SANCTIONED player-count constants, keyed by FULLY-QUALIFIED site — since DW-831 that means the
+        /// REPO-RELATIVE PATH (relative to <c>godot/</c>, always with <c>/</c> separators) plus the constant name:
+        /// <c>src/Core/FactionRegistry.cs::PLAYER_COUNT</c>. The doc always promised a stray same-named constant in
+        /// an UNRELATED file would NOT be excused by a name collision; keyed by BASENAME that promise was not what
+        /// the code enforced (two <c>Transport.cs</c> in different folders shared one entry — latent only because no
+        /// duplicate basename exists in <c>src</c> today). Adding a new player-count constant means adding it HERE
+        /// with its justification — the deliberate friction that keeps stray player-count literals from accreting.
         /// </summary>
         private static readonly Dictionary<string, string> Allowlist = new()
         {
-            ["FactionRegistry.cs::PLAYER_COUNT"]           = "The playable-faction ceiling (8); the sim-side count.",
-            ["FactionRegistry.cs::FACTION_ARRAY_SIZE"]     = "Neutral + Player1..Player8 array size (the sanctioned 9).",
-            ["PlayerCountPolicy.cs::MpSeatCeiling"]        = "THE transport seat ceiling — the single documented 4→8 bump point.",
-            ["ServerChecksumCollector.cs::MaxSlots"]       = "The collector seat ceiling; ALIASES MpSeatCeiling (DW-513).",
-            ["StartPositionBridge.cs::MAX_SLOTS"]          = "The editor start-position slot cap; mirrors the seat ceiling.",
-            ["ServerTransport.cs::MAX_SLOTS"]              = "The transport slot ceiling (already raised to 8, the bump target).",
-            ["EntityPlacer.cs::START_SLOT_CEILING"]        = "The editor start-position ceiling ((int)Faction.Player4).",
-            ["EntityPlacer.cs::START_SLOT_MIN"]            = "The editor start-position floor (2).",
-            ["PartyState.cs::DefaultCapacity"]             = "Default party capacity (a full 4-player match; architected for 8).",
-            ["LoopbackDesyncSelfTest.cs::PlayerCount"]     = "The N=4 real-transport smoke-test peer count.",
-            ["MatchmakerConfig.cs::MinPlayers"]            = "The matchmaker minimum (2) — the MP floor.",
-            ["DslVarTable.cs::PlayerSlots"]                = "The per-player DSL var-table slot count (= PLAYER_COUNT, 8).",
+            ["src/Core/FactionRegistry.cs::PLAYER_COUNT"]                    = "The playable-faction ceiling (8); the sim-side count.",
+            ["src/Core/FactionRegistry.cs::FACTION_ARRAY_SIZE"]              = "Neutral + Player1..Player8 array size (the sanctioned 9).",
+            ["src/Multiplayer/PlayerCountPolicy.cs::MpSeatCeiling"]          = "THE transport seat ceiling — the single documented 4→8 bump point.",
+            ["src/Multiplayer/Server/ServerChecksumCollector.cs::MaxSlots"]  = "The collector seat ceiling; ALIASES MpSeatCeiling (DW-513).",
+            ["src/UI/StartPositionBridge.cs::MAX_SLOTS"]                     = "The editor start-position slot cap; mirrors the seat ceiling.",
+            ["src/Multiplayer/ServerTransport.cs::MAX_SLOTS"]                = "The transport slot ceiling (already raised to 8, the bump target).",
+            ["src/UI/EntityPlacer.cs::START_SLOT_CEILING"]                   = "The editor start-position ceiling ((int)Faction.Player4).",
+            ["src/UI/EntityPlacer.cs::START_SLOT_MIN"]                       = "The editor start-position floor (2).",
+            ["src/Multiplayer/Party/PartyState.cs::DefaultCapacity"]         = "Default party capacity (a full 4-player match; architected for 8).",
+            ["src/Multiplayer/LoopbackDesyncSelfTest.cs::PlayerCount"]       = "The N=4 real-transport smoke-test peer count.",
+            ["src/Multiplayer/Matchmaking/MatchmakerConfig.cs::MinPlayers"]  = "The matchmaker minimum (2) — the MP floor.",
+            ["src/Dsl/DslVarTable.cs::PlayerSlots"]                          = "The per-player DSL var-table slot count (= PLAYER_COUNT, 8).",
         };
 
         // const int Name = N;  /  static readonly int Name = N;  — Name must denote a player-count, and N must be one of
@@ -94,8 +111,14 @@ namespace ProjectChimera.Sim.Tests.Meta
         // It forced authors to reorder the operands (`= EntityWorld.MAX_ENTITIES * 2`) purely to appease the scan, a
         // rule that reads as arbitrary at the call site. This terminator is why the value set can stay bounded to four
         // literals AND be trusted: `= 42` / `= 256` were already excluded, and now so is every `= 4 <op> …` form.
+        /// <summary>The player-count NAME filter, as one shared sub-pattern (DW-830): the literal half, the alias half
+        /// and the multi-declarator guard must agree on what "a player-count-semantic name" means, so they are all
+        /// built from this single string rather than three hand-copied character classes.</summary>
+        private const string PlayerCountNamePattern =
+            @"\w*(?:slot|seat|player|peer|capacity|ceiling|faction|lobby|opponent|human)\w*";
+
         private static readonly Regex PlayerCountConst = new(
-            @"(?:const\s+int|static\s+readonly\s+int)\s+(\w*(?:slot|seat|player|peer|capacity|ceiling|faction|lobby|opponent|human)\w*)\s*=\s*(2|4|8|9)\s*[;,]",
+            @"(?:const\s+int|static\s+readonly\s+int)\s+(" + PlayerCountNamePattern + @")\s*=\s*(2|4|8|9)\s*[;,]",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         // DW-513 — the ALIAS shape: `const int Name = <symbol chain>;` where Name denotes a player count. The
@@ -104,7 +127,7 @@ namespace ProjectChimera.Sim.Tests.Meta
         // here. Whether the referenced symbol is SANCTIONED is decided separately (SanctionedSourceTexts); this
         // regex only recognizes the shape.
         private static readonly Regex PlayerCountAliasConst = new(
-            @"(?:const\s+int|static\s+readonly\s+int)\s+(\w*(?:slot|seat|player|peer|capacity|ceiling|faction|lobby|opponent|human)\w*)\s*=\s*([A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*)\s*;",
+            @"(?:const\s+int|static\s+readonly\s+int)\s+(" + PlayerCountNamePattern + @")\s*=\s*([A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*)\s*;",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         /// <summary>
@@ -207,7 +230,7 @@ namespace ProjectChimera.Sim.Tests.Meta
 
             foreach (string file in Directory.GetFiles(srcDir, "*.cs", SearchOption.AllDirectories))
             {
-                foreach (ConstSite site in ScanSource(Path.GetFileName(file), File.ReadAllText(file)))
+                foreach (ConstSite site in ScanSource(RelativeKeyPath(file), File.ReadAllText(file)))
                 {
                     found.Add(site.Key);
                     // Only a raw LITERAL can be stray; an alias of a sanctioned constant is the desired form (DW-513).
@@ -244,8 +267,10 @@ namespace ProjectChimera.Sim.Tests.Meta
             string file = Path.Combine(SrcDir(), "Multiplayer", "Server", "ServerChecksumCollector.cs");
             Assert.True(File.Exists(file), $"ServerChecksumCollector.cs not found at '{file}'.");
 
-            List<ConstSite> sites = ScanSource("ServerChecksumCollector.cs", File.ReadAllText(file))
-                .FindAll(s => s.Key == "ServerChecksumCollector.cs::MaxSlots");
+            // Keyed by the same repo-relative path the sweep uses (DW-831), so this test and the sweep can never
+            // disagree about a site's identity.
+            List<ConstSite> sites = ScanSource(RelativeKeyPath(file), File.ReadAllText(file))
+                .FindAll(s => s.Key == "src/Multiplayer/Server/ServerChecksumCollector.cs::MaxSlots");
 
             Assert.True(sites.Count == 1,
                 $"Expected exactly one ServerChecksumCollector.cs::MaxSlots declaration site, saw {sites.Count}.");
@@ -415,7 +440,7 @@ namespace ProjectChimera.Sim.Tests.Meta
             Assert.True(File.Exists(file), $"DslSimEventFeed.cs not found at '{file}'.");
 
             string source = File.ReadAllText(file);
-            Assert.True(ScanSource("DslSimEventFeed.cs", source).Count == 0,
+            Assert.True(ScanSource(RelativeKeyPath(file), source).Count == 0,
                 "DslSimEventFeed declares no player count — the scan must classify nothing in it (DW-582).");
 
             Match decl = Regex.Match(StripCommentsAndNormalize(source), @"const\s+int\s+Capacity\s*=\s*([^;]+);");
@@ -434,7 +459,7 @@ namespace ProjectChimera.Sim.Tests.Meta
             Assert.Matches(@"^(2|4|8|9)$", literal);
 
             string literalFirst = $"public const int Capacity = {literal} * {symbol};";
-            Assert.True(ScanSource("DslSimEventFeed.cs", literalFirst).Count == 0,
+            Assert.True(ScanSource(RelativeKeyPath(file), literalFirst).Count == 0,
                 $"`{literalFirst}` was classified as a hardcoded player count — DW-582's false positive is back, and " +
                 $"authors are again forced to order the literal last to appease the scan.");
         }
@@ -454,7 +479,7 @@ namespace ProjectChimera.Sim.Tests.Meta
             foreach (string file in Directory.GetFiles(SrcDir(), "*.cs", SearchOption.AllDirectories))
             {
                 var seen = new Dictionary<string, bool>();
-                foreach (ConstSite site in ScanSource(Path.GetFileName(file), File.ReadAllText(file)))
+                foreach (ConstSite site in ScanSource(RelativeKeyPath(file), File.ReadAllText(file)))
                 {
                     observed++;
                     if (seen.TryGetValue(site.Key, out bool priorWasLiteral))
@@ -487,6 +512,156 @@ namespace ProjectChimera.Sim.Tests.Meta
                 Assert.True(SanctionedSourceTexts.Contains($"{owner.Name}.{member}"), "qualified form missing from the accepted texts");
                 Assert.True(SanctionedSourceTexts.Contains(member), "bare form missing from the accepted texts");
             }
+        }
+
+        /// <summary>
+        /// DW-831 — the allowlist key really is PATH-qualified now. Two same-named files in different folders (the
+        /// latent collision the entry names: <c>src/A/Transport.cs::MAX_SLOTS</c> vs <c>src/B/Transport.cs</c>) must
+        /// produce DIFFERENT keys, so a sanctioned entry can never excuse a stray constant it has nothing to do with.
+        /// Under the old basename keying both sides of this assertion were the same string.
+        /// </summary>
+        [Fact]
+        public void SiteKeys_AreQualifiedByPath_SoSameNamedFilesCannotShareAnAllowlistEntry()
+        {
+            const string decl = "public const int MAX_SLOTS = 8;";
+
+            List<ConstSite> a = ScanSource("src/A/Transport.cs", decl);
+            List<ConstSite> b = ScanSource("src/B/Transport.cs", decl);
+
+            Assert.Equal("src/A/Transport.cs::MAX_SLOTS", Assert.Single(a).Key);
+            Assert.Equal("src/B/Transport.cs::MAX_SLOTS", Assert.Single(b).Key);
+            Assert.NotEqual(a[0].Key, b[0].Key);
+
+            // …and the real sweep produces exactly this shape of key, not a bare file name.
+            string sanctioned = Path.Combine(SrcDir(), "Multiplayer", "PlayerCountPolicy.cs");
+            Assert.Equal("src/Multiplayer/PlayerCountPolicy.cs", RelativeKeyPath(sanctioned));
+            Assert.All(Allowlist.Keys, k => Assert.Contains('/', k));
+        }
+
+        // ── DW-830: the multi-declarator blind spot, closed off ───────────────────────────────────────────────
+
+        /// <summary>A WHOLE int-constant declaration: the modifiers, then everything up to the terminating <c>;</c> —
+        /// i.e. the full declarator LIST, however many declarators it holds. Both classification regexes above stop
+        /// at the FIRST declarator by construction (they anchor on the modifier prefix, which later declarators do
+        /// not repeat), so this is the only pattern that can see the list as a list.</summary>
+        private static readonly Regex IntConstFieldDeclaration = new(
+            @"(?:const\s+int|static\s+readonly\s+int)\s+([^;]*);",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        /// <summary>A declarator NAME that denotes a player count — the same filter both classification halves use,
+        /// anchored so it matches the whole identifier.</summary>
+        private static readonly Regex PlayerCountName = new(
+            @"^" + PlayerCountNamePattern + @"$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        /// <summary>
+        /// Every MULTI-declarator int-constant declaration in <paramref name="sourceText"/> that names a
+        /// player-count-semantic constant, reported as <c>File::Name</c>. Factored out of the sweep (the
+        /// <see cref="ScanSource"/> precedent) so it can be driven against synthetic source, and so the sweep and
+        /// those tests can never classify differently.
+        /// </summary>
+        private static List<string> MultiDeclaratorPlayerCountSites(string fileName, string sourceText)
+        {
+            var hits = new List<string>();
+
+            foreach (Match m in IntConstFieldDeclaration.Matches(StripCommentsAndNormalize(sourceText)))
+            {
+                string[] declarators = SplitTopLevel(m.Groups[1].Value);
+                if (declarators.Length < 2) continue; // a single declarator is fully visible to both halves
+
+                foreach (string d in declarators)
+                {
+                    int eq = d.IndexOf('=');
+                    string name = (eq >= 0 ? d.Substring(0, eq) : d).Trim();
+                    if (name.Length > 0 && PlayerCountName.IsMatch(name))
+                        hits.Add($"{fileName}::{name}");
+                }
+            }
+
+            return hits;
+        }
+
+        /// <summary>Split a declarator list on its TOP-LEVEL commas only — a cast/call in an initializer
+        /// (<c>= (int)Faction.Player4</c>, <c>= Foo(a, b)</c>) must not be mistaken for a second declarator.</summary>
+        private static string[] SplitTopLevel(string declaratorList)
+        {
+            var parts = new List<string>();
+            int depth = 0, start = 0;
+            for (int i = 0; i < declaratorList.Length; i++)
+            {
+                char c = declaratorList[i];
+                if (c is '(' or '[' or '<') depth++;
+                else if (c is ')' or ']' or '>') depth--;
+                else if (c == ',' && depth <= 0)
+                {
+                    parts.Add(declaratorList.Substring(start, i - start));
+                    start = i + 1;
+                }
+            }
+            parts.Add(declaratorList.Substring(start));
+            return parts.ToArray();
+        }
+
+        /// <summary>
+        /// DW-830 — the blind spot is CLOSED OFF rather than papered over. Only the FIRST declarator of
+        /// <c>const int A = 4, B = 2;</c> is ever seen by either classification half, so a player count written as a
+        /// later declarator would be silently unguarded. This refuses the SHAPE in <c>src</c>: any multi-declarator
+        /// int-constant declaration carrying a player-count-semantic NAME is red, and the fix is to split it into one
+        /// declaration per constant — after which both halves see it normally. Verified harmless when written (no such
+        /// declaration exists in <c>src</c>), which is exactly when a shape guard is cheap to install.
+        /// </summary>
+        [Fact]
+        public void SourceScan_NoMultiDeclaratorFieldDeclaresAPlayerCountConstant()
+        {
+            var offenders = new List<string>();
+            foreach (string file in Directory.GetFiles(SrcDir(), "*.cs", SearchOption.AllDirectories))
+                offenders.AddRange(MultiDeclaratorPlayerCountSites(RelativeKeyPath(file), File.ReadAllText(file)));
+
+            Assert.True(offenders.Count == 0,
+                "A player-count-semantic constant is declared inside a MULTI-DECLARATOR field — the one shape this " +
+                "guard's scan cannot see past its first declarator (DW-830). Split it into one declaration per " +
+                "constant (`const int A = 4; const int B = 2;`) so the literal/alias halves classify it:\n  " +
+                string.Join("\n  ", offenders));
+        }
+
+        /// <summary>
+        /// DW-830's non-vacuity fence, and the reason the guard above is a SHAPE ban rather than decoration: the scan
+        /// really is blind to a later declarator. Pins the defect itself — if a future change teaches the regexes to
+        /// walk a declarator list, this test is what says so, and the shape ban can then be reconsidered.
+        /// </summary>
+        [Fact]
+        public void Scan_IsBlindToALaterDeclarator_WhichIsWhyTheShapeIsBanned()
+        {
+            const string hidden = "private const int Rows = 4, LobbySeatCap = 2;";
+
+            Assert.True(ScanSource("Fake.cs", hidden).Count == 0,
+                $"`{hidden}`'s SECOND declarator is now visible to the scan — DW-830's blind spot has been closed by " +
+                "a regex change instead, so re-evaluate whether the multi-declarator shape ban is still needed.");
+
+            Assert.Equal(new[] { "Fake.cs::LobbySeatCap" }, MultiDeclaratorPlayerCountSites("Fake.cs", hidden));
+        }
+
+        /// <summary>DW-830 — the shape guard flags a player-count declarator wherever it sits in the list, and stays
+        /// silent on declarations it has no business judging.</summary>
+        [Theory]
+        [InlineData("private const int Rows = 4, LobbySeatCap = 2;", "LobbySeatCap")]           // the invisible one
+        [InlineData("private const int LobbySeatCap = 4, Unrelated = 3;", "LobbySeatCap")]      // the visible one
+        [InlineData("static readonly int Stride = 3, PeerCeiling = MpSeatCeiling;", "PeerCeiling")] // an alias, too
+        public void MultiDeclaratorGuard_FlagsAPlayerCountDeclaratorAnywhereInTheList(string declaration, string expected)
+        {
+            Assert.Equal(new[] { $"Fake.cs::{expected}" }, MultiDeclaratorPlayerCountSites("Fake.cs", declaration));
+        }
+
+        /// <summary>DW-830 — the guard bans a SHAPE that hides player counts, not multi-declarator fields in general:
+        /// a list of non-player-count constants is legal, a single declarator is legal however it is written, and a
+        /// comma inside a cast/call initializer is not a declarator separator.</summary>
+        [Theory]
+        [InlineData("private const int Rows = 4, Cols = 3;")]                       // no player-count name
+        [InlineData("private const int LobbySeatCap = 4;")]                          // single declarator
+        [InlineData("private const int START_SLOT_CEILING = (int)Faction.Player4;")] // a cast, not a list
+        [InlineData("private const int SeatCap = Clamp(1, 4);")]                     // a call's comma, not a list
+        public void MultiDeclaratorGuard_StaysSilentOnLegalDeclarations(string declaration)
+        {
+            Assert.Empty(MultiDeclaratorPlayerCountSites("Fake.cs", declaration));
         }
 
         /// <summary>Remove block comments (<c>/* … */</c>) and line comments (<c>// …</c>), then collapse every run of
@@ -532,6 +707,17 @@ namespace ProjectChimera.Sim.Tests.Meta
         }
 
         // ── path helpers (this file lives in godot/ProjectChimera.Sim.Tests/Meta/) ────────────────
+
+        /// <summary>DW-831 — the allowlist/site KEY prefix for a scanned file: its path relative to <c>godot/</c>,
+        /// always with <c>/</c> separators so the table reads the same and compares equal on Windows and Linux.
+        /// Replaces <c>Path.GetFileName</c>, under which two same-named files in different folders collided into one
+        /// allowlist entry and the stray one was excused by the sanctioned one's justification.</summary>
+        private static string RelativeKeyPath(string absoluteFilePath) =>
+            Path.GetRelativePath(GodotDir(), absoluteFilePath).Replace('\\', '/');
+
+        private static string GodotDir([CallerFilePath] string thisFilePath = "") =>
+            ResolveFromHere(thisFilePath, "..", "..");
+
         private static string SrcDir([CallerFilePath] string thisFilePath = "") =>
             ResolveFromHere(thisFilePath, "..", "..", "src");
 
