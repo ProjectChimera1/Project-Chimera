@@ -15,6 +15,14 @@ namespace ProjectChimera.Core
     /// never these transient raises. Pure C# (no Godot / fractional primitive / wall-clock); deterministic
     /// drop-newest at capacity (a dropped raise simply fires no trigger — non-critical, identical on every peer).</para>
     ///
+    /// <para><b>DW-850 — that emptiness is ENFORCED, not trusted.</b> <c>SimulationLoop.EnableTickBoundaryInvariants</c>
+    /// checks <see cref="Count"/> == 0 after every system has ticked and before the checksum is taken, and throws
+    /// naming this feed if it is not (the DW-766 tripwire, one feed over). It matters because a drained occurrence
+    /// FIRES TRIGGERS, and those triggers mutate folded state (DSL variables, <c>WinStateStore</c>) — so residue here
+    /// is an unhashed input to hashed state, not merely a stale buffer. The drain sits at a FIXED system index
+    /// (<c>ScenarioDirector</c>, the last producer), so any future system registered past it that pushes here would
+    /// otherwise re-open the hole silently.</para>
+    ///
     /// <para>Determinism: producers push in ascending SYSTEM order and, within a system, ascending entity/building id,
     /// so the drained order is a deterministic function of sim state — identical on every peer.</para>
     /// </summary>

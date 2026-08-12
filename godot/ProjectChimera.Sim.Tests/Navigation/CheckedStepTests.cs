@@ -1,4 +1,7 @@
 #nullable enable
+using System;
+using System.Collections.Generic;
+using System.IO;
 using ProjectChimera.Core;
 using ProjectChimera.Navigation;
 using Xunit;
@@ -239,36 +242,128 @@ namespace ProjectChimera.Sim.Tests.Navigation
         public void MovementSystem_PositionAfterEachTick_EqualsTheHelperAppliedToItsOwnIntegratedStep()
         {
             // The extraction's proof: MovementSystem's post-tick Position is EXACTLY
-            // CheckedStep.Resolve(grid, prePos, prePos + velocity*dt) on every tick — including the ticks where the
-            // wall actually rejects the step. If the integrator ever grew a second, divergent copy of the rejection
-            // (the DW-648 failure mode), this parity breaks.
+            // CheckedStep.Resolve(grid, prePos, prePos + <the step it integrated>) on every tick — including the ticks
+            // where the wall actually rejects the step. If the integrator ever grew a second, divergent copy of the
+            // rejection (the DW-648 failure mode), this parity breaks.
+            //
+            // DW-732 — the integrated step is read off a MIRROR world holding the identical mover on a NULL grid, not
+            // reconstructed from EntityWorld.Velocity. Velocity used to be a faithful record of the DESIRED step;
+            // DW-732 now zeroes it whenever the guard refuses the step, so reconstructing `integrated` from it would
+            // make this parity trivially true on exactly the ticks that matter (both sides collapsing to the pre-step
+            // position). The mirror is also strictly STRONGER than the old reading: with a null grid Resolve is the
+            // identity, so the mirror's post-tick Position IS the unrejected step, and the comparison now proves the
+            // two runs agree on the whole VELOCITY SOLUTION as well as on the rejection.
             var w = new EntityWorld();
             var move = new MovementSystem();
             PathabilityGrid wall = ColumnWall(64);
             w.SetPathabilityGrid(wall);
 
+            var mirrorWorld = new EntityWorld();   // no SetPathabilityGrid ⇒ Pathability == null ⇒ Resolve is identity
+            var mirrorMove = new MovementSystem();
+
             int u = w.Create(V(-20, 0, 0), Faction.Player1, Fixed.FromInt(40), Fixed.FromInt(150));
             w.MoveTarget[u] = V(40, 0, 0);
             w.Flags[u] |= EntityFlags.Moving;
 
-            int rejections = 0;
+            int m = mirrorWorld.Create(V(-20, 0, 0), Faction.Player1, Fixed.FromInt(40), Fixed.FromInt(150));
+            mirrorWorld.MoveTarget[m] = V(40, 0, 0);
+            mirrorWorld.Flags[m] |= EntityFlags.Moving;
+
+            int rejections = 0, refusedSteps = 0;
             for (int t = 0; t < 200; t++)
             {
                 FixedVec3 pre = w.Position[u];
-                move.Tick(w, Dt);
-                FixedVec3 post = w.Position[u];
+                // Re-seed the mirror from the guarded world's REAL pre-step state every tick, so the two integrate the
+                // same step and can never drift apart once the wall stops one of them.
+                mirrorWorld.Position[m] = pre;
+                mirrorWorld.Flags[m] = w.Flags[u];
 
-                FixedVec3 integrated = pre + w.Velocity[u] * Dt;
+                move.Tick(w, Dt);
+                mirrorMove.Tick(mirrorWorld, Dt);
+
+                FixedVec3 post = w.Position[u];
+                FixedVec3 integrated = mirrorWorld.Position[m];   // the unrejected step this very tick
                 FixedVec3 expected = CheckedStep.Resolve(wall, pre, integrated);
                 AssertPos(expected, post, $"tick {t + 1}");
 
                 if (post.X.Raw != integrated.X.Raw || post.Z.Raw != integrated.Z.Raw) rejections++;
+
+                if (post.X.Raw == pre.X.Raw && post.Z.Raw == pre.Z.Raw)
+                {
+                    refusedSteps++;
+                    // DW-732 — a step the guard refused must not leave the seek velocity standing. Pre-fix the mover
+                    // reported a non-zero Velocity forever while its Position never moved a raw tick, so a save taken
+                    // here recorded a wall-stuck unit as travelling at full speed.
+                    Assert.True(w.Velocity[u] == FixedVec3.Zero,
+                        $"tick {t + 1}: the guard refused the step (Position unchanged) but Velocity is still " +
+                        $"({w.Velocity[u].X.ToFloat()}, {w.Velocity[u].Z.ToFloat()}) — DW-732.");
+                    // …and the control proves that is the GUARD's doing, not the mover giving up: the unguarded
+                    // mirror, from the identical state, is still seeking at full speed on this same tick.
+                    Assert.False(mirrorWorld.Velocity[m] == FixedVec3.Zero,
+                        $"tick {t + 1}: the unguarded mirror also reported zero velocity, so the assertion above " +
+                        "proves nothing about the guard.");
+                }
             }
 
             Assert.True(rejections > 0,
                 "the mover never reached the wall, so this parity run never exercised a rejected step.");
+            Assert.True(refusedSteps > 0,
+                "no tick was refused outright, so the DW-732 zero-velocity assertion above never ran.");
             Assert.True(w.Position[u].X.Raw < 0,
                 $"the mover ended east of the wall (X={w.Position[u].X.ToFloat()}) — the guard did not hold.");
+        }
+
+        // ── DW-731: the endpoint predicate stays TEST-ONLY ───────────────────────
+
+        [Fact]
+        public void EndpointOnlyPredicate_HasNoProductionCaller_SoTheNegativeControlStaysHonest()
+        {
+            // NegativeControl_TheEndpointOnlyPredicate_WouldHaveAcceptedTheTunnellingStep is only a proof of the
+            // SWEPT check while IsBlockedOutside is what production no longer uses. DW-147 moved every movement
+            // rejection onto IsBlockedOnSegmentOutside (behind CheckedStep since DW-648); if a new src caller
+            // appears, that caller is tunnellable and the control above quietly stops meaning anything.
+            string src = Path.Combine(LocateGodotRoot(), "src");
+            var callers = new List<string>();
+
+            foreach (string file in Directory.EnumerateFiles(src, "*.cs", SearchOption.AllDirectories))
+            {
+                string[] lines = File.ReadAllLines(file);
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    string line = lines[i];
+                    string trimmed = line.TrimStart();
+                    if (trimmed.StartsWith("//", StringComparison.Ordinal)
+                        || trimmed.StartsWith("///", StringComparison.Ordinal)
+                        || trimmed.StartsWith("*", StringComparison.Ordinal))
+                        continue;                                            // doc/comment reference — not a caller
+                    if (!line.Contains("IsBlockedOutside", StringComparison.Ordinal)) continue;
+                    if (line.Contains("public bool IsBlockedOutside", StringComparison.Ordinal)) continue; // the declaration
+                    callers.Add($"{Path.GetFileName(file)}:{i + 1}: {line.Trim()}");
+                }
+            }
+
+            Assert.True(callers.Count == 0,
+                "PathabilityGrid.IsBlockedOutside acquired a production caller. It is the endpoint-only predicate "
+                + "DW-147 replaced: it samples the two endpoints and TUNNELS a one-cell-thick wall at any step at or "
+                + "beyond the 2-unit cell size. Route the new caller through CheckedStep.Resolve / "
+                + "IsBlockedOnSegmentOutside instead. It survives in src ONLY as CheckedStepTests' negative control "
+                + "(DW-731):\n  " + string.Join("\n  ", callers));
+        }
+
+        /// <summary>Walk up from the test-assembly directory to the <c>godot/</c> dir (the one holding both
+        /// <c>src</c> and <c>scenes</c>) — the <c>StartPathTeamAgreementTests.LocateGodotRoot</c> precedent.</summary>
+        private static string LocateGodotRoot()
+        {
+            var dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null)
+            {
+                if (Directory.Exists(Path.Combine(dir.FullName, "src")) &&
+                    Directory.Exists(Path.Combine(dir.FullName, "scenes")))
+                    return dir.FullName;
+                dir = dir.Parent;
+            }
+            throw new DirectoryNotFoundException(
+                $"Could not locate the godot/ root (a dir with both src/ and scenes/) above {AppContext.BaseDirectory}");
         }
     }
 }

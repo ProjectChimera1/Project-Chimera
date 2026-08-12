@@ -259,11 +259,38 @@ namespace ProjectChimera.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Fixed SqrMagnitude()
         {
+            long sum = SqrMagnitudeRaw();
+            return sum >= int.MaxValue ? Fixed.MaxValue : new Fixed((int)sum);
+        }
+
+        /// <summary>
+        /// DW-984 — the UNSATURATED squared magnitude, in raw 16.16 units, as a <c>long</c>: exactly the accumulator
+        /// <see cref="SqrMagnitude"/> clamps. Integer-only, so cross-platform-identical like everything else here.
+        ///
+        /// <para><b>Why a second entry point exists.</b> <see cref="SqrMagnitude"/>'s saturation is the right answer
+        /// for a RADIUS COMPARISON — a clamped <see cref="Fixed.MaxValue"/> is outside every radius in the game, which
+        /// is what an "am I in range / have I arrived" test wants. It is the WRONG answer for COMPARING TWO
+        /// SEPARATIONS AGAINST EACH OTHER, because <c>int.MaxValue</c> raw is only 32767.99 u², i.e. every separation
+        /// at or beyond <b>~181.02 units</b> collapses onto the SAME clamped value. Two points 300 u and 295 u apart
+        /// are then indistinguishable, so a "did I get closer?" test reads FALSE for a body that is genuinely
+        /// closing. A 240–256-unit map span is ordinary geometry here (see <see cref="SqrMagnitude"/>), so that is a
+        /// live range, not a corner.</para>
+        ///
+        /// <para>Use this ONLY where two distances are ordered against one another; keep using
+        /// <see cref="SqrMagnitude"/> / <see cref="SqrDistance"/> against a radius, so no call site has to reason
+        /// about the clamp. Both share one accumulator, so they can never drift: below the clamp the value returned
+        /// here IS <see cref="SqrMagnitude"/>'s <c>.Raw</c>, bit for bit.</para>
+        ///
+        /// <para>No overflow of its own: each pre-shift term is at most ~2^62 and each post-shift term at most ~2^46,
+        /// so the three-way <c>long</c> sum has ~17 bits of headroom.</para>
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public long SqrMagnitudeRaw()
+        {
             long x = (long)X.Raw * X.Raw;
             long y = (long)Y.Raw * Y.Raw;
             long z = (long)Z.Raw * Z.Raw;
-            long sum = (x >> Fixed.FRACTIONAL_BITS) + (y >> Fixed.FRACTIONAL_BITS) + (z >> Fixed.FRACTIONAL_BITS);
-            return sum >= int.MaxValue ? Fixed.MaxValue : new Fixed((int)sum);
+            return (x >> Fixed.FRACTIONAL_BITS) + (y >> Fixed.FRACTIONAL_BITS) + (z >> Fixed.FRACTIONAL_BITS);
         }
 
         /// <summary>Magnitude via fixed-point sqrt.</summary>
@@ -287,6 +314,16 @@ namespace ProjectChimera.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Fixed SqrDistance(FixedVec3 a, FixedVec3 b) =>
             (b - a).SqrMagnitude();
+
+        /// <summary>
+        /// DW-984 — the UNSATURATED squared distance in raw 16.16 units (see <see cref="SqrMagnitudeRaw"/> for why
+        /// this exists). Use it ONLY to order two separations against each other — a "did I get closer?" /
+        /// "which of these is nearest?" test that must keep working past the ~181-unit clamp. Every RADIUS test
+        /// stays on <see cref="SqrDistance"/>.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static long SqrDistanceRaw(FixedVec3 a, FixedVec3 b) =>
+            (b - a).SqrMagnitudeRaw();
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Fixed Distance(FixedVec3 a, FixedVec3 b) =>
@@ -321,7 +358,56 @@ namespace ProjectChimera.Core
 
         public bool Equals(FixedVec3 other) => this == other;
         public override bool Equals(object obj) => obj is FixedVec3 v && this == v;
-        public override int GetHashCode() => HashCode.Combine(X.Raw, Y.Raw, Z.Raw);
+
+        // --- Deterministic hash (DW-753) ---
+
+        /// <summary>FNV-1a-32 offset basis — the fold's fixed, seed-free starting state (DW-753).</summary>
+        private const uint HASH_OFFSET = 2166136261u;
+        private const uint HASH_PRIME = 16777619u;
+
+        /// <summary>
+        /// FNV-1a mix of one 32-bit value as 4 LITTLE-ENDIAN bytes. <c>unchecked</c> is explicit so the fold keeps
+        /// wrapping (and stays byte-identical) even if the project ever turns on overflow checking.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static uint MixHash(uint hash, int value)
+        {
+            unchecked
+            {
+                uint v = (uint)value;
+                hash ^= v & 0xFF;         hash *= HASH_PRIME;
+                hash ^= (v >> 8) & 0xFF;  hash *= HASH_PRIME;
+                hash ^= (v >> 16) & 0xFF; hash *= HASH_PRIME;
+                hash ^= (v >> 24) & 0xFF; hash *= HASH_PRIME;
+                return hash;
+            }
+        }
+
+        /// <summary>
+        /// DW-753 — a DETERMINISTIC hash: seed-free FNV-1a-32 over <c>(X.Raw, Y.Raw, Z.Raw)</c> in that fixed order.
+        /// It was <c>System.HashCode.Combine</c>, which mixes in a PROCESS-SEED re-randomized on every launch, so the
+        /// same position hashed differently in every run of the same build. This is a SIMULATION-layer type, so that
+        /// is worse than the DW-337 editor case it mirrors: the moment a <c>HashSet&lt;FixedVec3&gt;</c> /
+        /// <c>Dictionary&lt;FixedVec3,…&gt;</c> is ENUMERATED, its bucket layout — and any iteration order that
+        /// survives a remove/re-add — becomes run-dependent, which is a lockstep desync source rather than a wart.
+        /// Pure integer arithmetic, no seed, no runtime-version dependence ⇒ stable across processes, machines and
+        /// .NET runtimes. Same primitive as <c>SimChecksum.Mix</c> / <c>GraphEdgeHash</c> (32-bit variant),
+        /// deliberately duplicated here so <c>src/Core</c>'s most foundational type takes no dependency on either.
+        ///
+        /// <para>NOT folded into <c>SimChecksum</c>, <c>CanonicalModelHash</c> or <c>StartStateHash</c> — those hash
+        /// <c>Fixed.Raw</c> component-wise, never <c>GetHashCode</c> — so changing this fold moves NO golden. It must
+        /// still never change casually: it is the stability contract callers rely on. Covers exactly the fields
+        /// <see cref="Equals(FixedVec3)"/> compares. As with edges, prefer an ordered list wherever the RESULT ORDER
+        /// matters: hash-container enumeration order is an implementation detail, not a contract.</para>
+        /// </summary>
+        public override int GetHashCode()
+        {
+            uint h = HASH_OFFSET;
+            h = MixHash(h, X.Raw);
+            h = MixHash(h, Y.Raw);
+            h = MixHash(h, Z.Raw);
+            return unchecked((int)h);
+        }
 
         public override string ToString() => $"({X}, {Y}, {Z})";
     }

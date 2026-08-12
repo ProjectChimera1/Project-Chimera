@@ -185,7 +185,28 @@ namespace ProjectChimera.Navigation
                 // diagonal step cannot clip a blocked corner), including the X-then-Z wall-slide order and the
                 // hard-stop fallback to the full pre-step position. PositionWriterGuardTests pins that this is the
                 // one MOVEMENT writer of EntityWorld.Position and that CheckedStep is the one caller of the sweep.
-                world.Position[i] = CheckedStep.Resolve(world.Pathability, pos, pos + velocity * dt);
+                FixedVec3 resolved = CheckedStep.Resolve(world.Pathability, pos, pos + velocity * dt);
+                world.Position[i] = resolved;
+
+                // DW-732 — a step the pathability guard REFUSED must not leave the seek velocity standing. Velocity is
+                // written above from the DESIRED steering solution, before the grid gets a say; a unit pressed against a
+                // wall therefore reported a non-zero Velocity forever while its Position never moved a raw tick. The
+                // resolved position is the only honest source for "how fast is this unit actually going", so when the
+                // helper hands back the PRE-STEP position — its hard stop (case 4), or the degenerate single-axis slide
+                // that is a hard stop by another name because the dropped axis was the only one with length — the unit
+                // did not move and its velocity is zero.
+                //
+                // Only the DID-NOT-MOVE case is corrected here; a real slide keeps the steering velocity verbatim, so
+                // this stays a strictly bounded change (rewriting a slide as displacement/dt would need a Fixed division
+                // on the hot path and would round every flat-map velocity off its exact steering value).
+                //
+                // DETERMINISM: Velocity is NOT folded into SimChecksum (it has no occurrence in SimChecksum.cs) and its
+                // only readers are SaveGameState — where a wall-stuck unit no longer records as moving, which IS the
+                // defect — and the zeroing writers in GatheringSystem/TeleportEffect, so no golden, StartStateHash or
+                // CanonicalModelHash can move. On a null/all-clear grid Resolve returns `desired`, which differs from
+                // `pos` for every step with length, so a flat/legacy map is an exact no-op. Pure Fixed comparison,
+                // identical on every lockstep peer and same-seed replay.
+                if (resolved == pos) world.Velocity[i] = FixedVec3.Zero;
             }
         }
     }

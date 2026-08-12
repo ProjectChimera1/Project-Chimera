@@ -798,7 +798,11 @@ namespace ProjectChimera.Core
         ///   <item><c>&gt;= 0</c> — CONSECUTIVE whole ticks this worker has been unable to advance toward its reserved
         ///         node at all (the <see cref="Pathability"/> grid hard-stops its whole step, both wall-slide axes
         ///         included). Reset to 0 the instant it makes ground, on every fresh node assignment, on arrival, and on
-        ///         every <c>GatheringSystem.ReleaseGatherSlot</c>. While in this range the worker HOLDS one of its
+        ///         every <c>GatheringSystem.ReleaseGatherSlot</c>. DW-803: a tick whose COMPUTED step has zero length
+        ///         (anything that zeroes <c>EffectiveMoveSpeed</c> — a snare item or granted modifier) is SKIPPED, not
+        ///         counted — it neither advances nor clears the streak, because the blocked-probe cannot tell "may not
+        ///         move" from "did not ask to move" (see <c>GatheringSystem.TickWalkStall</c> and
+        ///         <c>Navigation.CheckedStep.Resolve</c>). While in this range the worker HOLDS one of its
         ///         node's <c>ResourceNodeStore.AssignedGatherers</c> slots.</item>
         ///   <item><c>&lt; 0</c> (<c>GatheringSystem.SLOT_YIELDED</c>) — the streak reached
         ///         <c>GatheringSystem.WALK_STALL_GRACE_TICKS</c> and the worker HANDED THE RESERVATION BACK while
@@ -809,17 +813,19 @@ namespace ProjectChimera.Core
         ///
         /// <para>Whole ticks, never dt-accumulated and never wall-clock (the <c>IncomeTicksElapsed</c> discipline), and
         /// the stall test itself is the shared pure-<see cref="Fixed"/> <c>Navigation.CheckedStep.Resolve</c>, so it is
-        /// cross-platform-identical. NOT folded into <see cref="SimChecksum"/> and NOT persisted by
-        /// <c>SaveGameState</c> — the exact <see cref="GateClosedTicks"/> posture (only the node-side
+        /// cross-platform-identical. NOT folded into <see cref="SimChecksum"/> (only the node-side
         /// <c>AssignedGatherers</c> is folded). RUNTIME state, NOT def-derived: defaulted in <see cref="Create"/> (the
         /// mandatory recycle-trap reset), and NOT snapshot residue (a delete→undo restarts the window).</para>
         ///
-        /// <para>The one KNOWN residual of not persisting it: a save taken while a worker is stranded records the node
-        /// counter WITHOUT that worker (it had yielded), but the restore re-applies the world first, so the worker comes
-        /// back at 0 — "holding" — and re-yields a second later, decrementing a slot it never took. Floor-guarded, so
-        /// the counter cannot go negative; the effect is bounded at one extra gatherer admitted to that node, versus the
-        /// permanent capacity LOSS on every map that not bounding the leg at all produced. Closing it properly means a
-        /// save lane for this array (the DW-581 family), deliberately out of scope here.</para>
+        /// <para><b>DW-804 — this lane IS persisted</b> (<c>SaveGameState.EA.GatherWalkStall</c>, save format v9),
+        /// unlike its <see cref="GateClosedTicks"/> sibling. The difference is that 0 is not a neutral default here: it
+        /// is the value that MEANS "this worker holds one of its node's slots". Dropping the lane restored a yielder as
+        /// a holder, and the divergence was not the bounded counter drift originally recorded — a restored worker that
+        /// CAN move (the blocked region rebuilt away, or the save loaded onto a flat grid) walks to the node and skips
+        /// the arrival re-claim branch entirely, which skips BOTH the <c>AssignedGatherers &gt;= MaxGatherers</c>
+        /// capacity check AND the matching increment. It then gathers with no reservation at all, and
+        /// <c>TickGathering</c>'s unconditional carry-full decrement drives the folded counter one BELOW the number of
+        /// workers genuinely holding slots — permanently, and cumulatively across repeated save/loads.</para>
         /// </summary>
         public readonly int[]         GatherWalkStallTicks;
 
@@ -838,15 +844,93 @@ namespace ProjectChimera.Core
         ///
         /// <para>Written ONLY by <c>BuildingSystem.SpawnTrainedUnit</c>'s rally branch (and only for a WORKER — a
         /// combat unit is never ticked by <c>GatheringSystem</c>, so it has no reader and gets no flag) and cleared
-        /// ONLY by <c>GatheringSystem.TickIdle</c>. NOT folded into <see cref="SimChecksum"/> and NOT persisted by
-        /// <c>SaveGameState</c> — deliberately the exact posture of every other field of this worker state machine
-        /// (<see cref="GatherState"/>/<see cref="GatherTarget"/>/<see cref="CarryAmount"/>/<see cref="GateClosedTicks"/>
-        /// are all unfolded; only the node-side <c>AssignedGatherers</c> is). A resumed save therefore forgets an
-        /// in-flight rally leg and auto-gathers, which is what a pre-DW-634 save already did. RUNTIME state, NOT
-        /// def-derived: defaulted in <see cref="Create"/> (the mandatory recycle-trap reset), and NOT snapshot residue
-        /// (the <see cref="CarryAmount"/>/<see cref="GateClosedTicks"/> posture — a delete→undo drops the pending leg).</para>
+        /// ONLY by <c>GatheringSystem.TickIdle</c>. NOT folded into <see cref="SimChecksum"/>, matching every other
+        /// field of this worker state machine (<see cref="GatherState"/>/<see cref="GatherTarget"/>/
+        /// <see cref="CarryAmount"/>/<see cref="GateClosedTicks"/> are all unfolded; only the node-side
+        /// <c>AssignedGatherers</c> is). RUNTIME state, NOT def-derived: defaulted in <see cref="Create"/> (the
+        /// mandatory recycle-trap reset), and NOT snapshot residue (the <see cref="CarryAmount"/>/
+        /// <see cref="GateClosedTicks"/> posture — a delete→undo drops the pending leg).</para>
+        ///
+        /// <para><b>DW-690 — this field IS persisted</b> (<c>SaveGameState.EA.RallyMovePending</c>), unlike the
+        /// unfolded worker fields around it. Unfolded is not the same thing as unpersisted, and the rationale this
+        /// comment used to give for dropping it ("the exact posture of every other field of this worker state
+        /// machine") was simply false: <see cref="GatherState"/>/<see cref="GatherTarget"/>/<see cref="CarryAmount"/>
+        /// all round-trip a save. Dropping it was also incoherent with what the save DOES carry — a mid-leg worker
+        /// reloaded with its <see cref="Flags"/>/<see cref="CommandState"/>/<see cref="MoveTarget"/> restored looks in
+        /// every respect like it is still walking the rally, while the one gate that makes the walk survive came back
+        /// false, so the first <c>GatheringSystem</c> tick re-targeted it to the node nearest its MID-LEG position and
+        /// silently discarded the player's rally: the exact defect DW-634 was chartered to fix, re-introduced by
+        /// save/load. A save-format addition only (no fold, no golden movement); the format version bump fail-closes
+        /// older blobs.</para>
         /// </summary>
         public readonly bool[]        RallyMovePending;
+
+        /// <summary>
+        /// DW-689 — the BOUNDED STAND-DOWN budget for <see cref="RallyMovePending"/>: CONSECUTIVE whole ticks on which
+        /// a standing-down worker has failed to get any closer to its rally <see cref="CommandGoal"/> than the best
+        /// distance already recorded in <see cref="RallyGoalBestSqr"/>. Zero means "window unarmed" (a fresh spawn, a
+        /// resumed save, or a leg that just ended); the first stand-down tick arms it at 1. Once it reaches
+        /// <c>GatheringSystem.RALLY_STANDDOWN_GRACE_TICKS</c> the leg is declared unwinnable, the one-shot
+        /// <see cref="RallyMovePending"/> is released, and the worker rejoins the normal nearest-node sweep.
+        ///
+        /// <para><b>Why a budget exists at all.</b> DW-634's stand-down clears only on ARRIVAL (or when the rally's own
+        /// <see cref="UnitCommand.Move"/> is superseded), and NOTHING in the simulation layer takes a rallied worker
+        /// out of Move: <c>CombatSystem</c>'s gatherer normalization rewrites every command EXCEPT Move,
+        /// <c>OrderQueueSystem</c> skips an entity with an empty queue, <c>BuildingSystem.ClearWorkerBuild</c> fires
+        /// only from <see cref="UnitCommand.Build"/>, and the only Move→Stop writers live in <c>src/UI</c> (absent
+        /// headless) behind a radius strictly tighter than the arrival test. So a worker rallied to a point inside a
+        /// <see cref="Pathability"/>-blocked region — hard-stopped at the blocked-cell boundary by
+        /// <c>MovementSystem</c> — stood down on EVERY tick forever: a silent, permanent loss of its economic function
+        /// where pre-DW-634 it re-targeted to the nearest node on the very next tick.</para>
+        ///
+        /// <para><b>Why NO-PROGRESS and not a flat timer.</b> A flat timer would cancel a legitimately long rally
+        /// (a big map, a slowed worker) and re-introduce DW-634's defect on a delay. The best-distance test releases
+        /// the worker only when the leg PROVABLY cannot complete, subsumes every cause at once (grid hard stop, zeroed
+        /// move speed, a cleared Moving flag, jitter against a wall) and needs no grid of its own. Because the mark is
+        /// the BEST distance rather than the previous one, separation jitter cannot keep re-arming the window: a
+        /// worker shoved back and forth against a wall must beat its own closest approach to reset.</para>
+        ///
+        /// <para>Whole ticks, never dt-accumulated and never wall-clock (the <c>IncomeTicksElapsed</c> discipline), and
+        /// the progress test is a pure <see cref="Fixed"/> squared distance, so it is cross-platform-identical. NOT
+        /// folded into <see cref="SimChecksum"/> and NOT persisted by <c>SaveGameState</c> — the
+        /// <see cref="GateClosedTicks"/> posture (a self-arming window), NOT the <see cref="GatherWalkStallTicks"/>
+        /// one, which DW-804 gave a real save lane because its 0 is load-bearing. The one residual here: a resumed save restarts
+        /// the window, costing a stuck worker at most one further grace window of stand-down (bounded, and the leg
+        /// itself survives because DW-690 persists <see cref="RallyMovePending"/>). RUNTIME state, NOT def-derived:
+        /// defaulted in <see cref="Create"/> (the mandatory recycle-trap reset), and NOT snapshot residue.</para>
+        /// </summary>
+        public readonly int[]         RallyStandDownTicks;
+
+        /// <summary>
+        /// DW-689 — the CLOSEST squared distance to its rally <see cref="CommandGoal"/> this worker has reached since
+        /// <see cref="RallyStandDownTicks"/> was last armed: the mark the no-progress test must be beaten against.
+        /// Monotone non-increasing for as long as the window stays armed, so only genuine ground gained resets the
+        /// budget. Meaningless (and unread) whenever <see cref="RallyStandDownTicks"/> is 0 — which is what lets the
+        /// pair arm itself lazily on the first stand-down tick, with no sentinel value and no <c>Array.Fill</c>, and
+        /// what makes a resumed save (where the counter comes back 0) re-arm from the worker's real position rather
+        /// than from a stale mark.
+        ///
+        /// <para>Squared distance, deliberately: it is the same quantity the arrival test compares against
+        /// <see cref="ArrivalTuning.GoalArriveRadiusSqr"/>, so no square root and no extra <see cref="Fixed"/>
+        /// rounding enters the loop. NOT folded into <see cref="SimChecksum"/> and NOT persisted by
+        /// <c>SaveGameState</c> (the <see cref="RallyStandDownTicks"/> posture it exists to serve). RUNTIME state, NOT
+        /// def-derived: defaulted in <see cref="Create"/>, and NOT snapshot residue.</para>
+        ///
+        /// <para><b>DW-984 — why this lane is a <c>long</c> of RAW 16.16 units and not a <see cref="Fixed"/>.</b>
+        /// <c>Fixed</c> cannot hold this quantity across a map. <c>FixedVec3.SqrMagnitude</c> SATURATES at
+        /// <see cref="Fixed.MaxValue"/>, whose raw value is only 32767.99 u², so EVERY separation at or beyond
+        /// ~181.02 world units collapses onto the identical clamped value. Storing the mark as a <c>Fixed</c>
+        /// therefore made the no-progress test structurally unable to see progress on any rally leg longer than
+        /// 181 u — 300 u and 295 u compare EQUAL, <c>&lt;</c> is false, and the budget accrued on every tick of a
+        /// worker that was walking perfectly well, discarding the player's rally after the grace window (exactly the
+        /// DW-634 defect DW-689 was chartered to bound WITHOUT re-introducing). A 240–256-unit span is ordinary
+        /// geometry: <c>map_bounds</c> is 120–128 on every shipped scenario. The lane holds
+        /// <c>FixedVec3.SqrDistanceRaw</c>'s unsaturated accumulator instead, which is bit-identical to the old
+        /// <c>Fixed.Raw</c> below the clamp and simply keeps counting above it. Still integer-only, so still
+        /// cross-platform-identical; the arrival test itself stays on the saturating radius comparison, where the
+        /// clamp is the correct answer.</para>
+        /// </summary>
+        public readonly long[]        RallyGoalBestSqr;
 
         // --- Worker construction ---
         /// <summary>
@@ -1015,6 +1099,8 @@ namespace ProjectChimera.Core
             GateClosedTicks = new int[MAX_ENTITIES];            // DW-80 — closed-gate streak (NOT folded; 0 == fresh, no Array.Fill needed)
             GatherWalkStallTicks = new int[MAX_ENTITIES];       // DW-532 — MovingToResource stall streak / yielded sentinel (NOT folded; 0 == fresh)
             RallyMovePending = new bool[MAX_ENTITIES];          // DW-634 — outstanding rally first leg (NOT folded; false == fresh, no Array.Fill needed)
+            RallyStandDownTicks = new int[MAX_ENTITIES];        // DW-689 — rally stand-down no-progress budget (NOT folded; 0 == unarmed, no Array.Fill needed)
+            RallyGoalBestSqr = new long[MAX_ENTITIES];          // DW-689 — best distance-to-goal mark, raw 16.16 u² (DW-984: long, never saturated; NOT folded; unread while the budget is 0)
             BuildTarget    = new int[MAX_ENTITIES];
 
             Generation = new int[MAX_ENTITIES]; // DW-184 — per-slot recycle generation (UNFOLDED; 0 == never recycled)
@@ -1196,6 +1282,14 @@ namespace ProjectChimera.Core
             // within the goal-arrive radius of whatever CommandGoal it was given. Unfolded, so this line's ONLY teeth
             // are RecycledSlot_CarriesNoPriorRallyMovePending.
             RallyMovePending[id] = false;
+            // DW-689: MANDATORY recycle-reset of the rally stand-down budget + its best-distance mark. A recycled slot
+            // must NEVER inherit the prior occupant's partial window (the 1.12/1.13/2.6 SoA-recycle defect class): a
+            // corpse's nearly-exhausted counter would release a brand-new worker's rally leg after a tick or two, and a
+            // corpse's mark — recorded from a completely different position — would make the very first stand-down
+            // tick read as "no progress". Unfolded, so these two lines' ONLY teeth are
+            // RecycledSlot_CarriesNoPriorRallyStandDownState.
+            RallyStandDownTicks[id] = 0;
+            RallyGoalBestSqr[id]    = 0L;
             BuildTarget[id]   = -1;
 
             AliveCount++;
@@ -1720,6 +1814,8 @@ namespace ProjectChimera.Core
             Array.Clear(GateClosedTicks);       // DW-80 (0 == the fresh-ctor state)
             Array.Clear(GatherWalkStallTicks);  // DW-532 (0 == the fresh-ctor state: no streak, reservation held)
             Array.Clear(RallyMovePending);      // DW-634 (false == the fresh-ctor state)
+            Array.Clear(RallyStandDownTicks);   // DW-689 (0 == the fresh-ctor state: the stand-down budget is unarmed)
+            Array.Clear(RallyGoalBestSqr);      // DW-689 (0 == the fresh-ctor state; unread while the budget is 0)
             Array.Clear(Generation);            // DW-184 — recycle generations restart at 0 (the fresh-ctor state)
             Array.Clear(_freeList);
 

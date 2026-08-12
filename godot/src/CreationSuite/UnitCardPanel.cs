@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Godot;
 using ProjectChimera.AI;                  // LLMService, UnitDraftContext (Story 8.4)
-using ProjectChimera.AI.Providers;         // AiAvailabilityEvaluator/Messages (four-state)
+using ProjectChimera.AI.Providers;         // AiAvailabilityEvaluator/Messages
 using ProjectChimera.Core.Definitions;   // UnitDefinition, FactionDefinition, AbilityRegistry, UnitCardText, UnitDefinitionValidator, ISecretStore
 using ProjectChimera.UI;                  // GameState, GameMode, MeshLoader
 using ProjectChimera.UI.Components;        // ChimeraComponents, ChimeraTabs, ChimeraTooltip, ChimeraValidationBadge, ChimeraSpinner
@@ -238,7 +238,7 @@ namespace ProjectChimera.CreationSuite
             _aiCard.AddChild(new HSeparator());
         }
 
-        /// <summary>Story 8.4 — four-state AI-availability line + Generate gating (mirrors MapGeneratorPanel). A null
+        /// <summary>Story 8.4 — AI-availability line + Generate gating (mirrors MapGeneratorPanel). A null
         /// evaluator (older wiring) hides the whole AI row; the manual editor is unaffected in every state.</summary>
         private void RefreshAvailability()
         {
@@ -261,7 +261,7 @@ namespace ProjectChimera.CreationSuite
                 : AiAvailabilityMessages.Describe(state);
             _aiGenBtn.Disabled = !available;
 
-            // Story 8.5 — the balance-analysis card degrades on the SAME four-state; manual balance editing stays usable.
+            // Story 8.5 — the balance-analysis card degrades on the SAME availability states; manual balance editing stays usable.
             if (_balanceCard != null!)
             {
                 _balanceCard.Visible = true;

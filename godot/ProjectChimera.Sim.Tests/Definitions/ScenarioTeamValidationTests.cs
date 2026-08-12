@@ -67,7 +67,10 @@ namespace ProjectChimera.Sim.Tests.Definitions
         public void NegativeTeam_IsRejected_EvenThoughTheSeederWouldTreatItAsFfa()
         {
             // The defect the gate closes: the seeder maps `team <= 0` to UNASSIGNED, so -1 and -2 seed the SAME
-            // (byte-identical FFA) mask while the two files differ — a match-agreement mismatch over nothing.
+            // (byte-identical FFA) mask while the two files CLAIM two different teams — the authoring lie. DW-835:
+            // this is emphatically NOT a match-agreement mismatch. MatchAgreementHash folds this very mask, not the
+            // per-slot ordinal, so the two files agree perfectly at the handshake; ScenarioValidatorNegativeTeamTests
+            // pins that half.
             var a = new AllianceStore();
             var b = new AllianceStore();
             AllianceSeeder.Seed(a, ModelOf((0, -1), (1, -1)));

@@ -250,6 +250,81 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
                 Assert.False(ring.IsReady(t), $"a shrinking delay change must seed nothing (tick {t})");
         }
 
+        // ── DW-598: the match-lifecycle wipe ──────────────────────────────────
+
+        /// <summary>
+        /// DW-598 — <see cref="MergedArrivalRing.Clear"/> wipes every lane the gate reads: arrival, the tick it was
+        /// for, the payload length, and the local-send guard. Asserted over the WHOLE ring, so a lane that is only
+        /// half-wiped (the failure mode: a cleared <c>_arrived</c> with a stale <c>_len</c>, or a cleared arrival with
+        /// a stale send guard) cannot pass.
+        /// </summary>
+        [Fact]
+        public void Clear_WipesEveryLane_LeavingAFreshRing()
+        {
+            var ring = new MergedArrivalRing();
+
+            // Fill the whole ring: every slot arrived, every slot marked locally-sent.
+            for (uint t = 0; t < MergedArrivalRing.BUFFER_SIZE; t++)
+            {
+                (byte[] buf, int len) = MakeMergedMove(t, unitId: 0, txInt: 3, tzInt: 4);
+                Assert.True(ring.TryStore(buf, len));
+                ring.MarkSent(t);
+                Assert.True(ring.IsReady(t));
+                Assert.True(ring.LenFor(t) > 0);
+            }
+
+            ring.Clear();
+
+            for (uint t = 0; t < MergedArrivalRing.BUFFER_SIZE; t++)
+            {
+                Assert.False(ring.IsReady(t), $"slot {t} still gates through after Clear()");
+                Assert.Equal(0, ring.LenFor(t));
+                Assert.False(ring.HasSent(t), $"slot {t} still reads locally-sent after Clear()");
+            }
+        }
+
+        /// <summary>
+        /// DW-598, the actual hazard: a REUSED manager starting a second match. Both matches count from tick 0, so a
+        /// prior match's packet for tick T sits in the slot the new match's tick T needs WITH THE SAME
+        /// <c>_tickFor</c> — the wrong-tick demotion that protects against wraparound is blind to it, because the
+        /// tick number genuinely matches. Without the Clear in <c>SeedInitialTicks</c> the new match's gate opens on
+        /// the OLD match's commands (and a stale send-guard suppresses a real bundle the new match does need to
+        /// emit). Modelled exactly as <c>LockstepManager.SeedInitialTicks</c> drives it: Clear, then SeedBootstrap.
+        /// </summary>
+        [Fact]
+        public void ClearThenSeedBootstrap_NewMatchNeverInheritsThePriorMatchsArrivals()
+        {
+            const int delay = 4;
+            var ring = new MergedArrivalRing();
+
+            // ── match 1 ── the client ran well past the bootstrap gap and left arrivals + send guards behind.
+            ring.SeedBootstrap(delay);
+            for (uint t = delay; t < 12; t++)
+            {
+                (byte[] buf, int len) = MakeMergedMove(t, unitId: 0, txInt: 9, tzInt: 9);
+                Assert.True(ring.TryStore(buf, len));
+                ring.MarkSent(t);
+            }
+
+            // ── match 2 ── the same manager restarts: SeedInitialTicks = Clear() then SeedBootstrap(delay).
+            ring.Clear();
+            ring.SeedBootstrap(delay);
+
+            // The bootstrap gap is seeded EMPTY — a prior match's real payload must not be sitting in it.
+            for (uint t = 0; t < delay; t++)
+            {
+                Assert.True(ring.IsReady(t));
+                Assert.Equal(0, ring.LenFor(t));
+            }
+            // Every tick past the gap must STALL until this match's own merged packet arrives — the prior match's
+            // occupant of that slot carried the very same tick number, so nothing else would have rejected it.
+            for (uint t = delay; t < 12; t++)
+            {
+                Assert.False(ring.IsReady(t), $"tick {t} gated through on the PRIOR match's arrival (DW-598)");
+                Assert.False(ring.HasSent(t), $"tick {t} reads already-sent from the PRIOR match (DW-598)");
+            }
+        }
+
         // ── keying rejects (the HandleMergedTick drop rules) ──────────────────
 
         [Fact]

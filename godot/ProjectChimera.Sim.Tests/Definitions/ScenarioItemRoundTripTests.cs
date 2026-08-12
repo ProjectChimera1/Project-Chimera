@@ -35,10 +35,16 @@ namespace ProjectChimera.Sim.Tests.Definitions
             ScenarioData? back = JsonSerializer.Deserialize<ScenarioData>(json, Opt);
 
             Assert.NotNull(back);
-            Assert.Equal(2, back!.Items.Length);
-            Assert.Equal("ring_of_vigor", back.Items[0].ItemId);
-            Assert.Equal(5f, back.Items[0].X);
-            Assert.Equal(-4f, back.Items[0].Z);
+            // DW-703 — ScenarioData.Items is `ScenarioItem[]?` (omit-when-null), so reading .Length off it was a
+            // CS8602 possible-null-dereference. Asserting it non-null (rather than null-forgiving with `!`) also
+            // makes a writer regression that DROPS the items array fail HERE, naming the array, instead of as an
+            // unexplained NullReferenceException inside the element assertions below.
+            ScenarioItem[]? items = back!.Items;
+            Assert.NotNull(items);
+            Assert.Equal(2, items!.Length);
+            Assert.Equal("ring_of_vigor", items[0].ItemId);
+            Assert.Equal(5f, items[0].X);
+            Assert.Equal(-4f, items[0].Z);
             Assert.Equal(4, back.InventorySlotCount);
         }
 

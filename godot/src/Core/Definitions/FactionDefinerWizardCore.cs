@@ -98,11 +98,12 @@ namespace ProjectChimera.Core.Definitions
         /// name that hits the filesystem — is a single obvious edit point. Shortening, parameterizing or dropping it
         /// needs NO change to the reserved-device guard in <see cref="TryFinish"/>: that guard inspects the assembled
         /// file name, so it re-derives the right verdict from whatever this becomes.
-        /// <para>Must stay consistent with the <c>"*_faction.json"</c> discovery globs a written file is later found
-        /// by (<see cref="FactionDefinition"/>'s directory load and <c>SkirmishCatalog</c>) — a file this wizard
-        /// writes under a name those globs miss would save successfully and then be invisible.</para>
+        /// <para>DW-696: this is now an ALIAS for <see cref="FactionFiles.Suffix"/>, and both discovery globs derive
+        /// from <see cref="FactionFiles.DiscoveryGlob"/> — so the write side and the two read sides move together by
+        /// construction instead of by comment. The name is kept because the wizard's own tests and call sites
+        /// reference it, and "the suffix a Finish-written faction file gets" is the discoverable spelling here.</para>
         /// </summary>
-        public const string FactionFileSuffix = "_faction.json";
+        public const string FactionFileSuffix = FactionFiles.Suffix;
 
         /// <summary>
         /// Scan the given absolute faction-JSON paths (alpha/beta today — Story 5.5's "Epics 2-4 content" pool) for
@@ -188,6 +189,13 @@ namespace ProjectChimera.Core.Definitions
         /// FUTURE consumer of <see cref="FactionDefinerFinishResult.Step"/> (logging, an error-label step chip, a
         /// different UI surface) reads a defensible step instead of a misleading Buildings &amp; Tech.</para>
         ///
+        /// <para><b>DW-735/DW-776 (the last field-path hole).</b> <c>faction</c> — the path both null-def guards emit,
+        /// <see cref="TryFinish"/>'s and <see cref="FactionValidator.Validate"/>'s — was the one remaining known name
+        /// still relying on the sniff-default. It now joins <c>raw_json</c> at Name &amp; Color on the same reasoning:
+        /// the error names the whole draft, not a control, so the first step is the defensible landing spot. With this
+        /// case the DW-114 invariant is CLOSED — every field path any error-producing surface in this codebase can
+        /// name is explicit above, and the fallthrough below is reserved for genuinely-shared item paths.</para>
+        ///
         /// <para><b>DW-505 (the kind-label sniff reads the REASON).</b> The sniff used to run on the raw message, so it
         /// only matched a message whose kind label was literally first. <see cref="FactionValidator.ValidateComplete"/>
         /// wrapped its two item-level <c>mesh_path</c> errors in the FACTION-level <c>"faction '&lt;id&gt;'.mesh_path: "</c>
@@ -218,6 +226,14 @@ namespace ProjectChimera.Core.Definitions
                 // DW-116: a raw-JSON parse failure names no wizard field at all — the whole document is wrong. Name &
                 // Color (the first step) is the defensible landing spot; Advanced mode itself never reads Step.
                 case "raw_json": return FactionDefinerStep.NameColor;
+                // DW-735/DW-776: the last hole in the DW-114 invariant. Both null-def guards — TryFinish's and
+                // FactionValidator.Validate's — emit ("faction", "faction is null."), a field path that names the
+                // WHOLE draft rather than any one control, so it used to fall through to the Buildings & Tech
+                // sniff-default (a step with no relevant UI whatsoever). Same remedy as raw_json above and for the
+                // same reason: nothing on any step edits "the faction is missing", so Name & Color — the first step —
+                // is the defensible landing spot. Latent, not live: the panel always holds a live _draft, so no
+                // caller observes a null def today; the case exists so a FUTURE producer cannot silently misroute.
+                case "faction": return FactionDefinerStep.NameColor;
             }
             // DW-505: sniff the kind label on the REASON, not on the raw message. The label normally leads
             // (MeshAssetLint / UnitDefinitionValidator / BuildingDefinitionValidator / TechTreeValidator /

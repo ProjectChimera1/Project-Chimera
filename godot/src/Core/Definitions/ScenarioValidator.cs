@@ -295,6 +295,13 @@ namespace ProjectChimera.Core.Definitions
             {
                 ScenarioPlayerSlot s = slots[i];
 
+                // DW-814: the located null-element guard EVERY sibling loop (props/cameras/water/variables/timers/
+                // triggers) already carries. JSON `"player_slots": [null]` deserializes to a null element, so the
+                // `s.Slot` read below NRE'd — breaking this class's documented "It is pure: it NEVER throws and NEVER
+                // logs" contract, and falsifying CheckSpawnsNotBlocked's "Validate() already located a null element"
+                // comment. Fail located, like every other kind.
+                if (s is null) return ValidationResult.Fail($"scenario.player_slots[{i}] is null.");
+
                 if (s.Slot < 0 || s.Slot >= FactionRegistry.PLAYER_COUNT)
                     return ValidationResult.Fail(
                         $"scenario.player_slots[{i}].slot={s.Slot} is out of [0,{FactionRegistry.PLAYER_COUNT}).");
@@ -312,13 +319,21 @@ namespace ProjectChimera.Core.Definitions
                     return ValidationResult.Fail(
                         $"scenario.player_slots[{i}].slot={s.Slot} is a duplicate.");
 
-                // DW-442 — `team` was the one per-slot field this loop never looked at. A NEGATIVE ordinal is an
-                // authoring lie the file can carry all the way into a match: AllianceSeeder.ComputeTeamIds treats
-                // `team <= 0` as UNASSIGNED/FFA, so -1 silently means "no team" while the JSON says otherwise — and
-                // because Team folds into the match-agreement hash (MatchAgreementHash, algo v2) two peers whose files
-                // differ only in WHICH negative ordinal they carry fail the start handshake over alliance masks that
-                // are byte-identical. Reject it located; 0 — the omit-when-default FFA value every pre-9.14 scenario
-                // carries — still passes, so no shipped map moves.
+                // DW-442 — `team` was the one per-slot field this loop never looked at. The reject rests on AUTHOR
+                // INTENT, and on nothing else: a NEGATIVE ordinal is an authoring lie the file can carry all the way
+                // into a match, because AllianceSeeder.ComputeTeamIds treats `team <= 0` as UNASSIGNED/FFA
+                // (`if (team <= 0) continue;`), so -1 silently means "no team" while the JSON says otherwise. Reject
+                // it located rather than let the file claim an alliance the seeder never builds; 0 — the
+                // omit-when-default FFA value every pre-9.14 scenario carries — still passes, so no shipped map moves.
+                //
+                // DW-835 — what this reject is NOT, because the previous form of this comment said otherwise. It is
+                // not a handshake fix. Two peers whose files differ only in WHICH negative ordinal they carry agree
+                // perfectly: MatchAgreementHash folds AllianceSeeder.ComputeTeamIds(model) — the CANONICAL
+                // faction-keyed team-id mask — and deliberately NOT the positional per-slot .Team ordinal (see the
+                // Story 9.14 note in MatchAgreementHash.Compute), and ComputeTeamIds skips every non-positive
+                // ordinal, so -1, -2 and 0 all produce the identical FFA mask and therefore the identical agreement
+                // hash. That premise is pinned by ScenarioValidatorNegativeTeamTests, so it cannot silently rot back
+                // into a divergence claim; if this gate is ever relaxed, weigh the authoring-lie argument alone.
                 //
                 // A POSITIVE ordinal is deliberately NOT range-capped here. Ordinals are arbitrary authoring labels
                 // that never reach a sim store (the canonical id is always a faction slot; AllianceSeederTests pins
@@ -1416,7 +1431,10 @@ namespace ProjectChimera.Core.Definitions
             // this surfaces the cause up front.
             if (m.PlayerSlots != null)
                 foreach (var s in m.PlayerSlots)
-                    if (OutOfBounds(s.BaseX, s.BaseZ, m.MapBounds))
+                    // DW-814: skip a null element rather than NRE — this advisory channel runs on UN-validated
+                    // mid-edit models (that is its whole point), and its doc contract is "Pure — never throws".
+                    // CollectTeamAdvisories' own slot walk already carries the identical guard.
+                    if (s != null && OutOfBounds(s.BaseX, s.BaseZ, m.MapBounds))
                         advisories.Add(
                             $"Start position P{s.Slot + 1} is outside the current map bounds ({m.MapBounds}).");
 
@@ -1727,8 +1745,12 @@ namespace ProjectChimera.Core.Definitions
         /// <para>A null <paramref name="ownerDef"/> (no per-slot faction defs threaded — the default for every legacy
         /// caller and test — or a slot that resolves to no def) means there is nothing to resolve against, so the
         /// check accepts: byte-identical to the pre-DW-240 gate. Mirrors the Story 6.8 building-type amnesty.</para>
+        ///
+        /// <para>DW-743 — INTERNAL, not private, for exactly the reason <see cref="IsKnownBuildingType"/> is: the
+        /// LLM generation gate used to resolve a pre-placed unit id against a FLAT cross-faction union, so it
+        /// promised placements this predicate then refused. Both sites now share this one predicate.</para>
         /// </summary>
-        private static bool IsKnownUnitId(string? unitId, FactionDefinition? ownerDef)
+        internal static bool IsKnownUnitId(string? unitId, FactionDefinition? ownerDef)
         {
             if (ownerDef is null) return true;               // nothing threaded to resolve against ⇒ no-op (6.8 precedent)
             if (string.IsNullOrEmpty(unitId)) return false;  // a blank id can never resolve — the applier would drop it
@@ -1737,8 +1759,10 @@ namespace ProjectChimera.Core.Definitions
 
         /// <summary>DW-240 — the shared located message for an unresolvable unit id. Names the field path, the
         /// offending id, the owning faction (so the author knows WHICH roster was searched), and the slot. Kept in one
-        /// place so the pre-placed and both spawn_unit channels report identically.</summary>
-        private static string UnknownUnitIdError(string path, string? unitId, FactionDefinition? ownerDef, int slot)
+        /// place so the pre-placed and both spawn_unit channels report identically.
+        /// DW-743 — INTERNAL so the LLM generation gate reports the SAME located shape as the load gate that will
+        /// judge the generated map; a second hand-written message there would drift.</summary>
+        internal static string UnknownUnitIdError(string path, string? unitId, FactionDefinition? ownerDef, int slot)
         {
             string faction = string.IsNullOrEmpty(ownerDef?.Id) ? "(unnamed)" : ownerDef!.Id;
             return $"{path}='{unitId}' names no unit in the roster of the faction that owns slot {slot} " +

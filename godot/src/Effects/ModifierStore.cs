@@ -235,6 +235,14 @@ namespace ProjectChimera.Effects
                     if (_stackCount[eslot] < mod.MaxStacks)
                     {
                         _stackCount[eslot]++;
+                        // DW-687 — the status union must describe the POST-OPERATION host BEFORE the (possibly lethal)
+                        // stat apply, for the same reason it must in InstallNewSlot: the DW-620 death-immunity guard
+                        // lives inside KillEntity and reads EntityWorld.StatusFlagsOf, so a ceiling collapse raised by
+                        // this stack is judged against whatever the flag word holds at that instant. Idempotent here in
+                        // the normal case (the first install already OR-ed this id's status in), which is exactly why
+                        // hoisting it is free — but not a no-op when a caller stacks a Modifier carrying a status the
+                        // installed same-id instance did not.
+                        _world.StatusFlagsOf[targetId] |= mod.Status; // idempotent re-OR
                         // DW-490: attribution follows the INSTANCE, not the re-caster — _casterId/_casterFaction are
                         // recorded once at install and a stack never rewrites them, so a collapsing stack credits the
                         // same caster the instance's period pulses (RunEffectAgainst) already resolve with.
@@ -242,9 +250,9 @@ namespace ProjectChimera.Effects
                         ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta, mod.ArmorDelta,
                                         isApply: true, ResolveCasterPayload(eslot), _casterFaction[eslot]); // each stack re-adds
                         // DW-325 re-entrancy: a stack that collapsed the ceiling to 0 killed the host → ClearEntity
-                        // already wiped its slots; don't write status (or refresh eslot's duration below) on a dead slot.
+                        // already wiped its slots (and zeroed StatusFlagsOf); don't refresh eslot's duration below on a
+                        // dead slot.
                         if (!_world.IsAlive(targetId)) return true;
-                        _world.StatusFlagsOf[targetId] |= mod.Status; // idempotent re-OR
                     }
                     // Shared duration refreshed on every (re)apply — at the cap this is the only effect (refresh-only).
                     _remainingTicks[eslot] = mod.DurationTicks < 0 ? PERMANENT : mod.DurationTicks;
@@ -260,10 +268,12 @@ namespace ProjectChimera.Effects
         /// <summary>
         /// Install <paramref name="mod"/> into a FRESH slot at index <paramref name="n"/> of <paramref name="targetId"/>'s
         /// ring (the shared install path for a first-ever apply of any rule AND every <see cref="StackRule.StackIndependent"/>
-        /// application). Writes the slot's folded state, arms its period schedule, applies its stat deltas + status, and
-        /// re-checks <see cref="EntityWorld.IsAlive"/> after the (possibly lethal) stat apply. Returns <c>true</c> (installed).
-        /// The caller has already verified the ring has room. Extracted verbatim from the pre-15.12 inline install so both
-        /// call paths stay byte-identical.
+        /// application). Writes the slot's folded state, arms its period schedule, installs its status and THEN applies
+        /// its (possibly lethal) stat deltas. Returns <c>true</c> (installed). The caller has already verified the ring
+        /// has room. Extracted verbatim from the pre-15.12 inline install so both call paths stay byte-identical.
+        /// <para>DW-687: the status is OR-ed in BEFORE the stat apply, so a modifier granting
+        /// <c>StatusFlags.Invulnerable</c> alongside a net-negative <c>max_health_delta</c> is death-immune to the
+        /// ceiling collapse IT causes, instead of being killed by its own install.</para>
         /// </summary>
         private bool InstallNewSlot(int targetId, Modifier mod, int casterId, Faction casterFaction, int n)
         {
@@ -283,15 +293,28 @@ namespace ProjectChimera.Effects
             ResetPeriodSchedule(slot, mod);
             _count[targetId] = n + 1;
 
+            // DW-687 — INSTALL THE STATUS BEFORE THE (POSSIBLY LETHAL) STAT APPLY. ApplyStatDeltas can raise the
+            // DW-325/DW-491 ceiling-collapse death, and the DW-620 ruling puts death-immunity inside KillEntity as a
+            // read of EntityWorld.StatusFlagsOf. With the OR after the apply, a modifier that grants
+            // StatusFlags.Invulnerable TOGETHER with a net-negative max_health_delta collapsed the ceiling while its own
+            // Invulnerable had not been written yet — so the modifier authored to make its host death-immune KILLED it
+            // on the very tick it landed. The flag word must describe the host as this operation LEAVES it before any
+            // code that reads it can run.
+            //
+            // Safe in the lethal direction too: if the apply does kill the host, Destroy → OnDestroy → ClearEntity
+            // zeroes StatusFlagsOf for the recycled slot, so the early-written status cannot leak onto the next
+            // occupant (the same wipe the post-apply IsAlive guard used to protect against, now unnecessary because
+            // there is nothing left to write after the apply).
+            //
+            // DETERMINISM: pure ORDERING of two writes to the same tick's state; StatusFlagsOf is folded (v6), but no
+            // shipped ability authors a status, so every recorded golden leaves it at StatusFlags.None for every entity
+            // and neither ordering can be told apart there.
+            _world.StatusFlagsOf[targetId] |= mod.Status;
             // DW-490: the instance's OWN recorded caster (just written above) is the attribution a ceiling-collapse
             // death inside ApplyStatDeltas credits — the same pair a period pulse from this slot resolves with.
             // Story 15-23: resolved back from the just-packed ref — byte-identical to the raw casterId here.
             ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta, mod.ArmorDelta,
                             isApply: true, ResolveCasterPayload(slot), _casterFaction[slot]);
-            // DW-325 re-entrancy: a ceiling-collapse kill inside ApplyStatDeltas fired OnDestroy→ClearEntity, wiping
-            // this host's slots/status/accumulators. Bail before writing status onto the dead (recycled) slot.
-            if (!_world.IsAlive(targetId)) return true;
-            _world.StatusFlagsOf[targetId] |= mod.Status;
             return true;
         }
 
@@ -499,11 +522,14 @@ namespace ProjectChimera.Effects
 
         /// <summary>
         /// Remove the instance at <paramref name="slot"/> from host <paramref name="hostId"/>: run its
-        /// <see cref="PersistentEffect.ExpireEffect"/> (final pulse, while still applied), revert the FULL stat
-        /// contribution (deltas × <c>_stackCount</c>) through the 2.2a <c>AccumulateBonus</c> seam, recompute the host's
-        /// status union WITHOUT this slot (never blindly clearing a flag another modifier still holds), then
-        /// swap-compact the slot out so <c>[0,_count)</c> stays dense. Deterministic given identical apply/remove order
-        /// across peers (the fold reads <c>[0,_count)</c>, so a swap-compact needs no re-sort).
+        /// <see cref="PersistentEffect.ExpireEffect"/> (final pulse, while still applied), recompute the host's status
+        /// union WITHOUT this slot (never blindly clearing a flag another modifier still holds), revert the FULL stat
+        /// contribution (deltas × <c>_stackCount</c>) through the 2.2a <c>AccumulateBonus</c> seam, then swap-compact
+        /// the slot out so <c>[0,_count)</c> stays dense. Deterministic given identical apply/remove order across peers
+        /// (the fold reads <c>[0,_count)</c>, so a swap-compact needs no re-sort).
+        /// <para>DW-687: the union is recomputed BEFORE the revert, so the DW-620 death-immunity guard inside
+        /// <c>DamageResolver.KillEntity</c> sees the host as this removal LEAVES it — a collapse caused by dropping
+        /// this very instance's <c>Invulnerable</c> must not be refused by that same expiring flag.</para>
         /// </summary>
         private void RemoveSlot(int hostId, int slot)
         {
@@ -515,6 +541,30 @@ namespace ProjectChimera.Effects
                 // already wiped its slots + count, so the revert/status-union/compact below would touch a dead ring.
                 if (!_world.IsAlive(hostId)) return;
             }
+
+            // DW-687 — RECOMPUTE THE STATUS UNION BEFORE THE STAT REVERT, not after it. The revert below can raise the
+            // DW-325/DW-491 ceiling-collapse death (reverting a +MaxHealth grant drops the ceiling), and the DW-620
+            // ruling puts death-immunity inside KillEntity as a read of EntityWorld.StatusFlagsOf. Recomputing
+            // afterwards handed that guard a flag word still carrying the Invulnerable THIS REMOVAL IS ABOUT TO CLEAR,
+            // so the kill was refused and the union was then recomputed to None one line later — leaving a live host at
+            // EffectiveMaxHealth 0 / Health 0 / StatusFlags None: exactly the 0-ceiling zombie DW-325 exists to
+            // eliminate, and unreachable by DW-620's own "a FRESH collapse once the flag drops" recovery, because
+            // `ceilingBefore > Fixed.Zero` can never hold again once the ceiling is pinned at zero.
+            //
+            // Excluding `slot` is what makes this correct rather than merely earlier: the union is rebuilt from every
+            // OTHER live slot, so a flag another modifier still holds survives untouched and only THIS instance's
+            // contribution drops. If the revert then kills the host, ClearEntity zeroes the union anyway and the
+            // IsAlive bail below returns before the compact; if it does not, the union computed here is byte-identical
+            // to the one the post-revert call used to produce (ApplyStatDeltas mutates stats and accumulators, never
+            // the slot ring).
+            //
+            // Runs AFTER the expire effect, which is still "applied" while it executes and may itself install slots —
+            // those are in the ring by the time this reads it.
+            //
+            // DETERMINISM: pure ORDERING. StatusFlagsOf is folded (v6) but no shipped ability authors a status, so
+            // every recorded golden leaves it at StatusFlags.None for every entity and the two orderings are
+            // indistinguishable there.
+            RecomputeStatusUnion(hostId, excludeSlot: slot);
 
             Modifier? mod = _modifier[slot];
             if (mod != null)
@@ -529,11 +579,10 @@ namespace ProjectChimera.Effects
                                         -(mod.ArmorDelta * stacks), isApply: false,
                                         ResolveCasterPayload(slot), _casterFaction[slot]); // Story 15-23: packed → attribution resolve
                 // DW-325 re-entrancy: reverting a +MaxHealth contribution can drop the ceiling to 0 and kill the host →
-                // OnDestroy→ClearEntity already wiped its slots; bail before the status-union/compact touch dead slots
-                // (mirrors the existing post-expire-effect guard above).
+                // OnDestroy→ClearEntity already wiped its slots (and zeroed the union); bail before the compact touches
+                // dead slots (mirrors the existing post-expire-effect guard above).
                 if (!_world.IsAlive(hostId)) return;
             }
-            RecomputeStatusUnion(hostId, excludeSlot: slot);
 
             CompactSlot(hostId, slot);
         }

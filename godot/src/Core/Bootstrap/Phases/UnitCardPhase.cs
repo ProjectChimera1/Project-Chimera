@@ -33,7 +33,7 @@ namespace ProjectChimera.Core.Bootstrap
                     ? slots[0].FactionJson
                     : MainScene.P1_FACTION_JSON;
 
-            // Story 8.4: also pass the LLM service + four-state evaluator + secret store (all present on SceneContext
+            // Story 8.4: also pass the LLM service + availability evaluator + secret store (all present on SceneContext
             // since SettingsPhase/TriggerEditorPhase run earlier) so the editor offers AI unit/hero drafts; nullable —
             // a null evaluator hides the AI row and leaves manual authoring fully usable (older-wiring fallback).
             _ctx.UnitCardPanel.Initialize(_ctx.FactionDef, _ctx.GameState, _ctx.AbilityRegistry, _ctx.BehaviorRegistry,

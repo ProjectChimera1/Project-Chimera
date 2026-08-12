@@ -40,11 +40,24 @@ namespace ProjectChimera.Economy
     /// node the player rallied to. Pre-fix the sweep overwrote the rally MoveTarget on the very next tick, so a rally
     /// could never direct new workers to a specific mine.
     ///
-    /// DW-619 — a <see cref="StatusFlags.Stunned"/>/<see cref="StatusFlags.Rooted"/> worker PRODUCES NOTHING. The
-    /// DW-266 status pass reached MovementSystem/CombatSystem/AbilityCastSystem but never the economy, so a stun
-    /// anchored a worker standing at its node and then let it keep mining out of that node at full rate — the stun
-    /// only half-landed. <see cref="TickGathering"/> now reads <see cref="EntityWorld.StatusFlagsOf"/> and suspends
-    /// the whole gather tick while either flag is live (see <see cref="GATHER_BLOCKING"/>).
+    /// DW-689 bounds that stand-down. Its "superseded" escape (any command state other than the rally's own Move)
+    /// cannot fire in the SIMULATION layer, so a worker rallied to an UNREACHABLE point stood down forever and never
+    /// gathered again. <see cref="EntityWorld.RallyStandDownTicks"/> counts consecutive ticks of no progress toward the
+    /// goal against the best-approach mark in <see cref="EntityWorld.RallyGoalBestSqr"/>; after
+    /// <see cref="RALLY_STANDDOWN_GRACE_TICKS"/> the leg is released and the worker rejoins the sweep.
+    ///
+    /// DW-619 / DW-834 — a <see cref="StatusFlags.Stunned"/>/<see cref="StatusFlags.Rooted"/> worker PRODUCES NOTHING
+    /// AND TAKES NO GATHER ACTION AT ALL. The DW-266 status pass reached MovementSystem/CombatSystem/AbilityCastSystem
+    /// but never the economy, so a stun anchored a worker standing at its node and then let it keep mining that node
+    /// out at full rate — the stun only half-landed. DW-619 gated the <see cref="GatherState.Gathering"/> arm; DW-834
+    /// found that gating ONE of <see cref="Tick"/>'s FOUR arms left the sentence above false in two more places. A held
+    /// worker already standing inside the drop-off radius still ran <see cref="TickMovingToBase"/> and BANKED its whole
+    /// carry (that arrival test is purely positional, so it needs no movement), and a held worker in
+    /// <see cref="GatherState.Idle"/> still ran <see cref="FindBestNode"/> + <see cref="AssignToNode"/> and TOOK a node
+    /// reservation away from a worker that could actually use it. The mask (see <see cref="GATHER_BLOCKING"/>) is
+    /// therefore read ONCE, above the switch in <see cref="Tick"/>, so Idle / MovingToResource / Gathering /
+    /// MovingToBase are all suspended together. PAUSE, never cancel: no state transition, no reservation change, no
+    /// carry change, no supply drain — the worker resumes exactly where it stood the tick the modifier expires.
     ///
     /// CombatSystem skips any entity with GatherState != Inactive, so workers never
     /// auto-attack — even when their unit data carries attack damage.
@@ -54,18 +67,32 @@ namespace ProjectChimera.Economy
     public class GatheringSystem : ISimSystem
     {
         /// <summary>
-        /// DW-619 — the statuses that SUSPEND a worker's gather tick, deliberately the same pair as
+        /// DW-619 / DW-834 — the statuses that SUSPEND a worker's whole gather tick (every arm of
+        /// <see cref="Tick"/>'s switch, gated once above it), deliberately the same pair as
         /// <c>MovementSystem.MOVE_BLOCKING</c> (the mirror the recorded closure asks for).
         ///
         /// <para><see cref="StatusFlags.Stunned"/> is the headline case: fully incapacitated everywhere else in the
         /// codebase (no move, no attack, no cast), it must not keep mining either.
         /// <see cref="StatusFlags.Rooted"/> is included because the GATHER cycle is a MOVEMENT loop, not a standalone
-        /// action: a rooted worker is already anchored by DW-266 and can never deliver a load, so for GATHER nodes
-        /// the flag costs it nothing but a partial carry it banks the moment the root expires. The one place it
-        /// changes real production is a Streaming node, which credits IN PLACE with no delivery leg — the only way a
-        /// held worker could still feed its faction every tick. Kept as ONE named mask so the Rooted half is a
-        /// one-token revert if a later balance story decides root is "held in place, still able to act" (the reading
-        /// <c>MovementSystem</c>'s own doc comment records) all the way down to harvesting.</para>
+        /// action: a rooted worker is already anchored by DW-266, so for a GATHER node the flag mostly costs it only a
+        /// partial carry it banks the moment the root expires.</para>
+        ///
+        /// <para><b>DW-834 — the two places "held ⇒ produces nothing" was NOT true.</b> This doc used to name a
+        /// Streaming node (credit IN PLACE, no delivery leg) as "the only way a held worker could still feed its
+        /// faction every tick", reasoning that an anchored worker can never DELIVER a load. Both halves were false,
+        /// and both are confirmed. (1) <see cref="TickMovingToBase"/>'s arrival test is PURELY POSITIONAL
+        /// (<see cref="ARRIVE_AT_BASE_SQR"/>, 3.0 world units) — a worker stunned or rooted while already standing
+        /// inside the drop-off radius needs no movement at all, so it banked its ENTIRE carry on the very next tick
+        /// (one-shot per hold: the deposit re-idles it). Reachable in play by exactly the AoE stun or root a player
+        /// lands over a drop-off. (2) <see cref="TickIdle"/> demands no movement either — a held worker beside a free
+        /// node ran <see cref="AssignToNode"/> and consumed one of that node's
+        /// <see cref="ResourceNodeStore.MaxGatherers"/> slots while anchored, taking capacity from a worker that could
+        /// have used it. Streaming is the LOUDEST case, never the only one, which is why the mask is now read at the
+        /// dispatch loop instead of inside one arm.</para>
+        ///
+        /// <para>Kept as ONE named mask so the Rooted half is a one-token revert if a later balance story decides root
+        /// is "held in place, still able to act" (the reading <c>MovementSystem</c>'s own doc comment records) all the
+        /// way down to harvesting.</para>
         /// </summary>
         private const StatusFlags GATHER_BLOCKING = StatusFlags.Stunned | StatusFlags.Rooted;
 
@@ -111,6 +138,41 @@ namespace ProjectChimera.Economy
         /// </summary>
         public const int SLOT_YIELDED = -1;
 
+        /// <summary>
+        /// DW-689 — how many CONSECUTIVE ticks a worker standing down for its rally first leg (DW-634) may fail to get
+        /// any CLOSER to its rally <see cref="EntityWorld.CommandGoal"/> before the leg is declared unwinnable, the
+        /// one-shot <see cref="EntityWorld.RallyMovePending"/> is released and the worker rejoins the ordinary
+        /// nearest-node sweep. Whole ticks, sourced from <see cref="SimulationLoop.TICKS_PER_SECOND"/> exactly like
+        /// <see cref="STREAMING_GATE_GRACE_TICKS"/> and <see cref="WALK_STALL_GRACE_TICKS"/>.
+        ///
+        /// <para>The freeze this bounds: DW-634's stand-down releases only on ARRIVAL or when the rally's own
+        /// <see cref="UnitCommand.Move"/> is superseded, and NOTHING in the simulation layer takes a rallied worker out
+        /// of Move (CombatSystem's gatherer normalization rewrites every command except Move; OrderQueueSystem skips an
+        /// empty queue; ClearWorkerBuild fires only from Build; the Move→Stop writers are presentation-side and gated
+        /// tighter than the arrival radius). A worker rallied into a <c>PathabilityGrid</c>-blocked region is
+        /// hard-stopped at the boundary by <c>MovementSystem</c>, so its arrival test can never pass and it stood in
+        /// Idle for the whole match — a silent, permanent loss of its economic function.</para>
+        ///
+        /// <para>THREE seconds, not the one second DW-80/DW-532 use, and deliberately so: those two windows yield a
+        /// node RESERVATION (cheap, self-healing, re-claimed on arrival), whereas a false positive here DISCARDS the
+        /// player's explicit rally order — the very thing DW-634 exists to protect. Three seconds of zero NET progress
+        /// toward the goal (the mark is the best distance reached, so cumulative ground counts and only a single raw
+        /// tick of improvement anywhere in the window re-arms it) cannot be produced by a worker that is genuinely
+        /// walking, including one being jostled through a crowd at the production building's door.</para>
+        ///
+        /// <para><b>DW-984 — that last claim is only true because the progress test reads an UNSATURATED distance.</b>
+        /// It was false as first shipped: the test compared <c>FixedVec3.SqrDistance</c> values, which saturate at
+        /// <see cref="Fixed.MaxValue"/> (32767.99 u² ⇒ ~181.02 units), so on any rally leg longer than 181 units EVERY
+        /// tick produced the identical clamped value, <c>&lt;</c> was never true, and a worker walking at full speed
+        /// across an ordinary 240–256-unit map burned the whole window and had its rally discarded — precisely the
+        /// DW-634 defect this bound was written not to re-introduce. A worker covers only ~12 units in the 90 ticks, so
+        /// it could not escape the clamp inside the window either. The test now runs on
+        /// <c>FixedVec3.SqrDistanceRaw</c> / the <c>long</c> <see cref="EntityWorld.RallyGoalBestSqr"/> lane, which is
+        /// bit-identical below the clamp and keeps counting above it. Any future rewrite of the progress test must
+        /// keep that property: a "which is nearer" comparison may never be built on the saturating helper.</para>
+        /// </summary>
+        public const int RALLY_STANDDOWN_GRACE_TICKS = SimulationLoop.TICKS_PER_SECOND * 3;
+
         private readonly ResourceNodeStore _nodes;
         private readonly ResourceStore     _resources;
         private readonly BuildingStore     _buildings;
@@ -149,6 +211,27 @@ namespace ProjectChimera.Economy
                 // Worker is currently walking to a build site — let MovementSystem
                 // move them and BuildingSystem handle arrival; don't touch gather state.
                 if (world.CommandState[i] == UnitCommand.Build) continue;
+
+                // DW-834 — STATUS GATE (stun / root), read ONCE for all four arms below. DW-619 placed this test
+                // inside TickGathering only, which left the invariant it claimed ("a held worker PRODUCES NOTHING",
+                // "a status can never cost it its GatherTarget") false for the other three: MovingToBase banks a whole
+                // carry from inside the drop-off radius without moving, Idle claims a fresh node reservation without
+                // moving, and MovingToResource accrues DW-532 walk-stall ticks against a worker that MovementSystem is
+                // deliberately not integrating at all (its own DW-266 anchor), i.e. it counts a stall the grid never
+                // caused. One gate above the switch is the recorded closure and is exactly equivalent to four
+                // identical early returns.
+                //
+                // PAUSE, NOT CANCEL — the same contract DW-266 gives movement. No arm runs, so nothing transitions,
+                // nothing is credited, no supply drains, no reservation is taken OR handed back, and no streak
+                // advances; the worker resumes the tick the modifier expires, from the exact state it held. Deferring
+                // a release (e.g. a node depleted under a held worker) is the correct half of that trade: the release
+                // still fires the tick the hold ends, and death/Build-interrupt release paths are outside this loop
+                // and unaffected.
+                //
+                // Read-only, one flag test, no new state. Every recorded golden leaves StatusFlagsOf at None for every
+                // entity (the same premise MovementSystem's DW-266 anchor and DW-619's gate already rest on), so this
+                // branch is never entered there and nothing folded into SimChecksum moves.
+                if ((world.StatusFlagsOf[i] & GATHER_BLOCKING) != 0) continue;
 
                 switch (world.GatherState[i])
                 {
@@ -189,14 +272,61 @@ namespace ProjectChimera.Economy
                 // ARRIVAL is the PURE-SIM goal test OrderQueueSystem uses — SqrDistance(Position, CommandGoal) against
                 // the shared ArrivalTuning radius — never EntityFlags.Moving or the presentation Move→Stop flip, both
                 // of which are presentation-written and would diverge headless-golden vs live-client.
-                bool arrived = FixedVec3.SqrDistance(world.Position[id], world.CommandGoal[id])
-                               <= ArrivalTuning.GoalArriveRadiusSqr;
+                //
+                // DW-984 — read the UNSATURATED raw accumulator, not the clamped Fixed. FixedVec3.SqrMagnitude
+                // saturates at Fixed.MaxValue = 32767.99 u², i.e. ~181.02 units of separation, so on a long rally leg
+                // (map_bounds is 120–128 on every shipped scenario ⇒ 240–256-unit spans are ordinary) the Fixed value
+                // is CONSTANT while the worker walks and the no-progress test below could never re-arm. The ARRIVAL
+                // comparison is unaffected either way and stays byte-identical: the radius is 4 u² = 262144 raw, so a
+                // clamped Fixed and an unclamped long both answer "outside" for every separation past 181 u, and below
+                // the clamp the long IS the Fixed's .Raw, bit for bit.
+                long goalSqr = FixedVec3.SqrDistanceRaw(world.Position[id], world.CommandGoal[id]);
+                bool arrived  = goalSqr <= ArrivalTuning.GoalArriveRadiusSqr.Raw;
                 // SUPERSEDED: any command state other than the rally's own Move means something else took the worker
                 // (a Stop/Idle from CombatSystem's gatherer normalization, ClearWorkerBuild's Idle after a build, a
                 // fresh player order). The rally leg is over, and gating on an arrival that may never come would park
                 // the worker in Idle forever.
-                if (world.CommandState[id] == UnitCommand.Move && !arrived) return;
+                if (world.CommandState[id] == UnitCommand.Move && !arrived)
+                {
+                    // DW-689 — THE STAND-DOWN IS BOUNDED. The escape above ("superseded") cannot fire in the SIMULATION
+                    // layer: nothing there ever takes a rallied worker out of UnitCommand.Move (see
+                    // RALLY_STANDDOWN_GRACE_TICKS for the full enumeration). So a rally point inside a
+                    // PathabilityGrid-blocked region — where MovementSystem hard-stops the worker at the blocked-cell
+                    // boundary and SqrDistance can never fall inside the arrival radius — returned here on every tick
+                    // FOREVER: FindBestNode/AssignToNode unreachable, the worker never gathering again, where pre-DW-634
+                    // it was re-targeted to the nearest node on the very next tick.
+                    //
+                    // The bound is a NO-PROGRESS test, not a timer: release only when the leg PROVABLY cannot complete.
+                    // RallyGoalBestSqr holds the CLOSEST approach so far, so cumulative ground counts (a single raw tick
+                    // of improvement anywhere in the window re-arms it) and separation jitter against a wall cannot keep
+                    // resetting the budget — a jittering worker must beat its own best, which converges. Subsumes every
+                    // stall cause at once (grid hard stop, zeroed move speed, a cleared Moving flag) with no grid probe
+                    // and no dt.
+                    //
+                    // A counter of 0 means UNARMED — the fresh-Create/Clear state, and the state a resumed save comes
+                    // back in (DW-690 persists the pending flag but not this budget) — so the window arms itself here
+                    // from the worker's REAL current distance and needs no sentinel and no Array.Fill.
+                    //
+                    // DW-984 — this comparison is the reason goalSqr is read RAW above. It is the one place in the
+                    // method that orders two SEPARATIONS against each other rather than testing one against a radius,
+                    // and that is exactly what the Fixed clamp cannot do: past ~181 units every separation is
+                    // Fixed.MaxValue, so `<` was false on every tick of a leg longer than that and the budget ran down
+                    // against a worker that was walking normally. The mark is stored raw for the same reason.
+                    if (world.RallyStandDownTicks[id] == 0 || goalSqr < world.RallyGoalBestSqr[id])
+                    {
+                        world.RallyGoalBestSqr[id]    = goalSqr; // new best (or the first mark) — restart the window
+                        world.RallyStandDownTicks[id] = 1;
+                        return;
+                    }
+                    if (++world.RallyStandDownTicks[id] < RALLY_STANDDOWN_GRACE_TICKS) return;
+                    // Budget spent: fall THROUGH to the release below and on into the unchanged nearest-node logic, so
+                    // this tick both ends the leg and re-employs the worker (no extra idle tick).
+                }
                 world.RallyMovePending[id] = false;
+                // The leg is over however it ended (arrived / superseded / DW-689 release) — disarm the budget so a
+                // later rally on this same entity starts a clean window.
+                world.RallyStandDownTicks[id] = 0;
+                world.RallyGoalBestSqr[id]    = 0L;
             }
 
             int node = FindBestNode(world.Position[id], world.FactionOf[id]);
@@ -251,15 +381,42 @@ namespace ProjectChimera.Economy
         /// <see cref="ResourceNodeStore.AssignedGatherers"/> slot back while leaving the worker en route.
         ///
         /// <para><b>The stall test.</b> The probe is the SHARED <see cref="CheckedStep.Resolve"/> the movement
-        /// integrator itself uses, applied to the seek step <c>MovementSystem</c> will take this very tick
-        /// (<c>GatheringSystem</c> runs immediately before it): direction to the node × <see cref="EntityWorld.EffectiveMoveSpeed"/>
-        /// × <paramref name="dt"/>. A result equal to the CURRENT position <b>on a step that has LENGTH</b> is the
-        /// helper's HARD STOP — the full step and both wall-slide axes were all rejected — which is the only outcome
-        /// that makes the leg unwinnable. It is deliberately CONSERVATIVE: the sweep rejects at the first foreign
-        /// blocked cell, so a step that is hard-stopped at this length is hard-stopped at every length in that
-        /// direction, and the arrive-slowdown / separation terms this probe omits can only make the real step SHORTER.
-        /// A worker still shuffling inside its own blocked cell (permitted by DW-148's confinement) is therefore
-        /// correctly seen as making ground until it is pinned against the cell boundary.</para>
+        /// integrator itself uses, applied to a FULL-SPEED, separation-free seek step toward the node: direction to the
+        /// node × <see cref="EntityWorld.EffectiveMoveSpeed"/> × <paramref name="dt"/>. A result equal to the CURRENT
+        /// position <b>on a step that has LENGTH</b> is the helper REFUSING it: neither the full step nor any surviving
+        /// wall-slide axis displaced the mover at all (for an axis-aligned step the "surviving" perpendicular slide is
+        /// itself zero-length, which is why the test is on the RESULT, not on which branch produced it).</para>
+        ///
+        /// <para><b>DW-805 — what this probe is NOT.</b> It is not the step <c>MovementSystem</c> integrates, and the
+        /// two claims that used to be written here as a conservatism argument are both FALSE — recorded so a
+        /// maintainer widening the probe does not reason from them:
+        /// <list type="number">
+        ///   <item>"A step hard-stopped at this length is hard-stopped at every length in that direction" runs the
+        ///         WRONG WAY. <c>PathabilityGrid</c>'s sweep rejects at the FIRST foreign blocked cell, so a SHORTER
+        ///         step is a strict PREFIX of this one and can resolve CLEAR exactly where the full-speed step hard
+        ///         stops. Confirmed directly against <see cref="CheckedStep"/>: from a position 1.0 unit short of a
+        ///         blocked band, a 1.5-unit +X step returns the origin while a 0.5-unit +X step resolves clear.</item>
+        ///   <item>"The arrive-slowdown / separation terms this probe omits can only make the real step SHORTER" is
+        ///         false for SEPARATION, which is an ADDED VECTOR (<c>MovementSystem</c>'s neighbour push) — it
+        ///         changes the step's DIRECTION, not just its length, and it is the entire velocity whenever the seek
+        ///         term is damped toward zero. Both terms are live here: <see cref="AssignToNode"/> sets MoveTarget to
+        ///         the node, and this method only runs while <c>sqr &gt; ARRIVE_AT_NODE_SQR</c> (dist &gt; 1.8), so the
+        ///         whole 1.8-to-4.0 band sits inside <c>MovementSystem.SLOW_RADIUS</c>'s damping.</item>
+        /// </list>
+        /// Also unmodelled, each of which makes a worker unable to advance for a reason that is NOT the grid:
+        /// <c>MovementSystem</c>'s DW-266 status anchor and the <c>HoldPosition</c> anchor (both skip integration
+        /// entirely), and DW-938's <c>Phased</c> builder. The status half no longer reaches this method — DW-834's gate
+        /// above <see cref="Tick"/>'s switch skips the whole arm for a held worker — but Hold and Phased still do.</para>
+        ///
+        /// <para><b>Why the write is still safe.</b> The safety is NOT "the probe can only under-report"; it is that a
+        /// single stall tick decides nothing. The streak must run <see cref="WALK_STALL_GRACE_TICKS"/> CONSECUTIVE
+        /// ticks and ANY tick of progress resets it to 0, so a probe that reads a damped or deflected worker as stalled
+        /// self-corrects the moment it closes on the true hard stop; two attempts to produce a false YIELD from the
+        /// damping/separation terms alone both failed. And the consequence of a false positive is bounded by design:
+        /// the worker keeps its <see cref="EntityWorld.GatherTarget"/>, keeps walking, and RE-CLAIMS a slot on arrival
+        /// (<see cref="TickMovingToResource"/>) — it loses a reservation, never its assignment. A worker still shuffling
+        /// inside its own blocked cell (permitted by DW-148's confinement) reads as making ground until it is pinned
+        /// against the cell boundary.</para>
         ///
         /// <para><b>DW-803 — the length qualifier is load-bearing.</b> <see cref="CheckedStep.Resolve"/> returns the
         /// ORIGIN both when the mover may not move and when it never asked to, so a ZERO-LENGTH probe reads as a hard
@@ -324,17 +481,10 @@ namespace ProjectChimera.Economy
 
         private void TickGathering(EntityWorld world, int id, Fixed dt)
         {
-            // DW-619 — STATUS GATE (stun / root). The worker takes NO gather action this tick: no node supply drain,
-            // no CarryAmount accrual, no Streaming credit-in-place, no depletion, no DW-80 closed-gate streak and no
-            // state transition. Placed at the very top for the same reason DW-266's gate sits at the top of
-            // MovementSystem's per-entity loop body — the status is a PAUSE, not a cancel, so the worker resumes
-            // EXACTLY where it stood (same node, same reservation, same carry) the tick the modifier expires, and a
-            // status can never cost it its GatherTarget. Holding the reservation while held is correct: the worker is
-            // still parked at the node, and every release path (death, Build interrupt, depletion) still fires.
-            // Read-only — one flag test, no new state. Every recorded golden leaves StatusFlagsOf at None for every
-            // entity, so this branch is never entered there and nothing folded into SimChecksum moves.
-            if ((world.StatusFlagsOf[id] & GATHER_BLOCKING) != 0) return;
-
+            // DW-619's stun/root gate used to sit HERE. DW-834 hoisted it to the Tick dispatch loop, where it covers
+            // this arm and the three it was silently missing; this method is unreachable for a GATHER_BLOCKING worker.
+            // No node supply drain, no CarryAmount accrual, no Streaming credit-in-place, no depletion, no DW-80
+            // closed-gate streak and no state transition happen while held — same behaviour, four arms instead of one.
             int node = world.GatherTarget[id];
 
             if (node < 0 || !_nodes.Active[node])
@@ -620,11 +770,24 @@ namespace ProjectChimera.Economy
         /// Find the nearest active, non-Income node that isn't over capacity and (Story 4.7) whose
         /// requires_structure gate — if any — is open for <paramref name="faction"/>.
         /// Returns -1 if no suitable node exists.
+        ///
+        /// <para><b>DW-984 — why the seed is a <c>long</c> and the compare reads <c>SqrDistanceRaw</c>.</b> This is a
+        /// STRICT-NEAREST scan seeded at the maximum, i.e. the second shape in this file that ORDERS two separations
+        /// rather than testing one against a radius, and it had the same saturation hole. <c>SqrDistance</c> clamps at
+        /// <see cref="Fixed.MaxValue"/> (~181.02 units), and the seed WAS <c>Fixed.MaxValue</c> — so when every
+        /// eligible node sat past 181 units, each candidate's <c>sqr</c> equalled the seed, the strict <c>&lt;</c> was
+        /// false for ALL of them, and this returned -1 as though no node existed. <c>TickIdle</c> reads that as "no
+        /// nodes available — stay Idle", so EVERY worker in a base whose near nodes have depleted or filled up
+        /// (<c>Active</c>/<c>MaxGatherers</c> are exactly the filters that leave only distant candidates) stopped
+        /// gathering permanently instead of walking to the far mine. Ordinary late-game state on a 240–256-unit map.
+        /// The raw accumulator never clamps, and <c>long.MaxValue</c> is unreachable by any real separation (a
+        /// full-diagonal 512-unit span is ~1.7e10), so the strict-nearest + ascending-id tie-break is unchanged and
+        /// every already-working case is bit-identical.</para>
         /// </summary>
         private int FindBestNode(FixedVec3 pos, Faction faction)
         {
-            int   bestNode    = -1;
-            Fixed bestSqrDist = Fixed.MaxValue;
+            int  bestNode    = -1;
+            long bestSqrDist = long.MaxValue;
 
             for (int n = 0; n < _nodes.Count; n++)
             {
@@ -633,7 +796,7 @@ namespace ProjectChimera.Economy
                 if (_nodes.AssignedGatherers[n] >= _nodes.MaxGatherers[n]) continue;
                 if (!StructureGateOpen(n, faction)) continue;
 
-                Fixed sqr = FixedVec3.SqrDistance(pos, _nodes.Position[n]);
+                long sqr = FixedVec3.SqrDistanceRaw(pos, _nodes.Position[n]);
                 if (sqr < bestSqrDist)
                 {
                     bestSqrDist = sqr;

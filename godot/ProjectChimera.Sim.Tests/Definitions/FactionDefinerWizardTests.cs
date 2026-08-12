@@ -20,6 +20,21 @@ namespace ProjectChimera.Sim.Tests.Definitions
     /// </summary>
     public class FactionDefinerWizardTests
     {
+        /// <summary>
+        /// DW-823 — the LIVE building-hp rejection, spelled exactly as <c>UnitDefinitionValidator</c>'s shared
+        /// <c>CheckStatPositive</c> emits it for a building. This constant replaced the hand-typed
+        /// <c>"building 'barracks'.hp: must be a positive value."</c>, which was
+        /// <c>BuildingDefinitionValidator</c>'s OWN branch until DW-527 deleted it in favour of the shared unit gate:
+        /// the row stayed green while asserting the routing of a message NOTHING PRODUCES — precisely the DW-505
+        /// shape. It is a named constant rather than an inline literal so
+        /// <see cref="BuildingHpRejection_IsTheMessageTheValidatorActuallyEmits"/> can pin it against the real
+        /// validator; that pairing is what stops it rotting a second time.
+        /// </summary>
+        private const string BuildingHpZeroMessage =
+            "building 'barracks'.hp: =0 must be finite and in (0, 32768) — 0 is a zero health ceiling rather than a "
+            + "frail unit — the entity spawns already at 0 HP, can never be healed (Health is clamped into "
+            + "[0, EffectiveMaxHealth]) and dies to the first point of damage.";
+
         // ── ScanPresets ──────────────────────────────────────────────────────────────────────────────────────
 
         [Fact]
@@ -125,7 +140,9 @@ namespace ProjectChimera.Sim.Tests.Definitions
         // before sniffing the kind label, so no future faction-level producer can silently re-open the mis-route.
         [InlineData("mesh_path", "faction 'x'.mesh_path: unit 'grunt' is missing mesh_path (required for a complete/playable faction).", FactionDefinerStep.Roster)]
         [InlineData("mesh_path", "faction 'x'.mesh_path: building 'barracks' is missing mesh_path (required for a complete/playable faction).", FactionDefinerStep.BuildingsTech)]
-        [InlineData("hp", "building 'barracks'.hp: must be a positive value.", FactionDefinerStep.BuildingsTech)]
+        // DW-823: re-pointed at the live shared-unit-gate message (see BuildingHpZeroMessage) — the string this row
+        // used to carry was BuildingDefinitionValidator's own branch, deleted by DW-527.
+        [InlineData("hp", BuildingHpZeroMessage, FactionDefinerStep.BuildingsTech)]
         // DW-106 / DW-114: a hero is a roster unit → Roster; a signature effect id is a faction-config default → AI Preset.
         [InlineData("hero_unit_id", "faction 'x'.hero_unit_id: names unit 'ghost' which is not in this faction's roster.", FactionDefinerStep.Roster)]
         [InlineData("signature_mechanic_effect_id", "faction 'x'.signature_mechanic_effect_id: 'no_such_effect' does not resolve to any loaded ability.", FactionDefinerStep.AiPreset)]
@@ -138,10 +155,41 @@ namespace ProjectChimera.Sim.Tests.Definitions
         [InlineData("signature_mechanic", "faction 'x'.signature_mechanic: must be authored.", FactionDefinerStep.AiPreset)]
         [InlineData("signature_mechanic_display", "faction 'x'.signature_mechanic_display: must be authored.", FactionDefinerStep.AiPreset)]
         [InlineData("raw_json", "could not parse JSON: '{' is an invalid start of a property name.", FactionDefinerStep.NameColor)]
+        // DW-735/DW-776: the last field path still riding the sniff-default. "faction is null." names the whole draft,
+        // not a control, so it lands with raw_json on Name & Color — never on Buildings & Tech, which has no UI for it.
+        [InlineData("faction", "faction is null.", FactionDefinerStep.NameColor)]
         public void StepForError_MapsFieldPathAndMessageKindLabel_ToExpectedStep(
             string fieldPath, string message, FactionDefinerStep expected)
         {
             Assert.Equal(expected, FactionDefinerWizardCore.StepForError(fieldPath, message));
+        }
+
+        // ── DW-735/DW-776: the `faction` path, re-derived from BOTH live producers ────────────────────────────
+
+        [Fact]
+        public void NullDraft_RoutesToNameColor_FromEveryLiveProducerOfTheFactionPath()
+        {
+            // The regression: StepForError had no `faction` case, so a null-draft error fell through to the
+            // Buildings & Tech sniff-default — a step with no control for "there is no faction at all". Both
+            // producers are driven for real here (never a hand-typed message) so the assertion cannot go stale if
+            // either guard's wording changes; the routing contract is what is pinned.
+
+            // Producer 1 — FactionDefinerWizardCore.TryFinish's own null-def guard.
+            FactionDefinerFinishResult finish = FactionDefinerWizardCore.TryFinish(null!, Path.GetTempPath());
+            Assert.False(finish.Ok);
+            (string FieldPath, string Message) finishError = Assert.Single(finish.Errors);
+            Assert.Equal("faction", finishError.FieldPath);
+            Assert.Equal(FactionDefinerStep.NameColor, finish.Step);
+            Assert.Equal(FactionDefinerStep.NameColor,
+                FactionDefinerWizardCore.StepForError(finishError.FieldPath, finishError.Message));
+
+            // Producer 2 — FactionValidator.Validate's null-def guard (the LoadFromFile path).
+            FactionValidationResult validation = FactionValidator.Validate(null!);
+            Assert.False(validation.Ok);
+            (string FieldPath, string Message) validatorError =
+                Assert.Single(validation.Errors, e => e.FieldPath == "faction");
+            Assert.Equal(FactionDefinerStep.NameColor,
+                FactionDefinerWizardCore.StepForError(validatorError.FieldPath, validatorError.Message));
         }
 
         [Fact]
@@ -174,6 +222,33 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Equal(FactionDefinerStep.BuildingsTech, FactionDefinerWizardCore.StepForError("mesh_path", ""));
             Assert.Equal(FactionDefinerStep.BuildingsTech, FactionDefinerWizardCore.StepForError("mesh_path", "faction 'x"));
             Assert.Equal(FactionDefinerStep.BuildingsTech, FactionDefinerWizardCore.StepForError("mesh_path", "faction 'x'.mesh_path"));
+        }
+
+        // ── DW-823: the building-hp message re-derived from the LIVE validator, never a hand-typed string ──────
+
+        [Fact]
+        public void BuildingHpRejection_IsTheMessageTheValidatorActuallyEmits()
+        {
+            // The regression this pins: the theory row above asserted the routing of
+            // "building 'barracks'.hp: must be a positive value." long after DW-527 deleted the branch that emitted
+            // it, so it was green while testing a dead string — the DW-505 shape, one field over. Taking the message
+            // straight off BuildingDefinitionValidator makes the row impossible to keep green against a message the
+            // validator does not produce.
+            var barracks = new BuildingDefinition
+            {
+                Id = "barracks", DisplayName = "Barracks", Category = "Structure",
+                Hp = 0f,                        // the rejection under test (authored, so HpAuthored is set)
+                ConstructionTime = 30f, SupplyBonus = 0, ProducesCategory = "None",
+            };
+
+            BuildingValidationResult result = BuildingDefinitionValidator.Validate(barracks);
+
+            (string FieldPath, string Message) error = Assert.Single(result.Errors, e => e.FieldPath == "hp");
+            Assert.Equal(BuildingHpZeroMessage, error.Message);
+
+            // …and that live message routes where the theory row says it does — the assertion the row exists for.
+            Assert.Equal(FactionDefinerStep.BuildingsTech,
+                FactionDefinerWizardCore.StepForError(error.FieldPath, error.Message));
         }
 
         // ── DW-505: the mesh_path kind label re-derived from the LIVE validator, never a hand-typed string ─────

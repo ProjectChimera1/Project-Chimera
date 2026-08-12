@@ -42,7 +42,7 @@ namespace ProjectChimera.Core.Bootstrap
             };
             unitIds.CopyTo(context.UnitIds);
 
-            // Story 8.2: pass the availability evaluator + secret store so the panel drives its four-state AI status
+            // Story 8.2: pass the availability evaluator + secret store so the panel drives its AI-availability status
             // line (Generate disabled when unavailable; the surrounding editor always stays usable).
             _ctx.MapGenPanel.Initialize(_ctx.GameState, _ctx.LlmService, context,
                 _ctx.AiEvaluator, _ctx.SecretStore);

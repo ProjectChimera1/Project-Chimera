@@ -60,6 +60,27 @@ namespace ProjectChimera.Core.Definitions
     /// same <see cref="StatusPolarity"/> partition the Story-11.5 buff/debuff icon classifier reads, so the tooltip
     /// that paints a status red and the validator that warns about it can never disagree.</para>
     ///
+    /// <para><b>2026-08-12 authoring-guard sweep.</b> Five more ledger entries land here, each closing a hole in one of
+    /// the two channels above rather than opening a third:
+    /// <list type="bullet">
+    /// <item><b>DW-562 (FATAL, id):</b> the id gate was a bare non-empty test, so the ability editor was the one
+    ///   authoring surface DW-454's filename-safe convention never reached — <c>SanitizeId("con") == "con"</c>, and an
+    ///   ability id of <c>con</c>/<c>nul</c>/<c>com1</c> names a Win32 device as a file basename. Both halves are now
+    ///   REFERENCED from <see cref="UnitDefinitionValidator"/> (charset fixed-point + reserved basename), so the item,
+    ///   unit, building and ability gates share one convention instead of four copies.</item>
+    /// <item><b>DW-746 (FATAL, period_count):</b> an authored <c>period_count</c> above
+    ///   <see cref="EffectCaps.MaxPersistentPeriods"/> was silently clamped at install — the runtime clamp is now
+    ///   unreachable for validated content.</item>
+    /// <item><b>DW-888 (FATAL, period-leaf magnitude):</b> the DW-488 posture applied to the OTHER unbounded authored
+    ///   magnitude — a period leaf's <c>amount</c>/<c>delta</c>, which a <c>periodic_stack_mode: Multiply</c> pulse
+    ///   multiplies by up to <c>EffectCaps.MaxPeriodicStackScale</c> through a non-saturating <c>Fixed</c> multiply
+    ///   (see <see cref="EffectBounds.CheckPeriodicPulseMagnitude"/>). A wrap flips the pulse's SIGN, so a scaled DoT
+    ///   would heal — closed on the authoring side because the leaf cannot recover it.</item>
+    /// <item><b>DW-855 + DW-892 (WARNINGS):</b> two more members of the validated-but-inert class the DW-278 channel
+    ///   exists for — an all-zero modifier descriptor, and a <c>teleport</c> that can never reach a destination (or
+    ///   whose <c>require_tag</c> can never pass) under its ability's targeting.</item>
+    /// </list></para>
+    ///
     /// AR-13 ("a random effect requires SimRng") is OWNED here and discharged by RESERVATION: the 2.1 vocabulary has
     /// no random leaf, so a random kind is unauthorable today (rejected as unknown by the converter); the mature
     /// accept-if-present / reject-if-absent enforcement lands with the story that first adds a random leaf.
@@ -81,6 +102,30 @@ namespace ProjectChimera.Core.Definitions
             // ── (a) Identity + targeting ──
             if (string.IsNullOrEmpty(id))
                 return AbilityValidationResult.Fail("ability.id is null or empty.");
+            // DW-562: the ability id is used VERBATIM as the file basename (`<id>.json`), exactly like a unit / item /
+            // building id — but the gate here was only a non-empty test, so the ability editor was the ONE authoring
+            // surface DW-454's resolution never reached. Both halves of the SHARED filename-safe convention are
+            // enforced from UnitDefinitionValidator (never hand-copied — the DW-125 lesson), so the four surfaces can
+            // never drift: the charset FIXED-POINT (SanitizeId(id) == id) and then the Win32 reserved-device basename
+            // (`con`/`nul`/`com1`…), which every one of those names passes the charset gate to reach.
+            // Ordered, not combined — this validator's contract is ONE located error, so the charset rule returns first
+            // and a non-sanitized id is never also reported as a device name (the unit gate's `else if`, spelled as an
+            // early return because that is this validator's reject idiom).
+            if (UnitDefinitionValidator.SanitizeId(id) != id)
+                return Fail(id, "id", "contains characters outside [a-z0-9_]; rename before saving.");
+            // DW-695 arrived at the same arm independently and supplies its WORDING. DW-454 wired IsReservedDeviceName
+            // into the item sim gate, the item editor gate and the unit/building gate, and DW-528 added the
+            // filename-level companion for the faction wizard — the ability editor was covered by none of them, and
+            // here the case is strictly WORSE than the wizard's: AbilityEditorPanel writes `{SanitizeId(def.Id)}.json`,
+            // so there is no `_faction`-style suffix decorating the basename. The reserved word IS the whole basename
+            // before the first dot. Homed on the SIM validator (not just the panel) so both the editor Save gate —
+            // which is validate-gated and inherits this for free — and the content-load path reject it, mirroring
+            // exactly how the item rule is split. Per DW-694 the cost is PORTABILITY of a shared artifact, not a local
+            // write failure (the old hand-written sentence here promised a filesystem rejection that does NOT
+            // reproduce on this project's Windows build); the sentence is now single-sourced from the same helper as
+            // the other three gates so all four cannot drift.
+            if (UnitDefinitionValidator.IsReservedDeviceName(id))
+                return Fail(id, "id", UnitDefinitionValidator.ReservedDeviceNameMessage(id));
             if (def.ParsedTargeting is null)
                 return Fail(id, "targeting",
                     $"'{def.Targeting}' is not a known targeting type (None|Self|TargetUnit|GroundPoint).");
@@ -184,7 +229,22 @@ namespace ProjectChimera.Core.Definitions
                 Warn(warnings, id, "effect",
                     "a GroundPoint ability resolves at the clicked point only through a point-aware node — a SearchArea (which centres on the point), a teleport (which blinks the caster to it), or a presentation cue (which fires at it); its effect root reads the absent primary target, so a bare damage/heal/modifier leaf will no-op. Wrap the effect in a SearchArea.");
 
-            string? walkError = WalkGraph(id, root, warnings, periodShapeErrors);
+            // DW-892: the two cast-context facts a Teleport leaf's inertness depends on, resolved ONCE here (the walk
+            // sees only the graph). Both read the SAME rules AbilityCastSystem.TryCast applies when it builds the
+            // EffectContext, so the lint cannot disagree with the runtime it describes:
+            //   • Self/None targeting ⇒ `target = id`, i.e. PrimaryTargetId IS the caster — a teleport has neither a
+            //     ground point nor a non-caster target, so it no-ops. The on_hit RIDER is the exception and is excluded:
+            //     CombatSystem.RunOnHit runs it with the STRUCK unit as the primary target, so a teleport there is a
+            //     working charge. (aura/while_alive drivers do pass the owner as its own primary target, but their root
+            //     shapes are hard-gated by ValidatePassiveShape, and a rejected graph publishes no warnings anyway.)
+            //   • GroundPoint targeting ⇒ `target = -1` deliberately, so the executor's leaf TagGate — which needs a
+            //     LIVE primary target — can never pass for a require_tag'd leaf.
+            bool casterIsOwnPrimaryTarget = def.ParsedTargeting is AbilityTargeting.Self or AbilityTargeting.None
+                                            && activation != PassiveActivation.OnHit;
+            bool groundCastHasNoPrimaryTarget = def.ParsedTargeting == AbilityTargeting.GroundPoint;
+
+            string? walkError = WalkGraph(id, root, warnings, periodShapeErrors,
+                                          casterIsOwnPrimaryTarget, groundCastHasNoPrimaryTarget);
             if (walkError is not null)
                 return AbilityValidationResult.Fail(walkError);
 
@@ -231,9 +291,17 @@ namespace ProjectChimera.Core.Definitions
         /// <see cref="WalkFrame.FriendlyOnlySearch"/>) so an ApplyModifier leaf knows whose side its grant lands on —
         /// the one piece of context no single descriptor can see, and the reason the self-stunning aura was
         /// unauthorable-to-catch before.</para>
+        /// <para>DW-888: every node reached inside a PERIOD subtree is additionally run through
+        /// <see cref="EffectBounds.CheckPeriodicPulseMagnitude"/> — a FATAL bound on a period leaf's magnitude, because
+        /// a <c>periodic_stack_mode: Multiply</c> pulse multiplies it by up to <c>EffectCaps.MaxPeriodicStackScale</c>
+        /// and <c>Fixed</c> multiply does not saturate.</para>
+        /// <para>DW-892: <paramref name="casterIsOwnPrimaryTarget"/> / <paramref name="groundCastHasNoPrimaryTarget"/>
+        /// carry the ability-level cast context a <c>TeleportEffect</c> leaf's inertness depends on (see the call site);
+        /// they are the ability's targeting/activation, which no node in the graph can see.</para>
         /// </summary>
         private static string? WalkGraph(string id, EffectNode root, List<(string FieldPath, string Message)> warnings,
-                                         List<string> periodShapeErrors)
+                                         List<string> periodShapeErrors,
+                                         bool casterIsOwnPrimaryTarget, bool groundCastHasNoPrimaryTarget)
         {
             var stack = new Stack<WalkFrame>();
             stack.Push(new WalkFrame(root, "effect", searchAreaDepth: 0, inPersistentPhase: false, inPersistentPeriod: false,
@@ -248,6 +316,18 @@ namespace ProjectChimera.Core.Definitions
                 if (total > EffectCaps.MaxTotalEffectNodes)
                     return Located(id, "effect",
                         $"effect graph node count exceeds MaxTotalEffectNodes={EffectCaps.MaxTotalEffectNodes}.");
+
+                // DW-888: inside a period subtree — the ONLY place EffectContext.PulseScale is ever > 1 — a leaf's
+                // magnitude is multiplied by up to EffectCaps.MaxPeriodicStackScale, and Fixed multiply wraps rather
+                // than saturates. Fail-closed on the authoring side (the DW-488 posture), because the wrap flips the
+                // SIGN of a pulse: a Multiply DoT would heal its victim. Checked here rather than per-leaf-case so it
+                // covers all three magnitude-carrying leaves at any depth under the period.
+                if (f.InPersistentPeriod)
+                {
+                    (string Field, string Reason)? overMagnitude = EffectBounds.CheckPeriodicPulseMagnitude(f.Node);
+                    if (overMagnitude is not null)
+                        return Located(id, $"{f.Path}.{overMagnitude.Value.Field}", overMagnitude.Value.Reason);
+                }
 
                 switch (f.Node)
                 {
@@ -353,7 +433,28 @@ namespace ProjectChimera.Core.Definitions
                                 "a shake_screen leaf carries no shake spec (feedback.shake is null), so no screen shake occurs — author feedback.shake, or remove the leaf.");
                         break;
 
-                    // DirectHpDelta / Heal / Damage / Teleport / PlayVfx — counted leaves with no children.
+                    // DW-892 — the two TELEPORT configurations that spend a cast's cost + cooldown for nothing. Same
+                    // non-fatal channel as the 15.13 presentation-cue lints above, and for the same reason: both are
+                    // authorable, both LOAD and RUN, and both silently do nothing.
+                    //
+                    // Both are gated on "the leaf resolves against the ability's own cast context", i.e. NO SearchArea
+                    // ancestor (a search re-centres the context on each match via EffectContext.WithTarget, so the
+                    // primary target below it is a matched unit, not the caster / not −1) and NOT inside a Persistent
+                    // or Modifier phase (ModifierStore runs those against the instance's HOST, which need not be the
+                    // caster). Narrow on purpose — the warning channel is only worth having while it stays signal.
+                    case TeleportEffect tp:
+                    {
+                        bool resolvesAgainstTheCastContext = f.SearchAreaDepth == 0 && !f.InPersistentPhase;
+                        if (resolvesAgainstTheCastContext && casterIsOwnPrimaryTarget)
+                            Warn(warnings, id, f.Path,
+                                "a teleport has no destination on a Self/None-targeted ability — it blinks the caster to the clicked ground point (GroundPoint targeting) or to a live non-caster target (TargetUnit targeting), and here the primary target IS the caster, so the leaf no-ops while the cast still spends its cost and cooldown. Use targeting GroundPoint or TargetUnit, or remove the leaf.");
+                        else if (resolvesAgainstTheCastContext && groundCastHasNoPrimaryTarget && tp.RequireTag != UnitTag.None)
+                            Warn(warnings, id, f.Path,
+                                $"require_tag '{tp.RequireTag}' can never pass on a GroundPoint ability — a ground cast deliberately leaves the primary target at -1 (there is no entity to tag-test), so the executor's leaf gate fails and the teleport never runs. Drop require_tag, or wrap the teleport in a SearchArea whose require_tag selects the unit.");
+                        break;
+                    }
+
+                    // DirectHpDelta / Heal / Damage / PlayVfx — counted leaves with no children.
                     default:
                         break;
                 }
@@ -387,6 +488,9 @@ namespace ProjectChimera.Core.Definitions
         /// <item>a STACKING periodic modifier — the stat deltas scale per stack (<c>Apply</c> re-adds them) but the
         ///   period fires ONCE per boundary regardless of <c>_stackCount</c>, so a "stacking DoT" does not scale its
         ///   damage. The non-scaling-stacked-DoT footgun.</item>
+        /// <item>(DW-855) an ALL-ZERO descriptor — <see cref="Modifier.HasNoEffect"/> — which can only ever hold a ring
+        ///   slot and do nothing with it. Warned, not rejected: a zero-stat instance is still observable as a buff-bar
+        ///   row and is a legitimate MARKER for a later <c>RemoveByModifierId</c>.</item>
         /// </list>
         /// (The 2.2b &gt;256-pulse truncation is NOT warned about — DW-271 fixed it in <c>ModifierStore.Advance</c>,
         /// which now re-arms a still-active modifier's pulse budget, so a long periodic modifier is no longer inert.)
@@ -396,6 +500,20 @@ namespace ProjectChimera.Core.Definitions
                                                        List<string> periodShapeErrors)
         {
             string modPath = $"{path}.modifier";
+
+            // DW-855 — the descriptor-level twin of the DW-678 minted-modifier skip: a grant with all four stat deltas
+            // zero, status None and no period_effect cannot change ANY observable state, yet it still consumes one of
+            // the EffectCaps.MaxModifiersPerEntity slots in its host's ring for the whole of its duration. DW-678
+            // closed the MINTED (research) path; this is the hand-authorable one, which stayed silent.
+            // The predicate is Modifier.HasNoEffect() itself — NOT a re-statement of it — so the validator and the
+            // runtime skip can never disagree about what "inert" means.
+            // NON-FATAL (the DW-278 channel), deliberately: a zero-stat instance is observable through channels this
+            // predicate cannot see — the Story 11.5 buff bar renders one row per installed instance, and an ability may
+            // install a marker purely so a later RemoveByModifierId has something to find. Rejecting would break that.
+            if (mod.HasNoEffect())
+                Warn(warnings, id, modPath,
+                    "the modifier changes nothing — all four stat deltas are 0, status is None and there is no period_effect — so installing it only consumes one of the target's " +
+                    $"{EffectCaps.MaxModifiersPerEntity} modifier slots. Give it a stat delta, a status or a period_effect, or remove the apply_modifier leaf.");
 
             if (mod.DurationTicks == 0)
                 Warn(warnings, id, $"{modPath}.duration_ticks",
@@ -450,6 +568,10 @@ namespace ProjectChimera.Core.Definitions
         /// <item>a <c>period_effect</c> with <c>period_ticks &lt;= 0</c> — <c>HasPeriod</c> false ⇒ never pulses, and a
         ///   period-only persistent is then expired on its first <c>Advance</c>. A while_alive passive has always been
         ///   rejected for this; an active-ability Persistent now is too, so the rule no longer depends on activation.</item>
+        /// <item>(DW-746) a <c>period_effect</c> with <c>period_count</c> above
+        ///   <see cref="EffectCaps.MaxPersistentPeriods"/> — <c>ModifierStore.InstallPersistent</c> silently CLAMPS it,
+        ///   so the ability quietly behaves as 256 pulses however large the authored number. Rejecting makes the clamp
+        ///   unreachable for validated content instead of silent (the DW-227 fail-silent class).</item>
         /// </list>
         /// <para><b>DW-278 — non-fatal (appended to <paramref name="warnings"/>):</b></para>
         /// <list type="bullet">
@@ -480,6 +602,19 @@ namespace ProjectChimera.Core.Definitions
             if (hasPeriodEffect && p.PeriodCount <= 0 && !p.Lifelong)
                 Warn(warnings, id, $"{path}.period_count",
                     $"the persistent effect declares a period_effect but period_count={p.PeriodCount} (must be > 0), so it expires before its first pulse.");
+            // DW-746 — the MISSING upper bound, the same silent-data-loss class DW-227 fixed for DamageTable. The
+            // converter reads period_count raw with no range check and ModifierStore.InstallPersistent then CLAMPS it
+            // to EffectCaps.MaxPersistentPeriods, so an authored 100000 loaded clean, validated clean, and quietly
+            // behaved as 256 — the creator got no diagnostic at all. FATAL (the DW-504 deferred channel, so the
+            // while_alive activation-specific messages still report first), which makes the runtime clamp UNREACHABLE
+            // for validated content rather than silent. Referenced from the runtime constant, never hand-copied, so the
+            // gate and the clamp cannot drift. `>` not `>=`: the cap itself is authorable and IS shipped
+            // (furnace_pour/furnace_trickle both declare period_count 256).
+            if (hasPeriodEffect && p.PeriodCount > EffectCaps.MaxPersistentPeriods)
+                Reject(periodShapeErrors, id, $"{path}.period_count",
+                    $"period_count={p.PeriodCount} exceeds MaxPersistentPeriods={EffectCaps.MaxPersistentPeriods} — " +
+                    "ModifierStore.InstallPersistent would silently clamp it, so the ability would not do what it says. " +
+                    $"Set period_count to at most {EffectCaps.MaxPersistentPeriods}, or use lifelong to keep pulsing past the schedule window.");
             if (!hasPeriodEffect && p.Lifelong)
                 Warn(warnings, id, $"{path}.lifelong",
                     "lifelong is ignored — it re-arms the periodic pulse and this persistent effect declares no period_effect.");

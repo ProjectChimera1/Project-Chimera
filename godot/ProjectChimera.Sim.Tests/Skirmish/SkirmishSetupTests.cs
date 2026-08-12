@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using ProjectChimera.AI;                    // AiDifficulty
+using ProjectChimera.Core;                   // DW-740: Faction, AllianceStore, AllianceSeeder (the sim-side alliance mask)
 using ProjectChimera.Core.Bootstrap;         // ISetupPhase, ScenePhaseRunner, ScenePhaseOrder
 using ProjectChimera.Core.Definitions;       // ScenarioData, ScenarioPlayerSlot, ScenarioSerializer, FactionDefinition, UnitTagValidator, FactionValidator
 using ProjectChimera.Core.Skirmish;          // SkirmishSetup, SetupSlot, SlotKind, MapEntry, FactionEntry, SkirmishCatalog, SkirmishSetupValidator, SkirmishSetupToScenario
@@ -211,6 +212,63 @@ namespace ProjectChimera.Sim.Tests.Skirmish
             SkirmishSetup s = Setup("m1", Slot(0, SlotKind.Human, "alpha", team: humanTeam),
                                           Slot(1, SlotKind.Ai, "beta", team: aiTeam));
             Assert.DoesNotContain(v.Validate(s, Map(2), Factions("alpha", "beta")), e => e.Contains("Opposing sides"));
+        }
+
+        // ── DW-740: the lobby team assignment must survive the transform INTO the sim alliance mask ──────────
+
+        /// <summary>
+        /// DW-740 — the end-to-end link the ai-alliance-awareness bundle (DW-439/DW-445) never verified: a skirmish
+        /// LOBBY that puts an AI on the human's team must actually reach <see cref="AllianceSeeder.Seed"/> with the
+        /// right per-slot Team ordinals. If <see cref="SkirmishSetupToScenario.Build"/> dropped or mis-keyed
+        /// <c>SetupSlot.Team</c>, every skirmish slot would keep the FFA default (<c>TeamId[f]==f</c>), the new
+        /// IsHostile path would never engage, and teamed-AI skirmish would silently behave exactly as it did before
+        /// the fix — while the ledger read closed. The sim-side seeding rules have their own oracles
+        /// (<c>AllianceSeederTests</c>); what is pinned HERE is the lobby→scenario→mask handoff, on the shape the
+        /// entry names: a 3-slot lobby with the human and one AI on team 1 and a second AI on team 2.
+        /// </summary>
+        [Fact]
+        public void Build_ThenSeed_AlliesTheTeamedAiWithItsHumanTeammate_AndNotTheOpposingAi()
+        {
+            SkirmishSetup s = Setup("m1", Slot(0, SlotKind.Human, "alpha", team: 1),
+                                          Slot(1, SlotKind.Ai,    "beta",  team: 1),
+                                          Slot(2, SlotKind.Ai,    "gamma", team: 2));
+            ScenarioData built = SkirmishSetupToScenario.Build(s, BaseMap(3), Factions("alpha", "beta", "gamma"));
+
+            // The transform carried each lobby ordinal onto its contiguous scenario slot (the seeder's only input).
+            Assert.Equal(new[] { 1, 1, 2 }, built.PlayerSlots.Select(p => p.Team).ToArray());
+
+            var alliances = new AllianceStore();
+            AllianceSeeder.Seed(alliances, built);
+
+            // Team 1 = {Player1, Player2} → canonical id 1 (the lowest member faction slot); team 2 = {Player3}.
+            Assert.True(alliances.AreAllied(Faction.Player1, Faction.Player2),
+                        "The lobby put the AI on the human's team, but the seeded mask left them hostile — the team " +
+                        "ordinal did not survive SkirmishSetupToScenario.Build into AllianceSeeder.Seed (DW-740).");
+            Assert.False(alliances.AreAllied(Faction.Player1, Faction.Player3)); // the opposing AI stays hostile
+            Assert.False(alliances.AreAllied(Faction.Player2, Faction.Player3));
+            Assert.Equal(1, alliances.TeamOf(Faction.Player1));
+            Assert.Equal(1, alliances.TeamOf(Faction.Player2));
+            Assert.Equal(3, alliances.TeamOf(Faction.Player3)); // a team of one seeds the FFA (own-slot) default
+        }
+
+        /// <summary>
+        /// DW-740, the negative control: the SAME three-slot lobby with every slot on FFA (team 0) must seed the
+        /// untouched default mask. Without this arm the assertion above could pass on a seeder that allied everyone.
+        /// </summary>
+        [Fact]
+        public void Build_ThenSeed_FfaLobby_LeavesEverySlotHostile()
+        {
+            SkirmishSetup s = Setup("m1", Slot(0, SlotKind.Human, "alpha", team: 0),
+                                          Slot(1, SlotKind.Ai,    "beta",  team: 0),
+                                          Slot(2, SlotKind.Ai,    "gamma", team: 0));
+            ScenarioData built = SkirmishSetupToScenario.Build(s, BaseMap(3), Factions("alpha", "beta", "gamma"));
+
+            var alliances = new AllianceStore();
+            AllianceSeeder.Seed(alliances, built);
+
+            Assert.False(alliances.AreAllied(Faction.Player1, Faction.Player2));
+            Assert.False(alliances.AreAllied(Faction.Player1, Faction.Player3));
+            Assert.False(alliances.AreAllied(Faction.Player2, Faction.Player3));
         }
 
         // ── Transform ─────────────────────────────────────────────────────────────────

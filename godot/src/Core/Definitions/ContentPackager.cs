@@ -77,14 +77,33 @@ namespace ProjectChimera.Core.Definitions
             public List<string> AssetPaths { get; set; } = new();
         }
 
-        /// <summary>DW-423 regression seam — invoked by <see cref="Pack"/> after all integrity hashes
-        /// (scenario/terrain/asset) are computed and before any archive entry is written: exactly the window the
+        /// <summary>DW-423 regression seam — invoked by <see cref="Pack"/> after every source has been
+        /// enumerated, snapshotted and hashed and before any archive entry is written: exactly the window the
         /// old hash-then-re-read TOCTOU lived in. Tests assign a delegate that mutates the on-disk source files
-        /// to prove the packaged bytes are the hashed snapshots; production never sets it (null ⇒ no-op).
+        /// to prove the packaged bytes are the enumeration-time snapshots; production never sets it (null ⇒ no-op).
+        /// DW-716 widened what this proves from the three integrity-hashed inputs (scenario/terrain/asset) to
+        /// EVERY packaged source, including the non-hashed thumbnail/faction/screenshot families.
         /// ThreadStatic so a parallel test class packing concurrently can never observe another test's hook.</summary>
 #pragma warning disable CS0649 // assigned only by the Tier-1 test assembly (which compiles this file directly)
         [ThreadStatic] internal static Action? PackTestHookAfterHash;
+
+        /// <summary>DW-560 regression seam — invoked by <see cref="Pack"/> after the staged archive has fully
+        /// committed on Dispose and immediately BEFORE the <see cref="File.Move(string,string,bool)"/> that
+        /// publishes it over the output path. Tests throw from here to prove that a failure at the commit
+        /// boundary still leaves a pre-existing export byte-identical and leaves no staging residue behind.
+        /// Production never sets it (null ⇒ no-op); ThreadStatic for the same reason as
+        /// <see cref="PackTestHookAfterHash"/>. It exists because DW-716 removed the last write-loop re-read
+        /// (every source is now snapshotted at enumeration), which also removed the only source-deletion
+        /// fault-injection point inside the staged-write region.</summary>
+        [ThreadStatic] internal static Action? PackTestHookBeforeCommit;
 #pragma warning restore CS0649
+
+        /// <summary>DW-560 — the suffix <see cref="Pack"/> stages its export on, beside the output file.</summary>
+        internal const string PackStagingSuffix = ".pack.tmp";
+
+        /// <summary>DW-421 — the suffix <see cref="RewriteManifest(string,Func{byte[]})"/> stages on, beside the
+        /// shipped package.</summary>
+        internal const string RewriteStagingSuffix = ".rewrite.tmp";
 
         /// <summary>
         /// Pack a scenario file (and optional extras) into a .chimera.zip.
@@ -112,22 +131,51 @@ namespace ProjectChimera.Core.Definitions
             uint scenarioHash = ScenarioSerializer.ComputeHash(scenarioBytes);
 
             // Build faction_files list (zip-relative paths).
-            var factionEntries = new List<string>();
+            // DW-716: snapshot the bytes HERE, at enumeration, exactly like the integrity-hashed inputs (DW-423).
+            // The write loop below must never re-read a source: a faction file swapped between the File.Exists
+            // check and the write would package content the creator never saw, and no integrity hash covers this
+            // family, so nothing downstream could ever notice.
+            // DW-821: two sources from different directories that share a file NAME both map to the single zip
+            // entry factions/{leaf}. ZipArchive.CreateEntry permits duplicate entry names, manifest.FactionFiles
+            // would list the same path twice, and Unpack's GetEntry returns only the FIRST — so the second
+            // faction's bytes are silently lost. Reject at Pack, mirroring the Story-9.9 asset-leaf guard below
+            // (which rejects for the same reason; assets merely fail their own integrity check instead of
+            // vanishing quietly).
+            var factionEntries   = new List<string>();
+            var factionSnapshots = new List<(string Leaf, byte[] Bytes)>();
+            var factionLeaves    = new HashSet<string>(StringComparer.Ordinal);
             foreach (var fp in options.FactionPaths)
-                if (File.Exists(fp))
-                    factionEntries.Add("factions/" + Path.GetFileName(fp));
+            {
+                if (!File.Exists(fp)) continue;
+                string factionLeaf = Path.GetFileName(fp);
+                if (!factionLeaves.Add(factionLeaf))
+                    throw new ArgumentException(
+                        $"Duplicate faction file name '{factionLeaf}': bundled faction names must be unique " +
+                        $"(each maps to factions/{factionLeaf}).", nameof(options));
+                factionEntries.Add("factions/" + factionLeaf);
+                factionSnapshots.Add((factionLeaf, File.ReadAllBytes(fp)));
+            }
 
             // Story 9.8: enumerate the on-disk screenshots into canonical zip-relative paths (screenshots/shot_NN.png).
             // Only existing files contribute; the index is assigned in list order so the manifest and the written
             // entries stay in lock-step. Recorded on the manifest below and counted by the publish gate.
-            var screenshotEntries = new List<string>();
-            var screenshotSources = new List<string>();
+            // DW-716: read-once, like every other source — the bytes written are the bytes enumeration saw.
+            var screenshotEntries   = new List<string>();
+            var screenshotSnapshots = new List<byte[]>();
             foreach (var sp in options.ScreenshotPaths ?? new List<string>())
             {
                 if (!File.Exists(sp)) continue;
                 screenshotEntries.Add($"screenshots/shot_{screenshotEntries.Count:D2}.png");
-                screenshotSources.Add(sp);
+                screenshotSnapshots.Add(File.ReadAllBytes(sp));
             }
+
+            // Story 6.7 / legacy thumbnail (optional) — DW-716 read-once snapshot. The manifest's ThumbnailFile
+            // slot below stays keyed on ThumbnailPath being NON-NULL rather than on the file existing (Unpack
+            // treats a listed-but-missing image as "no image", pre-6.7 parity), so a path that does not exist
+            // still records the slot and writes no entry — byte-identical to the previous behaviour.
+            byte[]? thumbnailBytes = options.ThumbnailPath != null && File.Exists(options.ThumbnailPath)
+                ? File.ReadAllBytes(options.ThumbnailPath)
+                : null;
 
             // Story 6.2: enumerate the terrain region files (ordinal-sorted by name so the aggregate integrity hash
             // is order-independent), record them zip-relative under map/terrain/, and fold their filename+bytes.
@@ -242,22 +290,34 @@ namespace ProjectChimera.Core.Definitions
 #pragma warning restore RS0030
             };
 
-            // DW-423 regression seam — fires between integrity-hash computation and archive writing, the window
-            // the old hash-then-re-read TOCTOU lived in. Tests mutate the on-disk sources here to prove the
-            // packaged bytes are the hashed snapshots, not a re-read. Null (no-op) in production.
+            // DW-423 / DW-716 regression seam — fires between source snapshotting (+ integrity hashing) and
+            // archive writing, the window the old enumerate-then-re-read TOCTOU lived in. Tests mutate the
+            // on-disk sources here to prove the packaged bytes are the snapshots, not a re-read. Null in production.
             PackTestHookAfterHash?.Invoke();
 
             // DW-560 — stage the export on a temp SIBLING of the output and only rename it over
             // outputZipPath once the archive has fully committed on Dispose. The previous shape deleted an
             // existing export up front and then wrote straight into ZipArchiveMode.Create, so a throw mid-write
-            // destroyed the creator's previous export AND left a partial zip behind. That is reachable in
-            // practice: the NON-hashed sources (thumbnail, faction files, screenshots) are still re-read inside
-            // the write loop below, so one of them being deleted or locked between enumeration and the write
-            // throws long after the old export is already gone. Same stage-to-temp-then-atomic-File.Move pattern
-            // RewriteManifest uses (DW-421): a sibling path shares the volume, so the Move is an atomic rename.
-            string stagePath = outputZipPath + ".pack.tmp";
+            // destroyed the creator's previous export AND left a partial zip behind. Same
+            // stage-to-temp-then-atomic-File.Move pattern RewriteManifest uses (DW-421): a sibling path shares
+            // the volume, so the Move is an atomic rename.
+            // (DW-716 narrowed the throw-mid-write window considerably — every source is now snapshotted at
+            // enumeration, so a source deleted or swapped after enumeration can no longer throw from the write
+            // loop. The staging remains load-bearing for everything else that can fail here: a full disk, a
+            // transient IO fault, or a failure at the commit boundary itself.)
+            string stagePath = outputZipPath + PackStagingSuffix;
             try
             {
+                // DW-727: ZipArchiveMode.Create maps to FileMode.CreateNew, which THROWS when anything already
+                // occupies the path — so a staging FILE left behind by a killed editor, or by the catch block
+                // below (whose best-effort delete deliberately swallows its own failure so as not to mask the
+                // real error), takes the NEXT export down with it. Clear the residue first, symmetric with
+                // RewriteManifest's File.Copy(..., overwrite: true) staging. File.Exists-guarded on purpose: a
+                // DIRECTORY squatting the staging name is an environment fault, not residue this method left,
+                // and must keep surfacing as the UnauthorizedAccessException it is rather than as a confusing
+                // "access denied" from File.Delete.
+                if (File.Exists(stagePath)) File.Delete(stagePath);
+
                 using (var archive = ZipFile.Open(stagePath, ZipArchiveMode.Create))
                 {
                     // manifest.json
@@ -271,31 +331,32 @@ namespace ProjectChimera.Core.Definitions
                     // precedence over the legacy on-disk thumbnail so a package never carries two conflicting preview slots.
                     if (options.PreviewPngBytes != null && options.PreviewPngBytes.Length > 0)
                         WriteEntry(archive, "preview/preview.png", options.PreviewPngBytes);
-                    // thumbnail.png (legacy, optional) — only when no generated preview was supplied.
-                    else if (options.ThumbnailPath != null && File.Exists(options.ThumbnailPath))
-                        WriteEntry(archive, "thumbnail.png", File.ReadAllBytes(options.ThumbnailPath));
+                    // thumbnail.png (legacy, optional) — only when no generated preview was supplied; the
+                    // enumeration-time snapshot (DW-716), never a re-read.
+                    else if (thumbnailBytes != null)
+                        WriteEntry(archive, "thumbnail.png", thumbnailBytes);
 
-                    // factions/ (optional)
-                    foreach (var fp in options.FactionPaths)
-                    {
-                        if (!File.Exists(fp)) continue;
-                        WriteEntry(archive, "factions/" + Path.GetFileName(fp), File.ReadAllBytes(fp));
-                    }
+                    // factions/ (optional) — the enumeration-time snapshots (DW-716), leaf-unique (DW-821).
+                    foreach (var (leaf, bytes) in factionSnapshots)
+                        WriteEntry(archive, "factions/" + leaf, bytes);
 
                     // map/terrain/ (Story 6.2, optional) — the same ordinal-sorted snapshots TerrainHash folded (DW-423).
                     foreach (var (leaf, bytes) in terrainSnapshots)
                         WriteEntry(archive, "map/terrain/" + leaf, bytes);
 
-                    // screenshots/ (Story 9.8, optional) — the same list order the manifest recorded, so entry names match.
-                    // (Screenshots are NOT integrity-hashed, so a write-time re-read carries no TOCTOU hash risk.)
+                    // screenshots/ (Story 9.8, optional) — the same list order the manifest recorded, so entry names
+                    // match, and the same enumeration-time snapshots (DW-716).
                     for (int i = 0; i < screenshotEntries.Count; i++)
-                        WriteEntry(archive, screenshotEntries[i], File.ReadAllBytes(screenshotSources[i]));
+                        WriteEntry(archive, screenshotEntries[i], screenshotSnapshots[i]);
 
                     // assets/ (Story 9.9, optional) — the same list order the manifest recorded, so entry names match;
                     // the bytes are the same snapshots AssetHash folded (DW-423), never a re-read.
                     for (int i = 0; i < assetEntries.Count; i++)
                         WriteEntry(archive, assetEntries[i], assetSnapshots[i].Bytes);
                 }
+
+                // DW-560 regression seam — the commit boundary. Null (no-op) in production.
+                PackTestHookBeforeCommit?.Invoke();
 
                 // Commit: the staged archive is complete and closed, so this rename either publishes a whole,
                 // readable export or (on failure) leaves the previous one exactly as it was.
@@ -621,7 +682,7 @@ namespace ProjectChimera.Core.Definitions
             byte[] data = serializeManifest();
 
             // (2) Stage on a temp sibling, then atomically replace the original on success.
-            string tmpPath = zipPath + ".rewrite.tmp";
+            string tmpPath = zipPath + RewriteStagingSuffix;
             try
             {
                 File.Copy(zipPath, tmpPath, overwrite: true);
@@ -671,9 +732,23 @@ namespace ProjectChimera.Core.Definitions
         /// <summary>
         /// Read manifests from all .chimera.zip files in a directory.
         /// Used by the local content browser to enumerate installed packages.
+        ///
+        /// <para>DW-717 — also sweeps stale staging residue out of <paramref name="directory"/> on entry (see
+        /// <see cref="SweepStaleStagingFiles"/>). This is the one code path that already walks the user's
+        /// packages directory, and nothing else ever looked at the leaked temp files.</para>
         /// </summary>
         public static IEnumerable<(string ZipPath, ContentPackageManifest Manifest)>
             ScanDirectory(string directory)
+        {
+            // Deliberately a thin non-iterator wrapper: an iterator body does not run until the caller
+            // enumerates, so a sweep placed inside ScanDirectoryCore would silently never run for a caller
+            // that only counts or short-circuits. Doing it here makes the sweep happen at CALL time.
+            SweepStaleStagingFiles(directory);
+            return ScanDirectoryCore(directory);
+        }
+
+        private static IEnumerable<(string ZipPath, ContentPackageManifest Manifest)>
+            ScanDirectoryCore(string directory)
         {
             if (!Directory.Exists(directory)) yield break;
             foreach (var file in Directory.EnumerateFiles(directory, "*.chimera.zip",
@@ -682,6 +757,69 @@ namespace ProjectChimera.Core.Definitions
                 var m = ReadManifest(file);
                 if (m != null) yield return (file, m);
             }
+        }
+
+        // ── Stale staging-file sweep (DW-717) ────────────────────────────────────
+
+        /// <summary>DW-717 — how old (in hours) a leaked staging file must be before the sweep removes it.
+        /// Deliberately generous: a CONCURRENT export or manifest rewrite (this process or another) writes its
+        /// staging file with a fresh timestamp, so a gate this wide can never race a live write, while still
+        /// bounding the residue to "gone by tomorrow's browse".</summary>
+        internal const int StaleStagingAgeHours = 24;
+
+        /// <summary>
+        /// DW-717 — delete leaked <c>*.pack.tmp</c> / <c>*.rewrite.tmp</c> staging files older than
+        /// <paramref name="minAgeHours"/> from the TOP LEVEL of <paramref name="directory"/>.
+        ///
+        /// <para>Both atomicity paths (<see cref="Pack"/> and <see cref="RewriteManifest(string,Func{byte[]})"/>)
+        /// best-effort-delete their own staging file and deliberately swallow a failure to do so, so as not to
+        /// mask the real error. If that delete loses — a transient AV/indexer lock, or the editor being killed
+        /// mid-write — the temp file sits in the user's packages directory forever: <see cref="ScanDirectory"/>'s
+        /// <c>*.chimera.zip</c> pattern does not match it and nothing else ever looks. Worse, per DW-727 a stale
+        /// <c>.pack.tmp</c> is not inert clutter but a tripwire under the next export to the same path.</para>
+        ///
+        /// <para>Best-effort PER FILE: a delete that still fails (locked, permissions) is skipped rather than
+        /// thrown — a housekeeping sweep must never be able to break the listing it runs in front of.</para>
+        /// </summary>
+        /// <param name="directory">Absolute path to the packages directory to sweep. Missing ⇒ no-op.</param>
+        /// <param name="minAgeHours">Minimum age, in hours, before a staging file is considered abandoned.</param>
+        /// <returns>The number of stale staging files actually deleted.</returns>
+        internal static int SweepStaleStagingFiles(string directory, int minAgeHours = StaleStagingAgeHours)
+        {
+            if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory)) return 0;
+
+            // AR-36 allow-list (Story 1.10b): off-tick FILE-SYSTEM housekeeping wall-clock — never tick-reachable
+            // and never folded into the sim/start-state hash, so it is an explicit RS0030 exemption exactly like
+            // Pack's CreatedAt export stamp. A new DateTime in tick code is NOT exempted and still fails the gate.
+#pragma warning disable RS0030
+            DateTime cutoffUtc = DateTime.UtcNow.AddHours(-Math.Abs((double)minAgeHours));
+#pragma warning restore RS0030
+
+            int deleted = 0;
+            foreach (string suffix in new[] { PackStagingSuffix, RewriteStagingSuffix })
+            {
+                string[] candidates;
+                try { candidates = Directory.GetFiles(directory, "*" + suffix, SearchOption.TopDirectoryOnly); }
+                catch { continue; }   // unreadable directory: nothing to sweep, never a throw out of a listing
+
+                foreach (string f in candidates)
+                {
+                    // Belt to the glob's braces: Windows' legacy 8.3 short-name matching can widen a
+                    // "*.pack.tmp" pattern, so re-check the suffix explicitly. A sweep that DELETES must only
+                    // ever match names it is certain about.
+                    if (!f.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) continue;
+                    try
+                    {
+#pragma warning disable RS0030 // AR-36 allow-list: see the cutoff comment above.
+                        if (File.GetLastWriteTimeUtc(f) > cutoffUtc) continue;   // young ⇒ possibly a live write
+#pragma warning restore RS0030
+                        File.Delete(f);
+                        deleted++;
+                    }
+                    catch { /* still locked / no permission — leave it; the next scan retries */ }
+                }
+            }
+            return deleted;
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────────

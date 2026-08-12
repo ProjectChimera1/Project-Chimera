@@ -24,7 +24,7 @@ namespace ProjectChimera.Sim.Tests.Golden
     /// <c>g = g * 3 + event.v</c>. Because the per-occurrence handler dispatches the two raises in APPLY ORDER,
     /// P1-then-P2 and P2-then-P1 leave <c>g</c> at different values → a different SimChecksum. So the golden +
     /// baseline can now genuinely FAIL on an apply-order flip (a reversed applier would diverge — proven directly
-    /// by <c>MergedTickGoldenTests.AscendingVsDescendingDirectApply_Diverges</c>), and the merged path reproducing
+    /// by <c>MergedTickN2GoldenTests.AscendingVsDescendingDirectApply_Diverges</c>), and the merged path reproducing
     /// the ascending baseline locks that the server-authoritative merge uses ascending-faction order.</para>
     /// </summary>
     public static class MergedTickN2Scenario
@@ -42,14 +42,19 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// <summary>Registry index (declaration order in CustomEvents) of the order-sensitivity <c>bump</c> event.</summary>
         private const int BumpEventIndex = 0;
 
-        /// <summary>Self-identifying header so the golden declares its own re-baseline recipe (its own filter).</summary>
+        /// <summary>Self-identifying header so the golden declares its own re-baseline recipe (its own filter).
+        /// DW-864: the filter is <c>~MergedTickN2</c>, NOT the bare <c>~MergedTick</c> it used to name — that
+        /// substring also selects <c>MergedTickN3GoldenTests</c>, which records golden-merged-n3 AND -n4, so an
+        /// intentional N=2 re-record would silently have destroyed two other pins. Pinned by
+        /// <c>MergedTickRebaselineFilterTests</c>.</summary>
         public static GoldenChecksumReplay.GoldenHeader Header => new(
             "server-authoritative merged-tick N=2 golden (Story 9.3)",
             "Pins the SimChecksum sequence for a fixed 2-faction world driven by a deterministic per-tick P1+P2 " +
             "UnitOrder stream (movable units + an order-SENSITIVE bump-event fold g=g*3+v) through the REAL " +
             "MergedTickBuilder + MergedTickApplier (the full wire merge round-trip).",
-            $"set {GoldenChecksumReplay.RecordEnvVar}=1, run `dotnet test --filter FullyQualifiedName~MergedTick`, " +
-            "then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit. NEVER record the existing goldens.");
+            $"set {GoldenChecksumReplay.RecordEnvVar}=1, run `dotnet test --filter FullyQualifiedName~MergedTickN2`, " +
+            "then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit. NEVER widen this to " +
+            "~MergedTick — that also re-records the N=3/N=4 goldens (DW-864).");
 
         /// <summary>
         /// Construct the fixed 2-faction world: Player1 units at ids 0,1 (created FIRST) and Player2 units at ids

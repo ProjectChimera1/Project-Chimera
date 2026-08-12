@@ -1451,22 +1451,13 @@ namespace ProjectChimera.UI
         /// <summary>Story 6.8 — create an editor building slot by authored id, threading the resolved def's stats +
         /// DefinitionId (mirrors <see cref="ProjectChimera.Economy.BuildingSystem.PlaceBuildingDirectById"/>) so a
         /// Custom building previews with real stats and a stable id the nav/render buckets key on. Returns the slot id
-        /// (or -1 if full). Starts under construction (like the legacy Create call it replaces).</summary>
+        /// (or -1 if full). Starts under construction (like the legacy Create call it replaces).
+        /// <para>DW-172: the def→Create mapping itself now lives in the ONE store-side
+        /// <see cref="BuildingStore.CreateFromDefinition"/> this and the sim's <c>PlaceBuildingDirectById</c> both
+        /// delegate to — it is no longer hand-copied here, so editor and sim placement cannot drift apart.</para></summary>
         private static int CreateEditorBuilding(BuildingStore store, FixedVec3 pos, Faction faction,
                                                 string buildingId, FactionDefinition? fdef)
-        {
-            var bdef = fdef?.GetBuilding(buildingId);
-            BuildingType type = TechTreeChecker.BuildingTypeFromId(buildingId) ?? BuildingType.Custom;
-            return store.Create(pos, faction, type,
-                bdef?.RevivesHeroes ?? false,
-                bdef?.SellsItems ?? false,
-                bdef?.ShopStock,
-                bdef != null ? Fixed.FromFloat(bdef.ShopRadius) : default,
-                buildingId: bdef?.Id ?? buildingId,
-                health: bdef != null ? Fixed.FromFloat(bdef.Hp) : (Fixed?)null,
-                supplyBonus: bdef?.SupplyBonus,
-                constructionDuration: bdef?.ConstructionTime is float ct ? Fixed.FromFloat(ct) : (Fixed?)null);
-        }
+            => store.CreateFromDefinition(fdef?.GetBuilding(buildingId), pos, faction, buildingId);
 
         private void CycleUnitType()
         {

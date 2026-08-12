@@ -94,10 +94,12 @@ namespace ProjectChimera.Dsl
 
         /// <summary>
         /// The typed dataflow edges. Same ORDERING RULE as <see cref="ExecEdges"/> (DW-337) — sort by
-        /// <see cref="DataEdge.CompareTo"/>, never by enumerating a hash-based set. Extra caveat:
-        /// <see cref="DataEdge.CompareTo"/> keys on the <c>(Src,SrcPort,Dst,DstPort)</c> topology tuple ONLY, so
-        /// two edges differing only in <see cref="DataEdge.Wire"/> tie — an order-sensitive consumer must break
-        /// that tie explicitly (<c>.ThenBy(x =&gt; x.Wire)</c>) rather than lean on sort stability.
+        /// <see cref="DataEdge.CompareTo"/>, never by enumerating a hash-based set. DW-754 retired the extra
+        /// caveat that used to live here: <see cref="DataEdge.CompareTo"/> keyed on the
+        /// <c>(Src,SrcPort,Dst,DstPort)</c> topology tuple ONLY, so two edges differing only in
+        /// <see cref="DataEdge.Wire"/> tied and every consumer had to hand-break that tie or silently inherit
+        /// AUTHORING order from LINQ's sort stability. The comparer now ends on <c>Wire</c> and is total, so a
+        /// plain <c>OrderBy(e =&gt; e)</c> is order-independent by construction.
         /// </summary>
         public List<DataEdge> DataEdges { get; } = new();
 
@@ -1035,10 +1037,12 @@ namespace ProjectChimera.Dsl
         }
 
         /// <summary>
-        /// Canonical serialization: nodes emitted sorted by ascending id; exec/data edges each sorted by
-        /// <c>(Src,SrcPort,Dst,DstPort)</c>. Uses <see cref="DslJson.Options"/> (the closed-registry
-        /// <see cref="NodeBaseJsonConverter"/> + <c>FixedJsonConverter</c>). Two structurally-equal graphs (nodes/
-        /// edges added out of order) serialize byte-identically.
+        /// Canonical serialization: nodes emitted sorted by ascending id; exec edges sorted by
+        /// <c>(Src,SrcPort,Dst,DstPort)</c> and data edges by <c>(Src,SrcPort,Dst,DstPort,Wire)</c> — DW-754 made
+        /// <see cref="DataEdge.CompareTo"/> total so this sort no longer falls back to LINQ stability (= authoring
+        /// order) on a duplicate-topology/different-wire pair. Uses <see cref="DslJson.Options"/> (the
+        /// closed-registry <see cref="NodeBaseJsonConverter"/> + <c>FixedJsonConverter</c>). Two structurally-equal
+        /// graphs (nodes/edges added out of order) serialize byte-identically.
         ///
         /// NOT A HASH SOURCE (DW-337). The byte-identity above is proven only WITHIN one runtime: it rests on
         /// System.Text.Json's indentation and number formatting, which are implementation details that may differ

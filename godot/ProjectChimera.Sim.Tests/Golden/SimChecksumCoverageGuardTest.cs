@@ -63,7 +63,7 @@ namespace ProjectChimera.Sim.Tests.Golden
             FieldInfo[] perFaction = typeof(ResourceStore)
                 .GetFields(BindingFlags.Public | BindingFlags.Instance)
                 .Where(f => f.FieldType.IsArray)
-                .Where(f => ((Array)f.GetValue(reference)!).Length == factionLen)
+                .Where(f => PerFactionArray(f, reference).Length == factionLen)
                 .ToArray();
 
             Assert.NotEmpty(perFaction);
@@ -1204,13 +1204,53 @@ namespace ProjectChimera.Sim.Tests.Golden
         }
 
         /// <summary>
+        /// DW-796 — the ONE reflected read this guard performs, routed through
+        /// <see cref="ReflectionProbe.Read{T}"/> instead of the raw <c>(Array)field.GetValue(store)!</c> cast the
+        /// two call sites used to write inline.
+        ///
+        /// <para>The <c>!</c> was the VALUE half of the DW-218 defect class: it is erased at compile time, so a
+        /// <see cref="ResourceStore"/> field that changed TYPE (an array swapped for a wrapper/list, the classic
+        /// SoA refactor) produced a bare <see cref="InvalidCastException"/> naming neither the field nor the
+        /// expectation — inside the one guard whose entire job is to make a checksum-coverage gap LEGIBLE.
+        /// <c>Read&lt;Array&gt;</c> fails with a diagnostic naming the owner, the member, the actual type and the
+        /// expected one.</para>
+        /// </summary>
+        private static Array PerFactionArray(FieldInfo field, ResourceStore store)
+            => ReflectionProbe.Read<Array>(field, store);
+
+        /// <summary>
+        /// DW-796 red test — the diagnostic itself. Feeds <see cref="PerFactionArray"/> a
+        /// <see cref="ResourceStore"/> field that is NOT an array (the stand-in for a field whose type changed out
+        /// from under this guard) and pins that the failure NAMES the owner, the member and both types. Against
+        /// the raw <c>(Array)…GetValue(…)!</c> cast this same call throws a bare <see cref="InvalidCastException"/>
+        /// carrying none of that, so the assertions below fail — which is the whole point of the fix.
+        /// </summary>
+        [Fact]
+        public void PerFactionArrayRead_TypeChangedField_FailsWithANamedDiagnostic()
+        {
+            var store = new ResourceStore(Fixed.Zero);
+            // A real, non-array INSTANCE field on the real type — the same read path the two production call
+            // sites use, standing in for "the FieldInfo I was handed no longer holds an Array" without needing a
+            // synthetic fixture. Looked up through ReflectionProbe so a RENAME of it fails named here too,
+            // instead of leaving this red test quietly probing nothing.
+            FieldInfo notAnArray = ReflectionProbe.Field(typeof(ResourceStore), "_startingOre");
+
+            var ex = Assert.Throws<InvalidOperationException>(() => PerFactionArray(notAnArray, store));
+
+            Assert.Contains(nameof(ResourceStore), ex.Message, StringComparison.Ordinal);
+            Assert.Contains("_startingOre", ex.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(Fixed), ex.Message, StringComparison.Ordinal);   // the ACTUAL type…
+            Assert.Contains(nameof(Array), ex.Message, StringComparison.Ordinal);   // …and the expected one
+        }
+
+        /// <summary>
         /// Set an active slot of <paramref name="field"/> to a distinct, type-appropriate value so its
         /// contribution to the checksum is observable. An unhandled element type throws a clear "extend the
         /// guard" error, forcing a conscious decision when a new per-faction array type appears.
         /// </summary>
         private static void MutateActiveSlot(FieldInfo field, ResourceStore r, int slot)
         {
-            var arr  = (Array)field.GetValue(r)!;
+            Array arr = PerFactionArray(field, r);
             Type elem = field.FieldType.GetElementType()!;
             if      (elem == typeof(Fixed))     arr.SetValue(Fixed.FromInt(999), slot);
             else if (elem == typeof(int))       arr.SetValue(123456, slot);

@@ -177,9 +177,24 @@ namespace ProjectChimera.Core.Persistence
             PendingCastPointX, PendingCastPointZ, // Story 15.11 — transient ground-cast point (persisted for the mid-tick save, like PendingCastSlot/Target)
             AuraIdx, OnHitIdx,
             SelfPassiveIdx, HeroIndex, GatherState, GatherTarget, CarryAmount, CarryResType, CarryCapacity, BuildTarget,
-            // DW-581: the per-slot recycle generation backing PackRef/TryResolveRef. Last of the per-entity lanes (a
-            // new lane must stay BEFORE PatrolWpX, which is where the flat-stride half begins for the length checks).
+            // DW-581: the per-slot recycle generation backing PackRef/TryResolveRef.
             Generation,
+            // DW-690 (save format v8): the outstanding rally FIRST LEG of a trained worker. Every other input to
+            // DW-634's gate — Flags/CommandState/MoveTarget/CommandGoal — already round-trips, so dropping this one
+            // made a mid-leg worker reload looking exactly like it was still walking its rally while the gate that
+            // protects the walk came back false: the first GatheringSystem tick then re-targeted it to the node
+            // nearest its MID-LEG position and discarded the player's rally. APPENDED (a mid-enum insert would
+            // silently shift every later lane in an old blob; appending + the FormatVersion 7→8 bump fail-closes
+            // instead) and still BEFORE PatrolWpX, where the flat-stride half begins for Validate's length checks —
+            // this is a plain per-entity lane of length EntHwm.
+            RallyMovePending,
+            // DW-804 (save format v9): the DW-532 walk-stall streak / SLOT_YIELDED sentinel. It PAIRS with the
+            // node-side AssignedGatherers counter (captured in NA), so dropping it desynchronised the two halves of
+            // one reservation: a save taken while a worker held SLOT_YIELDED restored it as 0, which is the value that
+            // MEANS "holds a slot", and its arrival then skipped BOTH the capacity check and the matching increment.
+            // Last of the per-entity lanes — a new lane must stay BEFORE PatrolWpX, which is where the flat-stride
+            // half begins for Validate's length checks.
+            GatherWalkStall,
             // flat (stride) arrays — length EntHwm * stride
             PatrolWpX, PatrolWpY, PatrolWpZ, OrderQCmd, OrderQTargetX, OrderQTargetZ, AbilityId, AbilityCd,
             COUNT
@@ -322,6 +337,8 @@ namespace ProjectChimera.Core.Persistence
             var gs = A(EA.GatherState, n); var gt = A(EA.GatherTarget, n); var ca = A(EA.CarryAmount, n);
             var crt = A(EA.CarryResType, n); var cc = A(EA.CarryCapacity, n); var bt = A(EA.BuildTarget, n);
             var gen = A(EA.Generation, n); // DW-581 — per-slot recycle generation (the ABA half of a packed entity ref)
+            var rmp = A(EA.RallyMovePending, n); // DW-690 — the outstanding rally first leg (bool → 0/1, the HasRally precedent)
+            var gws = A(EA.GatherWalkStall, n); // DW-804 — the DW-532 stall streak / SLOT_YIELDED sentinel
             EntDefId = new string[n];
 
             for (int i = 0; i < n; i++)
@@ -348,6 +365,8 @@ namespace ProjectChimera.Core.Persistence
                 gs[i] = (int)w.GatherState[i]; gt[i] = w.GatherTarget[i]; ca[i] = w.CarryAmount[i].Raw;
                 crt[i] = (int)w.CarryResourceType[i]; cc[i] = w.CarryCapacity[i].Raw; bt[i] = w.BuildTarget[i];
                 gen[i] = w.Generation[i]; // DW-581
+                rmp[i] = w.RallyMovePending[i] ? 1 : 0; // DW-690
+                gws[i] = w.GatherWalkStallTicks[i]; // DW-804
                 EntDefId[i] = w.SourceDefinition[i]?.Id ?? "";
             }
 
@@ -708,6 +727,8 @@ namespace ProjectChimera.Core.Persistence
             var aura = G(EA.AuraIdx); var onhit = G(EA.OnHitIdx); var selfp = G(EA.SelfPassiveIdx); var hidx = G(EA.HeroIndex);
             var gs = G(EA.GatherState); var gt = G(EA.GatherTarget); var ca = G(EA.CarryAmount); var crt = G(EA.CarryResType); var cc = G(EA.CarryCapacity); var bt = G(EA.BuildTarget);
             var gen = G(EA.Generation); // DW-581
+            var rmp = G(EA.RallyMovePending); // DW-690
+            var gws = G(EA.GatherWalkStall); // DW-804
 
             for (int i = 0; i < n; i++)
             {
@@ -715,8 +736,21 @@ namespace ProjectChimera.Core.Persistence
                 w.Position[i] = new FixedVec3(Fixed.FromRaw(px[i]), Fixed.FromRaw(py[i]), Fixed.FromRaw(pz[i]));
                 w.PrevPosition[i] = w.Position[i]; // transient — seeded to Position (SnapshotPositions overwrites next tick)
                 w.Velocity[i] = new FixedVec3(Fixed.FromRaw(vx[i]), Fixed.FromRaw(vy[i]), Fixed.FromRaw(vz[i]));
-                w.BaseMoveSpeed[i] = Fixed.FromRaw(bms[i]); w.EffectiveMoveSpeed[i] = Fixed.FromRaw(ems[i]);
-                w.Health[i] = Fixed.FromRaw(hp[i]); w.BaseMaxHealth[i] = Fixed.FromRaw(bmh[i]); w.EffectiveMaxHealth[i] = Fixed.FromRaw(emh[i]);
+                // DW-692: EffectiveMoveSpeed is re-applied through ModifierSystem's ZERO-FLOOR (see the DW-643 note
+                // below for why THIS overlay is the one writer that escapes it). Consumer: MovementSystem multiplies
+                // the unit vector toward the goal by this speed (`toTarget.Normalized() * speed`, and the max-speed
+                // clamp re-multiplies by it), so a NEGATIVE value steers the unit directly AWAY from its own move
+                // target — it accelerates backwards forever and can never arrive, which no order can undo.
+                w.BaseMoveSpeed[i] = Fixed.FromRaw(bms[i]);
+                w.EffectiveMoveSpeed[i] = Fixed.Max(Fixed.Zero, Fixed.FromRaw(ems[i]));
+                // DW-692: EffectiveMaxHealth likewise. Consumer: it is the CEILING every Health write clamps into —
+                // `Fixed.Clamp(h, Fixed.Zero, EffectiveMaxHealth[id])` = `Max(0, Min(ceiling, h))`, so a negative
+                // ceiling collapses the next heal / DirectHpDelta / research-reconcile to EXACTLY 0 HP while the
+                // entity stays ALIVE. That is the 0-HP zombie DW-325/DW-491 declare impossible, and it slips the
+                // ceiling-collapse death rail too: that rail only fires on an above-zero → zero TRANSITION, and a
+                // ceiling restored already-negative was never above zero, so no death is ever raised.
+                w.Health[i] = Fixed.FromRaw(hp[i]); w.BaseMaxHealth[i] = Fixed.FromRaw(bmh[i]);
+                w.EffectiveMaxHealth[i] = Fixed.Max(Fixed.Zero, Fixed.FromRaw(emh[i]));
                 w.FactionOf[i] = (Faction)fac[i];
                 w.MoveTarget[i] = new FixedVec3(Fixed.FromRaw(mtx[i]), Fixed.FromRaw(mty[i]), Fixed.FromRaw(mtz[i]));
                 w.AttackTarget[i] = at[i]; w.AttackCooldown[i] = Fixed.FromRaw(ac[i]); w.AttackRange[i] = Fixed.FromRaw(ar[i]);
@@ -731,9 +765,18 @@ namespace ProjectChimera.Core.Persistence
                 // authored source ModifierSystem re-derives Effective from, and the validator already bounds it to
                 // [0, 32768) at load, so flooring it here would only mask a corrupt blob at a different field.
                 // A well-formed save is non-negative, so this is a no-op on one and no golden moves.
+                // DW-692 closed the same hole at the three SIBLING effective stats (MoveSpeed / MaxHealth / Armor
+                // above), each with its own consumer reasoning rather than a blanket floor — so all FOUR fields
+                // ModifierSystem.RecomputeEntity floors are now floored on this overlay too, and every Base_ stays
+                // deliberately raw for the same authored-source reason.
                 w.BaseAttackDamage[i] = Fixed.FromRaw(bad[i]);
                 w.EffectiveAttackDamage[i] = Fixed.Max(Fixed.Zero, Fixed.FromRaw(ead[i]));
-                w.BaseArmor[i] = Fixed.FromRaw(bar[i]); w.EffectiveArmor[i] = Fixed.FromRaw(ear[i]);
+                // DW-692: EffectiveArmor likewise. Consumer: DamageTable.FinalDamage is
+                // `max(0, amount*matrix − flatArmor)`, so a NEGATIVE armor is SUBTRACTED-negative — it ADDS that much
+                // damage to every hit the unit takes, silently turning a defensive stat into a damage amplifier
+                // (worse than merely disabling the unit, which is what a negative attack damage does).
+                w.BaseArmor[i] = Fixed.FromRaw(bar[i]);
+                w.EffectiveArmor[i] = Fixed.Max(Fixed.Zero, Fixed.FromRaw(ear[i]));
                 w.AttackSpeed[i] = Fixed.FromRaw(asp[i]); w.Energy[i] = Fixed.FromRaw(en[i]); w.MaxEnergy[i] = Fixed.FromRaw(men[i]); w.RegenRate[i] = Fixed.FromRaw(rgn[i]);
                 w.StatusFlagsOf[i] = (StatusFlags)sf[i]; w.DamageTypeOf[i] = (DamageType)dt[i]; w.ArmorTypeOf[i] = (ArmorType)art[i];
                 w.VisionRange[i] = Fixed.FromRaw(vr[i]); w.Elevation[i] = Fixed.FromRaw(el[i]); w.SplashRadius[i] = Fixed.FromRaw(spl[i]);
@@ -751,6 +794,17 @@ namespace ProjectChimera.Core.Persistence
                 w.GatherState[i] = (GatherState)gs[i]; w.GatherTarget[i] = gt[i]; w.CarryAmount[i] = Fixed.FromRaw(ca[i]);
                 w.CarryResourceType[i] = (ResourceKind)crt[i]; w.CarryCapacity[i] = Fixed.FromRaw(cc[i]); w.BuildTarget[i] = bt[i];
                 w.Generation[i] = gen[i]; // DW-581 — the recycle generation is what keeps a packed ref ABA-safe
+                // DW-690 — restore the DW-634 rally gate. Without it a worker saved mid-leg came back with its
+                // Flags/CommandState/MoveTarget intact but its gate off, so GatheringSystem's very next tick overwrote
+                // MoveTarget with the node nearest its mid-leg position. Its DW-689 stand-down budget is deliberately
+                // NOT persisted (unlike the DW-804 walk-stall lane below, whose 0 MEANS "holds a slot", a 0 budget here
+                // MEANS "unarmed"): EntityWorld.Create leaves it at 0 == UNARMED, and the first stand-down tick after
+                // the load re-arms it from the worker's restored position.
+                w.RallyMovePending[i] = rmp[i] != 0;
+                // DW-804 — restore the walk-stall streak/sentinel BEFORE anything ticks. 0 is not a neutral default
+                // here: it is the value that means "this worker HOLDS one of its node's AssignedGatherers slots", so
+                // dropping the lane turned a saved yielder into a claimed holder and let it gather off the books.
+                w.GatherWalkStallTicks[i] = gws[i];
 
                 // Reference-typed SoA: re-resolve the def by id + faction and set the two ref fields directly (NOT via
                 // ApplyUnitDefinition, which would clobber the just-restored numeric SoA and re-fire the self-passive
@@ -1189,6 +1243,23 @@ namespace ProjectChimera.Core.Persistence
                 for (int i = 0; i < g.Length; i++)
                     if ((uint)g[i] > (uint)EntityWorld.MAX_PACKABLE_GENERATION)
                         Fail($"entity generation lane [{i}] value {g[i]} is outside [0, {EntityWorld.MAX_PACKABLE_GENERATION}].");
+            }
+            // DW-804 — the walk-stall lane is a TWO-RANGE field, and a value outside both ranges is not merely odd,
+            // it silently burns node capacity. The sim can only ever store SLOT_YIELDED (−1, "already handed the slot
+            // back") or a streak in [0, WALK_STALL_GRACE_TICKS) — the increment that reaches the grace window replaces
+            // itself with the sentinel in the same statement, so the window value itself is never observable at a tick
+            // boundary. A corrupt value BELOW the sentinel is the dangerous one: GatheringSystem.TickWalkStall would
+            // read it as a streak and increment it, and the tick it lands on exactly −1 the worker becomes a "yielder"
+            // that never yielded — its slot is decremented by nobody and both ReleaseGatherSlot and TickWalkStall then
+            // skip it forever, i.e. the permanent AssignedGatherers loss DW-207 exists to prevent. Reject the whole
+            // out-of-domain range here, where the fail-closed posture lives (the DW-581 lane precedent above).
+            {
+                const int yielded = ProjectChimera.Economy.GatheringSystem.SLOT_YIELDED;
+                const int grace   = ProjectChimera.Economy.GatheringSystem.WALK_STALL_GRACE_TICKS;
+                var s = Ent[(int)EA.GatherWalkStall];
+                for (int i = 0; i < s.Length; i++)
+                    if (s[i] < yielded || s[i] >= grace)
+                        Fail($"entity gather walk-stall lane [{i}] value {s[i]} is outside [{yielded}, {grace}).");
             }
 
             // ── BuildingStore ──

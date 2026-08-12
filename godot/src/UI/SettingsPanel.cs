@@ -4,7 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using ProjectChimera.AI.Providers;   // Story 8.2 — AiAvailability(Evaluator/Messages), four-state UI
+using ProjectChimera.AI.Providers;   // Story 8.2 — AiAvailability(Evaluator/Messages), availability UI
 using ProjectChimera.Core.Definitions; // Story 8.2 — ISecretStore, SecretIds, LlmProviderCatalog
 using ProjectChimera.UI.Components; // ChimeraComponents, ChimeraTabs, ChimeraSlider, ChimeraSwitch, ChimeraTooltip
 using ProjectChimera.UI.Theme;       // ThemeTokens, ThemeBuilder, AccentController
@@ -121,7 +121,7 @@ namespace ProjectChimera.UI
         // ── Initialization ────────────────────────────────────────────────────
 
         /// <summary>Build the settings UI and sync all widgets to current settings. Story 8.2: the evaluator +
-        /// secret store back the AI Provider section (Test-connection + four-state UI + key entry).</summary>
+        /// secret store back the AI Provider section (Test-connection + availability UI + key entry).</summary>
         public void Initialize(SettingsManager settings, AiAvailabilityEvaluator aiEvaluator, ISecretStore secretStore)
         {
             _settings    = settings;

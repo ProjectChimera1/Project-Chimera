@@ -16,7 +16,7 @@ export const meta = {
 //       - or just the bundle-name array, or a JSON string of either (see the normalizer below).
 //
 // CHUNK SIZE IS A HARDWARE LIMIT, NOT A TUNING KNOB. This machine is a Ryzen 5 5600 (6 physical
-// cores / 12 logical) with 16 GB RAM. Every implement agent runs `dotnet build` plus the 3834-test
+// cores / 12 logical) with 16 GB RAM. Every implement agent runs `dotnet build` plus the full
 // Tier-1 suite, each wanting ~1.5-3 GB and multiple cores. Above ~4 concurrent the box thrashes
 // swap and every suite run slows more than the extra parallelism buys. Workflow's own cap is
 // min(16, cores-2) and there is no knob to lower it, so concurrency is bounded HERE by chunking.
@@ -30,7 +30,13 @@ const CHUNK = OPTS.chunkSize ?? 4
 const WORKLIST = OPTS.worklistPath ?? 'D:/Projects/Project_Chimera/.claude/workflows/dw-worklist.json'
 const NAMES = OPTS.bundleNames ?? []
 const MODEL = OPTS.model ?? 'opus'          // fleet-wide model for every agent in this run
-const BASELINE = OPTS.baselineTests ?? 3834 // Tier-1 pass count on master at launch; grows as merges land
+// DW-502: NO hardcoded fallback. This used to default to a literal 3834 - a snapshot of one commit's
+// Tier-1 pass count that went stale immediately. Seven independent worktrees, across three runs, each
+// measured 3714 against it, and the 120-test gap read as a regression they had to disprove: several
+// burned gate time detaching to their parent commit, and one reached for `git stash` to measure it and
+// cross-wired every parallel worktree's stash stack (DW-521). A stale baseline is worse than no
+// baseline, so the figure must come from whoever just measured it. Absent => refuse to launch.
+const BASELINE = OPTS.baselineTests
 const BASE = OPTS.baseSha ?? ''             // pre-run master SHA; anchors the final review diff range
 // Where merge/ledger/review run. Defaults to the main checkout (the original behaviour). Pass a
 // dedicated integration worktree to keep the burn-down off the working tree the human is using -
@@ -52,6 +58,17 @@ const REBASELINE_BRIEF = OPTS.rebaselineBrief ?? ''
 if (!NAMES.length) {
   log('No bundleNames passed. Read .claude/workflows/dw-worklist.json and pass a subset via args.')
   return { error: 'no bundleNames in args' }
+}
+
+// DW-502: fail the LAUNCH, not a bundle. Every implement and merge agent is handed this number as the
+// suite baseline it must not fall below; if it is wrong they either chase a phantom regression or, worse,
+// accept a real one. Measure it on the branch you are about to merge into and pass it in:
+//   dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj   (read "Passed: <n>")
+if (!Number.isInteger(BASELINE) || BASELINE <= 0) {
+  log('No baselineTests passed (or not a positive integer). Measure the CURRENT Tier-1 pass count on the ' +
+      'integration branch and pass it as args.baselineTests - a stale hardcoded figure made seven worktrees ' +
+      'disprove a 120-test phantom regression (DW-502) and triggered a cross-worktree stash incident (DW-521).')
+  return { error: 'missing baselineTests in args' }
 }
 
 const IMPL = {

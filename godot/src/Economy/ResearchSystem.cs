@@ -68,6 +68,30 @@ namespace ProjectChimera.Economy
         // researches, so summing the per-research row would over-count units).
         private readonly int[] _spawnRefusedSpawnCount;
 
+        // ── DW-751: cumulative-BOUND truncation aggregation ──────────────────────────────────────────────────
+        // Per-match tallies of DELIVERIES whose banked cumulative outran DW-488's per-modifier bound and was
+        // therefore clamped by <see cref="BoundedDelta"/>. Outer = (int)Faction, inner = research index (lazily
+        // grown, same never-shrink shape as the DW-624 rows above).
+        //
+        // WHY this needs reporting at all: DW-650 bounds the modifier BUILT from the cumulative but deliberately NOT
+        // the banked cumulative itself (SaturatingAdd's full-Fixed-range semantics are persisted, folded into
+        // SimChecksum and load-bearing for DW-623's void/rollback snapshot). So past ~4096 stat units the research
+        // STORE reports one number while the units receive another, and nothing said so. The divergence is
+        // intentional; the missing half was observability.
+        //
+        // Same aggregation treatment as DW-624 and for the same reason: BuildCumulativeModifier runs once per
+        // AFFECTED UNIT (the completion path walks the living army, the catch-up path fires per spawn), so an inline
+        // warn on a repeatable ladder would emit one line per unit per completion. Tallied here, reported as ONE
+        // line per faction by <see cref="FlushCumulativeBoundDiagnostics"/> at the match boundary.
+        //
+        // UNFOLDED diagnostics, exactly the posture of the rows above: never hashed into SimChecksum, never read by
+        // any sim branch, so a run that reads them and a run that ignores them are byte-identical.
+        private readonly int[][] _boundTruncationsByResearch;
+        // The worst |cumulative.Raw| seen past the bound per faction/research (0 = never truncated), held as long so
+        // an int.MinValue-saturated total cannot overflow its own magnitude. Lets the line say HOW far the banked
+        // total outran what the units actually received.
+        private readonly long[][] _boundWorstRawByResearch;
+
         public ResearchSystem(BuildingStore buildings, ResourceStore resources, ResearchStore research,
                               ModifierStore modifiers, CombatEventQueue? events = null,
                               FactionDefinition? p1Faction = null, FactionDefinition? p2Faction = null,
@@ -87,8 +111,15 @@ namespace ProjectChimera.Economy
             // grow on first use (EnsureRefusalCapacity), so a def-less slot allocates nothing.
             _spawnRefusalsByResearch = new int[FactionRegistry.FACTION_ARRAY_SIZE][];
             _spawnRefusedSpawnCount  = new int[FactionRegistry.FACTION_ARRAY_SIZE];
+            // DW-751: same outer shape / lazy inner growth as the DW-624 rows.
+            _boundTruncationsByResearch = new int[FactionRegistry.FACTION_ARRAY_SIZE][];
+            _boundWorstRawByResearch    = new long[FactionRegistry.FACTION_ARRAY_SIZE][];
             for (int i = 0; i < _spawnRefusalsByResearch.Length; i++)
-                _spawnRefusalsByResearch[i] = System.Array.Empty<int>();
+            {
+                _spawnRefusalsByResearch[i]    = System.Array.Empty<int>();
+                _boundTruncationsByResearch[i] = System.Array.Empty<int>();
+                _boundWorstRawByResearch[i]    = System.Array.Empty<long>();
+            }
 
             if (p1Faction != null) _research.EnsureCapacity(Faction.Player1, ResearchCount(p1Faction));
             if (p2Faction != null) _research.EnsureCapacity(Faction.Player2, ResearchCount(p2Faction));
@@ -110,6 +141,28 @@ namespace ProjectChimera.Economy
         /// mutation; a thin public wrapper over the private <see cref="GetFactionDef"/> this system already uses.
         /// </summary>
         public FactionDefinition? GetFactionDefinition(Faction faction) => GetFactionDef(faction);
+
+        /// <summary>
+        /// DW-386 — override the faction definition for a specific faction slot at runtime, the exact twin of
+        /// <c>BuildingSystem.SetFactionDef</c> and called from the SAME place (<c>ScenarioApplier</c>'s player-slot
+        /// loop). The <see cref="_factions"/> array has been sized <c>FACTION_ARRAY_SIZE</c> (9) since Story 9.2, but
+        /// the constructor only ever populates Player1/Player2 — so before this, a Player3..Player8 researcher
+        /// resolved a NULL faction def and had NO research options at all, while the same slot's BUILDINGS resolved
+        /// correctly through <c>BuildingSystem.SetFactionDef</c>. That asymmetry is the defect; one seam per system.
+        ///
+        /// <para>Deliberately ONLY the array assignment — no <see cref="ResearchStore.EnsureCapacity"/> call.
+        /// Capacity is grown lazily by every consumer that needs it (<see cref="StartResearchCommand"/>,
+        /// <see cref="ApplyCompletedResearch"/>, the completion path), and <c>ResearchStore</c>'s per-faction row
+        /// LENGTH is folded into <c>SimChecksum</c> — so growing it eagerly here would move the fold for any slot
+        /// whose def carries research, for no behavioural gain. Mirrors <c>BuildingSystem.SetFactionDef</c> exactly,
+        /// which is likewise assignment-only. Out-of-range faction is a silent no-op.</para>
+        /// </summary>
+        public void SetFactionDef(Faction faction, FactionDefinition def)
+        {
+            int idx = (int)faction;
+            if (idx >= 0 && idx < _factions.Length)
+                _factions[idx] = def;
+        }
 
         /// <summary>Null-safe count of <paramref name="fdef"/>'s <see cref="FactionDefinition.Research"/> list
         /// (review fix). <see cref="FactionDefinition.GetResearch"/>/<see cref="FactionDefinition.IndexOfResearch"/>
@@ -520,19 +573,34 @@ namespace ProjectChimera.Economy
         /// magnitude is NOT authored: it is a running sum <see cref="SaturatingAdd"/> accumulates across a repeatable
         /// ladder, so no load-time content gate can bound it — the bound has to be applied where the modifier is built.
         /// </para>
+        ///
+        /// <para><b>DW-751</b> — that clamp is a SILENT divergence between the banked total and the delivered bonus, so
+        /// each build first reports itself to <see cref="NoteBoundTruncation"/>. Diagnostics only: the tally is unfolded,
+        /// nothing branches on it, and the returned descriptor is byte-identical to the pre-DW-751 one.</para>
         /// </summary>
-        private Modifier BuildCumulativeModifier(int f, int researchIndex) => new Modifier(
-            ResearchModifierId(researchIndex),
-            durationTicks: -1,
-            StackRule.Refresh,
-            maxStacks: 1,
-            maxHealthDelta:    BoundedDelta(_research.CumulativeMaxHealthDelta[f][researchIndex]),
-            attackDamageDelta: BoundedDelta(_research.CumulativeAttackDamageDelta[f][researchIndex]),
-            moveSpeedDelta:    BoundedDelta(_research.CumulativeMoveSpeedDelta[f][researchIndex]),
-            status: StatusFlags.None,
-            periodEffect: null,
-            periodTicks: 0,
-            armorDelta:        BoundedDelta(_research.CumulativeArmorDelta[f][researchIndex]));
+        private Modifier BuildCumulativeModifier(int f, int researchIndex)
+        {
+            // Read the four banked cumulatives ONCE (same values, same order as the pre-DW-751 inline reads).
+            Fixed maxHealth = _research.CumulativeMaxHealthDelta[f][researchIndex];
+            Fixed attack    = _research.CumulativeAttackDamageDelta[f][researchIndex];
+            Fixed moveSpeed = _research.CumulativeMoveSpeedDelta[f][researchIndex];
+            Fixed armor     = _research.CumulativeArmorDelta[f][researchIndex];
+
+            NoteBoundTruncation(f, researchIndex, maxHealth, attack, moveSpeed, armor); // DW-751 (tally only)
+
+            return new Modifier(
+                ResearchModifierId(researchIndex),
+                durationTicks: -1,
+                StackRule.Refresh,
+                maxStacks: 1,
+                maxHealthDelta:    BoundedDelta(maxHealth),
+                attackDamageDelta: BoundedDelta(attack),
+                moveSpeedDelta:    BoundedDelta(moveSpeed),
+                status: StatusFlags.None,
+                periodEffect: null,
+                periodTicks: 0,
+                armorDelta:        BoundedDelta(armor));
+        }
 
         /// <summary>
         /// DW-650 — clamp one cumulative research total into DW-488's per-modifier authoring bound
@@ -692,6 +760,129 @@ namespace ProjectChimera.Economy
             if (f < 0 || f >= _spawnRefusalsByResearch.Length) return;
             if (researchCount <= _spawnRefusalsByResearch[f].Length) return;
             System.Array.Resize(ref _spawnRefusalsByResearch[f], researchCount);
+        }
+
+        // ── DW-751: per-match aggregation of the cumulative-BOUND truncations ─────────────────────
+
+        /// <summary>
+        /// DW-751 — record that this build of faction-index <paramref name="f"/>'s research
+        /// <paramref name="researchIndex"/> delivered LESS than the store banked, because at least one banked
+        /// cumulative exceeded DW-488's per-modifier bound (±<see cref="Modifier.MaxStatDeltaTotalRaw"/>, ≈4096 stat
+        /// units) and <see cref="BoundedDelta"/> clamped it. Records one DELIVERY per call plus the worst magnitude
+        /// seen, so the flushed line can name the research AND how far the banked total outran the delivery.
+        ///
+        /// <para>Called from <see cref="BuildCumulativeModifier"/>, which runs once per AFFECTED UNIT on both the
+        /// completion walk and the future-spawn catch-up — hence tally-and-aggregate rather than an inline warn
+        /// (DW-624's precedent). Pure tally: touches only unfolded diagnostic arrays, branches nothing, allocates
+        /// nothing on the untruncated path (the overwhelmingly common case — it engages only past ≈4096 accumulated
+        /// stat units, and no shipped research authors a modifier delta at all).</para>
+        /// </summary>
+        private void NoteBoundTruncation(int f, int researchIndex, Fixed maxHealth, Fixed attack, Fixed moveSpeed, Fixed armor)
+        {
+            long worst = 0;
+            worst = WorstOvershoot(worst, maxHealth);
+            worst = WorstOvershoot(worst, attack);
+            worst = WorstOvershoot(worst, moveSpeed);
+            worst = WorstOvershoot(worst, armor);
+            if (worst == 0) return; // nothing exceeded the bound → the delivery is exact, nothing to report
+
+            if (f < 0 || f >= _boundTruncationsByResearch.Length) return;
+            if (researchIndex < 0) return;
+            EnsureBoundTruncationCapacity(f, researchIndex + 1);
+            _boundTruncationsByResearch[f][researchIndex]++;
+            if (worst > _boundWorstRawByResearch[f][researchIndex])
+                _boundWorstRawByResearch[f][researchIndex] = worst;
+        }
+
+        /// <summary>DW-751 — the larger of <paramref name="worst"/> and <paramref name="cumulative"/>'s magnitude,
+        /// but ONLY when that magnitude is past the bound (an in-bounds delta was delivered exactly and must never
+        /// arm the tally). Widened to long so an <see cref="int.MinValue"/>-saturated total's magnitude is
+        /// representable — <c>System.Math.Abs(int.MinValue)</c> throws.</summary>
+        private static long WorstOvershoot(long worst, Fixed cumulative)
+        {
+            long magnitude = cumulative.Raw < 0 ? -(long)cumulative.Raw : cumulative.Raw;
+            if (magnitude <= Modifier.MaxStatDeltaTotalRaw) return worst;
+            return magnitude > worst ? magnitude : worst;
+        }
+
+        /// <summary>DW-751 — grow faction-index <paramref name="f"/>'s truncation rows to at least
+        /// <paramref name="researchCount"/> entries, preserving existing counts and never shrinking (mirrors
+        /// <see cref="EnsureRefusalCapacity"/>). Both rows are grown together so they stay index-aligned.</summary>
+        private void EnsureBoundTruncationCapacity(int f, int researchCount)
+        {
+            if (f < 0 || f >= _boundTruncationsByResearch.Length) return;
+            if (researchCount <= _boundTruncationsByResearch[f].Length) return;
+            System.Array.Resize(ref _boundTruncationsByResearch[f], researchCount);
+            System.Array.Resize(ref _boundWorstRawByResearch[f], researchCount);
+        }
+
+        /// <summary>
+        /// DW-751 — report and ZERO the per-match cumulative-bound truncation tally: at most ONE warn line per
+        /// faction, naming every research whose banked cumulative outran DW-488's per-modifier bound, how many
+        /// deliveries were clamped, and the worst banked magnitude behind the clamp. Emits nothing for a match with
+        /// no truncation (the overwhelmingly common case), so it is safe to call unconditionally at every match
+        /// boundary. Called by <c>SimulationHost.ClearForReset</c> via <c>FlushMatchDiagnostics()</c>, exactly like
+        /// <see cref="FlushSpawnCatchUpDiagnostics"/>.
+        ///
+        /// <para>Diagnostics only — reads and clears unfolded counters, touches no sim array and pushes no event, so
+        /// calling it (or not) is byte-identical for <c>SimChecksum</c>. Faction slots ascend and each faction's
+        /// researches ascend, so the emitted text is deterministic. Returns the total number of clamped deliveries
+        /// reported (0 when clean).</para>
+        /// </summary>
+        public int FlushCumulativeBoundDiagnostics()
+        {
+            int flushedTotal = 0;
+            for (int f = 1; f < _boundTruncationsByResearch.Length; f++) // slot 0 = Neutral (never carries a faction def)
+            {
+                int[] row = _boundTruncationsByResearch[f];
+                long[] worstRow = _boundWorstRawByResearch[f];
+                int total = 0;
+                for (int ri = 0; ri < row.Length; ri++) total += row[ri];
+
+                if (total > 0)
+                {
+                    // Build the line only when a sink is actually wired (the DW-624 posture — golden/headless/Tier-1
+                    // hosts pass none and must not pay for the string).
+                    _log?.Warn(CumulativeBoundWarn((Faction)f, row, worstRow, total));
+                    flushedTotal += total;
+                }
+
+                System.Array.Clear(row);      // per-MATCH aggregation: the next match starts from zero
+                System.Array.Clear(worstRow);
+            }
+            return flushedTotal;
+        }
+
+        /// <summary>DW-751 — render one faction's truncation tally as a single designer-facing line: each research by
+        /// its authored <see cref="ResearchDefinition.Id"/> (ascending index) with the number of clamped deliveries
+        /// and the worst banked total behind them, then the explanation of WHY the store and the units disagree.
+        /// Diagnostic string-building only, reached solely from <see cref="FlushCumulativeBoundDiagnostics"/>'s
+        /// sink-wired path.</summary>
+        private string CumulativeBoundWarn(Faction faction, int[] row, long[] worstRow, int total)
+        {
+            var fdef = GetFactionDef(faction);
+            var sb = new System.Text.StringBuilder();
+            sb.Append("[ResearchSystem] research cumulative EXCEEDED the per-modifier delivery bound for ")
+              .Append(faction).Append(" this match (").Append(total)
+              .Append(" clamped deliver(ies) in total): ");
+            bool first = true;
+            for (int ri = 0; ri < row.Length; ri++)
+            {
+                if (row[ri] <= 0) continue;
+                if (!first) sb.Append(", ");
+                first = false;
+                long worst = ri < worstRow.Length ? worstRow[ri] : 0;
+                sb.Append('\'').Append(ResearchIdAt(fdef, ri)).Append("' on ").Append(row[ri])
+                  .Append(" deliver(ies), banked magnitude up to ").Append(worst >> Fixed.FRACTIONAL_BITS)
+                  .Append(" stat unit(s)");
+            }
+            sb.Append(". The research STORE keeps the full banked total (it is persisted, folded into SimChecksum and ")
+              .Append("load-bearing for the void/rollback snapshot), but each unit receives at most ")
+              .Append(Modifier.MaxStatDeltaTotalRaw >> Fixed.FRACTIONAL_BITS)
+              .Append(" stat unit(s) per delta — so the number the designer reads and the bonus the army gets DIVERGE ")
+              .Append("above that point. Author a shorter ladder, or smaller per-level deltas, if the higher levels ")
+              .Append("are meant to be felt. Aggregated per match — ONE line, never one per affected unit (DW-751).");
+            return sb.ToString();
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────

@@ -3,7 +3,7 @@
 # checksum_algo_version: 25
 # Pins the SimChecksum sequence for a fixed 2-faction world driven by a deterministic per-tick P1+P2 UnitOrder stream (movable units + an order-SENSITIVE bump-event fold g=g*3+v) through the REAL MergedTickBuilder + MergedTickApplier (the full wire merge round-trip).
 # Samples: 300 (one line per sim tick).
-# Re-baseline (intentional behavior change only): set CHIMERA_GOLDEN_RECORD=1, run `dotnet test --filter FullyQualifiedName~MergedTick`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit. NEVER record the existing goldens.
+# Re-baseline (intentional behavior change only): set CHIMERA_GOLDEN_RECORD=1, run `dotnet test --filter FullyQualifiedName~MergedTickN2`, then `dotnet build` (refreshes the embedded copy) and commit. DO NOT hand-edit. NEVER widen this to ~MergedTick — that also re-records the N=3/N=4 goldens (DW-864).
 1 4BCB1713
 2 76032CF3
 3 D8A82BFB

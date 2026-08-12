@@ -136,15 +136,15 @@ namespace ProjectChimera.Core.Definitions
             // Filename-safe id — DW-47 charset + DW-454 reserved basename, through THE single extracted decision
             // (IsFilenameSafeId, DW-456) shared with ValidateFields and ItemCardPanel.DoDelete's File.Delete guard.
             // The id becomes the JSON file name in Persist()'s Path.Combine/File.Move/File.Delete, so an id like
-            // "../../foo" would escape the items directory and a reserved basename like "con" makes the Win32 write
-            // throw. This sim check is defense-in-depth for the sole-Validated<>-minter / content-load path; the guard
-            // that actually blocks Persist() is the editor ValidateFields gate (via DoSave→Revalidate). Message
-            // selection keeps the order the gates always had: charset first, reserved basename second.
+            // "../../foo" would escape the items directory and a reserved basename like "con" makes the written file
+            // a DOS device name (DW-694: a PORTABILITY defect on this platform, not a local write failure). This sim
+            // check is defense-in-depth for the sole-Validated<>-minter / content-load path; the guard that actually
+            // blocks Persist() is the editor ValidateFields gate (via DoSave→Revalidate). Message selection keeps the
+            // order the gates always had: charset first, reserved basename second.
             if (!IsFilenameSafeId(id))
                 return UnitDefinitionValidator.SanitizeId(id) != id
                     ? Fail(id, "id", "contains characters outside [a-z0-9_]; rename before saving.")
-                    : Fail(id, "id",
-                        "is a Windows reserved device name (con|prn|aux|nul|com1-com9|lpt1-lpt9); the filesystem rejects '<id>.json' as a file name, so rename before saving.");
+                    : Fail(id, "id", UnitDefinitionValidator.ReservedDeviceNameMessage(id));
 
             // ── (b) Charges sign ──
             if (def.Charges < 0)
@@ -223,8 +223,7 @@ namespace ProjectChimera.Core.Definitions
                 // reserved-basename message second.
                 errors.Add(("id", UnitDefinitionValidator.SanitizeId(id) != id
                     ? Located(id, "id", "contains characters outside [a-z0-9_]; rename before saving.")
-                    : Located(id, "id",
-                        "is a Windows reserved device name (con|prn|aux|nul|com1-com9|lpt1-lpt9); the filesystem rejects '<id>.json' as a file name, so rename before saving.")));
+                    : Located(id, "id", UnitDefinitionValidator.ReservedDeviceNameMessage(id))));
 
             if (def.Charges < 0)
                 errors.Add(("charges", Located(id, "charges",

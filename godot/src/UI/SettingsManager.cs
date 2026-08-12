@@ -35,12 +35,11 @@ namespace ProjectChimera.UI
         private static readonly string SETTINGS_PATH =
             ProjectSettings.GlobalizePath("user://settings.json");
 
-        private static readonly JsonSerializerOptions _jsonOpts = new()
-        {
-            WriteIndented        = true,
-            ReadCommentHandling  = JsonCommentHandling.Skip,
-            AllowTrailingCommas  = true,
-        };
+        /// <summary>DW-134: the settings serializer shape now lives in the Godot-free
+        /// <see cref="SettingsJson.Options"/> so the Tier-1 round-trip suites can reference the REAL options this
+        /// Node loads/saves with instead of hand-rolling a replica that could silently drift from it. Byte-identical
+        /// posture to the private options this replaced — an alias, not a change.</summary>
+        private static readonly JsonSerializerOptions _jsonOpts = SettingsJson.Options;
 
         // ── Lifecycle ─────────────────────────────────────────────────────────
 

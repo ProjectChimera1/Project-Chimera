@@ -45,8 +45,11 @@ namespace ProjectChimera.Sim.Tests.Validation
             return s;
         }
 
+        // DW-725: version-NEUTRAL name (the form DW-194's name-hygiene guard tells authors to prefer). The old
+        // `AlgoVersion_IsTwo` embedded the cardinal word and survived that guard only while AlgoVersion happened to
+        // be 2 — the next StartStateHash bump would have made the NAME a lie while the assertion was corrected.
         [Fact]
-        public void AlgoVersion_IsTwo() => Assert.Equal(2, StartStateHash.AlgoVersion); // Story 3.15: bumped 1→2 (inventory + placed items)
+        public void AlgoVersion_IsPinned() => Assert.Equal(2, StartStateHash.AlgoVersion); // Story 3.15: bumped 1→2 (inventory + placed items)
 
         [Fact]
         public void MinimalModel_NoHeroes_MatchesIndependentlyComputedFnv64()

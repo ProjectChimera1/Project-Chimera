@@ -22,7 +22,7 @@ namespace ProjectChimera.Core.Bootstrap
             _ctx.AbilityEditorPanel = new AbilityEditorPanel();
             _ctx.Scene.AddChild(_ctx.AbilityEditorPanel);
 
-            // Story 8.4: also pass the LLM service + four-state evaluator + secret store (all present on SceneContext
+            // Story 8.4: also pass the LLM service + availability evaluator + secret store (all present on SceneContext
             // since SettingsPhase/TriggerEditorPhase run earlier) so the editor offers AI ability drafts; nullable —
             // a null evaluator hides the AI row and leaves manual authoring fully usable (older-wiring fallback).
             _ctx.AbilityEditorPanel.Initialize(_ctx.Scenario, _ctx.GameState, _ctx.AbilityRegistry,

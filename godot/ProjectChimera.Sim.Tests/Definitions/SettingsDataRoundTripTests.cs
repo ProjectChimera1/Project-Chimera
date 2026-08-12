@@ -7,19 +7,21 @@ namespace ProjectChimera.Sim.Tests.Definitions
 {
     /// <summary>
     /// Story 5.9 (NFR-2) — <see cref="SettingsData.HasSeenOnboarding"/> round-trips through the SAME
-    /// <see cref="JsonSerializerOptions"/> shape <c>SettingsManager.Load</c>/<c>Save</c> use (WriteIndented,
-    /// comments skipped, trailing commas allowed) — <see cref="SettingsData"/> itself is Godot-free (a plain DTO
-    /// under <c>src/Core/Definitions</c>), so this exercises the exact serialize/deserialize behavior headlessly
-    /// without needing the Godot <c>SettingsManager</c> Node or a live <c>user://settings.json</c> file.
+    /// <see cref="JsonSerializerOptions"/> instance <c>SettingsManager.Load</c>/<c>Save</c> use —
+    /// <see cref="SettingsData"/> itself is Godot-free (a plain DTO under <c>src/Core/Definitions</c>), so this
+    /// exercises the exact serialize/deserialize behavior headlessly without needing the Godot
+    /// <c>SettingsManager</c> Node or a live <c>user://settings.json</c> file.
+    ///
+    /// <para>DW-134: <see cref="Opts"/> used to be a hand-rolled replica of <c>SettingsManager._jsonOpts</c> that
+    /// happened to be byte-for-byte identical, with nothing enforcing it stayed so — if the real options had ever
+    /// gained a naming policy or converter, this "round-trip" suite would have kept passing while the field's actual
+    /// persistence regressed. It is now the REAL <see cref="SettingsJson.Options"/> instance the Node references, so
+    /// divergence is impossible by construction rather than by coincidence.</para>
     /// </summary>
     public class SettingsDataRoundTripTests
     {
-        private static readonly JsonSerializerOptions Opts = new()
-        {
-            WriteIndented        = true,
-            ReadCommentHandling  = JsonCommentHandling.Skip,
-            AllowTrailingCommas  = true,
-        };
+        /// <summary>DW-134 — the REAL serializer options <c>SettingsManager</c> loads/saves with (same instance).</summary>
+        private static readonly JsonSerializerOptions Opts = SettingsJson.Options;
 
         [Fact]
         public void HasSeenOnboarding_DefaultsFalse()

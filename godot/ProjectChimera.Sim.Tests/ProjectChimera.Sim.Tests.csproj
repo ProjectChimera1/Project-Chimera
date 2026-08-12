@@ -63,6 +63,13 @@
          (src/CreationSuite is not globbed by SimSources.props — the EditorHistory single-file precedent) so the
          legacy-path PerPlayer exclusion is Tier-1 testable. -->
     <Compile Include="..\src\CreationSuite\TriggerVarPickerPolicy.cs" LinkBase="Sim\CreationSuite" />
+    <!-- DW-150: the Godot-free editor-world(float) -> sim-grid-cell bridge extracted from PathabilityTool (the
+         TriggerVarPickerPolicy precedent — src/CreationSuite is not globbed by SimSources.props). It DELEGATES to
+         FlowField.WorldToCell/CellCenter, so "the cell the author paints == the cell the sim blocks" is now a
+         single implementation AND a Tier-1 assertion instead of two copies that happened to agree. Deliberately
+         OUTSIDE SimSources.props/the determinism analyzer set: its input is a float raycast hit, presentation-side,
+         never folded into any hash. -->
+    <Compile Include="..\src\CreationSuite\PathabilityCellMapping.cs" LinkBase="Sim\CreationSuite" />
     <!-- DW-406/DW-408: the Godot-free minimap fog policy core — the RevealAll-honoring fog-texture alpha map and the
          fog-visibility dot gate — included as a single file (src/UI is not globbed by SimSources.props) so both
          minimap fog decisions are Tier-1 testable against a real FogOfWarSystem. Presentation-side, never hashed. -->

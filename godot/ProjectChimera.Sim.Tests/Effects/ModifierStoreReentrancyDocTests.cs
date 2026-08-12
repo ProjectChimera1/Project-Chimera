@@ -48,32 +48,113 @@ namespace ProjectChimera.Sim.Tests.Effects
         private static readonly Regex VersionScopedClaim =
             new(@"\bin\s+(?:story\s+)?[0-9]+\.[0-9]+[a-z]?\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        // ── guard 1: the store's docs make no version-scoped present-state claim ───────────────────────
+        // ── guard 1: the guarded files make no version-scoped present-state claim ──────────────────────
 
-        [Fact]
-        public void ModifierStoreDoc_MakesNoVersionScopedPresentStateClaim()
+        /// <summary>DW-785 — the scan's FILE SET. <c>ModifierStore.cs</c> was DW-663's own file;
+        /// <c>PersistentEffect.cs</c> was added because it carried the identical rot UNGUARDED ("its periodic
+        /// EXECUTION … lands in Story 2.2b. In 2.1 the executor … fail-closes (throws)", which had become outright
+        /// FALSE — the executor installs through the store), and because a guard scoped to one file cannot stop a
+        /// class of defect that is about prose habits. Each entry pairs the file with an anchor string that must
+        /// still be present, so deleting the documented member rather than fixing its prose cannot turn the guard
+        /// green.</summary>
+        public static TheoryData<string, string> VersionClaimGuardedFiles => new()
         {
-            string path = StoreSourceFile(StoreFile);
+            { "ModifierStore.cs",    "class ModifierStore" },
+            { "PersistentEffect.cs", "class PersistentEffect" },
+        };
+
+        [Theory]
+        [MemberData(nameof(VersionClaimGuardedFiles))]
+        public void GuardedEffectsDoc_MakesNoVersionScopedPresentStateClaim(string fileName, string anchor)
+        {
+            string path = StoreSourceFile(fileName);
             string[] lines = File.ReadAllLines(path);
             string whole = string.Join("\n", lines);
 
             // Defeat a vacuous pass (wrong path / renamed file / paragraph deleted rather than fixed).
-            Assert.Contains("class ModifierStore", whole);
-            Assert.Contains("<b>Re-entrancy.</b>", whole);
+            Assert.Contains(anchor, whole);
 
             var offenders = new List<string>();
             for (int i = 0; i < lines.Length; i++)
                 if (VersionScopedClaim.IsMatch(lines[i]))
-                    offenders.Add($"{StoreFile}:{i + 1}: {lines[i].Trim()}");
+                    offenders.Add($"{fileName}:{i + 1}: {lines[i].Trim()}");
 
             Assert.True(offenders.Count == 0,
-                "A comment in ModifierStore.cs scopes a claim about the store's CURRENT behaviour to a story number "
-                + "(\"in 2.2b …\"). That was DW-663: the paragraph still described the re-entrancy posture as a "
-                + "property of release 2.2b long after the Story 2.3 validator fence became the thing that holds it, "
-                + "and a reader had no way to tell whether the sentence was still true. Name the mechanism — the "
-                + "validator gate, the guard, the call site — instead of the version. Attribution (\"(Story 2.2b)\", "
+                $"A comment in {fileName} scopes a claim about CURRENT behaviour to a story number "
+                + "(\"in 2.2b …\"). That was DW-663 (ModifierStore) and DW-785 (PersistentEffect): the prose "
+                + "described the posture as a property of a release long after a MECHANISM became the thing that "
+                + "holds it — and in PersistentEffect's case the claim had gone outright false, telling readers the "
+                + "executor throws on a Persistent when it installs one. Name the mechanism — the validator gate, "
+                + "the guard, the call site, the clamp — instead of the version. Attribution (\"(Story 2.2b)\", "
                 + "\"the 2.2a AccumulateBonus seam\") is history and stays fine:\n  "
                 + string.Join("\n  ", offenders));
+        }
+
+        [Fact]
+        public void ModifierStoreDoc_StillCarriesTheReEntrancyParagraphTheGuardIsAbout()
+        {
+            // Split out of the guard above when it became a per-file theory: the Re-entrancy anchor is specific to
+            // ModifierStore.cs and must not become a requirement on every file added to the scan set.
+            Assert.Contains("<b>Re-entrancy.</b>", File.ReadAllText(StoreSourceFile(StoreFile)));
+        }
+
+        [Fact]
+        public void PersistentEffectDoc_NamesTheInstallPathAndTheClamp_NotARelease()
+        {
+            // DW-785's positive half: the corrected prose has to say what actually happens, or "no version claim"
+            // is satisfiable by deleting the explanation entirely.
+            string doc = File.ReadAllText(StoreSourceFile("PersistentEffect.cs"));
+
+            Assert.Contains("InstallPersistent", doc, StringComparison.Ordinal);   // where the periods come from
+            Assert.Contains("MaxPersistentPeriods", doc, StringComparison.Ordinal); // what bounds PeriodCount
+            Assert.Contains("AbilityValidator", doc, StringComparison.Ordinal);     // the AC5 fence, by name
+        }
+
+        [Fact]
+        public void PersistentEffect_IsInstalledIntoTheStore_NotFailClosedOnRecognition()
+        {
+            // The executable half of the same correction: the retired doc said the executor "recognizes the type and
+            // fail-closes (throws) rather than mutating a nonexistent store". It installs, and runs the initial pulse
+            // on the store's own executor — neither is true of a type that throws on recognition.
+            var world = new EntityWorld();
+            var sys = new ModifierSystem();
+            var store = new ModifierStore(world, sys);
+            sys.AttachStore(store);
+            int target = world.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(4));
+
+            var pe = new PersistentEffect(
+                initialEffect: new DirectHpDeltaEffect(Fixed.FromInt(-5)),
+                periodEffect:  new DirectHpDeltaEffect(Fixed.FromInt(-1)),
+                expireEffect:  null,
+                periodTicks: 30, periodCount: 3);
+
+            store.InstallPersistent(target, pe, casterId: target, casterFaction: Faction.Player1);
+
+            Assert.Equal(1, store.CountAt(target));                          // a live slot exists
+            Assert.Equal(Fixed.FromInt(95).Raw, world.Health[target].Raw);   // the initial pulse ran
+        }
+
+        [Fact]
+        public void PersistentEffect_PeriodCount_IsClampedByTheStore_NotByAnyReleaseGate()
+        {
+            // PeriodCount's doc used to say "bounded by EffectCaps.MaxPersistentPeriods in 2.2b". The bound is
+            // InstallPersistent's clamp; authoring a count above the cap installs at the cap, and a negative one at 0.
+            var world = new EntityWorld();
+            var sys = new ModifierSystem();
+            var store = new ModifierStore(world, sys);
+            sys.AttachStore(store);
+
+            // Health well above the cap but inside the 16.16 Fixed range, so 256 one-per-tick pulses never floor.
+            int over = world.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(30_000), Fixed.FromInt(4));
+            store.InstallPersistent(over,
+                new PersistentEffect(null, new DirectHpDeltaEffect(Fixed.FromInt(-1)), null,
+                                     periodTicks: 1, periodCount: EffectCaps.MaxPersistentPeriods + 500),
+                casterId: over, casterFaction: Faction.Player1);
+
+            // One pulse per tick: the instance must expire exactly at the CAP, not at the authored count.
+            for (int t = 0; t < EffectCaps.MaxPersistentPeriods; t++) store.Advance(world, Fixed.Zero);
+            Assert.Equal(0, store.CountAt(over));
+            Assert.Equal(Fixed.FromInt(30_000 - EffectCaps.MaxPersistentPeriods).Raw, world.Health[over].Raw);
         }
 
         // ── guard 2: the paragraph names the fence, positively ─────────────────────────────────────────

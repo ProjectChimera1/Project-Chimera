@@ -66,8 +66,25 @@ namespace ProjectChimera.Core.Persistence
         /// the tail of the <c>SaveGameState.HA</c> lane enum. A v6 body has two fewer hero lanes → positional
         /// misalignment; the bump fail-closes a pre-15-21 save at the header. Same reasoning as v6. (The same
         /// story's SimChecksum stayed at 25 — attributes add NO folded state — so this is the save gate's only
-        /// 15-21 movement.)</para></summary>
-        public const ushort FormatVersion = 7;
+        /// 15-21 movement.)</para>
+        ///
+        /// <para>v8 (DW-690): the ENTITY section gained the <c>RallyMovePending</c> lane (the outstanding rally first
+        /// leg of a trained worker — the one input to DW-634's stand-down gate the save used to drop, so a mid-leg
+        /// worker reloaded with its Flags/CommandState/MoveTarget intact but its gate off and had the player's rally
+        /// silently discarded on the next tick). Appended at the tail of the per-entity half of the
+        /// <see cref="SaveGameState"/> <c>EA</c> lane enum (still before <c>PatrolWpX</c>, where the flat/strided half
+        /// begins). A v7 body has one fewer entity lane → positional misalignment; the bump fail-closes a pre-DW-690
+        /// save at the header. Same reasoning as v5/v6/v7. No fold changes, so no golden moves.</para>
+        ///
+        /// <para>v9 (DW-804): the entity section gained the <c>GatherWalkStall</c> lane (the DW-532 walk-stall streak
+        /// and its SLOT_YIELDED sentinel), appended after <c>RallyMovePending</c> at the tail of the per-entity half of
+        /// the <c>SaveGameState.EA</c> lane enum — i.e. BEFORE the flat-stride lanes, which therefore all shift by one.
+        /// A v8 body would misalign every lane from <c>PatrolWpX</c> onward; the bump fail-closes a pre-DW-804 save at
+        /// the header. The lane is unfolded (it is NOT in SimChecksum), so this bump moves no golden — it exists
+        /// because the lane pairs with the FOLDED node-side <c>AssignedGatherers</c> counter, and restoring one half
+        /// without the other let a saved yielder gather past a node's capacity with no reservation at all. Same
+        /// reasoning as v7/v8.</para></summary>
+        public const ushort FormatVersion = 9;
 
         /// <summary>Max player slots in a persisted launch record — a fail-closed corruption bound on the slot count.</summary>
         public const int MaxSlots = 64;

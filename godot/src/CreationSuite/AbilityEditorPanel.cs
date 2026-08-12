@@ -4,7 +4,7 @@ using System.IO;
 using System.Text.Json;
 using Godot;
 using ProjectChimera.AI;                // LLMService, AbilityDraftContext (Story 8.4)
-using ProjectChimera.AI.Providers;      // AiAvailabilityEvaluator/Messages (four-state)
+using ProjectChimera.AI.Providers;      // AiAvailabilityEvaluator/Messages
 using ProjectChimera.Core;              // Fixed, ScenarioData
 using ProjectChimera.Core.Definitions;  // AbilityDefinition, AbilityPresets, AbilityPresetMatcher, AbilityValidator, AbilityLoader, ContentJson, AbilityRegistry, ISecretStore
 using ProjectChimera.UI;                // GameState, GameMode
@@ -340,7 +340,7 @@ namespace ProjectChimera.CreationSuite
             _aiCard.AddChild(new HSeparator());
         }
 
-        /// <summary>Story 8.4 — drive the four-state AI-availability line + Generate gating from the config-derived
+        /// <summary>Story 8.4 — drive the AI-availability line + Generate gating from the config-derived
         /// evaluator (mirrors MapGeneratorPanel). A null evaluator (older wiring) hides the whole AI row; manual
         /// authoring is unaffected in every state.</summary>
         private void RefreshAvailability()

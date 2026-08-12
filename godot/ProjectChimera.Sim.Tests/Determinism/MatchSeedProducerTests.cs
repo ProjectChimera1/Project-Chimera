@@ -71,5 +71,38 @@ namespace ProjectChimera.Sim.Tests.Determinism
                 .ToArray();
             Assert.Equal(seeds.Length, seeds.Distinct().Count());
         }
+
+        /// <summary>
+        /// DW-499 — the ENVIRONMENT half of the repro pin, wired end to end: the one-argument
+        /// <see cref="MatchSeedProducer.Produce(ulong)"/> the MainScene offline reset calls (unchanged by DW-499)
+        /// reads <see cref="MatchSeedProducer.PINNED_SEED_ENV"/> and returns the pinned seed, then goes back to the
+        /// per-match mix the moment the variable is cleared.
+        ///
+        /// <para>It lives in THIS class deliberately: it mutates process-wide state, and every other assertion about
+        /// the env-reading overload is in this same class, which xUnit runs serially. Restored in a
+        /// <c>finally</c> so an assertion failure cannot leak a pinned seed into the rest of the suite.</para>
+        /// </summary>
+        [Fact]
+        public void Produce_HonoursThePinnedSeedEnvironmentVariable_ThenReleasesIt()
+        {
+            string? original = System.Environment.GetEnvironmentVariable(MatchSeedProducer.PINNED_SEED_ENV);
+            try
+            {
+                System.Environment.SetEnvironmentVariable(MatchSeedProducer.PINNED_SEED_ENV, "0xABCDEF0123456789");
+                Assert.True(MatchSeedProducer.TryPinnedSeed(out ulong pinned));
+                Assert.Equal(0xABCDEF0123456789UL, pinned);
+                // Two "launches" with different wall-clock entropy now reproduce each other — the repro property.
+                Assert.Equal(0xABCDEF0123456789UL, MatchSeedProducer.Produce(1UL));
+                Assert.Equal(0xABCDEF0123456789UL, MatchSeedProducer.Produce(2UL));
+
+                System.Environment.SetEnvironmentVariable(MatchSeedProducer.PINNED_SEED_ENV, null);
+                Assert.False(MatchSeedProducer.TryPinnedSeed(out _));
+                Assert.Equal(new SimRng(1UL).NextRaw(), MatchSeedProducer.Produce(1UL)); // back to per-match
+            }
+            finally
+            {
+                System.Environment.SetEnvironmentVariable(MatchSeedProducer.PINNED_SEED_ENV, original);
+            }
+        }
     }
 }

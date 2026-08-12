@@ -149,5 +149,117 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
                 if (File.Exists(path)) File.Delete(path);
             }
         }
+
+        // ── DW-833: a throw is ATOMIC and TERMINAL ───────────────────────────────────
+
+        /// <summary>
+        /// DW-833 — the DW-604 guard used to run AFTER the tick-advance flush and the <c>_hasBuffered</c>/
+        /// <c>_bufTick</c>/<c>_bufCount</c> init, so a rejected call OPENED a buffer for its tick before throwing.
+        /// A caller that caught the exception and kept recording then continued into that half-opened tick: the very
+        /// next <see cref="ReplayRecorder.RecordTick"/> for a different tick flushed a phantom frame for the
+        /// REJECTED one and went on writing a recording nobody knew was compromised.
+        ///
+        /// Now the guards run first (nothing is mutated) and the recorder latches itself
+        /// <see cref="ReplayRecorder.IsFaulted"/>, so the caught-and-ignored throw produces an EMPTY, honestly
+        /// incomplete file rather than a plausible-looking divergent one.
+        /// </summary>
+        [Fact]
+        public void OrderCeilingThrow_LatchesTheRecorder_AndRecordsNothingAfterwards()
+        {
+            string path = Path.Combine(Path.GetTempPath(), $"chimera_atomic_orders_{Guid.NewGuid():N}.chmr");
+            try
+            {
+                using (var rec = NewRecorder(path))
+                {
+                    var tooMany = new UnitOrder[TickCommandPacket.MAX_ORDERS + 1];
+                    for (int i = 0; i < tooMany.Length; i++)
+                        tooMany[i] = new UnitOrder((ushort)i, UnitCommand.Move, Fixed.FromInt(i), Fixed.FromInt(-i));
+
+                    Assert.False(rec.IsFaulted);
+                    Assert.Throws<InvalidOperationException>(
+                        () => rec.RecordTick(1, Faction.Player1, tooMany, 0, tooMany.Length));
+
+                    // Atomic: the rejected call advanced nothing. Terminal: it latched the recorder.
+                    Assert.Equal(0u, rec.FinalTick);
+                    Assert.True(rec.IsFaulted);
+
+                    // The caller "catches and keeps recording" — every later call is refused.
+                    rec.RecordTick(2, Faction.Player1, new[] { Order }, 0, 1);
+                    Assert.Equal(0u, rec.FinalTick);
+                }
+
+                var player = new ReplayPlayer(path, new EntityWorld());
+                Assert.Equal(0, player.TotalTicks);  // no phantom tick-1 frame, no smuggled tick-2 record
+                Assert.False(player.Completed);      // and the trailer is honest about it
+            }
+            finally
+            {
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
+        /// <summary>
+        /// DW-833 on the sibling ceiling (DW-432), and the half that proves nothing already recorded is LOST: a full
+        /// 8-sub-bundle tick, then the rejected 9th. The 8 accepted sub-bundles still reach the file and stay
+        /// readable, while the latch stops the recording dead at that tick — pre-fix the caught throw let recording
+        /// continue into tick 2 and the file looked complete.
+        /// </summary>
+        [Fact]
+        public void SubBundleCeilingThrow_KeepsWhatWasRecorded_ButStopsThere()
+        {
+            string path = Path.Combine(Path.GetTempPath(), $"chimera_atomic_subs_{Guid.NewGuid():N}.chmr");
+            try
+            {
+                using (var rec = NewRecorder(path))
+                {
+                    for (int slot = 0; slot < MergedTickPacket.MERGED_MAX_SUBBUNDLES; slot++)
+                        rec.RecordTick(1, FactionRegistry.ToFaction(slot), new[] { Order }, 0, 1);
+
+                    Assert.Throws<InvalidOperationException>(
+                        () => rec.RecordTick(1, Faction.Player1, new[] { Order }, 0, 1));
+                    Assert.True(rec.IsFaulted);
+
+                    rec.RecordTick(2, Faction.Player1, new[] { Order }, 0, 1); // refused
+                }
+
+                var player = new ReplayPlayer(path, new EntityWorld());
+                Assert.Equal(MergedTickPacket.MERGED_MAX_SUBBUNDLES, player.TotalTicks); // the 8 accepted survive
+                Assert.Equal(1u, player.LastTick);                                       // and nothing past the fault
+            }
+            finally
+            {
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
+        /// <summary>
+        /// DW-833 — a compromised recording can never be labelled COMPLETE, whatever the caller passes to
+        /// <see cref="ReplayRecorder.Close(int,bool)"/>. The file is still finalised (trailer written, handle
+        /// released) so what was recorded stays durable; only the honesty bit is forced.
+        /// </summary>
+        [Fact]
+        public void FaultedRecorder_ClosesAsIncomplete_EvenWhenToldOtherwise()
+        {
+            string path = Path.Combine(Path.GetTempPath(), $"chimera_atomic_trailer_{Guid.NewGuid():N}.chmr");
+            try
+            {
+                var rec = NewRecorder(path);
+                rec.RecordTick(1, Faction.Player1, new[] { Order }, 0, 1);
+
+                var tooMany = new UnitOrder[TickCommandPacket.MAX_ORDERS + 1];
+                Assert.Throws<InvalidOperationException>(
+                    () => rec.RecordTick(1, Faction.Player2, tooMany, 0, tooMany.Length));
+
+                rec.Close(winnerFaction: (int)Faction.Player1, completed: true);
+
+                var player = new ReplayPlayer(path, new EntityWorld());
+                Assert.False(player.Completed);
+                Assert.Equal(1, player.TotalTicks);  // the tick recorded before the fault is still there
+            }
+            finally
+            {
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
     }
 }

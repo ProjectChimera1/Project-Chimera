@@ -895,6 +895,89 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
                 $"CancelResearch); the scan checked {researchSites}. If the shape changed, re-point this DW-626 pin.");
         }
 
+        /// <summary>
+        /// DW-763 — the same DW-626 pin, one handle over: the OFFLINE apply sites of the <c>items:</c> handle.
+        /// <c>CommandCardSystem.IssueBuyCommand</c> (BuyItem) and <c>SelectionSystem</c>'s three issue methods
+        /// (PickupItem / UseItem / DropItem) are the ONLY production path an item command takes offline — online it
+        /// is enqueued (LockstepManager → MergedTickApplier) and playback goes through ReplayPlayer. Both files live
+        /// under src/UI, so they are Godot-coupled and outside this Godot-free assembly's compile set; dropping
+        /// <c>items:</c> at any of the four sites would make an offline buy/pickup/use/drop a silent deterministic
+        /// no-op while online AND replay still applied it. The executable siblings
+        /// (<c>ReplayVsLive_BuyItem_…</c> / <c>ReplayVsLive_UseAndDropItem_…</c>) cannot see that regression — like
+        /// the research tests before DW-626 they inject <c>items:</c> BY HAND at the live arm, so the suite stays
+        /// green straight through it. Hence a SOURCE pin, spanning both files.
+        /// </summary>
+        [Fact]
+        public void OfflineItemCommands_ForwardTheItemSystem_AtEveryApplySite()
+        {
+            // ── CommandCardSystem: the single BuyItem apply site (the file also applies research/train orders that
+            //    must NOT be required to carry `items:`, so pair by the CONSTRUCTED command like the DW-626 pin). ──
+            string cardBlob = StripCommentsAndNormalize(File.ReadAllText(CommandCardSystemFile()));
+
+            // Vacuous-pass guard #1 (rename canary): the offline handle must still be DECLARED under the asserted name.
+            Assert.Matches(@"private (?:ProjectChimera\.Combat\.)?ItemSystem\??\s+_itemSys;", cardBlob);
+
+            int buySites = AssertHandleForwardedAtOfflineApplySites(
+                cardBlob, @"\bUnitCommand\.BuyItem\b", @"\bitems:\s*_itemSys\b", "CommandCardSystem.cs");
+            Assert.True(buySites >= 1,
+                $"Expected CommandCardSystem to keep at least 1 offline BuyItem apply site; the scan checked {buySites}. " +
+                "If the shape changed, re-point this DW-763 pin.");
+
+            // ── SelectionSystem: the three hero-item apply sites (Pickup / Use / Drop). ──
+            string selBlob = StripCommentsAndNormalize(File.ReadAllText(SelectionSystemFile()));
+
+            // Vacuous-pass guard #2 (rename canary) — same declaration shape, second file.
+            Assert.Matches(@"private (?:ProjectChimera\.Combat\.)?ItemSystem\??\s+_itemSys;", selBlob);
+
+            int heroItemSites = AssertHandleForwardedAtOfflineApplySites(
+                selBlob, @"\bUnitCommand\.(?:PickupItem|UseItem|DropItem)\b", @"\bitems:\s*_itemSys\b", "SelectionSystem.cs");
+            Assert.True(heroItemSites >= 3,
+                $"Expected SelectionSystem to keep at least 3 offline item apply sites (PickupItem + UseItem + " +
+                $"DropItem); the scan checked {heroItemSites}. If the shape changed, re-point this DW-763 pin.");
+        }
+
+        /// <summary>
+        /// DW-763 — the DW-626 pairing walk, extracted so a second handle in a second file reuses it verbatim: every
+        /// <c>new UnitOrder(</c> whose arguments match <paramref name="commandPattern"/> must be consumed by an
+        /// <c>OrderApplier.Apply(</c> before the NEXT constructed order, and that apply's argument list must match
+        /// <paramref name="handlePattern"/>. Returns how many matching sites were checked (the caller asserts a floor,
+        /// so regex drift can never make the pin vacuous).
+        /// </summary>
+        private static int AssertHandleForwardedAtOfflineApplySites(string blob, string commandPattern,
+                                                                    string handlePattern, string fileLabel)
+        {
+            var ctors   = Regex.Matches(blob, @"\bnew UnitOrder\(");
+            var applies = Regex.Matches(blob, @"\bOrderApplier\.Apply\(");
+            Assert.True(ctors.Count > 0 && applies.Count > 0,
+                $"Found {ctors.Count} UnitOrder construction(s) and {applies.Count} OrderApplier.Apply call site(s) in " +
+                $"{fileLabel} — the offline apply shape changed; re-point this DW-763 pin at the new sites.");
+
+            int checkedSites = 0;
+            for (int c = 0; c < ctors.Count; c++)
+            {
+                string orderArgs = ArgumentList(blob, ctors[c].Index + ctors[c].Length - 1);
+                if (!Regex.IsMatch(orderArgs, commandPattern)) continue;
+
+                int nextCtor = (c + 1 < ctors.Count) ? ctors[c + 1].Index : blob.Length;
+                Match? site = null;
+                foreach (Match m in applies)
+                    if (m.Index > ctors[c].Index && m.Index < nextCtor) { site = m; break; }
+
+                Assert.True(site != null,
+                    $"An item UnitOrder is constructed in {fileLabel} with no OrderApplier.Apply consuming it before " +
+                    "the next order is built — the offline apply shape changed (DW-763). Order args: " + orderArgs);
+
+                string args = ArgumentList(blob, site!.Index + site.Length - 1);
+                Assert.True(Regex.IsMatch(args, handlePattern),
+                    $"An OFFLINE item apply site in {fileLabel} does NOT forward its `items: _itemSys` handle — that " +
+                    "BuyItem/PickupItem/UseItem/DropItem becomes a silent deterministic no-op offline while the online " +
+                    "(MergedTickApplier) and replay (ReplayPlayer) paths still apply it (DW-763). " +
+                    "Order args: " + orderArgs + " | Apply args: " + args);
+                checkedSites++;
+            }
+            return checkedSites;
+        }
+
         /// <summary>Return the balanced parenthesised argument list that STARTS at <paramref name="openParen"/>
         /// (which must index the '(' itself), exclusive of the outer parentheses.</summary>
         private static string ArgumentList(string blob, int openParen)
@@ -928,6 +1011,10 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
         // DW-626 — the OFFLINE/F5 apply site: ../../src/UI/CommandCardSystem.cs.
         private static string CommandCardSystemFile([CallerFilePath] string thisFilePath = "")
             => ResolveFromHere(thisFilePath, "..", "..", "src", "UI", "CommandCardSystem.cs");
+
+        // DW-763 — the second OFFLINE apply file (PickupItem/UseItem/DropItem): ../../src/UI/SelectionSystem.cs.
+        private static string SelectionSystemFile([CallerFilePath] string thisFilePath = "")
+            => ResolveFromHere(thisFilePath, "..", "..", "src", "UI", "SelectionSystem.cs");
 
         /// <summary>Resolve a repo-relative path from THIS test file's own directory (portable across checkouts —
         /// no dependency on the runner's working directory). Mirrors <c>LocalFactionSingleSourceTests</c>.</summary>

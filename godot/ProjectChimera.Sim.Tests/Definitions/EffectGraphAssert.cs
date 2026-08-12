@@ -58,6 +58,10 @@ namespace ProjectChimera.Sim.Tests.Definitions
                     var p = (PersistentEffect)actual;
                     Assert.Equal(e.PeriodTicks, p.PeriodTicks);
                     Assert.Equal(e.PeriodCount, p.PeriodCount);
+                    // DW-323: `lifelong` was NOT compared here, which is a large part of why the composer could drop it
+                    // on a draft round-trip with every round-trip test green. Compared now, so any future path that
+                    // silently defaults it away turns this whole family RED.
+                    Assert.Equal(e.Lifelong, p.Lifelong);
                     Equal(e.InitialEffect, p.InitialEffect);       // optional children (null-safe at the top)
                     Equal(e.PeriodEffect,  p.PeriodEffect);
                     Equal(e.ExpireEffect,  p.ExpireEffect);
@@ -81,6 +85,9 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Equal(e.ArmorDelta.Raw,        a.ArmorDelta.Raw);   // Story 2.6
             Assert.Equal(e.Status, a.Status);                      // StatusFlags
             Assert.Equal(e.PeriodTicks, a.PeriodTicks);
+            // DW-323 (same omission class as PersistentEffect.Lifelong above): periodic_stack_mode is semantic state
+            // the converter and the draft both carry, and nothing compared it on a round-trip.
+            Assert.Equal(e.PeriodicStacking, a.PeriodicStacking);  // PeriodicStackMode (DW-272 / Story 15.12)
             Equal(e.PeriodEffect, a.PeriodEffect);                 // nested DoT/HoT graph
         }
     }
