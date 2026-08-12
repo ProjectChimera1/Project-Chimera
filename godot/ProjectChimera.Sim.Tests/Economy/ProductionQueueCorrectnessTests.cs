@@ -177,8 +177,13 @@ namespace ProjectChimera.Sim.Tests.Economy
         [Fact]
         public void DestroyedBuildingsQueue_HoldsNoReservation()
         {
-            // A razed producer's slots are not cleared by BuildingStore.Destroy, so the scan MUST skip dead
-            // buildings — otherwise a destroyed barracks would permanently eat its owner's supply headroom.
+            // DW-848 — the rationale, corrected. This assertion originally read "a razed producer's slots are not
+            // cleared by BuildingStore.Destroy, so the scan MUST skip dead buildings", which stopped being true at
+            // DW-658: Destroy now refunds and ZEROES the whole ProductionQueue row plus the head ProductionTimer, so
+            // a razed barracks holds nothing to scan in the first place. DW-478's dead-building skip in QueuedSupply
+            // is therefore DEFENCE IN DEPTH, not the load-bearing mechanism — the two must agree, and this test is
+            // what says so from the queue side. The invariant itself is pinned positively from the destroy side by
+            // ProductionDestroyRefundTests.ARazedProducersQueue_StillHoldsNoSupplyReservation.
             var (sys, buildings, resources, _) = Harness(startingCap: 2);
             int dead = Barracks(sys);
             Assert.True(sys.TrainUnit(dead, resources, Grunt));

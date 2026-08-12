@@ -798,7 +798,11 @@ namespace ProjectChimera.Core
         ///   <item><c>&gt;= 0</c> — CONSECUTIVE whole ticks this worker has been unable to advance toward its reserved
         ///         node at all (the <see cref="Pathability"/> grid hard-stops its whole step, both wall-slide axes
         ///         included). Reset to 0 the instant it makes ground, on every fresh node assignment, on arrival, and on
-        ///         every <c>GatheringSystem.ReleaseGatherSlot</c>. While in this range the worker HOLDS one of its
+        ///         every <c>GatheringSystem.ReleaseGatherSlot</c>. DW-803: a tick whose COMPUTED step has zero length
+        ///         (anything that zeroes <c>EffectiveMoveSpeed</c> — a snare item or granted modifier) is SKIPPED, not
+        ///         counted — it neither advances nor clears the streak, because the blocked-probe cannot tell "may not
+        ///         move" from "did not ask to move" (see <c>GatheringSystem.TickWalkStall</c> and
+        ///         <c>Navigation.CheckedStep.Resolve</c>). While in this range the worker HOLDS one of its
         ///         node's <c>ResourceNodeStore.AssignedGatherers</c> slots.</item>
         ///   <item><c>&lt; 0</c> (<c>GatheringSystem.SLOT_YIELDED</c>) — the streak reached
         ///         <c>GatheringSystem.WALK_STALL_GRACE_TICKS</c> and the worker HANDED THE RESERVATION BACK while

@@ -492,8 +492,13 @@ namespace ProjectChimera.Core.Definitions
         private static void RejectUnknownProperties(JsonElement el, string path, params string[] allowed)
         {
             // Track which allowed slot each property maps to, so a DUPLICATE key is a located reject too. JsonDocument
-            // permits duplicate property names and TryGetProperty silently takes the FIRST — without this, a second
+            // permits duplicate property names and TryGetProperty silently takes ONE of them — without this, a second
             // "amount"/"kind" could smuggle a value (e.g. an over-range number) past validation (fail-closed, AR-22).
+            // DW-729: the one it takes is the LAST, not the first — JsonDocument walks its row table backward from
+            // EndObject. (This converter's own reads therefore really are last-wins, and deliberately DIFFER from the
+            // sibling NodeBaseJsonConverter's NodeScan, which resolves first-wins; see that type's class doc. Both
+            // reject a duplicate here regardless, so the divergence is confined to which located message is
+            // produced.)
             Span<bool> seen = stackalloc bool[allowed.Length];
             foreach (JsonProperty p in el.EnumerateObject())
             {

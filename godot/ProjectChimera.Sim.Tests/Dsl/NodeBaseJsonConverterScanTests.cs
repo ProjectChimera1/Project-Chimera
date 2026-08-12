@@ -19,7 +19,8 @@ namespace ProjectChimera.Sim.Tests.Dsl
     /// <list type="number">
     ///   <item>discrimination stays ORDER-INDEPENDENT (the capture completes before <c>kind</c> is read, so a
     ///         <c>kind</c> written last still dispatches — a reader that dispatched on first-seen tokens would not);</item>
-    ///   <item>a duplicated name still resolves to its FIRST occurrence, exactly as <c>TryGetProperty</c> does;</item>
+    ///   <item>a duplicated name resolves to its FIRST occurrence (DW-729: a DELIBERATE divergence from
+    ///         <c>TryGetProperty</c>, which is last-wins — accept/reject is unchanged, only the located message);</item>
     ///   <item>ERROR PRECEDENCE is unchanged: the <c>kind</c> read runs BEFORE the allow-list pass (so the capture
     ///         must not validate as it goes), and the allow-list pass runs BEFORE any field read;</item>
     ///   <item>a node carrying its full 15-field allow-list plus the <c>_editor</c> bag reads every field (the
@@ -87,7 +88,12 @@ namespace ProjectChimera.Sim.Tests.Dsl
             // "name" is allow-listed on `trigger` but NOT on `display_message`. Resolving `kind` to the FIRST
             // occurrence ("display_message") makes "name" the stray the allow-list pass reports FIRST, in document
             // order. Resolving to the LAST ("trigger") would instead admit "name" and report the duplicate `kind`.
-            // That asymmetry is the observable difference, so this pins TryGetProperty's first-wins semantics.
+            // That asymmetry is the observable difference, so this pins NodeScan's first-wins resolution.
+            //
+            // DW-729 — what this is NOT. It is not parity with TryGetProperty: TryGetProperty is LAST-wins (pinned
+            // below by TryGetProperty_ResolvesADuplicatedNameToTheLastOccurrence), so before DW-356 this very JSON
+            // resolved `kind` to "trigger" and threw the DUPLICATE message instead. NodeScan diverges deliberately;
+            // accept/reject is identical either way, only the located message moved.
             string json = Wrap("""
                 [ { "id": 0, "kind": "display_message", "name": "T", "kind": "trigger" } ]
                 """);
@@ -96,6 +102,24 @@ namespace ProjectChimera.Sim.Tests.Dsl
             Assert.Contains("name", ex.Message);
             Assert.Contains("unknown property", ex.Message);
             Assert.DoesNotContain("duplicate property", ex.Message);
+        }
+
+        [Fact]
+        public void TryGetProperty_ResolvesADuplicatedNameToTheLastOccurrence_NotTheFirst()
+        {
+            // DW-729 — the BCL fact three doc sites asserted backwards for months. JsonDocument stores properties in a
+            // row table and TryGetNamedPropertyValue walks it BACKWARD from EndObject, so a duplicated name resolves
+            // to the LAST occurrence, while EnumerateObject (what NodeScan and both RejectUnknownProperties passes
+            // use) yields document order. Pinned executably so neither doc claim can be re-typed from memory: the
+            // NodeScan divergence documented in NodeBaseJsonConverter is only meaningful if this is true, and
+            // EffectNodeJsonConverter's reads — which really do go through TryGetProperty — inherit it.
+            using JsonDocument doc = JsonDocument.Parse("""{ "kind": "first", "name": "x", "kind": "second" }""");
+
+            Assert.True(doc.RootElement.TryGetProperty("kind", out JsonElement viaTryGet));
+            Assert.Equal("second", viaTryGet.GetString());
+
+            Assert.Equal(new[] { "first", "x", "second" },
+                doc.RootElement.EnumerateObject().Select(p => p.Value.GetString()).ToArray());
         }
 
         [Fact]

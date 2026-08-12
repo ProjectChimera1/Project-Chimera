@@ -312,13 +312,21 @@ namespace ProjectChimera.Core.Definitions
                     return ValidationResult.Fail(
                         $"scenario.player_slots[{i}].slot={s.Slot} is a duplicate.");
 
-                // DW-442 — `team` was the one per-slot field this loop never looked at. A NEGATIVE ordinal is an
-                // authoring lie the file can carry all the way into a match: AllianceSeeder.ComputeTeamIds treats
-                // `team <= 0` as UNASSIGNED/FFA, so -1 silently means "no team" while the JSON says otherwise — and
-                // because Team folds into the match-agreement hash (MatchAgreementHash, algo v2) two peers whose files
-                // differ only in WHICH negative ordinal they carry fail the start handshake over alliance masks that
-                // are byte-identical. Reject it located; 0 — the omit-when-default FFA value every pre-9.14 scenario
-                // carries — still passes, so no shipped map moves.
+                // DW-442 — `team` was the one per-slot field this loop never looked at. The reject rests on AUTHOR
+                // INTENT, and on nothing else: a NEGATIVE ordinal is an authoring lie the file can carry all the way
+                // into a match, because AllianceSeeder.ComputeTeamIds treats `team <= 0` as UNASSIGNED/FFA
+                // (`if (team <= 0) continue;`), so -1 silently means "no team" while the JSON says otherwise. Reject
+                // it located rather than let the file claim an alliance the seeder never builds; 0 — the
+                // omit-when-default FFA value every pre-9.14 scenario carries — still passes, so no shipped map moves.
+                //
+                // DW-835 — what this reject is NOT, because the previous form of this comment said otherwise. It is
+                // not a handshake fix. Two peers whose files differ only in WHICH negative ordinal they carry agree
+                // perfectly: MatchAgreementHash folds AllianceSeeder.ComputeTeamIds(model) — the CANONICAL
+                // faction-keyed team-id mask — and deliberately NOT the positional per-slot .Team ordinal (see the
+                // Story 9.14 note in MatchAgreementHash.Compute), and ComputeTeamIds skips every non-positive
+                // ordinal, so -1, -2 and 0 all produce the identical FFA mask and therefore the identical agreement
+                // hash. That premise is pinned by ScenarioValidatorNegativeTeamTests, so it cannot silently rot back
+                // into a divergence claim; if this gate is ever relaxed, weigh the authoring-lie argument alone.
                 //
                 // A POSITIVE ordinal is deliberately NOT range-capped here. Ordinals are arbitrary authoring labels
                 // that never reach a sim store (the canonical id is always a faction slot; AllianceSeederTests pins

@@ -1,7 +1,7 @@
 #nullable enable
 using Godot;
 using ProjectChimera.AI;                  // LLMService, FactionDraftContext (Story 8.4)
-using ProjectChimera.AI.Providers;         // AiAvailabilityEvaluator/Messages (four-state)
+using ProjectChimera.AI.Providers;         // AiAvailabilityEvaluator/Messages
 using ProjectChimera.Core.Definitions;   // FactionDefinerStep, FactionPresetPool, FactionDefinerWizardCore, ISecretStore
 using ProjectChimera.UI;                  // GameState, GameMode
 using ProjectChimera.UI.Components;        // ChimeraComponents, ChimeraTabs, ChimeraSpinner
@@ -359,7 +359,7 @@ namespace ProjectChimera.CreationSuite
             _aiCard.AddChild(new HSeparator());
         }
 
-        /// <summary>Story 8.4 — four-state AI-availability line + Generate gating (mirrors MapGeneratorPanel). A null
+        /// <summary>Story 8.4 — AI-availability line + Generate gating (mirrors MapGeneratorPanel). A null
         /// evaluator (older wiring) hides the whole AI row; the manual wizard is unaffected in every state.</summary>
         private void RefreshAvailability()
         {
