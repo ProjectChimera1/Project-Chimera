@@ -41,11 +41,17 @@ namespace ProjectChimera.Core.Definitions
         /// captured float→<see cref="Fixed"/> at the applier boundary), threaded into <see cref="HeroStore.Mint"/> so the
         /// XP runtime scales each kill credit. Nullable-null (the default) → the neutral <see cref="Fixed.One"/> in Mint,
         /// so every pre-DW-26 construction (persistence tests, bare callers) still credits the full bounty.</summary>
+        /// <summary>Story 15-21: the placed hero also carries its RESOLVED attribute contributions (the
+        /// <see cref="HeroAttributeResolver"/> output — per-stat base/per-level pairs in
+        /// <see cref="AttributeStats"/> order, flattened from the faction's attribute model × the hero's authored
+        /// attributes at the applier's single float→<see cref="Fixed"/> boundary). Null (the default) = no
+        /// attributes — every pre-15-21 construction mints all-zero contributions, byte-identical.</summary>
         public readonly record struct PlacedHero(int EntityId, string UnitId,
             int MaxLevel = 0, Fixed BaseXp = default, Fixed XpGrowth = default, Fixed XpShareRadius = default,
             Fixed HealthPerLevel = default, Fixed DamagePerLevel = default, Fixed ArmorPerLevel = default,
             UnitDefinition? SourceDef = null, Faction OwnerFaction = default,
-            Fixed? XpGainFactor = null);
+            Fixed? XpGainFactor = null,
+            Fixed[]? AttrStatBase = null, Fixed[]? AttrStatPerLevel = null);
 
         /// <summary>
         /// The DETERMINISTIC hero identity for <paramref name="profile"/> = FNV-64 of its stable <see cref="PlayerProfile.ProfileId"/>
@@ -128,7 +134,8 @@ namespace ProjectChimera.Core.Definitions
                                        placed.MaxLevel, placed.BaseXp, placed.XpGrowth, placed.XpShareRadius,
                                        placed.HealthPerLevel, placed.DamagePerLevel, placed.ArmorPerLevel,
                                        placed.SourceDef, placed.OwnerFaction, // Story 3.14: respawn def + owner faction
-                                       placed.XpGainFactor);                  // DW-26: per-hero XP-gain multiplier
+                                       placed.XpGainFactor,                   // DW-26: per-hero XP-gain multiplier
+                                       placed.AttrStatBase, placed.AttrStatPerLevel); // Story 15-21: resolved attribute contributions
                 if (slot >= 0)
                 {
                     minted++;

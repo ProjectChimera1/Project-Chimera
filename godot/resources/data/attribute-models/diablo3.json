@@ -1,0 +1,56 @@
+{
+  "id": "diablo3",
+  "name": "Diablo III",
+  "description": "Strength / Dexterity / Intelligence / Vitality with a class primary that drives damage and vitality that drives life. Starting-point numbers \u2014 tune per faction.",
+  "attribute_model": {
+    "attributes": [
+      {
+        "id": "strength",
+        "name": "Strength",
+        "description": ""
+      },
+      {
+        "id": "dexterity",
+        "name": "Dexterity",
+        "description": ""
+      },
+      {
+        "id": "intelligence",
+        "name": "Intelligence",
+        "description": ""
+      },
+      {
+        "id": "vitality",
+        "name": "Vitality",
+        "description": ""
+      }
+    ],
+    "derived": [
+      {
+        "attribute": "primary",
+        "stat": "attack_damage",
+        "per_point": 1.0
+      },
+      {
+        "attribute": "strength",
+        "stat": "armor",
+        "per_point": 1.0
+      },
+      {
+        "attribute": "dexterity",
+        "stat": "armor",
+        "per_point": 0.5
+      },
+      {
+        "attribute": "intelligence",
+        "stat": "max_energy",
+        "per_point": 1.0
+      },
+      {
+        "attribute": "vitality",
+        "stat": "max_health",
+        "per_point": 10.0
+      }
+    ]
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "id": "poe",
+  "name": "Path of Exile",
+  "description": "Strength / Dexterity / Intelligence: life from strength, defence from dexterity, energy from intelligence. Starting-point numbers \u2014 tune per faction.",
+  "attribute_model": {
+    "attributes": [
+      {
+        "id": "strength",
+        "name": "Strength",
+        "description": ""
+      },
+      {
+        "id": "dexterity",
+        "name": "Dexterity",
+        "description": ""
+      },
+      {
+        "id": "intelligence",
+        "name": "Intelligence",
+        "description": ""
+      }
+    ],
+    "derived": [
+      {
+        "attribute": "strength",
+        "stat": "max_health",
+        "per_point": 0.5
+      },
+      {
+        "attribute": "strength",
+        "stat": "attack_damage",
+        "per_point": 0.2
+      },
+      {
+        "attribute": "dexterity",
+        "stat": "armor",
+        "per_point": 0.2
+      },
+      {
+        "attribute": "intelligence",
+        "stat": "max_energy",
+        "per_point": 0.5
+      },
+      {
+        "attribute": "intelligence",
+        "stat": "energy_regen",
+        "per_point": 0.0006
+      }
+    ]
+  }
+}

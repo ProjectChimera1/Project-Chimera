@@ -92,9 +92,12 @@ namespace ProjectChimera.Sim.Tests.Validation
             "splash_radius", "delivery", "projectile_speed", "xp_bounty", "collision_radius", "separation_priority",
             "prerequisites", "abilities", "attack_domains", "tags", "is_hero", "revives_heroes", "sells_items",
             "shop_stock", "shop_radius", "max_energy", "regen_rate",
+            // Story 15-21: the hero block folds (ContentHash v2 — its curve was ALREADY sim-read since 3.13, and
+            // the new attributes block drives stats through HeroAttributeResolver). Leaves the allowlist.
+            "hero",
         };
         private static readonly string[] UnitExcluded = { "display_name", "mesh_path", "mesh_scale", "combat_feedback" };
-        private static readonly string[] UnitAllowlist = { "behaviors", "hero" }; // authoring-only, not sim-read (fold when a story reads them)
+        private static readonly string[] UnitAllowlist = { "behaviors" }; // authoring-only, not sim-read (fold when a story reads them)
 
         [Fact]
         public void UnitDefinition_EveryFieldClassified()
@@ -113,7 +116,8 @@ namespace ProjectChimera.Sim.Tests.Validation
         [Fact]
         public void FactionDefinition_EveryFieldClassified()
             => AssertClassified(typeof(FactionDefinition),
-                folded: new[] { "id", "units", "buildings", "research", "signature_mechanic", "signature_mechanic_effect_id", "hero_unit_id", "persistence_enabled", "starting_ore", "starting_crystal" },
+                folded: new[] { "id", "units", "buildings", "research", "signature_mechanic", "signature_mechanic_effect_id", "hero_unit_id", "persistence_enabled", "starting_ore", "starting_crystal",
+                                "attribute_model" }, // Story 15-21: sim-read via HeroAttributeResolver at apply (ContentHash v2)
                 excluded: new[] { "display_name", "color", "ai_preset", "signature_mechanic_display" },
                 allowlist: Array.Empty<string>());
 
@@ -185,6 +189,12 @@ namespace ProjectChimera.Sim.Tests.Validation
                 return (new List<ResearchLevel> { new ResearchLevel { TimeTicks = 7 } }, new List<ResearchLevel> { new ResearchLevel { TimeTicks = 9 } });
             if (propType == typeof(ResearchModifierDelta))
                 return (new ResearchModifierDelta { MaxHealthDelta = 7f }, new ResearchModifierDelta { MaxHealthDelta = 9f });
+            // Story 15-21: the hero block (ContentHash v2) + the faction attribute model are folded types now.
+            if (propType == typeof(HeroDefinition))
+                return (new HeroDefinition { MaxLevel = 7 }, new HeroDefinition { MaxLevel = 9 });
+            if (propType == typeof(AttributeModelDefinition))
+                return (new AttributeModelDefinition { Attributes = new List<AttributeDeclaration> { new() { Id = "str_a" } } },
+                        new AttributeModelDefinition { Attributes = new List<AttributeDeclaration> { new() { Id = "str_b" } } });
             throw new Xunit.Sdk.XunitException(
                 $"TwoDistinct: unhandled folded-field type {propType} — add a case so the fold-actuality sweep covers it.");
         }

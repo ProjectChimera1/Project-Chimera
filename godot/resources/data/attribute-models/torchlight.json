@@ -1,0 +1,61 @@
+{
+  "id": "torchlight",
+  "name": "Torchlight",
+  "description": "Strength / Dexterity / Focus / Vitality: classic four-stat ARPG spread. Starting-point numbers \u2014 tune per faction.",
+  "attribute_model": {
+    "attributes": [
+      {
+        "id": "strength",
+        "name": "Strength",
+        "description": ""
+      },
+      {
+        "id": "dexterity",
+        "name": "Dexterity",
+        "description": ""
+      },
+      {
+        "id": "focus",
+        "name": "Focus",
+        "description": ""
+      },
+      {
+        "id": "vitality",
+        "name": "Vitality",
+        "description": ""
+      }
+    ],
+    "derived": [
+      {
+        "attribute": "strength",
+        "stat": "attack_damage",
+        "per_point": 0.6
+      },
+      {
+        "attribute": "dexterity",
+        "stat": "armor",
+        "per_point": 0.3
+      },
+      {
+        "attribute": "dexterity",
+        "stat": "move_speed",
+        "per_point": 0.001
+      },
+      {
+        "attribute": "focus",
+        "stat": "max_energy",
+        "per_point": 2.0
+      },
+      {
+        "attribute": "focus",
+        "stat": "energy_regen",
+        "per_point": 0.001
+      },
+      {
+        "attribute": "vitality",
+        "stat": "max_health",
+        "per_point": 7.0
+      }
+    ]
+  }
+}

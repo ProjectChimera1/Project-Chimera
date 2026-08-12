@@ -259,6 +259,12 @@ namespace ProjectChimera.Core.Definitions
             CheckStat(errors, kind, id, "armor", def.Armor);
             CheckStat(errors, kind, id, "splash_radius", def.SplashRadius);
             CheckStat(errors, kind, id, "max_energy", def.MaxEnergy);
+            // DW-889 (Story 15-21 rider): regen_rate was the ONE energy stat with no authoring gate — a negative
+            // rate silently DRAINED energy every tick (EnergyRegenSystem clamps into [0, MaxEnergy], so it never
+            // went negative, but the drain was real and unauthorable-by-intent). Same [0, Range) rule as its
+            // siblings. (regen_rate > 0 with max_energy == 0 stays VALID — an inert-but-harmless intermediate
+            // authoring state, not an error.)
+            CheckStat(errors, kind, id, "regen_rate", def.RegenRate);
             CheckStat(errors, kind, id, "vision_range", def.VisionRange);
 
             // ── train_time (DW-481) — ONE rule, chosen by whether this def can ever sit in a production queue.

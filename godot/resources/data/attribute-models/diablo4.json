@@ -1,0 +1,61 @@
+{
+  "id": "diablo4",
+  "name": "Diablo IV",
+  "description": "Strength / Intelligence / Willpower / Dexterity: armor from strength, resource generation from willpower. Starting-point numbers \u2014 tune per faction.",
+  "attribute_model": {
+    "attributes": [
+      {
+        "id": "strength",
+        "name": "Strength",
+        "description": ""
+      },
+      {
+        "id": "intelligence",
+        "name": "Intelligence",
+        "description": ""
+      },
+      {
+        "id": "willpower",
+        "name": "Willpower",
+        "description": ""
+      },
+      {
+        "id": "dexterity",
+        "name": "Dexterity",
+        "description": ""
+      }
+    ],
+    "derived": [
+      {
+        "attribute": "strength",
+        "stat": "armor",
+        "per_point": 1.0
+      },
+      {
+        "attribute": "intelligence",
+        "stat": "max_energy",
+        "per_point": 0.6
+      },
+      {
+        "attribute": "willpower",
+        "stat": "energy_regen",
+        "per_point": 0.001
+      },
+      {
+        "attribute": "willpower",
+        "stat": "max_health",
+        "per_point": 2.0
+      },
+      {
+        "attribute": "dexterity",
+        "stat": "attack_damage",
+        "per_point": 0.3
+      },
+      {
+        "attribute": "primary",
+        "stat": "attack_damage",
+        "per_point": 0.7
+      }
+    ]
+  }
+}

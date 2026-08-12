@@ -152,6 +152,9 @@ namespace ProjectChimera.Core.Definitions
                 }
             }
 
+            // ── Story 15-21: the hero attribute model + per-hero attribute coherence ────────────────
+            ValidateAttributeModel(errors, id, def);
+
             // ── New: duplicate unit id (mirrors TechTreeValidator's buildingById.TryAdd idiom) ─────
             // (def.Units and its elements are non-null here — the structural pre-check above already caught and
             // early-returned on a null list or null element; the guards below are defense in depth.) A whitespace-
@@ -361,5 +364,133 @@ namespace ProjectChimera.Core.Definitions
         /// the author to the step that actually owns the offending item (DW-505).</summary>
         private static string LocatedItem(string kind, string itemId, string path, string reason) =>
             $"{kind} '{itemId}'.{path}: {reason}";
+
+        // ── Story 15-21: hero attribute model bounds ─────────────────────────────────────────────────────────────
+        // Overflow arithmetic these caps guarantee (16.16 Fixed saturates ~32767): a resolved per-stat contribution
+        // is bounded by AttrPerPointMax × AttrValueMax(base) = 256 × 1024? NO — the caps below bound the RESOLVED
+        // sums directly (the resolver output), which is what the growth modifier actually installs:
+        //   resolvedBase[stat] ≤ AttrResolvedBaseMax (4096) and resolvedPerLevel[stat] ≤ AttrResolvedPerLevelMax
+        //   (256) ⇒ worst lifetime contribution = 4096 + 256 × 99 stacks = 29,440 < 32,767 — Fixed-safe beside the
+        //   flat hero.*_per_level growth, whose own DW-488 bound already accounts for its half.
+        private const float AttrValueMax           = 4096f; // a single authored base/per_level attribute value
+        private const float AttrPerPointMax        = 256f;  // a single derived-rule per_point coefficient
+        private const float AttrResolvedBaseMax    = 4096f; // Σ per-stat resolved base contribution
+        private const float AttrResolvedPerLevelMax = 256f; // Σ per-stat resolved per-level contribution
+
+        /// <summary>
+        /// Story 15-21 — validate the faction's <c>attribute_model</c> (declared attributes + derived mapping,
+        /// closed stat vocabulary fail-closed) and every hero's <c>attributes</c> block against it (keys/primary ∈
+        /// declared ids, non-negative finite values, resolved-contribution overflow caps). All rules are
+        /// list-all-errors (never first-fail), each on a located field path so the wizard can route it.
+        /// Negative values and negative <c>per_point</c> are REJECTED for v1 (a negative max-health contribution
+        /// could ceiling-collapse a hero at mint — the DW-325 class; drawback attributes are a future decision).
+        /// </summary>
+        private static void ValidateAttributeModel(List<(string, string)> errors, string id, FactionDefinition def)
+        {
+            AttributeModelDefinition? model = def.AttributeModel;
+            var declared = new HashSet<string>(StringComparer.Ordinal);
+
+            if (model != null)
+            {
+                // Declared attributes: non-empty unique ids.
+                var attrs = model.Attributes;
+                if (attrs == null || attrs.Count == 0)
+                    errors.Add(("attribute_model", Located(id, "attribute_model.attributes",
+                        "an attribute_model must declare at least one attribute (or remove the block).")));
+                else
+                {
+                    for (int i = 0; i < attrs.Count; i++)
+                    {
+                        string aid = attrs[i]?.Id ?? "";
+                        if (string.IsNullOrWhiteSpace(aid))
+                            errors.Add(("attribute_model", Located(id, $"attribute_model.attributes[{i}].id",
+                                "attribute id must be authored (empty is not a valid id).")));
+                        else if (string.Equals(aid, "primary", StringComparison.Ordinal))
+                            errors.Add(("attribute_model", Located(id, $"attribute_model.attributes[{i}].id",
+                                "'primary' is the reserved per-hero selector and cannot be a declared attribute id.")));
+                        else if (!declared.Add(aid))
+                            errors.Add(("attribute_model", Located(id, $"attribute_model.attributes[{i}].id",
+                                $"duplicate attribute id '{aid}' (ids must be unique).")));
+                    }
+                }
+
+                // Derived rules: attribute ∈ declared ∪ {"primary"}, stat ∈ the CLOSED vocabulary, bounded per_point.
+                var derived = model.Derived;
+                if (derived != null)
+                {
+                    for (int i = 0; i < derived.Count; i++)
+                    {
+                        DerivedStatRule? r = derived[i];
+                        if (r == null) { errors.Add(("attribute_model", Located(id, $"attribute_model.derived[{i}]", "rule is null."))); continue; }
+                        string attr = r.Attribute ?? "";
+                        if (!string.Equals(attr, "primary", StringComparison.Ordinal) && !declared.Contains(attr))
+                            errors.Add(("attribute_model", Located(id, $"attribute_model.derived[{i}].attribute",
+                                $"'{attr}' is not a declared attribute id (or the reserved 'primary' selector).")));
+                        if (!AttributeStats.TryIndexOf(r.Stat, out _))
+                            errors.Add(("attribute_model", Located(id, $"attribute_model.derived[{i}].stat",
+                                $"'{r.Stat}' is not in the closed derived-stat vocabulary ({string.Join(", ", AttributeStats.Ids)}).")));
+                        if (!float.IsFinite(r.PerPoint) || r.PerPoint < 0f || r.PerPoint >= AttrPerPointMax)
+                            errors.Add(("attribute_model", Located(id, $"attribute_model.derived[{i}].per_point",
+                                $"={r.PerPoint} must be finite and in [0, {(int)AttrPerPointMax}).")));
+                    }
+                }
+            }
+
+            // Per-hero attribute blocks: require a model, reference only declared ids, bounded non-negative values,
+            // and cap the RESOLVED contributions (the same resolver the runtime uses — no drift).
+            foreach (UnitDefinition u in def.Units ?? new List<UnitDefinition>())
+            {
+                HeroAttributesDefinition? ha = u?.Hero?.Attributes;
+                if (ha == null) continue;
+                string uid = u!.Id ?? "";
+
+                if (model == null)
+                {
+                    errors.Add(("attribute_model", LocatedItem("unit", uid, "hero.attributes",
+                        "hero authors attributes but the faction declares no attribute_model — add the model (or a preset) first.")));
+                    continue;
+                }
+
+                if (!string.IsNullOrEmpty(ha.Primary) && !declared.Contains(ha.Primary!))
+                    errors.Add(("attribute_model", LocatedItem("unit", uid, "hero.attributes.primary",
+                        $"'{ha.Primary}' is not a declared attribute id.")));
+
+                CheckHeroAttrValues(errors, uid, "hero.attributes.base", ha.Base, declared);
+                CheckHeroAttrValues(errors, uid, "hero.attributes.per_level", ha.PerLevel, declared);
+
+                // Resolved-contribution caps (the DW-650 mirror for the attribute half of the growth modifier).
+                var (rBase, rPerLevel) = HeroAttributeResolver.Resolve(model, ha);
+                for (int s = 0; s < AttributeStats.Count; s++)
+                {
+                    if (rBase[s].ToFloat() >= AttrResolvedBaseMax)
+                        errors.Add(("attribute_model", LocatedItem("unit", uid, "hero.attributes",
+                            $"resolved base contribution to '{AttributeStats.Ids[s]}' ({rBase[s].ToFloat():0.##}) exceeds the Fixed-safe cap {(int)AttrResolvedBaseMax}.")));
+                    if (rPerLevel[s].ToFloat() >= AttrResolvedPerLevelMax)
+                        errors.Add(("attribute_model", LocatedItem("unit", uid, "hero.attributes",
+                            $"resolved per-level contribution to '{AttributeStats.Ids[s]}' ({rPerLevel[s].ToFloat():0.##}) exceeds the Fixed-safe cap {(int)AttrResolvedPerLevelMax} (99-stack overflow guard).")));
+                }
+            }
+        }
+
+        /// <summary>One hero attribute value dictionary: every key ∈ declared ids, every value finite, non-negative,
+        /// below <see cref="AttrValueMax"/>. Iterates a SORTED key copy so error ORDER is deterministic (the
+        /// validator's list-all contract; never raw dictionary enumeration order).</summary>
+        private static void CheckHeroAttrValues(List<(string, string)> errors, string uid, string path,
+                                                Dictionary<string, float>? values, HashSet<string> declared)
+        {
+            if (values == null || values.Count == 0) return;
+            var keys = new List<string>(values.Keys);
+            keys.Sort(StringComparer.Ordinal);
+            foreach (string k in keys)
+            {
+                if (!declared.Contains(k))
+                    errors.Add(("attribute_model", LocatedItem("unit", uid, $"{path}.{k}",
+                        $"'{k}' is not a declared attribute id.")));
+                float v = values[k];
+                if (!float.IsFinite(v) || v < 0f || v >= AttrValueMax)
+                    errors.Add(("attribute_model", LocatedItem("unit", uid, $"{path}.{k}",
+                        $"={v} must be finite and in [0, {(int)AttrValueMax}).")));
+            }
+        }
     }
 }

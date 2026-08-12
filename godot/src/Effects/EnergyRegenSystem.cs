@@ -29,18 +29,50 @@ namespace ProjectChimera.Effects
     /// </summary>
     public sealed class EnergyRegenSystem : ISimSystem
     {
-        /// <summary>
-        /// The ONE regen seam (DW-265; Story 15.21's dependency): the per-TICK energy amount for entity
-        /// <paramref name="id"/>. Today it is simply the authored flat rate (<c>world.RegenRate[id]</c>). Story 15.21's
-        /// creator-authored attribute system extends regen by editing THIS method to add an attribute-derived
-        /// contribution — no other tick site reads <see cref="EntityWorld.RegenRate"/>, so the whole regen model has a
-        /// single place to grow. Pure read; never mutates.
-        /// </summary>
-        public static Fixed RegenPerTick(EntityWorld world, int id) => world.RegenRate[id];
+        // Story 15-21: the hero store, for attribute-derived energy contributions (Intelligence → max energy /
+        // energy regen, the DW-265 economy Alec asked for). Null (pre-15-21 callers/tests) ⇒ flat-rate only,
+        // byte-identical to the Story 15.12 behaviour.
+        private readonly HeroStore? _heroes;
+
+        public EnergyRegenSystem(HeroStore? heroes = null) => _heroes = heroes;
 
         /// <summary>
-        /// Restore energy for every alive entity: <c>Energy[id] = clamp(Energy[id] + RegenPerTick, 0, MaxEnergy[id])</c>.
-        /// A unit at full energy or with <c>regen_rate == 0</c> is a no-op write (byte-identical). <paramref name="dt"/>
+        /// The ONE regen seam (DW-265 → Story 15-21): the per-TICK energy amount for entity <paramref name="id"/> —
+        /// the authored flat rate (<c>world.RegenRate[id]</c>) PLUS, for a live linked hero, its attribute-derived
+        /// <c>energy_regen</c> contribution (<c>HeroStore.AttributeStatAt</c> — base + perLevel × (Level−1), the
+        /// creator's derived-stat mapping resolved at apply). No other tick site reads
+        /// <see cref="EntityWorld.RegenRate"/>, so the whole regen model still has this single place to grow.
+        /// Pure read; never mutates. Deterministic: HeroIndex is a packed ref, Level is folded sim truth.
+        /// </summary>
+        public static Fixed RegenPerTick(EntityWorld world, HeroStore? heroes, int id)
+        {
+            Fixed r = world.RegenRate[id];
+            if (heroes != null && heroes.TryResolveRef(world.HeroIndex[id], out int slot))
+                r += heroes.AttributeStatAt(slot, Core.Definitions.AttributeStats.EnergyRegen);
+            return r;
+        }
+
+        /// <summary>The pre-15-21 seam shape (flat rate only) — kept so existing callers/tests compile and read
+        /// the same value they always did for a hero-less entity.</summary>
+        public static Fixed RegenPerTick(EntityWorld world, int id) => RegenPerTick(world, null, id);
+
+        /// <summary>
+        /// Story 15-21: the effective energy CEILING for entity <paramref name="id"/> — authored
+        /// <see cref="EntityWorld.MaxEnergy"/> plus a live linked hero's attribute-derived <c>max_energy</c>
+        /// contribution. MaxEnergy has no Effective* pair and no modifier channel (15.12 posture), so the
+        /// attribute term is computed at the read sites: the regen clamp here, and presentation readouts.
+        /// </summary>
+        public static Fixed MaxEnergyOf(EntityWorld world, HeroStore? heroes, int id)
+        {
+            Fixed max = world.MaxEnergy[id];
+            if (heroes != null && heroes.TryResolveRef(world.HeroIndex[id], out int slot))
+                max += heroes.AttributeStatAt(slot, Core.Definitions.AttributeStats.MaxEnergy);
+            return max;
+        }
+
+        /// <summary>
+        /// Restore energy for every alive entity: <c>Energy[id] = clamp(Energy[id] + RegenPerTick, 0, MaxEnergyOf)</c>.
+        /// A unit at full energy or with a zero per-tick amount is a no-op write (byte-identical). <paramref name="dt"/>
         /// is unused — the authored rate is already per-tick (the 30 Hz fixed step makes one Tick == one tick), mirroring
         /// <c>ModifierStore.Advance</c>'s tick-counted cadence.
         /// </summary>
@@ -51,12 +83,12 @@ namespace ProjectChimera.Effects
             {
                 if (!world.IsAlive(i)) continue;
                 // Read the per-tick amount from the seam ONCE and early-out when it is zero. Skipping on the SEAM's
-                // result (not the raw RegenRate field) keeps Story 15.21's attribute-driven regen honored, while making
+                // result (not the raw RegenRate field) keeps the attribute-driven regen honored, while making
                 // regen==0 a TRUE no-op — it no longer clamps a (theoretically) Energy>MaxEnergy slot, so shipped
                 // content that never regenerates does zero per-tick work and cannot move any existing golden.
-                Fixed r = RegenPerTick(world, i);
+                Fixed r = RegenPerTick(world, _heroes, i);
                 if (r.Raw == 0) continue;
-                world.Energy[i] = Fixed.Clamp(world.Energy[i] + r, Fixed.Zero, world.MaxEnergy[i]);
+                world.Energy[i] = Fixed.Clamp(world.Energy[i] + r, Fixed.Zero, MaxEnergyOf(world, _heroes, i));
             }
         }
     }

@@ -1,0 +1,71 @@
+{
+  "id": "last_epoch",
+  "name": "Last Epoch",
+  "description": "Strength / Dexterity / Intelligence / Vitality / Attunement \u2014 five-attribute hybrid scaling. Starting-point numbers \u2014 tune per faction.",
+  "attribute_model": {
+    "attributes": [
+      {
+        "id": "strength",
+        "name": "Strength",
+        "description": ""
+      },
+      {
+        "id": "dexterity",
+        "name": "Dexterity",
+        "description": ""
+      },
+      {
+        "id": "intelligence",
+        "name": "Intelligence",
+        "description": ""
+      },
+      {
+        "id": "vitality",
+        "name": "Vitality",
+        "description": ""
+      },
+      {
+        "id": "attunement",
+        "name": "Attunement",
+        "description": ""
+      }
+    ],
+    "derived": [
+      {
+        "attribute": "strength",
+        "stat": "attack_damage",
+        "per_point": 0.4
+      },
+      {
+        "attribute": "dexterity",
+        "stat": "armor",
+        "per_point": 0.4
+      },
+      {
+        "attribute": "dexterity",
+        "stat": "move_speed",
+        "per_point": 0.002
+      },
+      {
+        "attribute": "intelligence",
+        "stat": "max_energy",
+        "per_point": 1.0
+      },
+      {
+        "attribute": "vitality",
+        "stat": "max_health",
+        "per_point": 8.0
+      },
+      {
+        "attribute": "attunement",
+        "stat": "energy_regen",
+        "per_point": 0.0012
+      },
+      {
+        "attribute": "attunement",
+        "stat": "max_energy",
+        "per_point": 0.5
+      }
+    ]
+  }
+}

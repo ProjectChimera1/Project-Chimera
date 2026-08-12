@@ -85,6 +85,13 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("ultimate_ability")]
         public string? UltimateAbility { get; set; }
 
+        /// <summary>Story 15-21: this hero's attribute block (primary flag + base values + per-level auto-growth),
+        /// resolved against the faction's <c>attribute_model</c> at the single scenario-apply boundary
+        /// (<see cref="HeroAttributeResolver"/>). Null = no attributes (byte-identical to a pre-15-21 hero).
+        /// Validated by <c>FactionValidator</c> against the declared model (keys/primary ∈ declared ids, bounds).</summary>
+        [JsonPropertyName("attributes")]
+        public HeroAttributesDefinition? Attributes { get; set; }
+
         /// <summary>A member-wise copy (all fields are value types or immutable strings) — the Duplicate path deep-copies
         /// <see cref="UnitDefinition.Hero"/> so a clone and its source validate independently.</summary>
         public HeroDefinition Clone() => new HeroDefinition
@@ -99,6 +106,7 @@ namespace ProjectChimera.Core.Definitions
             ArmorPerLevel = ArmorPerLevel,      // Story 3.13
             SignatureAbility = SignatureAbility,
             UltimateAbility = UltimateAbility,
+            Attributes = Attributes?.Clone(),   // Story 15-21 (deep copy — dictionaries must not alias)
         };
     }
 }

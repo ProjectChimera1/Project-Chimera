@@ -1,0 +1,56 @@
+{
+  "id": "wc3",
+  "name": "Warcraft III",
+  "description": "The RTS-hero lineage: Strength / Agility / Intelligence with a primary attribute that also grants attack damage. Starting-point numbers \u2014 tune per faction.",
+  "attribute_model": {
+    "attributes": [
+      {
+        "id": "strength",
+        "name": "Strength",
+        "description": ""
+      },
+      {
+        "id": "agility",
+        "name": "Agility",
+        "description": ""
+      },
+      {
+        "id": "intelligence",
+        "name": "Intelligence",
+        "description": ""
+      }
+    ],
+    "derived": [
+      {
+        "attribute": "strength",
+        "stat": "max_health",
+        "per_point": 25.0
+      },
+      {
+        "attribute": "strength",
+        "stat": "energy_regen",
+        "per_point": 0.0017
+      },
+      {
+        "attribute": "agility",
+        "stat": "armor",
+        "per_point": 0.3
+      },
+      {
+        "attribute": "intelligence",
+        "stat": "max_energy",
+        "per_point": 15.0
+      },
+      {
+        "attribute": "intelligence",
+        "stat": "energy_regen",
+        "per_point": 0.0017
+      },
+      {
+        "attribute": "primary",
+        "stat": "attack_damage",
+        "per_point": 1.0
+      }
+    ]
+  }
+}

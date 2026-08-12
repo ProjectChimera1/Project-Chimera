@@ -122,6 +122,30 @@ namespace ProjectChimera.Core
         /// constant, the <see cref="BaseXpOf"/> posture) — a divergence surfaces transitively via the folded <see cref="Xp"/>.</summary>
         public readonly Fixed[]  XpGainFactorOf      = new Fixed[MAX_HEROES];
 
+        // ── Story 15-21 per-hero ATTRIBUTE contributions (flattened by HeroAttributeResolver at the scenario-apply
+        //    boundary; stride-AttributeStats.Count flat rings indexed slot * AttributeStats.Count + stat). Authored
+        //    constants, the BaseXpOf posture — NOT folded: a hero's live attribute value is base + perLevel×(Level−1),
+        //    a pure function of the FOLDED Level, so divergence surfaces transitively via ModifierStore/Energy. ──────
+        /// <summary>Story 15-21: per-hero per-stat BASE attribute contribution (level 1), in
+        /// <see cref="Definitions.AttributeStats"/> index order. Set in <see cref="Mint"/> (null → all-zero).</summary>
+        public readonly Fixed[]  AttrStatBase        = new Fixed[MAX_HEROES * Definitions.AttributeStats.Count];
+        /// <summary>Story 15-21: per-hero per-stat PER-LEVEL attribute contribution (auto-growth, D-2), in
+        /// <see cref="Definitions.AttributeStats"/> index order. Set in <see cref="Mint"/> (null → all-zero).</summary>
+        public readonly Fixed[]  AttrStatPerLevel    = new Fixed[MAX_HEROES * Definitions.AttributeStats.Count];
+
+        /// <summary>Story 15-21: the hero's LIVE attribute-derived contribution for one closed-vocabulary stat —
+        /// <c>base + perLevel × (Level − 1)</c>, a pure function of the FOLDED <see cref="Level"/> and the two
+        /// authored-constant lanes (which is why the attribute table needs no folded state of its own). Used by the
+        /// energy pair (<c>EnergyRegenSystem</c>) and presentation readouts; the four modifier-channel stats flow
+        /// through the HeroXpSystem growth/base modifiers instead and must NOT be double-read from here.</summary>
+        public Fixed AttributeStatAt(int slot, int stat)
+        {
+            int levelsAbove1 = Level[slot] - 1;
+            if (levelsAbove1 < 0) levelsAbove1 = 0;
+            int i = slot * Definitions.AttributeStats.Count + stat;
+            return AttrStatBase[i] + AttrStatPerLevel[i] * Fixed.FromInt(levelsAbove1);
+        }
+
         // ── RESERVED for Story 3.14 (death & revival), declared + folded NOW so 3.14 needs no second AlgoVersion bump
         //    (Story 3.13 D-2). Written to their zero/false defaults in Mint; folded at defaults into SimChecksum v11. ─
         /// <summary>Story 3.14 (reserved): hero is on the field (true) vs awaiting revival (false). Distinct from the
@@ -193,7 +217,8 @@ namespace ProjectChimera.Core
                         int maxLevel = 0, Fixed baseXp = default, Fixed xpGrowth = default, Fixed xpShareRadius = default,
                         Fixed healthPerLevel = default, Fixed damagePerLevel = default, Fixed armorPerLevel = default,
                         UnitDefinition? sourceDef = null, Faction ownerFaction = default,
-                        Fixed? xpGainFactor = null)
+                        Fixed? xpGainFactor = null,
+                        Fixed[]? attrStatBase = null, Fixed[]? attrStatPerLevel = null)
         {
             // Contract (AC2 / FoldOrder producer-independence): a HeroId is UNIQUE across LIVE rows. FoldOrder sorts by
             // HeroId with a strict-'>' (stable) insertion sort, so two live rows sharing an id would fold in mint-order-
@@ -234,6 +259,15 @@ namespace ProjectChimera.Core
             // Fixed.One (full bounty) — a Fixed default param cannot BE Fixed.One and default(Fixed) is Zero (which would
             // silently zero every non-passing caller's kill XP), so the nullable-null → One mapping is deliberate.
             XpGainFactorOf[slot]   = xpGainFactor ?? Fixed.One;
+            // Story 15-21: flattened attribute contributions (HeroAttributeResolver output; null = no attributes →
+            // all-zero, byte-identical to a pre-15-21 hero). Written unconditionally — the SoA-recycle contract: a
+            // recycled slot must never carry the prior hero's contributions.
+            int attrBase = slot * Definitions.AttributeStats.Count;
+            for (int s = 0; s < Definitions.AttributeStats.Count; s++)
+            {
+                AttrStatBase[attrBase + s]     = attrStatBase     != null && s < attrStatBase.Length     ? attrStatBase[s]     : Fixed.Zero;
+                AttrStatPerLevel[attrBase + s] = attrStatPerLevel != null && s < attrStatPerLevel.Length ? attrStatPerLevel[s] : Fixed.Zero;
+            }
             // Story 3.13 mutable growth-tracking + Story 3.14 reserved revival state — zeroed on (re)mint so a recycled
             // slot never inherits prior growth/revival state (folded into SimChecksum v11).
             GrowthStacksApplied[slot] = 0;
@@ -272,6 +306,7 @@ namespace ProjectChimera.Core
             System.Array.Clear(MaxLevelOf);       System.Array.Clear(BaseXpOf);         System.Array.Clear(XpGrowthOf);
             System.Array.Clear(XpShareRadiusOf);  System.Array.Clear(HealthPerLevelOf); System.Array.Clear(DamagePerLevelOf);
             System.Array.Clear(ArmorPerLevelOf);   System.Array.Clear(XpGainFactorOf); // DW-26 (a re-Mint re-seeds it to One)
+            System.Array.Clear(AttrStatBase);      System.Array.Clear(AttrStatPerLevel); // Story 15-21
             // Story 3.14 reserved revival state + non-folded constants.
             System.Array.Clear(Alive3_14);        System.Array.Clear(AwaitingRevival);  System.Array.Clear(RevivalTimer);
             System.Array.Clear(RevivalLink);      System.Array.Clear(SourceDef);        System.Array.Clear(OwnerFaction);

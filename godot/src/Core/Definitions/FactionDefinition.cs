@@ -73,6 +73,15 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("persistence_enabled")]
         public bool PersistenceEnabled { get; set; } = false;
 
+        /// <summary>Story 15-21: the faction's creator-authored hero ATTRIBUTE MODEL (declared attributes +
+        /// derived-stat mapping). Null = no model (heroes with an <c>attributes</c> block are then rejected by
+        /// <c>FactionValidator</c>; heroes without one are unaffected — byte-identical to pre-15-21). Shipped
+        /// presets under <c>resources/data/attribute-models/</c> seed the common ARPG models; the creator picks
+        /// one and edits, or authors from scratch. Sim-read via <see cref="HeroAttributeResolver"/> at apply →
+        /// folded into <c>ContentHash</c> (v2).</summary>
+        [JsonPropertyName("attribute_model")]
+        public AttributeModelDefinition? AttributeModel { get; set; } = null;
+
         /// <summary>The faction's starting ore balance (Story 5.5, FR-17) — descriptor-only data written by the
         /// Faction Definer wizard's Starting Conditions step, mirroring <see cref="AiPreset"/>/
         /// <see cref="SignatureMechanicId"/>'s unwired-descriptor pattern (Story 5.2): no <c>ScenarioApplier</c>/

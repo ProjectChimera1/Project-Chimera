@@ -48,6 +48,14 @@ namespace ProjectChimera.Combat
         /// distinctive high constant so it can never collide with an authored ability-modifier id.</summary>
         public const int HeroGrowthModifierId = 0x3133_0000; // "31 33" ~ 3.13
 
+        /// <summary>Story 15-21: reserved <see cref="Modifier.Id"/> for the per-hero permanent BASE-attribute
+        /// modifier — the level-1 attribute contributions (str→hp etc.), one stack, installed once at the first
+        /// reconcile (idempotent via <see cref="StackRule.Ignore"/>: a live same-id instance ignores re-applies).
+        /// Skipped entirely when all four modifier-channel base contributions are zero (the DW-678 lesson — never
+        /// burn a ring slot on an all-zero modifier). Per-LEVEL attribute contributions ride the
+        /// <see cref="HeroGrowthModifierId"/> stacks instead (one modifier, not one per level).</summary>
+        public const int HeroAttrBaseModifierId = 0x3135_2100; // "31 35 21" ~ 15.21
+
         /// <summary>Max growth stacks = the hero level ceiling (100) minus 1, so a valid hero never saturates the stack cap.</summary>
         public const int MaxGrowthStacks = 99;
 
@@ -388,26 +396,59 @@ namespace ProjectChimera.Combat
         /// mirrored there or the bound stops covering what this actually installs.</para></summary>
         private void ReconcileGrowth(EntityWorld world, int slot)
         {
+            int entityId = _heroes.EntityId[slot];
+
+            // ── Story 15-21: the BASE attribute contributions (level-1 values × the faction's derived mapping) ────
+            // Installed once as a permanent one-stack modifier; StackRule.Ignore makes every later reconcile a
+            // no-op against the live instance (no folded "applied" flag needed — idempotence is the stack rule's).
+            // All-zero contributions install NOTHING (DW-678: an empty modifier must never burn a ring slot).
+            // Ordered BEFORE the growth early-out so a LEVEL-1 hero (desired == applied == 0) still gets its base.
+            int aBase = slot * AttributeStats.Count;
+            Fixed abHp    = _heroes.AttrStatBase[aBase + AttributeStats.MaxHealth];
+            Fixed abDmg   = _heroes.AttrStatBase[aBase + AttributeStats.AttackDamage];
+            Fixed abArmor = _heroes.AttrStatBase[aBase + AttributeStats.Armor];
+            Fixed abSpeed = _heroes.AttrStatBase[aBase + AttributeStats.MoveSpeed];
+            if ((abHp.Raw | abDmg.Raw | abArmor.Raw | abSpeed.Raw) != 0)
+            {
+                if (!IsLiveLinkedHero(world, slot, entityId)) return; // dead/stale hero → nothing this tick
+                var baseMod = new Modifier(
+                    HeroAttrBaseModifierId,
+                    durationTicks: -1,           // permanent, non-dispellable (the growth-modifier posture)
+                    StackRule.Ignore,            // a live instance ignores re-applies → install-once idempotence
+                    maxStacks: 1,
+                    maxHealthDelta:    abHp,
+                    attackDamageDelta: abDmg,
+                    moveSpeedDelta:    abSpeed,
+                    status: StatusFlags.None,
+                    periodEffect: null,
+                    periodTicks: 0,
+                    armorDelta:        abArmor);
+                _modifiers.Apply(entityId, baseMod, entityId, world.FactionOf[entityId]);
+            }
+
             int desired = _heroes.Level[slot] - 1;
             if (desired < 0) desired = 0;
             int applied = _heroes.GrowthStacksApplied[slot];
             if (desired <= applied) return; // already reconciled (growth is never removed by this system)
 
-            int entityId = _heroes.EntityId[slot];
             if (!IsLiveLinkedHero(world, slot, entityId)) return; // dead/stale hero → apply no growth this tick
 
+            // Story 15-21: the per-stack deltas are the FLAT authored growth PLUS the per-level attribute
+            // contributions (attr per-level gains × the faction's derived mapping) — one modifier, (Level−1)
+            // stacks, exactly the Story 3.13 channel. DW-650: UnitDefinitionValidator.CheckHeroGrowth mirrors
+            // THIS combined shape (flat + attribute term, × max_level−1 worst case) — change both together.
             var growthMod = new Modifier(
                 HeroGrowthModifierId,
                 durationTicks: -1,               // permanent (never expires by duration; non-dispellable)
                 StackRule.Stack,
                 maxStacks: MaxGrowthStacks,
-                maxHealthDelta:    _heroes.HealthPerLevelOf[slot],
-                attackDamageDelta: _heroes.DamagePerLevelOf[slot],
-                moveSpeedDelta:    Fixed.Zero,   // no move-speed growth channel (Story 3.13 scope)
+                maxHealthDelta:    _heroes.HealthPerLevelOf[slot] + _heroes.AttrStatPerLevel[aBase + AttributeStats.MaxHealth],
+                attackDamageDelta: _heroes.DamagePerLevelOf[slot] + _heroes.AttrStatPerLevel[aBase + AttributeStats.AttackDamage],
+                moveSpeedDelta:    _heroes.AttrStatPerLevel[aBase + AttributeStats.MoveSpeed], // attr-only (no flat move-speed growth — Story 3.13 scope)
                 status: StatusFlags.None,
                 periodEffect: null,
                 periodTicks: 0,
-                armorDelta:        _heroes.ArmorPerLevelOf[slot]);
+                armorDelta:        _heroes.ArmorPerLevelOf[slot] + _heroes.AttrStatPerLevel[aBase + AttributeStats.Armor]);
 
             Faction faction = world.FactionOf[entityId];
             for (int k = applied; k < desired; k++)

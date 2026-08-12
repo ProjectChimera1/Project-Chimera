@@ -49,8 +49,13 @@ namespace ProjectChimera.Core.Definitions
     public static class ContentHash
     {
         /// <summary>Algorithm version of THIS hash. Mixed FIRST so a bump moves the value alone. Independent of
-        /// <see cref="CanonicalModelHash.AlgoVersion"/>/<see cref="RulesetHash.AlgoVersion"/> — new at 1.</summary>
-        public const int AlgoVersion = 1;
+        /// <see cref="CanonicalModelHash.AlgoVersion"/>/<see cref="RulesetHash.AlgoVersion"/> — new at 1.
+        /// <para>v2 — Story 15-21: the HERO block leaves the authoring-only allowlist and folds (its curve fields
+        /// were ALREADY sim-read since 3.13 — a pre-existing handshake gap: peers with divergent hero curves
+        /// agreed at the lobby and diverged at the first level-up), plus the new per-hero <c>attributes</c> block
+        /// and the faction-level <c>attribute_model</c> (both sim-read via <c>HeroAttributeResolver</c>). Every
+        /// unit gains at least one presence-bit Mix, so the pin moves for ALL content.</para></summary>
+        public const int AlgoVersion = 2;
 
         /// <summary>
         /// The LOCAL per-domain content fingerprint (ruleset-caps, factions, abilities, items, damage-table). Each
@@ -192,6 +197,7 @@ namespace ProjectChimera.Core.Definitions
             h = CanonicalFold.MixInt(h, f.PersistenceEnabled ? 1 : 0);
             h = CanonicalFold.MixInt(h, Fixed.FromFloat(f.StartingOre).Raw);
             h = CanonicalFold.MixInt(h, Fixed.FromFloat(f.StartingCrystal).Raw);
+            h = FoldAttributeModel(h, f.AttributeModel); // Story 15-21: sim-read via HeroAttributeResolver at apply
             return h;
         }
 
@@ -243,6 +249,77 @@ namespace ProjectChimera.Core.Definitions
             // folded Energy pool), so a content-byte mismatch on it must reject at the handshake — folded exactly like
             // MaxEnergy. Default 0 folds a MixInt(0), so this moves the ContentHash pin (re-recorded in the same commit).
             h = CanonicalFold.MixInt(h, Fixed.FromFloat(u.RegenRate).Raw);
+            // Story 15-21: the HERO block is sim-read (HeroXpSystem levels/grows from the curve since 3.13 — a
+            // pre-existing handshake gap this story closes now that it also ADDS fields — and the new attributes
+            // drive stats through HeroAttributeResolver), so it leaves the ContentFoldCompletenessTests allowlist
+            // and folds here. Behaviors stays allowlisted (still authoring-only).
+            h = FoldHero(h, u.Hero);
+            return h;
+        }
+
+        /// <summary>Story 15-21: the sim-read hero block — leveling curve/growth constants, the ability-slot ids,
+        /// and the attribute block (primary + SORTED base/per_level maps — never dictionary enumeration order).
+        /// Null (a non-hero) folds a single Mix(0) presence bit, so every pre-15-21 non-hero unit contributes one
+        /// extra Mix(0) and nothing else.</summary>
+        private static ulong FoldHero(ulong h, HeroDefinition? hero)
+        {
+            h = CanonicalFold.MixInt(h, hero != null ? 1 : 0);
+            if (hero == null) return h;
+            h = CanonicalFold.MixInt(h, hero.MaxLevel);
+            h = CanonicalFold.MixInt(h, Fixed.FromFloat(hero.BaseXp).Raw);
+            h = CanonicalFold.MixInt(h, Fixed.FromFloat(hero.XpGrowth).Raw);
+            h = CanonicalFold.MixInt(h, Fixed.FromFloat(hero.XpPerKill).Raw);
+            h = CanonicalFold.MixInt(h, Fixed.FromFloat(hero.XpShareRadius).Raw);
+            h = CanonicalFold.MixInt(h, Fixed.FromFloat(hero.HealthPerLevel).Raw);
+            h = CanonicalFold.MixInt(h, Fixed.FromFloat(hero.DamagePerLevel).Raw);
+            h = CanonicalFold.MixInt(h, Fixed.FromFloat(hero.ArmorPerLevel).Raw);
+            h = CanonicalFold.MixStr(h, hero.SignatureAbility);
+            h = CanonicalFold.MixStr(h, hero.UltimateAbility);
+
+            HeroAttributesDefinition? a = hero.Attributes;
+            h = CanonicalFold.MixInt(h, a != null ? 1 : 0);
+            if (a == null) return h;
+            h = CanonicalFold.MixStr(h, a.Primary);
+            h = FoldAttrValues(h, a.Base);
+            h = FoldAttrValues(h, a.PerLevel);
+            return h;
+        }
+
+        /// <summary>One hero attribute value map, folded in ORDINAL KEY ORDER (a Dictionary's enumeration order is
+        /// insertion-dependent and never a hash input).</summary>
+        private static ulong FoldAttrValues(ulong h, Dictionary<string, float>? values)
+        {
+            if (values == null) { h = CanonicalFold.MixInt(h, 0); return h; }
+            var keys = new List<string>(values.Keys);
+            keys.Sort(System.StringComparer.Ordinal);
+            h = CanonicalFold.MixInt(h, keys.Count);
+            foreach (string k in keys)
+            {
+                h = CanonicalFold.MixStr(h, k);
+                h = CanonicalFold.MixInt(h, Fixed.FromFloat(values[k]).Raw);
+            }
+            return h;
+        }
+
+        /// <summary>Story 15-21: the faction's attribute MODEL — declared attribute ids (authored order; names/
+        /// descriptions are presentation and excluded, the DisplayName posture) + the derived mapping rows (authored
+        /// order — order is semantic: the resolver accumulates in rule order). Null folds a single Mix(0).</summary>
+        private static ulong FoldAttributeModel(ulong h, AttributeModelDefinition? model)
+        {
+            h = CanonicalFold.MixInt(h, model != null ? 1 : 0);
+            if (model == null) return h;
+            var attrs = model.Attributes ?? new List<AttributeDeclaration>();
+            h = CanonicalFold.MixInt(h, attrs.Count);
+            foreach (AttributeDeclaration a in attrs)
+                h = CanonicalFold.MixStr(h, a?.Id);
+            var derived = model.Derived ?? new List<DerivedStatRule>();
+            h = CanonicalFold.MixInt(h, derived.Count);
+            foreach (DerivedStatRule r in derived)
+            {
+                h = CanonicalFold.MixStr(h, r?.Attribute);
+                h = CanonicalFold.MixStr(h, r?.Stat);
+                h = CanonicalFold.MixInt(h, Fixed.FromFloat(r?.PerPoint ?? 0f).Raw);
+            }
             return h;
         }
 

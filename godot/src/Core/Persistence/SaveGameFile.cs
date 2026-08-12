@@ -59,8 +59,15 @@ namespace ProjectChimera.Core.Persistence
         /// <para>v6 (DW-937): the building section gained the <c>RequiresBuilder</c> lane (worker-built sites only
         /// advance construction while a builder is present), appended at the tail of the <c>SaveGameState.BA</c>
         /// lane enum. A v5 body has one fewer building lane, so the positional addressing would misalign; the bump
-        /// makes a pre-DW-937 save fail-closed at the header. Same reasoning as v5.</para></summary>
-        public const ushort FormatVersion = 6;
+        /// makes a pre-DW-937 save fail-closed at the header. Same reasoning as v5.</para>
+        ///
+        /// <para>v7 (Story 15-21): the hero section gained the <c>AttrStatBase</c>/<c>AttrStatPerLevel</c> lanes
+        /// (per-hero resolved attribute contributions, stride-<c>AttributeStats.Count</c> flat rings), appended at
+        /// the tail of the <c>SaveGameState.HA</c> lane enum. A v6 body has two fewer hero lanes → positional
+        /// misalignment; the bump fail-closes a pre-15-21 save at the header. Same reasoning as v6. (The same
+        /// story's SimChecksum stayed at 25 — attributes add NO folded state — so this is the save gate's only
+        /// 15-21 movement.)</para></summary>
+        public const ushort FormatVersion = 7;
 
         /// <summary>Max player slots in a persisted launch record — a fail-closed corruption bound on the slot count.</summary>
         public const int MaxSlots = 64;

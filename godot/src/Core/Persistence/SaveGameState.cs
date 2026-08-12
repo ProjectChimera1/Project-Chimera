@@ -208,11 +208,14 @@ namespace ProjectChimera.Core.Persistence
         }
 
         // ── HeroStore array positions (excl. Id/SourceDef handled separately). ──
+        // Story 15-21: AttrStatBase/AttrStatPerLevel APPENDED (a mid-enum insert would silently shift every later
+        // lane in an old save; appending + the FormatVersion 6→7 bump fail-closes instead). Both are
+        // stride-AttributeStats.Count flat rings, the Inventory length-shape precedent.
         private enum HA
         {
             Alive, EntityId, Level, Xp, GrowthStacksApplied, MaxLevelOf, BaseXpOf, XpGrowthOf, XpShareRadiusOf,
             HealthPerLevelOf, DamagePerLevelOf, ArmorPerLevelOf, XpGainFactorOf, Alive3_14, AwaitingRevival, RevivalTimer,
-            RevivalLink, OwnerFaction, Generation, Inventory, COUNT
+            RevivalLink, OwnerFaction, Generation, Inventory, AttrStatBase, AttrStatPerLevel, COUNT
         }
 
         // ── ItemStore array positions. ──
@@ -446,6 +449,9 @@ namespace ProjectChimera.Core.Persistence
             var a314 = A(HA.Alive3_14, n); var awr = A(HA.AwaitingRevival, n); var rti = A(HA.RevivalTimer, n); var rlk = A(HA.RevivalLink, n);
             var of = A(HA.OwnerFaction, n); var gen = A(HA.Generation, n);
             var inv = A(HA.Inventory, n * HeroStore.INVENTORY_SLOTS);
+            // Story 15-21: the resolved attribute-contribution lanes (authored constants, stride-Count flat rings).
+            var asb = A(HA.AttrStatBase, n * Definitions.AttributeStats.Count);
+            var asp = A(HA.AttrStatPerLevel, n * Definitions.AttributeStats.Count);
             HeroId = new ulong[n]; HeroDefId = new string[n];
             for (int i = 0; i < n; i++)
             {
@@ -458,6 +464,11 @@ namespace ProjectChimera.Core.Persistence
                 HeroId[i] = h.Id[i].Value; HeroDefId[i] = h.SourceDef[i]?.Id ?? "";
             }
             for (int i = 0; i < n * HeroStore.INVENTORY_SLOTS; i++) inv[i] = h.Inventory[i];
+            for (int i = 0; i < n * Definitions.AttributeStats.Count; i++) // Story 15-21
+            {
+                asb[i] = h.AttrStatBase[i].Raw;
+                asp[i] = h.AttrStatPerLevel[i].Raw;
+            }
         }
 
         private void CaptureItems(ItemStore it)
@@ -851,6 +862,7 @@ namespace ProjectChimera.Core.Persistence
             var xgf = G(HA.XpGainFactorOf); // DW-26
             var a314 = G(HA.Alive3_14); var awr = G(HA.AwaitingRevival); var rti = G(HA.RevivalTimer); var rlk = G(HA.RevivalLink);
             var of = G(HA.OwnerFaction); var gen = G(HA.Generation); var inv = G(HA.Inventory);
+            var asb = G(HA.AttrStatBase); var asp = G(HA.AttrStatPerLevel); // Story 15-21
             for (int i = 0; i < n; i++)
             {
                 h.Alive[i] = al[i] != 0; h.Id[i] = new HeroId(HeroId[i]); h.EntityId[i] = eid[i]; h.Level[i] = lv[i]; h.Xp[i] = Fixed.FromRaw(xp[i]);
@@ -862,6 +874,11 @@ namespace ProjectChimera.Core.Persistence
                 h.SourceDef[i] = ResolveDef(slotDefs, of[i], i < HeroDefId.Length ? HeroDefId[i] : "");
             }
             for (int i = 0; i < n * HeroStore.INVENTORY_SLOTS && i < inv.Length; i++) h.Inventory[i] = inv[i];
+            for (int i = 0; i < n * Definitions.AttributeStats.Count && i < asb.Length; i++) // Story 15-21
+            {
+                h.AttrStatBase[i]     = Fixed.FromRaw(asb[i]);
+                h.AttrStatPerLevel[i] = Fixed.FromRaw(asp[i]);
+            }
             h.RestoreManagement(HeroCount, HeroFreeList, HeroFreeList.Length);
         }
 
@@ -1200,7 +1217,10 @@ namespace ProjectChimera.Core.Persistence
             for (int e = 0; e < Hero.Length; e++)
             {
                 if (Hero[e] == null) Fail($"hero lane {e} is null.");
-                int want = e == (int)HA.Inventory ? HeroCount * HeroStore.INVENTORY_SLOTS : HeroCount;
+                int want = e == (int)HA.Inventory ? HeroCount * HeroStore.INVENTORY_SLOTS
+                         : e == (int)HA.AttrStatBase || e == (int)HA.AttrStatPerLevel
+                             ? HeroCount * Definitions.AttributeStats.Count // Story 15-21 stride lanes
+                             : HeroCount;
                 if (Hero[e].Length != want) Fail($"hero lane {(HA)e} length mismatch.");
             }
             if (HeroId.Length != HeroCount || HeroDefId.Length != HeroCount) Fail("hero id/def-id lane length mismatch.");

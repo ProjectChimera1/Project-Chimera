@@ -356,7 +356,7 @@ namespace ProjectChimera.Core.Sim
                 //    energy regenerated THIS tick. Writes only the already-folded Energy array (no SimChecksum bump);
                 //    with every shipped unit at regen_rate=0 the per-tick write is a byte-identical no-op. Holds the
                 //    RegenPerTick seam Story 15.21 extends. ──
-                new EnergyRegenSystem(),                                                   // [6] EnergyRegenSystem  (Effects, DW-265)
+                new EnergyRegenSystem(Heroes),                                             // [6] EnergyRegenSystem  (Effects, DW-265; Story 15-21: hero attribute energy pair)
                 // ── Story 2.4a ability-cast spine. Immediately BEFORE ModifierSystem, so a cast that
                 //    installs a buff is recomputed by ModifierSystem and read by CombatSystem the
                 //    SAME tick. Ticks per-slot cooldowns down, consumes the pending-cast intent, runs the effect graph. ──

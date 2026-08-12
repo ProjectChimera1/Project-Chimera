@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
+using ProjectChimera.Core.Persistence; // SaveGameFile.FormatVersion pin (DW-768)
 using ProjectChimera.Multiplayer;
 using Xunit;
 
@@ -208,7 +209,16 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// <summary>Story 9.16 — the net-new content-definitions fingerprint (factions/units/buildings/research, the
         /// ability + item registries, the damage table) folded into <see cref="MatchAgreementHash"/>. v1 = initial.
         /// A bump changes the value old clients compute for the handshake — update this pin in the same commit.</summary>
-        private const int ExpectedContentHashAlgoVersion = 1;
+        /// <summary>Story 15-21: 1→2 — the hero block leaves the authoring-only allowlist and folds (curve fields
+        /// were ALREADY sim-read since 3.13 — a closed handshake gap), plus the per-hero attributes block and the
+        /// faction attribute_model. Every unit gains a presence-bit Mix, so the value moves for all content.</summary>
+        private const int ExpectedContentHashAlgoVersion = 2;
+
+        /// <summary>DW-768 (Story 15-21 rider): SaveGameFile.FormatVersion was the ONE fail-closed version gate
+        /// with no pin here — a lane-enum edit could ship without its bump and misalign every positional lane in
+        /// old saves SILENTLY (the exact class v5/v6/v7 exist to prevent). Story 15-21 bumped 6→7 (the two
+        /// appended hero attribute lanes).</summary>
+        private const ushort ExpectedSaveFormatVersion = 7;
 
         /// <summary>.chmr replay file-format version. Story 7.9 bumped 2→3 (DslEvent orders). Story 9.11 bumped 3→4
         /// ("replay v2": self-describing tagged body via the frozen MergedTickPacket envelope + a result trailer, and
@@ -294,6 +304,10 @@ namespace ProjectChimera.Sim.Tests.Meta
                 $"in the Hello handshake (the D3.8 gap) and coordinated with peers. Update " +
                 $"{nameof(ExpectedProtocolVersion)} here in the same commit as an intentional bump.");
 
+            Assert.True(SaveGameFile.FormatVersion == ExpectedSaveFormatVersion,
+                $"SaveGameFile.FormatVersion is {SaveGameFile.FormatVersion}, expected {ExpectedSaveFormatVersion}. " +
+                "A save-lane structure change must bump the format version (positional lanes misalign silently " +
+                $"otherwise — the v5/v6/v7 class). Update {nameof(ExpectedSaveFormatVersion)} in the same commit. (DW-768)");
             Assert.True(ReplayRecorder.VERSION == ExpectedReplayFormatVersion,
                 $"ReplayRecorder.VERSION is {ReplayRecorder.VERSION}, expected {ExpectedReplayFormatVersion}. " +
                 $"A replay-format bump must keep ReplayPlayer able to read (or explicitly reject) older versions. " +

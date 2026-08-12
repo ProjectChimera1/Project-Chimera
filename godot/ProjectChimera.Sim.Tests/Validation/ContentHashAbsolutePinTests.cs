@@ -49,10 +49,12 @@ namespace ProjectChimera.Sim.Tests.Validation
             PlayerSlots = new[] { new ScenarioPlayerSlot { Slot = 0, StartOre = 200f, StartCrystal = 50f, BaseX = -30f, BaseZ = 0f } },
         };
 
-        /// <summary>The exact value <see cref="FixedContentHash"/> folds to on ContentHash AlgoVersion 1. Re-pinned for
-        /// DW-272 / Story 15.12: FoldUnitCommon now folds the new UnitDefinition.RegenRate stat (default 0 ⇒ a MixInt(0)
-        /// after MaxEnergy), a deliberate fold-layout change that moves every unit/building's content hash.</summary>
-        private const ulong ExpectedContentHash = 0x74227B59C03CEDE9UL;
+        /// <summary>The exact value <see cref="FixedContentHash"/> folds to on ContentHash AlgoVersion 2. Re-pinned for
+        /// Story 15-21 (v1→v2): the hero block left the authoring-only allowlist and folds (curve fields were already
+        /// sim-read since 3.13 — a closed handshake gap), plus the per-hero attributes block and the faction
+        /// attribute_model. The fixture authors none of them, so it moved by the AlgoVersion mix + a presence-bit
+        /// Mix(0) per unit/building + one per faction. (Prior re-pin: DW-272 / Story 15.12, regen_rate.)</summary>
+        private const ulong ExpectedContentHash = 985466452649578614UL;
 
         /// <summary>The exact value CanonicalModelHash folds <see cref="FixedModel"/> to (AlgoVersion 16). Re-pinned for
         /// DW-941's AlgoVersion 15→16 bump (the new building_min_gap fold — the fixture authors none, so it folds the

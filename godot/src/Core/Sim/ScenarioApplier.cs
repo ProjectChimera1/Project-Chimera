@@ -361,6 +361,12 @@ namespace ProjectChimera.Core.Sim
                     // float→Fixed load boundary for hero curves (never quantized inside a tick). def.Hero is coupled to
                     // IsHero by the validator, but null-guard defensively (a degenerate unit yields zero curve → no leveling).
                     HeroDefinition? hd = def.Hero;
+                    // Story 15-21: flatten the faction's attribute model × this hero's authored attributes into
+                    // per-stat contribution pairs at the SAME single boundary (HeroAttributeResolver — a null model
+                    // or attribute block yields all zeros, byte-identical to a pre-15-21 hero).
+                    var (attrBase, attrPerLevel) = HeroAttributeResolver.Resolve(
+                        InFactionRange(faction) ? _slotFactionDefs[(int)faction]?.AttributeModel : null,
+                        hd?.Attributes);
                     _lastAppliedHeroes.Add(new HeroProfileLoader.PlacedHero(
                         spawnedId, def.Id,
                         hd?.MaxLevel ?? 0,
@@ -375,7 +381,8 @@ namespace ProjectChimera.Core.Sim
                         // DW-26: resolve the per-hero XP-gain multiplier here at the single float→Fixed boundary. Default
                         // 100 (or a null hero-def) → 100/100 = an exact ×1.0 in 16.16 (Fixed.One is raw 65536), so every
                         // existing hero credits the full victim bounty unchanged — no golden move, no SimChecksum fold.
-                        Fixed.FromFloat((hd?.XpPerKill ?? 100f) / 100f)));
+                        Fixed.FromFloat((hd?.XpPerKill ?? 100f) / 100f),
+                        attrBase, attrPerLevel)); // Story 15-21
                 }
             }
 

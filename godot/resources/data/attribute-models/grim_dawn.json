@@ -1,0 +1,51 @@
+{
+  "id": "grim_dawn",
+  "name": "Grim Dawn",
+  "description": "Physique / Cunning / Spirit: body drives life, cunning drives damage, spirit drives energy. Starting-point numbers \u2014 tune per faction.",
+  "attribute_model": {
+    "attributes": [
+      {
+        "id": "physique",
+        "name": "Physique",
+        "description": ""
+      },
+      {
+        "id": "cunning",
+        "name": "Cunning",
+        "description": ""
+      },
+      {
+        "id": "spirit",
+        "name": "Spirit",
+        "description": ""
+      }
+    ],
+    "derived": [
+      {
+        "attribute": "physique",
+        "stat": "max_health",
+        "per_point": 12.0
+      },
+      {
+        "attribute": "physique",
+        "stat": "armor",
+        "per_point": 0.2
+      },
+      {
+        "attribute": "cunning",
+        "stat": "attack_damage",
+        "per_point": 0.8
+      },
+      {
+        "attribute": "spirit",
+        "stat": "max_energy",
+        "per_point": 2.0
+      },
+      {
+        "attribute": "spirit",
+        "stat": "energy_regen",
+        "per_point": 0.0015
+      }
+    ]
+  }
+}
