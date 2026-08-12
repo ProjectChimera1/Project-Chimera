@@ -370,6 +370,16 @@ namespace ProjectChimera.Multiplayer
             // leave an invisible, walking unit (and an orphaned site). Deterministic: Flags is sim state.
             if ((world.Flags[id] & EntityFlags.Phased) != 0) return;
 
+            // DW-943: a PLAIN (replace) order re-tasking a builder that is still WALKING to its site auto-cancels
+            // the pending construction — full refund + site removal via the SAME CancelConstructionCommand path
+            // the card button uses. A walking builder has invested nothing yet; without this the site sat
+            // orphaned at zero progress until a manual cancel (2026-08-12 field report). A Shift-QUEUED order
+            // deliberately does NOT cancel — it appends behind the build (the WC3 build-then-continue chain) —
+            // and a new PlaceBuilding order cancels the old site FIRST (refund kept even if the new placement is
+            // then refused). Runs identically on every peer at exec-tick — same determinism posture as the rest.
+            if (!queued && world.CommandState[id] == UnitCommand.Build && buildings != null)
+                buildings.AutoCancelWalkingBuild(id, expectedFaction, world, events);
+
             // Story 3.15: UseItem / DropItem name the HERO ENTITY (== id, not a building like Train/Revive), so they are
             // gated by the ownership guard ABOVE — NOT dispatched by the building-command pre-guard pattern. Placing them
             // AFTER the guard prevents a player from forcing an ENEMY hero to use/drop items (anti-cheat). ItemSystem then

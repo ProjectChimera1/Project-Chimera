@@ -126,9 +126,17 @@ role — exact occupied area reads regardless of silhouette), and the fog gate i
 `SimulationHost.PlacementFogRule`, deliberately NOT hash-folded (client-issue-time only; pinned). Tier-1
 **6459/0/1**.
 
+**ROUND 3c (DW-943):** re-tasking a builder still WALKING to its site now auto-cancels the pending construction
+(full refund, site removed — plain orders only; Shift-queued orders still append behind the build, and a new
+PlaceBuilding cancels the old site first). The phased-in builder stays committed (card-button cancel only).
+Known edge recorded: right-clicking your own under-construction site with its walking builder cancels rather
+than resumes — the resume order stays the filed follow-up. Tier-1 **6462/0/1**.
+
 **HANDSHAKE NOTE for the next match: CanonicalModelHash AlgoVersion is now 16 — both machines MUST pull+rebuild
-together or the lobby rejects (by design).** Alec's session-closing test covers the ghost + gap; then this
-session closes and the next epic begins (network saga done, laptop playtest green).
+together or the lobby rejects (by design).** Alec's session-closing test covers the ghost + gap + walking-cancel;
+then this session closes and the next epic begins (network saga done, laptop playtest green). Next epic
+recommendation (already discussed): close Epic 15's two unblocked stories (15-21, 15-23), then **Epic 10 —
+Release Readiness** (playtest gates, perf/DW-924, AI float→Fixed, pathfinding bar, ship pipeline).
 
 **Next session / next match:** (1) both machines pull + rebuild + relaunch — Alec field-tests attack-move,
 builder commitment, and single-render chat; (2) consider `responsive` now the PC is wired; (3) DW-924 (frame

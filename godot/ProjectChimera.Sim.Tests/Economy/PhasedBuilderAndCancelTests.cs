@@ -178,6 +178,82 @@ namespace ProjectChimera.Sim.Tests.Economy
             Assert.True(buildings.Alive[b]);
         }
 
+        // ── DW-943: re-tasking a WALKING builder auto-cancels the pending site ──
+
+        [Fact]
+        public void WalkingBuilderRetasked_PlainOrder_AutoCancelsWithFullRefund()
+        {
+            // Worker at the origin, site 30u away — it never arrives (no movement ticked), so it is WALKING.
+            // A plain Move order must unwind the whole placement: exact refund, site gone, the new order applied.
+            var (world, buildings, resources, sys) = NewHarness();
+            Fixed ore0 = resources.Ore[(int)Faction.Player1];
+            int worker = SpawnWorker(world, V(0, 0));
+            int b = sys.QueueWorkerBuild(worker, BuildingType.Barracks, V(30, 30),
+                                         Faction.Player1, resources, world);
+            Assert.True(b >= 0);
+            Assert.True(resources.Ore[(int)Faction.Player1] < ore0); // premise: debited
+
+            var move = new UnitOrder(worker, UnitCommand.Move, Fixed.FromInt(5), Fixed.FromInt(5));
+            OrderApplier.Apply(world, in move, Faction.Player1, buildings: sys);
+
+            Assert.False(buildings.Alive[b]);                                     // site removed
+            Assert.Equal(ore0.Raw, resources.Ore[(int)Faction.Player1].Raw);      // EXACT refund
+            Assert.Equal(UnitCommand.Move, world.CommandState[worker]);           // the new order took over
+            Assert.Equal(-1, world.BuildTarget[worker]);
+        }
+
+        [Fact]
+        public void WalkingBuilderRetasked_QueuedOrder_DoesNotCancel()
+        {
+            // The WC3 build-then-continue chain: a Shift-QUEUED order appends behind the build — the site
+            // survives, the builder stays committed, and the queued order waits in the ring.
+            var (world, buildings, resources, sys) = NewHarness();
+            int worker = SpawnWorker(world, V(0, 0));
+            int b = sys.QueueWorkerBuild(worker, BuildingType.Barracks, V(30, 30),
+                                         Faction.Player1, resources, world);
+            Assert.True(b >= 0);
+
+            var queued = new UnitOrder(worker,
+                (UnitCommand)((byte)UnitCommand.Move | UnitOrderFlags.Queued),
+                Fixed.FromInt(5), Fixed.FromInt(5));
+            OrderApplier.Apply(world, in queued, Faction.Player1, buildings: sys);
+
+            Assert.True(buildings.Alive[b]);
+            Assert.Equal(UnitCommand.Build, world.CommandState[worker]);
+            Assert.Equal(1, world.OrderQueueCount[worker]); // appended, not applied
+        }
+
+        [Fact]
+        public void NewBuildOrder_OnAWalkingBuilder_CancelsTheOldSiteFirst()
+        {
+            // Re-placing while walking: the old site unwinds (refund) and the new one is placed — never two
+            // half-claimed sites from one builder.
+            var (world, buildings, resources, sys) = NewHarness();
+            Fixed ore0 = resources.Ore[(int)Faction.Player1];
+            int worker = SpawnWorker(world, V(0, 0));
+            int oldSite = sys.QueueWorkerBuild(worker, BuildingType.Barracks, V(30, 30),
+                                               Faction.Player1, resources, world);
+            Assert.True(oldSite >= 0);
+
+            var rebuild = new UnitOrder(worker, UnitCommand.PlaceBuilding,
+                                        Fixed.FromInt(60), Fixed.FromInt(60), (byte)BuildingType.Barracks);
+            OrderApplier.Apply(world, in rebuild, Faction.Player1, buildings: sys);
+
+            // The old site is unwound and the new one placed. NOTE: the freed slot is LIFO-recycled, so the NEW
+            // building typically reuses the OLD slot index — identity is asserted by position + count, never by
+            // slot id (and the worker's packed ref is generation-validated, so it can only mean the new one).
+            int alive = 0, aliveSlot = -1;
+            for (int i = 0; i < buildings.Count; i++)
+                if (buildings.Alive[i]) { alive++; aliveSlot = i; }
+            Assert.Equal(1, alive);                                          // never two half-claimed sites
+            Assert.Equal(V(60, 60), buildings.Position[aliveSlot]);          // and it is the NEW site
+            Assert.Equal(UnitCommand.Build, world.CommandState[worker]);     // committed to it
+            Assert.True(buildings.TryResolveRef(world.BuildTarget[worker], out int refSlot));
+            Assert.Equal(aliveSlot, refSlot);
+            // Net spend = exactly ONE building (the old debit came back before the new one was paid).
+            Assert.Equal((ore0 - Fixed.FromInt(100)).Raw, resources.Ore[(int)Faction.Player1].Raw);
+        }
+
         // ── DW-939: placement overlap rejection ─────────────────────────────────
 
         [Fact]

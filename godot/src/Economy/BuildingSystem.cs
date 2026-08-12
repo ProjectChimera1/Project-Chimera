@@ -314,6 +314,27 @@ namespace ProjectChimera.Economy
         }
 
         /// <summary>
+        /// DW-943 — auto-cancel the pending site of a re-tasked WALKING builder (2026-08-12 field report: ordering
+        /// the builder elsewhere mid-walk left the site orphaned at zero progress until a manual cancel). Called by
+        /// <c>OrderApplier</c> when a PLAIN (replace) order lands on a unit still in <see cref="UnitCommand.Build"/>
+        /// that has NOT phased in: a walking builder has invested nothing yet, so the whole placement unwinds —
+        /// full refund + site removal — through the SAME <see cref="CancelConstructionCommand"/> path the card
+        /// button uses (one cancel truth; its ClearWorkerBuild release clears the worker's Build state so the
+        /// incoming order applies cleanly). A PHASED builder never reaches this (orders naming it are dropped —
+        /// committed construction cancels only via the building's card button), and a Shift-QUEUED order appends
+        /// behind the build instead (the WC3 build-then-continue chain). No-ops for a non-Build worker or a
+        /// stale/destroyed site ref.
+        /// </summary>
+        public void AutoCancelWalkingBuild(int workerId, Faction expectedFaction, EntityWorld world,
+                                           CombatEventQueue? events = null)
+        {
+            if (world.CommandState[workerId] != UnitCommand.Build) return;
+            if ((world.Flags[workerId] & EntityFlags.Phased) != 0) return; // committed — the card button's job
+            if (!_buildings.TryResolveRef(world.BuildTarget[workerId], out int b)) return;
+            CancelConstructionCommand(b, expectedFaction, world, events);
+        }
+
+        /// <summary>
         /// DW-938 — apply a lockstep <see cref="UnitCommand.CancelConstruction"/> command at exec-tick. Mirrors
         /// <see cref="CancelTrainCommand"/>'s shape: the building-ownership anti-cheat guard (a player may cancel
         /// ONLY their OWN building; a foreign/dead/out-of-range/already-complete cancel is a SILENT deterministic
