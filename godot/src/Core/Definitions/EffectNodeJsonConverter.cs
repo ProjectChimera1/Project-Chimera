@@ -107,6 +107,15 @@ namespace ProjectChimera.Core.Definitions
                 case DamageEffect dm:
                     writer.WriteString("kind", KindDamage);
                     WriteFixed(writer, "amount", dm.Amount, options);
+                    // DW-293: Write must be the EXACT inverse of Read, and Read hard-rejects DamageType.COUNT (an
+                    // internal matrix-sizing sentinel, deliberately absent from DraftVocabulary.DamageTypes). Without
+                    // this guard WriteEnum happily emitted "COUNT" — producing a file the loader refuses, i.e. a
+                    // "Saved" ability that cannot be re-opened. Unreachable from the composer by design; this is the
+                    // fail-closed backstop for a directly-constructed graph (the same posture as the null-child and
+                    // unknown-node-type throws around it). Message mirrors ReadNode's so both halves read alike.
+                    if (dm.Type == DamageType.COUNT)
+                        throw new JsonException(
+                            "damage_type: 'COUNT' is an internal sentinel, not an authorable damage type (authoring-only Write).");
                     WriteEnum(writer, "damage_type", dm.Type, options);   // accessor is .Type (NOT .DamageType); mirrors Read
                     WriteRequireTag(writer, dm.RequireTag, options);   // Story 2.11 (omit-when-None)
                     break;

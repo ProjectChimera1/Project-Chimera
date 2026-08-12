@@ -116,5 +116,63 @@ namespace ProjectChimera.Effects
 
             return EffectBoundsResult.Valid;
         }
+
+        // ────────────────── DW-888: the PERIODIC-PULSE magnitude ceiling (a value bound, not a structural one) ──────────────────
+
+        /// <summary>
+        /// DW-888 — the authoring ceiling, in 16.16 RAW units, on a magnitude that a periodic pulse may MULTIPLY.
+        ///
+        /// <para><c>PeriodicStackMode.Multiply</c> makes a stacked modifier's period fire once at
+        /// <c>magnitude × min(stacks, <see cref="EffectCaps.MaxPeriodicStackScale"/>)</c>, and
+        /// <see cref="ProjectChimera.Core.Fixed"/> multiply is <c>(int)(((long)a.Raw * b.Raw) &gt;&gt; 16)</c> with NO
+        /// saturation — so a period leaf whose raw magnitude exceeds this bound wraps the product NEGATIVE at the top
+        /// scale, and a Multiply DoT would HEAL its victim (a HoT would damage). <c>Modifier.MaxStatDeltaTotalRaw</c>
+        /// bounds a modifier's STAT DELTAS only; nothing bounded a <c>damage</c>/<c>heal</c>/<c>direct_hp_delta</c>
+        /// <c>Amount</c>.</para>
+        ///
+        /// <para>Derived from named constants, never a bare literal (CHM0004), and by the same shape as DW-488's
+        /// <c>Modifier.MaxStatDeltaTotalRaw</c>: the worst-case multiplier divides <c>int.MaxValue</c>, so
+        /// <c>magnitude × MaxPeriodicStackScale ≤ int.MaxValue</c> holds by construction. ≈ 4096.0 in stat units —
+        /// orders of magnitude above any shipped period leaf (the largest today is <c>furnace_pour</c>'s heal 6), so
+        /// this rejects only content that was already pathological. Deliberately NOT an <see cref="EffectCaps"/>
+        /// member: it is a LOAD-TIME AUTHORING bound, not a runtime execution cap, so it stays out of the
+        /// <c>RulesetHash</c> wire fingerprint (adding an EffectCaps entry moves the handshake agreement hash).</para>
+        /// </summary>
+        public const int MaxPeriodicPulseMagnitudeRaw = int.MaxValue / EffectCaps.MaxPeriodicStackScale;
+
+        /// <summary>
+        /// DW-888 — the load-time authoring check behind <see cref="MaxPeriodicPulseMagnitudeRaw"/>, for a leaf that
+        /// sits inside a PERIOD subtree (the only place <c>EffectContext.PulseScale</c> is ever &gt; 1). Returns
+        /// <c>null</c> when <paramref name="node"/> is within bounds — including for every node kind that carries no
+        /// scalable magnitude — or the offending <c>(field, reason)</c> pair for the caller to LOCATE into its own
+        /// error shape, exactly like <c>Modifier.CheckAuthoringBounds</c>, so any validator that admits a period
+        /// subtree can adopt the rule verbatim.
+        /// <para>The three magnitude-carrying leaves are exactly the three that read <c>ctx.PulseScale</c>:
+        /// <see cref="DamageEffect"/>, <see cref="HealEffect"/> and <see cref="DirectHpDeltaEffect"/>. Pure, never
+        /// throws; allocates a string only on a REJECT.</para>
+        /// </summary>
+        public static (string Field, string Reason)? CheckPeriodicPulseMagnitude(EffectNode? node) => node switch
+        {
+            DamageEffect damage        => CheckMagnitude("amount", damage.Amount),
+            HealEffect heal            => CheckMagnitude("amount", heal.Amount),
+            DirectHpDeltaEffect direct => CheckMagnitude("delta",  direct.Delta),
+            _                          => null,   // no scalable magnitude (composition nodes, teleport, presentation cues)
+        };
+
+        /// <summary>DW-888 helper: reject one period-leaf magnitude whose worst-case scaled product
+        /// (<c>|magnitude| × <see cref="EffectCaps.MaxPeriodicStackScale"/></c>) would wrap the 16.16 int. The
+        /// magnitude is long-widened first so <c>|int.MinValue|</c> is representable and the CHECK itself can never
+        /// overflow.</summary>
+        private static (string Field, string Reason)? CheckMagnitude(string field, Fixed magnitude)
+        {
+            long raw = magnitude.Raw < 0 ? -(long)magnitude.Raw : magnitude.Raw;
+            if (raw > MaxPeriodicPulseMagnitudeRaw)
+                return (field,
+                    $"|{field}| = {raw} raw exceeds MaxPeriodicPulseMagnitudeRaw={MaxPeriodicPulseMagnitudeRaw} for a leaf " +
+                    $"inside a period_effect — a periodic_stack_mode Multiply pulse scales it by up to " +
+                    $"MaxPeriodicStackScale={EffectCaps.MaxPeriodicStackScale}, which wraps the 16.16 product negative " +
+                    "(a scaled DoT would heal, a HoT would damage).");
+            return null;
+        }
     }
 }
