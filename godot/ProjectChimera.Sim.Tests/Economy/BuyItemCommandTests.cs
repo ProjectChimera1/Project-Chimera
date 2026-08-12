@@ -164,6 +164,84 @@ namespace ProjectChimera.Sim.Tests.Economy
             Assert.Equal(oreBefore, Ore(h));
         }
 
+        // ── DW-705: a modifier-CAPPED hero buying a STAT item is denied pre-spend, exactly like the pickup ──
+
+        /// <summary>A permanent, non-periodic +1 attack modifier — the cheapest thing that occupies one ring slot.</summary>
+        private static Modifier PermanentAtk(int id) =>
+            new Modifier(id, durationTicks: -1, StackRule.Refresh, maxStacks: 1,
+                         Fixed.Zero, Fixed.FromInt(1), Fixed.Zero, StatusFlags.None, null, 0);
+
+        /// <summary>Fill the entity's modifier ring to <see cref="EffectCaps.MaxModifiersPerEntity"/> with distinct
+        /// non-item ids, so the next FRESH install is refused (the DW-34 cap).</summary>
+        private static void FillModifierRing(Harness h, int entityId)
+        {
+            for (int k = 0; k < EffectCaps.MaxModifiersPerEntity; k++)
+                Assert.True(h.Modifiers.Apply(entityId, PermanentAtk(9000 + k), entityId, Faction.Player1),
+                            "Filling the ring must ACCEPT every install up to the cap.");
+            Assert.Equal(EffectCaps.MaxModifiersPerEntity, h.Modifiers.CountAt(entityId));
+        }
+
+        [Fact]
+        public void Buy_StatItem_ModifierRingFull_RejectsWithNoSpendAndNoMint()
+        {
+            // DW-705: the hero has inventory room but NO modifier ring room. Pre-fix the buy succeeded: the ore was
+            // spent, the ring refused the modifier (GrantPurchasedItem discards that bool), and the hero carried an
+            // item granting exactly nothing — while the SAME item picked off the ground was denied for free.
+            var h = Build();
+            var (e, slot) = MintHero(h, 100, 2, 0);
+            FillModifierRing(h, e);
+            int oreBefore = Ore(h);
+            int refusedBefore = h.Modifiers.RefusedInstallCount;
+
+            bool ok = h.BuildSys.BuyItemCommand(h.ShopId, Faction.Player1, RingStock, e, h.Sys, h.Events);
+
+            Assert.False(ok);
+            Assert.Equal(oreBefore, Ore(h));                                                   // atomic: nothing spent
+            Assert.Equal(HeroStore.INVENTORY_EMPTY, h.Heroes.Inventory[slot * HeroStore.INVENTORY_SLOTS + 0]); // nothing minted
+            Assert.Equal(refusedBefore, h.Modifiers.RefusedInstallCount);                      // refused BEFORE Apply was ever reached
+            Assert.Equal(0, h.Items.Count);                                                    // no ItemStore instance leaked onto the map
+            // The stats the ring item would have granted are untouched (the item never existed).
+            Assert.Equal(Fixed.FromInt(100), h.World.EffectiveMaxHealth[e]);
+        }
+
+        [Fact]
+        public void Buy_NonStatItem_ModifierRingFull_StillSucceeds()
+        {
+            // The DW-705 gate must be scoped to items that actually NEED a ring slot: a pure consumable (charges +
+            // effect graph, no stat delta) installs no modifier, so a capped hero may still buy it. Without this arm
+            // the fix could over-reject and silently break shops for every consumable.
+            var h = Build(stock: new[] { "potion" });
+            var (e, slot) = MintHero(h, 100, 2, 0);
+            FillModifierRing(h, e);
+            int oreBefore = Ore(h);
+
+            bool ok = h.BuildSys.BuyItemCommand(h.ShopId, Faction.Player1, stockIndex: 0, e, h.Sys, h.Events);
+
+            Assert.True(ok);
+            Assert.Equal(oreBefore - 40, Ore(h));
+            Assert.NotEqual(HeroStore.INVENTORY_EMPTY, h.Heroes.Inventory[slot * HeroStore.INVENTORY_SLOTS + 0]);
+        }
+
+        [Fact]
+        public void Buy_StatItem_OneRingSlotFree_StillSucceedsAndGrantsTheBonus()
+        {
+            // Boundary arm: the gate engages at the cap, never one slot early. With MaxModifiersPerEntity-1 occupied
+            // the buy goes through AND the modifier really installs (the purchase is not inert).
+            var h = Build();
+            var (e, slot) = MintHero(h, 100, 2, 0);
+            for (int k = 0; k < EffectCaps.MaxModifiersPerEntity - 1; k++)
+                Assert.True(h.Modifiers.Apply(e, PermanentAtk(9000 + k), e, Faction.Player1));
+            int oreBefore = Ore(h);
+
+            bool ok = h.BuildSys.BuyItemCommand(h.ShopId, Faction.Player1, RingStock, e, h.Sys, h.Events);
+
+            Assert.True(ok);
+            Assert.Equal(oreBefore - 100, Ore(h));
+            Assert.NotEqual(HeroStore.INVENTORY_EMPTY, h.Heroes.Inventory[slot * HeroStore.INVENTORY_SLOTS + 0]);
+            Assert.Equal(EffectCaps.MaxModifiersPerEntity, h.Modifiers.CountAt(e));
+            Assert.Equal(Fixed.FromInt(150), h.World.EffectiveMaxHealth[e]); // the ring item's +50 really landed
+        }
+
         // ── Enemy building → silent reject (anti-cheat), no spend ──
         [Fact]
         public void Buy_EnemyBuilding_RejectsWithNoSpend()

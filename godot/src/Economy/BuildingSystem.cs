@@ -1144,7 +1144,8 @@ namespace ProjectChimera.Economy
         /// at the shop, zero state change): building bounds+Alive; building owned by <paramref name="expectedFaction"/>
         /// (anti-cheat — SILENT reject, no position leak); not under construction; <c>SellsItems</c>; stock index in range;
         /// the stock id resolves in the <see cref="ItemRegistry"/>; the buyer is a live OWNED hero; the buyer is within
-        /// <c>shop_radius</c> (in-sim proximity — anti-cheat, not just a UI gate); a free inventory slot; and affordability
+        /// <c>shop_radius</c> (in-sim proximity — anti-cheat, not just a UI gate); a free inventory slot; a free MODIFIER
+        /// ring slot when the item carries a stat modifier (DW-705 — else the purchase would be inert); and affordability
         /// (check BOTH before debiting EITHER — the partial-spend contract). Only then spends ore+crystal atomically and
         /// mints the item into the hero's first free slot (reusing the <see cref="ItemSystem"/> claim block). An item-store-
         /// full mint failure after the spend REFUNDS (net-zero, deterministic). Returns true when an item was bought.
@@ -1192,6 +1193,16 @@ namespace ProjectChimera.Economy
 
             // Room BEFORE any spend, so a rejected buy is a pure no-op.
             if (!items.HeroHasFreeSlot(heroSlot)) { Deny(events, shopPos, expectedFaction, DenialReason.InventoryFull); return false; }
+
+            // DW-705: a stat item also needs room in the buyer's MODIFIER ring, not just in its inventory.
+            // ModifierStore.Apply refuses a fresh install once the ring holds EffectCaps.MaxModifiersPerEntity, and
+            // ItemSystem.GrantPurchasedItem discards that refusal by design (its DW-489 audit rules out a post-mint
+            // refund) — so without this pre-check a modifier-capped hero PAID the full ore/crystal price and received
+            // an item that granted nothing, while the identical item picked off the GROUND was denied for free and
+            // stayed claimable (ResolvePickup's DW-34 rollback). Checked here, ahead of every debit, so the reject is
+            // atomic like every other guard above; denied with the pickup's own InventoryFull reason (the hero cannot
+            // take on another stat item) so the two paths agree and no new DenialReason member is needed.
+            if (!items.HeroCanCarryStatModifier(heroEntityId, def)) { Deny(events, shopPos, expectedFaction, DenialReason.InventoryFull); return false; }
 
             // Affordability: check BOTH before debiting EITHER (the partial-spend contract).
             if (!resources.CanAffordOre(expectedFaction, def.CostOre))     { Deny(events, shopPos, expectedFaction, DenialReason.NeedOre); return false; }
