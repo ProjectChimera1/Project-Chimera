@@ -30,11 +30,18 @@ namespace ProjectChimera.Sim.Tests.Sim
     /// to any of these stores auto-enters its sweep: forget it in the reset and the case goes red; leave it
     /// undirtiable and the precondition goes red until the fixture (or a justified allowlist entry) covers it.</para>
     ///
-    /// <para><b>Allowlists are the honest edges of the guarantee.</b> Two shapes recur, each named and justified
+    /// <para><b>Allowlists are the honest edges of the guarantee.</b> THREE shapes recur, each named and justified
     /// per fixture: (1) shared dependency references and construction-lifetime config a reset deliberately
     /// preserves; (2) documented COUNT-GATED buffers whose Clear only zeroes the count and whose stale tail is
-    /// never read or folded (<c>CombatEventQueue</c>/<c>DeathFeed</c>/<c>DslSimEventFeed</c>/<c>DslEventQueue</c>).
-    /// <c>TriggerEnabledStore._enabled</c> used to be a third — a count-gated tail that was ALSO reachable through
+    /// never read or folded (<c>CombatEventQueue</c>/<c>DeathFeed</c>/<c>DslSimEventFeed</c>/<c>DslEventQueue</c>);
+    /// (3) DW-761 — deliberately MONOTONIC state that Clear() <b>bumps</b> rather than zeroes, so <c>fresh ==
+    /// cleared</c> can never hold for it BY DESIGN and the divergence is the contract, not a miss. Exactly one
+    /// today: <c>TriggerFireLog._generation</c>, the reset epoch presentation compares against to detect a sim
+    /// reset unambiguously (see <c>TriggerFireLogCase</c>). Note the difference from shape (2): a
+    /// count-gated tail is excused because it is UNREACHABLE, a monotonic field because equality is the WRONG
+    /// assertion for it — so the two are not interchangeable justifications, and a new fixture must pick the one
+    /// that is actually true of its field.
+    /// <c>TriggerEnabledStore._enabled</c> used to be a fourth — a count-gated tail that was ALSO reachable through
     /// the old out-of-range-returns-<b>true</b> <c>IsEnabled</c>, so it was exempted while that reachability
     /// question (DW-197) was open. DW-197 landed both halves (<c>IsEnabled</c> bounds to false; <c>Clear()</c>
     /// <c>Array.Clear</c>s the WHOLE buffer), so DW-584 retired the exemption: <c>_enabled</c> is now SWEPT, and
@@ -459,9 +466,11 @@ namespace ProjectChimera.Sim.Tests.Sim
                     // _ringLen/_totalRecorded and every read path (Count/Recent/AuthoredIndex) bounds itself by
                     // those — the stale buffer content past them is unreachable.
                     "_counts", "_execToAuthored", "_ring",
-                    // Deliberately MONOTONIC across resets: Clear() BUMPS the generation (never zeroes it) so
+                    // Allowlist shape (3) — the MONOTONIC exemption named in this class's doc (DW-761).
+                    // Deliberately monotonic across resets: Clear() BUMPS the generation (never zeroes it) so
                     // presentation detects a sim reset unambiguously (see the field doc). fresh==cleared can
-                    // therefore never hold for it — the divergence IS the designed behavior.
+                    // therefore never hold for it — the divergence IS the designed behavior. NOT the count-gated
+                    // shape (2): the field is read on every reset, it is equality that is the wrong assertion.
                     "_generation",
                 },
             };

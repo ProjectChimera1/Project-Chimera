@@ -31,30 +31,12 @@ namespace ProjectChimera.Sim.Tests.Effects
         private static FixedVec3 V(int x, int y, int z) =>
             new FixedVec3(Fixed.FromInt(x), Fixed.FromInt(y), Fixed.FromInt(z));
 
-        // ── Real-content resolution (mirrors FactionValidatorTests.ResolveDataPath / CanonicalScenarioTests.DataFile) ──
-
-        private static string ResolveDataDir(string sub)
-        {
-            var dir = new DirectoryInfo(AppContext.BaseDirectory);
-            while (dir != null)
-            {
-                string candidate = Path.Combine(dir.FullName, "resources", "data", sub);
-                if (Directory.Exists(candidate)) return candidate;
-                dir = dir.Parent;
-            }
-            throw new DirectoryNotFoundException(
-                $"Could not locate resources/data/{sub} above {AppContext.BaseDirectory}");
-        }
-
-        /// <summary>
-        /// Shipped-roster floor for the REAL ability registry: 10 files lived under <c>resources/data/abilities/</c>
-        /// when this guard was written (DW-107). <see cref="AbilityRegistry.LoadFromDirectory"/> SILENTLY excludes
-        /// any file that fails <see cref="AbilityValidator"/>, and no callback can ever fire for a file that was
-        /// deleted outright — so without a count floor a bad roster edit shrinks the registry and every
-        /// "real content" test in this class keeps passing against less-than-shipped content. Revise this floor
-        /// only on a DELIBERATE shipped-roster change.
-        /// </summary>
-        private const int MIN_SHIPPED_ABILITY_COUNT = 10;
+        // ── Real-content resolution ──────────────────────────────────────────────────────────────────────────
+        //
+        //    DW-760 — the data-dir resolver, the MIN_SHIPPED_ABILITY_COUNT floor and the guarded load used to be
+        //    private members here AND a second private copy in AsymmetryPlaytestValidationTests, with two floor
+        //    constants nothing kept in sync (either could drift below the real roster and quietly go back to
+        //    being a vacuous guard). Both classes now call the single RealContentFixture.
 
         /// <summary>
         /// Loads the REAL shipped alpha/beta <see cref="FactionDefinition"/>s and the REAL
@@ -62,23 +44,11 @@ namespace ProjectChimera.Sim.Tests.Effects
         /// resolves every roster unit's abilities against it — the exact scenario-link sequence
         /// <c>MainScene</c>/<c>ServerBootstrap</c> run (Story 2.4b), never skipped here.
         /// DW-107: fails LOUD on both silent-shrink paths — a shipped file failing validation (via
-        /// <c>onSkipped</c>, previously left at its default <c>null</c>) and a shipped file disappearing
-        /// entirely (via the <see cref="MIN_SHIPPED_ABILITY_COUNT"/> floor, which a skip callback can never see).
+        /// <c>onSkipped</c>, previously left at its default <c>null</c>) and a shipped file disappearing entirely
+        /// (via the <see cref="RealContentFixture.MinShippedAbilityCount"/> floor, which a skip callback can never see).
         /// </summary>
         private static (FactionDefinition alpha, FactionDefinition beta, AbilityRegistry registry) LoadRealContent()
-        {
-            var skippedAbilityFiles = new List<string>();
-            AbilityRegistry registry = AbilityRegistry.LoadFromDirectory(ResolveDataDir("abilities"), skippedAbilityFiles.Add);
-            Assert.True(skippedAbilityFiles.Count == 0,
-                $"shipped ability file(s) failed validation and were silently excluded from the registry: {string.Join(", ", skippedAbilityFiles)}");
-            Assert.True(registry.Count >= MIN_SHIPPED_ABILITY_COUNT,
-                $"real ability registry holds {registry.Count} abilities, below the shipped floor of {MIN_SHIPPED_ABILITY_COUNT} — shipped content shrank (deleted/moved file?); revise MIN_SHIPPED_ABILITY_COUNT only on a deliberate roster change.");
-            FactionDefinition alpha = FactionDefinition.LoadFromFile(Path.Combine(ResolveDataDir("factions"), "alpha_faction.json"));
-            FactionDefinition beta  = FactionDefinition.LoadFromFile(Path.Combine(ResolveDataDir("factions"), "beta_faction.json"));
-            foreach (UnitDefinition u in alpha.Units) u.ResolveAbilities(registry);
-            foreach (UnitDefinition u in beta.Units)  u.ResolveAbilities(registry);
-            return (alpha, beta, registry);
-        }
+            => RealContentFixture.LoadShowcaseFactions();
 
         /// <summary>
         /// DW-108: the pre-damage wound is DERIVED from the unit's real shipped <c>Hp</c> (one quarter of it),
@@ -307,7 +277,7 @@ namespace ProjectChimera.Sim.Tests.Effects
             try
             {
                 // Valid: this class's own subject ability, the real shipped spike_transmutation.json.
-                File.Copy(Path.Combine(ResolveDataDir("abilities"), "spike_transmutation.json"),
+                File.Copy(Path.Combine(RealContentFixture.DataDir("abilities"), "spike_transmutation.json"),
                           Path.Combine(dir, "spike_transmutation.json"));
                 // Invalid: "on_death" is outside the closed PassiveActivation set — the same shape
                 // OnDeathActivation_NotInClosedSet_CannotBeAuthored proves AbilityValidator rejects.
@@ -342,8 +312,8 @@ namespace ProjectChimera.Sim.Tests.Effects
         {
             var (_, _, registry) = LoadRealContent(); // fails loud inside on any skip or a sub-floor count
 
-            Assert.True(registry.Count >= MIN_SHIPPED_ABILITY_COUNT,
-                $"registry.Count {registry.Count} fell below the shipped floor {MIN_SHIPPED_ABILITY_COUNT}.");
+            Assert.True(registry.Count >= RealContentFixture.MinShippedAbilityCount,
+                $"registry.Count {registry.Count} fell below the shipped floor {RealContentFixture.MinShippedAbilityCount}.");
             Assert.True(registry.IndexOf("furnace_trickle") >= 0, "shipped furnace_trickle is missing from the real registry.");
             Assert.True(registry.IndexOf("furnace_pour") >= 0, "shipped furnace_pour is missing from the real registry.");
             Assert.True(registry.IndexOf("spike_transmutation") >= 0, "shipped spike_transmutation is missing from the real registry.");
