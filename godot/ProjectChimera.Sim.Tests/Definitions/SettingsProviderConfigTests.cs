@@ -15,13 +15,9 @@ namespace ProjectChimera.Sim.Tests.Definitions
     /// </summary>
     public class SettingsProviderConfigTests
     {
-        // Same options SettingsManager.Load/Save use.
-        private static readonly JsonSerializerOptions Opts = new()
-        {
-            WriteIndented        = true,
-            ReadCommentHandling  = JsonCommentHandling.Skip,
-            AllowTrailingCommas  = true,
-        };
+        // DW-134: the REAL options SettingsManager.Load/Save use (the same instance), not a hand-rolled replica that
+        // could silently drift from them — see SettingsJson / SettingsDataRoundTripTests.
+        private static readonly JsonSerializerOptions Opts = SettingsJson.Options;
 
         [Fact]
         public void Defaults_AreSafe()

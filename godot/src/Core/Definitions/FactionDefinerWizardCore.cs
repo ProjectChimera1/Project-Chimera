@@ -98,11 +98,12 @@ namespace ProjectChimera.Core.Definitions
         /// name that hits the filesystem — is a single obvious edit point. Shortening, parameterizing or dropping it
         /// needs NO change to the reserved-device guard in <see cref="TryFinish"/>: that guard inspects the assembled
         /// file name, so it re-derives the right verdict from whatever this becomes.
-        /// <para>Must stay consistent with the <c>"*_faction.json"</c> discovery globs a written file is later found
-        /// by (<see cref="FactionDefinition"/>'s directory load and <c>SkirmishCatalog</c>) — a file this wizard
-        /// writes under a name those globs miss would save successfully and then be invisible.</para>
+        /// <para>DW-696: this is now an ALIAS for <see cref="FactionFiles.Suffix"/>, and both discovery globs derive
+        /// from <see cref="FactionFiles.DiscoveryGlob"/> — so the write side and the two read sides move together by
+        /// construction instead of by comment. The name is kept because the wizard's own tests and call sites
+        /// reference it, and "the suffix a Finish-written faction file gets" is the discoverable spelling here.</para>
         /// </summary>
-        public const string FactionFileSuffix = "_faction.json";
+        public const string FactionFileSuffix = FactionFiles.Suffix;
 
         /// <summary>
         /// Scan the given absolute faction-JSON paths (alpha/beta today — Story 5.5's "Epics 2-4 content" pool) for

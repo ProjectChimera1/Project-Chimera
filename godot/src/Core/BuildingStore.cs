@@ -335,6 +335,44 @@ namespace ProjectChimera.Core
         }
 
         /// <summary>
+        /// DW-172 — the ONE mapper from a resolved <see cref="ProjectChimera.Core.Definitions.BuildingDefinition"/> to
+        /// a <see cref="Create"/> call. Both def-driven placement paths (<c>BuildingSystem.PlaceBuildingDirectById</c>
+        /// in the sim and <c>EntityPlacer.CreateEditorBuilding</c> in the editor) delegate here instead of
+        /// hand-copying the same Hp / SupplyBonus / ConstructionTime / shop / revive mapping — the "never hand-copied
+        /// in a spawn path" rule the unit side already enforces through <c>EntityWorld.ApplyUnitDefinition</c>. Both
+        /// blocks were correct but had already drifted cosmetically (nullable vs <c>Array.Empty</c> shop stock,
+        /// <c>Fixed.Zero</c> vs <c>default</c> radius), which is exactly how that class of defect starts.
+        ///
+        /// <para><paramref name="def"/> ACCEPTS NULL on purpose: a building id with no authored definition is a legal
+        /// placement (the built-ins fall through to <see cref="Create"/>'s per-type switch), so every field
+        /// null-propagates to the same fallback <see cref="Create"/> already applies. The authored id is preserved
+        /// even when no def resolved, so nav/render buckets keep a stable key. Left un-annotated (no <c>?</c>) to match
+        /// this file's oblivious nullable context — the same reason <see cref="Create"/>'s own <c>shopStock</c> /
+        /// <c>buildingId</c> reference parameters default to <c>null</c> without an annotation (DW-213 / CS8632).</para>
+        ///
+        /// <para>Godot-free and behaviour-identical to the two blocks it replaces — no folded value changes.</para>
+        /// </summary>
+        /// <param name="def">The resolved definition, or null when the id names no authored building.</param>
+        /// <param name="position">World placement position.</param>
+        /// <param name="faction">Owning faction.</param>
+        /// <param name="buildingId">The AUTHORED id (used verbatim when <paramref name="def"/> is null).</param>
+        /// <returns>The new slot id, or -1 when the store is full.</returns>
+        public int CreateFromDefinition(ProjectChimera.Core.Definitions.BuildingDefinition def,
+                                        FixedVec3 position, Faction faction, string buildingId)
+        {
+            BuildingType type = TechTreeChecker.BuildingTypeFromId(buildingId) ?? BuildingType.Custom;
+            return Create(position, faction, type,
+                revivesHeroes: def?.RevivesHeroes ?? false,
+                sellsItems:    def?.SellsItems ?? false,
+                shopStock:     def?.ShopStock,                                   // Create null-coalesces to Array.Empty
+                shopRadius:    def != null ? Fixed.FromFloat(def.ShopRadius) : default,
+                buildingId:    def?.Id ?? buildingId,                            // preserve the authored id when no def resolved
+                health:        def != null ? Fixed.FromFloat(def.Hp) : (Fixed?)null,
+                supplyBonus:   def?.SupplyBonus,
+                constructionDuration: def?.ConstructionTime is float ct ? Fixed.FromFloat(ct) : (Fixed?)null);
+        }
+
+        /// <summary>
         /// Story 3.10 (UX-DR62): restore this store to its EXACT post-construction state for the Edit↔Play reset —
         /// zero every SoA array + the free-list + generation counters and reset <see cref="Count"/> to 0. A cleared
         /// store is byte-for-byte equal to <c>new BuildingStore()</c> (buildings ARE folded into SimChecksum, so this

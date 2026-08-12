@@ -240,10 +240,27 @@ namespace ProjectChimera.Core.Definitions
         }
 
         /// <summary>
-        /// First unit in the list — used as the default mesh when a MultiMesh
+        /// First REAL unit in the list — used as the default mesh when a MultiMesh
         /// renders "all units of this faction" without per-type differentiation.
+        ///
+        /// <para>DW-748: the last unguarded member of the DW-103/DW-629 class in this file. <see cref="Units"/> is a
+        /// settable auto-property, so a malformed <c>"units": null</c> overwrites the <c>= new()</c> default and the
+        /// former <c>Units.Count</c> NRE'd; and a <c>"units": [null, {...}]</c> document handed the caller a NULL
+        /// <see cref="UnitDefinition"/> as the faction's PRIMARY unit, merely relocating the NRE. Both are reachable
+        /// from any path that bypasses <see cref="FactionValidator"/>'s structural pre-check (a direct
+        /// <c>JsonSerializer.Deserialize</c>, hand-built defs in tests/tools, the Story 6.8 scenario-buildings gate).
+        /// Mirrors <see cref="GetUnit"/>/<see cref="IndexOfUnit"/>: null list ⇒ null, null elements skipped.</para>
         /// </summary>
-        public UnitDefinition? PrimaryUnit => Units.Count > 0 ? Units[0] : null;
+        public UnitDefinition? PrimaryUnit
+        {
+            get
+            {
+                if (Units == null) return null;   // DW-748: malformed JSON "units": null — never an NRE
+                for (int i = 0; i < Units.Count; i++)
+                    if (Units[i] != null) return Units[i];   // DW-748: null element skipped, not handed back
+                return null;
+            }
+        }
 
         // ── Deserialization ─────────────────────────────────────────────────────
 
@@ -369,9 +386,11 @@ namespace ProjectChimera.Core.Definitions
         /// <see cref="AbilityRegistry.LoadFromDirectory"/>'s pattern, but lives here (not on
         /// <see cref="FactionRegistry"/>, which never touches res:// or does file I/O).
         ///
-        /// Scans only <c>*_faction.json</c> (NOT bare <c>*.json</c> — this directory also holds
+        /// Scans only <see cref="FactionFiles.DiscoveryGlob"/> (NOT bare <c>*.json</c> — this directory also holds
         /// <c>_buildingcard_sample.json</c>/<c>_unitcard_sample.json</c>, unrelated sample content that must never
-        /// be mistaken for a faction). The directory enumeration itself (<see cref="Directory.GetFiles"/>) is
+        /// be mistaken for a faction). DW-696: that glob is DERIVED from the same constant the faction wizard writes
+        /// its files under, so the write side and this read side can no longer drift into a save-and-vanish.
+        /// The directory enumeration itself (<see cref="Directory.GetFiles"/>) is
         /// guarded — an I/O error there is reported via <paramref name="onExcluded"/> against <paramref
         /// name="absDir"/> and yields an empty list, honoring this method's "never throws" contract even for a
         /// permissions/enumeration failure, not just a per-file parse failure. Matching files are walked in a
@@ -421,7 +440,7 @@ namespace ProjectChimera.Core.Definitions
             string[] files;
             try
             {
-                files = Directory.GetFiles(absDir, "*_faction.json");
+                files = Directory.GetFiles(absDir, FactionFiles.DiscoveryGlob); // DW-696: derived, never hand-copied
             }
             catch (System.Exception ex)
             {

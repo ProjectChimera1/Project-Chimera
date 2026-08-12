@@ -111,6 +111,28 @@ namespace ProjectChimera.Economy
         /// </summary>
         public FactionDefinition? GetFactionDefinition(Faction faction) => GetFactionDef(faction);
 
+        /// <summary>
+        /// DW-386 — override the faction definition for a specific faction slot at runtime, the exact twin of
+        /// <c>BuildingSystem.SetFactionDef</c> and called from the SAME place (<c>ScenarioApplier</c>'s player-slot
+        /// loop). The <see cref="_factions"/> array has been sized <c>FACTION_ARRAY_SIZE</c> (9) since Story 9.2, but
+        /// the constructor only ever populates Player1/Player2 — so before this, a Player3..Player8 researcher
+        /// resolved a NULL faction def and had NO research options at all, while the same slot's BUILDINGS resolved
+        /// correctly through <c>BuildingSystem.SetFactionDef</c>. That asymmetry is the defect; one seam per system.
+        ///
+        /// <para>Deliberately ONLY the array assignment — no <see cref="ResearchStore.EnsureCapacity"/> call.
+        /// Capacity is grown lazily by every consumer that needs it (<see cref="StartResearchCommand"/>,
+        /// <see cref="ApplyCompletedResearch"/>, the completion path), and <c>ResearchStore</c>'s per-faction row
+        /// LENGTH is folded into <c>SimChecksum</c> — so growing it eagerly here would move the fold for any slot
+        /// whose def carries research, for no behavioural gain. Mirrors <c>BuildingSystem.SetFactionDef</c> exactly,
+        /// which is likewise assignment-only. Out-of-range faction is a silent no-op.</para>
+        /// </summary>
+        public void SetFactionDef(Faction faction, FactionDefinition def)
+        {
+            int idx = (int)faction;
+            if (idx >= 0 && idx < _factions.Length)
+                _factions[idx] = def;
+        }
+
         /// <summary>Null-safe count of <paramref name="fdef"/>'s <see cref="FactionDefinition.Research"/> list
         /// (review fix). <see cref="FactionDefinition.GetResearch"/>/<see cref="FactionDefinition.IndexOfResearch"/>
         /// and <see cref="Definitions.ResearchValidator"/> all explicitly tolerate an authored <c>"research": null</c>

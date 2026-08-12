@@ -196,7 +196,16 @@ namespace ProjectChimera.Core.Sim
                     continue;
                 }
                 var def = _slotFactionDefs[(int)faction]; // pre-resolved by the presentation pre-pass
-                if (def != null) _host.BuildSys.SetFactionDef(faction, def);
+                if (def != null)
+                {
+                    _host.BuildSys.SetFactionDef(faction, def);
+                    // DW-386: the RESEARCH half of the same per-slot faction-def threading. BuildingSystem and
+                    // ResearchSystem both hold a FACTION_ARRAY_SIZE (9) `_factions` array whose ctor populates only
+                    // Player1/Player2, so without this a Player3..Player8 researcher resolved a null def and had NO
+                    // research options while its buildings resolved fine. Assignment-only (see the seam's own doc) —
+                    // ResearchStore capacity still grows lazily at first use, so no folded value moves here.
+                    _host.ResearchSys.SetFactionDef(faction, def);
+                }
 
                 _host.Resources.AddOre(faction, Fixed.FromFloat(slot.StartOre));
                 _host.Resources.AddCrystal(faction, Fixed.FromFloat(slot.StartCrystal));
