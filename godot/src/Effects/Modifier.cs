@@ -45,8 +45,16 @@ namespace ProjectChimera.Effects
     }
 
     /// <summary>
-    /// Boolean status effects a <see cref="Modifier"/> may impose. OR-able. Reserved set — the systems that
-    /// honour each flag land with the ModifierStore (Story 2.2b) and the abilities that use them.
+    /// Boolean status effects a <see cref="Modifier"/> may impose. OR-able.
+    ///
+    /// <para>DW-786 (re-verifying DW-324's doc sweep): this used to call itself a "Reserved set — the systems that
+    /// honour each flag land with the ModifierStore (Story 2.2b)". It is no longer reserved and has not been for a
+    /// long time: every flag is LIVE and enforced. <c>ModifierStore</c> aggregates the imposed set per entity;
+    /// <c>CombatSystem</c> honours Stunned/Disarmed (no acquisition, no swing) and Rooted (no movement),
+    /// <c>AbilityCastSystem</c> honours Silenced, <c>DamageResolver</c> honours Invulnerable, and
+    /// <c>AbilityValidator</c>'s DW-618 polarity lint classifies them via <c>StatusPolarity</c> below. Treat the set
+    /// as CLOSED and append-only — a new member needs an enforcing system, a polarity classification, and the
+    /// vocabulary/validator arms that go with it.</para>
     /// </summary>
     [System.Flags]
     public enum StatusFlags : byte

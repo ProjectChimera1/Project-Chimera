@@ -31,10 +31,18 @@ namespace ProjectChimera.Sim.Tests.Combat
     /// <item>The declaration is checked against OBSERVED behaviour: every command that survives a real
     /// <see cref="OrderApplier.Apply"/> as the entity's stored <c>CommandState</c> must be declared persisting. This is
     /// the layer that needs no human action — a new wire command that quietly persists turns the suite red by itself.</item>
-    /// <item>Every declared-persisting command must own an EXPLICIT case label in BOTH of <c>CombatSystem</c>'s command
-    /// switches (the combatant one and the non-combatant router), read out of the shipping source between the DW-645
-    /// guard anchors. Inheriting <c>default:</c> — the literal DW-206 defect — is what this forbids.</item>
+    /// <item>Every declared-persisting command must own an EXPLICIT case label in ALL THREE guarded switches — both of
+    /// <c>CombatSystem</c>'s (the combatant one and the non-combatant router) and, since DW-818,
+    /// <c>OrderQueueSystem.CurrentOrderComplete</c>'s — read out of the shipping source between the DW-645 guard
+    /// anchors. Inheriting <c>default:</c> — the literal DW-206 defect — is what this forbids.</item>
     /// </list></para>
+    ///
+    /// <para><b>DW-818 — the third switch.</b> <c>OrderQueueSystem.CurrentOrderComplete</c> is the same class from a
+    /// third angle: it cased the six COMPLETING commands and swallowed everything else in <c>default: return false</c>
+    /// (the deliberate Stop/HoldPosition/Patrol/Build stall, Decision #5). A newly appended PERSISTING command
+    /// therefore silently inherited STALL — every Shift-queued order behind it never dispatches — with no compiler
+    /// error and no failing test. Layer 4 now reads that switch too, so the next appended command must declare
+    /// completes-or-stalls explicitly instead of inheriting one by omission.</para>
     ///
     /// <para><b>Non-vacuity.</b> The arm extractor is exercised against a DOCTORED copy of the real switch with the
     /// Build arm removed, and must report exactly the pre-DW-206 state. The classifier is exercised against an
@@ -218,6 +226,61 @@ namespace ProjectChimera.Sim.Tests.Combat
         }
 
         [Fact]
+        public void EveryPersistingCommand_HasItsOwnArmInTheOrderQueueCompletionSwitch()
+        {
+            // DW-818 — the third `default:`-swallowing CommandState switch. A persisting command with no arm here
+            // silently inherits STALL: the unit's whole Shift-queue behind it never dispatches again.
+            string body = StrippedSwitchBody("order-queue completion switch", "Core", "OrderQueueSystem.cs");
+            string[] missing = MissingArms(DeclaredPersisting(), body);
+
+            Assert.True(missing.Length == 0,
+                "DW-818: these PERSISTING commands have no case label in OrderQueueSystem.CurrentOrderComplete and " +
+                "so reach `default: return false` — the queue STALLS on them forever and every Shift-queued order " +
+                "behind them is stranded, with no compiler error: " + string.Join(", ", missing) + ". Decide whether " +
+                "the command COMPLETES (give it a completion test) or STALLS (add it to the declared-stall case " +
+                "group with a reason) and case it explicitly between the DW-645 guard anchors.");
+        }
+
+        [Fact]
+        public void TheOrderQueueSwitch_StillKeepsADefaultArm_ForCorruptOrNonPersistingBytes()
+        {
+            // Same decision as the combatant switch: ActiveOrderCmd is restored from a save through a raw byte cast,
+            // so `default:` must survive. What DW-818 forbids is a PERSISTING command relying on it.
+            Assert.Contains("default:",
+                StrippedSwitchBody("order-queue completion switch", "Core", "OrderQueueSystem.cs"),
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void TheOrderQueueArmExtractor_ReportsTheMissingArm_WhenTheStallGroupIsRemoved()
+        {
+            // Non-vacuity for the DW-818 audit, built the same way as the DW-206 reconstruction below: doctor the
+            // LIVE switch back to its pre-DW-818 shape (the five stalling commands swallowed by `default:`) and prove
+            // the guard names all five. Without this, a broken anchor would leave the audit green while reading
+            // nothing.
+            string real = StrippedSwitchBody("order-queue completion switch", "Core", "OrderQueueSystem.cs");
+            string doctored = real;
+            foreach (UnitCommand cmd in new[]
+                     {
+                         UnitCommand.Stop, UnitCommand.HoldPosition, UnitCommand.Patrol,
+                         UnitCommand.Build, UnitCommand.PickupItem,
+                     })
+            {
+                string label = $"case UnitCommand.{cmd}:";
+                Assert.Contains(label, real, StringComparison.Ordinal);
+                doctored = doctored.Replace(label, "", StringComparison.Ordinal);
+            }
+
+            Assert.Equal(
+                new[]
+                {
+                    nameof(UnitCommand.Stop), nameof(UnitCommand.HoldPosition), nameof(UnitCommand.Build),
+                    nameof(UnitCommand.Patrol), nameof(UnitCommand.PickupItem),
+                }.OrderBy(n => (byte)Enum.Parse<UnitCommand>(n)).ToArray(),
+                MissingArms(DeclaredPersisting(), doctored));
+        }
+
+        [Fact]
         public void NeitherSwitch_CasesACommandThatCannotPersist()
         {
             // The mirror-image rot: an arm for a command that is never stored is dead code that reads like live
@@ -266,6 +329,7 @@ namespace ProjectChimera.Sim.Tests.Combat
             // A deleted anchor must fail loudly rather than silently disabling the guard: StrippedSwitchBody throws.
             Assert.NotEmpty(StrippedSwitchBody("combatant command switch"));
             Assert.NotEmpty(StrippedSwitchBody("non-combatant command switch"));
+            Assert.NotEmpty(StrippedSwitchBody("order-queue completion switch", "Core", "OrderQueueSystem.cs")); // DW-818
         }
 
         // ── Behaviour — what an inherited `default:` would actually do to the unit ────────────────────────
@@ -355,13 +419,16 @@ namespace ProjectChimera.Sim.Tests.Combat
         }
 
         /// <summary>
-        /// The text between the DW-645 BEGIN/END guard anchors named <paramref name="label"/> in the shipping
-        /// <c>CombatSystem.cs</c>, with comments and string literals blanked so neither this codebase's heavy prose
-        /// nor an assertion message can masquerade as a case label.
+        /// The text between the DW-645 BEGIN/END guard anchors named <paramref name="label"/> in the shipping source
+        /// file at <paramref name="relPath"/> under <c>godot/src</c> (defaults to <c>Combat/CombatSystem.cs</c>, the
+        /// two original switches; DW-818 added <c>Core/OrderQueueSystem.cs</c>), with comments and string literals
+        /// blanked so neither this codebase's heavy prose nor an assertion message can masquerade as a case label.
         /// </summary>
-        private static string StrippedSwitchBody(string label)
+        private static string StrippedSwitchBody(string label, params string[] relPath)
         {
-            string source = File.ReadAllText(Path.Combine(SrcRoot(), "Combat", "CombatSystem.cs"));
+            if (relPath.Length == 0) relPath = new[] { "Combat", "CombatSystem.cs" };
+            string file   = Path.Combine(new[] { SrcRoot() }.Concat(relPath).ToArray());
+            string source = File.ReadAllText(file);
             string begin  = "DW-645 GUARD ANCHOR: BEGIN " + label;
             string end    = "DW-645 GUARD ANCHOR: END " + label;
 
@@ -369,7 +436,7 @@ namespace ProjectChimera.Sim.Tests.Combat
             int e = source.IndexOf(end,   StringComparison.Ordinal);
             if (b < 0 || e < 0 || e <= b)
                 throw new InvalidOperationException(
-                    $"DW-645 completeness guard could not find the '{label}' anchors in CombatSystem.cs " +
+                    $"DW-645 completeness guard could not find the '{label}' anchors in {Path.GetFileName(file)} " +
                     $"(begin@{b}, end@{e}). The anchors delimit the switch this guard reads; if the switch moved or " +
                     $"was renamed, move the anchors with it — do NOT delete them, that silently disables the guard.");
 

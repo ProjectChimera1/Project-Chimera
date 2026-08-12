@@ -81,6 +81,18 @@ namespace ProjectChimera.Core.Definitions
             // ── (a) Identity + targeting ──
             if (string.IsNullOrEmpty(id))
                 return AbilityValidationResult.Fail("ability.id is null or empty.");
+            // DW-695: the reserved-device rule reaches the FOURTH authoring surface. DW-454 wired
+            // IsReservedDeviceName into the item sim gate, the item editor gate and the unit/building gate, and
+            // DW-528 added the filename-level companion for the faction wizard — the ability editor was covered by
+            // none of them, and here the case is strictly WORSE than the wizard's: AbilityEditorPanel writes
+            // `{SanitizeId(def.Id)}.json`, so there is no `_faction`-style suffix decorating the basename. The
+            // reserved word IS the whole basename before the first dot. Homed on the SIM validator (not just the
+            // panel) so both the editor Save gate — which is validate-gated and inherits this for free — and the
+            // content-load path reject it, mirroring exactly how the item rule is split. Per DW-694 the cost is
+            // PORTABILITY of a shared artifact, not a local write failure; the message is single-sourced from the
+            // same helper as the other three gates so all four cannot drift.
+            if (UnitDefinitionValidator.IsReservedDeviceName(id))
+                return Fail(id, "id", UnitDefinitionValidator.ReservedDeviceNameMessage(id));
             if (def.ParsedTargeting is null)
                 return Fail(id, "targeting",
                     $"'{def.Targeting}' is not a known targeting type (None|Self|TargetUnit|GroundPoint).");

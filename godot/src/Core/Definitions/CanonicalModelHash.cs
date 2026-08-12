@@ -607,12 +607,13 @@ namespace ProjectChimera.Core.Definitions
             }
 
             h = MixInt(h, graph.DataEdges.Count);
-            // DataEdge.CompareTo is total on the (Src,SrcPort,Dst,DstPort) topology tuple only (wire is
-            // deliberately not a sort key there). Since the fold ALSO emits the wire, add wire as an explicit
-            // tiebreaker so the ordering is total over every folded field — delivering this method's documented
-            // "data edges sorted likewise + wire name" guarantee. Duplicate-topology data edges are rejected
-            // upstream by GraphStructureGate's forked-data-in check, so this tie is unreachable on any gate-passed
-            // model and moves no sanctioned hash; it only makes the fold order-independent on un-gated paths.
+            // DW-754: DataEdge.CompareTo is now TOTAL — it ends on Wire — so `.OrderBy(x => x)` alone already
+            // orders every folded field. The `.ThenBy(x => x.Wire)` below is therefore a no-op that produces a
+            // byte-identical fold; it is KEPT as belt-and-braces (this fold is a wire-visible hash: an explicit
+            // tiebreak on the field the fold emits costs nothing and survives any future comparer edit). Before
+            // DW-754 it was load-bearing here and NOWHERE else, which is exactly why the canonical-JSON emitter
+            // silently inherited authoring order. Duplicate-topology data edges are rejected upstream by
+            // GraphStructureGate's forked-data-in check, so the tie is unreachable on any gate-passed model.
             foreach (ProjectChimera.Dsl.DataEdge e in graph.DataEdges.OrderBy(x => x).ThenBy(x => x.Wire))
             {
                 h = MixInt(h, e.Src);

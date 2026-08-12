@@ -1469,36 +1469,15 @@ namespace ProjectChimera.Core
 
                 if (_execs.Count == 0)
                 {
-                    // Story 7.13 — a trigger-less scenario still drains the sim-event feed producers pushed (no
-                    // subscriber matches, but the feed must not accumulate across ticks).
-                    _simEventFeed.Clear();
-                    _pendingChatCount = 0; // Story 7.13 (Arm D) — parity: the player_chat rail must not accumulate either
-                    _pendingRequeueCount = 0; // DW-349 — parity: nor the edge-event re-queue rail
+                    ClearTransients(world); // DW-734 — the ONE drain point for the trigger-less path
+
                     // Review (7.3 follow-up): declared ScenarioData.Timers made trigger-less timers representable, and
                     // the folded remaining-ticks must still decrement per the "declared timers start active" contract —
                     // pre-7.3 the early-out was safe because timers could only exist via trigger actions. An empty table
                     // (every legacy scenario) makes this a no-op, so goldens/checksums are unmoved. Expiry events go
-                    // nowhere without triggers (timer_expires is a trigger event), which is fine — the state is the point.
-                    // Story 7.5: with no triggers there can be no raisers and no subscribers, so the queue is provably
-                    // empty; the defensive clear keeps a (unreachable) stale entry from folding forever.
-                    _expiredTimers.Clear();
+                    // nowhere without triggers (timer_expires is a trigger event), which is fine — the state is the
+                    // point. This is real WORK, not a drain, so it stays here rather than inside ClearTransients.
                     _vars.TimerTickAndCollectExpired(_expiredTimers);
-                    _eventQueue.Clear();
-                    // DW-551 — the LAST transient rail on this path, and the one that was missing. The per-tick
-                    // DeathLog's only other wipe point is UpdateSnapshots, which the early-out skips: without this a
-                    // trigger-less scenario ACCUMULATES combat death records across ticks until CAPACITY, so "the log
-                    // is empty at the tick boundary" (the invariant DeathLog's own docs state, and the one
-                    // SaveGameState.CaptureFrom now asserts) held only for scenarios that own at least one trigger.
-                    // Inert for behaviour: CollectEvents — the log's single reader — is skipped on this path, and a
-                    // trigger-less scenario can have no unit_dies subscriber at all. Inert for determinism: the log is
-                    // NOT folded into SimChecksum, so no golden and no checksum moves.
-                    world.DeathLog.Clear();
-                    // DW-548 — parity for the deferred rail. `_execs.Count == 0` is fixed at load, so this path can
-                    // never have produced a trigger-phase kill and the rail is provably already empty; zeroed anyway
-                    // so the rail's "at most one tick, consumed by the next collect" contract holds by construction
-                    // on every path rather than by an argument about which path can reach it.
-                    _carryCount      = 0;
-                    _collectedDeaths = 0;
                     return;
                 }
 
@@ -1601,6 +1580,55 @@ namespace ProjectChimera.Core
                 // state; NEVER folded into SimChecksum (a UI mismatch cannot desync).
                 _readback?.Publish(_vars, ++_publishTick);
             }
+        }
+
+        // ── DW-734 — the single transient-rail drain ──────────────────────────
+
+        /// <summary>
+        /// DW-734 — drain EVERY per-tick transient rail this director owns, in one place.
+        ///
+        /// <para><b>Why this exists.</b> The trigger-less early-out in <see cref="Tick"/> needed a hand-added
+        /// <c>Clear()</c> for every transient rail introduced since Story 7.13 — <c>_simEventFeed</c>, then the
+        /// player_chat rail, then DW-349's re-queue rail, then DW-551's <see cref="DeathLog"/> — and each was added
+        /// REACTIVELY, after the rail had already shipped leaking. Four instances of one pattern is a class, not a
+        /// run of bad luck: nothing forced a NEW rail to be drained on the trigger-free path, and the leak stayed
+        /// invisible until a downstream capacity ceiling or persistence assert tripped on a trigger-free map.</para>
+        ///
+        /// <para><b>What it does NOT do.</b> The trigger-BEARING path cannot call this wholesale: there each rail is
+        /// drained at the point its contents are CONSUMED (<c>_eventQueue</c> after the next-tick dequeue seeds the
+        /// work list, <c>_simEventFeed</c>/<c>_pendingChat</c> inside <c>CollectEvents</c>, <c>_pendingRequeue</c>
+        /// after redelivery, the <see cref="DeathLog"/> + carry rail in <c>UpdateSnapshots</c>), and several of them
+        /// are deliberately NON-empty at the end of that tick (the queue holds next-tick raises; the carry rail holds
+        /// trigger-phase deaths for the next collect). Wiping them at the tick boundary would DESTROY folded state.
+        /// The structural device that covers the trigger-bearing path — and the next rail on either path — is the
+        /// reflection census in <c>DirectorTransientRailCensusTests</c>, which requires every rail-shaped field to be
+        /// explicitly classified as drained-here or exempt-with-a-reason.</para>
+        ///
+        /// <para><b>Determinism.</b> Nothing here is folded into <see cref="SimChecksum"/> except
+        /// <c>_eventQueue</c>, which on this path is provably already empty (no triggers ⇒ no raisers and no
+        /// subscribers), so the clear is defensive. No golden moves.</para>
+        /// </summary>
+        private void ClearTransients(EntityWorld world)
+        {
+            // Story 7.13 — the sim-event feed producers pushed into (no subscriber matches on a trigger-less map,
+            // but the feed must not accumulate across ticks).
+            _simEventFeed.Clear();
+            _pendingChatCount    = 0; // Story 7.13 (Arm D) — the player_chat rail
+            _pendingRequeueCount = 0; // DW-349 — the edge-event re-queue rail
+            // Story 7.5: with no triggers there can be no raisers and no subscribers, so the queue is provably
+            // empty; the defensive clear keeps a (unreachable) stale entry from folding forever.
+            _expiredTimers.Clear();
+            _eventQueue.Clear();
+            // DW-551 — the per-tick DeathLog. Its only other wipe point is UpdateSnapshots, which the early-out
+            // skips: without this a trigger-less scenario ACCUMULATES combat death records across ticks until
+            // CAPACITY, so "the log is empty at the tick boundary" (the invariant DeathLog's own docs state, and the
+            // one SaveGameState.CaptureFrom asserts) held only for scenarios that own at least one trigger.
+            world.DeathLog.Clear();
+            // DW-548 — the deferred death-carry rail. `_execs.Count == 0` is fixed at load, so the trigger-less path
+            // can never have produced a trigger-phase kill and the rail is provably already empty; zeroed anyway so
+            // the rail's "at most one tick, consumed by the next collect" contract holds by construction.
+            _carryCount      = 0;
+            _collectedDeaths = 0;
         }
 
         // ── Story 7.6 — batched drip (drain phase) ────────────────────────────
@@ -2108,11 +2136,21 @@ namespace ProjectChimera.Core
         /// DW-349 — the BATCHED-SUPPRESSION arm: trigger <paramref name="idx"/> is suppressed (its continuation row
         /// is draining), so base occurrences from <paramref name="fromEvent"/> on are unconsumed for it. Persist the
         /// matching EDGE ones targeted at it; while the drip keeps running they re-arrive targeted and re-persist
-        /// through this same arm, and once the row completes they dispatch. Gate state was already checked by the
-        /// caller (the suppression checks run after/inside the enabled/fired/cooldown gates).
+        /// through this same arm, and once the row completes they dispatch.
+        ///
+        /// <para>DW-686 — the gate check is made HERE rather than trusted from the caller. This arm has three call
+        /// sites now (DW-543 added the third) and every one of them USED to carry the precondition only as prose:
+        /// "gate state was already checked by the caller". Persisting a row for a gate-blocked trigger would break
+        /// the authored-semantics/polled-parity rule DW-349 established (a disabled/run-once-spent/cooling trigger
+        /// must LOSE the occurrence, exactly as it would have on the sweep). Two of the three sites are provably
+        /// eligible; the per-occurrence pair is NOT, because the loop re-checks only fired/cooldown per iteration —
+        /// a trigger whose own action ran <c>disable_trigger</c> on itself is still enabled-checked from BEFORE the
+        /// fire. The early-return closes that hole and makes the precondition structural for every future site.</para>
         /// </summary>
         private void RequeueEdgeEventsFor(int idx, TriggerGraph.TriggerExec ex, int fromEvent)
         {
+            if (!RequeueEligible(idx)) return; // DW-686 — never persist a row for a gate-blocked trigger
+
             for (int e = fromEvent; e < _baseEventCount; e++)
             {
                 ref FiredEvent f = ref _baseEvents[e];
