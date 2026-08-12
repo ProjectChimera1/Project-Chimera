@@ -113,10 +113,19 @@ namespace ProjectChimera.Core.Definitions
             // early return because that is this validator's reject idiom).
             if (UnitDefinitionValidator.SanitizeId(id) != id)
                 return Fail(id, "id", "contains characters outside [a-z0-9_]; rename before saving.");
+            // DW-695 arrived at the same arm independently and supplies its WORDING. DW-454 wired IsReservedDeviceName
+            // into the item sim gate, the item editor gate and the unit/building gate, and DW-528 added the
+            // filename-level companion for the faction wizard — the ability editor was covered by none of them, and
+            // here the case is strictly WORSE than the wizard's: AbilityEditorPanel writes `{SanitizeId(def.Id)}.json`,
+            // so there is no `_faction`-style suffix decorating the basename. The reserved word IS the whole basename
+            // before the first dot. Homed on the SIM validator (not just the panel) so both the editor Save gate —
+            // which is validate-gated and inherits this for free — and the content-load path reject it, mirroring
+            // exactly how the item rule is split. Per DW-694 the cost is PORTABILITY of a shared artifact, not a local
+            // write failure (the old hand-written sentence here promised a filesystem rejection that does NOT
+            // reproduce on this project's Windows build); the sentence is now single-sourced from the same helper as
+            // the other three gates so all four cannot drift.
             if (UnitDefinitionValidator.IsReservedDeviceName(id))
-                return Fail(id, "id",
-                    $"is a Windows reserved device name ({UnitDefinitionValidator.ReservedPipeList}); the filesystem " +
-                    "rejects it as a file basename, so rename before saving.");
+                return Fail(id, "id", UnitDefinitionValidator.ReservedDeviceNameMessage(id));
             if (def.ParsedTargeting is null)
                 return Fail(id, "targeting",
                     $"'{def.Targeting}' is not a known targeting type (None|Self|TargetUnit|GroundPoint).");

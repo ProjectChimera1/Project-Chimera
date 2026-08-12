@@ -25,6 +25,15 @@ namespace ProjectChimera.Sim.Tests.Sim
     /// allowlist entry — never a silent skip — and every allowlist name must still resolve to a real field, so a
     /// rename cannot quietly widen an exemption.</para>
     ///
+    /// <para><b>DW-762 — the <c>NormalizeFresh</c> hook is audited, not trusted.</b> That hook is the one seam in
+    /// this machinery that can DISARM a field of the sweep: it mutates the fresh instance after dirtying, and the
+    /// obvious-looking way to "match a retained buffer" is to replay the store's own reset/grow path on the fresh
+    /// side — which can normalize fresh straight into the dirty state and make the field it was written for vacuous.
+    /// <see cref="AuditNormalizeFresh"/> now snapshots both instances either side of the hook and requires that it
+    /// moved something, moved it on the FRESH side only, and left every field it touched still diverging from dirty.
+    /// The sweep is a test-of-tests across 25 store cases, so a hook that can silently blind one field per fixture is
+    /// a real hole in it.</para>
+    ///
     /// <para><b>Field enumeration walks the full base-type chain</b> (public AND private, per level via
     /// <see cref="BindingFlags.DeclaredOnly"/>), closing the "a base class silently shrinks the sweep" hazard the
     /// original EntityWorld test could only pin against (<c>BaseType == object</c>) rather than survive.</para>
@@ -324,6 +333,150 @@ namespace ProjectChimera.Sim.Tests.Sim
                 "blind spot DW-19/DW-196 closed.");
         }
 
+        // ── DW-762 — the NormalizeFresh audit (a hook that can quietly disarm the sweep) ───────────────────────
+
+        /// <summary>
+        /// DW-762 — a deep-enough snapshot of one instance's swept field values, taken either side of
+        /// <c>NormalizeFresh</c> so the machinery can see exactly WHICH fields that hook moved.
+        ///
+        /// <para>Arrays (any depth of jagging), lists/queues and dictionaries are COPIED, because a hook that grows
+        /// or refills a collection IN PLACE would otherwise be compared against itself and read as "changed
+        /// nothing". Everything else is captured by reference/value, so a hook that mutates the internals of a
+        /// non-collection field (an <see cref="SimRng"/> re-seed, a <see cref="DeathLog"/> push) is NOT detected as a
+        /// normalization — that is a documented limit of this audit, not a silent one: such a hook is outside the
+        /// "match a retained buffer" idiom NormalizeFresh exists for.</para>
+        /// </summary>
+        private static Dictionary<string, object?> SnapshotSweptFields(object target, IReadOnlyCollection<string> allowlist)
+        {
+            var snap = new Dictionary<string, object?>(StringComparer.Ordinal);
+            foreach (FieldInfo f in InstanceFieldsOf(target.GetType()))
+            {
+                if (ContainsName(allowlist, f.Name)) continue;
+                snap[f.Name] = DeepSnapshotValue(f.GetValue(target));
+            }
+            return snap;
+        }
+
+        /// <summary>Copy the collection shapes <see cref="DescribeValueDivergence"/> compares structurally, so an
+        /// in-place mutation is visible against the snapshot. Non-collections are captured as-is.</summary>
+        private static object? DeepSnapshotValue(object? value)
+        {
+            switch (value)
+            {
+                case null:
+                case string:
+                    return value;
+                case Array a:
+                {
+                    var copy = (Array)a.Clone();
+                    // Jagged: clone the inner arrays too (rank > 1 cannot be indexed with SetValue(object,int), and
+                    // no store owns a multidimensional array OF arrays, so the shallow clone is the honest stop).
+                    if (copy.Rank == 1 && a.GetType().GetElementType()!.IsArray)
+                        for (int i = 0; i < copy.Length; i++)
+                            copy.SetValue(DeepSnapshotValue(copy.GetValue(i)), i);
+                    return copy;
+                }
+                case IDictionary d:
+                {
+                    var h = new Hashtable();
+                    foreach (DictionaryEntry e in d) h[e.Key] = DeepSnapshotValue(e.Value);
+                    return h;
+                }
+                case IEnumerable en:
+                {
+                    var list = new List<object?>();
+                    foreach (object? o in en) list.Add(DeepSnapshotValue(o));
+                    return list;
+                }
+                default:
+                    return value;
+            }
+        }
+
+        /// <summary>
+        /// DW-762 — audit what a fixture's <c>NormalizeFresh</c> hook actually did, BEFORE the reset runs.
+        ///
+        /// <para><b>The hazard.</b> <c>NormalizeFresh</c> mutates the FRESH instance after the dirty side has been
+        /// dirtied. It exists for one legitimate idiom: a reset that deliberately RETAINS capacity (ResearchStore's
+        /// never-shrinking inner arrays, TriggerEnabledStore's never-shrinking buffer) leaves the dirty side longer
+        /// than a virgin fresh one, so the final compare would trip on an incidental LENGTH mismatch instead of
+        /// measuring "did every value reset". But nothing constrained the hook: the obvious-looking way to "match a
+        /// retained buffer" is to replay the store's OWN reset/grow path on the fresh side, and that can normalize
+        /// fresh straight INTO the dirty state — which makes the field the hook was written for VACUOUS (fresh ==
+        /// dirty pre-Clear, so the post-Clear compare on it can no longer fail). The sweep is the load-bearing guard
+        /// for reset completeness across 25 store cases; a hook that can quietly disarm one field per fixture is a
+        /// real hole in a test-of-tests.</para>
+        ///
+        /// <para><b>The three rules.</b> (1) A declared hook must MOVE something — a hook that changes nothing is
+        /// rot, and its justification comment is describing a store shape that no longer exists. (2) A hook may
+        /// touch the FRESH instance only — reaching across to the dirty side (replaying its reset, growing the wrong
+        /// operand) destroys the very divergence the sweep measures. (3) Every field the hook normalized must STILL
+        /// diverge from the dirty instance: that is the precise "did you normalize it into the dirty state"
+        /// question, asked of exactly the fields the hook touched and blamed on the hook by name, rather than
+        /// surfacing later as a generic "the fixture never dirtied this field" diagnosis that points at the wrong
+        /// cause.</para>
+        /// </summary>
+        private static void AuditNormalizeFresh(
+            StoreResetFixture fx,
+            Dictionary<string, object?> freshBefore,
+            Dictionary<string, object?> dirtyBefore)
+        {
+            Type type = fx.Fresh.GetType();
+
+            var normalized = new List<string>();
+            var vacuous    = new List<string>();
+            foreach (FieldInfo f in InstanceFieldsOf(type))
+            {
+                if (ContainsName(fx.Allowlist, f.Name)) continue;
+                if (!freshBefore.TryGetValue(f.Name, out object? before)) continue;
+                if (DescribeValueDivergence(before, f.GetValue(fx.Fresh)) is null) continue;
+
+                normalized.Add(f.Name);
+                // Rule 3: the normalized field must still be measurably dirty, or the post-Clear compare on it can
+                // never fail again.
+                if (DescribeValueDivergence(f.GetValue(fx.Fresh), f.GetValue(fx.Dirty)) is null)
+                    vacuous.Add(f.Name);
+            }
+
+            // Rule 2: the dirty side is off limits.
+            var touchedDirty = new List<string>();
+            foreach (FieldInfo f in InstanceFieldsOf(fx.Dirty.GetType()))
+            {
+                if (ContainsName(fx.Allowlist, f.Name)) continue;
+                if (!dirtyBefore.TryGetValue(f.Name, out object? before)) continue;
+                if (DescribeValueDivergence(before, f.GetValue(fx.Dirty)) is not null) touchedDirty.Add(f.Name);
+            }
+            touchedDirty.Sort(StringComparer.Ordinal);
+            Assert.True(touchedDirty.Count == 0,
+                $"DW-762: the '{fx.Name}' fixture's NormalizeFresh hook mutated the DIRTY instance, not just the " +
+                $"fresh one — {type.Name}.{string.Join(", " + type.Name + ".", touchedDirty)}. NormalizeFresh runs " +
+                "AFTER the dirty side has been dirtied and exists only to bring the FRESH side up to a capacity the " +
+                "reset deliberately retains. Touching the dirty instance (replaying its Clear(), growing the wrong " +
+                "operand) erases the divergence the whole sweep measures, so the reset would then be compared " +
+                "against state it never had to restore.");
+
+            // Rule 1: a declared hook that moves nothing.
+            Assert.True(normalized.Count > 0,
+                $"DW-762: the '{fx.Name}' fixture declares a NormalizeFresh hook that changed NOTHING on the fresh " +
+                $"{type.Name}. Either the store shape its comment justifies is gone (drop the hook and its stale " +
+                "justification), or the hook is written against a field this sweep does not observe — a non-array " +
+                "field mutated through an inner reference, which this audit deliberately cannot see. A dead hook is " +
+                "the signature of a fixture whose author believed a normalization was happening when it was not.");
+
+            // Rule 3's report.
+            vacuous.Sort(StringComparer.Ordinal);
+            Assert.True(vacuous.Count == 0,
+                $"DW-762: the '{fx.Name}' fixture's NormalizeFresh hook normalized these {type.Name} fields INTO the " +
+                "dirty state, so they are now equal BEFORE the reset even runs and the post-Clear compare on them " +
+                "can never fail again — the sweep is blind on exactly the fields the hook was written for:\n  " +
+                string.Join("\n  ", vacuous) +
+                "\nNormalizeFresh must bring the fresh side up to the retained CAPACITY only (grow the buffer, " +
+                "resize the inner arrays) — never replay the store's own Clear()/Reset() on the fresh side and " +
+                "never copy the dirty side's VALUES across. Write the fresh baseline directly (e.g. " +
+                "ClearCompletenessSweep.Poke with a virgin buffer of the right length) so it can never inherit a " +
+                "regression in the very method under test.");
+        }
+
         // ── Fixture-side reflection poke (for private per-match state with no public dirty path) ───────────────
 
         /// <summary>
@@ -395,7 +548,17 @@ namespace ProjectChimera.Sim.Tests.Sim
             //    check is nearly free to satisfy and leaves the sweep blind on every field the fixture never moved).
             fx.DirtyNonArrayState?.Invoke();
             SyntheticallyFillArrays(fx.Dirty, fx.Allowlist, fx.ElementFiller);
-            fx.NormalizeFresh?.Invoke();
+
+            // 2b. DW-762 — NormalizeFresh is the one hook that can quietly disarm the sweep, so it is AUDITED rather
+            //     than trusted: snapshot both instances, run it, then prove it moved something, moved it only on the
+            //     fresh side, and did not normalize any field INTO the dirty state (see AuditNormalizeFresh).
+            if (fx.NormalizeFresh is not null)
+            {
+                Dictionary<string, object?> freshBefore = SnapshotSweptFields(fx.Fresh, fx.Allowlist);
+                Dictionary<string, object?> dirtyBefore = SnapshotSweptFields(fx.Dirty, fx.Allowlist);
+                fx.NormalizeFresh.Invoke();
+                AuditNormalizeFresh(fx, freshBefore, dirtyBefore);
+            }
 
             var dirtiedFields = new HashSet<string>();
             foreach ((string field, string _) in DivergingFields(fx.Fresh, fx.Dirty, fx.Allowlist))
@@ -458,7 +621,12 @@ namespace ProjectChimera.Sim.Tests.Sim
         public Func<Type, string, object?>? ElementFiller { get; init; }
         /// <summary>Optional post-dirty normalization of <see cref="Fresh"/> — e.g. growing a fresh
         /// <c>ResearchStore</c> to the dirty instance's never-shrinking inner-array capacity, mirroring
-        /// <c>SimResetTests.ClearForReset_LeavesEveryStoreEqualToFreshlyConstructed</c>'s EnsureCapacity call.</summary>
+        /// <c>SimResetTests.ClearForReset_LeavesEveryStoreEqualToFreshlyConstructed</c>'s EnsureCapacity call.
+        ///
+        /// <para>DW-762 — CAPACITY ONLY. Bring the fresh side up to the length the reset deliberately retains; never
+        /// replay the store's own <c>Clear()</c>/<c>Reset()</c> on the fresh side and never copy the dirty side's
+        /// VALUES across. <c>ClearCompletenessSweep.AuditNormalizeFresh</c> enforces all three (moved something,
+        /// fresh side only, still diverging afterwards) and names this hook when one is broken.</para></summary>
         public Action? NormalizeFresh { get; init; }
 
         public StoreResetFixture(string name, object fresh, object dirty, Action clear)

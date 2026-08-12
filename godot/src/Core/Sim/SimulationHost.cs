@@ -171,7 +171,8 @@ namespace ProjectChimera.Core.Sim
         /// <summary>Story 7.13 — the host-owned TRANSIENT sim-event feed (unit_damaged/unit_trained/ability_cast/
         /// hero_level). The producing systems push at their tick-boundary sites; <see cref="ScenarioDirector"/> drains
         /// it each tick into its base-event buffer and clears it. NOT folded (empty at the checksum boundary, the
-        /// DeathFeed posture). Cleared on <see cref="ClearForReset"/>.</summary>
+        /// DeathFeed posture) — and DW-850 ARMS that premise as a loop tick-boundary assertion rather than leaving it
+        /// a comment, so a producer registered past the director fails loudly. Cleared on <see cref="ClearForReset"/>.</summary>
         public DslSimEventFeed DslSimEvents { get; }
         /// <summary>Story 7.11 — the sim-layer win-condition evaluator. Registered AFTER <c>AiOpponentSystem</c> and
         /// immediately BEFORE <see cref="ScenarioDirector"/>. Configured at scenario-apply from the applied
@@ -418,8 +419,13 @@ namespace ProjectChimera.Core.Sim
             _loop = new SimulationLoop(World, _systems);
             // DW-766 — arm the end-of-tick invariant: after every system has ticked, the transient DeathFeed must be
             // empty (that emptiness is the ONLY reason it is excluded from the fold below). DeathFeedDrainSystem at
-            // index [17] is what makes it hold; this is the tripwire for a producer registered past it.
-            _loop.EnableTickBoundaryInvariants(_deathFeed);
+            // index [18] is what makes it hold; this is the tripwire for a producer registered past it.
+            // DW-850 — the same tripwire for the transient DslSimEventFeed, whose fold-exclusion rests on the
+            // identical claim: ScenarioDirector [17] drains + clears it every tick, so anything registered PAST the
+            // director that pushes a sim event leaves unhashed residue feeding folded DSL/win state. Nothing
+            // structurally prevented that before this line — the DW-766 residue pass had to be made credit-only
+            // specifically so it would not push hero_level into this feed from index [18].
+            _loop.EnableTickBoundaryInvariants(_deathFeed, DslSimEvents);
             _loop.EnableChecksums(Buildings, Resources, checksumFactions, Modifiers, Heroes, Items, Nodes, Research, Vars, LoopState, DslEvents, WinState, Alliances, TriggerEnabled); // fold modifier state (v6) + ability cooldowns (v7) + mutable HeroStore (v11) + ItemStore/inventory (v12) + ResourceNodeStore (v13) + ResearchStore (v14) + DslVarTable (v16) + DslLoopState (v17) + DslEventQueue (v18) + WinStateStore (v19) + AllianceStore (v20) + TriggerEnabledStore (v21)
 
             // The sim spine's only host-side log in 1.8a: a one-shot construction diagnostic through the

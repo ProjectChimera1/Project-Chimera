@@ -248,8 +248,11 @@ namespace ProjectChimera.Sim.Tests.Definitions
         [MemberData(nameof(ReservedNames))]
         public void ReservedItemId_IsRejected_BySimGate(string id)
         {
-            // RED without the fix: the charset check passes, Validate mints a Validated<ItemDefinition>, and Persist()'s
-            // File.WriteAllText("<id>.json.tmp") then throws on Windows as a generic "Save failed".
+            // RED without the fix: the charset check passes, Validate mints a Validated<ItemDefinition>, and Persist()
+            // writes "<id>.json" onto a Win32 DOS-device name. DW-694 corrected the SYMPTOM recorded here: the write
+            // does NOT throw on this project's Windows build (measured — see UnitDefinitionValidator's
+            // _reservedBasenames doc); the cost is that the shared artifact is unopenable wherever the reservation IS
+            // enforced. The reject stands; only the reason it gives does.
             ItemValidationResult r = new ItemDefinitionValidator().Validate(
                 new ItemDefinition { Id = id, Charges = 0 });
             Assert.False(r.Ok);
@@ -262,7 +265,8 @@ namespace ProjectChimera.Sim.Tests.Definitions
         public void ReservedItemId_IsRejected_ByEditorFieldsGate(string id)
         {
             // ValidateFields is the gate that actually blocks Persist() (DoSave→Revalidate keeps Save disabled), so the
-            // badge MUST appear here or the creator still gets the opaque IO failure.
+            // badge MUST appear here or the creator saves a file that only breaks for whoever they share it with
+            // (DW-694: the local write succeeds on this platform, which is precisely why an author would never notice).
             ItemValidationResult r = new ItemDefinitionValidator().ValidateFields(
                 new ItemDefinition { Id = id, Charges = 0 });
             Assert.False(r.Ok);

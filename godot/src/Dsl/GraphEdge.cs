@@ -131,18 +131,25 @@ namespace ProjectChimera.Dsl
     /// <summary>
     /// A sparse typed data edge (dataflow): <see cref="Src"/>'s <see cref="SrcPort"/> supplies a value of
     /// <see cref="Wire"/> type to <see cref="Dst"/>'s <see cref="DstPort"/>. In 7.2 the only data edge is the
-    /// ConditionNode→Trigger Boolean gate. Immutable value; a total <c>(Src,SrcPort,Dst,DstPort)</c> order drives
-    /// canonical serialization (the wire type is NOT part of the sort key — the topology tuple is total on its own).
+    /// ConditionNode→Trigger Boolean gate. Immutable value; a total <c>(Src,SrcPort,Dst,DstPort,Wire)</c> order
+    /// drives canonical serialization.
     ///
     /// DETERMINISM (DW-337): <see cref="GetHashCode"/> is a seed-free FNV-1a-32 fold (see
     /// <see cref="GraphEdgeHash"/>), NOT <c>HashCode.Combine</c>, so a hash-based edge collection lays out
     /// identically in every process. Even so, prefer the ordered list + <see cref="CompareTo"/> whenever the
     /// RESULT ORDER matters (canonical emission, IR compilation, checksum folds): a <c>HashSet</c>/
     /// <c>Dictionary</c> keyed on edges is fine for membership/dedup, but sort what you enumerate out of it —
-    /// hash-container enumeration order is an unspecified implementation detail, not a contract. Note
-    /// <see cref="CompareTo"/> is NOT total here (two edges may share a topology tuple and differ only in
-    /// <see cref="Wire"/>), so an order-sensitive consumer must break that tie explicitly — as
-    /// <c>CanonicalModelHash.MixTriggerGraph</c> does with <c>.ThenBy(x =&gt; x.Wire)</c>.
+    /// hash-container enumeration order is an unspecified implementation detail, not a contract.
+    ///
+    /// <para>DW-754 — <see cref="CompareTo"/> IS total (it ends on <see cref="Wire"/>). It used to stop at the
+    /// topology tuple, which made it inconsistent with <see cref="Equals(DataEdge)"/> (that one DOES compare
+    /// <see cref="Wire"/>): two data edges sharing a topology tuple but differing in wire compared EQUAL while
+    /// being unequal values, so every <c>OrderBy(e =&gt; e)</c> in the module left their relative order to LINQ's
+    /// sort stability — i.e. to AUTHORING order. <c>TriggerGraph.ToCanonicalJson</c> inherited that, so two
+    /// structurally-equal graphs built in different orders could serialize to different bytes, weakening the
+    /// documented byte-identity claim. <c>CanonicalModelHash.MixTriggerGraph</c> had already hand-broken the tie
+    /// with <c>.ThenBy(x =&gt; x.Wire)</c>; with the order total that tiebreak is a redundant no-op kept as
+    /// belt-and-braces, and no consumer has to remember the footgun any more.</para>
     /// </summary>
     public readonly struct DataEdge : IComparable<DataEdge>, IEquatable<DataEdge>
     {
@@ -158,7 +165,14 @@ namespace ProjectChimera.Dsl
             Src = src; SrcPort = srcPort; Dst = dst; DstPort = dstPort; Wire = wire;
         }
 
-        /// <summary>Total order by <c>(Src, SrcPort, Dst, DstPort)</c> for canonical emission.</summary>
+        /// <summary>
+        /// TOTAL order by <c>(Src, SrcPort, Dst, DstPort, Wire)</c> for canonical emission (DW-754). The
+        /// <see cref="Wire"/> tiebreak is what makes it total AND consistent with <see cref="Equals(DataEdge)"/>:
+        /// <c>CompareTo(other) == 0</c> now holds exactly when <c>Equals(other)</c> does, so no consumer's
+        /// <c>OrderBy</c> can fall back to sort stability (= authoring order) on a duplicate-topology pair.
+        /// <see cref="Wire"/> is ordered by its ORDINAL — safe for the same reason the hash folds it that way:
+        /// <see cref="DataWireType"/> members are append-only, never reordered or renamed.
+        /// </summary>
         public int CompareTo(DataEdge other)
         {
             int c = Src.CompareTo(other.Src);
@@ -167,7 +181,9 @@ namespace ProjectChimera.Dsl
             if (c != 0) return c;
             c = Dst.CompareTo(other.Dst);
             if (c != 0) return c;
-            return DstPort.CompareTo(other.DstPort);
+            c = DstPort.CompareTo(other.DstPort);
+            if (c != 0) return c;
+            return ((int)Wire).CompareTo((int)other.Wire);
         }
 
         public bool Equals(DataEdge other) =>

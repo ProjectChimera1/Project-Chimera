@@ -78,6 +78,10 @@ namespace ProjectChimera.Core
         // from the fold. Null (legacy/test loops that own no feed) ⇒ the invariant is not checked.
         private Combat.DeathFeed? _boundaryDeaths;
 
+        // DW-850 — the transient DSL sim-event feed, which carries the IDENTICAL unenforced claim: it is excluded
+        // from the fold only because it is empty here. Null (legacy/test loops that own no feed) ⇒ not checked.
+        private DslSimEventFeed? _boundarySimEvents;
+
         public SimulationLoop(EntityWorld world, params ISimSystem[] systems)
         {
             World = world;
@@ -125,26 +129,45 @@ namespace ProjectChimera.Core
         /// that stops running) silently re-opens a hole in the desync detector — folded <c>HeroStore.Xp</c> moving off
         /// unhashed residue. Failing loudly at the offending tick is the only way that surfaces before it ships.</para>
         ///
-        /// <para>Call once after construction (SimulationHost does). O(1) per tick — one integer compare — and it
+        /// <para>DW-850 — <paramref name="simEvents"/> arms the SAME invariant on the transient
+        /// <see cref="DslSimEventFeed"/>, which rests on the identical unenforced premise: it is excluded from the
+        /// fold only because <c>ScenarioDirector</c> drains and clears it every tick, and its contents DO reach
+        /// folded state (a drained sim event fires triggers that mutate folded DSL vars and <c>WinStateStore</c>), so
+        /// residue there is the same kind of unhashed input to hashed state. The director's drain sits at a FIXED
+        /// system index, so a producer registered AFTER it re-opens the hole silently — this is that tripwire.
+        /// Optional so the pre-DW-850 one-argument call sites keep compiling and stay armed for deaths alone.</para>
+        ///
+        /// <para>Call once after construction (SimulationHost does). O(1) per tick — two integer compares — and it
         /// mutates nothing, so an armed loop is byte-identical to an unarmed one.</para>
         /// </summary>
-        public void EnableTickBoundaryInvariants(Combat.DeathFeed deaths) => _boundaryDeaths = deaths;
+        public void EnableTickBoundaryInvariants(Combat.DeathFeed deaths, DslSimEventFeed? simEvents = null)
+        {
+            _boundaryDeaths    = deaths;
+            _boundarySimEvents = simEvents;
+        }
 
         /// <summary>
-        /// DW-766 — verify the tick-boundary invariant (see <see cref="EnableTickBoundaryInvariants"/>) and throw with
-        /// the diagnosis if it is broken. Unarmed loops skip it.
+        /// DW-766/DW-850 — verify the tick-boundary invariants (see <see cref="EnableTickBoundaryInvariants"/>) and
+        /// throw with the diagnosis if either is broken. Unarmed feeds skip their check.
         /// </summary>
         private void AssertTickBoundaryInvariants()
         {
-            if (_boundaryDeaths == null) return;
-            int residue = _boundaryDeaths.Count;
-            if (residue == 0) return;
-            throw new InvalidOperationException(
-                $"DW-766: {residue} DeathFeed record(s) survived to the tick boundary (tick {CurrentTick}). The feed is " +
-                "excluded from SimChecksum ONLY because it is empty here, and its records feed the folded " +
-                "HeroStore.Xp/Level — so this is mutable state outside the desync detector. A death was pushed after " +
-                "DeathFeedDrainSystem ran: register every producer BEFORE it in SimulationHost's tick order (it must " +
-                "stay last), or drain the new producer explicitly.");
+            if (_boundaryDeaths != null && _boundaryDeaths.Count != 0)
+                throw new InvalidOperationException(
+                    $"DW-766: {_boundaryDeaths.Count} DeathFeed record(s) survived to the tick boundary (tick {CurrentTick}). The feed is " +
+                    "excluded from SimChecksum ONLY because it is empty here, and its records feed the folded " +
+                    "HeroStore.Xp/Level — so this is mutable state outside the desync detector. A death was pushed after " +
+                    "DeathFeedDrainSystem ran: register every producer BEFORE it in SimulationHost's tick order (it must " +
+                    "stay last), or drain the new producer explicitly.");
+
+            if (_boundarySimEvents != null && _boundarySimEvents.Count != 0)
+                throw new InvalidOperationException(
+                    $"DW-850: {_boundarySimEvents.Count} DslSimEventFeed occurrence(s) survived to the tick boundary (tick {CurrentTick}). " +
+                    "The feed is excluded from SimChecksum ONLY because it is empty here, and a drained occurrence " +
+                    "fires triggers that mutate FOLDED state (DSL variables, WinStateStore) — so residue is an " +
+                    "unhashed input to hashed state, exactly the DW-766 shape one feed over. A producer pushed after " +
+                    "ScenarioDirector's drain ran: register every unit_damaged/unit_trained/ability_cast/hero_level " +
+                    "producer BEFORE the director in SimulationHost's tick order, or drain the new producer explicitly.");
         }
 
         /// <summary>

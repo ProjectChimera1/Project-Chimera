@@ -678,6 +678,11 @@ namespace ProjectChimera.Sim.Tests.Sim
                     // via _deathFeed.Clear() — swept by the `_deathFeed.Clear() — DeathFeed` case above; re-nulling
                     // the reference here would disarm the invariant for the rest of the host's life.
                     "_boundaryDeaths",
+                    // DW-850: the second armed tick-boundary feed ref, identical shape and identical reasoning — the
+                    // DslSimEventFeed's CONTENT is per-match state that SimulationHost.ClearForReset empties via
+                    // DslSimEvents.Clear(), while this REFERENCE is host-lifetime wiring; re-nulling it here would
+                    // disarm the invariant for the rest of the host's life.
+                    "_boundarySimEvents",
                     // Caller config (SimulationHost exposes it as a pass-through property); a reset preserves it —
                     // every reset test relies on ChecksumInterval=1 surviving ClearForReset.
                     ClearCompletenessSweep.BackingField("ChecksumInterval"),

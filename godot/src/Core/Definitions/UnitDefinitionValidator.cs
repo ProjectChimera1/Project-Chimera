@@ -99,13 +99,24 @@ namespace ProjectChimera.Core.Definitions
 
         /// <summary>
         /// The Win32 RESERVED DEVICE basenames (DW-454). Every one of them satisfies the <c>[a-z0-9_]</c> charset
-        /// <see cref="SanitizeId"/> enforces, so the charset gate alone admits them — yet the Windows filesystem
-        /// (the primary platform) rejects ANY path whose basename is one of these, WITH OR WITHOUT an extension
-        /// (<c>con.json</c>, <c>con.json.tmp</c> are all the CON device). An id that reaches a <c>&lt;id&gt;.json</c>
-        /// write therefore throws an opaque IO error with no field badge and no way to save. Lowercase only: a valid
-        /// id is already lowercased by the charset rule, and <see cref="IsReservedDeviceName"/> compares
-        /// case-insensitively so the set stays correct even for a caller that checks a raw, un-sanitized string.
-        /// <c>com0</c>/<c>lpt0</c> are deliberately ABSENT — they are not reserved devices.
+        /// <see cref="SanitizeId"/> enforces, so the charset gate alone admits them — yet on Windows a path whose
+        /// basename is one of these names a DOS DEVICE rather than a file, WITH OR WITHOUT an extension
+        /// (<c>con.json</c>, <c>con.json.tmp</c> are all the CON device).
+        ///
+        /// <para>DW-694 — the SYMPTOM this set guards against was overstated when DW-454 first landed, and the
+        /// correction is recorded here because the wrong version is the intuitive one. DW-454 claimed the write
+        /// "throws an opaque IO error with no field badge and no way to save". Measured on this project's own dev
+        /// machine (Win11 26200), it does not: <c>File.WriteAllText</c> creates <c>con.json</c>, <c>con.json.tmp</c>
+        /// and bare <c>con</c> without complaint, and so does <c>cmd.exe</c> — the reservation is not enforced for
+        /// file creation on that build, and DW-528's without-the-fix RED run confirmed it (Save reported SUCCESS and
+        /// wrote the file). The reject is kept, and is worth keeping, as a PORTABILITY policy: authored content is
+        /// meant to be SHARED, and such a file stays unopenable on every Windows build and third-party tool that DOES
+        /// enforce the reservation. Do not re-justify these rejects with a local crash that does not happen.</para>
+        ///
+        /// <para>Lowercase only: a valid id is already lowercased by the charset rule, and
+        /// <see cref="IsReservedDeviceName"/> compares case-insensitively so the set stays correct even for a caller
+        /// that checks a raw, un-sanitized string. <c>com0</c>/<c>lpt0</c> are deliberately ABSENT — they are not
+        /// reserved devices.</para>
         /// </summary>
         private static readonly string[] _reservedBasenames =
         {
@@ -118,6 +129,19 @@ namespace ProjectChimera.Core.Definitions
         /// Public since DW-528 so every surface that rejects a reserved basename quotes the SAME human-readable list
         /// instead of hand-copying it (the divergent-hand-maintained-table problem).</summary>
         public const string ReservedPipeList = "con|prn|aux|nul|com1-com9|lpt1-lpt9";
+
+        /// <summary>
+        /// DW-694 — THE reserved-device reject sentence, single-sourced. The unit/building gate and both item gates
+        /// used to hand-write it, and all three said the same overstated thing: that "the filesystem rejects
+        /// '&lt;id&gt;.json' as a file name". On this project's Windows build it does not (see
+        /// <see cref="_reservedBasenames"/>), so the creator was being told a crash would happen that never does —
+        /// and the real reason to rename, that the SHARED artifact is unopenable wherever the reservation IS
+        /// enforced, went unsaid. Homed here beside <see cref="ReservedPipeList"/> for the same reason that list is:
+        /// three hand-maintained copies of one sentence drift.
+        /// </summary>
+        public static string ReservedDeviceNameMessage(string id) =>
+            $"is a Windows reserved device name ({ReservedPipeList}), so '{id}.json' names a DOS device rather than a " +
+            "file; content saved under it cannot be opened wherever the reservation is enforced, so rename before sharing.";
 
 
         /// <summary>
@@ -185,15 +209,17 @@ namespace ProjectChimera.Core.Definitions
                 if (SanitizeId(id) != id)
                     errors.Add(("id", Located(kind, id, "id",
                         "contains characters outside [a-z0-9_]; rename before saving.")));
-                // DW-454: the charset rule ADMITS every Windows reserved device basename (they are all [a-z0-9_]), but
-                // the Win32 filesystem rejects them as a path basename with or without an extension — so an id like
-                // "con" passes the charset gate and then throws an opaque IO error at any <id>.json write. Rejected
-                // here so the SHARED filename-safe id convention (SanitizeId, reused by the item/unit/building gates
-                // and by MakeUniqueId) is complete on the primary platform. `else if` — a non-sanitized id already
+                // DW-454: the charset rule ADMITS every Windows reserved device basename (they are all [a-z0-9_]), so
+                // an id like "con" passes the charset gate and the editor then writes <id>.json onto a DOS device
+                // name. Rejected here so the SHARED filename-safe id convention (SanitizeId, reused by the
+                // item/unit/building gates and by MakeUniqueId) is complete. `else if` — a non-sanitized id already
                 // badged above must not double-badge the same field.
+                // DW-694 reworded the message: this is a PORTABILITY gate. The local write does NOT fail on this
+                // project's Windows build (measured — see _reservedBasenames' doc), so the reject must not promise a
+                // crash the creator will never see; what it must say is that the file they are about to share stays
+                // unopenable wherever the reservation IS enforced.
                 else if (IsReservedDeviceName(id))
-                    errors.Add(("id", Located(kind, id, "id",
-                        $"is a Windows reserved device name ({ReservedPipeList}); the filesystem rejects it as a file basename, so rename before saving.")));
+                    errors.Add(("id", Located(kind, id, "id", ReservedDeviceNameMessage(id))));
                 if (siblings != null && IsDuplicateId(def, id, siblings))
                     errors.Add(("id", Located(kind, id, "id",
                         "is a duplicate — another unit in this faction already uses this id.")));
@@ -708,9 +734,10 @@ namespace ProjectChimera.Core.Definitions
         /// <summary>
         /// True when <paramref name="id"/> is a Win32 RESERVED DEVICE basename (DW-454) — <c>con</c>, <c>prn</c>,
         /// <c>aux</c>, <c>nul</c>, <c>com1</c>…<c>com9</c>, <c>lpt1</c>…<c>lpt9</c>. Every one of them passes the
-        /// <see cref="SanitizeId"/> <c>[a-z0-9_]</c> charset, so the charset gate alone lets them through and a
-        /// <c>&lt;id&gt;.json</c> write then throws on Windows (the primary platform) with no field badge. Compared
-        /// case-insensitively (Ordinal) and against the WHOLE id: reservation applies to the path basename, and a
+        /// <see cref="SanitizeId"/> <c>[a-z0-9_]</c> charset, so the charset gate alone lets them through and the
+        /// <c>&lt;id&gt;.json</c> the editor writes lands on a DOS device name. A PORTABILITY gate, not a local
+        /// crash guard — see <see cref="IsReservedDeviceFileName"/>'s doc for the measured behaviour (DW-694).
+        /// Compared case-insensitively (Ordinal) and against the WHOLE id: reservation applies to the path basename, and a
         /// basename is reserved with or without an extension (<c>con.json</c> IS the CON device), but a longer name
         /// that merely CONTAINS one (<c>console</c>, <c>con_2</c>, <c>nullify</c>) is NOT reserved and stays authorable.
         /// Godot-free pure string comparison, homed HERE beside <see cref="SanitizeId"/> so the item, unit and building
