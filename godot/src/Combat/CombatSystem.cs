@@ -13,7 +13,8 @@ namespace ProjectChimera.Combat
     /// Behaviour is gated by each unit's CommandState:
     ///   Idle         — auto-attack in range; chase globally if no target nearby
     ///   Move         — skip all combat (pure navigation)
-    ///   AttackMove   — attack enemies within range; resume toward CommandGoal after kill
+    ///   AttackMove   — notice enemies within the ACQUISITION radius (DW-936, WC3 model), divert/chase into
+    ///                  weapon range, attack; resume toward CommandGoal after kill or leash escape
     ///   Stop         — attack enemies within range; never chase or modify MoveTarget
     ///   HoldPosition — like Stop in combat (attack in range, never chase); its DISTINCTION from Stop is the
     ///                  MovementSystem separation-anchor (a Hold unit is never pushed off its tile) — Story 1.12
@@ -100,6 +101,18 @@ namespace ProjectChimera.Combat
         // cannot drift; deliberately NOT MovementSystem's physical stop (that stays 0.5u to preserve melee — see
         // ArrivalTuning). This is a goal-distance transition, never a combat-range gate, so melee is unaffected.
         private static readonly Fixed AMOVE_ARRIVE_SQR = ArrivalTuning.GoalArriveRadiusSqr;
+
+        /// <summary>
+        /// DW-936 — AttackMove's NOTICING distance (world units), the WC3 acquisition-range concept. Before this,
+        /// an attack-moving unit only saw enemies inside its WEAPON range, so armies ran straight past enemies a
+        /// few units off the path and traded shots only with what they happened to brush against (2026-08-12 field
+        /// report). 12u clears the longest authored weapon (10u) with margin, so melee and ranged units notice the
+        /// same fight; the per-unit effective radius is <c>max(AttackRange, ACQUISITION_RANGE)</c> so an exotic
+        /// longer-than-12u weapon can never end up blinder than its own reach. A load-time constant (one
+        /// quantization, never per-tick FromFloat). Follow-up candidate (ledger): author per-unit
+        /// <c>acquisition_range</c> in UnitDefinition, defaulting here.
+        /// </summary>
+        private static readonly Fixed ACQUISITION_RANGE = Fixed.FromFloat(12f);
 
         public void Tick(EntityWorld world, Fixed dt)
         {
@@ -643,21 +656,39 @@ namespace ProjectChimera.Combat
         }
 
         // ── AttackMove ────────────────────────────────────────────────────────────
-        // Navigate toward CommandGoal; engage enemies in attack range; resume after kill.
+        // DW-936 (the WC3 model): navigate toward CommandGoal; NOTICE enemies within the acquisition radius (not
+        // merely weapon range — the pre-DW-936 behavior, which made armies run straight past enemies off the
+        // path); DIVERT and chase the acquired target into weapon range; attack; and when the target dies or
+        // escapes the acquisition radius (the leash), resume toward CommandGoal.
 
         private void TickAttackMoveCombat(EntityWorld world, int i, Fixed dt)
         {
             TickCooldown(world, i, dt);
 
+            // The per-unit noticing radius: never smaller than the unit's own weapon (an exotic >12u weapon must
+            // not be blinder than its reach).
+            Fixed acquireRange = world.AttackRange[i] > ACQUISITION_RANGE ? world.AttackRange[i] : ACQUISITION_RANGE;
+            Fixed acquireSqr   = acquireRange * acquireRange;
+
             int target = ValidateOrClearTarget(world, i);
-            if (target < 0) target = _spatialHash.FindNearestEnemy(world, i, _alliances);
+            // DW-936 leash: a retained target that has ESCAPED the acquisition radius is dropped, so a fleeing
+            // enemy cannot kite an attack-moving army across the map away from its ordered goal.
+            if (target >= 0 &&
+                FixedVec3.SqrDistance(world.Position[i], world.Position[target]) > acquireSqr)
+            {
+                world.AttackTarget[i] = -1;
+                target = -1;
+            }
+            if (target < 0) target = _spatialHash.FindNearestEnemyWithin(world, i, acquireRange, _alliances);
             world.AttackTarget[i] = target;
 
             if (target < 0)
             {
-                // Story 2.13 (AC1.3) — no enemy UNIT in range: try to AUTO-ACQUIRE an in-range enemy BUILDING
-                // before resuming toward the goal. Per Decision D-2 the raze reverts to Idle (the AttackBuilding
-                // guard's →Idle), not back to AttackMove; the AI re-waves idle units.
+                // Story 2.13 (AC1.3) — no enemy UNIT noticed: try to AUTO-ACQUIRE an in-WEAPON-range enemy
+                // BUILDING before resuming toward the goal (deliberately still weapon range, not acquisition —
+                // widening it would park armies at every outlying structure near the path; see the DW-936 ledger
+                // entry). Per Decision D-2 the raze reverts to Idle (the AttackBuilding guard's →Idle), not back
+                // to AttackMove; the AI re-waves idle units.
                 int bId = FindNearestEnemyBuildingInRange(world, i);
                 if (bId >= 0)
                 {
@@ -668,7 +699,7 @@ namespace ProjectChimera.Combat
                     return;
                 }
 
-                // No enemy in range — resume toward goal
+                // No enemy noticed — resume toward goal
                 world.Flags[i] &= ~EntityFlags.Attacking;
                 ResumeAttackMove(world, i);
                 return;
@@ -679,10 +710,12 @@ namespace ProjectChimera.Combat
 
             if (sqrDist > sqrRange)
             {
-                // Hash returned a candidate but it's now out of range — resume
-                world.AttackTarget[i] = -1;
-                world.Flags[i]       &= ~EntityFlags.Attacking;
-                ResumeAttackMove(world, i);
+                // DW-936 chase leg: noticed but beyond weapon reach — close on the target (TickIdleCombat's chase
+                // shape). Unlike Idle's chase the target is KEPT, so the pursuit is sticky against equidistant
+                // candidates; legality is re-checked every tick (ValidateOrClearTarget) and escape is bounded by
+                // the leash above.
+                world.MoveTarget[i] = world.Position[target];
+                world.Flags[i]      = (world.Flags[i] | EntityFlags.Moving) & ~EntityFlags.Attacking;
                 return;
             }
 

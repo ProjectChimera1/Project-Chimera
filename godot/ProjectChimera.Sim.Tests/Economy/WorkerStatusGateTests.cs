@@ -17,10 +17,10 @@ namespace ProjectChimera.Sim.Tests.Economy
     ///   • <see cref="GatheringSystem"/> — a Stunned/Rooted worker drains no node supply, accrues no
     ///     <see cref="EntityWorld.CarryAmount"/> and credits no Streaming income, while keeping its node reservation
     ///     and resuming the same cycle the tick the flag clears (PAUSE, not cancel).
-    ///   • <see cref="BuildingSystem"/> — construction has NO per-tick worker input to gate (the
-    ///     <see cref="BuildingStore.ConstructionTimer"/> ticks itself, unlinked to any builder), so the one moment a
-    ///     worker's status can reach it is the ORDER: <c>QueueWorkerBuild</c> refuses atomically, spending nothing and
-    ///     placing nothing.
+    ///   • <see cref="BuildingSystem"/> — the ORDER is the atomic refusal point: <c>QueueWorkerBuild</c> refuses,
+    ///     spending nothing and placing nothing. (DW-937 later linked worker-built sites to builder PRESENCE —
+    ///     positional, so a stunned builder standing at its site still counts; the order-time gate here is
+    ///     unchanged and still what keeps the refusal atomic.)
     /// Also pins the gate as an EXACT no-op for the non-blocking flags, which is what keeps every recorded golden still.
     /// Godot-free, <see cref="Fixed"/>-only, ascending-id — runs on every OS leg including the WSL cross-platform gate.
     /// </summary>
@@ -239,10 +239,12 @@ namespace ProjectChimera.Sim.Tests.Economy
         }
 
         [Fact]
-        public void StunnedWorker_StartsNoSelfTickingConstruction_WhileAHealthyTwinsBuildRises()
+        public void StunnedWorker_StartsNoConstruction_WhileAHealthyTwinsBuildRises()
         {
-            // The consequence the refusal actually prevents: TickConstruction needs no builder, so a building a
-            // stunned worker was allowed to START would finish entirely on its own while the worker stood held.
+            // The consequence the refusal actually prevents: a building a stunned worker was allowed to START
+            // would rise while the worker stood held. DW-937: a worker-built site now needs its builder PRESENT
+            // to advance, so the healthy twin builds at its own feet (arrival is immediate) — the like-for-like
+            // contrast is unchanged: the stunned order places nothing, the healthy one's timer runs.
             var world     = new EntityWorld();
             var buildings = new BuildingStore();
             var resources = new ResourceStore(Fixed.Zero);
@@ -252,7 +254,7 @@ namespace ProjectChimera.Sim.Tests.Economy
             int stunned = world.Create(V(0, 0), Faction.Player1, Fixed.FromInt(50), Fixed.FromInt(3));
             world.GatherState[stunned]   = GatherState.Idle;
             world.StatusFlagsOf[stunned] = StatusFlags.Stunned;
-            int healthy = world.Create(V(1, 0), Faction.Player1, Fixed.FromInt(50), Fixed.FromInt(3));
+            int healthy = world.Create(V(20, 20), Faction.Player1, Fixed.FromInt(50), Fixed.FromInt(3));
             world.GatherState[healthy]   = GatherState.Idle;
 
             Assert.Equal(-1, sys.QueueWorkerBuild(stunned, BuildingType.Barracks, V(10, 10),
@@ -265,7 +267,7 @@ namespace ProjectChimera.Sim.Tests.Economy
             Fixed timer0 = buildings.ConstructionTimer[twinBuild];
             for (int t = 0; t < 30; t++) sys.Tick(world, Dt);
             Assert.True(buildings.ConstructionTimer[twinBuild] < timer0,
-                        "the healthy worker's building must still self-tick — the gate is on the ORDER, not on TickConstruction");
+                        "the healthy worker's building must rise while its builder stands at the site (DW-937)");
         }
     }
 }

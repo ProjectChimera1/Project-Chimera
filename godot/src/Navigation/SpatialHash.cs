@@ -80,16 +80,25 @@ namespace ProjectChimera.Navigation
         /// Neutral stays targetable.</para>
         /// </summary>
         public int FindNearestEnemy(EntityWorld world, int id, AllianceStore? alliances = null)
+            => FindNearestEnemyWithin(world, id, world.AttackRange[id], alliances);
+
+        /// <summary>
+        /// DW-936 — the same nearest-enemy query at an EXPLICIT radius, for callers whose noticing distance is not
+        /// their weapon range (AttackMove's WC3-style acquisition radius). <see cref="FindNearestEnemy"/> is now
+        /// sugar over this at <c>AttackRange</c>, so the two can never drift. Same filters (self / same-faction /
+        /// allied / domain), same strict-nearest + ascending-id tie-break.
+        /// </summary>
+        public int FindNearestEnemyWithin(EntityWorld world, int id, Fixed range, AllianceStore? alliances = null)
         {
             FixedVec3 pos = world.Position[id];
             Faction myFaction = world.FactionOf[id];
-            Fixed sqrRange = world.AttackRange[id] * world.AttackRange[id];
+            Fixed sqrRange = range * range;
 
             int cx = WorldToCellAxis(pos.X);
             int cz = WorldToCellAxis(pos.Z);
 
             // Number of cells to search in each direction (range / cellSize, rounded up)
-            int cellRadius = (world.AttackRange[id] / CELL_SIZE).ToInt() + 1;
+            int cellRadius = (range / CELL_SIZE).ToInt() + 1;
 
             Fixed bestSqrDist = Fixed.MaxValue;
             int bestId = -1;

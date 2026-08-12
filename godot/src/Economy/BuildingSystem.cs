@@ -74,14 +74,12 @@ namespace ProjectChimera.Economy
         /// DW-619 — the statuses that bar a worker from STARTING a construction, the same pair as
         /// <c>MovementSystem.MOVE_BLOCKING</c> / <c>GatheringSystem.GATHER_BLOCKING</c>.
         ///
-        /// <para>The ledger entry expected a per-tick construction accrual to gate, mirroring the gather loop. There
-        /// is none: <see cref="TickConstruction"/> runs a per-BUILDING <see cref="BuildingStore.ConstructionTimer"/>
-        /// that is never linked to a builder (the worker only walks to the site to clear its own Build command —
-        /// <see cref="TickWorkerArrival"/>), and <see cref="BuildingStore"/> carries no status channel of its own.
-        /// So the ONE moment a worker's status can reach construction at all is the ORDER: <see cref="QueueWorkerBuild"/>
-        /// spends the cost and starts the self-ticking timer in a single atomic act. Refusing there is what makes a
-        /// stun land on construction — it is exactly <c>AbilityCastSystem</c>'s DW-266 refusal shape (checked ahead of
-        /// every debit, so a refused order spends nothing and places nothing), not a new mechanic.</para>
+        /// <para>The ledger entry expected a per-tick construction accrual to gate, mirroring the gather loop. At the
+        /// time there was none; DW-937 has since linked worker-built sites to builder PRESENCE
+        /// (<see cref="TickConstruction"/>'s per-tick gate — positional, so a stunned builder standing at the site
+        /// still counts). This order-time refusal is still what keeps the ORDER itself atomic: refused ahead of
+        /// every debit, exactly <c>AbilityCastSystem</c>'s DW-266 refusal shape — no ore/crystal spent, no building
+        /// placed, nothing to unwind.</para>
         /// </summary>
         private const StatusFlags BUILD_BLOCKING = StatusFlags.Stunned | StatusFlags.Rooted;
 
@@ -175,7 +173,7 @@ namespace ProjectChimera.Economy
 
         public void Tick(EntityWorld world, Fixed dt)
         {
-            TickConstruction(dt);
+            TickConstruction(world, dt);
             RecalculateSupplyCaps();
             TickProduction(world, dt);
             TickWorkerArrival(world);
@@ -183,16 +181,63 @@ namespace ProjectChimera.Economy
 
         // ── Construction ──────────────────────────────────────────────────────
 
-        private void TickConstruction(Fixed dt)
+        /// <summary>
+        /// DW-937: scratch presence mask for <see cref="TickConstruction"/> — <c>_builderPresent[b]</c> = an assigned
+        /// builder (alive, <see cref="UnitCommand.Build"/>, <c>BuildTarget</c>→b) stands within
+        /// <see cref="WORKER_BUILD_ARRIVE_SQR"/> of site <c>b</c> this tick. DERIVED per tick from unit state, never
+        /// stored across ticks and never folded — both peers derive it identically from folded inputs.
+        /// </summary>
+        private readonly bool[] _builderPresent = new bool[BuildingStore.MAX_BUILDINGS];
+
+        private void TickConstruction(EntityWorld world, Fixed dt)
         {
+            // DW-937 presence pass: one ascending-id scan over units marks which sites have an arrived builder.
+            System.Array.Clear(_builderPresent, 0, _buildings.Count);
+            int hwm = world.HighWaterMark;
+            for (int i = 0; i < hwm; i++)
+            {
+                if (!world.IsAlive(i)) continue;
+                if (world.CommandState[i] != UnitCommand.Build) continue;
+                if (!_buildings.TryResolveRef(world.BuildTarget[i], out int b)) continue;
+                if (FixedVec3.SqrDistance(world.Position[i], _buildings.Position[b]) <= WORKER_BUILD_ARRIVE_SQR)
+                    _builderPresent[b] = true;
+            }
+
             for (int i = 0; i < _buildings.Count; i++)
             {
                 if (!_buildings.Alive[i]) continue;
                 if (_buildings.ConstructionTimer[i] <= Fixed.Zero) continue;
 
+                // DW-937 (the WC3 model): a WORKER-BUILT site only makes progress while its builder stands at it —
+                // the timer waits during the walk, pauses if the builder is pulled away, and resumes when a builder
+                // in Build state is present again. Direct placements (RequiresBuilder=false: scenario/editor/debug
+                // buildings, which have no builder by design) self-tick exactly as before DW-937.
+                if (_buildings.RequiresBuilder[i] && !_builderPresent[i]) continue;
+
                 _buildings.ConstructionTimer[i] -= dt;
                 if (_buildings.ConstructionTimer[i] < Fixed.Zero)
                     _buildings.ConstructionTimer[i] = Fixed.Zero;
+
+                // DW-937: construction COMPLETED this tick — release every assigned builder back to the gather
+                // loop (this is where the pre-DW-937 arrival release moved to; the DW-520 carry-delivery resume
+                // inside ClearWorkerBuild is unchanged).
+                if (_buildings.ConstructionTimer[i] == Fixed.Zero && _buildings.RequiresBuilder[i])
+                    ReleaseBuildersOf(world, i);
+            }
+        }
+
+        /// <summary>DW-937: clear the Build command of every worker assigned to completed site
+        /// <paramref name="buildingId"/> (ascending-id, deterministic) — they resume gathering via the existing
+        /// <see cref="ClearWorkerBuild"/> disposal.</summary>
+        private void ReleaseBuildersOf(EntityWorld world, int buildingId)
+        {
+            int hwm = world.HighWaterMark;
+            for (int i = 0; i < hwm; i++)
+            {
+                if (!world.IsAlive(i)) continue;
+                if (world.CommandState[i] != UnitCommand.Build) continue;
+                if (_buildings.TryResolveRef(world.BuildTarget[i], out int b) && b == buildingId)
+                    ClearWorkerBuild(world, i);
             }
         }
 
@@ -1146,9 +1191,11 @@ namespace ProjectChimera.Economy
             Fixed.FromFloat(3f) * Fixed.FromFloat(3f);
 
         /// <summary>
-        /// Each tick: check workers whose CommandState is Build. If they have arrived
-        /// at their target site (or the target was destroyed), clear the Build command
-        /// and return them to gathering (GatherState.Idle).
+        /// Each tick: check workers whose CommandState is Build. A worker whose target was destroyed (or whose
+        /// target is already complete — a restored save edge) is released; a worker that has ARRIVED is anchored
+        /// at the site and HELD in the Build command until construction completes (DW-937 — the WC3 model;
+        /// completion release lives in <see cref="TickConstruction"/>). Pre-DW-937 this cleared the command on
+        /// arrival, which let the builder walk off while the site finished itself.
         /// </summary>
         private void TickWorkerArrival(EntityWorld world)
         {
@@ -1167,10 +1214,23 @@ namespace ProjectChimera.Economy
                     continue;
                 }
 
-                // Check proximity to building centre
+                // DW-937: target already complete (pre-DW-937 building finishing under a walking worker, or a
+                // restored save) — nothing left to build; release.
+                if (!_buildings.IsUnderConstruction(bId))
+                {
+                    ClearWorkerBuild(world, i);
+                    continue;
+                }
+
+                // Check proximity to building centre — an ARRIVED builder anchors at the site edge (DW-937): pin
+                // MoveTarget to its own position and drop the Moving flag so MovementSystem neither walks it into
+                // the footprint centre (the old MoveTarget) nor lets separation shove it out of presence range.
                 Fixed sqr = FixedVec3.SqrDistance(world.Position[i], _buildings.Position[bId]);
                 if (sqr <= WORKER_BUILD_ARRIVE_SQR)
-                    ClearWorkerBuild(world, i);
+                {
+                    world.MoveTarget[i] = world.Position[i];
+                    world.Flags[i]     &= ~EntityFlags.Moving;
+                }
             }
         }
 
@@ -1215,8 +1275,10 @@ namespace ProjectChimera.Economy
         ///
         /// Deducts ore, places the building under construction, assigns the Build
         /// command to the worker, and sets MoveTarget so MovementSystem walks them
-        /// to the site. Construction ticks automatically in TickConstruction —
-        /// the worker just needs to arrive to clear the command.
+        /// to the site. DW-937 (the WC3 model): the site's timer only advances while
+        /// the builder stands at it, and the builder is held in the Build command
+        /// until construction completes (pull it away and the site PAUSES; there is
+        /// no resume order yet — see the DW-937 ledger entry's follow-ups).
         ///
         /// Returns the new building ID, or -1 if placement failed (full store,
         /// insufficient ore, unmet prerequisites, or invalid worker).
@@ -1299,6 +1361,12 @@ namespace ProjectChimera.Economy
             world.CommandState[workerId] = UnitCommand.Build;
             world.MoveTarget[workerId]   = position;
             world.Flags[workerId]       |= EntityFlags.Moving;
+
+            // DW-937 (the WC3 model): a worker-BUILT site only makes construction progress while its builder
+            // stands at it (TickConstruction's presence gate), and the builder is HELD in the Build command until
+            // completion (TickWorkerArrival anchors it; TickConstruction releases it). Direct placements never set
+            // this — they have no builder by design and keep the pre-DW-937 self-ticking timer.
+            _buildings.RequiresBuilder[bId] = true;
 
             return bId;
         }

@@ -193,7 +193,10 @@ namespace ProjectChimera.Core.Persistence
             // lane stays length BCount (the strict per-lane validation contract), one lane per queue slot.
             ConstructionDuration, ProductionTimer, ProductionQueue, ProductionQueue1, ProductionQueue2, ProductionQueue3,
             ProductionQueue4, RallyX, RallyY, RallyZ, HasRally, TrainedCount,
-            RevivesHeroes, SellsItems, ShopRadius, Generation, COUNT
+            RevivesHeroes, SellsItems, ShopRadius, Generation,
+            // DW-937 (save format v6): worker-built sites need a present builder to advance construction; the flag
+            // must survive a save (re-deriving it on load is impossible once the builder was pulled away or died).
+            RequiresBuilder, COUNT
         }
 
         // ── ResourceNodeStore array positions. ──
@@ -371,7 +374,7 @@ namespace ProjectChimera.Core.Persistence
             var pq3 = A(BA.ProductionQueue3); var pq4 = A(BA.ProductionQueue4);
             var rx = A(BA.RallyX); var ry = A(BA.RallyY); var rz = A(BA.RallyZ);
             var hr = A(BA.HasRally); var tc = A(BA.TrainedCount); var rh = A(BA.RevivesHeroes); var si = A(BA.SellsItems);
-            var srd = A(BA.ShopRadius); var gen = A(BA.Generation);
+            var srd = A(BA.ShopRadius); var gen = A(BA.Generation); var rb = A(BA.RequiresBuilder);
             BDefinitionId = new string[n]; BShopStock = new string[n][];
             for (int i = 0; i < n; i++)
             {
@@ -386,6 +389,7 @@ namespace ProjectChimera.Core.Persistence
                 rx[i] = b.RallyPoint[i].X.Raw; ry[i] = b.RallyPoint[i].Y.Raw; rz[i] = b.RallyPoint[i].Z.Raw;
                 hr[i] = b.HasRallyPoint[i] ? 1 : 0; tc[i] = b.TrainedCount[i]; rh[i] = b.RevivesHeroes[i] ? 1 : 0;
                 si[i] = b.SellsItems[i] ? 1 : 0; srd[i] = b.ShopRadius[i].Raw; gen[i] = b.Generation[i];
+                rb[i] = b.RequiresBuilder[i] ? 1 : 0; // DW-937 (v6)
                 BDefinitionId[i] = b.DefinitionId[i] ?? "";
                 // Review fix: CLONE rather than alias the live string[]. Harmless on the disk path (serialization
                 // copies), but the in-memory CaptureFrom→RestoreInto path shared one mutable array with the sim in
@@ -777,7 +781,7 @@ namespace ProjectChimera.Core.Persistence
             var pq3 = G(BA.ProductionQueue3); var pq4 = G(BA.ProductionQueue4);
             var rx = G(BA.RallyX); var ry = G(BA.RallyY); var rz = G(BA.RallyZ);
             var hr = G(BA.HasRally); var tc = G(BA.TrainedCount); var rh = G(BA.RevivesHeroes); var si = G(BA.SellsItems);
-            var srd = G(BA.ShopRadius); var gen = G(BA.Generation);
+            var srd = G(BA.ShopRadius); var gen = G(BA.Generation); var rb = G(BA.RequiresBuilder);
             for (int i = 0; i < n; i++)
             {
                 b.Alive[i] = al[i] != 0; b.Position[i] = new FixedVec3(Fixed.FromRaw(px[i]), Fixed.FromRaw(py[i]), Fixed.FromRaw(pz[i]));
@@ -792,6 +796,7 @@ namespace ProjectChimera.Core.Persistence
                 b.RallyPoint[i] = new FixedVec3(Fixed.FromRaw(rx[i]), Fixed.FromRaw(ry[i]), Fixed.FromRaw(rz[i]));
                 b.HasRallyPoint[i] = hr[i] != 0; b.TrainedCount[i] = tc[i]; b.RevivesHeroes[i] = rh[i] != 0; b.SellsItems[i] = si[i] != 0;
                 b.ShopRadius[i] = Fixed.FromRaw(srd[i]); b.Generation[i] = gen[i];
+                b.RequiresBuilder[i] = rb[i] != 0; // DW-937 (v6)
                 b.DefinitionId[i] = i < BDefinitionId.Length ? BDefinitionId[i] : "";
                 // Clone on the way back out too, so a restored store never shares its stock array with this state
                 // object (which the caller may restore again, or keep).

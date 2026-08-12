@@ -88,6 +88,14 @@ namespace ProjectChimera.Core
         public readonly Fixed[]        ConstructionTimer;
         /// <summary>Total construction duration for the building type (seconds).</summary>
         public readonly Fixed[]        ConstructionDuration;
+        /// <summary>DW-937: true when this site's construction only advances while an assigned builder stands at it
+        /// (set by <c>BuildingSystem.QueueWorkerBuild</c> — the worker-built path; the WC3 model). False for direct
+        /// placements (scenario-authored / editor / debug-seam buildings have no builder by design and self-tick as
+        /// before). A NON-FOLDED placement constant (the DW-908/checksum-fold-timing rule: written once at creation,
+        /// never mutated mid-match — like <see cref="RevivesHeroes"/>); a divergence would surface transitively via
+        /// the folded <see cref="ConstructionTimer"/>. Default false; reset on every (re)allocation (the SoA-recycle
+        /// contract). Persisted as its own save lane (format v6).</summary>
+        public readonly bool[]         RequiresBuilder;
 
         // ── Production ─────────────────────────────────────────────────────────
         /// <summary>Seconds remaining until the HEAD training job finishes (0 = idle). One per building — only the
@@ -169,6 +177,7 @@ namespace ProjectChimera.Core
             ShopStock            = new string[MAX_BUILDINGS][];
             ShopRadius           = new Fixed[MAX_BUILDINGS];
             DefinitionId         = new string[MAX_BUILDINGS];
+            RequiresBuilder      = new bool[MAX_BUILDINGS];
         }
 
         /// <summary>Returns true while the building is still being constructed.</summary>
@@ -250,6 +259,9 @@ namespace ProjectChimera.Core
             // enum's canonical id, so every existing enum-backed building still resolves a stable DefinitionId.
             // Reset on EVERY (re)allocation (the SoA-recycle contract — mirrors RevivesHeroes/SellsItems above).
             DefinitionId[id]    = buildingId ?? TechTreeChecker.BuildingTypeId(type);
+            // DW-937: reset on EVERY (re)allocation (SoA-recycle contract). Default false = self-ticking
+            // construction (every direct-placement path); QueueWorkerBuild sets true after Create.
+            RequiresBuilder[id] = false;
             // Story 2.13 (AC3.2, Decision 6) — zero SupplyBonus on EVERY (re)allocation, BEFORE the switch. The
             // `default:` branch below does NOT set it, so a recycled slot that was a CommandCenter (SupplyBonus=10)
             // would otherwise leak +10 supply into a default-typed building — the SoA-recycle trap. The CommandCenter
@@ -340,6 +352,7 @@ namespace ProjectChimera.Core
             System.Array.Clear(RevivesHeroes);
             System.Array.Clear(SellsItems);           System.Array.Clear(ShopStock);
             System.Array.Clear(ShopRadius);           System.Array.Clear(DefinitionId);
+            System.Array.Clear(RequiresBuilder);      // DW-937 — pinned by StoreClearCompletenessTests
             System.Array.Clear(Generation);           System.Array.Clear(_freeList);
             _freeCount = 0;
             Count      = 0;

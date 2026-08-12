@@ -54,8 +54,13 @@ namespace ProjectChimera.Core.Persistence
         /// A v4 body carries the OLD lane ordering, so WITHOUT this bump the positional <c>A(EA.X, n)</c> addressing
         /// would silently MISALIGN every entity lane from RegenRate onward (RegenRate would read StatusFlags bytes, and
         /// so on). The bump makes a pre-15.12 save fail-closed at the header with the "older game version" message,
-        /// before any lane is read. Same reasoning as v2/v3/v4.</para></summary>
-        public const ushort FormatVersion = 5;
+        /// before any lane is read. Same reasoning as v2/v3/v4.</para>
+        ///
+        /// <para>v6 (DW-937): the building section gained the <c>RequiresBuilder</c> lane (worker-built sites only
+        /// advance construction while a builder is present), appended at the tail of the <c>SaveGameState.BA</c>
+        /// lane enum. A v5 body has one fewer building lane, so the positional addressing would misalign; the bump
+        /// makes a pre-DW-937 save fail-closed at the header. Same reasoning as v5.</para></summary>
+        public const ushort FormatVersion = 6;
 
         /// <summary>Max player slots in a persisted launch record — a fail-closed corruption bound on the slot count.</summary>
         public const int MaxSlots = 64;

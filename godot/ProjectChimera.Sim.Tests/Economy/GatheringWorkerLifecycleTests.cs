@@ -256,8 +256,10 @@ namespace ProjectChimera.Sim.Tests.Economy
                 "fixture assumption: the worker is walking home with a FULL load");
         }
 
-        /// <summary>Issue a build order, teleport the worker onto the site, and tick BuildingSystem so
-        /// <c>TickWorkerArrival</c> completes the order the way it does in a live match.</summary>
+        /// <summary>Issue a build order, teleport the worker onto the site, and drive construction to COMPLETION so
+        /// the worker is released the way it is in a live match. DW-937: arrival no longer clears the command — the
+        /// builder is HELD at the site until the building finishes (TickConstruction's completion release) — so this
+        /// helper fast-forwards the timer to its last tick instead of asserting an arrival release.</summary>
         private static void BuildAndArrive(Harness h, BuildingSystem buildSys, int worker, FixedVec3 site)
         {
             int bId = buildSys.QueueWorkerBuild(worker, BuildingType.Barracks, site,
@@ -266,7 +268,11 @@ namespace ProjectChimera.Sim.Tests.Economy
             Assert.Equal(UnitCommand.Build, h.World.CommandState[worker]);
 
             h.World.Position[worker] = site;      // MovementSystem isn't running in an isolated harness
-            buildSys.Tick(h.World, Dt);           // -> TickWorkerArrival -> ClearWorkerBuild
+            buildSys.Tick(h.World, Dt);           // arrival: the builder anchors at the site and is HELD (DW-937)
+            Assert.Equal(UnitCommand.Build, h.World.CommandState[worker]);
+
+            h.Buildings.ConstructionTimer[bId] = Dt; // fast-forward to the final construction tick
+            buildSys.Tick(h.World, Dt);              // completion -> TickConstruction releases via ClearWorkerBuild
             Assert.Equal(UnitCommand.Idle, h.World.CommandState[worker]);
         }
 

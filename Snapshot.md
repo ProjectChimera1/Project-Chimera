@@ -1,13 +1,13 @@
 ---
 project: Project Chimera
-last_touched: 2026-08-11
+last_touched: 2026-08-12
 phase: Phase 5 — Polish & 1.0
 status: Active
 ---
 
 # Project Chimera — Snapshot
 
-**Last Touched:** `2026-08-11`
+**Last Touched:** `2026-08-12`
 
 ## Current Phase
 **Phase 5 — Polish & 1.0** (Months 25-31 of GDD roadmap)
@@ -72,6 +72,41 @@ added for exactly this and turn DW-911(b) from a hypothesis into a number.
 ---
 
 *Session type: bmad (prescribed workflow in active execution)*
+
+---
+
+## Current State (2026-08-12) — read this first
+
+**THE NETWORK SAGA IS RESOLVED — Alec played a full interactive match ("buildings and army going around
+attacking") with steady pings on BOTH machines and NOT A SINGLE STUTTER.** The fix was three layers of netcode
+plus one cable: DW-933 (jitter-aware delay: dictate from smoothed + 4·jitter, the TCP-RTO shape), DW-934 (the
+`network_stability` settings knob: responsive/balanced/stable → delay floor 2/6/9 ticks, read by the HOST
+machine's server at start — the WC3 fixed-cushion answer), and the decisive physical finding: **the PC tower sat
+at Wi-Fi range edge, so every packet crossed TWO radios; wiring the PC to the router with Ethernet ended the
+stalls outright.** The first stable-floor match log had confirmed the diagnosis: the delay rode the 9↔12 CEILING
+all match — the link was producing near-second excursions beyond even MAX_DELAY's cover. Gameplay-feel note:
+with the PC wired, `stable` (300 ms) is unnecessary lag — Alec can drop back to `responsive` in settings.json.
+
+Two gameplay defects Alec reported from the working match are FIXED, TESTED, and ride the next pull:
+
+| DW | What happened |
+|---|---|
+| **DW-933** (new, closed) | Delay dictates cover the RTT swing band, not just its mean (per-slot jitter EWMA, RFC 6298; zero-seeded so steady links are byte-identical). 6 Tier-1 pins incl. a mirrored-EWMA exact-equality. Field-supported by the smooth 08-12 match. |
+| **DW-934** (new, closed) | `network_stability` setting (settings schema 3→4) → server-side delay floor via `DelayController.StabilityFloorTicks`; host's settings.json governs; `[Server] Network stability floor:` boot line confirms. Field-run 2026-08-12: floor took, one 4→9 grow at t63, 69/69 determinism windows. |
+| **DW-935** (new, closed pending field verify) | Dedicated-path match chat no longer double-renders for the sender (the DW-419 lobby bug, alive in MatchChatOverlay — echo now P2P-only). Verify: send a chat next match, it must appear ONCE. |
+| **DW-936** (new, closed) | **Attack-move is WC3-correct**: units NOTICE enemies within a 12u acquisition radius (was: weapon range only — armies ran straight past fights), divert/chase into weapon range, engage, resume the march on kill or leash-escape. 6 Tier-1 pins; command-vocabulary golden re-recorded (its scenario exercises AttackMove — the one deliberate golden move). |
+| **DW-937** (new, closed) | **Builders are tied up by construction (WC3 model)**: a worker-built site advances ONLY while its builder stands at it (timer waits for the walk, pauses if pulled away, resumes on return), the builder is HELD in the Build command until completion, then released to gather. Direct placements (scenario/editor) self-tick as before — golden-neutral by construction. `BuildingStore.RequiresBuilder` lane → **save format v5→6** (old saves fail closed). 5 Tier-1 pins. |
+
+Tier-1: **6431 / 0 / 1** (08-11 baseline 6404 → +10 DW-933/934, +6 DW-936, +5 DW-937, +5 settings, +1 net test
+churn). Full solution builds clean. Master pushed through the DW-936/937 commit.
+
+**Next session / next match:** (1) both machines pull + rebuild + relaunch — Alec field-tests attack-move,
+builder commitment, and single-render chat; (2) consider `responsive` now the PC is wired; (3) DW-924 (frame
+bursts) is STILL OPEN — network-led stalls are gone, so any residual banner is now a clean DW-924 signal; the
+all-local experiment queue (reboot-retest → MPO kill switch → PresentMon) stands; (4) follow-up candidates filed
+in the DW-936/937 ledger entries: per-unit `acquisition_range` authoring, Patrol acquisition parity, a
+resume-construction order for orphaned sites (+ cancel-with-refund), and the Michigan↔New-Hampshire internet
+match prep (port-forward UDP 7777, an export/build story for the brother's machine, no-reconnect caveat).
 
 ---
 
