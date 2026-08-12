@@ -174,6 +174,22 @@ namespace ProjectChimera.Multiplayer
         /// tick and silently break adaptive delay.</summary>
         private uint _latestSeenTick;
 
+        /// <summary>
+        /// DW-410 — the FREEZE-deadline clock: a monotonic, sim-rate (30 Hz) tick counter accumulated from
+        /// <see cref="_Process"/>'s frame delta, used solely to bound a pending drop directive's un-ACKed window
+        /// (<see cref="Server.DropCoordinator.CheckAckTimeout"/>). It deliberately is NOT
+        /// <see cref="_latestSeenTick"/>: an uncommitted freeze is exactly what stalls the merged fan-in, so the
+        /// submission frontier advances at most `delay` ticks past the stall and then plateaus — a deadline measured
+        /// against it could never elapse and the whole guard would be inert. Server-local, never on the wire and never
+        /// folded into <c>SimChecksum</c> (the same posture as the delay authority's wall-clock RTT samples), so
+        /// deriving it from frame time is not a determinism concern. Reset with the match, alongside the controllers.
+        /// </summary>
+        private double _freezeClockTicks;
+
+        /// <summary>Sim ticks per second — the rate <see cref="_freezeClockTicks"/> accumulates at, so
+        /// <see cref="Server.DropController.ACK_TIMEOUT_TICKS"/> means the 10 s it is documented to mean.</summary>
+        private const double SIM_TICKS_PER_SEC = 30.0;
+
         // ── Story 1.9a: server authority ───────────────────────────────────────────
 
         /// <summary>
@@ -312,6 +328,15 @@ namespace ProjectChimera.Multiplayer
             if (_delayController.CheckAckTimeout(_latestSeenTick, out int toDelay, out uint toApplyAt))
                 GD.Print($"[Server] Delay ACK timeout — force-committing {toDelay} ticks at tick {toApplyAt} " +
                          "(reliable transport implies delivery; a genuine drop is excused on the freeze path).");
+
+            // DW-410: the same bound on the FREEZE directive, pumped right beside it. Without it, one survivor that is
+            // transport-connected but hung never ACKs, the freeze never commits, FrozenSlotInjector never runs, and
+            // every other survivor + spectator stalls for the rest of the match. The clock is the sim-rate freeze
+            // clock, NOT _latestSeenTick — see _freezeClockTicks for why the stalled submission frontier cannot be it.
+            _freezeClockTicks += delta * SIM_TICKS_PER_SEC;
+            if (_dropCoordinator != null && _dropCoordinator.CheckAckTimeout((uint)_freezeClockTicks))
+                GD.Print("[Server] Drop ACK timeout — force-committed the pending freeze over the survivors that " +
+                         "ACKed; any survivor that never ACKed is now being dropped in turn. Match continues.");
 
             // PATCH 1a: the confirmed high-water = the tick through which the merged fan-in has emitted (all players
             // submitted past it). It gates directive pipelining so a new directive is not issued until the prior one
@@ -735,6 +760,7 @@ namespace ProjectChimera.Multiplayer
                 // mid-interval ping accumulator. The probe seq resets implicitly: it lives in the new controller.
                 _latestSeenTick = 0;
                 _sincePing      = 0;
+                _freezeClockTicks = 0; // DW-410 — the freeze deadline clock is a sibling of the controllers
 
                 // Story 9.6 / DW-411: stand up the Godot-free freeze decision glue alongside the fan-in + delay
                 // authority. This node only supplies the seams: the builder's emitted high-water (applyAtTick

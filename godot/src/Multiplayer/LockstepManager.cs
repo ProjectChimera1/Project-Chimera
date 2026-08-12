@@ -925,6 +925,14 @@ namespace ProjectChimera.Multiplayer
 
         private void SeedInitialTicks()
         {
+            // DW-598: wipe the ring FIRST. Only ticks 0.._currentDelay-1 are re-seeded below, so every slot above the
+            // bootstrap gap would otherwise still carry the PREVIOUS match's arrival — and because both matches count
+            // from tick 0, that stale occupant sits in the right slot with the right _tickFor, so the wrong-tick
+            // demotion never sees it: the new match's gate would open on the old match's commands. The mirror failure
+            // is a stale _localSent, which suppresses a real bundle the new match does need to send. Latent today
+            // (a scene reload builds a fresh manager per match) — this makes reuse SAFE, not merely unreachable.
+            _ring.Clear();
+
             // Story 9.3: the first REAL merged packet the server can emit is for tick == _currentDelay (the first
             // issueTick both clients send). Ticks 0.._currentDelay-1 therefore have no merged packet and are
             // pre-seeded empty (len 0 → the applier no-ops) so the sim can advance through the bootstrap gap

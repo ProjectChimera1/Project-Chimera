@@ -111,6 +111,34 @@ namespace ProjectChimera.Multiplayer
         /// <summary>Release <paramref name="tick"/>'s arrival flag after its payload was applied (the slot recycles).</summary>
         internal void ConsumeArrival(uint tick) => _arrived[Mod(tick)] = false;
 
+        // ── Match lifecycle (DW-598) ──────────────────────────────────────────
+
+        /// <summary>
+        /// DW-598 — wipe every slot back to the fresh-ring state (nothing arrived, nothing sent, no payload). Called
+        /// at match start (<c>LockstepManager.SeedInitialTicks</c>, BEFORE <see cref="SeedBootstrap"/>) so a reused
+        /// manager can never satisfy a NEW match's gate with an OLD match's arrival.
+        ///
+        /// <para>The hazard the wipe closes: the ring is keyed by <c>tick &amp; (BUFFER_SIZE-1)</c> and both matches
+        /// start at tick 0, so a prior match's packet for tick T sits in the SAME slot a new match's tick T needs,
+        /// with the SAME <c>_tickFor</c> value — the wrong-tick demotion that protects against wraparound is blind to
+        /// it, because the tick number genuinely matches. <see cref="IsReady"/> would then pass on stale commands and
+        /// <c>MergedTickApplier</c> would apply the previous match's orders. A stale <c>_localSent</c> is the mirror
+        /// failure: the client would believe it already sent that issue tick and silently emit no bundle for it.</para>
+        ///
+        /// <para>Latent (not live) today only because a scene reload builds a fresh <c>MainScene</c> and a fresh
+        /// manager per match; this makes ring reuse SAFE rather than merely unreachable. Length lanes are wiped too
+        /// so a stale non-zero <see cref="LenFor"/> can never be read behind a cleared arrival flag — the payload
+        /// BYTE buffers are left alone deliberately: they are only ever read through <see cref="LenFor"/>, and
+        /// re-zeroing 16 × MERGED_MAX_BYTES would allocate nothing but cost a needless memset at every match start.</para>
+        /// </summary>
+        internal void Clear()
+        {
+            Array.Clear(_localSent, 0, BUFFER_SIZE);
+            Array.Clear(_arrived,   0, BUFFER_SIZE);
+            Array.Clear(_tickFor,   0, BUFFER_SIZE);
+            Array.Clear(_len,       0, BUFFER_SIZE);
+        }
+
         // ── Seeding (formerly SeedInitialTicks + CommitDelayChange's gap loop) ─
 
         /// <summary>

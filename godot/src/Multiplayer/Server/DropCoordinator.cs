@@ -25,6 +25,11 @@ namespace ProjectChimera.Multiplayer.Server
     /// the survivor-less case: when no player remains connected the outcome is
     /// <see cref="DisconnectOutcome.MatchOver"/> and the adapter ends the match (terminal MATCH SUMMARY).</para>
     ///
+    /// <para>DW-410 — <see cref="CheckAckTimeout"/> is the freeze's LIVENESS fallback, pumped once per server frame
+    /// beside the delay authority's. DW-409 handles a survivor that leaves; this handles one that stays connected but
+    /// hung, which nothing prunes: the deadline force-commits the freeze over the ACKing survivors and escalates the
+    /// silent ones to their own freezes so the merged fan-in stops waiting on them.</para>
+    ///
     /// <para>Everything here is tick-counted / slot-indexed pure C# — no Godot, no wall-clock, nothing folded into
     /// <c>SimChecksum</c>.</para>
     /// </summary>
@@ -149,6 +154,48 @@ namespace ProjectChimera.Multiplayer.Server
                 return DisconnectOutcome.Queued;
             }
             return IssueDirective(slot) ? DisconnectOutcome.DirectiveIssued : DisconnectOutcome.Ignored;
+        }
+
+        /// <summary>
+        /// DW-410 — pump the pending freeze's ACK deadline (call it once per server frame, beside the delay
+        /// authority's <c>DelayController.CheckAckTimeout</c>). When a survivor stays transport-connected but hung it
+        /// is never pruned by <see cref="OnPlayerDisconnect"/> and never ACKs, so the freeze would otherwise stay
+        /// pending forever and every other survivor plus every spectator would stall. On expiry this:
+        /// <list type="number">
+        ///   <item>FORCE-COMMITS the pending freeze over the survivors that did ACK (the commit seam runs, exactly as
+        ///     on the all-ACKed path, so the checksum quorum drops the slot and frozen injection starts), and</item>
+        ///   <item>treats every survivor that did NOT ACK as itself dropped — each is queued for its own freeze, so
+        ///     the merged fan-in stops waiting on a peer that is no longer feeding it and the match CONTINUES. That
+        ///     is the WC3 floor: the wait expires and play resumes, rather than one hung client ending everyone's
+        ///     game.</item>
+        /// </list>
+        /// Then the next queued directive is issued (the hung slots' among them), with a fresh applyAtTick read from
+        /// the post-pump frontier — the same ordering the ACK path uses.
+        ///
+        /// <para><paramref name="currentTick"/> is the caller's monotonic freeze-deadline clock; see
+        /// <see cref="DropController.CheckAckTimeout"/> for why it must NOT be the merged-emission frontier.</para>
+        /// </summary>
+        /// <returns><c>true</c> when a freeze was force-committed on this call.</returns>
+        public bool CheckAckTimeout(uint currentTick)
+        {
+            if (!_controller.CheckAckTimeout(currentTick, out int committedSlot, out _, out int[] hungSurvivors))
+                return false;
+
+            _onFreezeCommitted(committedSlot);
+
+            // Escalate the hung survivors to their own freezes (ascending slot — the deterministic order
+            // CheckAckTimeout reports them in). Queued rather than issued directly so exactly ONE directive is in
+            // flight at a time, the same invariant the DW-409 concurrent-drop queue holds; IssueNextQueued below
+            // starts the first of them.
+            foreach (int slot in hungSurvivors)
+            {
+                if ((uint)slot >= (uint)_playerCount) continue;
+                if (_controller.IsFrozen(slot) || _queuedDrops.Contains(slot)) continue;
+                _queuedDrops.Add(slot);
+            }
+
+            IssueNextQueued();
+            return true;
         }
 
         /// <summary>
