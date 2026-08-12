@@ -159,6 +159,19 @@ namespace ProjectChimera.Core.Definitions
         public int        PeriodTicks;                        // persistent
         public int        PeriodCount;                        // persistent
 
+        /// <summary>
+        /// DW-323 — <c>persistent.lifelong</c> (Story 2.13): the flag that RE-ARMS the periodic pulse budget so a
+        /// permanent HoT/DoT keeps pulsing past the <c>EffectCaps.MaxPersistentPeriods</c> window instead of expiring
+        /// at it.
+        /// <para>Its absence here was silent DATA LOSS, not a missing feature: <see cref="ToEffectNode"/> built its
+        /// <see cref="PersistentEffect"/> with <c>lifelong</c> defaulted to false and <see cref="FromEffectNode"/>
+        /// never captured it, so opening a lifelong ability (the shipped <c>furnace_trickle</c> /
+        /// <c>furnace_pour</c>) in the Advanced composer and saving STRIPPED the flag — re-introducing the 256-pulse
+        /// defect Story 2.13 fixed, invisibly. The validator could not catch it either: it only rejects a lifelong
+        /// WITHOUT a period, never a period that lost its lifelong.</para>
+        /// </summary>
+        public bool       Lifelong;                           // persistent
+
         // ── Container slots ──
         public readonly List<DraftNode> Children = new();     // sequence (≥1, ≤8 by the validator/caps)
         public DraftNode? Child;                              // search_area (required)
@@ -194,6 +207,7 @@ namespace ProjectChimera.Core.Definitions
             DamageType = DamageType.Normal;
             Filter = TargetFilter.Enemy;
             PeriodTicks = PeriodCount = 0;
+            Lifelong = false;                                 // DW-323 — cleared with the rest of the persistent slots
             Modifier = new DraftModifier();
 
             // A couple of UX-friendly non-zero seeds (authoring defaults only; the validator remains the gate).
@@ -242,7 +256,7 @@ namespace ProjectChimera.Core.Definitions
                 case DraftKind.Persistent:
                     return new PersistentEffect(
                         Initial?.ToEffectNode(), Period?.ToEffectNode(), Expire?.ToEffectNode(),
-                        PeriodTicks, PeriodCount);
+                        PeriodTicks, PeriodCount, Lifelong);   // DW-323 — lifelong is carried, not defaulted away
 
                 case DraftKind.Opaque:
                     // DW-903: hand back the very node we were loaded from. EffectNodes are immutable, so sharing the
@@ -291,6 +305,7 @@ namespace ProjectChimera.Core.Definitions
                     return new DraftNode
                     {
                         Kind = DraftKind.Persistent, PeriodTicks = e.PeriodTicks, PeriodCount = e.PeriodCount,
+                        Lifelong = e.Lifelong,                 // DW-323 — the inverse of ToEffectNode (round-trips unchanged)
                         Initial = e.InitialEffect is null ? null : FromEffectNode(e.InitialEffect),
                         Period  = e.PeriodEffect  is null ? null : FromEffectNode(e.PeriodEffect),
                         Expire  = e.ExpireEffect  is null ? null : FromEffectNode(e.ExpireEffect),
