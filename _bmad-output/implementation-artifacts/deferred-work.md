@@ -6254,7 +6254,8 @@ origin: workflow burn-down run, 2026-08-05
 location: godot/ProjectChimera.Sim.Tests/Meta/VersionStampConsistencyTests.cs
 severity: medium
 reason: That file's own doc calls it 'the SINGLE place that pins the project's cross-version / cross-peer COMPATIBILITY stamps so none can drift silently', and it pins ReplayRecorder.VERSION, the protocol version, the scenario schema version and five hash AlgoVersions - but NOT the .chsav save format version, which is exactly such a stamp. The DW-581 bundle bumped SaveGameFile.FormatVersion 1 -> 2 and no guard forced a conscious checkpoint, so the next bump will be equally silent (and a silent bump is worse than a loud one: it decides, unreviewed, whether every existing save on disk still loads). Deliberately not done inside the DW-581 lane because that test file is a shared Tier-1 meta-guard other bundles in the same wave may be editing, and pinning a stamp in the same commit that bumps it is bookkeeping, not the lane's work. Closure = add an ExpectedSaveFormatVersion pin beside ExpectedReplayFormatVersion.
-status: open
+status: done 2026-08-12
+resolution: Story 15-21 rider. SaveGameFile.FormatVersion is now pinned in VersionStampConsistencyTests (ExpectedSaveFormatVersion, bumped 6->7 in the same commit for the two appended hero attribute lanes) — a lane-enum edit without its bump now fails the stamp test instead of silently misaligning old saves.
 
 ### DW-769: ScenarioDirector.LoadScenario has no building-ref backstop for EITHER trigger channel, so the gate/backstop parity posture is broken for this one rule class
 origin: workflow burn-down run, 2026-08-05
@@ -7144,7 +7145,8 @@ source_spec: `_bmad-output/implementation-artifacts/spec-15-12-energy-stack-mech
 location: godot/src/Core/Definitions/UnitDefinition.cs (`regen_rate`, no validator) + godot/src/Effects/EnergyRegenSystem.cs (`Tick` guard is `r.Raw == 0`)
 severity: low
 reason: `EnergyRegenSystem.Tick` early-outs only when the seam returns exactly `Raw == 0`, so a negative authored `regen_rate` passes the guard and does `Energy = clamp(Energy + negative, 0, MaxEnergy)` — a silent per-tick energy DRAIN presenting as "abilities randomly unavailable," with no load-time rejection, documentation, or test. Symmetrically, `regen_rate>0` on a unit with `max_energy=0` is silently inert (clamp pins Energy to [0,0]). Neither is validated or warned — inconsistent with this story's own theme of surfacing inert/footgun authoring. Evidence: adversarial + edge-case lenses; confirmed the guard and the absence of any `regen_rate` check in the unit-definition validators. Low severity (no shipped unit authors a non-zero regen_rate; the drain is only reachable by an authoring typo). Fix is a design call (reject/clamp negatives, or document them as intentional decay; warn on `regen_rate>0 && max_energy<=0`).
-status: open
+status: done 2026-08-12
+resolution: Story 15-21 rider. regen_rate now runs the same CheckStat [0, Range) authoring gate as its max_energy sibling (UnitDefinitionValidator) — a negative rate (silent per-tick drain) or non-finite value is rejected fail-closed. The regen>0-with-max_energy=0 combo stays VALID by decision: an inert-but-harmless intermediate authoring state, not an error.
 
 ### DW-890: energy-regen golden's "CROSS-PLATFORM SAFE / NOT Windows-gated" claim rests on an untested premise (empty-Player2 float AI is effect-inert)
 origin: deferred by review of `_bmad-output/implementation-artifacts/spec-15-12-energy-stack-mechanics.md`, 2026-08-07

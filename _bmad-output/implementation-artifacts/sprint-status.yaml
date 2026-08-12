@@ -355,7 +355,7 @@ development_status:
   #   model, seeded with modern ARPG presets (WC3/PoE/D3/D4/Last Epoch/Grim Dawn/Torchlight), full implementation.
   #   15-12 builds FLAT regen only and must leave a seam this story drives. SEQUENCE AFTER 15-12.
   #   Folds SimChecksum AND CanonicalModelHash — two more distinct golden movements, isolate per the fold rule.
-  15-21-creator-authorable-hero-attribute-system: backlog
+  15-21-creator-authorable-hero-attribute-system: done
   # ── RE-SHAPED 2026-08-06 (planning-artifacts/sprint-change-proposal-2026-08-06.md; Alec approved).
   #   PROBLEM: 12 of the 21 keys were thematic multi-DW sweep CONTAINERS (a theme name + a bundle
   #   list, no named deliverable). The burn-down executes DW bundles and closes ledger ids — it never

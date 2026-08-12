@@ -75,7 +75,40 @@ added for exactly this and turn DW-911(b) from a hypothesis into a number.
 
 ---
 
-## Current State (2026-08-12) — read this first
+## Current State (2026-08-12, SESSION 2 — Epic 15 close) — read this first
+
+**EPIC 15'S ACTIONABLE STORIES ARE DONE — 15-23 and 15-21 both shipped, adversarially reviewed, and
+in-engine verified this session** (interactive ultracode; bmad updated to @next 6.11.1-next.3 first — note
+`bmad-build` now supersedes dev-story/quick-dev as the official implementation skill). 15-1 (reconnect) and
+15-14 (DW-200 trust mechanism) stay `blocked` awaiting Alec's decisions — with those two rulings Epic 15
+can be closed entirely and the next epic is **Epic 10 — Release Readiness** (the standing agreement).
+
+| Story | What shipped |
+|---|---|
+| **15-23** (DW-775) | **Generation-validated entity references.** Every cross-tick raw entity id is now a packed, generation-stamped ref: targeting refs (AttackTarget, CommandTarget entity halves, order-queue payloads, PendingCastTarget, BuyItem's buyer, ProjectileStore.TargetId, DSL batched-loop rows) pack at ISSUE — the AttackBuilding/PickupItem wire convention — and resolve at consumption, so a recycled slot reverts/refuses/drops instead of being silently inherited; attribution refs (SourceId, modifier casters, KillerOf/DeathLog + the DW-548 carry rail, unit_damaged's attacker) use the new `TryResolveRefIncludingDead` — a dead attacker keeps its kill credit, a recycled slot degrades to −1. Both DW-775 pinned tests consciously flipped. **SimChecksum.AlgoVersion 24→25** (fold VALUE semantics only; gen-0 packing is bit-identical — the coverage-guard pin 0x32911831 deliberately did NOT move; all 31 goldens re-recorded header-only, ZERO payload movement measured). **PROTOCOL_VERSION 3→4, replay format 5→6, saves fail-closed** (DW-874 policy). 3-lens adversarial review applied in-story (BuyItem wire payload caught + fixed; Generation-overflow loud guard added; residuals re-filed as DW-945/946). Closes DW-775 + riders DW-869, DW-862; files DW-944. |
+| **15-21** (a+b) | **Creator-authorable hero attributes.** Faction-level `attribute_model` (declared attributes + derived-stat mapping; `"primary"` = the WC3 primary-feeds-damage rule) × per-hero `attributes` (primary/base/per_level auto-growth — the WC3 model, D-2). CLOSED 6-stat vocabulary (D-3): hp/dmg/armor/speed ride the existing hero-growth modifier channel; max_energy/energy_regen ride the 15.12 RegenPerTick seam. **ZERO new folded state — SimChecksum stayed 25, zero goldens moved** (attribute values are pure functions of folded Level). ContentHash 1→2 (the hero block left the allowlist — its curve was ALREADY sim-read since 3.13, a real closed handshake gap). SaveGameFile.FormatVersion 6→7. **7 shipped presets** (wc3/poe/diablo3/diablo4/last_epoch/grim_dawn/torchlight) under `resources/data/attribute-models/`. Editor: the Unit Card hero section gains preset picker + per-hero attribute rows + the derived-mapping editor, persisted via a targeted `attribute_model` root-key patch — **in-engine gate PASSED via the bridge** (WC3 preset values read back exactly; a SpinBox step defect caught and fixed during the gate). Riders closed: DW-889, DW-768. |
+
+**Deferral burn-down (the other half of Epic 15's charter):** a 20-verifier code-grounded triage swept all
+400 open ledger entries → 15 already-resolved + 5 superseded closed immediately (evidence-cited), 90
+quick-fixes partitioned into 13 bundles (worklist `.claude/workflows/dw-worklist-2026-08-12.json`), 135
+godot-coupled + 51 needs-decision + 73 keep-open-latent + 31 needs-bundle mapped for later passes. The
+13-bundle quick-fix burn-down (87 ids) is running via `chimera-dw-burndown` on the **integration branch
+`dw-burndown-2026-08-12`** (worktree `D:\Projects\Chimera-dw-integ` — deliberately OFF master). Ledger at
+session close: see the sign-off block appended below when the burn-down lands.
+
+**Tier-1 at last full run: 6504 pass / 0 fail / 1 skip** (baseline 6462 at session start). Release analyzer
+gate clean on every commit. **HANDSHAKE NOTE: SimChecksum 25 / ContentHash 2 / CanonicalModelHash 16 /
+PROTOCOL 4 / replay 6 / save format 7 — both LAN machines must pull+rebuild together (by design), and all
+pre-session saves/replays are fail-closed rejected.**
+
+**Decisions Alec owes (multiple choice in the session hand-off):** (1) 15-1 reconnect — build the v1
+command-log buffer vs keep deferred; (2) 15-14 / DW-200 trust mechanism; (3) ratify the three 15-21
+spec-pass defaults (heroes-only / authored auto-growth / closed stat vocabulary — all taken WC3-but-modern);
+(4) DW-945 (wire order SUBJECT id — the residual the 15-23 review surfaced) schedule now vs Epic 10.
+
+---
+
+## Current State (2026-08-12, session 1) — network saga resolution
 
 **THE NETWORK SAGA IS RESOLVED — Alec played a full interactive match ("buildings and army going around
 attacking") with steady pings on BOTH machines and NOT A SINGLE STUTTER.** The fix was three layers of netcode

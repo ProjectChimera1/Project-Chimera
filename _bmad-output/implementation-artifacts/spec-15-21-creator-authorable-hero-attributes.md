@@ -1,6 +1,31 @@
 # Spec 15-21 — Creator-authorable hero attribute system
 
-**Status:** in dev (2026-08-12, interactive ultracode session)
+**Status:** DONE 2026-08-12 (interactive ultracode session). Sim half commit `4bb9374b` (15-21a), editor
+half + in-engine gate in the following commit (15-21b). Tier-1 6504/0/1 at close; SimChecksum stayed 25
+(zero per-tick golden movement — the zero-new-folded-state design held); ContentHash 1→2 re-pinned;
+SaveGameFile.FormatVersion 6→7. Riders closed: DW-889 (regen_rate validation), DW-768 (FormatVersion pin).
+
+### In-Engine Gate (2026-08-12, godot-mcp bridge, this session)
+
+Drove the real editor end-to-end: CREATE → Unit Card Editor → Promote-to-Hero (ChimeraSwitch toggled) →
+ADVANCED → Attributes section renders the no-model hint → WC3 preset applied via the picker →
+str/agi/int base + per-level rows and the 6-rule derived-stat mapping editor appear → all six per-point
+values read back EXACTLY against wc3.json ([25.0, 0.0017, 0.3, 15.0, 0.0017, 1.0]) → zero editor errors.
+Verified against the authoring source with numbers, not appearance. Save was deliberately NOT clicked
+(shipped alpha_faction.json must not gain a model from a verification run); the Save path is Tier-1-pinned
+(SyncFactionAttributeModel round-trip). One defect found AND fixed during the gate: the mapping SpinBox's
+0.05 step snapped per-tick energy_regen coefficients to zero on display and edit — step is 0.0001 now,
+re-verified in-engine.
+
+### Deliberate v1 seams (recorded, not hidden)
+
+- Attribute-LIST editing (add/rename/remove declared attributes) is preset-or-raw-JSON for v1; renames
+  would need cascading updates into hero dicts + derived rules.
+- Attribute badges key to `attribute_model`, but the card panel's live badge pass runs the UNIT validator
+  (no faction context); model errors surface at Save/load (fail-closed) + Tier-1 instead.
+- `BalanceSuggestionApplier`'s two hand-enumerated `hero.*` switches do not cover `hero.attributes.*`
+  (nested dicts don't fit its numeric-leaf path model) — the AI balance flow can't target attributes yet.
+- Attributes apply to heroes only (D-1); non-hero units are an additive follow-up.
 **Story key:** `15-21-creator-authorable-hero-attribute-system`
 **Requirement (Alec, 2026-08-03):** "I want the creator to be able to easily implement their own attribute
 hero model. Our attributes should start off with standard latest top ARPG attribute lists as possibilities.
