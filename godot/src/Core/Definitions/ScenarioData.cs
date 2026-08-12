@@ -946,6 +946,33 @@ namespace ProjectChimera.Core.Definitions
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public float? BuildingMinGap { get; set; }
 
+        /// <summary>
+        /// DW-942 follow-up — the per-scenario FOG rule for in-match building placement: where may a player order
+        /// a building relative to their own fog of war? One of <c>"explored"</c> (the WC3 default — scouted grey
+        /// ground builds, black mask refuses) / <c>"visible"</c> (stricter — only currently-lit ground) /
+        /// <c>"anywhere"</c> (no fog restriction — blind expansion allowed). NULL ⇒ <c>"explored"</c>, key omitted
+        /// (the <see cref="BuildingMinGap"/> posture). Validated as a closed vocabulary when present.
+        /// DELIBERATELY NOT folded into <see cref="CanonicalModelHash"/>: fog is per-viewer presentation state and
+        /// this rule gates order ISSUE on the local client only — the sim never reads fog, so a (theoretical)
+        /// mismatch cannot desync; it is the Regions-class exclusion, the inverse of <see cref="BuildingMinGap"/>
+        /// (which gates exec-tick order ACCEPTANCE and therefore folds).
+        /// </summary>
+        [JsonPropertyName("placement_fog_rule")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? PlacementFogRule { get; set; }
+
+        /// <summary>DW-942: the closed <see cref="PlacementFogRule"/> vocabulary (validator + resolver share it).</summary>
+        public static readonly string[] KnownPlacementFogRules = { "explored", "visible", "anywhere" };
+
+        /// <summary>DW-942 — the single resolution boundary for <see cref="PlacementFogRule"/>: null/unknown ⇒
+        /// <c>"explored"</c> (the WC3 default; unknown is only shadow-mode-reachable — the validator fails it
+        /// closed), else the authored rule normalized to lower-case.</summary>
+        public static string ResolvePlacementFogRule(string? authored)
+        {
+            string a = (authored ?? "").Trim().ToLowerInvariant();
+            return System.Array.IndexOf(KnownPlacementFogRules, a) >= 0 ? a : "explored";
+        }
+
         /// <summary>DW-941: the default building gap when <see cref="BuildingMinGap"/> is omitted — 1.0 world unit,
         /// the WC3 grid feel (a pathable seam between adjacent buildings).</summary>
         public const float DEFAULT_BUILDING_MIN_GAP = 1.0f;

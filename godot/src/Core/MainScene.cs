@@ -114,6 +114,14 @@ namespace ProjectChimera.Core
         /// <summary>DW-942: the ghost's override material, kept so the per-frame validity tint (green = placeable,
         /// red = fog/terrain/overlap refusal) swaps a color instead of rebuilding the material.</summary>
         private StandardMaterial3D? _buildGhostMat;
+        /// <summary>DW-942 follow-up: the flat FOOTPRINT pad under the ghost — the authored nav_footprint rectangle
+        /// on the ground, so the exact occupied area reads regardless of the mesh's silhouette (the WC3 build grid's
+        /// role). Shares the ghost's material, so the validity tint covers both.</summary>
+        private MeshInstance3D? _buildGhostPad;
+        /// <summary>DW-942 follow-up: the ghost mesh's ground-anchor Y — the BuildingBridge rule
+        /// (<c>-aabb.min.Y * meshScale</c>), captured at placement-mode entry so the ghost stands exactly where
+        /// (and exactly as tall as) the real building will render.</summary>
+        private float _buildGhostBaseY;
         private static readonly Color GHOST_VALID_COL   = new Color(0.30f, 0.80f, 0.30f, 0.45f);
         private static readonly Color GHOST_INVALID_COL = new Color(0.90f, 0.18f, 0.12f, 0.55f);
 
@@ -1797,17 +1805,22 @@ namespace ProjectChimera.Core
             {
                 if (RaycastFloor(GetViewport().GetMousePosition(), out Vector3 ghostHit))
                 {
-                    // DW-942: the ghost sits EXACTLY where the building will land — Y = 0, the same ground plane
-                    // the placement order encodes (TargetX/TargetZ, Y always Fixed.Zero) and the same feet-pivot
-                    // transform the building renderer uses. The old +1.5 float made the promise read wrong on
-                    // every mesh (the DW-893 GLBs are feet-pivoted).
-                    _buildGhost.GlobalPosition = new Vector3(ghostHit.X, 0f, ghostHit.Z);
+                    // DW-942: the ghost sits EXACTLY where — and exactly as large as — the building will render:
+                    // BuildingBridge's transform rule (uniform MeshScale + base anchored to world Y=0 via the
+                    // captured -aabb.min.Y*scale), at the same ground point the placement order encodes.
+                    _buildGhost.GlobalPosition = new Vector3(ghostHit.X, _buildGhostBaseY, ghostHit.Z);
                     _buildGhost.Visible = true;
+                    if (_buildGhostPad != null)
+                    {
+                        // The footprint pad hugs the ground just above z-fighting range.
+                        _buildGhostPad.GlobalPosition = new Vector3(ghostHit.X, 0.04f, ghostHit.Z);
+                        _buildGhostPad.Visible = true;
+                    }
 
                     // DW-942: WC3-style validity tint — RED when the spot would be refused. Sim reasons (overlap +
                     // the DW-941 gap, blocked terrain) come from the SAME CanPlaceAt the order path runs (the
                     // ghost-is-a-promise rule); the fog reason is CLIENT-side only (per-viewer state — the sim
-                    // never reads fog): WC3 requires the spot to have been scouted, so unexplored ground is red.
+                    // never reads fog), governed by the scenario's placement_fog_rule (DW-942).
                     if (_buildGhostMat != null)
                         _buildGhostMat.AlbedoColor = IsGhostPlacementValid(ghostHit) ? GHOST_VALID_COL
                                                                                      : GHOST_INVALID_COL;
@@ -2381,7 +2394,31 @@ namespace ProjectChimera.Core
             // the shared Mesh resource would tint every OTHER instance of that building on the map too.
             _buildGhost.MaterialOverride = mat;
             _buildGhost.Visible  = false;
+            // DW-942 follow-up (2026-08-12 field report: "it's not actually the size of the building… there is
+            // still some guessing"): render the ghost at the EXACT transform the placed building will render at —
+            // BuildingBridge's rule verbatim: uniform def.MeshScale, base anchored to world Y=0 via
+            // -aabb.min.Y * scale. Before this the ghost ignored MeshScale entirely (raw GLB size) and floated at
+            // a fixed height — the ghost-is-a-promise trap, size edition.
+            float ghostScale  = ghostDef?.MeshScale ?? 1f;
+            _buildGhost.Scale = new Vector3(ghostScale, ghostScale, ghostScale);
+            _buildGhostBaseY  = -ghostMesh.GetAabb().Position.Y * ghostScale;
             AddChild(_buildGhost);
+
+            // DW-942 follow-up: the flat FOOTPRINT pad — the authored nav_footprint rectangle (the guarded 5×5
+            // default when unauthored, mirroring the sim's PlacementHalfExtents) laid on the ground, so the exact
+            // occupied area reads regardless of the mesh silhouette (the WC3 build-grid role). Shares the ghost's
+            // material: one tint covers both.
+            _buildGhostPad?.QueueFree();
+            float fpX = 5f, fpZ = 5f;
+            if (ghostDef != null && ghostDef.TryGetNavFootprint(out float nfx, out _, out float nfz))
+                { fpX = nfx; fpZ = nfz; }
+            _buildGhostPad = new MeshInstance3D
+            {
+                Mesh             = new PlaneMesh { Size = new Vector2(fpX, fpZ) },
+                MaterialOverride = mat,
+                Visible          = false,
+            };
+            AddChild(_buildGhostPad);
 
             string bName = _pendingBuildType switch
             {
@@ -2407,16 +2444,30 @@ namespace ProjectChimera.Core
             Faction f = _ctx.Lockstep?.EffectiveLocalFaction ?? Faction.Player1;
             var pos = new FixedVec3(Fixed.FromFloat(groundHit.X), Fixed.Zero, Fixed.FromFloat(groundHit.Z));
             if (!_buildSys.CanPlaceAt(_pendingBuildType, f, pos, _world)) return false;
-            if (_ctx.Fog != null && !_ctx.Fog.IsExplored(groundHit.X, groundHit.Z)) return false;
+
+            // DW-942: the fog arm obeys the scenario's authored placement_fog_rule (resolved onto the host at
+            // apply): "explored" = WC3 (scouted grey builds, black mask refuses), "visible" = only currently-lit
+            // ground, "anywhere" = no fog restriction (blind expansion allowed by the map's creator).
+            if (_ctx.Fog != null)
+            {
+                switch (_host.PlacementFogRule)
+                {
+                    case "visible":  if (!_ctx.Fog.IsVisible(groundHit.X, groundHit.Z))  return false; break;
+                    case "anywhere": break;
+                    default:         if (!_ctx.Fog.IsExplored(groundHit.X, groundHit.Z)) return false; break;
+                }
+            }
             return true;
         }
 
-        /// <summary>Exit placement mode, hide the ghost, and reset state.</summary>
+        /// <summary>Exit placement mode, hide the ghost (and its footprint pad, DW-942), and reset state.</summary>
         private void CancelBuildPlacement()
         {
             _pendingBuildWorkerId = -1;
             if (_buildGhost != null)
                 _buildGhost.Visible = false;
+            if (_buildGhostPad != null)
+                _buildGhostPad.Visible = false;
         }
 
         /// <summary>

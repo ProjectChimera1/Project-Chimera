@@ -1376,6 +1376,15 @@ namespace ProjectChimera.Core.Definitions
                     "(0 = footprint chaining allowed; the default when omitted is " +
                     $"{ScenarioData.DEFAULT_BUILDING_MIN_GAP}).");
 
+            // ── Placement fog rule (DW-942) — closed vocabulary, fail-closed when present (a typo'd rule would
+            // otherwise silently resolve to the default at apply). Null (every existing scenario) ⇒ "explored". ──
+            if (m.PlacementFogRule != null &&
+                System.Array.IndexOf(ScenarioData.KnownPlacementFogRules,
+                                     m.PlacementFogRule.Trim().ToLowerInvariant()) < 0)
+                return ValidationResult.Fail(
+                    $"scenario.placement_fog_rule='{m.PlacementFogRule}' is not a known rule " +
+                    $"({string.Join("/", ScenarioData.KnownPlacementFogRules)}).");
+
             // Story 7.7 (proof discipline): every check above passed — mint the proof-of-validation token HERE and
             // only here. This is the codebase's sole `new Validated<ScenarioData>` (ValidatedMintingTests scan).
             return ValidationResult.Pass(new Validated<ScenarioData>(m, _proof));

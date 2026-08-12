@@ -119,6 +119,13 @@ table). No golden moved in round 2. **Save compat note: round 1 already bumped s
 | **DW-941** (new, closed) | **`building_min_gap` scenario setting** — min clear distance between building footprints. Default 1.0u (the WC3 grid seam, now also the default in-match feel); author 0 for deliberate wall-chaining. Omit-when-null (existing scenarios byte-identical), validated fail-closed, resolved once at apply, **folded into CanonicalModelHash (AlgoVersion 15→16)** — a lobby mismatch handshake-rejects. The bump re-pinned 16 AlgoVersion tests + 3 exact-value pins and re-recorded the mapgen JSON tripwire + hero-start-state golden (the same pair every AlgoVersion bump re-records). |
 | **DW-942** (new, closed) | **WC3-grade placement ghost** — sits exactly where the building lands (Y=0 feet-pivot, was floating +1.5u), tints RED over unexplored fog / blocked terrain / building overlap+gap, and an invalid click is refused with a denial cue while placement mode STAYS armed. Sim reasons live in the shared `BuildingSystem.CanPlaceAt` (one truth for order path + ghost — including the NEW blocked-terrain refusal, Tier-1 pinned); the fog reason is client-side only (per-viewer state — the sim never reads fog). |
 
+**ROUND 3b (ghost test feedback):** the ghost now renders at the building's TRUE size (BuildingBridge's
+transform rule verbatim: MeshScale + ground anchor) with a flat nav_footprint pad under it (the WC3 build-grid
+role — exact occupied area reads regardless of silhouette), and the fog gate is creator-authorable:
+`placement_fog_rule` = `explored` (default, WC3) / `visible` / `anywhere` — closed-vocab validated, resolved onto
+`SimulationHost.PlacementFogRule`, deliberately NOT hash-folded (client-issue-time only; pinned). Tier-1
+**6459/0/1**.
+
 **HANDSHAKE NOTE for the next match: CanonicalModelHash AlgoVersion is now 16 — both machines MUST pull+rebuild
 together or the lobby rejects (by design).** Alec's session-closing test covers the ghost + gap; then this
 session closes and the next epic begins (network saga done, laptop playtest green).

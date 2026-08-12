@@ -112,6 +112,42 @@ namespace ProjectChimera.Sim.Tests.Economy
 
         // ── DW-941: serialization — omit-when-null, round-trip when authored ────
 
+        // ── DW-942: the placement fog rule (creator option) ─────────────────────
+
+        [Theory]
+        [InlineData(null,        "explored")] // omitted → the WC3 default
+        [InlineData("explored",  "explored")]
+        [InlineData("visible",   "visible")]
+        [InlineData("anywhere",  "anywhere")]
+        [InlineData(" Visible ", "visible")]  // normalized (trim + case)
+        [InlineData("garbage",   "explored")] // unknown → default (shadow-mode only; the validator fails it closed)
+        public void ResolvePlacementFogRule_IsTotal(string? authored, string expected)
+        {
+            Assert.Equal(expected, ScenarioData.ResolvePlacementFogRule(authored));
+        }
+
+        [Fact]
+        public void PlacementFogRule_OmittedWhenNull_RoundTripsWhenAuthored()
+        {
+            var opts = new JsonSerializerOptions { WriteIndented = true };
+            Assert.DoesNotContain("placement_fog_rule", JsonSerializer.Serialize(new ScenarioData(), opts));
+
+            string authored = JsonSerializer.Serialize(new ScenarioData { PlacementFogRule = "anywhere" }, opts);
+            Assert.Contains("\"placement_fog_rule\"", authored);
+            Assert.Equal("anywhere", JsonSerializer.Deserialize<ScenarioData>(authored, opts)!.PlacementFogRule);
+        }
+
+        [Fact]
+        public void PlacementFogRule_DoesNotMoveTheCanonicalHash()
+        {
+            // The Regions-class exclusion, pinned: the rule gates order ISSUE on the local client only (the sim
+            // never reads fog), so two scenarios differing only in it MUST hash identically — folding it would
+            // false-reject lobbies over a value that cannot desync.
+            var a = new ScenarioData { MapBounds = 120f };
+            var b = new ScenarioData { MapBounds = 120f, PlacementFogRule = "anywhere" };
+            Assert.Equal(CanonicalModelHash.Compute(a), CanonicalModelHash.Compute(b));
+        }
+
         [Fact]
         public void BuildingMinGap_OmittedWhenNull_RoundTripsWhenAuthored()
         {

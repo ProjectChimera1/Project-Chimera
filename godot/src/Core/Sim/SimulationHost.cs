@@ -65,6 +65,12 @@ namespace ProjectChimera.Core.Sim
         // way (both go through the one ApplyUnitDefinition mapper).
         private System.Func<Definitions.UnitDefinition, Faction, Fixed, Fixed, int>? _reviveSpawnOverride;
 
+        /// <summary>DW-942: the scenario's RESOLVED placement fog rule ("explored"/"visible"/"anywhere" — see
+        /// <see cref="Definitions.ScenarioData.ResolvePlacementFogRule"/>), set by ScenarioApplier at apply and read
+        /// by the presentation placement gate (MainScene's ghost tint + click refusal). Carried on the host like
+        /// every other resolved scenario config; NEVER read by a sim system (fog is per-viewer presentation state).</summary>
+        public string PlacementFogRule { get; set; } = "explored";
+
         // ── Stores / field-held systems, exposed so callers read host truth (no parallel copies). ──
         public EntityWorld World { get; }
         public ResourceNodeStore Nodes { get; }

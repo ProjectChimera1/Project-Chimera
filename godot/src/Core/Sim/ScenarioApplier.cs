@@ -152,6 +152,9 @@ namespace ProjectChimera.Core.Sim
             // null-means-default and the clamp, and is the SAME one CanonicalModelHash folds).
             _host.BuildSys.MinBuildingGap =
                 Fixed.FromFloat(ScenarioData.ResolveBuildingMinGap(s.BuildingMinGap));
+            // DW-942: resolve the placement FOG rule onto the host for the presentation placement gate (ghost
+            // tint + click refusal). Never a sim input — fog is per-viewer state; see the ScenarioData field doc.
+            _host.PlacementFogRule = ScenarioData.ResolvePlacementFogRule(s.PlacementFogRule);
 
             // ── Story 6.3: thread the height-advantage vision toggle/bonus + the injected elevation grid into the
             //    EntityWorld BEFORE any spawn, so EntityWorld.Create (which every spawn path funnels through) samples
