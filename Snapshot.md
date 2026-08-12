@@ -132,11 +132,20 @@ PlaceBuilding cancels the old site first). The phased-in builder stays committed
 Known edge recorded: right-clicking your own under-construction site with its walking builder cancels rather
 than resumes — the resume order stays the filed follow-up. Tier-1 **6462/0/1**.
 
-**HANDSHAKE NOTE for the next match: CanonicalModelHash AlgoVersion is now 16 — both machines MUST pull+rebuild
-together or the lobby rejects (by design).** Alec's session-closing test covers the ghost + gap + walking-cancel;
-then this session closes and the next epic begins (network saga done, laptop playtest green). Next epic
-recommendation (already discussed): close Epic 15's two unblocked stories (15-21, 15-23), then **Epic 10 —
-Release Readiness** (playtest gates, perf/DW-924, AI float→Fixed, pathfinding bar, ship pipeline).
+**SESSION CLOSED 2026-08-12 — Alec's closing field test PASSED across the board ("tested and all working"):**
+attack-move (acquisition/chase/leash/buildings), phased builders + cancel button, placement overlap + the
+default grid seam, A+LMB / arrows-only controls, the true-size red/green ghost, and the walking-builder
+auto-cancel — all FIELD-CONFIRMED (ledger statuses updated). Still riding future matches: DW-935 (chat renders
+once — untested, nobody chatted), DW-925/928 online verify lines, and DW-924 (frame bursts) stays the open
+investigation with its all-local experiment queue.
+
+**NEXT SESSION (`/start`):** (1) close Epic 15 — `bmad-loop run --epic 15` picks up **15-21**
+(creator-authorable hero attributes) and **15-23** (generation-validated entity refs); 15-1/15-14 stay blocked
+on Alec's decisions. (2) Then **Epic 10 — Release Readiness** (the agreed next epic): playtest gates (10-15),
+perf pass folding in the DW-924 queue (10-2), AI float→Fixed / DW-204 (10-11, unblocks AI-fill + disconnect
+takeover), pathfinding quality bar (10-14), ship pipeline (10-8 — also what the Michigan↔New-Hampshire internet
+test needs). **HANDSHAKE NOTE: CanonicalModelHash AlgoVersion is 16 — both machines always pull+rebuild
+together or the lobby rejects (by design).**
 
 **Next session / next match:** (1) both machines pull + rebuild + relaunch — Alec field-tests attack-move,
 builder commitment, and single-render chat; (2) consider `responsive` now the PC is wired; (3) DW-924 (frame
