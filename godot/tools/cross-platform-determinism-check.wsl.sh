@@ -43,8 +43,14 @@ echo "[wsl] dotnet $(dotnet --version)  ($(uname -s -m))"
 unset CHIMERA_GOLDEN_RECORD 2>/dev/null || true
 
 # --- Sync a WSL-native clone of the source repo's committed HEAD --------------
-if [ ! -d "$SRC/.git" ]; then
-  echo "[wsl] ERROR: source repo not found at '$SRC' (expected a git work tree)." >&2
+# DW-556: test for a git work tree, NOT for a `.git` DIRECTORY. In a linked worktree (`git worktree add`)
+# `.git` is a FILE holding `gitdir: <path>`, so the old `[ ! -d "$SRC/.git" ]` refused every worktree
+# checkout — exactly the checkout shape the parallel burn-down track uses, forcing a hand-rolled fresh
+# clone to run this gate. `-e` accepts both shapes; the `rev-parse` keeps it a real repo check rather than
+# "some file called .git exists".
+if [ ! -e "$SRC/.git" ] || ! git -C "$SRC" rev-parse --git-dir >/dev/null 2>&1; then
+  echo "[wsl] ERROR: source repo not found at '$SRC' (expected a git work tree: a checkout with a .git" >&2
+  echo "[wsl]        directory, or a linked worktree whose .git is a gitdir FILE)." >&2
   exit 4
 fi
 # Safety: the throwaway clone dir must NEVER coincide with the source repo, or the
