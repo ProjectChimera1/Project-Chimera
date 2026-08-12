@@ -47,6 +47,9 @@ namespace ProjectChimera.Sim.Tests.Economy
         private static readonly FixedVec3 HomeNode = V(0, 8);    // the node the pre-fix sweep grabbed (nearest to the spawn)
         private static readonly FixedVec3 RallyPos = V(22, 0);   // where the player rallied
         private static readonly FixedVec3 FarNode  = V(24, 0);   // the mine BESIDE the rally point — the intended target
+        // DW-984 — a rally on the far side of an ordinary map (map_bounds 120-128 on every shipped scenario). ~283 u
+        // from the hall, i.e. entirely PAST the ~181 u range where FixedVec3.SqrDistance saturates at Fixed.MaxValue.
+        private static readonly FixedVec3 LongRally = V(200, 200);
 
         /// <summary>A faction with a Worker unit plus a Melee unit, an authored Custom worker producer
         /// (<c>worker_hall</c>) and a Barracks — the Story-6.8 shape that makes worker training reachable.</summary>
@@ -335,7 +338,7 @@ namespace ProjectChimera.Sim.Tests.Economy
 
             Assert.False(h.World.RallyMovePending[w]);
             Assert.Equal(0, h.World.RallyStandDownTicks[w]);                  // disarmed with the leg
-            Assert.Equal(Fixed.Zero.Raw, h.World.RallyGoalBestSqr[w].Raw);
+            Assert.Equal(0L, h.World.RallyGoalBestSqr[w]);
             Assert.Equal(GatherState.MovingToResource, h.World.GatherState[w]);
             Assert.Equal(home, h.World.GatherTarget[w]);
             Assert.Equal(1, h.Nodes.AssignedGatherers[home]);
@@ -405,6 +408,90 @@ namespace ProjectChimera.Sim.Tests.Economy
             Assert.True(FixedVec3.SqrDistance(h.World.Position[w], RallyPos) > ArrivalTuning.GoalArriveRadiusSqr);
             Assert.False(h.World.RallyMovePending[w]);
             Assert.NotEqual(GatherState.Idle, h.World.GatherState[w]);   // PRE-FIX: Idle forever
+            Assert.Equal(home, h.World.GatherTarget[w]);
+        }
+
+        // ── DW-984: the bound must not fire on a LONG leg, where SqrDistance saturates ─────────────────────
+
+        /// <summary>
+        /// DW-984 — DW-689's no-progress budget discarded the rally of a worker that was walking perfectly well,
+        /// on any leg longer than ~181 world units.
+        ///
+        /// <para><b>Mechanism.</b> The budget re-armed on <c>goalSqr &lt; RallyGoalBestSqr</c>, both read through
+        /// <c>FixedVec3.SqrDistance</c>, which SATURATES at <see cref="Fixed.MaxValue"/> — raw 32767.99 u², i.e.
+        /// sqrt(32768) = 181.019 units. Past that every separation is the same clamped value, so <c>&lt;</c> was
+        /// false on every tick, <c>++RallyStandDownTicks</c> ran unopposed, and after the 90-tick window the worker
+        /// was re-targeted to whatever node was nearest its MID-LEG position: exactly the DW-634 defect DW-689 was
+        /// chartered to bound without re-introducing. A worker covers ~12 units inside the window, so it could never
+        /// escape the clamp in time to save itself.</para>
+        ///
+        /// <para><b>Not a corner case.</b> <c>map_bounds</c> is 120–128 on every shipped scenario ⇒ 240–256-unit
+        /// spans, and rallying the town hall at a far mine or a new expansion is standard macro.</para>
+        /// </summary>
+        [Fact]
+        public void RalliedWorker_WalkingALongLeg_IsNeverReleased_WhereSqrDistanceWouldSaturate()
+        {
+            var h = NewHarness();
+            var (home, far) = TwoNodes(h);
+            int b = h.BuildSys.PlaceBuildingDirectById("worker_hall", Faction.Player1, HallPos, preBuilt: true);
+            Assert.True(h.BuildSys.SetRallyCommand(b, Faction.Player1, LongRally.X, LongRally.Z));
+            Assert.True(h.BuildSys.TrainUnit(b, h.Resources));
+            int w = SpawnNext(h);
+            Assert.True(w >= 0);
+            Assert.True(h.World.RallyMovePending[w]);
+
+            // FIXTURE PREMISE: the whole leg lies INSIDE the saturated band, so the clamped Fixed cannot tell any
+            // two ticks of it apart. Without this the test would pass on the pre-fix code for the wrong reason.
+            Assert.Equal(Fixed.MaxValue.Raw, FixedVec3.SqrDistance(h.World.Position[w], LongRally).Raw);
+
+            // Walk it at the shipped alpha worker's real pace (4 u/s at 30 tps), straight at the rally, for one and
+            // a half grace windows. MovementSystem is deliberately not in this harness: the point is that PROGRESS
+            // IS BEING MADE, not how the mover makes it.
+            FixedVec3 pos = h.World.Position[w];
+            Fixed step = Fixed.FromInt(4) / Fixed.FromInt(SimulationLoop.TICKS_PER_SECOND);
+            for (int t = 0; t < GatheringSystem.RALLY_STANDDOWN_GRACE_TICKS * 3 / 2; t++)
+            {
+                pos = new FixedVec3(pos.X + step, pos.Y, pos.Z + step);
+                h.World.Position[w] = pos;
+                h.Gathering.Tick(h.World, Dt);
+            }
+
+            // Still deep inside the saturated band — ~18 units covered of a ~283-unit leg.
+            Assert.Equal(Fixed.MaxValue.Raw, FixedVec3.SqrDistance(h.World.Position[w], LongRally).Raw);
+
+            // PRE-FIX every assertion below fails: the budget hit 90 and the rally was thrown away.
+            Assert.True(h.World.RallyMovePending[w]);
+            Assert.Equal(1, h.World.RallyStandDownTicks[w]);   // re-armed by real progress on every single tick
+            Assert.Equal(GatherState.Idle, h.World.GatherState[w]);
+            Assert.Equal(-1, h.World.GatherTarget[w]);
+            Assert.Equal(0, h.Nodes.AssignedGatherers[home]);
+            Assert.Equal(0, h.Nodes.AssignedGatherers[far]);
+            Assert.Equal(LongRally.X.Raw, h.World.MoveTarget[w].X.Raw);   // the player's rally SURVIVES
+        }
+
+        /// <summary>
+        /// The other half of DW-984: widening the metric must not blunt DW-689's teeth. A worker that is genuinely
+        /// STUCK at long range — the far-away-rally-behind-a-wall case — must still be released after the window.
+        /// </summary>
+        [Fact]
+        public void RalliedWorker_StuckAtLongRange_IsStillReleasedAfterTheGraceWindow()
+        {
+            var h = NewHarness();
+            var (home, _) = TwoNodes(h);
+            int b = h.BuildSys.PlaceBuildingDirectById("worker_hall", Faction.Player1, HallPos, preBuilt: true);
+            Assert.True(h.BuildSys.SetRallyCommand(b, Faction.Player1, LongRally.X, LongRally.Z));
+            Assert.True(h.BuildSys.TrainUnit(b, h.Resources));
+            int w = SpawnNext(h);
+            Assert.True(w >= 0);
+            Assert.Equal(Fixed.MaxValue.Raw, FixedVec3.SqrDistance(h.World.Position[w], LongRally).Raw);
+
+            // Position never changes ⇒ zero progress, exactly as when MovementSystem hard-stops it at a blocked cell.
+            for (int t = 0; t < GatheringSystem.RALLY_STANDDOWN_GRACE_TICKS; t++) h.Gathering.Tick(h.World, Dt);
+
+            Assert.False(h.World.RallyMovePending[w]);
+            Assert.Equal(0, h.World.RallyStandDownTicks[w]);
+            Assert.Equal(0L, h.World.RallyGoalBestSqr[w]);
+            Assert.Equal(GatherState.MovingToResource, h.World.GatherState[w]);
             Assert.Equal(home, h.World.GatherTarget[w]);
         }
     }

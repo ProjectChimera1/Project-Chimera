@@ -472,7 +472,8 @@ namespace ProjectChimera.Sim.Tests.Core
         //    a tick or two (re-opening DW-634), and a corpse's best-distance mark — recorded from a completely different
         //    position — would make the very first stand-down tick read as "no progress". This is the SOLE teeth on those
         //    two mandatory resets: both fields are UNFOLDED, so no checksum catches an omission, and default(int)==0 /
-        //    default(Fixed)==Zero make the reset lines look redundant. ──
+        //    default(long)==0 make the reset lines look redundant. (DW-984 turned the mark lane into a raw 16.16 long
+        //    so it cannot saturate; the reset it needs is unchanged.) ──
         [Fact]
         public void RecycledSlot_CarriesNoPriorRallyStandDownState()
         {
@@ -480,9 +481,9 @@ namespace ProjectChimera.Sim.Tests.Core
             int first = w.Create(FixedVec3.Zero, Faction.Player1, Fixed.FromInt(100), Fixed.FromInt(3));
             // Dirty both, as if the first occupant had been one tick from having its unreachable rally released.
             w.RallyStandDownTicks[first] = GatheringSystem.RALLY_STANDDOWN_GRACE_TICKS - 1;
-            w.RallyGoalBestSqr[first]    = Fixed.FromInt(999);
+            w.RallyGoalBestSqr[first]    = 999L << Fixed.FRACTIONAL_BITS;
             Assert.NotEqual(0, w.RallyStandDownTicks[first]);
-            Assert.NotEqual(Fixed.Zero.Raw, w.RallyGoalBestSqr[first].Raw);
+            Assert.NotEqual(0L, w.RallyGoalBestSqr[first]);
 
             w.Destroy(first);
             int reused = w.Create(FixedVec3.Zero, Faction.Player2, Fixed.FromInt(50), Fixed.FromInt(3));
@@ -490,7 +491,7 @@ namespace ProjectChimera.Sim.Tests.Core
 
             // The new occupant starts with an UNARMED window — proves the mandatory Create() recycle-reset.
             Assert.Equal(0, w.RallyStandDownTicks[reused]);
-            Assert.Equal(Fixed.Zero.Raw, w.RallyGoalBestSqr[reused].Raw);
+            Assert.Equal(0L, w.RallyGoalBestSqr[reused]);
         }
 
         // ── Story 3.17 — editor delete→undo restore fidelity. SnapshotUnit + RestoreUnit route a def-based unit back

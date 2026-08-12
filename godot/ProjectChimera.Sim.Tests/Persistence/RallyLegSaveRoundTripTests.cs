@@ -148,7 +148,7 @@ namespace ProjectChimera.Sim.Tests.Persistence
             // accumulation itself is pinned by TrainedWorkerRallyFirstLegTests, and what this test is about is
             // whether the VALUE crosses the save boundary.
             source.World.RallyStandDownTicks[w] = GatheringSystem.RALLY_STANDDOWN_GRACE_TICKS - 1;
-            source.World.RallyGoalBestSqr[w]    = Fixed.FromInt(777);
+            source.World.RallyGoalBestSqr[w]    = 777L << Fixed.FRACTIONAL_BITS; // DW-984 — raw 16.16 u², a long lane
             Assert.True(source.World.RallyMovePending[w]);
 
             var table = CanonicalEffectDescriptorTable.Build(source.AbilityRegistry, source.ItemRegistry);
@@ -158,7 +158,7 @@ namespace ProjectChimera.Sim.Tests.Persistence
 
             Assert.True(dest.World.RallyMovePending[w]);                 // the leg travels…
             Assert.Equal(0, dest.World.RallyStandDownTicks[w]);          // …its budget does not (unarmed == fresh)
-            Assert.Equal(Fixed.Zero.Raw, dest.World.RallyGoalBestSqr[w].Raw);
+            Assert.Equal(0L, dest.World.RallyGoalBestSqr[w]);
         }
     }
 }

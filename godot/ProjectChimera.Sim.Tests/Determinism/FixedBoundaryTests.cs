@@ -158,4 +158,53 @@ public class FixedBoundaryTests
         Assert.True(Fixed.Abs(squared - Fixed.FromInt(2)).Raw <= 8,
             $"Sqrt(2)^2 should be ~2; got raw {squared.Raw} (expected near {Fixed.FromInt(2).Raw}).");
     }
+
+    // ── DW-984: SqrDistance SATURATES, so it cannot ORDER two long separations ────
+    //
+    // FixedVec3.SqrMagnitude clamps its long accumulator at Fixed.MaxValue, whose raw value is only
+    // 32767.99 u² — i.e. every separation at or past sqrt(32768) = 181.019 units returns the IDENTICAL
+    // value. That clamp is the right answer for a radius test (MaxValue is outside every radius in the
+    // game) and the WRONG one for "did I get closer?", which is how DW-689's rally no-progress budget
+    // burned down against a worker walking a perfectly ordinary 283-unit leg. SqrDistanceRaw is the
+    // unsaturated companion; these two tests pin both halves so neither can be "simplified" into the
+    // other. Expected values are derived from the definition (d² · 65536), never from the operator.
+
+    [Fact]
+    public void SqrDistance_PastTheClampRange_CollapsesDistinctSeparationsOntoOneValue()
+    {
+        // 300 u and 295 u apart on one axis: 90000 u² and 87025 u², both far past 32767.99.
+        FixedVec3 origin = FixedVec3.Zero;
+        FixedVec3 far    = new FixedVec3(Fixed.FromInt(300), Fixed.Zero, Fixed.Zero);
+        FixedVec3 nearer = new FixedVec3(Fixed.FromInt(295), Fixed.Zero, Fixed.Zero);
+
+        Assert.Equal(Fixed.MaxValue.Raw, FixedVec3.SqrDistance(origin, far).Raw);
+        Assert.Equal(Fixed.MaxValue.Raw, FixedVec3.SqrDistance(origin, nearer).Raw);
+        // The hazard itself, stated as an assertion: 5 units of real progress are INVISIBLE here.
+        Assert.False(FixedVec3.SqrDistance(origin, nearer) < FixedVec3.SqrDistance(origin, far));
+    }
+
+    [Fact]
+    public void SqrDistanceRaw_IsExactPastTheClamp_AndBitIdenticalToSqrDistanceBelowIt()
+    {
+        FixedVec3 origin = FixedVec3.Zero;
+
+        // Past the clamp: the exact raw squared distance, ordering restored. 300² · 65536 = 5,898,240,000
+        // and 295² · 65536 = 5,703,270,400 — derived from the definition, not from the method.
+        Assert.Equal(5_898_240_000L, FixedVec3.SqrDistanceRaw(origin, new FixedVec3(Fixed.FromInt(300), Fixed.Zero, Fixed.Zero)));
+        Assert.Equal(5_703_270_400L, FixedVec3.SqrDistanceRaw(origin, new FixedVec3(Fixed.FromInt(295), Fixed.Zero, Fixed.Zero)));
+        Assert.True(FixedVec3.SqrDistanceRaw(origin, new FixedVec3(Fixed.FromInt(295), Fixed.Zero, Fixed.Zero))
+                  < FixedVec3.SqrDistanceRaw(origin, new FixedVec3(Fixed.FromInt(300), Fixed.Zero, Fixed.Zero)));
+
+        // 3-4-5 in three dimensions, well inside the clamp: 3²+4²+12² = 169 u². The raw companion must be
+        // BIT-IDENTICAL to the clamped one wherever the clamp does not bite, or the two would drift apart
+        // and a call site would have to know which one it is holding.
+        var v = new FixedVec3(Fixed.FromInt(3), Fixed.FromInt(4), Fixed.FromInt(12));
+        Assert.Equal(169L << Fixed.FRACTIONAL_BITS, FixedVec3.SqrDistanceRaw(origin, v));
+        Assert.Equal((long)FixedVec3.SqrDistance(origin, v).Raw, FixedVec3.SqrDistanceRaw(origin, v));
+
+        // Exactly at the boundary the clamp opens: 182 u ⇒ 33124 u² ⇒ raw 2,170,814,464 > int.MaxValue.
+        var edge = new FixedVec3(Fixed.FromInt(182), Fixed.Zero, Fixed.Zero);
+        Assert.Equal(Fixed.MaxValue.Raw, FixedVec3.SqrDistance(origin, edge).Raw);   // clamped…
+        Assert.Equal(2_170_814_464L, FixedVec3.SqrDistanceRaw(origin, edge));        // …not clamped
+    }
 }

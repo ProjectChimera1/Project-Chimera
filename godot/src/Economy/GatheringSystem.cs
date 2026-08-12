@@ -159,6 +159,17 @@ namespace ProjectChimera.Economy
         /// toward the goal (the mark is the best distance reached, so cumulative ground counts and only a single raw
         /// tick of improvement anywhere in the window re-arms it) cannot be produced by a worker that is genuinely
         /// walking, including one being jostled through a crowd at the production building's door.</para>
+        ///
+        /// <para><b>DW-984 — that last claim is only true because the progress test reads an UNSATURATED distance.</b>
+        /// It was false as first shipped: the test compared <c>FixedVec3.SqrDistance</c> values, which saturate at
+        /// <see cref="Fixed.MaxValue"/> (32767.99 u² ⇒ ~181.02 units), so on any rally leg longer than 181 units EVERY
+        /// tick produced the identical clamped value, <c>&lt;</c> was never true, and a worker walking at full speed
+        /// across an ordinary 240–256-unit map burned the whole window and had its rally discarded — precisely the
+        /// DW-634 defect this bound was written not to re-introduce. A worker covers only ~12 units in the 90 ticks, so
+        /// it could not escape the clamp inside the window either. The test now runs on
+        /// <c>FixedVec3.SqrDistanceRaw</c> / the <c>long</c> <see cref="EntityWorld.RallyGoalBestSqr"/> lane, which is
+        /// bit-identical below the clamp and keeps counting above it. Any future rewrite of the progress test must
+        /// keep that property: a "which is nearer" comparison may never be built on the saturating helper.</para>
         /// </summary>
         public const int RALLY_STANDDOWN_GRACE_TICKS = SimulationLoop.TICKS_PER_SECOND * 3;
 
@@ -261,8 +272,16 @@ namespace ProjectChimera.Economy
                 // ARRIVAL is the PURE-SIM goal test OrderQueueSystem uses — SqrDistance(Position, CommandGoal) against
                 // the shared ArrivalTuning radius — never EntityFlags.Moving or the presentation Move→Stop flip, both
                 // of which are presentation-written and would diverge headless-golden vs live-client.
-                Fixed goalSqr = FixedVec3.SqrDistance(world.Position[id], world.CommandGoal[id]);
-                bool arrived  = goalSqr <= ArrivalTuning.GoalArriveRadiusSqr;
+                //
+                // DW-984 — read the UNSATURATED raw accumulator, not the clamped Fixed. FixedVec3.SqrMagnitude
+                // saturates at Fixed.MaxValue = 32767.99 u², i.e. ~181.02 units of separation, so on a long rally leg
+                // (map_bounds is 120–128 on every shipped scenario ⇒ 240–256-unit spans are ordinary) the Fixed value
+                // is CONSTANT while the worker walks and the no-progress test below could never re-arm. The ARRIVAL
+                // comparison is unaffected either way and stays byte-identical: the radius is 4 u² = 262144 raw, so a
+                // clamped Fixed and an unclamped long both answer "outside" for every separation past 181 u, and below
+                // the clamp the long IS the Fixed's .Raw, bit for bit.
+                long goalSqr = FixedVec3.SqrDistanceRaw(world.Position[id], world.CommandGoal[id]);
+                bool arrived  = goalSqr <= ArrivalTuning.GoalArriveRadiusSqr.Raw;
                 // SUPERSEDED: any command state other than the rally's own Move means something else took the worker
                 // (a Stop/Idle from CombatSystem's gatherer normalization, ClearWorkerBuild's Idle after a build, a
                 // fresh player order). The rally leg is over, and gating on an arrival that may never come would park
@@ -287,6 +306,12 @@ namespace ProjectChimera.Economy
                     // A counter of 0 means UNARMED — the fresh-Create/Clear state, and the state a resumed save comes
                     // back in (DW-690 persists the pending flag but not this budget) — so the window arms itself here
                     // from the worker's REAL current distance and needs no sentinel and no Array.Fill.
+                    //
+                    // DW-984 — this comparison is the reason goalSqr is read RAW above. It is the one place in the
+                    // method that orders two SEPARATIONS against each other rather than testing one against a radius,
+                    // and that is exactly what the Fixed clamp cannot do: past ~181 units every separation is
+                    // Fixed.MaxValue, so `<` was false on every tick of a leg longer than that and the budget ran down
+                    // against a worker that was walking normally. The mark is stored raw for the same reason.
                     if (world.RallyStandDownTicks[id] == 0 || goalSqr < world.RallyGoalBestSqr[id])
                     {
                         world.RallyGoalBestSqr[id]    = goalSqr; // new best (or the first mark) — restart the window
@@ -301,7 +326,7 @@ namespace ProjectChimera.Economy
                 // The leg is over however it ended (arrived / superseded / DW-689 release) — disarm the budget so a
                 // later rally on this same entity starts a clean window.
                 world.RallyStandDownTicks[id] = 0;
-                world.RallyGoalBestSqr[id]    = Fixed.Zero;
+                world.RallyGoalBestSqr[id]    = 0L;
             }
 
             int node = FindBestNode(world.Position[id], world.FactionOf[id]);
@@ -745,11 +770,24 @@ namespace ProjectChimera.Economy
         /// Find the nearest active, non-Income node that isn't over capacity and (Story 4.7) whose
         /// requires_structure gate — if any — is open for <paramref name="faction"/>.
         /// Returns -1 if no suitable node exists.
+        ///
+        /// <para><b>DW-984 — why the seed is a <c>long</c> and the compare reads <c>SqrDistanceRaw</c>.</b> This is a
+        /// STRICT-NEAREST scan seeded at the maximum, i.e. the second shape in this file that ORDERS two separations
+        /// rather than testing one against a radius, and it had the same saturation hole. <c>SqrDistance</c> clamps at
+        /// <see cref="Fixed.MaxValue"/> (~181.02 units), and the seed WAS <c>Fixed.MaxValue</c> — so when every
+        /// eligible node sat past 181 units, each candidate's <c>sqr</c> equalled the seed, the strict <c>&lt;</c> was
+        /// false for ALL of them, and this returned -1 as though no node existed. <c>TickIdle</c> reads that as "no
+        /// nodes available — stay Idle", so EVERY worker in a base whose near nodes have depleted or filled up
+        /// (<c>Active</c>/<c>MaxGatherers</c> are exactly the filters that leave only distant candidates) stopped
+        /// gathering permanently instead of walking to the far mine. Ordinary late-game state on a 240–256-unit map.
+        /// The raw accumulator never clamps, and <c>long.MaxValue</c> is unreachable by any real separation (a
+        /// full-diagonal 512-unit span is ~1.7e10), so the strict-nearest + ascending-id tie-break is unchanged and
+        /// every already-working case is bit-identical.</para>
         /// </summary>
         private int FindBestNode(FixedVec3 pos, Faction faction)
         {
-            int   bestNode    = -1;
-            Fixed bestSqrDist = Fixed.MaxValue;
+            int  bestNode    = -1;
+            long bestSqrDist = long.MaxValue;
 
             for (int n = 0; n < _nodes.Count; n++)
             {
@@ -758,7 +796,7 @@ namespace ProjectChimera.Economy
                 if (_nodes.AssignedGatherers[n] >= _nodes.MaxGatherers[n]) continue;
                 if (!StructureGateOpen(n, faction)) continue;
 
-                Fixed sqr = FixedVec3.SqrDistance(pos, _nodes.Position[n]);
+                long sqr = FixedVec3.SqrDistanceRaw(pos, _nodes.Position[n]);
                 if (sqr < bestSqrDist)
                 {
                     bestSqrDist = sqr;

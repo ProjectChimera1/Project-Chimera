@@ -95,6 +95,39 @@ namespace ProjectChimera.Sim.Tests.Economy
             Assert.Equal(GatherState.Idle, world.GatherState[w2]);
         }
 
+        /// <summary>
+        /// DW-984 — <c>FindBestNode</c> is a STRICT-NEAREST scan seeded at the maximum, and its compare used to run on
+        /// the SATURATING <c>FixedVec3.SqrDistance</c>. Past ~181.02 world units every separation clamps to
+        /// <see cref="Fixed.MaxValue"/> — which was also the seed — so with every eligible node beyond that range the
+        /// strict <c>&lt;</c> was false for ALL of them and the scan returned -1, i.e. "no node exists".
+        /// <c>TickIdle</c> reads -1 as "stay Idle", so the worker stopped gathering permanently.
+        ///
+        /// <para>This is ordinary late-game state, not a corner: <c>map_bounds</c> is 120–128 on every shipped
+        /// scenario (a 240–256-unit map), and <c>Active</c>/<c>MaxGatherers</c> — a depleted or full near mine — are
+        /// exactly the filters that leave only distant candidates.</para>
+        /// </summary>
+        [Fact]
+        public void Gather_FindBestNode_PicksANodePastTheSqrDistanceSaturationRange()
+        {
+            var (world, nodes, resources, _, sys) = NewHarness();
+            // Two nodes, BOTH past the ~181 u clamp, at genuinely different distances (200 u and 250 u).
+            int far    = nodes.Create(V(250, 0), Fixed.FromInt(100), Fixed.FromInt(5), maxGatherers: 4);
+            int nearer = nodes.Create(V(200, 0), Fixed.FromInt(100), Fixed.FromInt(5), maxGatherers: 4);
+            int w = SpawnWorker(world, Faction.Player1, V(0, 0));
+
+            // FIXTURE PREMISE: the clamped metric cannot tell these two apart, so the test cannot pass by accident.
+            Assert.Equal(Fixed.MaxValue.Raw, FixedVec3.SqrDistance(V(0, 0), nodes.Position[far]).Raw);
+            Assert.Equal(Fixed.MaxValue.Raw, FixedVec3.SqrDistance(V(0, 0), nodes.Position[nearer]).Raw);
+
+            sys.Tick(world, Dt);
+
+            // PRE-FIX: GatherState stayed Idle and GatherTarget stayed -1 — the worker never worked again.
+            Assert.Equal(GatherState.MovingToResource, world.GatherState[w]);
+            Assert.Equal(nearer, world.GatherTarget[w]);   // …and it is genuinely the NEARER of the two, not the first
+            Assert.Equal(1, nodes.AssignedGatherers[nearer]);
+            Assert.Equal(0, nodes.AssignedGatherers[far]);
+        }
+
         // ── Streaming: credit-in-place, no carry, no base trip ─────────────────────────────────────────────
 
         [Fact]

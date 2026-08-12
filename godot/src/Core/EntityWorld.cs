@@ -915,8 +915,22 @@ namespace ProjectChimera.Core
         /// rounding enters the loop. NOT folded into <see cref="SimChecksum"/> and NOT persisted by
         /// <c>SaveGameState</c> (the <see cref="RallyStandDownTicks"/> posture it exists to serve). RUNTIME state, NOT
         /// def-derived: defaulted in <see cref="Create"/>, and NOT snapshot residue.</para>
+        ///
+        /// <para><b>DW-984 — why this lane is a <c>long</c> of RAW 16.16 units and not a <see cref="Fixed"/>.</b>
+        /// <c>Fixed</c> cannot hold this quantity across a map. <c>FixedVec3.SqrMagnitude</c> SATURATES at
+        /// <see cref="Fixed.MaxValue"/>, whose raw value is only 32767.99 u², so EVERY separation at or beyond
+        /// ~181.02 world units collapses onto the identical clamped value. Storing the mark as a <c>Fixed</c>
+        /// therefore made the no-progress test structurally unable to see progress on any rally leg longer than
+        /// 181 u — 300 u and 295 u compare EQUAL, <c>&lt;</c> is false, and the budget accrued on every tick of a
+        /// worker that was walking perfectly well, discarding the player's rally after the grace window (exactly the
+        /// DW-634 defect DW-689 was chartered to bound WITHOUT re-introducing). A 240–256-unit span is ordinary
+        /// geometry: <c>map_bounds</c> is 120–128 on every shipped scenario. The lane holds
+        /// <c>FixedVec3.SqrDistanceRaw</c>'s unsaturated accumulator instead, which is bit-identical to the old
+        /// <c>Fixed.Raw</c> below the clamp and simply keeps counting above it. Still integer-only, so still
+        /// cross-platform-identical; the arrival test itself stays on the saturating radius comparison, where the
+        /// clamp is the correct answer.</para>
         /// </summary>
-        public readonly Fixed[]       RallyGoalBestSqr;
+        public readonly long[]        RallyGoalBestSqr;
 
         // --- Worker construction ---
         /// <summary>
@@ -1086,7 +1100,7 @@ namespace ProjectChimera.Core
             GatherWalkStallTicks = new int[MAX_ENTITIES];       // DW-532 — MovingToResource stall streak / yielded sentinel (NOT folded; 0 == fresh)
             RallyMovePending = new bool[MAX_ENTITIES];          // DW-634 — outstanding rally first leg (NOT folded; false == fresh, no Array.Fill needed)
             RallyStandDownTicks = new int[MAX_ENTITIES];        // DW-689 — rally stand-down no-progress budget (NOT folded; 0 == unarmed, no Array.Fill needed)
-            RallyGoalBestSqr = new Fixed[MAX_ENTITIES];         // DW-689 — best distance-to-goal mark (NOT folded; unread while the budget is 0)
+            RallyGoalBestSqr = new long[MAX_ENTITIES];          // DW-689 — best distance-to-goal mark, raw 16.16 u² (DW-984: long, never saturated; NOT folded; unread while the budget is 0)
             BuildTarget    = new int[MAX_ENTITIES];
 
             Generation = new int[MAX_ENTITIES]; // DW-184 — per-slot recycle generation (UNFOLDED; 0 == never recycled)
@@ -1275,7 +1289,7 @@ namespace ProjectChimera.Core
             // tick read as "no progress". Unfolded, so these two lines' ONLY teeth are
             // RecycledSlot_CarriesNoPriorRallyStandDownState.
             RallyStandDownTicks[id] = 0;
-            RallyGoalBestSqr[id]    = Fixed.Zero;
+            RallyGoalBestSqr[id]    = 0L;
             BuildTarget[id]   = -1;
 
             AliveCount++;
@@ -1801,7 +1815,7 @@ namespace ProjectChimera.Core
             Array.Clear(GatherWalkStallTicks);  // DW-532 (0 == the fresh-ctor state: no streak, reservation held)
             Array.Clear(RallyMovePending);      // DW-634 (false == the fresh-ctor state)
             Array.Clear(RallyStandDownTicks);   // DW-689 (0 == the fresh-ctor state: the stand-down budget is unarmed)
-            Array.Clear(RallyGoalBestSqr);      // DW-689 (Fixed.Zero == the fresh-ctor state; unread while the budget is 0)
+            Array.Clear(RallyGoalBestSqr);      // DW-689 (0 == the fresh-ctor state; unread while the budget is 0)
             Array.Clear(Generation);            // DW-184 — recycle generations restart at 0 (the fresh-ctor state)
             Array.Clear(_freeList);
 

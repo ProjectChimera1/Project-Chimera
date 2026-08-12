@@ -259,11 +259,38 @@ namespace ProjectChimera.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Fixed SqrMagnitude()
         {
+            long sum = SqrMagnitudeRaw();
+            return sum >= int.MaxValue ? Fixed.MaxValue : new Fixed((int)sum);
+        }
+
+        /// <summary>
+        /// DW-984 — the UNSATURATED squared magnitude, in raw 16.16 units, as a <c>long</c>: exactly the accumulator
+        /// <see cref="SqrMagnitude"/> clamps. Integer-only, so cross-platform-identical like everything else here.
+        ///
+        /// <para><b>Why a second entry point exists.</b> <see cref="SqrMagnitude"/>'s saturation is the right answer
+        /// for a RADIUS COMPARISON — a clamped <see cref="Fixed.MaxValue"/> is outside every radius in the game, which
+        /// is what an "am I in range / have I arrived" test wants. It is the WRONG answer for COMPARING TWO
+        /// SEPARATIONS AGAINST EACH OTHER, because <c>int.MaxValue</c> raw is only 32767.99 u², i.e. every separation
+        /// at or beyond <b>~181.02 units</b> collapses onto the SAME clamped value. Two points 300 u and 295 u apart
+        /// are then indistinguishable, so a "did I get closer?" test reads FALSE for a body that is genuinely
+        /// closing. A 240–256-unit map span is ordinary geometry here (see <see cref="SqrMagnitude"/>), so that is a
+        /// live range, not a corner.</para>
+        ///
+        /// <para>Use this ONLY where two distances are ordered against one another; keep using
+        /// <see cref="SqrMagnitude"/> / <see cref="SqrDistance"/> against a radius, so no call site has to reason
+        /// about the clamp. Both share one accumulator, so they can never drift: below the clamp the value returned
+        /// here IS <see cref="SqrMagnitude"/>'s <c>.Raw</c>, bit for bit.</para>
+        ///
+        /// <para>No overflow of its own: each pre-shift term is at most ~2^62 and each post-shift term at most ~2^46,
+        /// so the three-way <c>long</c> sum has ~17 bits of headroom.</para>
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public long SqrMagnitudeRaw()
+        {
             long x = (long)X.Raw * X.Raw;
             long y = (long)Y.Raw * Y.Raw;
             long z = (long)Z.Raw * Z.Raw;
-            long sum = (x >> Fixed.FRACTIONAL_BITS) + (y >> Fixed.FRACTIONAL_BITS) + (z >> Fixed.FRACTIONAL_BITS);
-            return sum >= int.MaxValue ? Fixed.MaxValue : new Fixed((int)sum);
+            return (x >> Fixed.FRACTIONAL_BITS) + (y >> Fixed.FRACTIONAL_BITS) + (z >> Fixed.FRACTIONAL_BITS);
         }
 
         /// <summary>Magnitude via fixed-point sqrt.</summary>
@@ -287,6 +314,16 @@ namespace ProjectChimera.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Fixed SqrDistance(FixedVec3 a, FixedVec3 b) =>
             (b - a).SqrMagnitude();
+
+        /// <summary>
+        /// DW-984 — the UNSATURATED squared distance in raw 16.16 units (see <see cref="SqrMagnitudeRaw"/> for why
+        /// this exists). Use it ONLY to order two separations against each other — a "did I get closer?" /
+        /// "which of these is nearest?" test that must keep working past the ~181-unit clamp. Every RADIUS test
+        /// stays on <see cref="SqrDistance"/>.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static long SqrDistanceRaw(FixedVec3 a, FixedVec3 b) =>
+            (b - a).SqrMagnitudeRaw();
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Fixed Distance(FixedVec3 a, FixedVec3 b) =>
