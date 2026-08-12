@@ -32,6 +32,62 @@ max_health_percent / attack_damage_percent (multiplicative siblings of the flat 
 already exists per-hero as xp_per_kill; exposing it as an attribute target is nearly free) ·
 gather_rate (% worker yield — economy heroes/veterans) · build_speed (%).
 
+## Ruling update (Alec, 2026-08-12, second pass)
+
+**The entire proposed pick-list is IN** (crit_multiplier, lifesteal, spell_power, cast_cost_reduction,
+block, %-siblings, xp_gain, gather_rate, build_speed) — plus a 50-candidate expansion list requested for
+multiple-choice selection ("and even more than that").
+
+**STRUCTURAL DECISION — the SHARED STAT VOCABULARY:** Alec: "A lot of these will overlap with what items
+can give you through suffixes and prefixes and other modifiers." The stat vocabulary is therefore designed
+ONCE as a shared substrate: attributes, item affixes (prefix/suffix rolls), tomes/consumables, auras, and
+research all target the same closed, validator-gated stat set through the same modifier/recompute channels.
+An item affix system (rolled prefixes/suffixes with tiers — the Diablo lineage) becomes sub-story 15-24g,
+consuming the vocabulary 15-24a builds. One stat, one channel, many sources — never per-source stat forks.
+
+## Ruling (Alec, 2026-08-12, third pass): ALL 50 ARE IN — "add them all, i love them"
+
+49 active + #35 detection [PAIRS: invisibility] parked until stealth exists. And the load-bearing
+requirement: **"ensure that the pipeline to add more is easily done because we will be adding more in the
+future."** That requirement REDEFINES 15-24a — see THE STAT PIPELINE below.
+
+## THE STAT PIPELINE (the add-a-stat recipe — 15-24a's real deliverable)
+
+At ~65 stats the per-stat hand-wired channel approach (today's closed 4 modifier deltas) is dead. 15-24a
+builds a **StatVocabulary REGISTRY** — one declaration per stat: id, display name, aggregation kind
+(flat / percent / chance / per-hit magnitude / aura-radius), value bounds, and its CONSUMER SITE tag.
+Everything else derives from the registry automatically: validator gating, editor dropdowns (Attribute
+Editor + affix editor), item-affix eligibility, the LLM-draft vocabulary, Modifier's sparse stat-delta
+list (replacing the 4 named fields), the generalized recompute (flat sums then ×(1+Σ%) then chance clamps),
+and the save lane (one sparse vector, stride-free).
+
+**Adding stat #66 later = (1) one registry entry, (2) one consumer read at its tagged site (a
+recompute-tier stat's consumer is a one-line Effective read; a mechanic-tier stat — an on-hit proc, an
+aura — implements its proc site once). Nothing else to touch.** Two guard tests make the recipe safe:
+a DECLARED-BUT-NEVER-CONSUMED tripwire (a registry entry no consumer reads fails loudly — the
+computed-but-never-consumed class) and a CONSUMED-BUT-UNDECLARED tripwire (no stat read outside the
+registry). Implementation tiers, recorded per stat in the registry: RECOMPUTE (pure stat math — most of
+the 50), PROC (on-hit/on-kill sites, needs the 15-24b dice where flagged [RNG]), AURA (radiating — the
+four [AURA] entries pull the effect-graph groundwork forward, accepted), THRESHOLD (the 15-24c shapes).
+
+## The 50-candidate expansion catalog (ALL RULED IN 2026-08-12; #35 parked on invisibility)
+
+Numbered 1-50 (all in). Flags: [RNG] = rides the 15-24b deterministic dice; [AURA] = radiates to
+nearby allies (the effect-graph groundwork in stat form); [PAIRS:x] = requires mechanic x to land first.
+Full list mirrored in the session hand-off; every pick enters the SHARED vocabulary (attributes + affixes).
+
+Offense: 1 cleave 2 splash_radius_bonus 3 pierce_chance[RNG] 4 extra_projectiles 5 armor_penetration
+6 damage_vs_armor_type 7 damage_vs_tag 8 onhit_bleed 9 onhit_poison 10 onhit_slow 11 onhit_stun[RNG]
+12 onhit_manaburn 13 overkill_carryover 14 execute_threshold 15 first_strike 16 spell_crit[RNG]
+17 thorns 18 retaliate[RNG] 19 kill_frenzy 20 siege_bonus
+Defense: 21 physical_resist 22 magic_resist 23 block_chance[RNG] 24 barrier 25 last_stand 26 tenacity
+27 healing_received 28 out_of_combat_regen 29 revive_speed 30 aura_armor[AURA]
+Utility: 31 move_speed_percent 32 slow_resistance 33 collision_shrink 34 vision_percent
+35 detection[PAIRS:invisibility] 36 inventory_slots 37 shop_discount 38 cast_range 39 aoe_radius
+40 ability_duration 41 summon_power 42 cdr_on_kill
+Economy/leadership: 43 train_speed_aura[AURA] 44 supply_bonus 45 kill_bounty 46 unit_cost_reduction
+47 xp_share_radius_bonus 48 revive_cost_reduction 49 aura_move_speed[AURA] 50 aura_regen[AURA]
+
 ## Sub-story partition (each with its own determinism posture)
 
 - **15-24a — stat channels:** the non-RNG targets (attack_speed, health_regen, vision_range,
