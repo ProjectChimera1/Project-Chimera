@@ -73,6 +73,11 @@ namespace ProjectChimera.Multiplayer
         /// <summary>The authenticated user's Nakama id (for party leadership checks). Empty until connected.</summary>
         public string UserId => _session?.UserId ?? "";
 
+        /// <summary>Story 15-14: the live session's auth token — the credential the client presents to the GAME
+        /// server's identity gate (<c>TickCommandPacket.MakeAttestation</c>); the server re-proves it against
+        /// Nakama (<c>Server.NakamaTokenVerifier</c>), so a forged token never survives. Empty until connected.</summary>
+        public string SessionToken => _session?.AuthToken ?? "";
+
         /// <summary>Story 9.7: the parties API adapter (over Nakama <see cref="IParty"/>), created on connect. Null
         /// until <see cref="ConnectAsync"/>/<see cref="ConnectDeviceAsync"/> establishes the socket. Its events are
         /// drained on the main thread by this service's <see cref="DrainEvents"/> (shared queue).</summary>

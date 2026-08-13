@@ -146,6 +146,22 @@ namespace ProjectChimera.Multiplayer
         public void ConfigureTrust(Server.TrustMode mode, System.Func<string, string, bool>? verifier = null)
             => _identity = new Server.IdentityGate(mode, ServerTransport.MAX_SLOTS, verifier);
 
+        /// <summary>Story 15-14 (Alec's ruling: LIVE NAKAMA) — the async credential validator for OnlineAttest
+        /// matches. Null on every LAN/offline server (the default). When set, Attestation packets route through
+        /// its begin/drain flow instead of the sync verifier seam, and <see cref="_Process"/> drains confirmed
+        /// identities onto the gate on the main thread.</summary>
+        private Server.NakamaTokenVerifier? _nakamaVerifier;
+
+        /// <summary>Story 15-14 — install ONLINE trust backed by live Nakama token validation. Call BEFORE
+        /// <see cref="Start"/> on the online launch edge: <c>ConfigureOnlineTrust(Server.NakamaTokenVerifier
+        /// .ForServer("http://127.0.0.1:7350"))</c>. The gate itself runs with a null sync verifier — fail-closed
+        /// for anything that bypasses the async path.</summary>
+        public void ConfigureOnlineTrust(Server.NakamaTokenVerifier verifier)
+        {
+            _identity = new Server.IdentityGate(Server.TrustMode.OnlineAttest, ServerTransport.MAX_SLOTS);
+            _nakamaVerifier = verifier;
+        }
+
         /// <summary>Story 9.13: the Godot-free per-slot command-rate throttle (anti-spam, NOT anti-cheat). Gates each
         /// inbound <c>TickCommands</c> packet through <c>TryAdmit(slot, wall-clock ms)</c> so a misbehaving/malicious
         /// client cannot flood the merged fan-in. Its decision (drop/accept) NEVER enters the sim, the builder, or any
@@ -193,6 +209,13 @@ namespace ProjectChimera.Multiplayer
         /// <see cref="Server.ServerLobbyPolicy.CheckStartStateAgreement"/> at the readiness gate.</summary>
         private readonly ulong[]  _readyHash    = new ulong[ServerTransport.MAX_SLOTS];
         private readonly ushort[] _readyVersion = new ushort[ServerTransport.MAX_SLOTS];
+
+        /// <summary>Story 15-14: a Ready the identity gate HELD (its slot's async Nakama validation was still in
+        /// flight). Replayed through the normal HandleReady path when the confirm drains; cleared on connect
+        /// (recycle discipline) and on acceptance.</summary>
+        private readonly bool[]   _pendingReadyStashed = new bool[ServerTransport.MAX_SLOTS];
+        private readonly ushort[] _pendingReadyVersion = new ushort[ServerTransport.MAX_SLOTS];
+        private readonly ulong[]  _pendingReadyHash    = new ulong[ServerTransport.MAX_SLOTS];
 
         /// <summary>Seconds elapsed since the last per-slot RTT-probe (Ping) broadcast. Reset alongside the
         /// <see cref="_delayController"/> rebuild at match start (DW-401). The probe SEQ itself lives in the
@@ -337,6 +360,25 @@ namespace ProjectChimera.Multiplayer
         {
             _transport?.Poll();
 
+            // Story 15-14: deliver Nakama-confirmed identities onto the gate ON THE MAIN THREAD (the
+            // begin/drain discipline — see NakamaTokenVerifier). A slot that disconnected while its validation
+            // was in flight is skipped (its identity died with the connection; a reconnect re-attests).
+            _nakamaVerifier?.DrainVerified((slot, userId) =>
+            {
+                if (!_transport.IsSlotConnected(slot)) return;
+                if (_identity.RecordVerifiedAttestation(slot, userId))
+                {
+                    GD.Print($"[Server] Slot {slot} attested identity ({userId}) — Nakama-confirmed.");
+                    // Story 15-14: an honest client's Ready always races the HTTP validation (both ride one
+                    // ordered channel) — replay the held Ready through the identical accept path now.
+                    if (_pendingReadyStashed[slot] && _state != State.InGame)
+                    {
+                        _pendingReadyStashed[slot] = false;
+                        AcceptReady(slot, _pendingReadyVersion[slot], _pendingReadyHash[slot]);
+                    }
+                }
+            });
+
             // Story 9.6: after draining transport (which may have advanced the survivor frontier via FanIn), inject
             // empty commands for any frozen slot across the whole unemitted gap so the merged stream keeps flowing
             // even when no fresh survivor packet arrived this frame.
@@ -411,8 +453,10 @@ namespace ProjectChimera.Multiplayer
 
             // Story 15-14: an identity attestation dies with its connection — a recycled slot (or a reconnecting
             // rejoiner) starts unattested and must re-present its credential. The StartGame-frozen rejoin BIND
-            // survives (it lives in the gate's capture set, not the per-connection record).
+            // survives (it lives in the gate's capture set, not the per-connection record). A held Ready from a
+            // prior occupant dies with it too.
             _identity.Reset(slot);
+            _pendingReadyStashed[slot] = false;
 
             // Story 9.7 (SD-9): the player/spectator split is the DYNAMIC SlotAllocation.Classify over the per-match
             // ExpectedPlayers boundary (not the fixed MAX_PLAYERS 1v1 partition). A slot at/above the player count is
@@ -632,6 +676,14 @@ namespace ProjectChimera.Multiplayer
                     // with a valid session never fails it.
                     if (TickCommandPacket.TryReadAttestation(data, len, out string attUserId, out string attToken))
                     {
+                        // Live-Nakama path (Alec's ruling): validation is an HTTP round-trip, so it runs
+                        // begin/drain — the outcome lands on the gate from _Process, and until then the slot is
+                        // simply not yet attested (its Ready is refused; the client re-Readies after the confirm).
+                        if (_nakamaVerifier != null && _identity.Mode == Server.TrustMode.OnlineAttest)
+                        {
+                            _nakamaVerifier.BeginValidate(slot, attUserId, attToken);
+                            break;
+                        }
                         bool attested = _identity.RecordAttestation(slot, attUserId, attToken);
                         if (attested)
                             GD.Print($"[Server] Slot {slot} attested identity ({attUserId}).");
@@ -837,25 +889,36 @@ namespace ProjectChimera.Multiplayer
             // Story 15-14 (DW-200): the fail-closed identity gate at the door. LanTrust (every LAN/offline
             // match) always passes — behavior byte-identical to pre-15-14. OnlineAttest refuses the Ready of a
             // slot that has not attested a VERIFIED identity: the binary-patched-client hole closes here, before
-            // any start-state machinery runs. The Ready is dropped (not recorded), so the start gate simply
-            // never fires; the client re-Readies after attesting.
+            // any start-state machinery runs. The refused Ready's payload is STASHED and replayed when the
+            // (asynchronous, live-Nakama) validation confirms — the honest client sends Attestation then Ready on
+            // one ordered channel, so its Ready always races the HTTP round-trip and must not be lost to it.
             if (!_identity.MayReady(slot, out string? identityWhy))
             {
-                GD.PrintErr($"[Server] Ready from slot {slot} REFUSED — {identityWhy}.");
+                TickCommandPacket.TryReadReady(data, len, out _pendingReadyVersion[slot], out _pendingReadyHash[slot]);
+                _pendingReadyStashed[slot] = true;
+                GD.Print($"[Server] Ready from slot {slot} HELD — {identityWhy}; replaying once the identity confirms.");
                 return;
             }
+            _pendingReadyStashed[slot] = false;
 
+            // Story 9.4: collect this slot's Ready agreement payload (protocol version + 64-bit match-agreement
+            // hash). A short/undersized/malformed Ready parses false → version 0 / hash 0 → the fail-closed
+            // agreement gate below rejects the start (never fail-open).
+            TickCommandPacket.TryReadReady(data, len, out ushort readyVersion, out ulong readyHash);
+            AcceptReady(slot, readyVersion, readyHash);
+        }
+
+        /// <summary>The post-gate Ready path — shared by the live packet (<see cref="HandleReady"/>) and the
+        /// Story 15-14 identity-confirm REPLAY of a held Ready, so both run the identical record/roster/start
+        /// machinery.</summary>
+        private void AcceptReady(int slot, ushort readyVersion, ulong readyHash)
+        {
             // Story 1.9a: RECORD the ready even if the other player hasn't connected yet (it was previously
             // DROPPED unless the server was already BothConnected). A client that readies the instant it connects
             // — e.g. the auto-join loopback smoke, or simply a faster peer — must not deadlock waiting on a Ready
             // the server threw away. Start only once BOTH players are connected AND both have readied; the
             // connect/ready order no longer matters.
             _ready[slot] = true;
-
-            // Story 9.4: collect this slot's Ready agreement payload (protocol version + 64-bit match-agreement
-            // hash). A short/undersized/malformed Ready parses false → version 0 / hash 0 → the fail-closed
-            // agreement gate below rejects the start (never fail-open).
-            TickCommandPacket.TryReadReady(data, len, out ushort readyVersion, out ulong readyHash);
             _readyVersion[slot] = readyVersion;
             _readyHash[slot]    = readyHash;
             GD.Print($"[Server] Slot {slot} is Ready (protocol v{readyVersion}, match hash 0x{readyHash:X16}).");

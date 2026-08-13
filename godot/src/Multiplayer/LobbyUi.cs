@@ -417,6 +417,15 @@ namespace ProjectChimera.Multiplayer
             _readyBtn.Disabled = true;
             _readyModel.SetOccupied(LocalSlot(), true);
             _readyModel.SetReady(LocalSlot(), true);
+
+            // Story 15-14: in an ONLINE match, present the identity credential BEFORE the Ready on the same
+            // reliable channel — ordered delivery guarantees the server's gate sees the attestation first (the
+            // server validates it against live Nakama; until confirmed, its fail-closed gate refuses the Ready
+            // and this client simply re-Readies). LAN matches send nothing — LAN never asks for identity.
+            if (_onlineModeActive && _nakama != null &&
+                !string.IsNullOrEmpty(_nakama.UserId) && !string.IsNullOrEmpty(_nakama.SessionToken))
+                _transport.SendReliable(TickCommandPacket.MakeAttestation(_nakama.UserId, _nakama.SessionToken));
+
             // Story 9.4: the widened Ready carries our PROTOCOL_VERSION + the 64-bit match-agreement hash.
             _transport.SendReliable(TickCommandPacket.MakeReady(TickCommandPacket.PROTOCOL_VERSION, MatchAgreementHash));
 #if DEBUG

@@ -77,6 +77,22 @@ namespace ProjectChimera.Multiplayer.Server
             return true;
         }
 
+        /// <summary>
+        /// Story 15-14 (live-Nakama path) — record an attestation whose credential was ALREADY verified through
+        /// an asynchronous channel (<see cref="NakamaTokenVerifier"/>'s begin/drain flow — the sync
+        /// <c>verifier</c> seam cannot express an HTTP round-trip without stalling the relay). The caller
+        /// guarantees <paramref name="userId"/> is the Nakama-confirmed id for the credential the slot presented.
+        /// LanTrust still ignores it (LAN stores no identity). Returns true when the slot is now attested.
+        /// </summary>
+        public bool RecordVerifiedAttestation(int slot, string userId)
+        {
+            if ((uint)slot >= (uint)_userId.Length) return false;
+            if (_mode == TrustMode.LanTrust) return false;
+            if (string.IsNullOrEmpty(userId)) return false;
+            _userId[slot] = userId;
+            return true;
+        }
+
         /// <summary>The READY gate: may <paramref name="slot"/> ready into the match? LanTrust: always.
         /// OnlineAttest: only an attested slot (<paramref name="reason"/> says why not, for the server log).</summary>
         public bool MayReady(int slot, out string? reason)
