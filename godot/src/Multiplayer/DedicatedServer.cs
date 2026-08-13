@@ -111,6 +111,22 @@ namespace ProjectChimera.Multiplayer
         /// <see cref="_builder"/>/<see cref="_delayController"/>. Null until the match starts.</summary>
         private Server.DropCoordinator? _dropCoordinator;
 
+        // ── Story 15-1 (FR-79/DW-2): the reconnect machinery ──────────────────────
+
+        /// <summary>The retained merged-frame log a rejoiner's tail is served from (D-2). Armed at freeze-commit,
+        /// disarmed + cleared when the last frozen slot resumes. Reconstructed per match.</summary>
+        private Server.MergedTickLog? _mergedLog;
+
+        /// <summary>Per-match rejoin identity tokens (D-5), minted + sent per player slot at StartGame.</summary>
+        private Server.RejoinTokens? _rejoinTokens;
+
+        /// <summary>The Godot-free rejoin state machine (request → snapshot relay → tail → resume quorum). This
+        /// node is its thin transport adapter, exactly like <see cref="_dropCoordinator"/>'s. Null until StartGame.</summary>
+        private Server.RejoinCoordinator? _rejoinCoordinator;
+
+        /// <summary>Scratch for <see cref="Server.DropController.FinalizeThaws"/> (no per-pump alloc).</summary>
+        private readonly System.Collections.Generic.List<int> _thawScratch = new();
+
         /// <summary>Story 9.13: the Godot-free per-slot command-rate throttle (anti-spam, NOT anti-cheat). Gates each
         /// inbound <c>TickCommands</c> packet through <c>TryAdmit(slot, wall-clock ms)</c> so a misbehaving/malicious
         /// client cannot flood the merged fan-in. Its decision (drop/accept) NEVER enters the sim, the builder, or any
@@ -338,10 +354,19 @@ namespace ProjectChimera.Multiplayer
                 GD.Print("[Server] Drop ACK timeout — force-committed the pending freeze over the survivors that " +
                          "ACKed; any survivor that never ACKed is now being dropped in turn. Match continues.");
 
+            // Story 15-1 (D-11): the same deadline discipline over every rejoin phase — a hung snapshot/tail
+            // aborts the attempt (the slot just stays frozen), a hung resume quorum force-commits over hung
+            // survivors but never over a silent rejoiner. The coordinator logs the outcome via its own seam.
+            _rejoinCoordinator?.CheckTimeout((uint)_freezeClockTicks);
+
             // PATCH 1a: the confirmed high-water = the tick through which the merged fan-in has emitted (all players
             // submitted past it). It gates directive pipelining so a new directive is not issued until the prior one
             // has matured (been applied) on every client.
             uint confirmed = _builder != null && _builder.EmittedThrough >= 0 ? (uint)_builder.EmittedThrough : 0u;
+            // Story 15-1: no NEW delay directive while a rejoin is in flight — the resume seam (injection bound =
+            // resumeAtTick + delay) is computed from the delay at directive issue, and a concurrent change would
+            // split the bound between server and rejoiner. The next directive issues normally after the resume.
+            if (_rejoinCoordinator != null && _rejoinCoordinator.BlocksDelayDirectives) return;
             if (_delayController.TryComputeDirective(_latestSeenTick, confirmed, out int delay, out uint applyAtTick))
             {
                 var directive = TickCommandPacket.MakeDelayDirective((byte)delay, applyAtTick);
@@ -382,6 +407,20 @@ namespace ProjectChimera.Multiplayer
             }
 
             Faction f = SLOT_FACTION[slot];
+
+            // Story 15-1 (DW-599): a PLAYER-slot connect while a match is LIVE is a REJOIN attempt, not a lobby
+            // event. The match never leaves InGame (the old unconditional `_state = Lobby` flip below silently
+            // wrecked the running match's state machine — the DW-599 defect), no roster broadcast fires, and the
+            // Hello carries the REJOIN flag so the client presents its RejoinToken instead of sending Ready (a
+            // Ready would be ignored InGame and the client would wedge; the flag makes the contract explicit).
+            if (_state == State.InGame)
+            {
+                GD.Print($"[Server] Slot {slot} connected DURING the match → rejoin handshake ({f} seat).");
+                _transport.SendReliableTo(slot, TickCommandPacket.MakeHello(f,
+                    (byte)(TickCommandPacket.HELLO_FLAG_DEDICATED | TickCommandPacket.HELLO_FLAG_INGAME_REJOIN)));
+                return;
+            }
+
             GD.Print($"[Server] Slot {slot} connected → assigned {f}.");
             // DW-419: the DEDICATED flag tells the client this lobby's LobbyChat is server-rebroadcast to the
             // sender too, so it suppresses its optimistic local echo (the double-render fix).
@@ -405,6 +444,33 @@ namespace ProjectChimera.Multiplayer
             // queue + pending-ACK reconcile) lives in the Godot-free DropCoordinator; this node only reacts.
             if (_state == State.InGame && _dropCoordinator != null && _builder != null)
             {
+                // Story 15-1: unwind any rejoin this disconnect touches FIRST. The coordinator aborts an in-flight
+                // negotiation whose rejoiner/donor just left (cancelling an uncommitted thaw), or prunes a survivor
+                // from a pending resume-ACK set (the DW-409 discipline, thaw-side).
+                _rejoinCoordinator?.OnSlotDisconnected(slot);
+
+                // If the REJOINED client itself dropped again after its thaw was scheduled/committed but before the
+                // unfreeze finalized, the bound would hand the merged stream to a client that no longer exists —
+                // the builder would wait forever at the bound and every survivor would hang. Revert the thaw (the
+                // injector resumes covering the slot's backlog on the pump below) and, if the commit had already
+                // re-admitted it, re-drop it from the checksum + delay quorums. The slot simply stays frozen.
+                var thawCtrl = _dropCoordinator.Controller;
+                if (thawCtrl.ThawScheduled(slot))
+                {
+                    bool committed = thawCtrl.ThawCommitted(slot);
+                    thawCtrl.RevertThaw(slot);
+                    if (committed)
+                    {
+                        _serverHost?.DropReporter(slot);
+                        _delayController?.DeactivateSlot(slot);
+                    }
+                    GD.Print($"[Server] Slot {slot} ({SLOT_FACTION[slot]}) disconnected MID-THAW — thaw reverted " +
+                             $"({(committed ? "post-commit: quorums re-dropped" : "pre-commit")}); slot stays " +
+                             "frozen, match continues.");
+                    PumpFrozenInjection();
+                    return;
+                }
+
                 switch (_dropCoordinator.OnPlayerDisconnect(slot))
                 {
                     case Server.DropCoordinator.DisconnectOutcome.MatchOver:
@@ -449,9 +515,21 @@ namespace ProjectChimera.Multiplayer
         private void PumpFrozenInjection()
         {
             if (_builder == null || _dropCoordinator == null || _injectBroadcast == null) return;
-            if (_dropCoordinator.Controller.FrozenSlots.Count == 0) return;
-            Server.FrozenSlotInjector.Drain(_builder, _dropCoordinator.Controller.FrozenSlots, SLOT_FACTION,
-                _latestSeenTick, _injectBuf, _injectBroadcast);
+            var ctrl = _dropCoordinator.Controller;
+            if (ctrl.FrozenSlots.Count == 0) return;
+            Server.FrozenSlotInjector.Drain(_builder, ctrl.FrozenSlots, SLOT_FACTION,
+                _latestSeenTick, _injectBuf, _injectBroadcast, ctrl.ThawBound);
+
+            // Story 15-1: complete any committed thaw the merged stream has caught up with — from the bound on,
+            // the slot's commands are the live rejoined client's. When the LAST frozen slot resumes, the retained
+            // tick log has no possible consumer left → disarm + free (D-2's bounded-memory posture).
+            _thawScratch.Clear();
+            if (ctrl.FinalizeThaws(_builder.EmittedThrough, _thawScratch) > 0)
+            {
+                foreach (int s in _thawScratch)
+                    GD.Print($"[Server] Slot {s} ({SLOT_FACTION[s]}) UNFROZEN — rejoin complete; live stream resumed.");
+                if (ctrl.FrozenSlots.Count == 0) _mergedLog?.DisarmAndClear();
+            }
         }
 
         // ── Packet dispatch ───────────────────────────────────────────────────────
@@ -521,6 +599,43 @@ namespace ProjectChimera.Multiplayer
                                      $"(all {_delayController.ActiveCount} players ACKed).");
                         }
                     }
+                    break;
+
+                case PacketType.RejoinRequest:
+                    // Story 15-1: a reconnected client claims its old slot with its per-match token. The claimed
+                    // slot is TRANSPORT-AUTHORITATIVE — the token must verify against exactly the slot this packet
+                    // arrived on (lowest-free-slot allocation returns a dropped player to its old seat in a full
+                    // match; any other landing is refused and the client simply reconnects). Outside a live match
+                    // there is nothing to rejoin — refuse NoLiveMatch rather than leaving the client to wedge.
+                    if (TickCommandPacket.TryReadRejoinRequest(data, len, out ulong rjToken))
+                    {
+                        if (_state == State.InGame && _rejoinCoordinator != null && slot < ExpectedPlayers)
+                            _rejoinCoordinator.OnRejoinRequest(slot, rjToken);
+                        else
+                            _transport.SendReliableTo(slot,
+                                TickCommandPacket.MakeRejoinRefuse(RejoinRefuseReason.NoLiveMatch));
+                    }
+                    break;
+
+                case PacketType.SnapshotChunk:
+                    // Story 15-1: a donor's snapshot upload — the coordinator validates source + requestId and
+                    // relays the exact bytes to the rejoiner (the server never reassembles the snapshot).
+                    if (_state == State.InGame) _rejoinCoordinator?.OnSnapshotChunk(slot, data, len);
+                    break;
+
+                case PacketType.TailAck:
+                    // Story 15-1: the rejoiner's stop-and-wait tail cursor (source-validated by the coordinator).
+                    if (_state == State.InGame && TickCommandPacket.TryReadTailAck(data, len, out uint tailNext))
+                        _rejoinCoordinator?.OnTailAck(slot, tailNext);
+                    break;
+
+                case PacketType.ResumeAck:
+                    // Story 15-1: a player acknowledges the pending ResumeDirective (the rejoiner's ACK doubles as
+                    // its caught-up signal). Slot is transport-authoritative; the coordinator matches the echoed
+                    // (faction, resumeAtTick) pair exactly like the DropAck discipline.
+                    if (_state == State.InGame && slot < ExpectedPlayers &&
+                        TickCommandPacket.TryReadResumeAck(data, len, out byte raFaction, out uint raTick))
+                        _rejoinCoordinator?.OnResumeAck(slot, raFaction, raTick);
                     break;
 
                 case PacketType.DropAck:
@@ -779,6 +894,11 @@ namespace ProjectChimera.Multiplayer
                     },
                     droppedSlot =>
                     {
+                        // Story 15-1 (D-2): the first moment a rejoin becomes possible — start retaining every
+                        // merged frame so the eventual rejoiner's tail reaches back past any snapshot boundary.
+                        // Armed BEFORE this commit's own injection pump below, so its emissions are retained too.
+                        _mergedLog?.Arm();
+
                         _serverHost?.DropReporter(droppedSlot);
                         GD.Print($"[Server] Freeze committed for slot {droppedSlot} ({SLOT_FACTION[droppedSlot]}) at " +
                                  $"tick {_dropCoordinator!.Controller.FrozenApplyTick(droppedSlot)} (all survivors " +
@@ -796,7 +916,15 @@ namespace ProjectChimera.Multiplayer
 
                         PumpFrozenInjection(); // fill the gap immediately so survivors unstall
                     });
-                _injectBroadcast = (buf, n) => _transport.BroadcastCommands(buf, n);
+                // Story 15-1: every merged emission ALSO lands in the retained tick log when armed (the log peeks
+                // the tick from the exact broadcast bytes — what it retains IS what every peer applied, so a tail
+                // fast-forward is bit-exact by construction). Disarmed, the append is a no-op branch.
+                _injectBroadcast = (buf, n) =>
+                {
+                    if (_mergedLog != null && _mergedLog.Armed && MergedTickPacket.TryPeekTick(buf, n, out uint mTick))
+                        _mergedLog.Append(mTick, buf, n);
+                    _transport.BroadcastCommands(buf, n);
+                };
 
                 // Story 9.13: stand up the per-slot command-rate throttle. Sized to MAX_SLOTS (not `connected`) so the
                 // slot argument HandlePacket already resolved via ServerTransport.FindSlot indexes it directly, and a
@@ -821,9 +949,37 @@ namespace ProjectChimera.Multiplayer
                     pkt => _transport.BroadcastReliable(pkt),
                     () => _builder?.EmittedThrough ?? -1L);
 
+                // Story 15-1: stand up the reconnect machinery for this match — the retained merged-tick log
+                // (armed only at a freeze commit), fresh per-slot rejoin tokens (D-5; re-minting invalidates any
+                // prior match's), and the rejoin state machine over the same injected-seam pattern as the drop
+                // coordinator. The commit seam re-admits the rejoiner to the checksum quorum keyed to its resume
+                // boundary (D-4) and reactivates it in the delay authority (D-8), then pumps injection so the
+                // thaw finalization is never waiting on a packet that already arrived.
+                _mergedLog = new Server.MergedTickLog();
+                _rejoinTokens ??= new Server.RejoinTokens(ServerTransport.MAX_SLOTS);
+                _rejoinCoordinator = new Server.RejoinCoordinator(
+                    _rejoinTokens, _mergedLog, _dropCoordinator.Controller, SLOT_FACTION, ExpectedPlayers,
+                    () => _builder?.EmittedThrough ?? -1L,
+                    () => _delayController?.LastCommittedDelay ?? LockstepManager.INPUT_DELAY,
+                    s => _transport.IsSlotConnected(s),
+                    (s, pkt) => _transport.SendReliableTo(s, pkt),
+                    pkt => _transport.BroadcastReliable(pkt),
+                    (s, resumeAt) =>
+                    {
+                        _serverHost?.AddReporter(s, resumeAt);
+                        _delayController?.ReactivateSlot(s);
+                        PumpFrozenInjection();
+                    },
+                    (s, msg) => GD.Print($"[Server] Rejoin slot {s}: {msg}"));
+
                 // Broadcast StartGame (tick 0) to all peers simultaneously.
                 var startPkt = TickCommandPacket.MakeStartGame(startTick: 0);
                 _transport.BroadcastReliable(startPkt);
+
+                // Story 15-1 (D-5): each player's rejoin identity token — sent ONLY to its own slot, after
+                // StartGame on the same reliable channel (ordering is irrelevant; the client just stores it).
+                foreach (int s in arrivalSlots)
+                    _transport.SendReliableTo(s, TickCommandPacket.MakeRejoinToken(s, _rejoinTokens.Mint(s)));
                 GD.Print($"[Server] All {connected} players ready — broadcasting StartGame. Match begins (quorum N={connected}).");
             }
             else

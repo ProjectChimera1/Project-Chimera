@@ -403,6 +403,28 @@ namespace ProjectChimera.Multiplayer.Server
         }
 
         /// <summary>
+        /// Story 15-1 (D-4) — the dual of <see cref="DeactivateSlot"/>: re-admit a REJOINED player to the delay
+        /// authority at resume commit. The slot rejoins the ACK quorum with a clean RTT history (its pre-drop EWMA
+        /// is long stale — the first probes re-seed it) and re-enters future directives' ACK sets. If a directive
+        /// is PENDING right now, the rejoiner is marked already-ACKed for it: it never received that directive (it
+        /// was away; D-8 handed it the CURRENT committed delay instead), and expecting an ACK it can never send
+        /// would wedge the pending commit forever — the DW-400 lesson from the other direction. Uniform delay is
+        /// restored by the NEXT directive, which the reactivated slot fully participates in. Idempotent; unknown
+        /// or already-active slots ignored.
+        /// </summary>
+        public void ReactivateSlot(int slot)
+        {
+            if ((uint)slot >= (uint)_capacity || _active[slot]) return;
+            _active[slot]      = true;
+            _activeCount++;
+            _rttSeen[slot]     = false;
+            _smoothedRtt[slot] = 0f;
+            _rttJitter[slot]   = 0f;
+            _pongFolded[slot]  = false;
+            _acked[slot]       = _pending; // excuse it from a directive that predates its return (see doc)
+        }
+
+        /// <summary>
         /// DW-400 — commit the pending directive iff it is now fully ACKed by the ACTIVE slot set (used after
         /// <see cref="DeactivateSlot"/>, when the departed slot's missing ACK was the only hold-out). Returns the
         /// committed pair for logging. False (no-op) when nothing is pending or ACKs are still outstanding.

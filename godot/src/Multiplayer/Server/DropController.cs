@@ -76,6 +76,15 @@ namespace ProjectChimera.Multiplayer.Server
         private bool _timeoutArmed;
         private uint _timeoutBaseTick;
 
+        // ── Story 15-1 thaw state (the freeze's inverse) ──────────────────────
+        // A scheduled thaw BOUNDS injection (the injector never injects the slot at tick >= bound) the moment it
+        // is scheduled — at ResumeDirective ISSUE, not commit — so the "who owns tick T" seam is race-free by
+        // construction: the injector owns ticks < bound, the rejoiner's own submissions own >= bound, and a
+        // first-wins Submit can never even be contested. Commit (all-ACK) is a separate step; an aborted resume
+        // cancels the schedule and the injector resumes covering the backlog it never stopped tracking.
+        private readonly long[] _thawBound;     // per slot; long.MaxValue = no thaw scheduled
+        private readonly bool[] _thawCommitted; // all-ACK confirmed (finalization may proceed once emitted reaches bound-1)
+
         /// <param name="expected">Number of player slots (in [1, ...]).</param>
         public DropController(int expected)
         {
@@ -87,6 +96,9 @@ namespace ProjectChimera.Multiplayer.Server
             _frozenApplyTick = new uint[expected];
             _isSurvivor      = new bool[expected];
             _acked           = new bool[expected];
+            _thawBound       = new long[expected];
+            _thawCommitted   = new bool[expected];
+            for (int i = 0; i < expected; i++) _thawBound[i] = long.MaxValue;
         }
 
         /// <summary>True while a drop directive is awaiting all-survivor ACKs.</summary>
@@ -260,6 +272,103 @@ namespace ProjectChimera.Multiplayer.Server
             hungSurvivors = hung.ToArray();
             CommitPending();
             return true;
+        }
+
+        // ── Story 15-1: the thaw sequence (ScheduleThaw → ConfirmThaw → FinalizeThaws) ────────────────────────
+
+        /// <summary>The injection bound for <paramref name="slot"/>: the injector must NOT inject it at any tick
+        /// &gt;= this value. <see cref="long.MaxValue"/> when no thaw is scheduled (inject freely).</summary>
+        public long ThawBound(int slot) => (uint)slot < (uint)Expected ? _thawBound[slot] : long.MaxValue;
+
+        /// <summary>True while <paramref name="slot"/> has a scheduled (possibly not yet committed) thaw.</summary>
+        public bool ThawScheduled(int slot) => (uint)slot < (uint)Expected && _thawBound[slot] != long.MaxValue;
+
+        /// <summary>
+        /// Story 15-1 (D-4) — schedule the thaw for a frozen <paramref name="slot"/>: from
+        /// <paramref name="boundTick"/> on, the slot's commands come from the rejoined client, never the injector
+        /// (<paramref name="boundTick"/> = resumeAtTick + the committed input delay — the rejoiner's first own
+        /// submission lands exactly there). Called at ResumeDirective ISSUE so the ownership seam is race-free (see
+        /// the field doc). False (no state change) unless the slot is frozen with no thaw already scheduled, and
+        /// <paramref name="boundTick"/> is beyond the frozen applyAtTick.
+        /// </summary>
+        public bool ScheduleThaw(int slot, uint boundTick)
+        {
+            if (!IsFrozen(slot)) return false;
+            if (_thawBound[slot] != long.MaxValue) return false; // one resume in flight per slot
+            if (boundTick <= _frozenApplyTick[slot]) return false;
+            _thawBound[slot]     = boundTick;
+            _thawCommitted[slot] = false;
+            return true;
+        }
+
+        /// <summary>
+        /// Story 15-1 — abort an in-flight (not yet committed) resume: clear the schedule so the injector resumes
+        /// covering the slot (it never stopped tracking the backlog — the drain fills every unemitted tick, so the
+        /// ticks the bound briefly withheld are injected on the next pump). False once committed (the quorum has
+        /// been re-based around the resume — there is no going back; the ACK timeout escalates instead).
+        /// </summary>
+        public bool CancelThaw(int slot)
+        {
+            if (!ThawScheduled(slot) || _thawCommitted[slot]) return false;
+            _thawBound[slot] = long.MaxValue;
+            return true;
+        }
+
+        /// <summary>True once the scheduled thaw for <paramref name="slot"/> has been all-ACK committed.</summary>
+        public bool ThawCommitted(int slot) => (uint)slot < (uint)Expected && _thawCommitted[slot];
+
+        /// <summary>
+        /// Story 15-1 — unwind a thaw in ANY pre-finalization state (scheduled or committed) because the REJOINER
+        /// DISCONNECTED again before the unfreeze completed. Unlike <see cref="CancelThaw"/> (pre-commit only, for
+        /// aborted negotiations), this exists for the one case where a committed thaw must still die: the client
+        /// the bound hands the stream to is GONE, so the builder would wait forever on submissions at the bound and
+        /// every survivor would hang — the exact wedge DW-410 exists to prevent. The slot stays frozen, the
+        /// injector resumes covering it (the drain back-fills the withheld ticks on the next pump), and the caller
+        /// re-drops the slot from the checksum/delay quorums if the commit had re-admitted it
+        /// (<see cref="ThawCommitted"/> read BEFORE calling this). False when no thaw is scheduled.
+        /// </summary>
+        public bool RevertThaw(int slot)
+        {
+            if (!ThawScheduled(slot)) return false;
+            _thawBound[slot]     = long.MaxValue;
+            _thawCommitted[slot] = false;
+            return true;
+        }
+
+        /// <summary>Story 15-1 — mark the scheduled thaw all-ACKed (the resume quorum committed). Finalization
+        /// happens via <see cref="FinalizeThaws"/> once the emitted frontier reaches the bound. False unless a
+        /// thaw is scheduled and not yet committed.</summary>
+        public bool ConfirmThaw(int slot)
+        {
+            if (!ThawScheduled(slot) || _thawCommitted[slot]) return false;
+            _thawCommitted[slot] = true;
+            return true;
+        }
+
+        /// <summary>
+        /// Story 15-1 — complete every committed thaw whose merged stream has caught up: once
+        /// <paramref name="emittedThrough"/> &gt;= bound − 1, every injector-owned tick has been emitted and the
+        /// slot's stream is the live client's from here on — un-freeze it (it leaves <see cref="FrozenSlots"/>,
+        /// <see cref="IsFrozen"/> goes false, and a LATER disconnect can freeze it again through the normal
+        /// directive path). Appends finalized slots to <paramref name="thawed"/> (never cleared here) and returns
+        /// how many finalized on this call. Pump after every injection drain.
+        /// </summary>
+        public int FinalizeThaws(long emittedThrough, List<int> thawed)
+        {
+            int n = 0;
+            for (int i = _frozenSlots.Count - 1; i >= 0; i--)
+            {
+                int slot = _frozenSlots[i];
+                if (!_thawCommitted[slot] || emittedThrough < _thawBound[slot] - 1) continue;
+                _frozenSlots.RemoveAt(i);
+                _dropped[slot]         = false;
+                _frozenApplyTick[slot] = 0;
+                _thawBound[slot]       = long.MaxValue;
+                _thawCommitted[slot]   = false;
+                thawed.Add(slot);
+                n++;
+            }
+            return n;
         }
 
         /// <summary>Finalize the pending directive unconditionally (the shared tail of <see cref="Commit"/> and the

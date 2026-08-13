@@ -112,6 +112,87 @@ namespace ProjectChimera.Multiplayer
         /// wire format as <see cref="DropDirective"/>: type(1) + faction(1) + applyAtTick(4 LE) = 6 bytes.
         /// </summary>
         DropAck       = 0x44,
+
+        // ── Story 15-1 (FR-79/DW-2): the reconnect family, 0x50-0x59. See spec-15-1 D-4/D-5/D-9. ──
+
+        /// <summary>
+        /// Story 15-1 (D-5): server → its slot's client, at StartGame. The per-match rejoin identity token
+        /// (<c>Server.RejoinTokens</c> mint) the client presents on a mid-match reconnect. Never broadcast — sent
+        /// only to the slot that owns it. Wire: type(1) + slot(1) + token(8 LE) = 10 bytes.
+        /// </summary>
+        RejoinToken   = 0x50,
+        /// <summary>
+        /// Story 15-1: client → server. A reconnecting client presents its <see cref="RejoinToken"/> to claim its
+        /// old slot mid-match. The claimed slot is TRANSPORT-AUTHORITATIVE (the slot this packet arrived on — the
+        /// token must verify against exactly that slot; the packet names no slot). Wire: type(1) + token(8 LE) = 9.
+        /// </summary>
+        RejoinRequest = 0x51,
+        /// <summary>
+        /// Story 15-1: server → the verified rejoiner. The rejoin is admitted; snapshot + tail follow. Carries the
+        /// slot's faction, the CURRENT committed input delay (D-8 — the rejoiner missed every DelayDirective), and
+        /// the server's emitted frontier (progress UX). Wire: type(1) + faction(1) + delay(1) + latestTick(4 LE) = 7.
+        /// </summary>
+        RejoinAccept  = 0x52,
+        /// <summary>
+        /// Story 15-1: server → a refused rejoiner. Terminal for this attempt (the client may retry fresh).
+        /// Wire: type(1) + reason(1) = 2 bytes (<see cref="RejoinRefuseReason"/>).
+        /// </summary>
+        RejoinRefuse  = 0x53,
+        /// <summary>
+        /// Story 15-1 (D-1/D-3): server → the snapshot DONOR (lowest connected surviving player). Asks it to
+        /// capture a between-ticks <c>SaveGameFile</c> snapshot at a boundary tick T &gt; minTick and upload it in
+        /// <see cref="SnapshotChunk"/>s. Wire: type(1) + requestId(1) + minTick(4 LE) = 6 bytes.
+        /// </summary>
+        SnapshotRequest = 0x54,
+        /// <summary>
+        /// Story 15-1 (D-9): one ~32 KB chunk of the donor's snapshot body. donor → server (relayed verbatim
+        /// server → rejoiner, so the server never buffers the snapshot). Wire: type(1) + requestId(1) + seq(2 LE) +
+        /// total(2 LE) + snapshotTick(4 LE) + payloadLen(2 LE) + payload = 12 + payloadLen bytes.
+        /// </summary>
+        SnapshotChunk = 0x55,
+        /// <summary>
+        /// Story 15-1 (D-2): server → rejoiner. One batch of retained merged-tick frames from the server's
+        /// <c>MergedTickLog</c> — the EXACT broadcast bytes for each tick, contiguous from firstTick. Flow control
+        /// is stop-and-wait via <see cref="TailAck"/>. Wire: type(1) + frameCount(2 LE) + firstTick(4 LE) + then
+        /// frameCount frames each framed len(2 LE) + bytes.
+        /// </summary>
+        TailFrames    = 0x56,
+        /// <summary>
+        /// Story 15-1: rejoiner → server. Acknowledges a <see cref="TailFrames"/> batch and names the next tick it
+        /// needs — the server sends the next batch (or the ResumeDirective once the lag closes). Wire: type(1) +
+        /// nextNeededTick(4 LE) = 5 bytes.
+        /// </summary>
+        TailAck       = 0x57,
+        /// <summary>
+        /// Story 15-1 (D-4): server → EVERYONE. The thaw dual of <see cref="DropDirective"/>: the named faction
+        /// resumes live play at resumeAtTick (its first OWN submission lands at resumeAtTick + delay; the server's
+        /// injector covers every tick below that bound). ACK-gated by ALL players (survivors + the rejoiner — the
+        /// rejoiner's ACK doubles as its "caught up to the boundary" signal) with the DW-410 timeout. Wire:
+        /// type(1) + faction(1) + resumeAtTick(4 LE) + delay(1) = 7 bytes.
+        /// </summary>
+        ResumeDirective = 0x58,
+        /// <summary>
+        /// Story 15-1: any player → server. Acknowledges the pending <see cref="ResumeDirective"/>, echoing the
+        /// (faction, resumeAtTick) pair. Wire: type(1) + faction(1) + resumeAtTick(4 LE) = 6 bytes.
+        /// </summary>
+        ResumeAck     = 0x59,
+    }
+
+    /// <summary>Story 15-1 — why the server refused a <see cref="PacketType.RejoinRequest"/>. Byte-wide.</summary>
+    public enum RejoinRefuseReason : byte
+    {
+        /// <summary>The presented token does not verify against the arrival slot (wrong/stale token, or the
+        /// reconnect landed on a different slot than the one the token was minted for).</summary>
+        BadToken = 0,
+        /// <summary>No live match to rejoin (the match ended or never started) — D-6's "it's over" arm.</summary>
+        NoLiveMatch = 1,
+        /// <summary>Another rejoin is already in flight — one at a time; retry shortly.</summary>
+        Busy = 2,
+        /// <summary>The slot is not frozen (nothing to resume — e.g. it was never dropped, or already resumed).</summary>
+        NotFrozen = 3,
+        /// <summary>The retained tail cannot service the rejoin (log disarmed / byte budget exceeded — away too
+        /// long) or a transfer phase timed out (D-11). Terminal for this match.</summary>
+        TailUnavailable = 4,
     }
 
     // ── HALT reason ───────────────────────────────────────────────────────────
@@ -910,7 +991,13 @@ namespace ProjectChimera.Multiplayer
         /// 12→14 (the SUBJECT id widened to 4 bytes so it can carry a PACKED generation-stamped entity ref for
         /// unit commands; building-family commands keep raw slots in the same field). A v4 body decoded at the v5
         /// stride would misalign every order after the first — fail-closed reject, the 15.11 precedent.</remarks>
-        public const ushort PROTOCOL_VERSION = 5;
+        /// <remarks>Story 15-1 (FR-79/DW-2, D-9): bumped 5→6 — the reconnect family (0x50-0x59: RejoinToken /
+        /// RejoinRequest / Accept / Refuse, SnapshotRequest/Chunk, TailFrames/TailAck, ResumeDirective/Ack) plus
+        /// the REJOIN-flagged Hello. The packets are additive, but the FLOW is not: a v5 client that drops and
+        /// reconnects to a v6 server would misread the rejoin Hello, send Ready into an InGame server, and wedge
+        /// silently — exactly the fail-open the version gate exists to prevent. Both LAN machines upgrade together
+        /// (the standing rule for every stamp bump this session).</remarks>
+        public const ushort PROTOCOL_VERSION = 6;
 
         /// <summary>
         /// DW-419/DW-420 — Hello role flag: the sender is a DEDICATED SERVER (not a P2P host). Tells the client
@@ -927,6 +1014,16 @@ namespace ProjectChimera.Multiplayer
         /// <see cref="HELLO_FLAG_DEDICATED"/> (only dedicated servers classify spectators).
         /// </summary>
         public const byte HELLO_FLAG_SPECTATOR = 0x02;
+
+        /// <summary>
+        /// Story 15-1 (DW-599) — Hello role flag: the match this server hosts is ALREADY IN GAME, and the
+        /// recipient's slot is a player seat. The client must NOT send Ready (there is no lobby to ready into);
+        /// if it holds a <see cref="PacketType.RejoinToken"/> for this match it sends a
+        /// <see cref="PacketType.RejoinRequest"/> instead, otherwise it should disconnect (a stranger cannot join
+        /// a live match — mid-match NEW joins are out of scope, spec 15-1). Always sent with
+        /// <see cref="HELLO_FLAG_DEDICATED"/>.
+        /// </summary>
+        public const byte HELLO_FLAG_INGAME_REJOIN = 0x04;
 
         /// <summary>
         /// Create a Hello packet: type(1) + protocolVersion(2 LE) + faction(1) + roleFlags(1) = 5 bytes.
@@ -1349,6 +1446,297 @@ namespace ProjectChimera.Multiplayer
             faction = buf[1];
             int pos = 2;
             applyAtTick = ReadUint(buf, ref pos);
+            return true;
+        }
+
+        // ── Story 15-1: the reconnect family (0x50-0x59) ───────────────────────
+
+        /// <summary>Snapshot-chunk payload ceiling (bytes). Comfortably under ENet's fragmentation threshold
+        /// stays irrelevant (ENet fragments reliable packets itself); 32 KB just bounds per-packet memory and
+        /// keeps the relay's copy cheap. A realistic snapshot is tens of KB → a handful of chunks.</summary>
+        public const int SNAPSHOT_CHUNK_BYTES = 32 * 1024;
+
+        /// <summary>Serialise a server→client <see cref="PacketType.RejoinToken"/> (10 bytes):
+        /// type(1) + slot(1) + token(8 LE). Sent ONLY to the owning slot at StartGame (D-5).</summary>
+        public static byte[] MakeRejoinToken(int slot, ulong token)
+        {
+            var buf = new byte[10];
+            buf[0] = (byte)PacketType.RejoinToken;
+            buf[1] = (byte)slot;
+            int pos = 2;
+            WriteULong(buf, ref pos, token);
+            return buf;
+        }
+
+        /// <summary>Parse a <see cref="PacketType.RejoinToken"/> packet. Returns false if malformed.</summary>
+        public static bool TryReadRejoinToken(byte[] buf, int len, out int slot, out ulong token)
+        {
+            slot = -1; token = 0;
+            if (len < 10) return false;
+            if ((PacketType)buf[0] != PacketType.RejoinToken) return false;
+            slot = buf[1];
+            int pos = 2;
+            token = ReadULong(buf, ref pos);
+            return true;
+        }
+
+        /// <summary>Serialise a client→server <see cref="PacketType.RejoinRequest"/> (9 bytes):
+        /// type(1) + token(8 LE). The claimed slot is the transport arrival slot — never a packet byte.</summary>
+        public static byte[] MakeRejoinRequest(ulong token)
+        {
+            var buf = new byte[9];
+            buf[0] = (byte)PacketType.RejoinRequest;
+            int pos = 1;
+            WriteULong(buf, ref pos, token);
+            return buf;
+        }
+
+        /// <summary>Parse a <see cref="PacketType.RejoinRequest"/> packet. Returns false if malformed.</summary>
+        public static bool TryReadRejoinRequest(byte[] buf, int len, out ulong token)
+        {
+            token = 0;
+            if (len < 9) return false;
+            if ((PacketType)buf[0] != PacketType.RejoinRequest) return false;
+            int pos = 1;
+            token = ReadULong(buf, ref pos);
+            return true;
+        }
+
+        /// <summary>Serialise a server→rejoiner <see cref="PacketType.RejoinAccept"/> (7 bytes):
+        /// type(1) + faction(1) + currentDelay(1) + latestTick(4 LE).</summary>
+        public static byte[] MakeRejoinAccept(byte faction, byte currentDelay, uint latestTick)
+        {
+            var buf = new byte[7];
+            buf[0] = (byte)PacketType.RejoinAccept;
+            buf[1] = faction;
+            buf[2] = currentDelay;
+            int pos = 3;
+            WriteUint(buf, ref pos, latestTick);
+            return buf;
+        }
+
+        /// <summary>Parse a <see cref="PacketType.RejoinAccept"/> packet. Returns false if malformed.</summary>
+        public static bool TryReadRejoinAccept(byte[] buf, int len, out byte faction, out byte currentDelay,
+                                               out uint latestTick)
+        {
+            faction = 0; currentDelay = 0; latestTick = 0;
+            if (len < 7) return false;
+            if ((PacketType)buf[0] != PacketType.RejoinAccept) return false;
+            faction = buf[1];
+            currentDelay = buf[2];
+            int pos = 3;
+            latestTick = ReadUint(buf, ref pos);
+            return true;
+        }
+
+        /// <summary>Serialise a server→rejoiner <see cref="PacketType.RejoinRefuse"/> (2 bytes):
+        /// type(1) + reason(1).</summary>
+        public static byte[] MakeRejoinRefuse(RejoinRefuseReason reason)
+            => new byte[] { (byte)PacketType.RejoinRefuse, (byte)reason };
+
+        /// <summary>Parse a <see cref="PacketType.RejoinRefuse"/> packet. Returns false if malformed.</summary>
+        public static bool TryReadRejoinRefuse(byte[] buf, int len, out RejoinRefuseReason reason)
+        {
+            reason = RejoinRefuseReason.BadToken;
+            if (len < 2) return false;
+            if ((PacketType)buf[0] != PacketType.RejoinRefuse) return false;
+            reason = (RejoinRefuseReason)buf[1];
+            return true;
+        }
+
+        /// <summary>Serialise a server→donor <see cref="PacketType.SnapshotRequest"/> (6 bytes):
+        /// type(1) + requestId(1) + minTick(4 LE). The donor captures at a boundary tick T &gt; minTick (D-3).</summary>
+        public static byte[] MakeSnapshotRequest(byte requestId, uint minTick)
+        {
+            var buf = new byte[6];
+            buf[0] = (byte)PacketType.SnapshotRequest;
+            buf[1] = requestId;
+            int pos = 2;
+            WriteUint(buf, ref pos, minTick);
+            return buf;
+        }
+
+        /// <summary>Parse a <see cref="PacketType.SnapshotRequest"/> packet. Returns false if malformed.</summary>
+        public static bool TryReadSnapshotRequest(byte[] buf, int len, out byte requestId, out uint minTick)
+        {
+            requestId = 0; minTick = 0;
+            if (len < 6) return false;
+            if ((PacketType)buf[0] != PacketType.SnapshotRequest) return false;
+            requestId = buf[1];
+            int pos = 2;
+            minTick = ReadUint(buf, ref pos);
+            return true;
+        }
+
+        /// <summary>Serialise one <see cref="PacketType.SnapshotChunk"/> (12 + payloadLen bytes):
+        /// type(1) + requestId(1) + seq(2 LE) + total(2 LE) + snapshotTick(4 LE) + payloadLen(2 LE) + payload.
+        /// Every chunk repeats snapshotTick/total so the assembler needs no ordering assumptions beyond the
+        /// reliable channel's (which delivers in order anyway).</summary>
+        public static byte[] MakeSnapshotChunk(byte requestId, ushort seq, ushort total, uint snapshotTick,
+                                               byte[] payload, int payloadOffset, int payloadLen)
+        {
+            if (payloadLen < 0 || payloadLen > SNAPSHOT_CHUNK_BYTES)
+                throw new System.ArgumentOutOfRangeException(nameof(payloadLen));
+            var buf = new byte[12 + payloadLen];
+            buf[0] = (byte)PacketType.SnapshotChunk;
+            buf[1] = requestId;
+            buf[2] = (byte)seq;
+            buf[3] = (byte)(seq >> 8);
+            buf[4] = (byte)total;
+            buf[5] = (byte)(total >> 8);
+            int pos = 6;
+            WriteUint(buf, ref pos, snapshotTick);
+            buf[10] = (byte)payloadLen;
+            buf[11] = (byte)(payloadLen >> 8);
+            System.Array.Copy(payload, payloadOffset, buf, 12, payloadLen);
+            return buf;
+        }
+
+        /// <summary>Parse a <see cref="PacketType.SnapshotChunk"/> header; the payload stays in place at
+        /// <paramref name="payloadOffset"/> (length <paramref name="payloadLen"/>) — the caller copies it out.
+        /// Returns false if malformed (wrong type, short, or the framed length overruns the packet).</summary>
+        public static bool TryReadSnapshotChunk(byte[] buf, int len, out byte requestId, out ushort seq,
+                                                out ushort total, out uint snapshotTick,
+                                                out int payloadOffset, out int payloadLen)
+        {
+            requestId = 0; seq = 0; total = 0; snapshotTick = 0; payloadOffset = 0; payloadLen = 0;
+            if (len < 12) return false;
+            if ((PacketType)buf[0] != PacketType.SnapshotChunk) return false;
+            requestId = buf[1];
+            seq   = (ushort)(buf[2] | (buf[3] << 8));
+            total = (ushort)(buf[4] | (buf[5] << 8));
+            int pos = 6;
+            snapshotTick = ReadUint(buf, ref pos);
+            payloadLen = buf[10] | (buf[11] << 8);
+            payloadOffset = 12;
+            return payloadLen >= 0 && 12 + payloadLen <= len;
+        }
+
+        /// <summary>
+        /// Serialise a server→rejoiner <see cref="PacketType.TailFrames"/> batch: type(1) + frameCount(2 LE) +
+        /// firstTick(4 LE), then each frame framed len(2 LE) + bytes — the EXACT retained merged broadcast bytes,
+        /// contiguous ticks from firstTick. The caller bounds the batch (count/bytes) before calling.
+        /// </summary>
+        public static byte[] MakeTailFrames(uint firstTick, System.Collections.Generic.IReadOnlyList<byte[]> frames,
+                                            int frameStart, int frameCount)
+        {
+            int bytes = 7;
+            for (int i = 0; i < frameCount; i++) bytes += 2 + frames[frameStart + i].Length;
+            var buf = new byte[bytes];
+            buf[0] = (byte)PacketType.TailFrames;
+            buf[1] = (byte)frameCount;
+            buf[2] = (byte)(frameCount >> 8);
+            int pos = 3;
+            WriteUint(buf, ref pos, firstTick);
+            for (int i = 0; i < frameCount; i++)
+            {
+                byte[] f = frames[frameStart + i];
+                buf[pos++] = (byte)f.Length;
+                buf[pos++] = (byte)(f.Length >> 8);
+                System.Array.Copy(f, 0, buf, pos, f.Length);
+                pos += f.Length;
+            }
+            return buf;
+        }
+
+        /// <summary>
+        /// Parse a <see cref="PacketType.TailFrames"/> batch, invoking <paramref name="onFrame"/> as
+        /// (tick, packetBytes, offset, length) per frame ascending. The frame bytes stay in <paramref name="buf"/> —
+        /// the consumer applies or copies them before returning. False (possibly after some frames were delivered)
+        /// on a malformed/truncated batch — the caller treats that as a failed transfer, never a partial success.
+        /// </summary>
+        public static bool TryReadTailFrames(byte[] buf, int len,
+                                             System.Action<uint, byte[], int, int> onFrame)
+        {
+            if (len < 7) return false;
+            if ((PacketType)buf[0] != PacketType.TailFrames) return false;
+            int count = buf[1] | (buf[2] << 8);
+            int pos = 3;
+            uint tick = ReadUint(buf, ref pos);
+            for (int i = 0; i < count; i++)
+            {
+                if (pos + 2 > len) return false;
+                int flen = buf[pos] | (buf[pos + 1] << 8);
+                pos += 2;
+                if (pos + flen > len) return false;
+                onFrame(tick, buf, pos, flen);
+                pos += flen;
+                tick++;
+            }
+            return true;
+        }
+
+        /// <summary>Serialise a rejoiner→server <see cref="PacketType.TailAck"/> (5 bytes):
+        /// type(1) + nextNeededTick(4 LE).</summary>
+        public static byte[] MakeTailAck(uint nextNeededTick)
+        {
+            var buf = new byte[5];
+            buf[0] = (byte)PacketType.TailAck;
+            int pos = 1;
+            WriteUint(buf, ref pos, nextNeededTick);
+            return buf;
+        }
+
+        /// <summary>Parse a <see cref="PacketType.TailAck"/> packet. Returns false if malformed.</summary>
+        public static bool TryReadTailAck(byte[] buf, int len, out uint nextNeededTick)
+        {
+            nextNeededTick = 0;
+            if (len < 5) return false;
+            if ((PacketType)buf[0] != PacketType.TailAck) return false;
+            int pos = 1;
+            nextNeededTick = ReadUint(buf, ref pos);
+            return true;
+        }
+
+        /// <summary>Serialise a server→everyone <see cref="PacketType.ResumeDirective"/> (7 bytes):
+        /// type(1) + faction(1) + resumeAtTick(4 LE) + delay(1). The rejoiner's first OWN submission lands at
+        /// resumeAtTick + delay; the server's injector covers every tick below that bound (the seam is exact).</summary>
+        public static byte[] MakeResumeDirective(byte faction, uint resumeAtTick, byte delay)
+        {
+            var buf = new byte[7];
+            buf[0] = (byte)PacketType.ResumeDirective;
+            buf[1] = faction;
+            int pos = 2;
+            WriteUint(buf, ref pos, resumeAtTick);
+            buf[6] = delay;
+            return buf;
+        }
+
+        /// <summary>Parse a <see cref="PacketType.ResumeDirective"/> packet. Returns false if malformed.</summary>
+        public static bool TryReadResumeDirective(byte[] buf, int len, out byte faction, out uint resumeAtTick,
+                                                  out byte delay)
+        {
+            faction = 0; resumeAtTick = 0; delay = 0;
+            if (len < 7) return false;
+            if ((PacketType)buf[0] != PacketType.ResumeDirective) return false;
+            faction = buf[1];
+            int pos = 2;
+            resumeAtTick = ReadUint(buf, ref pos);
+            delay = buf[6];
+            return true;
+        }
+
+        /// <summary>Serialise a player→server <see cref="PacketType.ResumeAck"/> (6 bytes):
+        /// type(1) + faction(1) + resumeAtTick(4 LE) — echoes the directive's pair (the DropAck shape).</summary>
+        public static byte[] MakeResumeAck(byte faction, uint resumeAtTick)
+        {
+            var buf = new byte[6];
+            buf[0] = (byte)PacketType.ResumeAck;
+            buf[1] = faction;
+            int pos = 2;
+            WriteUint(buf, ref pos, resumeAtTick);
+            return buf;
+        }
+
+        /// <summary>Parse a <see cref="PacketType.ResumeAck"/> packet. Returns false if malformed.</summary>
+        public static bool TryReadResumeAck(byte[] buf, int len, out byte faction, out uint resumeAtTick)
+        {
+            faction = 0; resumeAtTick = 0;
+            if (len < 6) return false;
+            if ((PacketType)buf[0] != PacketType.ResumeAck) return false;
+            faction = buf[1];
+            int pos = 2;
+            resumeAtTick = ReadUint(buf, ref pos);
             return true;
         }
 

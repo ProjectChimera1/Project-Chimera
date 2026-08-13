@@ -41,8 +41,15 @@ namespace ProjectChimera.Multiplayer.Server
         /// <param name="frontier">The current submission frontier (highest tick seen). The drain never keys past it.</param>
         /// <param name="scratch">Caller-owned buffer ≥ <see cref="TickCommandPacket.HEADER_BYTES"/> for the empty packet.</param>
         /// <param name="broadcast">Sink for a built merged packet: (buffer, length).</param>
+        /// <param name="thawBoundOf">
+        /// Story 15-1 — the per-slot injection bound (<see cref="DropController.ThawBound"/>): the injector never
+        /// injects a slot at any tick &gt;= its bound (those ticks belong to the REJOINED client's own submissions —
+        /// the resume seam is exact and race-free because the bound is set at ResumeDirective issue). Null = no
+        /// bounds (the pre-15-1 behavior; the FR-39 golden and Story 9.6 paths pass null).
+        /// </param>
         public static void Drain(MergedTickBuilder builder, IReadOnlyList<int> frozenSlots, Faction[] slotFaction,
-                                 uint frontier, byte[] scratch, Action<byte[], int> broadcast)
+                                 uint frontier, byte[] scratch, Action<byte[], int> broadcast,
+                                 Func<int, long>? thawBoundOf = null)
         {
             if (builder == null || frozenSlots == null || frozenSlots.Count == 0) return;
 
@@ -52,6 +59,10 @@ namespace ProjectChimera.Multiplayer.Server
                 for (int k = 0; k < frozenSlots.Count; k++)
                 {
                     int slot = frozenSlots[k];
+                    // Story 15-1: past its thaw bound the slot's ticks come from the live rejoined client — never
+                    // inject there (an injected empty arriving first would WIN under first-wins Submit and eat the
+                    // player's genuine first orders back).
+                    if (thawBoundOf != null && t >= thawBoundOf(slot)) continue;
                     int len = TickCommandPacket.Write(scratch, tick, slotFaction[slot], EmptyOrders, 0);
                     // Idempotent: if the frozen slot already fanned in a real command for this tick, Submit no-ops
                     // (returns false) and the real command wins — we do not care about the return value.

@@ -66,6 +66,11 @@
          DelayMath precedent) so the Story-9.3 client gate — keying, the stall/apply predicate, bootstrap/delay-gap
          seeding — is Tier-1 unit-testable (MergedArrivalRingTests). Pure integer/byte state, no float. -->
     <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\MergedArrivalRing.cs" LinkBase="Sim\Multiplayer" />
+    <!-- Story 15-1: the Godot-free REJOINER protocol machine + snapshot chunk/assembly helpers (the client half
+         of Server\RejoinCoordinator's wire protocol — request/snapshot/tail/resume). Verified Godot-free
+         (System.* + TickCommandPacket only); the Godot adapter that owns transport + sim restore is the 15-1b
+         in-engine half and stays un-globbed with the rest of the coupled client stack. -->
+    <Compile Include="$(MSBuildThisFileDirectory)src\Multiplayer\RejoinClient.cs" LinkBase="Sim\Multiplayer" />
     <!-- DW-912: the Godot-free ONLINE fixed-timestep pacer (the MergedArrivalRing precedent) — the frame→tick
          budget + the "a stall banks nothing" rule that keeps the client's command-packet rate a property of the
          30 Hz tick rate rather than of the frame rate. The frame-paced online loop it replaces sent ~252

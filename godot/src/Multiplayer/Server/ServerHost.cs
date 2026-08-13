@@ -249,6 +249,22 @@ namespace ProjectChimera.Multiplayer.Server
         }
 
         /// <summary>
+        /// Story 15-1 (D-4) — re-admit a REJOINED player to the checksum quorum, keyed to the first window at/after
+        /// <paramref name="fromTick"/> (its resume boundary): the exact dual of <see cref="DropReporter"/>, called
+        /// at resume commit. Windows below the boundary keep quoruming over the survivors; the rejoiner's first
+        /// live window then re-proves state agreement end-to-end (D-1 — a corrupt donor snapshot desyncs LOUDLY
+        /// here rather than silently). Adding a reporter can never complete an in-flight window (it only raises
+        /// the bar), so there is nothing to re-tally. No-op once <see cref="Halted"/> (nothing left to re-prove).
+        /// </summary>
+        public void AddReporter(int slot, uint fromTick)
+        {
+            if (Halted) return;
+            if (_collector.AddExpectedReporter(slot, fromTick))
+                _log.Info($"[Determinism] slot {slot} re-admitted to the checksum quorum from tick {fromTick} " +
+                          $"(rejoin) — quorum re-raised to {ExpectedPeerCount} reporter(s).");
+        }
+
+        /// <summary>
         /// Route the windows a quorum reduction just completed (ascending by tick) through the shared
         /// <see cref="ProcessVerdict"/> logic. Shared by the disconnect path (<see cref="DropReporter"/>) and the
         /// DW-237 alerted-minority rebase so both keep the observability counters and the alert/HALT behavior

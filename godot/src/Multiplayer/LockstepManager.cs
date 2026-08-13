@@ -709,8 +709,42 @@ namespace ProjectChimera.Multiplayer
                     // being frozen. Fire the presentation event; a player ACKs, a spectator does not.
                     HandleDropDirective(data, len);
                     break;
+
+                case PacketType.RejoinToken:
+                    // Story 15-1 (D-5): the server's per-match rejoin identity token for THIS slot, sent at
+                    // StartGame. Hold it for the life of the process so a mid-match reconnect (MainScene's rejoin
+                    // flow, 15-1b) can present it; it is per-match and in-memory only — never persisted.
+                    if (TickCommandPacket.TryReadRejoinToken(data, len, out int tokenSlot, out ulong token))
+                    {
+                        RejoinToken     = token;
+                        RejoinTokenSlot = tokenSlot;
+                    }
+                    break;
+
+                case PacketType.ResumeDirective:
+                    // Story 15-1 (D-4): a dropped player is resuming. A SURVIVOR surfaces the UI event and ACKs
+                    // (the DropDirective dual; spectators never ACK). The REJOINER itself never routes here — its
+                    // packets are consumed by the RejoinClient machine until it is live.
+                    if (TickCommandPacket.TryReadResumeDirective(data, len, out byte resFaction, out uint resAt, out _))
+                    {
+                        OnPlayerResumed?.Invoke((Faction)resFaction, resAt);
+                        if (!IsSpectator)
+                            _transport.SendReliable(TickCommandPacket.MakeResumeAck(resFaction, resAt));
+                    }
+                    break;
             }
         }
+
+        /// <summary>Story 15-1 (D-5): the per-match rejoin identity token the server minted for this client's slot
+        /// (0 = never received). Held in memory for the life of the process; presented by the 15-1b reconnect flow.</summary>
+        public ulong RejoinToken { get; private set; }
+
+        /// <summary>The slot <see cref="RejoinToken"/> was minted for (−1 = never received).</summary>
+        public int RejoinTokenSlot { get; private set; } = -1;
+
+        /// <summary>Story 15-1: a dropped player's faction is RESUMING at the given tick (the OnPlayerDropped dual)
+        /// — presentation-only ("P2 reconnected" toast; un-grey the frozen faction's UI).</summary>
+        public event Action<Faction, uint>? OnPlayerResumed;
 
         /// <summary>
         /// Story 9.6 — handle a server <see cref="PacketType.DropDirective"/>. Fires <see cref="OnPlayerDropped"/>

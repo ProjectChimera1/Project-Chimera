@@ -183,7 +183,7 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// <summary>Story 15-23 (DW-775): 3→4 — entity-target order payloads (AttackTarget/Follow TargetX,
         /// TargetUnit CastAbility TargetZ) are PACKED generation-stamped refs; a v3 peer would misinterpret them
         /// as raw ids and silently diverge on any recycled-slot target, so mixed builds must handshake-reject.</summary>
-        private const ushort ExpectedProtocolVersion = 5; // DW-945: 4->5 — UnitOrder stride 12->14 (4-byte packed SUBJECT ref)
+        private const ushort ExpectedProtocolVersion = 6; // Story 15-1 (D-9): 5->6 — the reconnect packet family + rejoin Hello flow
 
         /// <summary>Story 9.4 — the net-new ruleset-fingerprint hash over the <see cref="EffectCaps"/> structural
         /// caps, folded into <see cref="MatchAgreementHash"/>. v1 = initial (AlgoVersion + every cap in file order).

@@ -125,6 +125,13 @@ namespace ProjectChimera.Multiplayer.Server
         // ignored by Record, and its contribution is cleared from any active bucket by DropExpectedReporter.
         private readonly bool[] _excluded = new bool[MaxSlots];
 
+        // Story 15-1: the tick a RE-ADMITTED reporter (AddExpectedReporter) starts counting from. A rejoiner is
+        // re-admitted keyed to its resume boundary (D-4): windows below its fromTick neither expect nor accept its
+        // reports (it may execute those ticks during headless catch-up, and a stray report there must not pollute a
+        // survivors-only window), while windows at/after expect the full re-raised quorum. 0 for every reporter that
+        // was never re-admitted — the pre-15-1 behavior, byte-identical.
+        private readonly uint[] _fromTick = new uint[MaxSlots];
+
         // Highest tick this collector will ever act on again; -1 = none. Advanced when a verdict is emitted AND
         // (DW-239) when a ring overrun abandons an older incomplete bucket. Any incoming tick at or below this is
         // already resolved / abandoned / stale and is dropped — this implements the "stale checksums for
@@ -201,6 +208,7 @@ namespace ProjectChimera.Multiplayer.Server
         {
             if ((uint)slot >= MaxSlots) return Verdict.Pending;        // defensive: slot is transport-authoritative
             if (_excluded[slot]) return Verdict.Pending;               // Story 9.6: a dropped reporter's stale reports are ignored
+            if (tick < _fromTick[slot]) return Verdict.Pending;        // Story 15-1: pre-boundary report from a re-admitted rejoiner
             if ((long)tick <= _resolvedThrough) return Verdict.Pending; // already resolved / stale → drop
 
             // DW-511: the FUTURE bound, mirroring the stale-past bound above. A tick no honest client can have
@@ -227,7 +235,7 @@ namespace ProjectChimera.Multiplayer.Server
             b.Got[slot] = true;
             b.Count++;
 
-            if (b.Count < _expected) return Verdict.Pending; // still waiting on peers
+            if (b.Count < ExpectedForTick(tick)) return Verdict.Pending; // still waiting on peers
 
             Verdict v = Tally(b);
             b.Active = false;                                // evict the completed bucket
@@ -280,7 +288,7 @@ namespace ProjectChimera.Multiplayer.Server
                 // HARMLESS — Tally requires Count >= _expected >= 1 to ever fire, so a 0-count bucket can never
                 // falsely tally; it simply waits for the survivor's own report (or is re-keyed forward by Record).
                 if ((long)b.TickOf <= floor) { b.Active = false; continue; }
-                if (b.Count > 0 && b.Count >= _expected)
+                if (b.Count > 0 && b.Count >= ExpectedForTick(b.TickOf))
                 {
                     Verdict v = Tally(b);
                     b.Active = false;
@@ -293,6 +301,37 @@ namespace ProjectChimera.Multiplayer.Server
             // Ascending by tick so the caller routes re-tallied windows in a stable, monotonic order.
             results.Sort((x, y) => x.tick.CompareTo(y.tick));
             return results;
+        }
+
+        /// <summary>
+        /// Story 15-1 (D-4) — RE-ADMIT <paramref name="slot"/> to the reporting quorum, keyed to the first window
+        /// at/after <paramref name="fromTick"/> (the resume boundary): the exact dual of
+        /// <see cref="DropExpectedReporter"/>, the seam the DW-237 rebase note anticipated. Windows BELOW fromTick
+        /// keep the reduced quorum (and drop any stray catch-up report from this slot — see <see cref="Record"/>);
+        /// windows at/after expect the re-raised quorum, so the rejoiner's first live checksum window re-proves
+        /// state agreement END-TO-END (D-1's trust argument). Idempotent; false for an out-of-range or
+        /// not-currently-excluded slot.
+        /// </summary>
+        public bool AddExpectedReporter(int slot, uint fromTick)
+        {
+            if ((uint)slot >= MaxSlots || !_excluded[slot]) return false;
+            _excluded[slot] = false;
+            _fromTick[slot] = fromTick;
+            _expected++;
+            return true;
+        }
+
+        /// <summary>
+        /// Story 15-1 — the reporter count a window at <paramref name="tick"/> expects: the current included count
+        /// minus re-admitted reporters whose <c>fromTick</c> is still ahead of it. With no re-admits ever performed
+        /// this is exactly <see cref="_expected"/> (every <c>_fromTick</c> is 0) — the pre-15-1 behavior.
+        /// </summary>
+        private int ExpectedForTick(uint tick)
+        {
+            int expected = _expected;
+            for (int s = 0; s < MaxSlots; s++)
+                if (!_excluded[s] && _fromTick[s] > tick) expected--;
+            return expected;
         }
 
         /// <summary>
@@ -357,10 +396,12 @@ namespace ProjectChimera.Multiplayer.Server
         /// <summary>
         /// Tally a full bucket: find a hash held by a strict majority (<c>&gt; N/2</c>) of reporting slots and name
         /// the minority. Scans slots ASCENDING for a deterministic minority order (no Dictionary enumeration).
+        /// N is the window's own expected count (Story 15-1: a window below a re-admitted rejoiner's boundary
+        /// quorums over the survivors only).
         /// </summary>
         private Verdict Tally(Bucket b)
         {
-            int needed = _expected / 2 + 1; // strict majority of N: count > N/2  ⟺  count ≥ floor(N/2)+1, for any N
+            int needed = ExpectedForTick(b.TickOf) / 2 + 1; // strict majority of N: count > N/2  ⟺  count ≥ floor(N/2)+1, for any N
 
             for (int i = 0; i < MaxSlots; i++)
             {

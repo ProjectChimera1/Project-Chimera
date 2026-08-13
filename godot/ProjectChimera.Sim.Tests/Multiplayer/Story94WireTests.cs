@@ -19,7 +19,8 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
         [Fact]
         public void ProtocolVersion_IsCurrent()
             // Story 9.4 bumped this to 2; Story 15.11 (DW-280) bumped it to 3 for the widened 12-byte UnitOrder stride.
-            => Assert.Equal(5, TickCommandPacket.PROTOCOL_VERSION); // DW-945: 4→5 (14-byte stride, packed SUBJECT ref; 15-23 took it to 4)
+            // 15-23 → 4 (packed entity-target refs); DW-945 → 5 (14-byte stride, packed SUBJECT ref).
+            => Assert.Equal(6, TickCommandPacket.PROTOCOL_VERSION); // Story 15-1 (D-9): 5→6 — the reconnect packet family + rejoin Hello flow
 
         // ── Widened Ready packet ───────────────────────────────────────────────────
 
