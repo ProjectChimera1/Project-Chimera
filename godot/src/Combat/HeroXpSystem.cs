@@ -57,6 +57,16 @@ namespace ProjectChimera.Combat
         /// <see cref="HeroGrowthModifierId"/> stacks instead (one modifier, not one per level).</summary>
         public const int HeroAttrBaseModifierId = 0x3135_2100; // "31 35 21" ~ 15.21
 
+        /// <summary>
+        /// Story 15-24c: reserved <see cref="Modifier.Id"/> for the per-hero THRESHOLD-derivation modifier — the
+        /// TOTAL contribution of every step/gate row (<c>DerivationShape.PerStep</c>/<c>AtLeast</c>) at the hero's
+        /// CURRENT level. One slot, whose vector is SWAPPED on a level change (remove + re-apply, the
+        /// <c>ResearchSystem</c> cumulative-modifier pattern) — a step function cannot be expressed as N identical
+        /// stacks, and one-modifier-per-step would exhaust the 8-slot ring. Carries NO new folded state: the vector
+        /// is a pure function of the folded Level, re-derived on demand (the 15-24c contract).
+        /// </summary>
+        public const int HeroThresholdModifierId = 0x3135_2400; // "31 35 24" ~ 15.24
+
         /// <summary>Max growth stacks = the hero level ceiling (100) minus 1, so a valid hero never saturates the stack cap.</summary>
         public const int MaxGrowthStacks = 99;
 
@@ -426,6 +436,12 @@ namespace ProjectChimera.Combat
                 _modifiers.Apply(entityId, baseMod, entityId, world.FactionOf[entityId]);
             }
 
+            // ── Story 15-24c: install the THRESHOLD total for the CURRENT level (idempotent — StackRule.Ignore
+            //    no-ops against a live same-id instance, exactly like the base modifier above). A model with no
+            //    step/gate row returns null from EvaluateAt and this whole path costs one null check, which is
+            //    what keeps 15-24c golden-neutral for every shipped model. ──
+            ReconcileThresholds(world, slot, entityId, swap: false);
+
             int desired = _heroes.Level[slot] - 1;
             if (desired < 0) desired = 0;
             int applied = _heroes.GrowthStacksApplied[slot];
@@ -461,6 +477,76 @@ namespace ProjectChimera.Combat
                 _modifiers.Apply(entityId, growthMod, entityId, faction); // each Apply adds one stack + re-adds the deltas
 
             _heroes.GrowthStacksApplied[slot] = desired;
+
+            // Story 15-24c: a LEVEL was gained, so the hero's attribute totals moved and any step/gate row may have
+            // crossed. Re-derive the threshold total and SWAP the single slot's vector. Reached only on an actual
+            // level-up (this line is past the `desired <= applied` early-out), so there is no per-tick churn.
+            ReconcileThresholds(world, slot, entityId, swap: true);
+        }
+
+        /// <summary>
+        /// Story 15-24c — install or SWAP the hero's single threshold-derivation modifier so it carries the total
+        /// contribution of every step/gate row at the hero's CURRENT level.
+        ///
+        /// <para><paramref name="swap"/> = false is the idempotent install (StackRule.Ignore no-ops against a live
+        /// instance); = true is the level-change re-statement, which must REMOVE first because Ignore/Refresh never
+        /// rewrite an installed instance's deltas — the same reason <c>ResearchSystem.ApplyCumulativeModifier</c>
+        /// removes-then-reapplies its cumulative slot.</para>
+        ///
+        /// <para><b>DW-85 heal suppression.</b> The swap is a RE-STATEMENT of a total, not a grant, so current
+        /// Health is snapshotted and restored (re-clamped into the freshly-raised ceiling) around it. Without that,
+        /// the remove would clamp a full-health hero DOWN and the re-apply would heal by the realized ceiling
+        /// change — turning every level-up into a free heal proportional to the threshold total, and making a
+        /// hero who repeatedly crosses a threshold boundary a healing exploit. The hero still heals from its
+        /// normal per-level growth stack; this slot only moves the ceiling.</para>
+        ///
+        /// <para>No new folded state: the vector is re-derived from the folded Level + authored content on demand
+        /// (the 15-24c contract). An all-zero/empty result REMOVES the slot rather than installing an inert one
+        /// (the DW-678 rule) — which also handles a threshold that stops applying.</para>
+        /// </summary>
+        private void ReconcileThresholds(EntityWorld world, int slot, int entityId, bool swap)
+        {
+            AttributeModelDefinition? model = _heroes.AttrModelOf[slot];
+            HeroAttributesDefinition? attrs = _heroes.SourceDef[slot]?.Hero?.Attributes;
+            // Fast, allocation-free exit for every model with no step/gate row (i.e. all shipped content today).
+            if (!HeroAttributeResolver.HasThresholdRows(model)) return;
+
+            Fixed[]? totals = HeroAttributeResolver.EvaluateAt(model, attrs, _heroes.Level[slot]);
+            if (totals == null) return;
+
+            var scratch = new System.Collections.Generic.List<StatDelta>(4);
+            for (int s = 0; s < StatVocabulary.Count; s++)
+            {
+                if (!StatVocabulary.All[s].ModifierAuthorable) continue; // the 15.12 energy pair's read-seam lane
+                if (totals[s].Raw != 0) scratch.Add(new StatDelta((StatId)s, totals[s]));
+            }
+            StatDelta[] vector = StatVocabulary.Canonicalize(scratch);
+
+            if (!IsLiveLinkedHero(world, slot, entityId)) return; // dead/stale hero → nothing this tick
+
+            if (!swap && vector.Length == 0) return;               // nothing to install, nothing installed
+            Fixed healthBefore = world.Health[entityId];           // DW-85 snapshot (see the remarks)
+            if (swap) _modifiers.RemoveByModifierId(entityId, HeroThresholdModifierId);
+
+            if (vector.Length != 0)
+            {
+                // The remove above can raise the DW-325 ceiling-collapse death (reverting a +MaxHealth total), so
+                // re-check liveness before writing anything further for this host — the ModifierStore post-condition.
+                if (!world.IsAlive(entityId)) return;
+                var mod = new Modifier(
+                    HeroThresholdModifierId,
+                    durationTicks: -1,       // permanent, non-dispellable (the growth-modifier posture)
+                    StackRule.Ignore,        // install-once idempotence; the swap path removes first
+                    maxStacks: 1,
+                    vector,
+                    status: StatusFlags.None,
+                    periodEffect: null,
+                    periodTicks: 0);
+                _modifiers.Apply(entityId, mod, entityId, world.FactionOf[entityId]);
+            }
+
+            if (world.IsAlive(entityId))
+                world.Health[entityId] = Fixed.Clamp(healthBefore, Fixed.Zero, world.EffectiveMaxHealth[entityId]);
         }
 
         /// <summary>

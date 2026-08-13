@@ -1010,6 +1010,11 @@ namespace ProjectChimera.Core.Persistence
                 h.Alive3_14[i] = a314[i] != 0; h.AwaitingRevival[i] = awr[i] != 0; h.RevivalTimer[i] = Fixed.FromRaw(rti[i]); h.RevivalLink[i] = rlk[i];
                 h.OwnerFaction[i] = (Faction)of[i]; h.Generation[i] = gen[i];
                 h.SourceDef[i] = ResolveDef(slotDefs, of[i], i < HeroDefId.Length ? HeroDefId[i] : "");
+                // Story 15-24c: the attribute model is a NON-PERSISTED authored ref (the SourceDef posture) —
+                // re-resolved from the owning slot's faction def so a resumed hero evaluates threshold rows
+                // exactly as a freshly-applied one does. Out-of-range/absent faction ⇒ null ⇒ no thresholds.
+                h.AttrModelOf[i] = slotDefs != null && (uint)of[i] < (uint)slotDefs.Length
+                    ? slotDefs[of[i]]?.AttributeModel : null;
             }
             for (int i = 0; i < n * HeroStore.INVENTORY_SLOTS && i < inv.Length; i++) h.Inventory[i] = inv[i];
             for (int i = 0; i < n * Definitions.AttributeStats.Count && i < asb.Length; i++) // Story 15-21

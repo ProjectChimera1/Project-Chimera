@@ -55,12 +55,17 @@ namespace ProjectChimera.Core.Definitions
         /// agreed at the lobby and diverged at the first level-up), plus the new per-hero <c>attributes</c> block
         /// and the faction-level <c>attribute_model</c> (both sim-read via <c>HeroAttributeResolver</c>). Every
         /// unit gains at least one presence-bit Mix, so the pin moves for ALL content.</para>
+        /// <para>v4 — Story 15-24c (derivation shapes): every attribute-model derived ROW folds two more values —
+        /// its parsed <c>shape</c> ordinal and its <c>threshold</c> — because a step/gate row contributes
+        /// differently from the linear row it would otherwise be indistinguishable from. A model whose rows are
+        /// all linear (every shipped preset) folds <c>Mix(0)</c>+<c>Mix(0)</c> per row, so the VALUE moves for any
+        /// faction declaring a model, which is why the pin re-records with the bump.</para>
         /// <para>v3 — Story 15-24a (the StatVocabulary pipeline): the unit fold gains <c>health_regen</c> (sim-read,
         /// the regen_rate posture); the item fold and the research fold carry each definition's stat deltas as the
         /// CANONICAL sparse vector (legacy four keys + the new <c>stat_deltas</c> lane, merged and folded per entry
         /// as <c>(int)StatId</c> + raw — sorted ascending StatId, never a Dictionary walk). Every unit folds one
         /// extra Mix, so the pin moves for ALL content.</para></summary>
-        public const int AlgoVersion = 3;
+        public const int AlgoVersion = 4;
 
         /// <summary>
         /// The LOCAL per-domain content fingerprint (ruleset-caps, factions, abilities, items, damage-table). Each
@@ -327,6 +332,12 @@ namespace ProjectChimera.Core.Definitions
                 h = CanonicalFold.MixStr(h, r?.Attribute);
                 h = CanonicalFold.MixStr(h, r?.Stat);
                 h = CanonicalFold.MixInt(h, Fixed.FromFloat(r?.PerPoint ?? 0f).Raw);
+                // Story 15-24c: the derivation SHAPE + threshold. Both are sim-affecting (they change what the
+                // row contributes), so a peer with divergent rows must reject at the lobby. Folded as the parsed
+                // ORDINAL — the token is case-insensitive and "linear"/absent must fold IDENTICALLY, so folding
+                // the raw string would make a cosmetic re-spelling a false handshake mismatch.
+                h = CanonicalFold.MixInt(h, (int)(r?.ParsedShape ?? DerivationShape.Linear));
+                h = CanonicalFold.MixInt(h, Fixed.FromFloat(r?.Threshold ?? 0f).Raw); // absent ≡ 0 (linear rows)
             }
             return h;
         }

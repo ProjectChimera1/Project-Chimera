@@ -49,12 +49,12 @@ namespace ProjectChimera.Sim.Tests.Validation
             PlayerSlots = new[] { new ScenarioPlayerSlot { Slot = 0, StartOre = 200f, StartCrystal = 50f, BaseX = -30f, BaseZ = 0f } },
         };
 
-        /// <summary>The exact value <see cref="FixedContentHash"/> folds to on ContentHash AlgoVersion 3. Re-pinned for
-        /// Story 15-24a (v2→v3, the StatVocabulary pipeline): the unit fold gains <c>health_regen</c> (a Mix(0) per
-        /// unit for the fixture) and the item fold carries stat deltas as the canonical sparse vector — the fixture's
-        /// one item (AttackDamageDelta 5) now folds as a length-1 vector (count + StatId + raw) instead of four raw
-        /// Mixes. The AlgoVersion mix moves it too. (Prior re-pins: Story 15-21 hero fold v1→v2; DW-272 regen_rate.)</summary>
-        private const ulong ExpectedContentHash = 11284293526055517891UL;
+        /// <summary>The exact value <see cref="FixedContentHash"/> folds to on ContentHash AlgoVersion 4. Re-pinned for
+        /// Story 15-24c (v3→v4): every attribute-model derived row folds its parsed shape ordinal + threshold; the
+        /// fixture declares no attribute model, so only the AlgoVersion mix moved it.
+        /// <para>Prior re-pins: v2→v3 Story 15-24a (unit <c>health_regen</c> + the item stat-delta vector);
+        /// v1→v2 Story 15-21 (the hero fold); DW-272 (regen_rate).</para></summary>
+        private const ulong ExpectedContentHash = 17676645355088884384UL;
 
         /// <summary>The exact value CanonicalModelHash folds <see cref="FixedModel"/> to (AlgoVersion 17). Re-pinned for
         /// Story 15-24a's 16→17 bump (MixModifier folds the canonical sparse stat-delta vector — the fixture embeds no

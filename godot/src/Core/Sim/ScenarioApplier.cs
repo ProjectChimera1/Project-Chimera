@@ -373,9 +373,9 @@ namespace ProjectChimera.Core.Sim
                     // Story 15-21: flatten the faction's attribute model × this hero's authored attributes into
                     // per-stat contribution pairs at the SAME single boundary (HeroAttributeResolver — a null model
                     // or attribute block yields all zeros, byte-identical to a pre-15-21 hero).
-                    var (attrBase, attrPerLevel) = HeroAttributeResolver.Resolve(
-                        InFactionRange(faction) ? _slotFactionDefs[(int)faction]?.AttributeModel : null,
-                        hd?.Attributes);
+                    AttributeModelDefinition? attrModel =
+                        InFactionRange(faction) ? _slotFactionDefs[(int)faction]?.AttributeModel : null;
+                    var (attrBase, attrPerLevel) = HeroAttributeResolver.Resolve(attrModel, hd?.Attributes);
                     _lastAppliedHeroes.Add(new HeroProfileLoader.PlacedHero(
                         spawnedId, def.Id,
                         hd?.MaxLevel ?? 0,
@@ -391,7 +391,9 @@ namespace ProjectChimera.Core.Sim
                         // 100 (or a null hero-def) → 100/100 = an exact ×1.0 in 16.16 (Fixed.One is raw 65536), so every
                         // existing hero credits the full victim bounty unchanged — no golden move, no SimChecksum fold.
                         Fixed.FromFloat((hd?.XpPerKill ?? 100f) / 100f),
-                        attrBase, attrPerLevel)); // Story 15-21
+                        attrBase, attrPerLevel, // Story 15-21
+                        attrModel));            // Story 15-24c: the model itself rides along so HeroXpSystem can
+                                                // evaluate THRESHOLD rows (not expressible in the flattened pair)
                 }
             }
 

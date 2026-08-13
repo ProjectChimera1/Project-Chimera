@@ -169,6 +169,16 @@ namespace ProjectChimera.Core
         /// <summary>Story 3.14: the faction that owns this hero — the anti-cheat check for a revive order (the order's
         /// <c>expectedFaction</c> must equal this) and the faction the respawn is created under. NOT folded (authored).</summary>
         public readonly Faction[] OwnerFaction       = new Faction[MAX_HEROES];
+        /// <summary>
+        /// Story 15-24c: the OWNING FACTION's attribute model, kept per hero so <c>HeroXpSystem</c> can evaluate
+        /// THRESHOLD rows against the hero's live attribute totals at reconcile time. Linear rows do NOT need it
+        /// (they are pre-flattened into <see cref="AttrStatBase"/>/<see cref="AttrStatPerLevel"/> at apply), but a
+        /// step row is not expressible in that pair — see <c>HeroAttributeResolver.EvaluateAt</c>. Exactly the
+        /// <see cref="SourceDef"/> posture: a NON-FOLDED authored class ref, written in <see cref="Mint"/> (the
+        /// SoA-recycle contract) and RE-RESOLVED from the slot faction defs on save-load rather than persisted by
+        /// value. Null ⇒ no model ⇒ no threshold contributions (the pre-15-24c behaviour, byte-for-byte).
+        /// </summary>
+        public readonly Definitions.AttributeModelDefinition?[] AttrModelOf = new Definitions.AttributeModelDefinition?[MAX_HEROES];
 
         // ── Story 3.15 per-hero INVENTORY (lives on the PERSISTED row so it survives death→revival by construction —
         //    the D-1 obligation carried forward from Story 3.14). Fixed-stride flat ring indexed
@@ -218,7 +228,8 @@ namespace ProjectChimera.Core
                         Fixed healthPerLevel = default, Fixed damagePerLevel = default, Fixed armorPerLevel = default,
                         UnitDefinition? sourceDef = null, Faction ownerFaction = default,
                         Fixed? xpGainFactor = null,
-                        Fixed[]? attrStatBase = null, Fixed[]? attrStatPerLevel = null)
+                        Fixed[]? attrStatBase = null, Fixed[]? attrStatPerLevel = null,
+                        Definitions.AttributeModelDefinition? attrModel = null)
         {
             // Contract (AC2 / FoldOrder producer-independence): a HeroId is UNIQUE across LIVE rows. FoldOrder sorts by
             // HeroId with a strict-'>' (stable) insertion sort, so two live rows sharing an id would fold in mint-order-
@@ -278,6 +289,7 @@ namespace ProjectChimera.Core
             // Story 3.14 non-folded constants (respawn def + owner faction) — written here per the SoA-recycle contract.
             SourceDef[slot]        = sourceDef;
             OwnerFaction[slot]     = ownerFaction;
+            AttrModelOf[slot]      = attrModel; // Story 15-24c (same non-folded ref posture; recycle-reset by writing it here)
             // Story 3.15: a freshly-minted hero carries an EMPTY inventory (3.15 has no cross-match item persistence).
             // Reset every stride slot so a recycled row never inherits a prior hero's held-item refs (SoA-recycle contract).
             int invBase = slot * INVENTORY_SLOTS;
@@ -310,6 +322,7 @@ namespace ProjectChimera.Core
             // Story 3.14 reserved revival state + non-folded constants.
             System.Array.Clear(Alive3_14);        System.Array.Clear(AwaitingRevival);  System.Array.Clear(RevivalTimer);
             System.Array.Clear(RevivalLink);      System.Array.Clear(SourceDef);        System.Array.Clear(OwnerFaction);
+            System.Array.Clear(AttrModelOf); // Story 15-24c (non-folded ref lane — cleared with its SourceDef sibling)
             // Story 3.15: reset inventory. Array.Clear (→0) matches the ctor's zero-init, so a cleared store equals
             // `new HeroStore()`. The fold is count-driven over LIVE slots only (all reset to INVENTORY_EMPTY in Mint),
             // so the 0-vs-(-1) choice of the (never-folded) dead region is invisible; Clear keeps new-equality exact.

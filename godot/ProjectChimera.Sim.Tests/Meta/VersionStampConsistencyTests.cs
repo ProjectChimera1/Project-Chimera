@@ -212,7 +212,7 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// <summary>Story 15-21: 1→2 — the hero block leaves the authoring-only allowlist and folds (curve fields
         /// were ALREADY sim-read since 3.13 — a closed handshake gap), plus the per-hero attributes block and the
         /// faction attribute_model. Every unit gains a presence-bit Mix, so the value moves for all content.</summary>
-        private const int ExpectedContentHashAlgoVersion = 3; // Story 15-24a: 2->3 — unit health_regen + item/research sparse stat-delta folds
+        private const int ExpectedContentHashAlgoVersion = 4; // Story 15-24c: 3->4 — derivation rows fold their shape ordinal + threshold
 
         /// <summary>DW-768 (Story 15-21 rider): SaveGameFile.FormatVersion was the ONE fail-closed version gate
         /// with no pin here — a lane-enum edit could ship without its bump and misalign every positional lane in

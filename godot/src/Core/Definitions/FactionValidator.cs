@@ -432,6 +432,31 @@ namespace ProjectChimera.Core.Definitions
                         if (!float.IsFinite(r.PerPoint) || r.PerPoint < 0f || r.PerPoint >= AttrPerPointMax)
                             errors.Add(("attribute_model", Located(id, $"attribute_model.derived[{i}].per_point",
                                 $"={r.PerPoint} must be finite and in [0, {(int)AttrPerPointMax}).")));
+
+                        // ── Story 15-24c: the derivation SHAPE + its threshold parameter ──
+                        // The shape token is a CLOSED vocabulary (fail-closed here; ParsedShape fails open to
+                        // Linear for the resolver, which never sees an unvalidated model).
+                        if (!string.IsNullOrEmpty(r.Shape)
+                            && !string.Equals(r.Shape, "linear", StringComparison.OrdinalIgnoreCase)
+                            && !string.Equals(r.Shape, "per_step", StringComparison.OrdinalIgnoreCase)
+                            && !string.Equals(r.Shape, "at_least", StringComparison.OrdinalIgnoreCase))
+                            errors.Add(("attribute_model", Located(id, $"attribute_model.derived[{i}].shape",
+                                $"'{r.Shape}' is not a derivation shape (linear, per_step, at_least).")));
+                        else if (r.IsThreshold)
+                        {
+                            // A step/gate row DIVIDES by (per_step) or COMPARES against (at_least) this value, so a
+                            // non-positive threshold is either a divide-by-zero or an always-on gate authored the
+                            // wrong way — reject rather than silently degrade (the resolver's defensive skip is a
+                            // backstop, not the contract). AttrValueMax bounds it to the same domain attribute
+                            // values live in, so a threshold no attribute can ever reach is also rejected.
+                            float step = r.Threshold ?? 0f;
+                            if (r.Threshold == null || !float.IsFinite(step) || step <= 0f || step >= AttrValueMax)
+                                errors.Add(("attribute_model", Located(id, $"attribute_model.derived[{i}].threshold",
+                                    $"={(r.Threshold.HasValue ? r.Threshold.Value.ToString() : "absent")} must be finite and in (0, {(int)AttrValueMax}) for a '{r.Shape}' row.")));
+                        }
+                        else if (r.Threshold.HasValue)
+                            errors.Add(("attribute_model", Located(id, $"attribute_model.derived[{i}].threshold",
+                                $"={r.Threshold.Value} is set on a linear row — declare shape 'per_step' or 'at_least', or drop the key.")));
                     }
                 }
             }
@@ -480,6 +505,28 @@ namespace ProjectChimera.Core.Definitions
                         if (rPerLevel[s].Raw > statDef.MaxAbsDeltaRaw || rPerLevel[s].Raw < -statDef.MaxAbsDeltaRaw)
                             errors.Add(("attribute_model", LocatedItem("unit", uid, "hero.attributes",
                                 $"resolved per-level contribution to '{statDef.JsonName}' ({rPerLevel[s].ToFloat():0.##}) exceeds its per-stat cap ({Fixed.FromRaw(statDef.MaxAbsDeltaRaw).ToFloat():0.##} — a fraction-valued stat).")));
+                    }
+                }
+
+                // ── Story 15-24c: the THRESHOLD rows escape the loop above (Resolve skips them by design), so cap
+                //    their contribution separately — at the hero's MAX level, where a step row's total is largest
+                //    (every step count is monotonic in the attribute total, which is monotonic in level for the
+                //    non-negative per_level the validator already enforces). Same caps, same reasons: an unbounded
+                //    threshold total would reach the modifier channel exactly as an unbounded linear one would. ──
+                if (HeroAttributeResolver.HasThresholdRows(model))
+                {
+                    int capLevel = u.Hero?.MaxLevel > 0 ? u.Hero.MaxLevel : 1;
+                    Fixed[]? tTotals = HeroAttributeResolver.EvaluateAt(model, ha, capLevel);
+                    for (int s = 0; tTotals != null && s < AttributeStats.Count; s++)
+                    {
+                        var statDef = ProjectChimera.Core.Stats.StatVocabulary.All[s];
+                        if (tTotals[s].ToFloat() >= AttrResolvedBaseMax)
+                            errors.Add(("attribute_model", LocatedItem("unit", uid, "hero.attributes",
+                                $"resolved THRESHOLD contribution to '{statDef.JsonName}' at max level ({tTotals[s].ToFloat():0.##}) exceeds the Fixed-safe cap {(int)AttrResolvedBaseMax}.")));
+                        if (statDef.MaxAbsDeltaRaw != 0
+                            && (tTotals[s].Raw > statDef.MaxAbsDeltaRaw || tTotals[s].Raw < -statDef.MaxAbsDeltaRaw))
+                            errors.Add(("attribute_model", LocatedItem("unit", uid, "hero.attributes",
+                                $"resolved THRESHOLD contribution to '{statDef.JsonName}' at max level ({tTotals[s].ToFloat():0.##}) exceeds its per-stat cap ({Fixed.FromRaw(statDef.MaxAbsDeltaRaw).ToFloat():0.##} — a fraction-valued stat).")));
                     }
                 }
             }

@@ -51,7 +51,8 @@ namespace ProjectChimera.Core.Definitions
             Fixed HealthPerLevel = default, Fixed DamagePerLevel = default, Fixed ArmorPerLevel = default,
             UnitDefinition? SourceDef = null, Faction OwnerFaction = default,
             Fixed? XpGainFactor = null,
-            Fixed[]? AttrStatBase = null, Fixed[]? AttrStatPerLevel = null);
+            Fixed[]? AttrStatBase = null, Fixed[]? AttrStatPerLevel = null,
+            AttributeModelDefinition? AttrModel = null);
 
         /// <summary>
         /// The DETERMINISTIC hero identity for <paramref name="profile"/> = FNV-64 of its stable <see cref="PlayerProfile.ProfileId"/>
@@ -135,7 +136,8 @@ namespace ProjectChimera.Core.Definitions
                                        placed.HealthPerLevel, placed.DamagePerLevel, placed.ArmorPerLevel,
                                        placed.SourceDef, placed.OwnerFaction, // Story 3.14: respawn def + owner faction
                                        placed.XpGainFactor,                   // DW-26: per-hero XP-gain multiplier
-                                       placed.AttrStatBase, placed.AttrStatPerLevel); // Story 15-21: resolved attribute contributions
+                                       placed.AttrStatBase, placed.AttrStatPerLevel, // Story 15-21: resolved attribute contributions
+                                       placed.AttrModel);                            // Story 15-24c: the model, for threshold rows
                 if (slot >= 0)
                 {
                     minted++;
