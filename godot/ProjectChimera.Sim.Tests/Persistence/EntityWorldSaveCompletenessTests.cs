@@ -197,6 +197,17 @@ namespace ProjectChimera.Sim.Tests.Persistence
         {
             Type t = value.GetType();
 
+            // Story 15-24a — DOMAIN-CONSTRAINED lanes: the restore path re-clamps these into their consumer's
+            // reachable range (the DW-643/DW-692 posture), so the generic +1.0 bump would leave the domain and
+            // read back clamped — a FALSE round-trip failure. Probe with an in-domain value that is still
+            // provably different from anything the fixture writes (the lanes rest at their identity defaults).
+            // A lane added here must state its domain; never widen the restore clamp to appease the sweep.
+            switch (laneName)
+            {
+                case "EffectiveCooldownReduction": // restore clamps into the registry Σ bounds [−4, +0.8]
+                    return Fixed.FromRaw(ProjectChimera.Core.Stats.StatVocabulary.CooldownReductionSumMaxRaw / 2); // 0.4 — in-domain, ≠ the identity 0
+            }
+
             if (t.IsEnum) return Enum.ToObject(t, Convert.ToInt64(value) + 1);
 
             switch (value)

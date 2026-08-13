@@ -193,7 +193,23 @@ namespace ProjectChimera.Core.Definitions
                                     else if (!statDef.ModifierAuthorable)
                                         errors.Add($"research '{id}'.levels[{i}].modifier_delta.{path}: stat '{statDef.JsonName}' is not modifier-authorable yet (its consumer is the {statDef.ConsumerSite} read seam).");
                                     else
+                                    {
                                         CheckFiniteModifier(errors, id, i, path, md.StatDeltas[key]);
+                                        // 15-24a review fix: the registry per-delta cap (the percent family's
+                                        // ±8.0), which items/abilities/attribute models all enforce — a
+                                        // "+3000 attack_speed" level must fail authoring here too, never load
+                                        // clean and silently clamp to the recompute's Σ bound in play
+                                        // (validated-but-misbehaving content). Quantized at the same
+                                        // FromFloat boundary BuildStatDeltaVector uses, so the gate judges
+                                        // exactly the value the mint banks.
+                                        if (statDef.MaxAbsDeltaRaw != 0 && !float.IsNaN(md.StatDeltas[key]))
+                                        {
+                                            int raw = Fixed.FromFloat(md.StatDeltas[key]).Raw;
+                                            long magnitude = raw < 0 ? -(long)raw : raw;
+                                            if (magnitude > statDef.MaxAbsDeltaRaw)
+                                                errors.Add($"research '{id}'.levels[{i}].modifier_delta.{path}={md.StatDeltas[key]} exceeds the '{statDef.JsonName}' per-delta cap ({Fixed.FromRaw(statDef.MaxAbsDeltaRaw).ToFloat():0.##} — a fraction-valued stat).");
+                                        }
+                                    }
                                 }
                             }
                         }

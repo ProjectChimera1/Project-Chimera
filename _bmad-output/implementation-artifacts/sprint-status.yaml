@@ -413,7 +413,14 @@ development_status:
   #   "no consumer" claim was false and is corrected everywhere it landed.)
   15-22-phase-c-batched-golden-re-baseline: done
   15-23-generation-validated-entity-references-dw-775: done
-  15-24-attribute-system-2-expanded-vocab-rolls-veterancy-editor: backlog
+  # 15-24a (THE STAT PIPELINE — the registry leg that redefines the story per Alec's third-pass ruling)
+  # BUILT + GREEN 2026-08-12 interactive ultracode session: StatVocabulary registry (14 stats), sparse
+  # Modifier vector, generalized recompute, 4 new consumers (attack_speed/health_regen/vision/CDR) +
+  # 4 percent siblings, registry-driven attribute/research/item/draft lanes, both tripwire guards, the
+  # stat-pipeline cross-platform golden. SimChecksum 26 / CanonicalModelHash 17 / ContentHash 3 / Save 10.
+  # As-built record: spec-15-24a-stat-pipeline.md. Residual legs: b (crit/dodge dice), c (thresholds),
+  # d (veterancy), e (spend mode), f (Attribute Editor — takes DW-991/994), g (item affixes); DW-992/993.
+  15-24-attribute-system-2-expanded-vocab-rolls-veterancy-editor: in-progress
   epic-15-retrospective: optional
 
 action_items:

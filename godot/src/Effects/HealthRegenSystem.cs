@@ -45,7 +45,11 @@ namespace ProjectChimera.Effects
                 if (!world.IsAlive(i)) continue;
                 Fixed r = world.EffectiveHealthRegen[i];
                 if (r.Raw == 0) continue; // shipped content authors 0 ⇒ a true no-op (no golden can move)
-                world.Health[i] = Fixed.Clamp(world.Health[i] + r, Fixed.Zero, world.EffectiveMaxHealth[i]);
+                // DW-28 posture (15-24a review fix): the add SATURATES — EffectiveHealthRegen can legally sit
+                // near Fixed.MaxValue under DW-488-valid stacked content, and a wrapping `+` would send a
+                // near-full unit NEGATIVE, which the clamp then floors to 0 HP: a regen buff stripping its own
+                // host. AddSaturating pegs the sum at MaxValue and the clamp lands on the ceiling instead.
+                world.Health[i] = Fixed.Clamp(Fixed.AddSaturating(world.Health[i], r), Fixed.Zero, world.EffectiveMaxHealth[i]);
             }
         }
     }

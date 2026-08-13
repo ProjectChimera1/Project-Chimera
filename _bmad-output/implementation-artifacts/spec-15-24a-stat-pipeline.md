@@ -1,8 +1,28 @@
-# Spec 15-24a — THE STAT PIPELINE (StatVocabulary registry) — design record
+# Spec 15-24a — THE STAT PIPELINE (StatVocabulary registry) — AS-BUILT record
 
-**Status:** IN PROGRESS (2026-08-12 ultracode session). Parent: `spec-15-24-attribute-system-2.md`.
-Design finalized against a 10-reader code map (full per-area maps in the session scratchpad).
-This file becomes the as-built record at close.
+**Status:** BUILT + GREEN (2026-08-12 ultracode session, single conversation). Parent:
+`spec-15-24-attribute-system-2.md`. Commits `3b418039`, `bd97d1d3`, `0c32bcc3`, `2be2dcf5`, `1df7570e`
+(+ the review-sweep commit that follows). Suite **6977 / 0 / 1** at close (day started 6949); release
+RS0030 analyzer gate CLEAN (and un-broken: two pre-existing master RS0030s from session 3 suppressed with
+recorded non-sim justifications — RejoinTokens crypto RNG, ContentPackager quarantine GUID).
+
+## Version stamps moved by this story (both LAN machines MUST pull + rebuild together)
+
+SimChecksum **25→26** (BOUNDED fold — zero golden movement; frozen v22 control + known-state pin
+0x32911831 both untouched, now four bumps unchanged) · CanonicalModelHash **16→17** · ContentHash **2→3**
+· SaveGameFile FormatVersion **9→10** (all pre-10 saves fail-closed — DW-874 posture) · Replay 7 and
+PROTOCOL 6 untouched. Goldens moved: hero-start-state (re-recorded, CanonicalModelHash), mapgen hash pin
+(stamp digit), + ONE NEW golden `stat-pipeline-scenario` (300 ticks, cross-platform, both CI legs).
+
+## The add-a-stat recipe, as shipped
+
+(1) append a `StatId` member → (2) add its `StatVocabulary.All` row → (3) write its ONE consumer read at
+the declared site. The rails that hold it honest: `StatVocabularyGuardTests` (registry completeness),
+`StatConsumerTripwireTests` (DECLARED-BUT-NEVER-CONSUMED source scan over each stat's ConsumerEvidence
+token), and `StatRecomputeTests.EveryModifierAuthorableStat_ObservablyMovesItsConsumerChannel` (the
+behavioral sweep whose hand-map is its own completeness gate). Validators, editors' vocabulary source,
+draft carriage, affix eligibility, authoring bounds, save stride, and the checksum fold all follow from
+the registry row with no further edits.
 
 ## What this story builds
 
@@ -118,13 +138,33 @@ hold no ModifierSystem ref). All 14 are attribute-targetable (AttributeStats ide
   RaiseExternalCeilingCollapse already uses); the "stat actually changed" gate scans the vector for
   MaxHealth/MaxHealthPercent membership. DW-85's research heal-suppression seam is preserved.
 
+## As-built deviations from the design draft (both are hardenings)
+
+- **D-5/D-6 superseded by the IDENTITY-TERM architecture:** instead of Effective MIRROR arrays every
+  direct base-writer must maintain (EffectiveAttackInterval/EffectiveVisionRange — the first build of
+  which machine-gunned every hand-built test scenario that writes `AttackSpeed` directly), the new
+  channels store the MODIFIER TERMS with identity defaults: `EffectiveAttackSpeedFactor` (One),
+  `VisionBonusFlat`/`VisionBonusPct` (0), `EffectiveCooldownReduction` (0), plus the
+  `BaseHealthRegen`/`EffectiveHealthRegen` pair (def-derived, no direct writers exist). Consumers:
+  `EntityWorld.AttackIntervalOf` (divide + one-tick machine-gun floor) and `VisionWithElevation`
+  (merge). Direct `AttackSpeed`/`VisionRange` writers need NO mirror — the defect class is eliminated
+  structurally, and the whole mirror-churn (fallback spawns, snapshot branches, ~55 test builders)
+  reverted to untouched.
+- **D-13's collapse gate keeps a third conjunct:** the pure before/after transition is NOT sufficient —
+  a DW-488-pathological all-positive grant that WRAPS the accumulator must stay a benign zombie
+  (pinned by `AccumulatorWrapFromAPositiveGrant_IsNotLethal`), so the gate requires a ceiling-LOWERING
+  term: some MaxHealth/MaxHealthPercent entry with `delta × multiplier < 0`.
+
 ## Out of scope (recorded seams, each gets a DW)
 
 - Editor spinbox rows for new stats in Ability/Item/Research panels (raw-JSON panes author them
-  today; rows land with 15-24f, in-engine-gated).
-- MaxEnergy/EnergyRegen modifier-authorability (static 15.12 seams need a ModifierSystem ref).
+  today; rows land with 15-24f, in-engine-gated). The 15-21 attribute-mapping DROPDOWN follows the
+  registry automatically (AttributeStats facade — zero UI-file changes) but its widened list is
+  UNOBSERVED in-engine this session (bridge not attached; observe at next editor session).
+- MaxEnergy/EnergyRegen modifier-authorability (static 15.12 seams need a ModifierSystem ref;
+  declared `ModifierAuthorable: false`, validator + converter fail-closed with a naming message).
 - Building vision float-delegate path (vision stats reach units only).
-- SelectionSystem research-upgrade summary line for new stats (gated UI file).
+- SelectionSystem research-upgrade summary line shows only the legacy four stats (gated UI file).
 - New-stat contributions in the buff-bar polarity net-sum are sign-correct but unit-mixed (as the
   legacy sum already was); per-stat tooltips land with 15-24f.
 

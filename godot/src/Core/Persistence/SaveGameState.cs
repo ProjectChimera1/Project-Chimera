@@ -848,9 +848,11 @@ namespace ProjectChimera.Core.Persistence
                 //    Σ clamp, i.e. [0.1, 10]) — the ONE lane where a corrupt raw is actively dangerous both ways:
                 //    a factor ≤ 0 sign-flips/zeroes AttackIntervalOf's division (machine-gun / negative interval),
                 //    a huge one pins every attacker at the one-tick floor. In-bounds saves restore bit-exact.
-                //  • EffCooldownReduction restores RAW — negatives are a VALID authored state (cooldown-increase
-                //    debuffs), and the value was written already-clamped by the recompute; the arming site's math
-                //    tolerates the whole representable range.
+                //  • EffCooldownReduction re-clamps into the recompute's own registry bounds ([−4, +0.8]) —
+                //    negatives are a VALID authored state (cooldown-increase debuffs) and survive, but a
+                //    corrupt/hostile raw outside the bounds could otherwise reach the arming multiply (which
+                //    saturates, but a blob-supplied cdr > 1 would still arm every cooldown at 0 — the
+                //    DW-643/DW-692 restore class). In-bounds saves restore bit-exact.
                 //  • BaseHealthRegen restores raw (authored lane, the Base* rule: validator-bounded at load,
                 //    flooring here would only mask a corrupt blob at a different field).
                 //  • EffHealthRegen floors at 0 — HealthRegenSystem clamp-ADDS it to the folded Health; a negative
@@ -860,7 +862,9 @@ namespace ProjectChimera.Core.Persistence
                 w.EffectiveAttackSpeedFactor[i] = Fixed.Clamp(Fixed.FromRaw(asf[i]),
                     Fixed.One + Fixed.FromRaw(ProjectChimera.Core.Stats.StatVocabulary.AttackSpeedSumMinRaw),
                     Fixed.One + Fixed.FromRaw(ProjectChimera.Core.Stats.StatVocabulary.AttackSpeedSumMaxRaw));
-                w.EffectiveCooldownReduction[i] = Fixed.FromRaw(ecd[i]);
+                w.EffectiveCooldownReduction[i] = Fixed.Clamp(Fixed.FromRaw(ecd[i]),
+                    Fixed.FromRaw(ProjectChimera.Core.Stats.StatVocabulary.CooldownReductionSumMinRaw),
+                    Fixed.FromRaw(ProjectChimera.Core.Stats.StatVocabulary.CooldownReductionSumMaxRaw));
                 w.BaseHealthRegen[i]            = Fixed.FromRaw(bhr[i]);
                 w.EffectiveHealthRegen[i]       = Fixed.Max(Fixed.Zero, Fixed.FromRaw(ehr[i]));
                 w.VisionBonusFlat[i]            = Fixed.FromRaw(vbf[i]);
@@ -1399,6 +1403,22 @@ namespace ProjectChimera.Core.Persistence
                 if (ReschCumHp[i] == null || ReschCumHp[i].Length != m || ReschCumAtk[i] == null || ReschCumAtk[i].Length != m
                     || ReschCumMove[i] == null || ReschCumMove[i].Length != m || ReschCumArmor[i] == null || ReschCumArmor[i].Length != m)
                     Fail($"research inner-array length mismatch at faction {i}.");
+            }
+            // Story 15-24a (v10, review fix): the non-legacy stat blocks — the check WriteBody's count prefix
+            // was written FOR. Fail-closed BEFORE restore, like every other lane: the blob's stat width must
+            // equal THIS build's registry (a mismatch means a different vocabulary wrote it — the format-version
+            // gate should have caught that, so a mismatch here is corruption), and every block mirrors the
+            // ReschCompleted jagged shape exactly (RestoreResearch's defensive bounds become unreachable).
+            int wantStatBlocks = ProjectChimera.Core.Stats.StatVocabulary.Count - 4;
+            if (ReschCumByStat.Length != wantStatBlocks)
+                Fail($"research stat-block count {ReschCumByStat.Length} != this build's registry width {wantStatBlocks}.");
+            for (int x = 0; x < ReschCumByStat.Length; x++)
+            {
+                if (ReschCumByStat[x] == null || ReschCumByStat[x].Length != fa)
+                    Fail($"research stat-block {x} outer-array length mismatch.");
+                for (int i = 0; i < fa; i++)
+                    if (ReschCumByStat[x][i] == null || ReschCumByStat[x][i].Length != ReschCompleted[i].Length)
+                        Fail($"research stat-block {x} lane length mismatch at faction {i}.");
             }
 
             // ── WinState / Alliances / TriggerEnabled ──

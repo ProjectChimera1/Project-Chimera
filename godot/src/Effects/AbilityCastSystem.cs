@@ -487,8 +487,15 @@ namespace ProjectChimera.Effects
             // of authored; negative = cooldown-increase debuffs, bounded 5×). Zero (every entity with no CDR
             // modifier) short-circuits to the authored value — byte-identical arming, no golden can move. All
             // Fixed math; the existing SecondsToTicks truncation stays the single seconds→ticks boundary.
+            // 15-24a review fix: the multiply SATURATES and the product floors at 0 — a long authored cooldown
+            // × (1 − a negative CDR debuff) can exceed the 16.16 int range, and the wrapping operator* would
+            // narrow it NEGATIVE, arming a negative tick count the `> 0` gate reads as permanently ready
+            // (unlimited casts — the DW-284 wrap class at a new site). MulSaturating pegs at MaxValue instead
+            // (SecondsToTicks' 64-bit intermediate then arms a huge-but-finite cooldown), and the Max(0, …)
+            // makes "never negative ticks" structural rather than an argument about reachable CDR ranges.
             Fixed cdr = world.EffectiveCooldownReduction[id];
-            Fixed cooldownSeconds = cdr.Raw == 0 ? ab.Cooldown : ab.Cooldown * (Fixed.One - cdr);
+            Fixed cooldownSeconds = cdr.Raw == 0 ? ab.Cooldown
+                : Fixed.Max(Fixed.Zero, Fixed.MulSaturating(ab.Cooldown, Fixed.One - cdr));
             world.AbilityCooldownTicks[abBase + slot] = SecondsToTicks(cooldownSeconds);
 
             // Story 2.7 (SD-3): the cast fired → push a presentation-only AbilityCast feedback event carrying the
