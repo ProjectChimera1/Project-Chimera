@@ -102,8 +102,17 @@ namespace ProjectChimera.Core.Persistence
         /// with registry-domain re-clamps), appended after <c>VisionBonusPct</c>, still before <c>PatrolWpX</c>;
         /// and the hero attribute rings re-stride again with the registry (14 → 17 stats). A v10 body would
         /// misalign from the new entries onward; the bump fail-closes it — which the same story's SimChecksum
-        /// 26→27 pin rejects anyway (DW-874).</para></summary>
-        public const ushort FormatVersion = 11;
+        /// 26→27 pin rejects anyway (DW-874).</para>
+        ///
+        /// <para>v12 (DW-997, 2026-08-13): the <c>Modifiers</c> frame gained a BY-VALUE entry kind (2) for a
+        /// RUNTIME-MINTED modifier — the descriptor an item pickup / research completion / hero level-up creates,
+        /// which no effect-graph walk can reach, so capture used to THROW the fail-closed "needs a content-model
+        /// change" error and NO save could be taken while any of those was live (shipped <c>ring_of_vigor</c>
+        /// reached it). A minted entry now carries its shape + canonical sparse stat vector inline. Entries of the
+        /// two by-index kinds are written exactly as before, so a save with no minted modifier has a
+        /// byte-identical Modifiers frame — the bump exists because an OLD reader would mis-parse a NEW blob that
+        /// does contain one.</para></summary>
+        public const ushort FormatVersion = 12;
 
         /// <summary>Max player slots in a persisted launch record — a fail-closed corruption bound on the slot count.</summary>
         public const int MaxSlots = 64;

@@ -150,13 +150,16 @@ namespace ProjectChimera.Core.Persistence
         // ── MatchStats (observational scoreboard; unfolded, but must round-trip for the 11.2 score screen) ──
         public int[][] Stats = Array.Empty<int[]>();
 
-        /// <summary>One captured active <see cref="ModifierStore"/> slot (a Modifier or a PersistentEffect descriptor
-        /// serialized by its <see cref="CanonicalEffectDescriptorTable"/> index).</summary>
+        /// <summary>
+        /// One captured active <see cref="ModifierStore"/> slot. A CONTENT-AUTHORED descriptor (reachable by walking
+        /// the ability/item effect graphs) serializes by its <see cref="CanonicalEffectDescriptorTable"/> index;
+        /// a RUNTIME-MINTED one serializes BY VALUE (<see cref="KindMintedModifier"/>) — see DW-997.
+        /// </summary>
         public struct ModifierEntry
         {
             public int HostId;
-            public byte Kind;        // 0 = Modifier, 1 = PersistentEffect
-            public int DescIndex;    // canonical descriptor-table index
+            public byte Kind;        // 0 = Modifier (by index), 1 = PersistentEffect (by index), 2 = minted Modifier (by value)
+            public int DescIndex;    // canonical descriptor-table index (-1 for a by-value entry)
             public int ModifierId;
             public int RemainingTicks;
             public int TicksUntilPeriod;
@@ -164,7 +167,23 @@ namespace ProjectChimera.Core.Persistence
             public int StackCount;
             public int CasterId;
             public int CasterFaction;
+
+            // ── DW-997 by-value payload (Kind == KindMintedModifier only; all default/empty otherwise) ──
+            /// <summary>The minted descriptor's shape: duration, stacking rule, stack cap, status flags and
+            /// periodic-stack mode. Enough to rebuild the exact <c>Modifier</c> a minter produced.</summary>
+            public int MintedDurationTicks;
+            public int MintedStacking;
+            public int MintedMaxStacks;
+            public int MintedStatus;
+            public int MintedPeriodicStacking;
+            /// <summary>The canonical sparse stat vector, flattened as (statId, rawDelta) pairs in the vector's own
+            /// ascending-StatId order — the 15-24a representation, so a rebuilt descriptor is value-identical.</summary>
+            public int[] MintedStatIds;
+            public int[] MintedStatRaws;
         }
+
+        /// <summary>DW-997 — <see cref="ModifierEntry.Kind"/> for a runtime-MINTED modifier serialized by value.</summary>
+        public const byte KindMintedModifier = 2;
 
         // ── EntityWorld per-entity array positions (named so capture/restore reference the SAME index). ──
         // INTERNAL rather than private so the Tier-1 guard tests can name a lane instead of hard-coding its ordinal
@@ -635,6 +654,41 @@ namespace ProjectChimera.Core.Persistence
                     {
                         e.Kind = 0;
                         e.DescIndex = table.IndexOfModifier(mod);
+                        if (e.DescIndex < 0)
+                        {
+                            // DW-997 — a RUNTIME-MINTED descriptor: reachable by no effect-graph walk, because no
+                            // content authored it. The three minters are ItemSystem's carried-item modifier (per
+                            // item INSTANCE), ResearchSystem's cumulative modifier (per completed research) and
+                            // HeroXpSystem's growth/base/threshold modifiers (per hero) — so before this, saving
+                            // after ANY item pickup, research completion or hero level-up threw the fail-closed
+                            // "needs a content-model change" below. This IS that content-model change: serialize
+                            // the descriptor BY VALUE. 15-24a made that cheap — a Modifier's whole stat payload is
+                            // the canonical sparse vector, and every minter builds one.
+                            //
+                            // Still fail-closed on the one shape a value payload cannot carry: a PERIOD EFFECT is
+                            // an effect GRAPH, which only the descriptor table can round-trip. No minter authors
+                            // one today (every mint passes periodEffect: null), so this is a tripwire for a future
+                            // minter rather than a reachable path.
+                            if (mod.PeriodEffect != null)
+                                throw new InvalidOperationException(
+                                    "SP save/load: a runtime-minted modifier carries a period_effect, which cannot be " +
+                                    "serialized by value (an effect graph round-trips only through the canonical " +
+                                    "descriptor table). Author it as content, or extend the by-value payload.");
+                            e.Kind = KindMintedModifier;
+                            e.MintedDurationTicks     = mod.DurationTicks;
+                            e.MintedStacking          = (int)mod.Stacking;
+                            e.MintedMaxStacks         = mod.MaxStacks;
+                            e.MintedStatus            = (int)mod.Status;
+                            e.MintedPeriodicStacking  = (int)mod.PeriodicStacking;
+                            int nd = mod.StatDeltas.Length;
+                            e.MintedStatIds  = new int[nd];
+                            e.MintedStatRaws = new int[nd];
+                            for (int d = 0; d < nd; d++)
+                            {
+                                e.MintedStatIds[d]  = (int)mod.StatDeltas[d].Stat;
+                                e.MintedStatRaws[d] = mod.StatDeltas[d].Delta.Raw;
+                            }
+                        }
                     }
                     else if (pe != null)
                     {
@@ -649,7 +703,11 @@ namespace ProjectChimera.Core.Persistence
                         throw new InvalidOperationException(
                             $"SP save: ModifierStore slot {slot} on entity {id} is within count but holds no descriptor (corrupt store state).");
                     }
-                    if (e.DescIndex < 0)
+                    // A PERSISTENT descriptor still has no by-value form (it IS an effect graph — Initial/Period/
+                    // Expire subtrees), and nothing mints one at runtime: every PersistentEffect comes from an
+                    // authored ability/item graph, so an unreachable one means the table was built from different
+                    // content than the store is running. Fail closed, exactly as before DW-997.
+                    if (e.Kind != KindMintedModifier && e.DescIndex < 0)
                         throw new InvalidOperationException(
                             "SP save/load: an active modifier/persistent descriptor is unreachable by the canonical " +
                             "effect-descriptor table (modifier descriptor round-trip needs a content-model change).");
@@ -1134,6 +1192,12 @@ namespace ProjectChimera.Core.Persistence
                 if (e.HostId != lastHost) { if (lastHost >= 0) m.SetCount(lastHost, slot); lastHost = e.HostId; slot = 0; }
                 Modifier? mod = e.Kind == 0 ? table.GetModifier(e.DescIndex) : null;
                 PersistentEffect? pe = e.Kind == 1 ? table.GetPersistent(e.DescIndex) : null;
+                // DW-997 — rebuild a runtime-MINTED descriptor from its by-value payload. Value-identical to what
+                // the minter produced: the ctor re-canonicalizes the vector (which the payload already carries in
+                // canonical order), so the first post-load recompute reproduces the saved Effective* exactly, the
+                // same idempotence contract the by-index path relies on.
+                if (e.Kind == KindMintedModifier)
+                    mod = RebuildMintedModifier(in e);
                 if (mod == null && pe == null)
                     throw new InvalidDataException("SP load: a saved modifier/persistent descriptor index is out of range (corrupt save or content drift).");
                 m.RestoreSlot(e.HostId, slot, e.ModifierId, e.RemainingTicks, e.TicksUntilPeriod, e.PeriodsRemaining,
@@ -1141,6 +1205,42 @@ namespace ProjectChimera.Core.Persistence
                 slot++;
             }
             if (lastHost >= 0) m.SetCount(lastHost, slot);
+        }
+
+        /// <summary>
+        /// DW-997 — rebuild a runtime-minted <see cref="Modifier"/> from its by-value save payload. Fail-closed on a
+        /// malformed payload (mismatched stat lanes, an out-of-range stat id): a corrupt vector would otherwise land
+        /// silently on the WRONG stat, which is worse than refusing the load.
+        /// </summary>
+        private static Modifier RebuildMintedModifier(in ModifierEntry e)
+        {
+            int[] ids  = e.MintedStatIds  ?? Array.Empty<int>();
+            int[] raws = e.MintedStatRaws ?? Array.Empty<int>();
+            if (ids.Length != raws.Length)
+                throw new InvalidDataException(
+                    $"SP load: minted modifier 0x{e.ModifierId:X8} has {ids.Length} stat ids but {raws.Length} values (corrupt save).");
+
+            var deltas = new ProjectChimera.Core.Stats.StatDelta[ids.Length];
+            for (int d = 0; d < ids.Length; d++)
+            {
+                if ((uint)ids[d] >= (uint)ProjectChimera.Core.Stats.StatVocabulary.Count)
+                    throw new InvalidDataException(
+                        $"SP load: minted modifier 0x{e.ModifierId:X8} references stat id {ids[d]}, outside this build's " +
+                        $"registry (0..{ProjectChimera.Core.Stats.StatVocabulary.Count - 1}) — corrupt save or content drift.");
+                deltas[d] = new ProjectChimera.Core.Stats.StatDelta(
+                    (ProjectChimera.Core.Stats.StatId)ids[d], Fixed.FromRaw(raws[d]));
+            }
+
+            return new Modifier(
+                e.ModifierId,
+                e.MintedDurationTicks,
+                (StackRule)e.MintedStacking,
+                e.MintedMaxStacks,
+                deltas,
+                (StatusFlags)e.MintedStatus,
+                periodEffect: null,                       // capture fail-closes on a period effect (see CaptureModifiers)
+                periodTicks: 0,
+                (PeriodicStackMode)e.MintedPeriodicStacking);
         }
 
         private void RestoreDirector(ScenarioDirector d, EntityWorld w)
@@ -1238,6 +1338,16 @@ namespace ProjectChimera.Core.Persistence
                     var e = Modifiers[i];
                     b.Write(e.HostId); b.Write(e.Kind); b.Write(e.DescIndex); b.Write(e.ModifierId); b.Write(e.RemainingTicks);
                     b.Write(e.TicksUntilPeriod); b.Write(e.PeriodsRemaining); b.Write(e.StackCount); b.Write(e.CasterId); b.Write(e.CasterFaction);
+                    // DW-997: the by-value payload rides ONLY on a minted entry, so a save with no minted modifier
+                    // is byte-identical in this frame to its pre-DW-997 self (the FormatVersion bump is what
+                    // fail-closes an OLD blob against this reader, not a shape change on the common path).
+                    if (e.Kind == KindMintedModifier)
+                    {
+                        b.Write(e.MintedDurationTicks); b.Write(e.MintedStacking); b.Write(e.MintedMaxStacks);
+                        b.Write(e.MintedStatus); b.Write(e.MintedPeriodicStacking);
+                        WI(b, e.MintedStatIds ?? Array.Empty<int>());
+                        WI(b, e.MintedStatRaws ?? Array.Empty<int>());
+                    }
                 }
             });
             Frame(w, Tag.Director, b =>
@@ -1456,7 +1566,12 @@ namespace ProjectChimera.Core.Persistence
             {
                 var e = Modifiers[i];
                 if ((uint)e.HostId >= EntityWorld.MAX_ENTITIES) Fail($"modifier host id {e.HostId} out of range.");
-                if (e.Kind > 1 || e.DescIndex < 0) Fail("modifier entry has an invalid descriptor kind/index.");
+                // DW-997: kind 2 is a by-VALUE minted modifier — it legitimately carries DescIndex -1 (there is no
+                // table entry), so the index check applies only to the two by-INDEX kinds. Its payload lanes are
+                // validated where they are consumed (RebuildMintedModifier: matched lane lengths + in-registry
+                // stat ids), which is also where a corrupt vector would otherwise land on the wrong stat.
+                if (e.Kind > KindMintedModifier) Fail("modifier entry has an invalid descriptor kind.");
+                if (e.Kind != KindMintedModifier && e.DescIndex < 0) Fail("modifier entry has an invalid descriptor index.");
                 if (e.HostId != prevHost) { if (e.HostId < prevHost) Fail("modifier entries not grouped ascending by host."); prevHost = e.HostId; hostCount = 0; }
                 if (++hostCount > EffectCaps.MaxModifiersPerEntity) Fail($"entity {e.HostId} has more than {EffectCaps.MaxModifiersPerEntity} modifiers.");
             }
@@ -1518,12 +1633,23 @@ namespace ProjectChimera.Core.Persistence
                     if (n < 0) throw new InvalidDataException($"Save '{ctx}': negative modifier count.");
                     Modifiers = new ModifierEntry[n];
                     for (int i = 0; i < n; i++)
-                        Modifiers[i] = new ModifierEntry
+                    {
+                        var e = new ModifierEntry
                         {
                             HostId = b.ReadInt32(), Kind = b.ReadByte(), DescIndex = b.ReadInt32(), ModifierId = b.ReadInt32(),
                             RemainingTicks = b.ReadInt32(), TicksUntilPeriod = b.ReadInt32(), PeriodsRemaining = b.ReadInt32(),
                             StackCount = b.ReadInt32(), CasterId = b.ReadInt32(), CasterFaction = b.ReadInt32(),
                         };
+                        // DW-997: the by-value payload is present iff the entry is a minted one (mirrors WriteBody).
+                        if (e.Kind == KindMintedModifier)
+                        {
+                            e.MintedDurationTicks = b.ReadInt32(); e.MintedStacking = b.ReadInt32(); e.MintedMaxStacks = b.ReadInt32();
+                            e.MintedStatus = b.ReadInt32(); e.MintedPeriodicStacking = b.ReadInt32();
+                            e.MintedStatIds  = RI(b);
+                            e.MintedStatRaws = RI(b);
+                        }
+                        Modifiers[i] = e;
+                    }
                     break;
                 }
                 case Tag.Director:

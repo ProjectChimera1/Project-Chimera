@@ -220,7 +220,7 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// appended hero attribute lanes); DW-690 bumped 7→8 (the appended per-entity RallyMovePending lane, so a
         /// worker saved mid-rally keeps its DW-634 stand-down gate across a load); DW-804 bumped 8→9 (the appended
         /// entity GatherWalkStall lane, which shifts every flat-stride entity lane after it).</summary>
-        private const ushort ExpectedSaveFormatVersion = 11; // Story 15-24b: 10->11 — three dice lanes + registry re-stride (14->17)
+        private const ushort ExpectedSaveFormatVersion = 12; // DW-997: 11->12 — the by-value minted-modifier entry kind
 
         /// <summary>.chmr replay file-format version. Story 7.9 bumped 2→3 (DslEvent orders). Story 9.11 bumped 3→4
         /// ("replay v2": self-describing tagged body via the frozen MergedTickPacket envelope + a result trailer, and
