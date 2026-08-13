@@ -290,6 +290,10 @@ development_status:
   #   To resume: Alec present, either interactively as one story or split 15-1a (Godot-free core,
   #   Tier-1 + new loopback harness) / 15-1b (in-engine wiring + "Rejoining..." UX). Flip back to
   #   `backlog` ONLY for the 15-1a half; the whole story cannot reach `done` unattended.
+  # 2026-08-12: the 15-1a half (v2-first: snapshot+tail, spec-15-1) is BUILT + GREEN — wire family +
+  #   PROTOCOL 6, RejoinCoordinator/RejoinClient machines, thaw seam, quorum/delay re-admits; DW-2/599/879
+  #   closed; proofs RejoinCatchUpHarnessTests + RejoinCoordinatorTests + RejoinProtocolTests. Residual =
+  #   15-1b in-engine client bootstrap + 'Rejoining...' UX + LAN transport confirm (needs Alec at the rig).
   15-1-mp-reconnect-v1-command-log-rejoin-fast-forward-catch-up-fr-79-dw-2: in-progress
   15-2-map-size-determinism-unification-raw-heightmap-read-dw-160-dw-146-dw-162: done
   15-3-status-effects-become-real-modifier-period-honesty: done

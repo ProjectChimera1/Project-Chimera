@@ -1,6 +1,6 @@
 # Spec 15-1 — MP reconnect, v2-first: snapshot + tail (FR-79, DW-2)
 
-**Status:** in dev (2026-08-12, interactive ultracode session; Alec's Q1 ruling: BUILD NOW)
+**Status:** SERVER + PROTOCOL PLUMBING BUILT + GREEN (2026-08-12, same session; 15-1b in-engine client bootstrap remains)
 **Supersedes:** the v1 replay-from-start scoping. The 2026-08-06 "v2 needs a new save/restore — bigger
 lift" premise is RETIRED: `SaveGameFile` v7 round-trips the complete live sim, stream-agnostic.
 
@@ -63,3 +63,37 @@ Closes DW-2 (the direction entry), DW-599 (InGame connect branch), DW-879 (harne
 AI-takeover-while-disconnected (needs Epic 10's AI float→Fixed, DW-204); Nakama-relay topology (DW-404);
 mid-match NEW spectator join (different feature); reconnect across a server restart (the log/tokens are
 in-memory per-match).
+
+## Implementation record (2026-08-12)
+
+Everything below D-1..D-11 is BUILT and Tier-1-verified in one pass; suite 6951/0/1, release analyzer clean.
+
+- **Wire (D-9):** `PacketType` 0x50-0x59 + `RejoinRefuseReason` + `HELLO_FLAG_INGAME_REJOIN`; codecs in
+  `TickCommandPacket` (all round-trip + malformed-reject tested). PROTOCOL_VERSION 5→6.
+- **Server:** `Server/RejoinCoordinator.cs` — the whole state machine (request→refusals, donor pick, verbatim
+  chunk relay, stop-and-wait tail, resume quorum, D-11 deadlines, disconnect unwinds). `DedicatedServer` is a
+  thin adapter: DW-599 InGame connect branch, token mint at StartGame, MergedTickLog armed at freeze-commit and
+  fed the exact merged broadcast bytes, mid-thaw disconnect RevertThaw + quorum re-drop, delay directives
+  withheld while a rejoin is in flight.
+- **The thaw seam (D-4, sharpened):** the injection bound is `resumeAtTick + delay` and is scheduled at
+  ResumeDirective ISSUE — the injector owns ticks < bound, the rejoiner's own submissions own >= bound (its
+  first submission is exec R at delay D → tick R+D exactly). No first-wins race is ever contested. The client
+  must not submit below `FirstOwnedTick` (exposed on `RejoinClient`).
+- **Quorum re-admit:** `ServerChecksumCollector.AddExpectedReporter(slot, fromTick)` + per-window expected
+  counts — windows below the boundary quorum over survivors (stray catch-up reports dropped); at/after need
+  everyone, so the first live window re-proves the donor snapshot end-to-end (D-1). `ServerHost.AddReporter`.
+- **Delay re-admit (D-8):** `DelayController.ReactivateSlot` — fresh RTT history; excused from a directive
+  that predates its return (the ResumeDirective carried the current delay).
+- **Client protocol half:** `RejoinClient` + `SnapshotTransfer` (Godot-free, in SimSources) — request/accept/
+  refuse, chunk assembly (fail-closed on disorder), tail apply + ACK cursor, resume handoff. `LockstepManager`
+  stores its RejoinToken (`RejoinToken`/`RejoinTokenSlot`), survivors ACK ResumeDirective + fire
+  `OnPlayerResumed`.
+- **Proofs:** `RejoinCatchUpHarnessTests` (DW-879 — byte-equal checksums through drop→snapshot→tail→live),
+  `RejoinProtocolTests` (codecs, thaw sequence, quorum re-admit, injector bound), `RejoinCoordinatorTests`
+  (full coordinator↔client interlock over scripted seams + every refusal/timeout/disconnect arm).
+
+**Remaining — story 15-1b (in-engine, human at the rig):** MainScene's reconnect bootstrap (detect the REJOIN
+Hello → `RejoinClient` → restore the snapshot into a FRESH SimulationHost with `OnlineAiPlan=None` (D-7) →
+headless fast-forward loop → enter live lockstep at `FirstOwnedTick` with the handed-over delay → suppress own
+submissions below it), the "Rejoining…" UX, checksum-send suppression during catch-up, and the two-machine LAN
+confirmation (transport only — D-10 says everything else is already proven).
