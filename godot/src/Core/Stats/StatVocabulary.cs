@@ -47,6 +47,24 @@ namespace ProjectChimera.Core.Stats
         /// <inheritdoc cref="CooldownReductionSumMinRaw"/>
         public const int CooldownReductionSumMaxRaw = Fixed.ONE * 4 / 5;
 
+        // ── Story 15-24b: the combat-dice bounds ──
+        /// <summary>crit_chance Σ clamp: [0, 1] — the full probability domain (100% = every weapon hit crits;
+        /// balance is authoring's job, the domain is the registry's). Debuff-negative sums floor at 0.</summary>
+        public const int CritChanceSumMinRaw = 0;
+        /// <inheritdoc cref="CritChanceSumMinRaw"/>
+        public const int CritChanceSumMaxRaw = Fixed.ONE;
+        /// <summary>dodge_chance Σ clamp: [0, 0.75] — the ARPG-standard hard cap (a 100% dodge would be
+        /// <c>StatusFlags.Invulnerable</c> with extra steps and no counterplay; 25% of hits always land).</summary>
+        public const int DodgeChanceSumMinRaw = 0;
+        /// <inheritdoc cref="DodgeChanceSumMinRaw"/>
+        public const int DodgeChanceSumMaxRaw = Fixed.ONE * 3 / 4;
+        /// <summary>crit_multiplier Σ clamp: [−0.5, +8]. Added to the ×1.5 base
+        /// (<c>EntityWorld.CritBaseMultiplierRaw</c>), so the TOTAL crit multiplier spans [1.0, 9.5] — a crit
+        /// never deals less than a normal hit, and the ceiling is a semantic bound well under any wrap.</summary>
+        public const int CritBonusSumMinRaw = -(Fixed.ONE / 2);
+        /// <inheritdoc cref="CritBonusSumMinRaw"/>
+        public const int CritBonusSumMaxRaw = 8 * Fixed.ONE;
+
         /// <summary>The registry. Index == <c>(int)StatId</c> (guard-tested by StatVocabularyGuardTests).</summary>
         public static readonly StatDefinition[] All =
         {
@@ -108,6 +126,21 @@ namespace ProjectChimera.Core.Stats
                 StatAggregation.Percent, StatTier.Recompute, PercentSumMinRaw, PercentSumMaxRaw,
                 consumerEvidence: "VisionBonusPct", consumerSite: "EntityWorld.VisionWithElevation merge (× (1 + Σ))",
                 percentTarget: StatId.VisionRange, maxAbsDeltaRaw: PercentDeltaCapRaw),
+
+            // ── Story 15-24b: the deterministic combat dice (SimRng draws at the two documented roll points;
+            //    a zero chance NEVER draws, so content without these stats leaves the RNG stream untouched) ──
+            new StatDefinition(StatId.CritChance, "crit_chance", "Critical Chance",
+                StatAggregation.Chance, StatTier.Recompute, CritChanceSumMinRaw, CritChanceSumMaxRaw,
+                consumerEvidence: "EffectiveCritChance", consumerSite: "CombatSystem attack-commit roll (hitscan swing / projectile launch)",
+                maxAbsDeltaRaw: Fixed.ONE),
+            new StatDefinition(StatId.DodgeChance, "dodge_chance", "Dodge Chance",
+                StatAggregation.Chance, StatTier.Recompute, DodgeChanceSumMinRaw, DodgeChanceSumMaxRaw,
+                consumerEvidence: "EffectiveDodgeChance", consumerSite: "DamageResolver.Apply weapon-hit arrival roll (victim-side)",
+                maxAbsDeltaRaw: Fixed.ONE),
+            new StatDefinition(StatId.CritMultiplier, "crit_multiplier", "Critical Damage %",
+                StatAggregation.Percent, StatTier.Recompute, CritBonusSumMinRaw, CritBonusSumMaxRaw,
+                consumerEvidence: "CritMultiplierOf", consumerSite: "EntityWorld.CritMultiplierOf (1.5 base + Σ) at the crit-commit scale",
+                maxAbsDeltaRaw: PercentDeltaCapRaw),
         };
 
         /// <summary>Number of declared stats. Strides the hero attribute lanes (HeroStore + save v10).</summary>

@@ -163,7 +163,7 @@ namespace ProjectChimera.Sim.Tests.Definitions
         public void AlgoVersions_Unchanged()
         {
             Assert.Equal(17, CanonicalModelHash.AlgoVersion);
-            Assert.Equal(26, SimChecksum.AlgoVersion);
+            Assert.Equal(27, SimChecksum.AlgoVersion);
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
     }

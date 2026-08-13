@@ -335,8 +335,15 @@ namespace ProjectChimera.Core
         ///        BYTE-IDENTICAL under v26 (zero re-records; the known-state pin holds). The vision terms stay
         ///        unfolded (presentation-only fog input). The bump still fail-closes every pre-15-24a save
         ///        (DW-874), which the same story's Save v10 / ContentHash v3 / CanonicalModelHash v17 do anyway.
+        ///   v27 — Story 15-24b (the deterministic combat dice): BOUNDED per-entity fold of the three dice
+        ///        channels — EffectiveCritChance / EffectiveDodgeChance / EffectiveCritBonus (each ≠ 0) — as a
+        ///        second v26-style gate. The DRAWS need no fold of their own: every crit/dodge roll advances
+        ///        the SimRng stream, whose State has folded LAST since v1, so a divergent roll sequence
+        ///        desyncs on the tick it happens. No shipped content authors the dice and a zero chance never
+        ///        draws, so every recorded golden + the frozen control + the known-state pin stay
+        ///        byte-identical (zero re-records — the v23/v26 posture, third time).
         /// </summary>
-        public const int AlgoVersion = 26;
+        public const int AlgoVersion = 27;
 
         /// <summary>
         /// Compute a full-state checksum for desync detection.
@@ -534,6 +541,20 @@ namespace ProjectChimera.Core
                     hash = Mix(hash, world.EffectiveAttackSpeedFactor[i].Raw);
                     hash = Mix(hash, world.EffectiveCooldownReduction[i].Raw);
                     hash = Mix(hash, world.EffectiveHealthRegen[i].Raw);
+                }
+
+                // ── Combat-dice terms (v27, Story 15-24b) — the same BOUNDED posture, a second gate so the two
+                // stories' blocks stay independently boundable. An entity with no dice stats folds ZERO Mix
+                // calls; the DICE THEMSELVES need no extra fold — every draw advances the already-folded
+                // SimRng.State (mixed LAST, the standing invariant), so a divergent roll sequence desyncs
+                // detectably on the very tick it happens. All Fixed.Raw → cross-platform safe.
+                if (world.EffectiveCritChance[i].Raw != 0
+                    || world.EffectiveDodgeChance[i].Raw != 0
+                    || world.EffectiveCritBonus[i].Raw != 0)
+                {
+                    hash = Mix(hash, world.EffectiveCritChance[i].Raw);
+                    hash = Mix(hash, world.EffectiveDodgeChance[i].Raw);
+                    hash = Mix(hash, world.EffectiveCritBonus[i].Raw);
                 }
             }
 

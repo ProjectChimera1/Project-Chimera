@@ -183,7 +183,7 @@ namespace ProjectChimera.Sim.Tests.UI
         public void HashAlgoVersions_AreUnchanged()
         {
             // Story 11.4 folds nothing — every pin stays exactly where SimResetTests pins it.
-            Assert.Equal(26, SimChecksum.AlgoVersion);
+            Assert.Equal(27, SimChecksum.AlgoVersion);
             Assert.Equal(17, CanonicalModelHash.AlgoVersion);
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }

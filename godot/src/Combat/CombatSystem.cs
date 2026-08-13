@@ -879,15 +879,33 @@ namespace ProjectChimera.Combat
             // factor; divides by (1 + Σ attack_speed) with the one-tick machine-gun floor otherwise).
             world.AttackCooldown[attacker] = world.AttackIntervalOf(attacker);
 
+            // Story 15-24b — THE CRIT ROLL: the attack-COMMIT half of the combat dice. Crit is decided when the
+            // attack is committed (this swing / this launch), matching the projectile damage-snapshot asymmetry
+            // exactly: a shell's damage — critted or not — is sealed at spawn, and the attacker's later death
+            // cannot retro-decide an in-flight crit. Rolls ONLY when the attacker actually has crit (a zero
+            // chance draws NOTHING, so content without the stat leaves the SimRng stream byte-identical). The
+            // draw rides the shared world.Rng inside the ascending-id combat scan — identical sequence on every
+            // peer. Per-swing order when both dice are live: crit here FIRST, then Apply's dodge roll (a fixed,
+            // documented order; a dodged crit consumed its draw — the stream must advance identically on every
+            // peer whatever the outcomes). Buildings never roll (TryDealBuildingDamage — a structure neither
+            // dodges nor takes crits in 15-24b).
+            Fixed weaponDamage = world.EffectiveAttackDamage[attacker];
+            if (world.EffectiveCritChance[attacker].Raw > 0
+                && world.Rng.NextFixed() < world.EffectiveCritChance[attacker])
+            {
+                weaponDamage = Fixed.MulSaturating(weaponDamage, world.CritMultiplierOf(attacker));
+                _events?.Push(CombatEventType.AttackCrit, world.Position[attacker], world.FactionOf[attacker], world.FeedbackProfile[attacker]); // presentation-only
+            }
+
             if (world.Delivery[attacker] == AttackDelivery.Projectile)
             {
                 // Projectile delivery — spawn a tracking projectile at the unit's per-unit speed; damage resolved by
-                // ProjectileSystem on hit.
+                // ProjectileSystem on hit. Story 15-24b: the snapshot carries the (possibly critted) weaponDamage.
                 _projectiles.Spawn(
                     world.Position[attacker],
                     world.PackRef(target),           // Story 15-23 (DW-775): PACKED entity ref — a slot recycled in flight fails TryResolveRef and the shell drops (gen-0 ⇒ == target)
                     world.Position[target],
-                    world.EffectiveAttackDamage[attacker],
+                    weaponDamage,
                     world.DamageTypeOf[attacker],
                     world.ArmorTypeOf[target],
                     world.FactionOf[attacker],
@@ -904,8 +922,9 @@ namespace ProjectChimera.Combat
 
                 var ctx = new DamageContext(world, target, world.ArmorTypeOf[target],
                                             world.FactionOf[attacker], _table, _events, _stats, _deaths,
-                                            attackerId: attacker, dslSimEvents: _dslSimEvents); // Story 7.5 attacker; 7.13 unit_damaged feed
-                if (DamageResolver.Apply(in ctx, world.EffectiveAttackDamage[attacker], world.DamageTypeOf[attacker]))
+                                            attackerId: attacker, dslSimEvents: _dslSimEvents,
+                                            isWeaponHit: true); // Story 7.5 attacker; 7.13 unit_damaged feed; 15-24b dodge provenance
+                if (DamageResolver.Apply(in ctx, weaponDamage, world.DamageTypeOf[attacker], out bool dodged))
                 {
                     world.AttackTarget[attacker] = -1;
                     world.Flags[attacker]       &= ~EntityFlags.Attacking;
@@ -914,7 +933,9 @@ namespace ProjectChimera.Combat
                 // Story 2.6 — the ON-HIT rider (melee-first, AC2). Fires on the landed hit and not otherwise (driven by
                 // the same AttackCooldown gate above — no new counter). primaryTarget = the struck unit; runs AFTER the
                 // base damage resolves, so a lethal base hit leaves the rider's IsAlive-guarded leaves as safe no-ops.
-                RunOnHit(world, attacker, target);
+                // Story 15-24b: a DODGED attack landed nothing, so it procs nothing — the rider is skipped.
+                if (!dodged)
+                    RunOnHit(world, attacker, target);
             }
         }
 

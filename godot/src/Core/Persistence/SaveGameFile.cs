@@ -95,8 +95,15 @@ namespace ProjectChimera.Core.Persistence
         /// the research section's cumulative lanes generalize per-stat. A v9 body would misalign every lane from the
         /// new entries onward; the bump fail-closes a pre-15-24a save at the header — which the SAME story's
         /// SimChecksum 25→26 / CanonicalModelHash 16→17 / ContentHash 2→3 pins would reject anyway (DW-874: one
-        /// constant, fail-closed, no migrate).</para></summary>
-        public const ushort FormatVersion = 10;
+        /// constant, fail-closed, no migrate).</para>
+        ///
+        /// <para>v11 (Story 15-24b, 2026-08-13 — the deterministic combat dice): the entity section gained THREE
+        /// lanes (<c>EffCritChance</c>, <c>EffDodgeChance</c>, <c>EffCritBonus</c> — the dice channels, restored
+        /// with registry-domain re-clamps), appended after <c>VisionBonusPct</c>, still before <c>PatrolWpX</c>;
+        /// and the hero attribute rings re-stride again with the registry (14 → 17 stats). A v10 body would
+        /// misalign from the new entries onward; the bump fail-closes it — which the same story's SimChecksum
+        /// 26→27 pin rejects anyway (DW-874).</para></summary>
+        public const ushort FormatVersion = 11;
 
         /// <summary>Max player slots in a persisted launch record — a fail-closed corruption bound on the slot count.</summary>
         public const int MaxSlots = 64;

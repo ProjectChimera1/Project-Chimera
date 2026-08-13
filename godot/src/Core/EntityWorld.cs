@@ -357,6 +357,19 @@ namespace ProjectChimera.Core
         /// </summary>
         public readonly Fixed[] EffectiveCooldownReduction;
 
+        // ── Story 15-24b: the combat-dice channels (all identity-0 modifier terms, the CDR posture) ──
+        /// <summary>Clamped Σ of crit_chance deltas, [0, 1]. Read at the attack-COMMIT roll
+        /// (<c>CombatSystem.TryDealDamage</c>: hitscan swing / projectile launch); 0 = NO draw, so content
+        /// without crit leaves the SimRng stream untouched. FOLDED v27 BOUNDED (≠ 0).</summary>
+        public readonly Fixed[] EffectiveCritChance;
+        /// <summary>Clamped Σ of dodge_chance deltas, [0, 0.75]. Read at the damage-ARRIVAL roll
+        /// (<c>DamageResolver.Apply</c>, weapon hits only — splash/ability damage never rolls); 0 = NO draw.
+        /// FOLDED v27 BOUNDED (≠ 0).</summary>
+        public readonly Fixed[] EffectiveDodgeChance;
+        /// <summary>Clamped Σ of crit_multiplier deltas, [−0.5, +8] — the bonus over the ×1.5 base; consumers
+        /// read the TOTAL via <see cref="CritMultiplierOf"/>. FOLDED v27 BOUNDED (≠ 0).</summary>
+        public readonly Fixed[] EffectiveCritBonus;
+
         // --- Ability resource pool (Story 2.2a substrate; ModifierStore debits it 2.2b; sourced from the def 2.4a) ---
         /// <summary>
         /// Current ability-resource (energy) pool — the single ability-cost pool (architecture: Energy + MaxEnergy,
@@ -1094,6 +1107,9 @@ namespace ProjectChimera.Core
             AttackSpeed = new Fixed[MAX_ENTITIES];
             EffectiveAttackSpeedFactor = new Fixed[MAX_ENTITIES]; // Story 15-24a (folded v26 BOUNDED: ≠ One; One-filled below + per-Create)
             EffectiveCooldownReduction = new Fixed[MAX_ENTITIES]; // Story 15-24a (folded v26 BOUNDED: ≠ 0)
+            EffectiveCritChance  = new Fixed[MAX_ENTITIES];       // Story 15-24b (folded v27 BOUNDED: ≠ 0)
+            EffectiveDodgeChance = new Fixed[MAX_ENTITIES];       // Story 15-24b (folded v27 BOUNDED: ≠ 0)
+            EffectiveCritBonus   = new Fixed[MAX_ENTITIES];       // Story 15-24b (folded v27 BOUNDED: ≠ 0)
             Energy         = new Fixed[MAX_ENTITIES];
             MaxEnergy      = new Fixed[MAX_ENTITIES];
             RegenRate      = new Fixed[MAX_ENTITIES];           // DW-265 / Story 15.12 (authored — NOT folded; Create-defaulted Zero)
@@ -1238,6 +1254,9 @@ namespace ProjectChimera.Core
             EffectiveHealthRegen[id]       = Fixed.Zero;
             VisionBonusFlat[id]            = Fixed.Zero;
             VisionBonusPct[id]             = Fixed.Zero;
+            EffectiveCritChance[id]        = Fixed.Zero; // Story 15-24b (recycle-reset)
+            EffectiveDodgeChance[id]       = Fixed.Zero;
+            EffectiveCritBonus[id]         = Fixed.Zero;
             // Story 2.2a substrate / 2.4a: ability-resource pool defaults to empty here; ApplyUnitDefinition sets it
             // from UnitDefinition.MaxEnergy (start full) for ability-bearing units. A unit with no def stays at 0.
             Energy[id]        = Fixed.Zero;
@@ -1401,6 +1420,23 @@ namespace ProjectChimera.Core
             if (factor == Fixed.One || baseInterval.Raw <= 0) return baseInterval;
             return Fixed.Max(SimulationLoop.FixedDt, baseInterval / factor);
         }
+
+        /// <summary>
+        /// Story 15-24b — the ×1.5 base every critical hit starts from (the WC3-modern/D3 convention), as a
+        /// raw 16.16 constant so <see cref="CritMultiplierOf"/> stays integer-derived (CHM0004/CHM0005-clean).
+        /// The crit_multiplier stat ADDS to this; its registry Σ clamp [−0.5, +8] keeps the total in
+        /// [1.0, 9.5] — a crit never deals less than a normal hit.
+        /// </summary>
+        public const int CritBaseMultiplierRaw = Fixed.ONE + Fixed.HALF;
+
+        /// <summary>
+        /// Story 15-24b — the crit_multiplier stat's ONE consumer seam: the TOTAL damage multiplier a critical
+        /// weapon hit applies for attacker <paramref name="id"/> — the ×1.5 base plus the clamped
+        /// crit_multiplier Σ (<see cref="EffectiveCritBonus"/>; identity 0 ⇒ exactly ×1.5). A plain raw add:
+        /// both terms are registry/const-bounded far under any wrap.
+        /// </summary>
+        public Fixed CritMultiplierOf(int id) =>
+            Fixed.FromRaw(CritBaseMultiplierRaw + EffectiveCritBonus[id].Raw);
 
         /// <summary>
         /// Story 6.3 (renamed from <c>EffectiveVisionRange(int)</c> in 15-24a): the vision radius
@@ -1889,6 +1925,8 @@ namespace ProjectChimera.Core
             Array.Clear(RegenRate);             // DW-265 / Story 15.12 (0 == the fresh-ctor state; no residual regen after a reset)
             Array.Clear(EffectiveAttackSpeedFactor); Array.Clear(EffectiveCooldownReduction); // Story 15-24a (factor re-filled to One below)
             Array.Clear(BaseHealthRegen);            Array.Clear(EffectiveHealthRegen);       // Story 15-24a (0 == fresh-ctor)
+            Array.Clear(EffectiveCritChance);        Array.Clear(EffectiveDodgeChance);       // Story 15-24b (0 == fresh-ctor)
+            Array.Clear(EffectiveCritBonus);         // Story 15-24b (0 == fresh-ctor)
             Array.Clear(StatusFlagsOf);         Array.Clear(DamageTypeOf);          Array.Clear(ArmorTypeOf);
             Array.Clear(VisionRange);           Array.Clear(SplashRadius);          Array.Clear(CollisionRadius);
             Array.Clear(VisionBonusFlat);       Array.Clear(VisionBonusPct);        // Story 15-24a (0 == fresh-ctor)

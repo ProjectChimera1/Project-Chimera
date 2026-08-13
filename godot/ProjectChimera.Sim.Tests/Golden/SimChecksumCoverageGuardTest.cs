@@ -109,19 +109,19 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// hash still moves.)
         /// </summary>
         [Fact]
-        public void KnownWorldState_ProducesPinnedV26Hash()
+        public void KnownWorldState_ProducesPinnedV27Hash()
         {
-            // Algorithm version must be exactly 26 (Story 15-24a's bounded stat-pipeline fold, on top of Story
+            // Algorithm version must be exactly 27 (Story 15-24b's bounded combat-dice fold + 15-24a's bounded stat-pipeline fold at v26, on top of Story
             // 15-23's generation-validated entity refs at v25, Phase C's v24 re-record marker, DW-78's bounded
             // worker-gather-state fold at v23 and 11.6's production-queue + head-timer fold at v22).
             // If this fails, the const below is stale.
-            Assert.Equal(26, SimChecksum.AlgoVersion);
+            Assert.Equal(27, SimChecksum.AlgoVersion);
 
             uint actual = ComputeKnownStateHash();
 
             // ── Pinned hash for the fixed world built by ComputeKnownStateHash() ──────────────────────────
             // An intentional SimChecksum algorithm change must update this value AND bump SimChecksum.AlgoVersion.
-            // The value below is DELIBERATELY UNCHANGED across FOUR consecutive bumps now, for four DIFFERENT
+            // The value below is DELIBERATELY UNCHANGED across FIVE consecutive bumps now, for four DIFFERENT
             // reasons, and all are load-bearing:
             //   v22→v23: DW-78's fold is BOUNDED (an entity at the gatherer-inactive default folds ZERO Mix calls)
             //            and the known-state world holds NO gatherer, so the added fold was a no-op here. If a
@@ -140,10 +140,10 @@ namespace ProjectChimera.Sim.Tests.Golden
             //            CDR 0, effective regen == base — folds ZERO Mix calls) and the known-state world carries no
             //            stat-pipeline modifier, so the added fold is a no-op here. Same contract as v23: a future
             //            edit that gives this world an attack_speed buff MUST move the pin — correctly.
-            const uint ExpectedV26Hash = 0x32911831; // unchanged since v22 — see the four reasons above
-            Assert.True(actual == ExpectedV26Hash,
-                $"Known-state v26 checksum changed: expected 0x{ExpectedV26Hash:X8}, actual 0x{actual:X8}. " +
-                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV26Hash to 0x{actual:X8} and bump " +
+            const uint ExpectedV27Hash = 0x32911831; // unchanged since v22 — see the reasons above (v26->v27: the dice fold is bounded and the known world carries no dice stats — the v23/v26 argument, fifth bump)
+            Assert.True(actual == ExpectedV27Hash,
+                $"Known-state v27 checksum changed: expected 0x{ExpectedV27Hash:X8}, actual 0x{actual:X8}. " +
+                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV27Hash to 0x{actual:X8} and bump " +
                 $"SimChecksum.AlgoVersion. If not, you broke the deterministic checksum — investigate.");
         }
 
@@ -284,6 +284,27 @@ namespace ProjectChimera.Sim.Tests.Golden
                 int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
                                  Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
                 return () => w.EffectiveHealthRegen[e] = Fixed.FromInt(2);
+            });
+
+            // ── v27 (Story 15-24b): the three BOUNDED combat-dice terms — mutate each away from its identity 0.
+            //    A non-identity value MUST move the hash (the bounded gate's own teeth, the v26 pattern). ──
+            AssertFieldFoldedIntoChecksum(buildings, resources, registry, w =>
+            {
+                int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
+                                 Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+                return () => w.EffectiveCritChance[e] = Fixed.Half;
+            });
+            AssertFieldFoldedIntoChecksum(buildings, resources, registry, w =>
+            {
+                int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
+                                 Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+                return () => w.EffectiveDodgeChance[e] = Fixed.Half;
+            });
+            AssertFieldFoldedIntoChecksum(buildings, resources, registry, w =>
+            {
+                int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
+                                 Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+                return () => w.EffectiveCritBonus[e] = Fixed.Half;
             });
 
             // ── v7 (Story 2.4a): AbilityCooldownTicks is folded (count-driven — set AbilityCount > 0 first so the

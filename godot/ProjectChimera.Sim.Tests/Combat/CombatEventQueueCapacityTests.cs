@@ -187,6 +187,9 @@ namespace ProjectChimera.Sim.Tests.Combat
         [InlineData(CombatEventType.PlayVfx,           true)]
         [InlineData(CombatEventType.PlaySound,         true)]
         [InlineData(CombatEventType.ShakeScreen,       true)]
+        // Story 15-24b: dodge/crit cues fire per swing (the MeleeHit volume class) → ambient lane.
+        [InlineData(CombatEventType.AttackDodged,      true)]
+        [InlineData(CombatEventType.AttackCrit,        true)]
         public void LaneClassification_IsPinnedPerEventType(CombatEventType type, bool ambient)
             => Assert.Equal(ambient, CombatEventQueue.IsAmbient(type));
 
@@ -197,7 +200,7 @@ namespace ProjectChimera.Sim.Tests.Combat
         /// </summary>
         [Fact]
         public void LaneClassificationTable_CoversEveryEventType()
-            => Assert.Equal(17, AllEventTypes().Count); // Story 15.13 (DW-248): +PlayVfx/PlaySound/ShakeScreen
+            => Assert.Equal(19, AllEventTypes().Count); // Story 15.13 (DW-248): +PlayVfx/PlaySound/ShakeScreen; Story 15-24b: +AttackDodged/AttackCrit
 
         // ── capacity + reset invariants ───────────────────────────────────────────────────────────
 

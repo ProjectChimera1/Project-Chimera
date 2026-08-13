@@ -139,7 +139,7 @@ namespace ProjectChimera.Sim.Tests.Definitions
             // 2.7 added NO fold of its own (FeedbackProfile is presentation-read, never hashed). The version has since
             // moved for UNRELATED folds (first 3.12's Delivery + ProjectileSpeed); the FeedbackProfile exclusion teeth
             // below are the real assertion — the version pin just tracks the current value (canonically pinned elsewhere).
-            Assert.Equal(26, SimChecksum.AlgoVersion);
+            Assert.Equal(27, SimChecksum.AlgoVersion);
 
             var registry  = new FactionRegistry(2);
             var buildings = new BuildingStore();

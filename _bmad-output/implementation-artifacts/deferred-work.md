@@ -8161,3 +8161,10 @@ location: godot/src/Core/Definitions/ItemDefinition.cs (StatDeltas Dictionary<st
 severity: low
 reason: System.Text.Json''s dictionary converter overwrites on a duplicate key (last wins) with no opt-out, so an authored item/research file carrying `"stat_deltas": {"attack_speed": 0.5, "attack_speed": 0.1}` loads the 0.1 silently, while the identical JSON inside an ability modifier is a located hard reject. DETERMINISTIC on every peer (same merged value feeds the same fold + behavior — no desync exposure), and the surviving value still passes every registry/bounds gate; the defect is posture inconsistency: one of three lanes honors the RejectUnknownProperties duplicate discipline. Closure = a small strict-dictionary JsonConverter (throw on duplicate key) registered on the two DTO properties, plus one loader test per lane; alternatively route both DTOs'' stat_deltas through a shared parse helper with the bitmask.
 status: open
+
+### DW-996: AttackDodged / AttackCrit presentation cues have no render arms yet
+origin: Story 15-24b (the deterministic combat dice), recorded seam
+location: godot/src/Combat/CombatEventQueue.cs (the two appended CombatEventType members, classified ambient-lane) vs godot/src/UI/CombatFeedbackBridge.cs + AudioManager.cs (whose switches no-op on them)
+severity: low
+reason: The sim pushes AttackDodged (DamageResolver.Apply, at the victim on a successful dodge) and AttackCrit (CombatSystem.TryDealDamage, at the attacker on a landed crit roll) onto the unfolded CombatEventQueue, but neither presentation bridge renders them — a dodge/crit is currently visible only through the damage numbers'' absence/size. Both files are in-engine-gated UI, so the arms ride a UI session: a "Dodged!" float/flash at the victim and a heavier hit-flash + sound at the crit target are the natural WC3-modern cues. Closure = one arm each in CombatFeedbackBridge (visual) and AudioManager (sound) + /godot-verify observation; pairs naturally with DW-994''s buff-tooltip pass.
+status: open

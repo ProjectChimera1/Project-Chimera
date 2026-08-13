@@ -206,6 +206,8 @@ namespace ProjectChimera.Sim.Tests.Persistence
             {
                 case "EffectiveCooldownReduction": // restore clamps into the registry Σ bounds [−4, +0.8]
                     return Fixed.FromRaw(ProjectChimera.Core.Stats.StatVocabulary.CooldownReductionSumMaxRaw / 2); // 0.4 — in-domain, ≠ the identity 0
+                case "EffectiveDodgeChance": // Story 15-24b: restore clamps into [0, 0.75] — the generic +1.0 bump exits it
+                    return Fixed.FromRaw(ProjectChimera.Core.Stats.StatVocabulary.DodgeChanceSumMaxRaw / 2); // 0.375 — in-domain, ≠ 0
             }
 
             if (t.IsEnum) return Enum.ToObject(t, Convert.ToInt64(value) + 1);

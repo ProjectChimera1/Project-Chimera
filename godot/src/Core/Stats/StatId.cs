@@ -56,5 +56,16 @@ namespace ProjectChimera.Core.Stats
         MoveSpeedPercent = 12,
         /// <summary>Percent sibling of <see cref="VisionRange"/> (catalog #34, "vision_percent").</summary>
         VisionPercent = 13,
+
+        // ── Story 15-24b additions (the deterministic combat dice) ──
+        /// <summary>Chance in [0,1] that a WEAPON hit crits (×<c>CritMultiplierOf</c> damage). Rolled at the
+        /// attack COMMIT (hitscan swing / projectile launch) on the shared <c>SimRng</c> stream.</summary>
+        CritChance = 14,
+        /// <summary>Chance in [0, 0.75] that the VICTIM negates a weapon hit entirely. Rolled at the damage
+        /// ARRIVAL (the <c>DamageResolver.Apply</c> single point); splash and ability damage never roll.</summary>
+        DodgeChance = 15,
+        /// <summary>Percent added to the crit damage multiplier: total = 1.5 (the base) + Σ, floored so a
+        /// crit never deals less than a normal hit.</summary>
+        CritMultiplier = 16,
     }
 }

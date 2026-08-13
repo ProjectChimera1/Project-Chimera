@@ -93,7 +93,7 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// <summary>Story 15-23 (DW-775): 24→25 — generation-validated entity refs; folded id lanes
         /// (CommandTarget entity halves, order-queue entity payloads, DslLoopState rows) now carry PACKED refs.
         /// No fold set/order change; value semantics only (gen-0 packing is bit-identical to raw ids).</summary>
-        private const int ExpectedSimChecksumAlgoVersion = 26; // Story 15-24a: 25->26 — bounded stat-pipeline fold (factor/CDR/health-regen; zero golden movement)
+        private const int ExpectedSimChecksumAlgoVersion = 27; // Story 15-24b: 26->27 — bounded combat-dice fold (crit/dodge/crit-bonus; zero golden movement)
 
         /// <summary>Load-time canonical start-state hash algorithm version (lobby handshake value).
         /// v3 (Story 2.9b follow-up): folded ScenarioPlayerSlot.StartCrystal (sim-affecting per-slot start-state).
@@ -220,7 +220,7 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// appended hero attribute lanes); DW-690 bumped 7→8 (the appended per-entity RallyMovePending lane, so a
         /// worker saved mid-rally keeps its DW-634 stand-down gate across a load); DW-804 bumped 8→9 (the appended
         /// entity GatherWalkStall lane, which shifts every flat-stride entity lane after it).</summary>
-        private const ushort ExpectedSaveFormatVersion = 10; // Story 15-24a: 9->10 — five stat-pipeline entity lanes + registry-strided hero attr rings + per-stat research lanes
+        private const ushort ExpectedSaveFormatVersion = 11; // Story 15-24b: 10->11 — three dice lanes + registry re-stride (14->17)
 
         /// <summary>.chmr replay file-format version. Story 7.9 bumped 2→3 (DslEvent orders). Story 9.11 bumped 3→4
         /// ("replay v2": self-describing tagged body via the frozen MergedTickPacket envelope + a result trailer, and

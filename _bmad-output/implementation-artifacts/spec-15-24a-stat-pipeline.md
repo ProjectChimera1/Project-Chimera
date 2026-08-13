@@ -1,4 +1,32 @@
-# Spec 15-24a — THE STAT PIPELINE (StatVocabulary registry) — AS-BUILT record
+# Spec 15-24a + 15-24b — THE STAT PIPELINE + THE COMBAT DICE — AS-BUILT record
+
+## 15-24b addendum (2026-08-13, same-substrate follow-on session): deterministic crit/dodge
+
+**BUILT + GREEN.** Three registry stats — `crit_chance` (Chance, [0,1]), `dodge_chance` (Chance, [0,0.75]
+— the ARPG-standard hard cap), `crit_multiplier` (Percent, [−0.5,+8] over the ×1.5 base
+`EntityWorld.CritBaseMultiplierRaw`, total ∈ [1.0, 9.5]) — all modifier-authorable AND
+attribute-targetable (the WC3 "agility → crit" lineage works through the existing pipeline with zero new
+plumbing). Suite **6993 / 0 / 1**; release gate clean.
+
+**The rolls (the spec's RNG-averse gate item, decided consciously):** draws ride the shared folded
+`world.Rng` (SplitMix64) INSIDE the sim — never presentation. Two documented roll points with a fixed
+order: **crit at the attack COMMIT** (`CombatSystem.TryDealDamage` — the hitscan swing or projectile
+LAUNCH, sealing the critted damage into the shell's snapshot exactly like the established damage-snapshot
+asymmetry) and **dodge at the damage ARRIVAL** (`DamageResolver.Apply`, victim-side, gated on the new
+`DamageContext.IsWeaponHit` provenance — splash and every effect-graph damage leaf pass the default false
+and can never roll; spell crit/dodge are future stats). A dodge negates the whole hit (no damage, no
+unit_damaged, on-hit rider skipped, attacker keeps swinging). Buildings neither dodge nor take crits.
+
+**Draw-gating = golden neutrality, third time:** a zero chance NEVER draws, so shipped content leaves the
+RNG stream untouched — SimChecksum 26→**27** (second bounded gate: the three dice channels ≠ 0) moved
+ZERO existing goldens (verified via `git status -- '*.golden.txt'`); the frozen control and known-state pin
+are now FIVE bumps unchanged. Save **v10→11** (three dice lanes, registry-domain restore clamps; hero attr
+rings re-stride 14→17). Content hashes UNTOUCHED (the sparse vector fold is append-safe by design — the
+registry paying off). New cross-platform golden `crit-dodge-scenario` (seeded stream, 50% crit vs 50%
+dodge, 300 ticks) pins the draw order + outcomes on both CI legs; `CritDodgeRollTests` pins the draw
+BUDGET exactly (SplitMix64 state deltas × gamma⁻¹ mod 2⁶⁴ — plain division wraps past one draw), the
+crit-then-dodge order via an order-sensitive outcome, provenance, clamps, and zero-dice neutrality.
+Presentation cues `AttackDodged`/`AttackCrit` push on the ambient event lane; render arms = DW-996.
 
 **Status:** BUILT + GREEN (2026-08-12 ultracode session, single conversation). Parent:
 `spec-15-24-attribute-system-2.md`. Commits `3b418039`, `bd97d1d3`, `0c32bcc3`, `2be2dcf5`, `1df7570e`

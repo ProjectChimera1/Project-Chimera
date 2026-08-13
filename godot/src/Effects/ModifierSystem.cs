@@ -157,6 +157,13 @@ namespace ProjectChimera.Effects
             // vision: the two merge terms VisionWithElevation consumes (flat Σ raw; percent Σ clamped).
             world.VisionBonusFlat[id] = _bonus[(int)StatId.VisionRange][id];
             world.VisionBonusPct[id]  = pctVision;
+            // Story 15-24b — the combat dice: clamped chance sums ([0,1] crit / [0,0.75] dodge) and the crit
+            // damage bonus ([−0.5,+8], read via CritMultiplierOf). All identity-0: a zero chance means the
+            // roll sites never DRAW, so an entity with no dice stats perturbs neither the fold nor the
+            // SimRng stream.
+            world.EffectiveCritChance[id]  = ClampedBonus(id, StatId.CritChance);
+            world.EffectiveDodgeChance[id] = ClampedBonus(id, StatId.DodgeChance);
+            world.EffectiveCritBonus[id]   = ClampedBonus(id, StatId.CritMultiplier);
 
             _dirty[id] = false;
         }

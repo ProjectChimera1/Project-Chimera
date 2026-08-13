@@ -35,9 +35,19 @@ namespace ProjectChimera.Combat
         /// combat tests / non-DSL call sites (no event is raised).</summary>
         public readonly DslSimEventFeed? DslSimEvents;
 
+        /// <summary>
+        /// Story 15-24b — TRUE only for a WEAPON attack's primary hit (melee hitscan; a projectile's tracked
+        /// primary impact). This is the dodge roll's provenance gate: only weapon hits can be dodged — splash
+        /// (area damage, not an aimed attack) and every effect-graph <c>damage</c> leaf (ability casts, on-hit
+        /// riders, DoT periods — spell dodge/spell crit are their own future stats) pass the default FALSE and
+        /// never roll, never draw. An optional TRAILING ctor param, so every pre-15-24b construction site is
+        /// source-compatible and provenance-correct by default.
+        /// </summary>
+        public readonly bool IsWeaponHit;
+
         public DamageContext(EntityWorld world, int targetId, ArmorType targetArmor, Faction killer,
                              DamageTable table, CombatEventQueue? events, MatchStats? stats, DeathFeed? deaths = null,
-                             int attackerId = -1, DslSimEventFeed? dslSimEvents = null)
+                             int attackerId = -1, DslSimEventFeed? dslSimEvents = null, bool isWeaponHit = false)
         {
             World = world;
             TargetId = targetId;
@@ -49,6 +59,7 @@ namespace ProjectChimera.Combat
             Deaths = deaths;
             AttackerId = attackerId;
             DslSimEvents = dslSimEvents;
+            IsWeaponHit = isWeaponHit;
         }
     }
 
@@ -69,8 +80,18 @@ namespace ProjectChimera.Combat
         /// destroys the target. Returns <c>true</c> if the target died (so a melee caller can clear its
         /// attack state); projectile callers ignore the return value.
         /// </summary>
-        public static bool Apply(in DamageContext ctx, Fixed amount, DamageType type)
+        public static bool Apply(in DamageContext ctx, Fixed amount, DamageType type) =>
+            Apply(in ctx, amount, type, out _);
+
+        /// <summary>
+        /// Story 15-24b overload — same contract as <see cref="Apply(in DamageContext, Fixed, DamageType)"/>,
+        /// with <paramref name="dodged"/> reporting whether the victim's dodge roll negated this hit (always
+        /// false for non-weapon damage). The hitscan caller reads it to skip the on-hit rider — a dodged
+        /// attack landed nothing, so it procs nothing.
+        /// </summary>
+        public static bool Apply(in DamageContext ctx, Fixed amount, DamageType type, out bool dodged)
         {
+            dodged = false;
             EntityWorld world = ctx.World;
             int t = ctx.TargetId;
             // Defensive guard for the single reusable damage path: never apply to a dead/destroyed
@@ -87,6 +108,25 @@ namespace ProjectChimera.Combat
             // direct_hp_delta / cost_health self-costs — those are not damage. Every recorded golden leaves
             // StatusFlagsOf at None, so this branch is never entered there and no checksum moves.
             if ((world.StatusFlagsOf[t] & StatusFlags.Invulnerable) != 0) return false;
+            // Story 15-24b — THE DODGE ROLL: the damage-ARRIVAL half of the combat dice, at the single entity-
+            // damage path so hitscan and projectile-primary hits share one roll site. Rolls ONLY when this is a
+            // weapon hit (ctx.IsWeaponHit — splash/ability damage never dodges) AND the victim actually has
+            // dodge (a zero chance draws NOTHING, so content without the stat leaves the SimRng stream
+            // byte-identical — the golden-neutrality gate, same posture as the v23/v26 bounded folds).
+            // DRAW-ORDER DISCIPLINE (the 15-24b spec's core concern): draws ride the shared world.Rng stream
+            // inside the deterministic tick — CombatSystem iterates ascending id and ProjectileSystem resolves
+            // impacts in ascending projectile order, so every peer reaches the rolls in the identical sequence.
+            // Rolls live in the SIM, never presentation. A dodge negates the ENTIRE hit before any state moves:
+            // no damage, no unit_damaged occurrence, no kill — and returns false ("did not die"), so the
+            // attacker keeps its target and keeps swinging, exactly like the invulnerability refuse above. The
+            // AttackDodged event is presentation-only (the unfolded CombatEventQueue).
+            if (ctx.IsWeaponHit && world.EffectiveDodgeChance[t].Raw > 0
+                && world.Rng.NextFixed() < world.EffectiveDodgeChance[t])
+            {
+                dodged = true;
+                ctx.Events?.Push(CombatEventType.AttackDodged, world.Position[t], world.FactionOf[t], world.FeedbackProfile[t]);
+                return false;
+            }
             // Story 2.6 (Decision #6): flat post-matrix armor subtraction, floored at 0 so a hit never heals. With the
             // default BaseArmor=0 (and no armor modifier) EffectiveArmor=0 → the term is −0, leaving every pre-2.6
             // combat outcome unchanged; the goldens move ONLY from the EffectiveArmor checksum fold (v8), not the math.

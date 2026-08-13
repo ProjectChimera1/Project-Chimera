@@ -143,6 +143,11 @@
          Integer/Fixed-only → CROSS-PLATFORM SAFE, compared on both CI legs. NEW file. -->
     <None Remove="Golden\stat-pipeline-scenario.golden.txt" />
     <EmbeddedResource Include="Golden\stat-pipeline-scenario.golden.txt" />
+    <!-- Story 15-24b — combat-dice golden (a 50%-crit fighter vs a 50%-dodge tank from a fixed stream seed).
+         The first golden with LIVE SimRng draws from combat: pins the draw-order discipline + roll outcomes
+         cross-platform. Integer/Fixed-only → compared on both CI legs. NEW file. -->
+    <None Remove="Golden\crit-dodge-scenario.golden.txt" />
+    <EmbeddedResource Include="Golden\crit-dodge-scenario.golden.txt" />
     <!-- Story 2.4a (AC3) — ability-cast golden (one P1 caster casts a Self battle_fury via a CastAbility UnitOrder;
          Player2 empty so the AI no-ops). First golden with a LIVE ability cast; exercises the v7 cooldown fold.
          Integer/Fixed-only → CROSS-PLATFORM SAFE, compared on both CI legs. NEW file; goldens above untouched. -->

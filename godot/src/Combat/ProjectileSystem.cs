@@ -176,7 +176,8 @@ namespace ProjectChimera.Combat
             int attributedSource = world.TryResolveRefIncludingDead(_store.SourceId[projId], out int srcEnt) ? srcEnt : -1;
             var ctx = new DamageContext(world, targetId, _store.TargetArmor[projId],
                                         _store.Owner[projId], _table, _events, _stats, _deaths,
-                                        attackerId: attributedSource, dslSimEvents: _dslSimEvents);
+                                        attackerId: attributedSource, dslSimEvents: _dslSimEvents,
+                                        isWeaponHit: true); // Story 15-24b: the PRIMARY tracked impact is a weapon hit — the victim's dodge rolls at arrival (the splash ring below stays non-dodgeable area damage)
             DamageResolver.Apply(in ctx, _store.Damage[projId], _store.DmgType[projId]);
 
             // AoE splash: deal same damage to all other enemies within splash radius

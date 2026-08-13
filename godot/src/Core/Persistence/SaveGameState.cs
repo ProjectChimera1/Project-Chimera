@@ -205,6 +205,10 @@ namespace ProjectChimera.Core.Persistence
             // BEFORE PatrolWpX where the flat-stride half begins for Validate's length checks — all six are
             // plain per-entity lanes of length EntHwm.
             EffAttackSpeedFactor, EffCooldownReduction, BaseHealthRegen, EffHealthRegen, VisionBonusFlat, VisionBonusPct,
+            // Story 15-24b (save format v11): the three combat-dice channels (identity-0 modifier terms; the
+            // chance lanes re-clamp into their registry domains on restore, the crit bonus likewise). APPENDED,
+            // still BEFORE PatrolWpX — plain per-entity lanes of length EntHwm.
+            EffCritChance, EffDodgeChance, EffCritBonus,
             // flat (stride) arrays — length EntHwm * stride
             PatrolWpX, PatrolWpY, PatrolWpZ, OrderQCmd, OrderQTargetX, OrderQTargetZ, AbilityId, AbilityCd,
             COUNT
@@ -352,6 +356,7 @@ namespace ProjectChimera.Core.Persistence
             var asf = A(EA.EffAttackSpeedFactor, n); var ecd = A(EA.EffCooldownReduction, n); // Story 15-24a (v10)
             var bhr = A(EA.BaseHealthRegen, n); var ehr = A(EA.EffHealthRegen, n); // Story 15-24a (v10)
             var vbf = A(EA.VisionBonusFlat, n); var vbp = A(EA.VisionBonusPct, n); // Story 15-24a (v10)
+            var ecc = A(EA.EffCritChance, n); var edc = A(EA.EffDodgeChance, n); var ecb = A(EA.EffCritBonus, n); // Story 15-24b (v11)
             EntDefId = new string[n];
 
             for (int i = 0; i < n; i++)
@@ -383,6 +388,7 @@ namespace ProjectChimera.Core.Persistence
                 asf[i] = w.EffectiveAttackSpeedFactor[i].Raw; ecd[i] = w.EffectiveCooldownReduction[i].Raw; // Story 15-24a
                 bhr[i] = w.BaseHealthRegen[i].Raw; ehr[i] = w.EffectiveHealthRegen[i].Raw; // Story 15-24a
                 vbf[i] = w.VisionBonusFlat[i].Raw; vbp[i] = w.VisionBonusPct[i].Raw; // Story 15-24a
+                ecc[i] = w.EffectiveCritChance[i].Raw; edc[i] = w.EffectiveDodgeChance[i].Raw; ecb[i] = w.EffectiveCritBonus[i].Raw; // Story 15-24b
                 EntDefId[i] = w.SourceDefinition[i]?.Id ?? "";
             }
 
@@ -767,6 +773,7 @@ namespace ProjectChimera.Core.Persistence
             var asf = G(EA.EffAttackSpeedFactor); var ecd = G(EA.EffCooldownReduction); // Story 15-24a (v10)
             var bhr = G(EA.BaseHealthRegen); var ehr = G(EA.EffHealthRegen); // Story 15-24a (v10)
             var vbf = G(EA.VisionBonusFlat); var vbp = G(EA.VisionBonusPct); // Story 15-24a (v10)
+            var ecc = G(EA.EffCritChance); var edc = G(EA.EffDodgeChance); var ecb = G(EA.EffCritBonus); // Story 15-24b (v11)
 
             for (int i = 0; i < n; i++)
             {
@@ -869,6 +876,19 @@ namespace ProjectChimera.Core.Persistence
                 w.EffectiveHealthRegen[i]       = Fixed.Max(Fixed.Zero, Fixed.FromRaw(ehr[i]));
                 w.VisionBonusFlat[i]            = Fixed.FromRaw(vbf[i]);
                 w.VisionBonusPct[i]             = Fixed.FromRaw(vbp[i]);
+                // Story 15-24b (v11) — the dice lanes re-clamp into their registry domains (the recompute's own
+                // bounds): a hostile blob chance > 1 would make every hit crit / every hit dodge with no
+                // authorable counterpart, and an out-of-domain crit bonus is a damage amplifier — the same
+                // DW-643/DW-692 restore class as the factor/CDR lanes above. In-bounds saves restore bit-exact.
+                w.EffectiveCritChance[i] = Fixed.Clamp(Fixed.FromRaw(ecc[i]),
+                    Fixed.FromRaw(ProjectChimera.Core.Stats.StatVocabulary.CritChanceSumMinRaw),
+                    Fixed.FromRaw(ProjectChimera.Core.Stats.StatVocabulary.CritChanceSumMaxRaw));
+                w.EffectiveDodgeChance[i] = Fixed.Clamp(Fixed.FromRaw(edc[i]),
+                    Fixed.FromRaw(ProjectChimera.Core.Stats.StatVocabulary.DodgeChanceSumMinRaw),
+                    Fixed.FromRaw(ProjectChimera.Core.Stats.StatVocabulary.DodgeChanceSumMaxRaw));
+                w.EffectiveCritBonus[i] = Fixed.Clamp(Fixed.FromRaw(ecb[i]),
+                    Fixed.FromRaw(ProjectChimera.Core.Stats.StatVocabulary.CritBonusSumMinRaw),
+                    Fixed.FromRaw(ProjectChimera.Core.Stats.StatVocabulary.CritBonusSumMaxRaw));
 
                 // Reference-typed SoA: re-resolve the def by id + faction and set the two ref fields directly (NOT via
                 // ApplyUnitDefinition, which would clobber the just-restored numeric SoA and re-fire the self-passive

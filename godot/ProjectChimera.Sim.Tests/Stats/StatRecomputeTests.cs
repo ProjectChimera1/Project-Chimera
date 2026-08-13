@@ -223,6 +223,10 @@ namespace ProjectChimera.Sim.Tests.Stats
                 [StatId.AttackDamagePercent] = (w, id) => w.EffectiveAttackDamage[id],
                 [StatId.MoveSpeedPercent]    = (w, id) => w.EffectiveMoveSpeed[id],
                 [StatId.VisionPercent]       = (w, id) => w.VisionWithElevation(id),
+                // Story 15-24b — the combat dice (chance/bonus channels; the DRAWS are pinned in CritDodgeRollTests).
+                [StatId.CritChance]          = (w, id) => w.EffectiveCritChance[id],
+                [StatId.DodgeChance]         = (w, id) => w.EffectiveDodgeChance[id],
+                [StatId.CritMultiplier]      = (w, id) => w.CritMultiplierOf(id),
             };
 
             foreach (var def in StatVocabulary.All)

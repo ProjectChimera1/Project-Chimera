@@ -55,7 +55,16 @@ namespace ProjectChimera.Combat
         // on). All three are IsAmbient (battle-volume juice, individually droppable). ──
         PlayVfx,
         PlaySound,
-        ShakeScreen
+        ShakeScreen,
+        // ── Story 15-24b (the combat dice): appended AFTER ShakeScreen. AttackDodged is pushed by
+        // DamageResolver.Apply when a victim's dodge roll negates a weapon hit (at the victim's position,
+        // carrying its faction + feedback profile); AttackCrit by CombatSystem.TryDealDamage when a crit
+        // roll lands (at the ATTACK-COMMIT site — the hitscan swing or projectile launch, so the cue plays
+        // where/when the crit was decided). Presentation-only — CombatEventQueue is NOT a SimChecksum input,
+        // so appending enum values cannot move any golden; the current CombatFeedbackBridge/AudioManager
+        // switches no-op on unknown types (their render arms are DW-996's recorded seam). ──
+        AttackDodged,
+        AttackCrit
     }
 
     /// <summary>
@@ -204,6 +213,11 @@ namespace ProjectChimera.Combat
             CombatEventType.PlayVfx           => true,
             CombatEventType.PlaySound         => true,
             CombatEventType.ShakeScreen       => true,
+            // Story 15-24b: dodge/crit cues fire PER SWING in mass combat — the same volume class as
+            // MeleeHit/RangedHit, and an individual dropped one is imperceptible → ambient lane, never
+            // the notification reserve.
+            CombatEventType.AttackDodged      => true,
+            CombatEventType.AttackCrit        => true,
             _                                 => false
         };
 
