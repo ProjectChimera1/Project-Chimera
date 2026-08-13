@@ -75,6 +75,60 @@ added for exactly this and turn DW-911(b) from a hypothesis into a number.
 
 ---
 
+## Current State (2026-08-12, SESSION 3 — burn-down merged + reconnect built + identity rail + far-range fix) — read this first
+
+**This block supersedes everything below it.** Session 3 was the continuation of session 2's ultracode run
+(one conversation, context-compacted twice). Everything is committed on master; suite at close **6949 / 0 / 1**
+(day started at 6462), release analyzer gate clean.
+
+### What landed (in order)
+1. **The 13-bundle burn-down MERGED to master** — 112 deferrals closed today, ledger at 990 entries. Its
+   review sweep caught + fixed a HIGH SqrDistance-saturation defect in the gather loop (DW-984) and filed
+   DW-985..990. Save FormatVersion moved 7→**9** inside the bundles (v8 rally lane, v9 gather-stall lane).
+2. **Story 15-1 reconnect — server + protocol plumbing BUILT + GREEN** (spec-15-1 D-1..D-11, Alec's
+   build-now ruling). Wire family 0x50-0x5A, **PROTOCOL_VERSION 6**; RejoinCoordinator (server machine),
+   RejoinClient + SnapshotTransfer (client protocol machine, in SimSources); MergedTickLog armed at
+   freeze-commit; the RACE-FREE THAW SEAM (injector owns ticks < resumeAtTick+delay, the rejoiner's own
+   submissions own ≥ — bound scheduled at ResumeDirective ISSUE); checksum quorum re-admit
+   `AddExpectedReporter(slot, fromTick)` with per-window expected counts; `DelayController.ReactivateSlot`;
+   D-11 deadlines everywhere. **DW-2, DW-599, DW-879 closed.** Proofs: RejoinCatchUpHarnessTests (byte-equal
+   checksums through drop→snapshot→tail→live), RejoinCoordinatorTests (full coordinator↔client interlock),
+   RejoinProtocolTests. **Residual = 15-1b**: MainScene reconnect bootstrap + "Rejoining…" UX + LAN confirm
+   (needs Alec at the rig; client rule: never submit below `RejoinClient.FirstOwnedTick`; D-7: restore into a
+   FRESH SimulationHost with `OnlineAiPlan=None`).
+3. **Story 15-14 identity — the enforcement rail + LIVE NAKAMA verifier BUILT** (Alec ruled option a).
+   `Server/IdentityGate.cs` (LanTrust = inert, LAN NEVER asks for identity — Alec's hard rule; OnlineAttest =
+   fail-closed), `PacketType.Attestation` 0x5A, `Server/NakamaTokenVerifier.cs` (async begin/drain over an
+   injected fetch seam; GET /v2/account Bearer check; confirmed id must equal claim; positive cache, negatives
+   retryable), `DedicatedServer.ConfigureOnlineTrust`, the HELD-READY REPLAY (a Ready refused mid-validation
+   is stashed + replayed through the shared `AcceptReady` path on confirm), rejoin identity bind layered on
+   the 15-1 token, client send (NakamaService.SessionToken; LobbyUi sends Attestation before Ready, online
+   only). **DW-200 residual:** the attested-hero DEPLOYMENT half (golden-moving — own session) + end-to-end
+   vs a HOSTED Nakama (Alec: Docker + npm build of the gitignored module + compose up; nothing calls
+   ConfigureOnlineTrust yet — the online launch edge wires it when Nakama exists).
+4. **DW-989 + DW-990 CLOSED** — all three far-range nearest-scans (SpatialHash.FindNearestEnemyGlobal + both
+   AiOpponentSystem argmins) compare RAW widened squares. The predicted golden movement DID NOT MATERIALIZE
+   (zero re-records — the suspicion rule's 12th of 13 confirmations). FarRangeAcquisitionTests pins the 250u
+   find, beyond-clamp ordering, and the actual advance. Match-start attack-move works on every shipped map now.
+
+### Version stamps at close (both LAN machines MUST pull + rebuild together)
+SimChecksum **25** · ContentHash **2** · CanonicalModelHash **16** · StartStateHash **2** ·
+PROTOCOL_VERSION **6** · Replay **7** · Save **9**
+
+### Field confirmations from Alec (2026-08-12)
+- The lobby's PROTOCOL-mismatch refusal works (tested with a stale build — clean refuse, no wedge).
+- Nakama decision: **live validation** (not shared-secret JWT).
+- Full wired LAN match + drop-freeze/rejoin-handshake observation still PENDING (Alec away from rig) —
+  the 4-step test list is in the session transcript and in 15-1b's residual.
+
+### Next actions (in order)
+1. **Alec at rig:** pull+rebuild both machines → full LAN match (regression) → mid-match drop + reconnect
+   (server console must show the rejoin handshake and never flip to Lobby) → SP save/load sanity (v9).
+2. **Next unattended session:** Story 15-24a THE STAT PIPELINE (StatVocabulary registry — spec-15-24 has all
+   rulings + the 50-stat catalog; shared vocabulary with item affixes).
+3. **Then:** 15-14's attested-hero deployment half (golden-moving, isolated); 15-1b when Alec is present;
+   Nakama hosting when Alec wants online play real.
+
 ## Current State (2026-08-12, SESSION 2 — Epic 15 close) — read this first
 
 **EPIC 15'S ACTIONABLE STORIES ARE DONE — 15-23 and 15-21 both shipped, adversarially reviewed, and
