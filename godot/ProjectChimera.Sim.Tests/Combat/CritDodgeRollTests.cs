@@ -265,6 +265,32 @@ namespace ProjectChimera.Sim.Tests.Combat
             Assert.Equal(Fixed.FromInt(1000).Raw, w.Health[victim].Raw); // dodged ⇒ crit-first order held
         }
 
+        // ── The amplified-damage domain: a max crit must HIT HARDER, never wrap to zero ──────────────────
+
+        [Fact]
+        public void MaxStackedCrit_InTheAmplifiedDomain_DealsMoreThanTheNonCrit_NeverWrapsToZero()
+        {
+            // The review-confirmed wrap: 2400 base damage × 9.5 total crit × the Pierce/Unarmored 1.5 matrix
+            // cell overflowed FinalDamage's old wrapping multiply (raw 2,241,331,200 > int.MaxValue), narrowed
+            // NEGATIVE, and the zero-floor collapsed the crit to 0 while the identical non-crit dealt 3600.
+            // All inputs are DW-488/registry-legal. Pinned here in the amplified domain the original suite
+            // never reached (its attackers all swung for 10).
+            var host = Host();
+            var w = host.World;
+            int victim = Victim(w, 2_000_000);
+            int fighter = Fighter(w, Fixed.FromInt(2400), victim);
+            w.DamageTypeOf[fighter] = DamageType.Pierce; // ×1.5 vs the victim's default Unarmored
+            Grant(host, fighter, StatId.CritChance, Fixed.One);
+            Grant(host, fighter, StatId.CritMultiplier, Fixed.FromInt(8)); // total ×9.5
+
+            host.StepOnce(); // the single guaranteed-crit swing
+
+            Fixed dealt = Fixed.FromInt(2_000_000) - w.Health[victim];
+            Fixed nonCrit = DamageTable.Default.FinalDamage(Fixed.FromInt(2400), DamageType.Pierce, ArmorType.Unarmored, Fixed.Zero);
+            Assert.True(dealt.Raw > nonCrit.Raw,
+                $"a maximum-legal crit dealt {dealt} vs the non-crit {nonCrit} — the amplified matrix product wrapped instead of saturating");
+        }
+
         // ── Clamps ───────────────────────────────────────────────────────────────────────────────────────
 
         [Fact]

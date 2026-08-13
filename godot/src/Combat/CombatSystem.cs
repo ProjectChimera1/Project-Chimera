@@ -894,7 +894,10 @@ namespace ProjectChimera.Combat
                 && world.Rng.NextFixed() < world.EffectiveCritChance[attacker])
             {
                 weaponDamage = Fixed.MulSaturating(weaponDamage, world.CritMultiplierOf(attacker));
-                _events?.Push(CombatEventType.AttackCrit, world.Position[attacker], world.FactionOf[attacker], world.FeedbackProfile[attacker]); // presentation-only
+                // Presentation-only cue with a NULL profile (review fix): AudioManager's profile-first route is
+                // deliberately type-agnostic, so a profile-carrying push would play the unit's IMPACT sound for
+                // the roll itself — a spurious double-hit cue. The DW-996 render arms decide their own payload.
+                _events?.Push(CombatEventType.AttackCrit, world.Position[attacker], world.FactionOf[attacker]);
             }
 
             if (world.Delivery[attacker] == AttackDelivery.Projectile)

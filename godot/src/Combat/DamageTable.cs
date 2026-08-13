@@ -56,13 +56,21 @@ namespace ProjectChimera.Combat
         public Fixed Get(DamageType d, ArmorType a) => _cells[(int)d, (int)a];
 
         /// <summary>
-        /// The canonical final-damage formula, floored at 0: <c>max(0, amount * Get(type, targetArmor) − flatArmor)</c>
+        /// The canonical final-damage formula, floored at 0: <c>max(0, amount × Get(type, targetArmor) − flatArmor)</c>
         /// (Story 2.9a). Single-sourced so entity damage (<see cref="DamageResolver.Apply"/>, passing
         /// <c>EffectiveArmor</c>) and building damage (<see cref="DamageResolver.ApplyToBuilding"/>, passing
         /// <c>Fixed.Zero</c> — buildings have no flat armor) can never drift. Pure <see cref="Fixed"/>, no float.
+        /// <para>Story 15-24b review fix — the matrix multiply SATURATES: the wrapping <c>operator *</c> narrowed
+        /// negative once <c>amount × cell</c> exceeded the 16.16 int range (a matrix cell &gt; 1.0 over a
+        /// ~21,845-unit amount), and the <c>Max(0, …)</c> floor then collapsed the hit to ZERO damage — a big
+        /// hit whiffing entirely, inverted combat semantics. Barely reachable before 15-24b (≈6 max-legal
+        /// modifiers stacked), but the crit amplifier (up to ×9.5) put it one ordinary +2300-damage buff away,
+        /// and a saturated crit product made a &gt;1.0 cell wrap CERTAIN. <see cref="Fixed.MulSaturating"/> is
+        /// bit-exact for every in-range product (the same truncating shift), so no golden moves; a saturated
+        /// product pegs at <see cref="Fixed.MaxValue"/> and huge damage stays huge instead of becoming 0.</para>
         /// </summary>
         public Fixed FinalDamage(Fixed amount, DamageType type, ArmorType targetArmor, Fixed flatArmor)
-            => Fixed.Max(Fixed.Zero, amount * Get(type, targetArmor) - flatArmor);
+            => Fixed.Max(Fixed.Zero, Fixed.MulSaturating(amount, Get(type, targetArmor)) - flatArmor);
 
         /// <summary>
         /// The canonical in-code table — built from the SAME float literals as the retired

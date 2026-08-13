@@ -61,8 +61,9 @@ namespace ProjectChimera.Combat
         // carrying its faction + feedback profile); AttackCrit by CombatSystem.TryDealDamage when a crit
         // roll lands (at the ATTACK-COMMIT site — the hitscan swing or projectile launch, so the cue plays
         // where/when the crit was decided). Presentation-only — CombatEventQueue is NOT a SimChecksum input,
-        // so appending enum values cannot move any golden; the current CombatFeedbackBridge/AudioManager
-        // switches no-op on unknown types (their render arms are DW-996's recorded seam). ──
+        // so appending enum values cannot move any golden. Both push a NULL feedback profile: the bridges'
+        // typed switches no-op on unknown types, but AudioManager's profile-first route is type-AGNOSTIC and
+        // would play a profile's impact sound for the roll cue itself. Render arms = DW-996. ──
         AttackDodged,
         AttackCrit
     }

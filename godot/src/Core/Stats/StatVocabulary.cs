@@ -60,7 +60,9 @@ namespace ProjectChimera.Core.Stats
         public const int DodgeChanceSumMaxRaw = Fixed.ONE * 3 / 4;
         /// <summary>crit_multiplier Σ clamp: [−0.5, +8]. Added to the ×1.5 base
         /// (<c>EntityWorld.CritBaseMultiplierRaw</c>), so the TOTAL crit multiplier spans [1.0, 9.5] — a crit
-        /// never deals less than a normal hit, and the ceiling is a semantic bound well under any wrap.</summary>
+        /// never deals less than a normal hit. The bound is SEMANTIC (the multiplier VALUE itself can never
+        /// overflow anything); overflow of the amplified DAMAGE is owned downstream by the saturating
+        /// multiplies at the crit scale and inside <c>DamageTable.FinalDamage</c>'s matrix stage.</summary>
         public const int CritBonusSumMinRaw = -(Fixed.ONE / 2);
         /// <inheritdoc cref="CritBonusSumMinRaw"/>
         public const int CritBonusSumMaxRaw = 8 * Fixed.ONE;

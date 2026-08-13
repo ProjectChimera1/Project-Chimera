@@ -124,7 +124,10 @@ namespace ProjectChimera.Combat
                 && world.Rng.NextFixed() < world.EffectiveDodgeChance[t])
             {
                 dodged = true;
-                ctx.Events?.Push(CombatEventType.AttackDodged, world.Position[t], world.FactionOf[t], world.FeedbackProfile[t]);
+                // NULL profile (review fix): AudioManager's profile-first route is type-agnostic, so a
+                // profile-carrying push would play the victim's IMPACT sound for the hit it just dodged.
+                // The DW-996 render arms decide their own payload.
+                ctx.Events?.Push(CombatEventType.AttackDodged, world.Position[t], world.FactionOf[t]);
                 return false;
             }
             // Story 2.6 (Decision #6): flat post-matrix armor subtraction, floored at 0 so a hit never heals. With the
