@@ -105,33 +105,54 @@ namespace ProjectChimera.Core.Definitions
     }
 
     /// <summary>
-    /// Story 15-21 — the CLOSED derived-stat vocabulary (decision D-3) and its canonical index order. This file
-    /// is the ONE authority: <see cref="Count"/> sizes every stride-<c>Count</c> contribution array
-    /// (HeroStore lanes, resolver output), <see cref="TryIndexOf"/> is the only string→index mapping, and the
-    /// indices below are load-bearing (a new stat appends — never reorders — and must visit every consumer the
-    /// compiler can't find: the resolver's quantize loop, HeroXpSystem's modifier-channel split, and the
-    /// energy pair's runtime reads. The enum-indexed-array lesson applies here by design.)
+    /// Story 15-21's closed derived-stat vocabulary, since 15-24a a FACADE over the
+    /// <see cref="ProjectChimera.Core.Stats.StatVocabulary"/> registry — the attribute lane's index space IS
+    /// the <see cref="ProjectChimera.Core.Stats.StatId"/> space (the registry's first six members pin the
+    /// 15-21 order exactly, guard-tested), so growing the registry grows this vocabulary with NO further
+    /// change here: <see cref="Count"/> sizes every stride-<c>Count</c> contribution array (HeroStore lanes,
+    /// resolver output — the save's v10 bump covers the re-stride), <see cref="Ids"/> feeds the mapping
+    /// editor's dropdown and validator messages (attribute-TARGETABLE stats only, in StatId order), and
+    /// <see cref="TryIndexOf"/> stays the single string→index mapping (fail-closed outside the targetable
+    /// set). The six legacy constants keep their pre-15-24a names for the readers the compiler can find
+    /// (HeroXpSystem's channel split, the energy pair's runtime reads).
     /// </summary>
     public static class AttributeStats
     {
-        public const int MaxHealth    = 0; // → hero-growth modifier MaxHealthDelta channel
-        public const int AttackDamage = 1; // → AttackDamageDelta channel (the WC3 primary rule's usual target)
-        public const int Armor        = 2; // → ArmorDelta channel
-        public const int MoveSpeed    = 3; // → MoveSpeedDelta channel
-        public const int MaxEnergy    = 4; // → EnergyRegenSystem clamp ceiling (HeroAttributeRuntime)
-        public const int EnergyRegen  = 5; // → EnergyRegenSystem.RegenPerTick (the documented 15.12 seam)
-        public const int Count        = 6;
+        public const int MaxHealth    = (int)ProjectChimera.Core.Stats.StatId.MaxHealth;    // → hero-growth modifier channel
+        public const int AttackDamage = (int)ProjectChimera.Core.Stats.StatId.AttackDamage; // → the WC3 primary rule's usual target
+        public const int Armor        = (int)ProjectChimera.Core.Stats.StatId.Armor;
+        public const int MoveSpeed    = (int)ProjectChimera.Core.Stats.StatId.MoveSpeed;
+        public const int MaxEnergy    = (int)ProjectChimera.Core.Stats.StatId.MaxEnergy;    // → EnergyRegenSystem clamp ceiling
+        public const int EnergyRegen  = (int)ProjectChimera.Core.Stats.StatId.EnergyRegen;  // → EnergyRegenSystem.RegenPerTick (15.12 seam)
 
-        /// <summary>Canonical vocabulary, index-aligned with the constants above.</summary>
-        public static readonly string[] Ids =
-            { "max_health", "attack_damage", "armor", "move_speed", "max_energy", "energy_regen" };
+        /// <summary>The attribute index space's size == the registry's (one shared index space; 15-24a).</summary>
+        public static int Count => ProjectChimera.Core.Stats.StatVocabulary.Count;
 
-        /// <summary>The single string→index mapping (ordinal). False for anything outside the closed set —
-        /// the validator fail-closes on it, so the resolver never sees an unknown stat.</summary>
+        /// <summary>The attribute-TARGETABLE vocabulary in StatId order (registry-derived; feeds the 15-21
+        /// mapping editor's dropdown and validator messages). Built once — the registry is compile-time data.</summary>
+        public static readonly string[] Ids = BuildTargetableIds();
+
+        private static string[] BuildTargetableIds()
+        {
+            var all = ProjectChimera.Core.Stats.StatVocabulary.All;
+            int n = 0;
+            for (int i = 0; i < all.Length; i++) if (all[i].AttributeTargetable) n++;
+            var ids = new string[n];
+            int w = 0;
+            for (int i = 0; i < all.Length; i++) if (all[i].AttributeTargetable) ids[w++] = all[i].JsonName;
+            return ids;
+        }
+
+        /// <summary>The single string→index mapping (registry-backed; the index IS the (int)StatId). False for
+        /// anything outside the closed set OR a declared-but-not-attribute-targetable stat — the validator
+        /// fail-closes on it, so the resolver never sees an unknown stat.</summary>
         public static bool TryIndexOf(string? stat, out int index)
         {
-            for (int i = 0; i < Ids.Length; i++)
-                if (string.Equals(Ids[i], stat, System.StringComparison.Ordinal)) { index = i; return true; }
+            if (ProjectChimera.Core.Stats.StatVocabulary.TryByJsonName(stat, out var def) && def.AttributeTargetable)
+            {
+                index = (int)def.Id;
+                return true;
+            }
             index = -1;
             return false;
         }

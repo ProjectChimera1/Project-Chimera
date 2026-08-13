@@ -462,12 +462,25 @@ namespace ProjectChimera.Core.Definitions
                 var (rBase, rPerLevel) = HeroAttributeResolver.Resolve(model, ha);
                 for (int s = 0; s < AttributeStats.Count; s++)
                 {
+                    var statDef = ProjectChimera.Core.Stats.StatVocabulary.All[s];
                     if (rBase[s].ToFloat() >= AttrResolvedBaseMax)
                         errors.Add(("attribute_model", LocatedItem("unit", uid, "hero.attributes",
-                            $"resolved base contribution to '{AttributeStats.Ids[s]}' ({rBase[s].ToFloat():0.##}) exceeds the Fixed-safe cap {(int)AttrResolvedBaseMax}.")));
+                            $"resolved base contribution to '{statDef.JsonName}' ({rBase[s].ToFloat():0.##}) exceeds the Fixed-safe cap {(int)AttrResolvedBaseMax}.")));
                     if (rPerLevel[s].ToFloat() >= AttrResolvedPerLevelMax)
                         errors.Add(("attribute_model", LocatedItem("unit", uid, "hero.attributes",
-                            $"resolved per-level contribution to '{AttributeStats.Ids[s]}' ({rPerLevel[s].ToFloat():0.##}) exceeds the Fixed-safe cap {(int)AttrResolvedPerLevelMax} (99-stack overflow guard).")));
+                            $"resolved per-level contribution to '{statDef.JsonName}' ({rPerLevel[s].ToFloat():0.##}) exceeds the Fixed-safe cap {(int)AttrResolvedPerLevelMax} (99-stack overflow guard).")));
+                    // Story 15-24a: a stat with a registry per-delta cap (the percent family) caps its RESOLVED
+                    // contributions there too — a "+9000% attack damage at level 1" model must fail authoring,
+                    // not silently clamp to the recompute's Σ bound in play (validated-but-misbehaving content).
+                    if (statDef.MaxAbsDeltaRaw != 0)
+                    {
+                        if (rBase[s].Raw > statDef.MaxAbsDeltaRaw || rBase[s].Raw < -statDef.MaxAbsDeltaRaw)
+                            errors.Add(("attribute_model", LocatedItem("unit", uid, "hero.attributes",
+                                $"resolved base contribution to '{statDef.JsonName}' ({rBase[s].ToFloat():0.##}) exceeds its per-stat cap ({Fixed.FromRaw(statDef.MaxAbsDeltaRaw).ToFloat():0.##} — a fraction-valued stat).")));
+                        if (rPerLevel[s].Raw > statDef.MaxAbsDeltaRaw || rPerLevel[s].Raw < -statDef.MaxAbsDeltaRaw)
+                            errors.Add(("attribute_model", LocatedItem("unit", uid, "hero.attributes",
+                                $"resolved per-level contribution to '{statDef.JsonName}' ({rPerLevel[s].ToFloat():0.##}) exceeds its per-stat cap ({Fixed.FromRaw(statDef.MaxAbsDeltaRaw).ToFloat():0.##} — a fraction-valued stat).")));
+                    }
                 }
             }
         }

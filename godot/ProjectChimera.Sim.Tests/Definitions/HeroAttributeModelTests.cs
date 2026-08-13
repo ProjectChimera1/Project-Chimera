@@ -88,19 +88,32 @@ namespace ProjectChimera.Sim.Tests.Definitions
         public void ClosedVocabulary_IndexOrder_IsLoadBearing()
         {
             // The stride layout (HeroStore lanes, resolver output) depends on these exact indices — a reorder is a
-            // save-format + consumer break. Appending a 7th stat is the only legal change (and must bump the save
-            // FormatVersion for the stride lanes).
+            // save-format + consumer break. Since 15-24a the index space IS the StatId space: the first six pin
+            // the 15-21 order forever, Count is the registry's, and appending a registry stat is the only legal
+            // change (the save FormatVersion bumps for the stride lanes — v10 covered the 6→Count re-stride).
             Assert.Equal(0, AttributeStats.MaxHealth);
             Assert.Equal(1, AttributeStats.AttackDamage);
             Assert.Equal(2, AttributeStats.Armor);
             Assert.Equal(3, AttributeStats.MoveSpeed);
             Assert.Equal(4, AttributeStats.MaxEnergy);
             Assert.Equal(5, AttributeStats.EnergyRegen);
-            Assert.Equal(6, AttributeStats.Count);
-            Assert.Equal(AttributeStats.Count, AttributeStats.Ids.Length);
+            Assert.Equal(ProjectChimera.Core.Stats.StatVocabulary.Count, AttributeStats.Count);
+            Assert.True(AttributeStats.Count >= 6); // append-only: the 15-21 six can never leave
             Assert.True(AttributeStats.TryIndexOf("energy_regen", out int er) && er == 5);
-            Assert.False(AttributeStats.TryIndexOf("attack_speed", out _)); // NOT in the closed set (no channel exists)
+            // 15-24a: the ruled-in consumer stats ARE attribute-targetable now (the "even more than that" growth).
+            Assert.True(AttributeStats.TryIndexOf("attack_speed", out int asIdx)
+                        && asIdx == (int)ProjectChimera.Core.Stats.StatId.AttackSpeed);
+            Assert.False(AttributeStats.TryIndexOf("spline_reticulation", out _)); // outside the closed set
             Assert.False(AttributeStats.TryIndexOf(null, out _));
+
+            // ALIGNMENT GUARD (15-24a): Ids is the TARGETABLE list; while every registry stat is targetable the
+            // dropdown's positional index equals the StatId, and UnitCardPanel's mapping editor depends on that
+            // (Ids[(int)idx] write-back vs TryIndexOf read-back). The day a non-targetable stat lands, this
+            // round-trip breaks FIRST — fix the dropdown's index mapping then, never weaken this guard.
+            Assert.Equal(AttributeStats.Count, AttributeStats.Ids.Length);
+            for (int i = 0; i < AttributeStats.Ids.Length; i++)
+                Assert.True(AttributeStats.TryIndexOf(AttributeStats.Ids[i], out int rt) && rt == i,
+                    $"Ids[{i}] ('{AttributeStats.Ids[i]}') does not round-trip to its own position — the mapping editor's positional dropdown would silently retarget.");
         }
 
         // ── Validator ────────────────────────────────────────────────────────────────────────────────────────────
@@ -132,9 +145,26 @@ namespace ProjectChimera.Sim.Tests.Definitions
         [Fact]
         public void Validator_UnknownStat_FailsClosed()
         {
+            // 15-24a: attack_speed joined the vocabulary, so the fail-closed probe uses a genuinely unknown name.
+            var model = Wc3Model();
+            model.Derived!.Add(new DerivedStatRule { Attribute = "strength", Stat = "spline_reticulation", PerPoint = 1f });
+            Assert.Contains(Errors(MakeFaction(model, HeroAttrs())), e => e.Contains("closed derived-stat vocabulary"));
+        }
+
+        [Fact]
+        public void Validator_PercentFamilyResolvedCap_FailsClosed()
+        {
+            // 15-24a: a percent-family derived stat caps its RESOLVED contribution at the registry per-delta cap —
+            // "every strength point gives +100% attack speed" (per_point 1 × base 22 = +2200%) must fail authoring,
+            // never silently clamp to the recompute's Σ bound in play.
             var model = Wc3Model();
             model.Derived!.Add(new DerivedStatRule { Attribute = "strength", Stat = "attack_speed", PerPoint = 1f });
-            Assert.Contains(Errors(MakeFaction(model, HeroAttrs())), e => e.Contains("closed derived-stat vocabulary"));
+            Assert.Contains(Errors(MakeFaction(model, HeroAttrs())), e => e.Contains("exceeds its per-stat cap"));
+
+            // A sane fraction-per-point mapping passes: +0.5% attack speed per strength point.
+            var sane = Wc3Model();
+            sane.Derived!.Add(new DerivedStatRule { Attribute = "strength", Stat = "attack_speed", PerPoint = 0.005f });
+            Assert.DoesNotContain(Errors(MakeFaction(sane, HeroAttrs())), e => e.Contains("exceeds its per-stat cap"));
         }
 
         [Fact]

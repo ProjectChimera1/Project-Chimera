@@ -2,6 +2,7 @@
 using System; // Func (the injected respawn delegate — Story 3.14)
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions; // UnitDefinition (respawn def)
+using ProjectChimera.Core.Stats; // Story 15-24a — StatId / StatDelta / StatVocabulary (the sparse mint vectors)
 using ProjectChimera.Effects; // ModifierStore / Modifier / StackRule (permanent growth modifier)
 
 namespace ProjectChimera.Combat
@@ -403,12 +404,14 @@ namespace ProjectChimera.Combat
             // no-op against the live instance (no folded "applied" flag needed — idempotence is the stack rule's).
             // All-zero contributions install NOTHING (DW-678: an empty modifier must never burn a ring slot).
             // Ordered BEFORE the growth early-out so a LEVEL-1 hero (desired == applied == 0) still gets its base.
+            // Story 15-24a: the channel split generalizes over the WHOLE registry — every attribute index whose
+            // stat is modifier-authorable contributes to the minted vector (the index IS the StatId; the energy
+            // pair is declared NOT modifier-authorable, so it stays on the AttributeStatAt read seam exactly as
+            // 15-21 built it — the "never double-read the modifier-channel stats" rule, now enforced by the
+            // registry flag instead of a hand-kept four-index list).
             int aBase = slot * AttributeStats.Count;
-            Fixed abHp    = _heroes.AttrStatBase[aBase + AttributeStats.MaxHealth];
-            Fixed abDmg   = _heroes.AttrStatBase[aBase + AttributeStats.AttackDamage];
-            Fixed abArmor = _heroes.AttrStatBase[aBase + AttributeStats.Armor];
-            Fixed abSpeed = _heroes.AttrStatBase[aBase + AttributeStats.MoveSpeed];
-            if ((abHp.Raw | abDmg.Raw | abArmor.Raw | abSpeed.Raw) != 0)
+            StatDelta[] baseDeltas = BuildAttrVector(_heroes.AttrStatBase, aBase);
+            if (baseDeltas.Length != 0) // DW-678 generalized: an empty vector must never burn a ring slot
             {
                 if (!IsLiveLinkedHero(world, slot, entityId)) return; // dead/stale hero → nothing this tick
                 var baseMod = new Modifier(
@@ -416,13 +419,10 @@ namespace ProjectChimera.Combat
                     durationTicks: -1,           // permanent, non-dispellable (the growth-modifier posture)
                     StackRule.Ignore,            // a live instance ignores re-applies → install-once idempotence
                     maxStacks: 1,
-                    maxHealthDelta:    abHp,
-                    attackDamageDelta: abDmg,
-                    moveSpeedDelta:    abSpeed,
+                    baseDeltas,
                     status: StatusFlags.None,
                     periodEffect: null,
-                    periodTicks: 0,
-                    armorDelta:        abArmor);
+                    periodTicks: 0);
                 _modifiers.Apply(entityId, baseMod, entityId, world.FactionOf[entityId]);
             }
 
@@ -435,26 +435,56 @@ namespace ProjectChimera.Combat
 
             // Story 15-21: the per-stack deltas are the FLAT authored growth PLUS the per-level attribute
             // contributions (attr per-level gains × the faction's derived mapping) — one modifier, (Level−1)
-            // stacks, exactly the Story 3.13 channel. DW-650: UnitDefinitionValidator.CheckHeroGrowth mirrors
-            // THIS combined shape (flat + attribute term, × max_level−1 worst case) — change both together.
+            // stacks, exactly the Story 3.13 channel; 15-24a: built as the canonical sparse vector (the three
+            // flat lanes keep their historical channels; every other registry stat rides the attr term).
+            // DW-650: UnitDefinitionValidator.CheckHeroGrowth mirrors the flat-lane shape — change both together.
+            var growthScratch = new System.Collections.Generic.List<StatDelta>(4)
+            {
+                new StatDelta(StatId.MaxHealth, _heroes.HealthPerLevelOf[slot]),
+                new StatDelta(StatId.AttackDamage, _heroes.DamagePerLevelOf[slot]),
+                new StatDelta(StatId.Armor, _heroes.ArmorPerLevelOf[slot]),
+                // no flat move-speed growth lane — Story 3.13 scope; the attr term below carries move speed
+            };
+            AppendAttrVector(growthScratch, _heroes.AttrStatPerLevel, aBase);
             var growthMod = new Modifier(
                 HeroGrowthModifierId,
                 durationTicks: -1,               // permanent (never expires by duration; non-dispellable)
                 StackRule.Stack,
                 maxStacks: MaxGrowthStacks,
-                maxHealthDelta:    _heroes.HealthPerLevelOf[slot] + _heroes.AttrStatPerLevel[aBase + AttributeStats.MaxHealth],
-                attackDamageDelta: _heroes.DamagePerLevelOf[slot] + _heroes.AttrStatPerLevel[aBase + AttributeStats.AttackDamage],
-                moveSpeedDelta:    _heroes.AttrStatPerLevel[aBase + AttributeStats.MoveSpeed], // attr-only (no flat move-speed growth — Story 3.13 scope)
+                StatVocabulary.Canonicalize(growthScratch),
                 status: StatusFlags.None,
                 periodEffect: null,
-                periodTicks: 0,
-                armorDelta:        _heroes.ArmorPerLevelOf[slot] + _heroes.AttrStatPerLevel[aBase + AttributeStats.Armor]);
+                periodTicks: 0);
 
             Faction faction = world.FactionOf[entityId];
             for (int k = applied; k < desired; k++)
                 _modifiers.Apply(entityId, growthMod, entityId, faction); // each Apply adds one stack + re-adds the deltas
 
             _heroes.GrowthStacksApplied[slot] = desired;
+        }
+
+        /// <summary>
+        /// Story 15-24a — one hero's attribute contributions from a stride-<c>AttributeStats.Count</c> lane as a
+        /// canonical sparse vector, taking every index whose registry stat is MODIFIER-AUTHORABLE (the index is
+        /// the StatId — one shared index space). The energy pair (declared, targetable, NOT modifier-authorable)
+        /// is skipped by the flag, preserving its 15.12 read-seam lane.
+        /// </summary>
+        private static StatDelta[] BuildAttrVector(Fixed[] lane, int aBase)
+        {
+            var scratch = new System.Collections.Generic.List<StatDelta>(4);
+            AppendAttrVector(scratch, lane, aBase);
+            return StatVocabulary.Canonicalize(scratch);
+        }
+
+        /// <inheritdoc cref="BuildAttrVector"/>
+        private static void AppendAttrVector(System.Collections.Generic.List<StatDelta> scratch, Fixed[] lane, int aBase)
+        {
+            for (int s = 0; s < StatVocabulary.Count; s++)
+            {
+                if (!StatVocabulary.All[s].ModifierAuthorable) continue; // the energy pair's read-seam lane
+                Fixed v = lane[aBase + s];
+                if (v.Raw != 0) scratch.Add(new StatDelta((StatId)s, v));
+            }
         }
     }
 }
