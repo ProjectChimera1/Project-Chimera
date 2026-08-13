@@ -176,6 +176,16 @@ namespace ProjectChimera.Multiplayer
         /// (faction, resumeAtTick) pair. Wire: type(1) + faction(1) + resumeAtTick(4 LE) = 6 bytes.
         /// </summary>
         ResumeAck     = 0x59,
+
+        /// <summary>
+        /// Story 15-14 (DW-200): client → server. The slot's IDENTITY ATTESTATION — a Nakama-issued
+        /// (userId, session token) credential the host verifies through <c>Server.IdentityGate</c>'s injected
+        /// verifier before the slot may Ready (OnlineAttest matches) or rejoin (layered on the 15-1 token).
+        /// LAN/offline matches run LanTrust and IGNORE this packet entirely — LAN never asks for identity.
+        /// Slot is transport-authoritative (the packet names no slot). Wire: type(1) + userIdLen(1) +
+        /// userId(UTF-8) + tokenLen(2 LE) + token(UTF-8). Same PROTOCOL_VERSION 6 window as the 15-1 family.
+        /// </summary>
+        Attestation   = 0x5A,
     }
 
     /// <summary>Story 15-1 — why the server refused a <see cref="PacketType.RejoinRequest"/>. Byte-wide.</summary>
@@ -1737,6 +1747,52 @@ namespace ProjectChimera.Multiplayer
             faction = buf[1];
             int pos = 2;
             resumeAtTick = ReadUint(buf, ref pos);
+            return true;
+        }
+
+        // ── Story 15-14: identity attestation ─────────────────────────────────
+
+        /// <summary>Attestation credential ceilings: a Nakama userId is a 36-char UUID (255 is generous); a
+        /// session token is a JWT that can run ~1-2 KB (4 KB is generous). Both are fail-closed bounds — an
+        /// oversized field refuses to serialize / parse, never truncates.</summary>
+        public const int MAX_ATTEST_USERID_BYTES = 255;
+        public const int MAX_ATTEST_TOKEN_BYTES  = 4096;
+
+        /// <summary>Serialise a client→server <see cref="PacketType.Attestation"/>:
+        /// type(1) + userIdLen(1) + userId(UTF-8) + tokenLen(2 LE) + token(UTF-8). Throws on oversized fields.</summary>
+        public static byte[] MakeAttestation(string userId, string token)
+        {
+            byte[] uid = System.Text.Encoding.UTF8.GetBytes(userId ?? "");
+            byte[] tok = System.Text.Encoding.UTF8.GetBytes(token ?? "");
+            if (uid.Length == 0 || uid.Length > MAX_ATTEST_USERID_BYTES)
+                throw new System.ArgumentOutOfRangeException(nameof(userId));
+            if (tok.Length > MAX_ATTEST_TOKEN_BYTES)
+                throw new System.ArgumentOutOfRangeException(nameof(token));
+            var buf = new byte[1 + 1 + uid.Length + 2 + tok.Length];
+            buf[0] = (byte)PacketType.Attestation;
+            buf[1] = (byte)uid.Length;
+            System.Array.Copy(uid, 0, buf, 2, uid.Length);
+            int pos = 2 + uid.Length;
+            buf[pos++] = (byte)tok.Length;
+            buf[pos++] = (byte)(tok.Length >> 8);
+            System.Array.Copy(tok, 0, buf, pos, tok.Length);
+            return buf;
+        }
+
+        /// <summary>Parse an <see cref="PacketType.Attestation"/> packet. Fail-closed on any malformed/oversized
+        /// framing. Returns false if malformed.</summary>
+        public static bool TryReadAttestation(byte[] buf, int len, out string userId, out string token)
+        {
+            userId = ""; token = "";
+            if (len < 4) return false;
+            if ((PacketType)buf[0] != PacketType.Attestation) return false;
+            int uidLen = buf[1];
+            if (uidLen == 0 || 2 + uidLen + 2 > len) return false;
+            int pos = 2 + uidLen;
+            int tokLen = buf[pos] | (buf[pos + 1] << 8);
+            if (tokLen > MAX_ATTEST_TOKEN_BYTES || pos + 2 + tokLen > len) return false;
+            userId = System.Text.Encoding.UTF8.GetString(buf, 2, uidLen);
+            token  = System.Text.Encoding.UTF8.GetString(buf, pos + 2, tokLen);
             return true;
         }
 

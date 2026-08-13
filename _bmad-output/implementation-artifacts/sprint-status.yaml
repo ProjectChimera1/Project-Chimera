@@ -350,7 +350,12 @@ development_status:
   #       enforcement, human-present on the two-machine rig) — versus deferring the whole story like 15.1.
   #       Flip back to `backlog` ONLY for a 15-14a half. The full rail cannot reach `done` unattended.
   #   DW-200 stays `open` with a 2026-08-07 `seen-again` note recording this finding.
-  15-14-host-side-hero-identity-enforcement-attested-deployment-dw-200: backlog
+  # 2026-08-12: the ENFORCEMENT RAIL is built (IdentityGate + Attestation 0x5A + server wiring; LAN=trust
+  #   mode is inert per Alec's rule, online=attest is fail-closed; rejoin bind layered on the 15-1 token;
+  #   IdentityGateTests 5/5). Residual: verifier impl (infra decision: live Nakama vs shared-secret JWT —
+  #   plugs into DedicatedServer.ConfigureTrust), client online-flow attestation send, and the attested-hero
+  #   DEPLOYMENT half (golden-moving — isolate per the batch rule).
+  15-14-host-side-hero-identity-enforcement-attested-deployment-dw-200: in-progress
   15-15-mp-surfaces-godot-free-mp-test-extraction: done
   # 15-21 added 2026-08-03 from the DW-265 decision. NOT burn-down: no DW ids, no bundles (like 15-1 and 15-10).
   #   DW-265 asked "should energy regenerate?"; Alec answered "yes, with an Intelligence mechanic driving it" —

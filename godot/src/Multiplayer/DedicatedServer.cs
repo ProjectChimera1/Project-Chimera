@@ -127,6 +127,25 @@ namespace ProjectChimera.Multiplayer
         /// <summary>Scratch for <see cref="Server.DropController.FinalizeThaws"/> (no per-pump alloc).</summary>
         private readonly System.Collections.Generic.List<int> _thawScratch = new();
 
+        // ── Story 15-14 (DW-200): host-side identity enforcement ──────────────────
+
+        /// <summary>The identity gate this match runs under. Defaults to <see cref="Server.TrustMode.LanTrust"/> —
+        /// a LAN/offline match asks for NO identity, ever (Alec's ruling), so out of the box this gate is inert
+        /// and behavior is byte-identical to pre-15-14. The ONLINE launch edge (a Nakama-brokered match) calls
+        /// <see cref="ConfigureTrust"/> with <see cref="Server.TrustMode.OnlineAttest"/> + a real verifier before
+        /// <see cref="Start"/>; from then every player slot must attest before Ready, and a rejoin must
+        /// re-present the identity that held the slot at StartGame (layered on the 15-1 RejoinToken).</summary>
+        private Server.IdentityGate _identity = new Server.IdentityGate(
+            Server.TrustMode.LanTrust, ServerTransport.MAX_SLOTS);
+
+        /// <summary>Story 15-14 — install the match's trust posture BEFORE <see cref="Start"/>. The verifier is
+        /// the pluggable credential check (live Nakama validation or a shared-secret JWT — the deferred infra
+        /// decision plugs in HERE without touching the gate, the packet, or this node again). Passing
+        /// <see cref="Server.TrustMode.OnlineAttest"/> with a null verifier is fail-closed: nothing can attest,
+        /// nothing can Ready — a mis-wired online launch refuses to start rather than running unenforced.</summary>
+        public void ConfigureTrust(Server.TrustMode mode, System.Func<string, string, bool>? verifier = null)
+            => _identity = new Server.IdentityGate(mode, ServerTransport.MAX_SLOTS, verifier);
+
         /// <summary>Story 9.13: the Godot-free per-slot command-rate throttle (anti-spam, NOT anti-cheat). Gates each
         /// inbound <c>TickCommands</c> packet through <c>TryAdmit(slot, wall-clock ms)</c> so a misbehaving/malicious
         /// client cannot flood the merged fan-in. Its decision (drop/accept) NEVER enters the sim, the builder, or any
@@ -390,6 +409,11 @@ namespace ProjectChimera.Multiplayer
             _receiveLimiter.Reset(slot);
             _violations.Reset(slot);
 
+            // Story 15-14: an identity attestation dies with its connection — a recycled slot (or a reconnecting
+            // rejoiner) starts unattested and must re-present its credential. The StartGame-frozen rejoin BIND
+            // survives (it lives in the gate's capture set, not the per-connection record).
+            _identity.Reset(slot);
+
             // Story 9.7 (SD-9): the player/spectator split is the DYNAMIC SlotAllocation.Classify over the per-match
             // ExpectedPlayers boundary (not the fixed MAX_PLAYERS 1v1 partition). A slot at/above the player count is
             // a spectator for THIS match.
@@ -601,6 +625,22 @@ namespace ProjectChimera.Multiplayer
                     }
                     break;
 
+                case PacketType.Attestation:
+                    // Story 15-14: a slot presents its identity credential. LanTrust ignores it entirely (LAN
+                    // asks for and stores no identity); OnlineAttest verifies through the injected seam. A
+                    // failed verification is counted as a protocol violation (bounded log) — an honest client
+                    // with a valid session never fails it.
+                    if (TickCommandPacket.TryReadAttestation(data, len, out string attUserId, out string attToken))
+                    {
+                        bool attested = _identity.RecordAttestation(slot, attUserId, attToken);
+                        if (attested)
+                            GD.Print($"[Server] Slot {slot} attested identity ({attUserId}).");
+                        else if (_identity.Mode == Server.TrustMode.OnlineAttest && _violations.Record(slot))
+                            GD.PrintErr($"[Server] Slot {slot} attestation REJECTED (unverifiable credential; " +
+                                        $"{_violations.Count(slot)} protocol violations this connection).");
+                    }
+                    break;
+
                 case PacketType.RejoinRequest:
                     // Story 15-1: a reconnected client claims its old slot with its per-match token. The claimed
                     // slot is TRANSPORT-AUTHORITATIVE — the token must verify against exactly the slot this packet
@@ -609,11 +649,21 @@ namespace ProjectChimera.Multiplayer
                     // there is nothing to rejoin — refuse NoLiveMatch rather than leaving the client to wedge.
                     if (TickCommandPacket.TryReadRejoinRequest(data, len, out ulong rjToken))
                     {
-                        if (_state == State.InGame && _rejoinCoordinator != null && slot < ExpectedPlayers)
-                            _rejoinCoordinator.OnRejoinRequest(slot, rjToken);
-                        else
+                        if (_state != State.InGame || _rejoinCoordinator == null || slot >= ExpectedPlayers)
                             _transport.SendReliableTo(slot,
                                 TickCommandPacket.MakeRejoinRefuse(RejoinRefuseReason.NoLiveMatch));
+                        // Story 15-14: in OnlineAttest the reconnected client must have RE-ATTESTED the same
+                        // userId that held this slot at StartGame BEFORE its RejoinRequest — a stolen token
+                        // alone cannot hand the slot to a different account. LanTrust: always passes (D-5).
+                        else if (!_identity.RejoinIdentityOk(slot))
+                        {
+                            GD.PrintErr($"[Server] Rejoin on slot {slot} REFUSED — identity does not match the " +
+                                        "attested holder of this slot (attest first, with the same account).");
+                            _transport.SendReliableTo(slot,
+                                TickCommandPacket.MakeRejoinRefuse(RejoinRefuseReason.BadToken));
+                        }
+                        else
+                            _rejoinCoordinator.OnRejoinRequest(slot, rjToken);
                     }
                     break;
 
@@ -783,6 +833,17 @@ namespace ProjectChimera.Multiplayer
         {
             if (slot >= ExpectedPlayers) return; // spectators don't send Ready
             if (_state == State.InGame) return;  // match already started — ignore late/duplicate Ready
+
+            // Story 15-14 (DW-200): the fail-closed identity gate at the door. LanTrust (every LAN/offline
+            // match) always passes — behavior byte-identical to pre-15-14. OnlineAttest refuses the Ready of a
+            // slot that has not attested a VERIFIED identity: the binary-patched-client hole closes here, before
+            // any start-state machinery runs. The Ready is dropped (not recorded), so the start gate simply
+            // never fires; the client re-Readies after attesting.
+            if (!_identity.MayReady(slot, out string? identityWhy))
+            {
+                GD.PrintErr($"[Server] Ready from slot {slot} REFUSED — {identityWhy}.");
+                return;
+            }
 
             // Story 1.9a: RECORD the ready even if the other player hasn't connected yet (it was previously
             // DROPPED unless the server was already BothConnected). A client that readies the instant it connects
@@ -980,6 +1041,11 @@ namespace ProjectChimera.Multiplayer
                 // StartGame on the same reliable channel (ordering is irrelevant; the client just stores it).
                 foreach (int s in arrivalSlots)
                     _transport.SendReliableTo(s, TickCommandPacket.MakeRejoinToken(s, _rejoinTokens.Mint(s)));
+
+                // Story 15-14: freeze WHO holds each slot at StartGame as the rejoin identity bind — the D-5
+                // "stronger mint" layer. In OnlineAttest a mid-match reconnect must re-attest this same userId
+                // on top of its RejoinToken; in LanTrust the capture stores nothing and the token stands alone.
+                _identity.CaptureForRejoin(ExpectedPlayers);
                 GD.Print($"[Server] All {connected} players ready — broadcasting StartGame. Match begins (quorum N={connected}).");
             }
             else
