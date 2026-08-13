@@ -419,8 +419,10 @@ development_status:
   # 4 percent siblings, registry-driven attribute/research/item/draft lanes, both tripwire guards, the
   # stat-pipeline cross-platform golden. SimChecksum 26 / CanonicalModelHash 17 / ContentHash 3 / Save 10.
   # As-built record: spec-15-24a-stat-pipeline.md (+ the 15-24b addendum). 15-24b (crit/dodge dice) BUILT
-  # + GREEN 2026-08-13: SimChecksum 27 / Save 11, crit-dodge golden, zero existing goldens moved. Residual legs: c (thresholds),
-  # d (veterancy), e (spend mode), f (Attribute Editor — takes DW-991/994), g (item affixes); DW-992/993.
+  # + GREEN 2026-08-13: SimChecksum 27 / Save 11, crit-dodge golden, zero existing goldens moved; both
+  # stories adversarially review-swept (20 confirmed findings fixed or ledgered). Residual legs:
+  # c (thresholds), d (veterancy), e (spend mode), f (Attribute Editor — takes DW-991/994/996 UI arms),
+  # g (item affixes); open seams DW-992/993/995.
   15-24-attribute-system-2-expanded-vocab-rolls-veterancy-editor: in-progress
   epic-15-retrospective: optional
 

@@ -1,7 +1,13 @@
 # Spec 15-24 — Attribute System 2.0 (Alec's 2026-08-12 Q3 rulings)
 
-**Status:** SPEC'D, backlog (groundwork decisions locked; sequenced after 15-1 reconnect + 15-14 identity,
-per the same session's Q1/Q2 build-now rulings). Builds directly on 15-21's shipped substrate.
+**Status:** IN PROGRESS — **legs a + b BUILT + GREEN + review-swept** (15-24a THE STAT PIPELINE
+2026-08-12, 15-24b deterministic crit/dodge dice 2026-08-13; as-built record + deviations in
+`spec-15-24a-stat-pipeline.md`, which supersedes this file's a/b sections where they differ). Registry at
+17 stats; version stamps at SimChecksum 27 / CanonicalModelHash 17 / ContentHash 3 / Save 11; zero
+existing goldens moved across all three checksum bumps. Residual legs c–g below remain SPEC'D, backlog;
+open seams DW-991..996. Original spec basis: groundwork decisions locked 2026-08-12, sequenced after
+15-1 reconnect + 15-14 identity per the same session's Q1/Q2 build-now rulings. Builds directly on
+15-21's shipped substrate.
 
 ## The rulings (verbatim intent)
 

@@ -2,11 +2,17 @@
 
 ## 15-24b addendum (2026-08-13, same-substrate follow-on session): deterministic crit/dodge
 
-**BUILT + GREEN.** Three registry stats — `crit_chance` (Chance, [0,1]), `dodge_chance` (Chance, [0,0.75]
-— the ARPG-standard hard cap), `crit_multiplier` (Percent, [−0.5,+8] over the ×1.5 base
+**BUILT + GREEN + REVIEW-SWEPT.** Three registry stats — `crit_chance` (Chance, [0,1]), `dodge_chance`
+(Chance, [0,0.75] — the ARPG-standard hard cap), `crit_multiplier` (Percent, [−0.5,+8] over the ×1.5 base
 `EntityWorld.CritBaseMultiplierRaw`, total ∈ [1.0, 9.5]) — all modifier-authorable AND
 attribute-targetable (the WC3 "agility → crit" lineage works through the existing pipeline with zero new
-plumbing). Suite **6993 / 0 / 1**; release gate clean.
+plumbing). Suite **6994 / 0 / 1** at close (commits `c1cdb33e` + review sweep `f5e33ec5`); release gate
+clean; clean-checkout build verified. The adversarial sweep confirmed 4 of 10 findings — headline: the
+crit amplifier made `DamageTable.FinalDamage`'s wrapping matrix multiply reachable (a max-stacked crit
+dealt ZERO damage under DW-488-legal content); it now multiplies via `Fixed.MulSaturating` (bit-exact in
+range — zero goldens moved), regression-pinned in the amplified domain. The dodge/crit cues push NULL
+feedback profiles (AudioManager's profile-first route is type-agnostic — a profile-carrying push played
+spurious impact sounds); the dodged-swing-still-shows-its-impact-cue inconsistency rides DW-996.
 
 **The rolls (the spec's RNG-averse gate item, decided consciously):** draws ride the shared folded
 `world.Rng` (SplitMix64) INSIDE the sim — never presentation. Two documented roll points with a fixed
