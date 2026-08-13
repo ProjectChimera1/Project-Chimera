@@ -420,9 +420,16 @@ development_status:
   # stat-pipeline cross-platform golden. SimChecksum 26 / CanonicalModelHash 17 / ContentHash 3 / Save 10.
   # As-built record: spec-15-24a-stat-pipeline.md (+ the 15-24b addendum). 15-24b (crit/dodge dice) BUILT
   # + GREEN 2026-08-13: SimChecksum 27 / Save 11, crit-dodge golden, zero existing goldens moved; both
-  # stories adversarially review-swept (20 confirmed findings fixed or ledgered). Residual legs:
-  # c (thresholds), d (veterancy), e (spend mode), f (Attribute Editor — takes DW-991/994/996 UI arms),
-  # g (item affixes); open seams DW-992/993/995.
+  # stories adversarially review-swept (20 confirmed findings fixed or ledgered).
+  # 15-24c (derivation shapes) BUILT + GREEN 2026-08-13: threshold rows (per_step/at_least) are evaluated
+  # at RESOLVE time against the hero's live attribute total and delivered on one swap-on-level-change
+  # modifier slot — the 15-21 affine flatten provably cannot carry a step function. ContentHash 3->4;
+  # NO SimChecksum/save bump (zero new folded state, per the leg's contract); zero goldens moved.
+  # Rider: DW-997 CLOSED (saving threw whenever a runtime-minted modifier was live — item pickup,
+  # research completion or hero level-up; shipped ring_of_vigor reached it). Save 11->12.
+  # Residual legs: d (veterancy), e (spend mode), f (Attribute Editor — IN-ENGINE GATED, takes the
+  # DW-991/994/996/998 UI arms), g (item affixes — unblocked by the DW-997 fix).
+  # Open seams: DW-992/993/995/998.
   15-24-attribute-system-2-expanded-vocab-rolls-veterancy-editor: in-progress
   epic-15-retrospective: optional
 

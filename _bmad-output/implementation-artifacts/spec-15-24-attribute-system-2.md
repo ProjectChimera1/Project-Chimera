@@ -1,11 +1,15 @@
 # Spec 15-24 — Attribute System 2.0 (Alec's 2026-08-12 Q3 rulings)
 
-**Status:** IN PROGRESS — **legs a + b BUILT + GREEN + review-swept** (15-24a THE STAT PIPELINE
-2026-08-12, 15-24b deterministic crit/dodge dice 2026-08-13; as-built record + deviations in
-`spec-15-24a-stat-pipeline.md`, which supersedes this file's a/b sections where they differ). Registry at
-17 stats; version stamps at SimChecksum 27 / CanonicalModelHash 17 / ContentHash 3 / Save 11; zero
-existing goldens moved across all three checksum bumps. Residual legs c–g below remain SPEC'D, backlog;
-open seams DW-991..996. Original spec basis: groundwork decisions locked 2026-08-12, sequenced after
+**Status:** IN PROGRESS — **legs a + b + c BUILT + GREEN** (15-24a THE STAT PIPELINE 2026-08-12,
+15-24b deterministic crit/dodge dice 2026-08-13, 15-24c derivation shapes 2026-08-13; a+b additionally
+review-swept. As-built record + deviations in `spec-15-24a-stat-pipeline.md`, which **supersedes this
+file's a/b/c sections where they differ** — notably leg c's "the 15-21 trick holds", which is false as
+written: a threshold is a step function and the 15-21 flatten is affine, so it needed a resolve-time
+evaluator, not a wider flatten). Registry at 17 stats; version stamps at SimChecksum 27 /
+CanonicalModelHash 17 / **ContentHash 4** / **Save 12**; zero existing goldens moved across every bump.
+**Residual legs: d (veterancy), e (spend mode), f (Attribute Editor — IN-ENGINE GATED, needs the Godot
+bridge + a /godot-verify pass), g (item affixes — unblocked by the DW-997 fix).** Open seams
+DW-991..996 + DW-998. Original spec basis: groundwork decisions locked 2026-08-12, sequenced after
 15-1 reconnect + 15-14 identity per the same session's Q1/Q2 build-now rulings. Builds directly on
 15-21's shipped substrate.
 

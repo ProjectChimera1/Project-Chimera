@@ -75,7 +75,55 @@ added for exactly this and turn DW-911(b) from a hypothesis into a number.
 
 ---
 
-## Current State (2026-08-13, SESSION 4 — 15-24a STAT PIPELINE + 15-24b COMBAT DICE built) — read this first
+## Current State (2026-08-13, SESSION 5 — 15-24c DERIVATION SHAPES + the DW-997 save fix) — read this first
+
+**This block supersedes everything below it.** Continuation of the same day's ultracode run (Alec away
+from the PC ~1 week from 2026-08-13). Committed on master through `a149520d` and PUSHED; suite at close
+**7012 / 0 / 1**, release RS0030 analyzer gate CLEAN, working tree clean.
+
+### What landed
+1. **15-24c — DERIVATION SHAPES BUILT.** Rows gain `shape` (`linear` default / `per_step` / `at_least`)
+   + a nullable `threshold`, in the graph-friendly form Q3b demanded. **The finding that shaped the leg:
+   a threshold is STRUCTURALLY inexpressible in the 15-21 pipeline** — `Resolve` emits an affine
+   `(base, perLevel)` pair delivered as N identical stacks, but a step row's first difference alternates
+   where an affine one is constant (one polynomial degree too low; proven by a test, and the parent
+   spec's "the 15-21 trick holds" is superseded). So linear rows keep the old flatten and step/gate rows
+   are evaluated by `HeroAttributeResolver.EvaluateAt` against the hero's LIVE attribute total, delivered
+   on ONE swap-on-level-change modifier slot (`HeroThresholdModifierId`, the ResearchSystem cumulative
+   pattern, DW-85 heal-suppressed). Still **zero new folded state** — the total is a pure function of the
+   folded Level. `HeroStore.AttrModelOf` is a non-folded ref lane (SourceDef posture, re-resolved on load).
+   Two self-caught defects fixed: `EvaluateAt` could WRAP a large total negative, and the saturation
+   bound itself overflowed through `float`.
+2. **DW-997 CLOSED (high) — saving was broken with shipped content.** Verified empirically: a save THREW
+   whenever a runtime-minted modifier was live — i.e. after any item pickup, research completion, or hero
+   level-up (`ring_of_vigor` is +50 max health). The descriptor table only indexes content-authored
+   graphs. Fixed with the content-model change the throw itself named: a BY-VALUE `ModifierEntry` kind
+   carrying the descriptor shape + its canonical sparse vector (cheap because 15-24a made that vector
+   universal). Fail-closed retained for a minted period effect / unreachable PersistentEffect / corrupt
+   payload. **Save 11→12.**
+
+### Version stamps at close (both LAN machines MUST pull + rebuild together; all pre-existing saves dead — DW-874)
+SimChecksum **27** · CanonicalModelHash **17** · **ContentHash 4** · StartStateHash 2 · PROTOCOL 6 ·
+Replay 7 · **Save 12**. Goldens: NONE moved this session (leg c adds no folded state; the DW-997 fix
+changes only the save lane). Total golden count still 35.
+
+### Open threads for the next session
+- **15-24 residual legs:** d (veterancy — needs a folded per-unit kill counter + a killer-credit path;
+  note `DeathRecord` carries NO killer today, and DW-691 means effect-graph kills push no record at all),
+  e (spend mode — `SpendAttributePoint = 26` is the next free UnitCommand value; appending a command
+  needs NO protocol/replay bump per the PlaceBuilding/CancelConstruction precedent; goes in the
+  POST-ownership-guard applier arm), g (item affixes — now unblocked by DW-997; per-instance rolled
+  state belongs on ItemStore/HeroStore, never on the entity, per DW-30), f (Attribute Editor — **BLOCKED
+  on the in-engine gate**, needs the Godot bridge + `/godot-verify`).
+- **Open seams:** DW-991/994/996/998 (all editor/render arms that leg f should sweep together),
+  DW-992 (energy-pair modifier channel), DW-993 (building vision), DW-995 (item/research stat_deltas
+  duplicate-key last-wins).
+- **Rig work waiting on Alec (unchanged):** 15-1b in-engine reconnect + LAN confirm; the interactive
+  FR-39 re-run (pull + rebuild BOTH machines first); 15-14 hosted-Nakama end-to-end.
+
+---
+
+## Current State (2026-08-13, SESSION 4 — 15-24a STAT PIPELINE + 15-24b COMBAT DICE built)
 
 **This block supersedes everything below it.** Interactive ultracode session (Alec away ~1 week from
 2026-08-13). Everything committed on master through `f5e33ec5`; suite at close **6994 / 0 / 1** (session

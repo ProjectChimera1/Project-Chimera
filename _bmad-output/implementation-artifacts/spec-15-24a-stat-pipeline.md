@@ -1,4 +1,50 @@
-# Spec 15-24a + 15-24b — THE STAT PIPELINE + THE COMBAT DICE — AS-BUILT record
+# Spec 15-24a/b/c — THE STAT PIPELINE, THE COMBAT DICE, THE DERIVATION SHAPES — AS-BUILT record
+
+## 15-24c addendum (2026-08-13): derivation shapes — thresholds
+
+**BUILT + GREEN.** Commit `9756efb7`. Suite **7007/0/1**; zero goldens moved; **no SimChecksum and no save
+bump** — the leg's "pure resolve-time math, zero new folded state" contract held exactly. ContentHash
+**3→4** (new authored fields).
+
+**THE FINDING that shaped the leg — thresholds are not expressible in the 15-21 pipeline.**
+`HeroAttributeResolver.Resolve` emits an affine `(base, perLevel)` pair, delivered as one install-once
+modifier plus (L−1) IDENTICAL stacks — i.e. the coefficients of a degree-1 polynomial in Level. A
+"every N points of X → +V" row contributes `V × floor(A(L)/N)`, whose first difference ALTERNATES between
+`floor(p/N)` and `ceil(p/N)`, while an affine function's first difference is CONSTANT. No `(base,
+perLevel)` pair reproduces it except two degenerate cases (a flat attribute; a per-level gain that is an
+exact multiple of the step). The shape is one polynomial degree too low — arithmetic, not an
+implementation gap. Pinned by `AStepRowsFirstDifference_Alternates_SoNoLinearPairCanExpressIt`.
+**The parent spec's "the 15-21 trick holds" line is therefore FALSE as written** and is superseded here.
+
+**As built.** `DerivedStatRule` gains `shape` (`linear` default / `per_step` / `at_least`) and a NULLABLE
+`threshold` — the graph-friendly form Q3b demanded (source → [condition] → contribution leaf), and
+nullable so the writer omits it and every shipped preset stays byte-stable. Linear rows keep riding
+`Resolve` unchanged; step/gate rows are evaluated by the new `HeroAttributeResolver.EvaluateAt` against
+the hero's LIVE attribute total (`base + per_level × (L−1)`) — which keeps the zero-folded-state promise,
+because that total is a pure function of the folded Level. Delivery is ONE swap-on-level-change modifier
+slot (`HeroThresholdModifierId`, the `ResearchSystem` cumulative pattern): Ignore-idempotent install,
+remove+re-apply only on an actual level-up (no per-tick churn, no ring exhaustion), with DW-85 heal
+suppression so a crossing RE-STATES a total instead of granting a free heal. `HeroStore.AttrModelOf`
+carries the faction model as a non-folded ref lane (the `SourceDef` posture, re-resolved on save-load).
+
+**Two defects found by the leg's own tests:** `EvaluateAt`'s quantize could WRAP a large total negative
+(a stat-destroying "bonus" that also slipped the validator's cap check) — now saturating; and the
+saturation bound itself overflowed, because `int.MaxValue / 2^16` rounds UP through `float` to 32768 and
+wraps — now the whole-unit floor, derived, with the reason recorded in-source.
+
+**Validator:** closed shape vocabulary; positive threshold required on step/gate rows; a stray threshold
+on a linear row rejected; and resolved THRESHOLD contributions capped at max level (the linear cap loop
+structurally cannot see them).
+
+## DW-997 rider (2026-08-13, commit `a149520d`) — runtime-minted modifiers now survive a save
+
+Found while mapping leg g, verified empirically: **saving threw** whenever an item-carried / research /
+hero-growth modifier was live (shipped `ring_of_vigor` reaches it), because the canonical descriptor
+table only indexes descriptors reachable by walking ability/item effect graphs. `ModifierEntry` gained a
+BY-VALUE kind carrying the descriptor shape + its canonical sparse vector (cheap precisely because
+15-24a made that vector the one stat payload every minter builds). Still fail-closed on a minted
+descriptor with a period effect, on an unreachable PersistentEffect, and on a corrupt payload. Save
+**11→12**. Teeth: `MintedModifierSaveRoundTripTests` (5 cases incl. the exact original crash).
 
 ## 15-24b addendum (2026-08-13, same-substrate follow-on session): deterministic crit/dodge
 
