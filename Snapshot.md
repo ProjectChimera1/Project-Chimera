@@ -7,7 +7,7 @@ status: Active
 
 # Project Chimera — Snapshot
 
-**Last Touched:** `2026-08-12`
+**Last Touched:** `2026-08-13`
 
 ## Current Phase
 **Phase 5 — Polish & 1.0** (Months 25-31 of GDD roadmap)
@@ -75,7 +75,58 @@ added for exactly this and turn DW-911(b) from a hypothesis into a number.
 
 ---
 
-## Current State (2026-08-12, SESSION 3 — burn-down merged + reconnect built + identity rail + far-range fix) — read this first
+## Current State (2026-08-13, SESSION 4 — 15-24a STAT PIPELINE + 15-24b COMBAT DICE built) — read this first
+
+**This block supersedes everything below it.** Interactive ultracode session (Alec away ~1 week from
+2026-08-13). Everything committed on master through `f5e33ec5`; suite at close **6994 / 0 / 1** (session
+started 6949), release RS0030 analyzer gate CLEAN (un-broken this session: two pre-existing master
+RS0030s from session 3 suppressed with recorded non-sim justifications), clean-checkout build verified
+via git archive.
+
+### What landed
+1. **15-24a — THE STAT PIPELINE (spec's add-a-stat recipe) BUILT.** `StatVocabulary` registry;
+   `Modifier.StatDeltas` canonical sparse vector (legacy four names = derived projections; 12-arg compat
+   ctor); generalized recompute (flat → ×(1+Σ%) → clamp, `Fixed.MulSaturating`); consumers attack_speed
+   (`AttackIntervalOf`, one-tick machine-gun floor), health_regen (`HealthRegenSystem` at slot [7] of the
+   now-20-system order), vision (`VisionWithElevation` merge), cooldown_reduction (cast arming); four
+   percent siblings; `stat_deltas` JSON lane on modifiers/items/research (registry-gated fail-closed,
+   legacy keys byte-stable); AttributeStats = registry facade (attribute models can derive EVERY
+   modifier-authorable stat); ResearchStore stat-indexed with legacy aliases; both spec tripwires + the
+   behavioral coverage sweep; `stat-pipeline-scenario` golden. **KEY ARCHITECTURE RULE (memory'd): new
+   channels are IDENTITY-DEFAULT MODIFIER TERMS (factor One / bonus 0), never Effective mirrors — direct
+   base writers carry no mirror obligation.**
+2. **15-24b — DETERMINISTIC CRIT/DODGE DICE BUILT.** crit_chance [0,1] / dodge_chance [0,0.75 hard cap] /
+   crit_multiplier (over the ×1.5 `CritBaseMultiplierRaw`; total ∈ [1.0,9.5]) as registry stats,
+   attribute-targetable (agility→crit works). Rolls ride the FOLDED `world.Rng` in the sim: **crit at the
+   attack COMMIT** (swing/launch — sealed into projectile snapshots), **dodge at damage ARRIVAL**
+   (`DamageResolver.Apply`, `DamageContext.IsWeaponHit` provenance — splash/abilities never roll). A zero
+   chance NEVER draws → zero golden movement. Dodge = full negation (on-hit rider skipped, attacker keeps
+   swinging); buildings exempt. `crit-dodge-scenario` golden pins the stream cross-platform;
+   `CritDodgeRollTests` pins exact draw budgets (state-delta × gamma⁻¹ mod 2⁶⁴ — division wraps past one
+   draw), the crit-then-dodge order, provenance, clamps.
+3. **Adversarial review sweeps both stories** (4-lens find → refute): 16 confirmed on 24a (incl. an
+   untracked-files commit defect — clean checkout couldn't build; three arithmetic wraps), 4 on 24b
+   (headline: the crit amplifier re-opened a damage wrap at `DamageTable.FinalDamage` — a max crit dealt
+   ZERO; now saturating, regression-pinned). All fixed or consciously ledgered.
+
+### Version stamps at close (both LAN machines MUST pull + rebuild together; ALL pre-existing saves are dead — DW-874)
+SimChecksum **27** · ContentHash **3** · CanonicalModelHash **17** · StartStateHash 2 ·
+PROTOCOL_VERSION 6 · Replay 7 · Save **11**. Goldens: hero-start-state re-recorded; mapgen pin moved;
+TWO new goldens (stat-pipeline, crit-dodge); every other golden byte-identical through THREE checksum
+bumps (the bounded ≠-identity fold pattern — see memory).
+
+### Open threads for the next session
+- **15-24 residual legs:** c (thresholds), d (veterancy), e (spend mode), f (Attribute Editor — takes
+  DW-991/994/996 UI arms), g (item affixes). All build on the registry with no format breaks expected.
+- **DW-991..996:** editor stat rows + widened dropdown UNOBSERVED in-engine (bridge wasn't attached —
+  one /godot-verify pass wanted); energy-pair modifier channel; building vision; research-summary/buff
+  tooltips; item/research stat_deltas duplicate-key last-wins; dodge/crit render arms.
+- **Rig work waiting on Alec:** 15-1b in-engine reconnect half + LAN confirm; interactive FR-39 re-run
+  (pull + rebuild BOTH machines first — the hash bumps above); 15-14 hosted-Nakama end-to-end.
+
+---
+
+## Current State (2026-08-12, SESSION 3 — burn-down merged + reconnect built + identity rail + far-range fix)
 
 **This block supersedes everything below it.** Session 3 was the continuation of session 2's ultracode run
 (one conversation, context-compacted twice). Everything is committed on master; suite at close **6949 / 0 / 1**
