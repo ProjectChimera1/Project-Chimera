@@ -846,14 +846,18 @@ namespace ProjectChimera.AI
         /// </summary>
         private int FindNearestEnemyUnit(EntityWorld world, FixedVec3 from)
         {
-            int   best    = -1;
-            Fixed bestSqr = Fixed.Zero;
-            int   hwm     = world.HighWaterMark;
+            int  best    = -1;
+            // DW-990: RAW widened squares (the DW-989 shape). With the clamped Fixed compare, every candidate past
+            // ~181 units read Fixed.MaxValue, the strict < never fired after the first, and this argmin silently
+            // degraded to "lowest-id hostile" — an AI assault across a 240-unit map targeted by entity id, not
+            // distance. Raw longs keep the ordering at any map span; near-range behavior is bit-identical.
+            long bestSqr = 0;
+            int  hwm     = world.HighWaterMark;
             for (int i = 0; i < hwm; i++)
             {
                 if (!world.IsAlive(i)) continue;
                 if (!IsHostile(world.FactionOf[i])) continue;
-                Fixed sqrDist = FixedVec3.SqrDistance(from, world.Position[i]);
+                long sqrDist = FixedVec3.SqrDistanceRaw(from, world.Position[i]);
                 if (best < 0 || sqrDist < bestSqr) { best = i; bestSqr = sqrDist; } // strict < ⇒ ascending-id tie-break
             }
             return best;
@@ -906,16 +910,18 @@ namespace ProjectChimera.AI
         /// </summary>
         private int FindNearestEnemyBuilding(FixedVec3 from, bool[]? allyFocused)
         {
-            int   best        = -1;  // nearest hostile building, ally-focused or not — the guaranteed fallback
-            Fixed bestSqr     = Fixed.Zero;
-            int   bestFree    = -1;  // nearest hostile building NO teammate is already working on
-            Fixed bestFreeSqr = Fixed.Zero;
+            int  best        = -1;  // nearest hostile building, ally-focused or not — the guaranteed fallback
+            // DW-990: RAW widened squares in BOTH lanes (see FindNearestEnemyUnit) — the clamped compare degraded
+            // this to "lowest-id hostile building" whenever every base sat past ~181 units (i.e. match start).
+            long bestSqr     = 0;
+            int  bestFree    = -1;  // nearest hostile building NO teammate is already working on
+            long bestFreeSqr = 0;
 
             for (int b = 0; b < _buildings.Count; b++)
             {
                 if (!_buildings.Alive[b]) continue;
                 if (!IsHostile(_buildings.FactionOf[b])) continue;
-                Fixed sqrDist = FixedVec3.SqrDistance(from, _buildings.Position[b]);
+                long sqrDist = FixedVec3.SqrDistanceRaw(from, _buildings.Position[b]);
                 if (best < 0 || sqrDist < bestSqr) { best = b; bestSqr = sqrDist; } // strict < ⇒ ascending-id tie-break
 
                 if (allyFocused == null) continue;                                  // FFA — no preference pass at all

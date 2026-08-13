@@ -157,7 +157,12 @@ namespace ProjectChimera.Navigation
         {
             FixedVec3 pos = world.Position[id];
             Faction myFaction = world.FactionOf[id];
-            Fixed bestSqrDist = Fixed.MaxValue;
+            // DW-989: the compare runs on the RAW widened square (long), never the clamped Fixed. SqrDistance
+            // saturates at Fixed.MaxValue past ~181 units, so with a Fixed.MaxValue seed every distant candidate
+            // EQUALED the seed and this whole-map scan returned -1 with the enemy base 250 units away — match-start
+            // advance-to-contact silently did nothing. SqrDistanceRaw is strictly widening below the clamp, so
+            // near-range picks (and their goldens) are unchanged; only the previously-blind far range orders now.
+            long bestSqrDist = long.MaxValue;
             int bestId = -1;
             int cap = world.HighWaterMark;
 
@@ -173,7 +178,7 @@ namespace ProjectChimera.Navigation
                 // with no valid air target does NOT march toward a ground enemy it can never damage.
                 if (!DomainClassifier.CanAttack(world.AttackDomainOf[id], world.CategoryOf[j])) continue;
 
-                Fixed sqrDist = FixedVec3.SqrDistance(pos, world.Position[j]);
+                long sqrDist = FixedVec3.SqrDistanceRaw(pos, world.Position[j]);
                 if (sqrDist < bestSqrDist)
                 {
                     bestSqrDist = sqrDist;
