@@ -38,7 +38,10 @@ namespace ProjectChimera.UI
         /// <see cref="Polarity.Neutral"/>. Precedence: a harmful status flag ⇒ Debuff; a beneficial status
         /// (<see cref="StatusFlags.Invulnerable"/>) ⇒ Buff; a net-negative stat delta ⇒ Debuff; a net-positive ⇒ Buff;
         /// otherwise (no deltas, no status) the sign of a periodic (DoT/HoT) effect decides — damage ⇒ Debuff,
-        /// heal ⇒ Buff. The net stat delta is the sum of the four flat deltas (attack, max-health, move-speed, armor).
+        /// heal ⇒ Buff. Story 15-24a: the net stat delta is the sum over the WHOLE canonical sparse vector
+        /// (every registry stat is bigger-is-better today, so a raw signed sum keeps the pre-15-24a semantics
+        /// exactly for legacy content and classifies new-stat-only modifiers instead of dropping them to
+        /// Neutral; the sum was always unit-mixed — it is a SIGN vote, not a magnitude).
         /// </summary>
         public static Polarity Classify(Modifier mod)
         {
@@ -49,7 +52,8 @@ namespace ProjectChimera.UI
             // Beneficial status (Invulnerable) dominates the net-negative check, symmetric to HarmfulStatus above.
             if ((mod.Status & StatusPolarity.Beneficial) != 0) return Polarity.Buff;
 
-            Fixed net = mod.AttackDamageDelta + mod.MaxHealthDelta + mod.MoveSpeedDelta + mod.ArmorDelta;
+            Fixed net = Fixed.Zero;
+            for (int i = 0; i < mod.StatDeltas.Length; i++) net += mod.StatDeltas[i].Delta;
             if (net < Fixed.Zero) return Polarity.Debuff;
             if (net > Fixed.Zero) return Polarity.Buff;
 

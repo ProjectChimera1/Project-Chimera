@@ -354,8 +354,9 @@ namespace ProjectChimera.UI
                 Modifier? m = _modifiers.ModifierRefAt(focus, s);
                 if (m != null)
                 {
-                    bool hasDeltas = m.MaxHealthDelta.Raw != 0 || m.AttackDamageDelta.Raw != 0
-                                  || m.MoveSpeedDelta.Raw != 0 || m.ArmorDelta.Raw != 0;
+                    // Story 15-24a: the canonical vector's non-emptiness — an attack_speed-only buff still
+                    // gets its row instead of being skipped as pure-status (legacy content: identical test).
+                    bool hasDeltas = m.StatDeltas.Length != 0;
                     bool hasPeriod = ModifierPolarity.HasPeriod(m);
                     if (!hasDeltas && !hasPeriod) continue; // pure-status slot → already shown via StatusFlagsOf
                     AddModifierIcon(focus, s, m);

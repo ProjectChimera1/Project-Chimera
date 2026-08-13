@@ -512,7 +512,7 @@ namespace ProjectChimera.Core.Definitions
             // install a marker purely so a later RemoveByModifierId has something to find. Rejecting would break that.
             if (mod.HasNoEffect())
                 Warn(warnings, id, modPath,
-                    "the modifier changes nothing — all four stat deltas are 0, status is None and there is no period_effect — so installing it only consumes one of the target's " +
+                    "the modifier changes nothing — every stat delta is 0 (legacy keys and the stat_deltas lane alike), status is None and there is no period_effect — so installing it only consumes one of the target's " +
                     $"{EffectCaps.MaxModifiersPerEntity} modifier slots. Give it a stat delta, a status or a period_effect, or remove the apply_modifier leaf.");
 
             if (mod.DurationTicks == 0)

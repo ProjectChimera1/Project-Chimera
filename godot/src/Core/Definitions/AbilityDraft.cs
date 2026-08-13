@@ -109,28 +109,64 @@ namespace ProjectChimera.Core.Definitions
         public int         PeriodTicks;
         public PeriodicStackMode PeriodicStacking = PeriodicStackMode.None; // DW-272 — how a stacked pulse scales
 
-        /// <summary>Materialize the immutable runtime <see cref="Modifier"/> (constructor order is load-bearing — verified).</summary>
-        public Modifier ToModifier() => new Modifier(
-            Id, DurationTicks, Stacking, MaxStacks,
-            MaxHealthDelta, AttackDamageDelta, MoveSpeedDelta,
-            Status, Period?.ToEffectNode(), PeriodTicks, ArmorDelta, PeriodicStacking);
+        /// <summary>
+        /// Story 15-24a — every NON-legacy stat delta the modifier carries (the <c>stat_deltas</c> lane), keyed
+        /// by <see cref="ProjectChimera.Core.Stats.StatId"/>. The composer's Advanced tab renders only the four
+        /// legacy rows today (15-24f's registry-driven rows are a recorded seam), so this list is the DW-903
+        /// Opaque-class LOSSLESS CARRIER: a loaded modifier authoring attack_speed round-trips through the
+        /// composer byte-stable even though no row edits it yet. The LLM draft hook writes it directly (the
+        /// registry IS the draft vocabulary for stats).
+        /// </summary>
+        public List<ProjectChimera.Core.Stats.StatDelta> ExtraStatDeltas = new List<ProjectChimera.Core.Stats.StatDelta>();
 
-        /// <summary>Build a mutable draft from an existing immutable runtime <see cref="Modifier"/> (parse-in / load path).</summary>
-        public static DraftModifier FromModifier(Modifier m) => new DraftModifier
+        /// <summary>Materialize the immutable runtime <see cref="Modifier"/> (built as the canonical sparse
+        /// vector: the four legacy fields + <see cref="ExtraStatDeltas"/>, canonicalized in the ctor).</summary>
+        public Modifier ToModifier()
         {
-            Id                = m.Id,
-            DurationTicks     = m.DurationTicks,
-            Stacking          = m.Stacking,
-            MaxStacks         = m.MaxStacks,
-            MaxHealthDelta    = m.MaxHealthDelta,
-            AttackDamageDelta = m.AttackDamageDelta,
-            MoveSpeedDelta    = m.MoveSpeedDelta,
-            ArmorDelta        = m.ArmorDelta,
-            Status            = m.Status,
-            Period            = m.PeriodEffect is null ? null : DraftNode.FromEffectNode(m.PeriodEffect),
-            PeriodTicks       = m.PeriodTicks,
-            PeriodicStacking  = m.PeriodicStacking,
-        };
+            var scratch = new List<ProjectChimera.Core.Stats.StatDelta>(4 + ExtraStatDeltas.Count)
+            {
+                new ProjectChimera.Core.Stats.StatDelta(ProjectChimera.Core.Stats.StatId.MaxHealth, MaxHealthDelta),
+                new ProjectChimera.Core.Stats.StatDelta(ProjectChimera.Core.Stats.StatId.AttackDamage, AttackDamageDelta),
+                new ProjectChimera.Core.Stats.StatDelta(ProjectChimera.Core.Stats.StatId.Armor, ArmorDelta),
+                new ProjectChimera.Core.Stats.StatDelta(ProjectChimera.Core.Stats.StatId.MoveSpeed, MoveSpeedDelta),
+            };
+            scratch.AddRange(ExtraStatDeltas);
+            return new Modifier(
+                Id, DurationTicks, Stacking, MaxStacks,
+                ProjectChimera.Core.Stats.StatVocabulary.Canonicalize(scratch),
+                Status, Period?.ToEffectNode(), PeriodTicks, PeriodicStacking);
+        }
+
+        /// <summary>Build a mutable draft from an existing immutable runtime <see cref="Modifier"/> (parse-in / load path).
+        /// The legacy four land in their named fields (the composer's rows); every other vector entry lands in
+        /// <see cref="ExtraStatDeltas"/> — <c>ToModifier(FromModifier(m))</c> is value-identical (lossless).</summary>
+        public static DraftModifier FromModifier(Modifier m)
+        {
+            var d = new DraftModifier
+            {
+                Id                = m.Id,
+                DurationTicks     = m.DurationTicks,
+                Stacking          = m.Stacking,
+                MaxStacks         = m.MaxStacks,
+                MaxHealthDelta    = m.MaxHealthDelta,
+                AttackDamageDelta = m.AttackDamageDelta,
+                MoveSpeedDelta    = m.MoveSpeedDelta,
+                ArmorDelta        = m.ArmorDelta,
+                Status            = m.Status,
+                Period            = m.PeriodEffect is null ? null : DraftNode.FromEffectNode(m.PeriodEffect),
+                PeriodTicks       = m.PeriodTicks,
+                PeriodicStacking  = m.PeriodicStacking,
+            };
+            for (int i = 0; i < m.StatDeltas.Length; i++)
+            {
+                var stat = m.StatDeltas[i].Stat;
+                if (stat == ProjectChimera.Core.Stats.StatId.MaxHealth || stat == ProjectChimera.Core.Stats.StatId.AttackDamage
+                    || stat == ProjectChimera.Core.Stats.StatId.MoveSpeed || stat == ProjectChimera.Core.Stats.StatId.Armor)
+                    continue; // carried by the named fields above
+                d.ExtraStatDeltas.Add(m.StatDeltas[i]);
+            }
+            return d;
+        }
     }
 
     /// <summary>

@@ -59,17 +59,24 @@ namespace ProjectChimera.Core.Definitions
         /// <summary>True only when the modifier carries EXACTLY the Self Buff preset's fixed (non-tunable) fields, so
         /// reflecting it into Simple and re-saving preserves it byte-for-byte (only attack-damage delta + duration tune).
         /// Guards the data-loss footgun: a modifier with a different id, a move-speed/max-health delta, stacking, status,
-        /// or a periodic effect is NOT Simple-representable and must stay in raw JSON.</summary>
-        public static bool IsSimpleSelfBuff(Modifier m) =>
-            m != null
-            && m.Id == AbilityPresets.SelfBuffModifierId
-            && m.MaxStacks == 1
-            && m.Stacking == StackRule.Refresh
-            && m.Status == StatusFlags.None
-            && m.MaxHealthDelta.Raw == 0
-            && m.MoveSpeedDelta.Raw == 0
-            && m.ArmorDelta.Raw == 0
-            && m.PeriodEffect is null
-            && m.PeriodTicks == 0;
+        /// a periodic effect, OR (15-24a) ANY sparse stat_deltas entry beyond attack_damage is NOT Simple-representable
+        /// and must stay in raw JSON — the DW-903 class: a Simple re-save that cannot express a field would drop it.</summary>
+        public static bool IsSimpleSelfBuff(Modifier m)
+        {
+            if (m == null
+                || m.Id != AbilityPresets.SelfBuffModifierId
+                || m.MaxStacks != 1
+                || m.Stacking != StackRule.Refresh
+                || m.Status != StatusFlags.None
+                || m.PeriodEffect is not null
+                || m.PeriodTicks != 0)
+                return false;
+            // 15-24a: the WHOLE canonical vector must be expressible by the Simple form's one attack-damage
+            // spinner — i.e. every entry (if any) is AttackDamage. This subsumes the old three named-zero checks
+            // AND closes the same hole for every future registry stat with no further edit here.
+            for (int i = 0; i < m.StatDeltas.Length; i++)
+                if (m.StatDeltas[i].Stat != ProjectChimera.Core.Stats.StatId.AttackDamage) return false;
+            return true;
+        }
     }
 }
