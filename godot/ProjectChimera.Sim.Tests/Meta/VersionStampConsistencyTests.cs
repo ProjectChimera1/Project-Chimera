@@ -93,7 +93,7 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// <summary>Story 15-23 (DW-775): 24→25 — generation-validated entity refs; folded id lanes
         /// (CommandTarget entity halves, order-queue entity payloads, DslLoopState rows) now carry PACKED refs.
         /// No fold set/order change; value semantics only (gen-0 packing is bit-identical to raw ids).</summary>
-        private const int ExpectedSimChecksumAlgoVersion = 25;
+        private const int ExpectedSimChecksumAlgoVersion = 26; // Story 15-24a: 25->26 — bounded stat-pipeline fold (factor/CDR/health-regen; zero golden movement)
 
         /// <summary>Load-time canonical start-state hash algorithm version (lobby handshake value).
         /// v3 (Story 2.9b follow-up): folded ScenarioPlayerSlot.StartCrystal (sim-affecting per-slot start-state).

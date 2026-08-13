@@ -325,8 +325,16 @@ namespace ProjectChimera.Core
         ///        The bump also fail-closes every pre-15-23 save (DW-874 keep-one-constant policy: persisted lanes
         ///        now carry packed values, and PROTOCOL_VERSION 3→4 / ReplayRecorder.VERSION 5→6 reject mixed wire
         ///        peers and stale replays for the same raw-vs-packed reason).
+        ///   v26 — Story 15-24a (the StatVocabulary pipeline): BOUNDED per-entity fold of the three new
+        ///        stat-pipeline modifier terms — EffectiveAttackSpeedFactor (≠ One), EffectiveCooldownReduction
+        ///        (≠ 0), EffectiveHealthRegen (≠ its authored BaseHealthRegen) — appended after the v23 gather
+        ///        block. The v23 bounded posture exactly: an entity at identity folds ZERO Mix calls, no shipped
+        ///        content authors the stats, so every recorded golden and the frozen re-baseline control are
+        ///        BYTE-IDENTICAL under v26 (zero re-records; the known-state pin holds). The vision terms stay
+        ///        unfolded (presentation-only fog input). The bump still fail-closes every pre-15-24a save
+        ///        (DW-874), which the same story's Save v10 / ContentHash v3 / CanonicalModelHash v17 do anyway.
         /// </summary>
-        public const int AlgoVersion = 25;
+        public const int AlgoVersion = 26;
 
         /// <summary>
         /// Compute a full-state checksum for desync detection.
@@ -503,6 +511,27 @@ namespace ProjectChimera.Core
                     hash = Mix(hash, world.CarryAmount[i].Raw);
                     hash = Mix(hash, (int)world.CarryResourceType[i]);
                     hash = Mix(hash, world.GateClosedTicks[i]);
+                }
+
+                // ── Stat-pipeline modifier terms (v26, Story 15-24a) — BOUNDED fold, the v23 posture ──
+                // The generalized recompute mutates these mid-match the moment an attack_speed /
+                // cooldown_reduction / health_regen modifier exists: the swing re-arm divides by the factor,
+                // the cast arming scales by the CDR, and HealthRegenSystem adds the effective regen into the
+                // folded Health — peer-divergent sim truth all three. BOUNDED: an entity whose terms sit at
+                // identity (factor One, CDR 0, effective regen == authored base — every entity in every
+                // recorded golden, since no shipped content authors the stats) folds ZERO Mix calls, so the
+                // whole fold set change moves NOTHING until the stats are actually used (the frozen
+                // re-baseline control stays byte-identical, the known-state pin stays still). The vision pair
+                // (VisionBonusFlat/Pct) is deliberately NOT folded — vision feeds only the per-client
+                // presentation fog stamp (the fog Grid posture); it cannot desync the sim. All Fixed.Raw →
+                // cross-platform safe.
+                if (world.EffectiveAttackSpeedFactor[i] != Fixed.One
+                    || world.EffectiveCooldownReduction[i].Raw != 0
+                    || world.EffectiveHealthRegen[i].Raw != world.BaseHealthRegen[i].Raw)
+                {
+                    hash = Mix(hash, world.EffectiveAttackSpeedFactor[i].Raw);
+                    hash = Mix(hash, world.EffectiveCooldownReduction[i].Raw);
+                    hash = Mix(hash, world.EffectiveHealthRegen[i].Raw);
                 }
             }
 

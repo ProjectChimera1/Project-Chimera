@@ -109,19 +109,19 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// hash still moves.)
         /// </summary>
         [Fact]
-        public void KnownWorldState_ProducesPinnedV25Hash()
+        public void KnownWorldState_ProducesPinnedV26Hash()
         {
-            // Algorithm version must be exactly 25 (Story 15-23's generation-validated entity refs — a fold VALUE
-            // SEMANTICS bump with NO fold set/order change, on top of Phase C's v24 re-record marker, DW-78's
-            // bounded worker-gather-state fold at v23 and 11.6's production-queue + head-timer fold at v22).
+            // Algorithm version must be exactly 26 (Story 15-24a's bounded stat-pipeline fold, on top of Story
+            // 15-23's generation-validated entity refs at v25, Phase C's v24 re-record marker, DW-78's bounded
+            // worker-gather-state fold at v23 and 11.6's production-queue + head-timer fold at v22).
             // If this fails, the const below is stale.
-            Assert.Equal(25, SimChecksum.AlgoVersion);
+            Assert.Equal(26, SimChecksum.AlgoVersion);
 
             uint actual = ComputeKnownStateHash();
 
-            // ── Pinned v25 hash for the fixed world built by ComputeKnownStateHash() ──────────────────────────
+            // ── Pinned hash for the fixed world built by ComputeKnownStateHash() ──────────────────────────
             // An intentional SimChecksum algorithm change must update this value AND bump SimChecksum.AlgoVersion.
-            // The value below is DELIBERATELY UNCHANGED across THREE consecutive bumps now, for three DIFFERENT
+            // The value below is DELIBERATELY UNCHANGED across FOUR consecutive bumps now, for four DIFFERENT
             // reasons, and all are load-bearing:
             //   v22→v23: DW-78's fold is BOUNDED (an entity at the gatherer-inactive default folds ZERO Mix calls)
             //            and the known-state world holds NO gatherer, so the added fold was a no-op here. If a
@@ -136,10 +136,14 @@ namespace ProjectChimera.Sim.Tests.Golden
             //            bytes are bit-identical, which is exactly the story's golden-neutrality claim. If this pin
             //            moves, 15-23's "no fold set change, gen-0 identity" contract has been broken — investigate,
             //            never re-pin.
-            const uint ExpectedV25Hash = 0x32911831; // unchanged since v22 — see the three reasons above
-            Assert.True(actual == ExpectedV25Hash,
-                $"Known-state v25 checksum changed: expected 0x{ExpectedV25Hash:X8}, actual 0x{actual:X8}. " +
-                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV25Hash to 0x{actual:X8} and bump " +
+            //   v25→v26: Story 15-24a's stat-pipeline fold is BOUNDED like v23 (an entity at identity — factor One,
+            //            CDR 0, effective regen == base — folds ZERO Mix calls) and the known-state world carries no
+            //            stat-pipeline modifier, so the added fold is a no-op here. Same contract as v23: a future
+            //            edit that gives this world an attack_speed buff MUST move the pin — correctly.
+            const uint ExpectedV26Hash = 0x32911831; // unchanged since v22 — see the four reasons above
+            Assert.True(actual == ExpectedV26Hash,
+                $"Known-state v26 checksum changed: expected 0x{ExpectedV26Hash:X8}, actual 0x{actual:X8}. " +
+                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV26Hash to 0x{actual:X8} and bump " +
                 $"SimChecksum.AlgoVersion. If not, you broke the deterministic checksum — investigate.");
         }
 
@@ -256,6 +260,30 @@ namespace ProjectChimera.Sim.Tests.Golden
                 int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
                                  Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
                 return () => w.StatusFlagsOf[e] = StatusFlags.Stunned;
+            });
+
+            // ── v26 (Story 15-24a): the three BOUNDED stat-pipeline terms are folded — mutate each away from its
+            //    identity (factor One → 1.5, CDR 0 → 0.3, effective regen 0 == base 0 → 2). A non-identity value
+            //    MUST move the hash; a no-move means the v26 fold is not reading the field (the bounded gate
+            //    swallows exactly the identity, so these mutations are the gate's own teeth). VisionBonusFlat/Pct
+            //    are deliberately NOT proven here — presentation-only fog inputs, consciously unfolded. ──
+            AssertFieldFoldedIntoChecksum(buildings, resources, registry, w =>
+            {
+                int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
+                                 Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+                return () => w.EffectiveAttackSpeedFactor[e] = Fixed.One + Fixed.Half;
+            });
+            AssertFieldFoldedIntoChecksum(buildings, resources, registry, w =>
+            {
+                int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
+                                 Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+                return () => w.EffectiveCooldownReduction[e] = Fixed.FromRaw(Fixed.ONE * 3 / 10);
+            });
+            AssertFieldFoldedIntoChecksum(buildings, resources, registry, w =>
+            {
+                int e = w.Create(new FixedVec3(Fixed.FromInt(1), Fixed.Zero, Fixed.FromInt(2)),
+                                 Faction.Player1, Fixed.FromInt(10), Fixed.FromInt(3));
+                return () => w.EffectiveHealthRegen[e] = Fixed.FromInt(2);
             });
 
             // ── v7 (Story 2.4a): AbilityCooldownTicks is folded (count-driven — set AbilityCount > 0 first so the
