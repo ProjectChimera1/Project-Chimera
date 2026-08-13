@@ -277,8 +277,11 @@ namespace ProjectChimera.Core.Definitions
 
         /// <summary>An <c>apply_modifier</c> payload (v8): every semantic Modifier field in fixed order. Moved verbatim
         /// from <see cref="CanonicalModelHash"/>. v15 (DW-272 / Story 15.12) appends <see cref="ProjectChimera.Effects.Modifier.PeriodicStacking"/>
-        /// by NAME (the StackRule convention) — unconditionally, so it also moves <c>ContentHash</c> for any ability that
-        /// authors an apply_modifier.</summary>
+        /// by NAME (the StackRule convention). v17 (Story 15-24a) replaces the four hand-named delta folds with the
+        /// CANONICAL sparse vector — count then per entry <c>(int)Stat</c> + <c>Delta.Raw</c>, in the vector's own
+        /// ascending-StatId order (never a Dictionary walk), so any two modifiers with the same stat contributions
+        /// fold identically whatever authoring surface produced them. The four legacy projection FIELDS are
+        /// deliberately NOT folded (derived copies of vector entries — folding them would double-count).</summary>
         internal static ulong MixModifier(ulong h, ProjectChimera.Effects.Modifier? m)
         {
             if (m is null) return MixInt(h, 0);
@@ -287,10 +290,12 @@ namespace ProjectChimera.Core.Definitions
             h = MixInt(h, m.DurationTicks);
             h = MixStr(h, m.Stacking.ToString());
             h = MixInt(h, m.MaxStacks);
-            h = MixInt(h, m.MaxHealthDelta.Raw);
-            h = MixInt(h, m.AttackDamageDelta.Raw);
-            h = MixInt(h, m.MoveSpeedDelta.Raw);
-            h = MixInt(h, m.ArmorDelta.Raw);
+            h = MixInt(h, m.StatDeltas.Length); // Story 15-24a (AlgoVersion 16→17): the sparse vector, length-prefixed
+            for (int i = 0; i < m.StatDeltas.Length; i++)
+            {
+                h = MixInt(h, (int)m.StatDeltas[i].Stat); // ordinal — StatId values are append-only/stable by contract
+                h = MixInt(h, m.StatDeltas[i].Delta.Raw);
+            }
             h = MixInt(h, (int)m.Status); // deliberate ordinal fold: Status is a [Flags] enum — a combined value has no single NAME, and the bit layout is append-only/stable ("fixing" this to a name fold would churn the hash)
             h = MixEffect(h, m.PeriodEffect);
             h = MixInt(h, m.PeriodTicks);

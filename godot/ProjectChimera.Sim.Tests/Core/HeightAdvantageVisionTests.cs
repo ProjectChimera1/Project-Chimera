@@ -66,19 +66,19 @@ namespace ProjectChimera.Sim.Tests.Core
         {
             // Toggle ON: base + floor(elevation)·bonus.
             var twoSteps = MakeWorld(Fixed.FromInt(2), toggle: true, bonus: Fixed.FromInt(4), vision: Fixed.FromInt(8));
-            Assert.Equal((Fixed.FromInt(8) + Fixed.FromInt(2) * Fixed.FromInt(4)).Raw, twoSteps.EffectiveVisionRange(0).Raw); // 16
+            Assert.Equal((Fixed.FromInt(8) + Fixed.FromInt(2) * Fixed.FromInt(4)).Raw, twoSteps.VisionWithElevation(0).Raw); // 16
 
             // Ground unit (elevation 0) ⇒ exactly the base range.
             var ground = MakeWorld(Fixed.Zero, toggle: true, bonus: Fixed.FromInt(4), vision: Fixed.FromInt(8));
-            Assert.Equal(Fixed.FromInt(8).Raw, ground.EffectiveVisionRange(0).Raw);
+            Assert.Equal(Fixed.FromInt(8).Raw, ground.VisionWithElevation(0).Raw);
 
             // A sub-step (< 1 world unit) elevation floors to 0 steps ⇒ no bonus.
             var subStep = MakeWorld(Fixed.Half, toggle: true, bonus: Fixed.FromInt(4), vision: Fixed.FromInt(8));
-            Assert.Equal(Fixed.FromInt(8).Raw, subStep.EffectiveVisionRange(0).Raw);
+            Assert.Equal(Fixed.FromInt(8).Raw, subStep.VisionWithElevation(0).Raw);
 
             // Toggle OFF ⇒ base range regardless of elevation/bonus.
             var off = MakeWorld(Fixed.FromInt(3), toggle: false, bonus: Fixed.FromInt(4), vision: Fixed.FromInt(8));
-            Assert.Equal(Fixed.FromInt(8).Raw, off.EffectiveVisionRange(0).Raw);
+            Assert.Equal(Fixed.FromInt(8).Raw, off.VisionWithElevation(0).Raw);
         }
     }
 }

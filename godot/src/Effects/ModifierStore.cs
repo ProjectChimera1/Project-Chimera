@@ -2,6 +2,7 @@
 using ProjectChimera.Combat;   // DamageTable / CombatEventQueue / MatchStats (period-effect resolution sinks)
 using ProjectChimera.Core;     // EntityWorld, Fixed, Faction
 using ProjectChimera.Core.Sim; // ILogSink — the AR-4 injected diagnostic seam (DW-83 refused-install warning)
+using ProjectChimera.Core.Stats; // Story 15-24a — StatDelta / StatId (the sparse vector the store applies)
 
 namespace ProjectChimera.Effects
 {
@@ -247,7 +248,7 @@ namespace ProjectChimera.Effects
                         // recorded once at install and a stack never rewrites them, so a collapsing stack credits the
                         // same caster the instance's period pulses (RunEffectAgainst) already resolve with.
                         // Story 15-23: the stored ref is PACKED — resolve with the attribution rule (dead ok, recycle → −1).
-                        ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta, mod.ArmorDelta,
+                        ApplyStatDeltas(targetId, mod.StatDeltas, Fixed.One,
                                         isApply: true, ResolveCasterPayload(eslot), _casterFaction[eslot]); // each stack re-adds
                         // DW-325 re-entrancy: a stack that collapsed the ceiling to 0 killed the host → ClearEntity
                         // already wiped its slots (and zeroed StatusFlagsOf); don't refresh eslot's duration below on a
@@ -313,7 +314,7 @@ namespace ProjectChimera.Effects
             // DW-490: the instance's OWN recorded caster (just written above) is the attribution a ceiling-collapse
             // death inside ApplyStatDeltas credits — the same pair a period pulse from this slot resolves with.
             // Story 15-23: resolved back from the just-packed ref — byte-identical to the raw casterId here.
-            ApplyStatDeltas(targetId, mod.AttackDamageDelta, mod.MaxHealthDelta, mod.MoveSpeedDelta, mod.ArmorDelta,
+            ApplyStatDeltas(targetId, mod.StatDeltas, Fixed.One,
                             isApply: true, ResolveCasterPayload(slot), _casterFaction[slot]);
             return true;
         }
@@ -573,11 +574,9 @@ namespace ProjectChimera.Effects
                 // DW-490: read the slot's caster BEFORE the revert — CompactSlot (below) may overwrite this slot, and a
                 // collapse kill inside ApplyStatDeltas wipes the whole ring. Reverting a +MaxHealth grant to zero is
                 // still "this instance's stat change killed the host", so it credits this instance's caster.
-                ApplyStatDeltas(hostId, -(mod.AttackDamageDelta * stacks),
-                                        -(mod.MaxHealthDelta * stacks),
-                                        -(mod.MoveSpeedDelta * stacks),
-                                        -(mod.ArmorDelta * stacks), isApply: false,
-                                        ResolveCasterPayload(slot), _casterFaction[slot]); // Story 15-23: packed → attribution resolve
+                // Story 15-24a: revert = the whole vector × −stacks (integer-exact against the per-stack applies).
+                ApplyStatDeltas(hostId, mod.StatDeltas, -stacks, isApply: false,
+                                ResolveCasterPayload(slot), _casterFaction[slot]); // Story 15-23: packed → attribution resolve
                 // DW-325 re-entrancy: reverting a +MaxHealth contribution can drop the ceiling to 0 and kill the host →
                 // OnDestroy→ClearEntity already wiped its slots (and zeroed the union); bail before the compact touches
                 // dead slots (mirrors the existing post-expire-effect guard above).
@@ -851,11 +850,12 @@ namespace ProjectChimera.Effects
             // Rebuild the external stat-bonus accumulators for a Modifier instance (Persistent instances carry no stat
             // deltas). Marks the entity dirty; the next ModifierSystem.Tick recomputes Effective = Base + Σbonus,
             // reproducing the saved (directly-restored) Effective* — never touches Health (already restored).
+            // Story 15-24a: the whole sparse vector × stacks (percent lanes included — their accumulators ARE
+            // their state, so the post-load recompute reproduces the saved percent-adjusted Effective exactly).
             if (modifier != null)
             {
                 Fixed stacks = Fixed.FromInt(stackCount);
-                _system?.AccumulateBonus(hostId, modifier.AttackDamageDelta * stacks, modifier.MaxHealthDelta * stacks,
-                                         modifier.MoveSpeedDelta * stacks, modifier.ArmorDelta * stacks);
+                _system?.AccumulateDeltas(hostId, modifier.StatDeltas, stacks);
                 if ((uint)hostId < (uint)EntityWorld.MAX_ENTITIES) _world.StatusFlagsOf[hostId] |= modifier.Status;
             }
         }
@@ -873,19 +873,22 @@ namespace ProjectChimera.Effects
         // ────────────────────────────────────────────── Internals ───────────────────────────────────────────────
 
         /// <summary>
-        /// Apply signed stat deltas through the 2.2a <c>AccumulateBonus</c> seam, EAGERLY recompute the host's
-        /// effective stats (so <c>EffectiveMaxHealth</c> is fresh for the clamp and combat at index 4 reads the change
-        /// the same tick), then adjust current Health for a max-health change. <b>Decision #3 (Alec), refined in the
-        /// 2.2b code review: heal ONLY on a buff's APPLICATION.</b> When a <b>positive</b> <paramref name="maxHealthChange"/>
-        /// is <b>applied</b> (<paramref name="isApply"/> = true — a +MaxHealth buff installed/stacked) current Health
-        /// rises by the same amount: the buff doubles as a burst heal. Every <b>removal</b> (<paramref name="isApply"/>
-        /// = false — buff expiry / dispel) and every <b>debuff</b> (negative change) only ever clamps Health DOWN —
-        /// never heals. This kills the earlier symmetric-model exploit where a wearing-off −MaxHealth debuff net-healed
+        /// Story 15-24a — apply a CANONICAL sparse stat-delta vector × <paramref name="multiplier"/> through the
+        /// generalized <c>AccumulateDeltas</c> seam (apply/stack: <c>+One</c>; revert: <c>−Fixed.FromInt(stacks)</c>),
+        /// EAGERLY recompute the host's effective stats (so <c>EffectiveMaxHealth</c> is fresh for the clamp and combat
+        /// at index 4 reads the change the same tick), then adjust current Health when the vector touches the ceiling
+        /// (MaxHealth or MaxHealthPercent). <b>Decision #3 (Alec), refined in the 2.2b code review and generalized in
+        /// 15-24a: heal ONLY on a buff's APPLICATION, by the REALIZED ceiling change.</b> When an apply
+        /// (<paramref name="isApply"/> = true) RAISES the ceiling, current Health rises by exactly the ceiling gain:
+        /// the buff doubles as a burst heal (identical to the old flat-delta heal for every flat-only vector; the only
+        /// coherent reading for a percent grant). Every <b>removal</b> (<paramref name="isApply"/> = false — buff
+        /// expiry / dispel) and every <b>debuff</b> (ceiling-lowering change) only ever clamps Health DOWN — never
+        /// heals. This kills the earlier symmetric-model exploit where a wearing-off −MaxHealth debuff net-healed
         /// the host (an enemy debuff that grants HP); a debuff round-trip now restores the ceiling without restoring HP.
         /// Health is always re-clamped into <c>[0, EffectiveMaxHealth]</c> (no phantom HP, never a death-on-expiry).
         /// <para><b>DW-491 post-condition.</b> This method can DESTROY <paramref name="id"/> (the DW-325 ceiling-collapse
-        /// death) — but only on a genuine downward collapse: a NET-NEGATIVE <paramref name="maxHealthChange"/> that takes
-        /// the host's <c>EffectiveMaxHealth</c> from above zero to exactly zero. A positive grant, and any change on a host
+        /// death) — but only on a genuine downward collapse: a change that takes the host's <c>EffectiveMaxHealth</c>
+        /// from above zero to exactly zero. A grant that raises or keeps the ceiling, and any change on a host
         /// whose ceiling was ALREADY zero, are never lethal. Every caller must re-check <c>IsAlive</c> before its next
         /// slot/status write.</para>
         /// <para><b>DW-490 attribution.</b> <paramref name="casterId"/>/<paramref name="casterFaction"/> are the
@@ -895,7 +898,7 @@ namespace ProjectChimera.Effects
         /// scoring/hero XP instead of the hardcoded <see cref="Faction.Neutral"/> the DW-325 spec shipped. A store with
         /// no caster context (the external-recompute catch-all) still uses Neutral / attacker −1.</para>
         /// </summary>
-        private void ApplyStatDeltas(int id, Fixed attackChange, Fixed maxHealthChange, Fixed moveChange, Fixed armorChange,
+        private void ApplyStatDeltas(int id, StatDelta[] deltas, Fixed multiplier,
                                      bool isApply, int casterId, Faction casterFaction)
         {
             // DW-491: snapshot the PRIOR ceiling before the accumulate/recompute, so the collapse test below can be a
@@ -908,16 +911,36 @@ namespace ProjectChimera.Effects
             // ring is present; the residual window before that tick can only under-read the ceiling, i.e. fail SAFE.)
             Fixed ceilingBefore = _world.EffectiveMaxHealth[id];
 
-            _system?.AccumulateBonus(id, attackChange, maxHealthChange, moveChange, armorChange);
+            _system?.AccumulateDeltas(id, deltas, multiplier);
             _system?.RecomputeEntity(_world, id);
 
-            if (maxHealthChange.Raw != 0)
+            // Story 15-24a: the MaxHealth consumer block runs only when the vector can move the ceiling — the
+            // flat channel or its percent sibling. The per-stat "did this stat actually change" gate the four
+            // positional parameters used to provide, now derived from the vector's membership. Alongside it,
+            // note whether any ceiling entry's SIGNED contribution (delta × multiplier) is negative — the
+            // generalized form of DW-491's "the change is NET-NEGATIVE" conjunct (see the collapse gate below).
+            bool touchesCeiling = false;
+            bool hasLoweringTerm = false;
+            for (int i = 0; i < deltas.Length; i++)
             {
-                // Heal-up ONLY when a positive MaxHealth modifier is APPLIED. A removal or a debuff clamps down only.
-                // DW-28: saturate the heal (equivalent to += for all realistic values) so a large/stacked +MaxHealth
-                // heal can't wrap Health negative near Fixed.MaxValue → clamp to 0 → a live 0-HP zombie with a non-zero
-                // ceiling (the DW-325 kill never fires because EffectiveMaxHealth != 0). No golden moves.
-                if (isApply && maxHealthChange > Fixed.Zero) _world.Health[id] = Fixed.AddSaturating(_world.Health[id], maxHealthChange);
+                if (deltas[i].Stat != StatId.MaxHealth && deltas[i].Stat != StatId.MaxHealthPercent) continue;
+                touchesCeiling = true;
+                if ((deltas[i].Delta * multiplier).Raw < 0) { hasLoweringTerm = true; break; }
+            }
+
+            if (touchesCeiling)
+            {
+                // Heal-up ONLY when a ceiling-RAISING modifier is APPLIED; a removal or a debuff clamps down only.
+                // Story 15-24a generalization of Decision #3 (Alec): the heal is the REALIZED ceiling change
+                // (ceilingAfter − ceilingBefore) rather than the flat delta — identical for every flat-only apply
+                // (the eager recompute above moved the ceiling by exactly the flat delta, floors/saturation aside),
+                // and the only definition that is coherent once MaxHealthPercent exists (a +20% buff heals by the
+                // HP it actually granted this host). DW-28: saturate the heal (equivalent to += for all realistic
+                // values) so a large/stacked +MaxHealth heal can't wrap Health negative near Fixed.MaxValue →
+                // clamp to 0 → a live 0-HP zombie with a non-zero ceiling.
+                Fixed ceilingAfter = _world.EffectiveMaxHealth[id];
+                if (isApply && ceilingAfter > ceilingBefore)
+                    _world.Health[id] = Fixed.AddSaturating(_world.Health[id], ceilingAfter - ceilingBefore);
                 _world.Health[id] = Fixed.Clamp(_world.Health[id], Fixed.Zero, _world.EffectiveMaxHealth[id]);
 
                 // DW-325 (decision 2026-07-30 "Raise death on ceiling==0"): a net-negative-MaxHealth modifier that
@@ -947,17 +970,22 @@ namespace ProjectChimera.Effects
                 //     MaxHealth-touching modifier, because 0 → 0 satisfied the absolute test; and
                 //   • even a POSITIVE +MaxHealth grant on such a host was lethal (its ceiling can stay floored at 0 while
                 //     a net-negative bonus still dominates), so a heal killed its target.
-                // Three conjuncts now, all required: the change is NET-NEGATIVE (a buff/heal is never lethal — which also
-                // keeps the DW-488 accumulator-wrap outcome the benign 0-ceiling zombie it was before DW-325, instead of
-                // an outright kill), the ceiling WAS above zero, and it is zero NOW. Every real collapse (fresh install,
-                // collapsing stack, expiry-driven revert) still satisfies all three.
+                // Story 15-24a: three conjuncts still, with DW-491's "the change is NET-NEGATIVE" generalized to
+                // "the vector carries a ceiling-LOWERING term" (a MaxHealth/MaxHealthPercent entry whose SIGNED
+                // contribution delta × multiplier is negative — a raw delta's sign alone no longer decides the
+                // direction once reverts multiply by −stacks and percent siblings exist). The conjunct is NOT
+                // implied by the >0 → 0 transition: a pathological all-positive grant can WRAP the int
+                // accumulator negative (DW-488 gates it out of authorable content, but the store must stay
+                // sane), flooring the ceiling to 0 — and that outcome must remain the benign 0-ceiling zombie
+                // it was before DW-325, never an outright kill from a buff (pinned by
+                // ModifierCeilingCollapseTests.AccumulatorWrapFromAPositiveGrant_IsNotLethal).
                 //
-                // DW-620 — a FOURTH, implicit conjunct now lives inside the primitive: KillEntity refuses the death of
+                // DW-620 — the implicit final conjunct lives inside the primitive: KillEntity refuses the death of
                 // an Invulnerable host (decision 2026-08-05, "Invulnerable = death-immunity"). This call site is left
                 // deliberately unguarded so the flag check has exactly one home; the collapse still happens (ceiling 0,
                 // Health clamped to 0) and the host simply survives it as a death-immune 0-HP unit until the flag drops
                 // and a FRESH collapse (or any damage) kills it. Pinned by InvulnerableDeathImmunityTests.
-                if (_world.IsAlive(id) && maxHealthChange < Fixed.Zero
+                if (_world.IsAlive(id) && hasLoweringTerm
                     && ceilingBefore > Fixed.Zero && _world.EffectiveMaxHealth[id] == Fixed.Zero)
                     DamageResolver.KillEntity(_world, id, casterFaction, _events, _stats, _deaths, casterId);
             }

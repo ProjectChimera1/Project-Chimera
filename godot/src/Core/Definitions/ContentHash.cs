@@ -54,8 +54,13 @@ namespace ProjectChimera.Core.Definitions
         /// were ALREADY sim-read since 3.13 — a pre-existing handshake gap: peers with divergent hero curves
         /// agreed at the lobby and diverged at the first level-up), plus the new per-hero <c>attributes</c> block
         /// and the faction-level <c>attribute_model</c> (both sim-read via <c>HeroAttributeResolver</c>). Every
-        /// unit gains at least one presence-bit Mix, so the pin moves for ALL content.</para></summary>
-        public const int AlgoVersion = 2;
+        /// unit gains at least one presence-bit Mix, so the pin moves for ALL content.</para>
+        /// <para>v3 — Story 15-24a (the StatVocabulary pipeline): the unit fold gains <c>health_regen</c> (sim-read,
+        /// the regen_rate posture); the item fold and the research fold carry each definition's stat deltas as the
+        /// CANONICAL sparse vector (legacy four keys + the new <c>stat_deltas</c> lane, merged and folded per entry
+        /// as <c>(int)StatId</c> + raw — sorted ascending StatId, never a Dictionary walk). Every unit folds one
+        /// extra Mix, so the pin moves for ALL content.</para></summary>
+        public const int AlgoVersion = 3;
 
         /// <summary>
         /// The LOCAL per-domain content fingerprint (ruleset-caps, factions, abilities, items, damage-table). Each
@@ -249,6 +254,9 @@ namespace ProjectChimera.Core.Definitions
             // folded Energy pool), so a content-byte mismatch on it must reject at the handshake — folded exactly like
             // MaxEnergy. Default 0 folds a MixInt(0), so this moves the ContentHash pin (re-recorded in the same commit).
             h = CanonicalFold.MixInt(h, Fixed.FromFloat(u.RegenRate).Raw);
+            // Story 15-24a: health_regen is sim-affecting exactly like regen_rate (it drives HealthRegenSystem →
+            // the folded Health), so it folds the same way (AlgoVersion 2→3; the pin re-records in the same commit).
+            h = CanonicalFold.MixInt(h, Fixed.FromFloat(u.HealthRegen).Raw);
             // Story 15-21: the HERO block is sim-read (HeroXpSystem levels/grows from the curve since 3.13 — a
             // pre-existing handshake gap this story closes now that it also ADDS fields — and the new attributes
             // drive stats through HeroAttributeResolver), so it leaves the ContentFoldCompletenessTests allowlist
@@ -356,14 +364,20 @@ namespace ProjectChimera.Core.Definitions
             {
                 h = FoldCostMap(h, lvl.Cost);
                 h = CanonicalFold.MixInt(h, lvl.TimeTicks);
-                // modifier_delta: nullable — presence bit then the four quantized deltas.
+                // modifier_delta: nullable — presence bit then (Story 15-24a, AlgoVersion 2→3) the level's stat
+                // grant as the CANONICAL sparse vector (legacy four keys + the stat_deltas lane, quantized at
+                // this single fold boundary exactly like the four used to be): count then per-entry (int)StatId
+                // + raw, ascending StatId — never a Dictionary walk.
                 h = CanonicalFold.MixInt(h, lvl.ModifierDelta != null ? 1 : 0);
                 if (lvl.ModifierDelta != null)
                 {
-                    h = CanonicalFold.MixInt(h, Fixed.FromFloat(lvl.ModifierDelta.MaxHealthDelta).Raw);
-                    h = CanonicalFold.MixInt(h, Fixed.FromFloat(lvl.ModifierDelta.AttackDamageDelta).Raw);
-                    h = CanonicalFold.MixInt(h, Fixed.FromFloat(lvl.ModifierDelta.MoveSpeedDelta).Raw);
-                    h = CanonicalFold.MixInt(h, Fixed.FromFloat(lvl.ModifierDelta.ArmorDelta).Raw);
+                    var lvlDeltas = lvl.ModifierDelta.BuildStatDeltaVector();
+                    h = CanonicalFold.MixInt(h, lvlDeltas.Length);
+                    for (int d = 0; d < lvlDeltas.Length; d++)
+                    {
+                        h = CanonicalFold.MixInt(h, (int)lvlDeltas[d].Stat);
+                        h = CanonicalFold.MixInt(h, lvlDeltas[d].Delta.Raw);
+                    }
                 }
             }
             return h;
@@ -406,10 +420,17 @@ namespace ProjectChimera.Core.Definitions
             {
                 h = CanonicalFold.MixStr(h, it.Id);
                 h = CanonicalFold.MixInt(h, it.Charges);
-                h = CanonicalFold.MixInt(h, it.MaxHealthDelta.Raw);
-                h = CanonicalFold.MixInt(h, it.AttackDamageDelta.Raw);
-                h = CanonicalFold.MixInt(h, it.MoveSpeedDelta.Raw);
-                h = CanonicalFold.MixInt(h, it.ArmorDelta.Raw);
+                // Story 15-24a (AlgoVersion 2→3): the item's stat grant folds as the CANONICAL sparse vector
+                // (legacy four keys + the stat_deltas lane, merged/sorted/zero-dropped by the SAME builder the
+                // mint and validator probe use) — count then per-entry (int)StatId + raw, ascending StatId,
+                // never a Dictionary walk.
+                var itemDeltas = it.BuildStatDeltaVector();
+                h = CanonicalFold.MixInt(h, itemDeltas.Length);
+                for (int d = 0; d < itemDeltas.Length; d++)
+                {
+                    h = CanonicalFold.MixInt(h, (int)itemDeltas[d].Stat);
+                    h = CanonicalFold.MixInt(h, itemDeltas[d].Delta.Raw);
+                }
                 h = CanonicalFold.MixEffect(h, it.EffectGraph); // shared effect walk
                 h = CanonicalFold.MixInt(h, it.CostOre.Raw);
                 h = CanonicalFold.MixInt(h, it.CostCrystal.Raw);

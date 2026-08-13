@@ -66,9 +66,18 @@ namespace ProjectChimera.Sim.Tests.Validation
 
         private static readonly string[] ModifierFoldedFields =
         {
-            "Id", "DurationTicks", "Stacking", "MaxStacks", "MaxHealthDelta", "AttackDamageDelta",
-            "MoveSpeedDelta", "ArmorDelta", "Status", "PeriodEffect", "PeriodTicks",
+            "Id", "DurationTicks", "Stacking", "MaxStacks",
+            "StatDeltas", // Story 15-24a: THE folded stat state — the canonical sparse vector (MixModifier: count + per-entry (int)Stat + Delta.Raw; CanonicalModelHash AlgoVersion 16→17)
+            "Status", "PeriodEffect", "PeriodTicks",
             "PeriodicStacking", // DW-272 / Story 15.12 (folded by name in MixModifier; CanonicalModelHash AlgoVersion 14→15)
+        };
+
+        // Story 15-24a — the four legacy channel names survive as DERIVED readonly projections of StatDeltas
+        // (assigned once in the ctor; ~60 files of compat reads). Folding them would double-count the vector's
+        // entries, so they are conscious EXCLUSIONS: no state hides behind them by construction.
+        private static readonly string[] ModifierExcludedDerivedFields =
+        {
+            "MaxHealthDelta", "AttackDamageDelta", "MoveSpeedDelta", "ArmorDelta",
         };
 
         private static Type[] ConcreteNodes() =>
@@ -129,7 +138,7 @@ namespace ProjectChimera.Sim.Tests.Validation
         {
             Assert.True(typeof(Modifier).IsSealed,
                 "Modifier must stay sealed — MixModifier folds the concrete Modifier only; a subtype would escape it.");
-            AssertFieldsClassified(typeof(Modifier), ModifierFoldedFields, Array.Empty<string>());
+            AssertFieldsClassified(typeof(Modifier), ModifierFoldedFields, ModifierExcludedDerivedFields);
         }
 
         private static void AssertFieldsClassified(Type t, string[] folded, string[] excluded)

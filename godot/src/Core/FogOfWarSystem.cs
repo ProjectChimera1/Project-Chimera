@@ -116,7 +116,7 @@ namespace ProjectChimera.Core
                 // VisionRange INSIDE EffectiveVisionRange, BEFORE this single .ToFloat() boundary — so the StampCircle
                 // float math below is the unchanged, verified-not-rewritten path. Toggle OFF ⇒ this equals
                 // VisionRange[id] exactly, so the stamped Grid is byte-for-byte identical to pre-feature.
-                float radius = world.EffectiveVisionRange(id).ToFloat();
+                float radius = world.VisionWithElevation(id).ToFloat();
 
                 StampCircle(wx, wz, radius);
             }

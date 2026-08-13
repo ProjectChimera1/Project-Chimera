@@ -190,8 +190,17 @@ namespace ProjectChimera.Core.Definitions
         /// <see cref="ScenarioData.ResolveBuildingMinGap"/> — the same resolver ScenarioApplier pushes onto
         /// <c>BuildingSystem.MinBuildingGap</c>): it is sim-affecting (it gates worker-placement order acceptance),
         /// so a lobby mismatch must reject at the handshake instead of desyncing on the first contested placement.
-        /// The Supply-class fix: an omitted field and an explicitly-authored default fold IDENTICALLY.</para></summary>
-        public const int AlgoVersion = 16;
+        /// The Supply-class fix: an omitted field and an explicitly-authored default fold IDENTICALLY.</para>
+        ///
+        /// <para>17 (Story 15-24a): <see cref="CanonicalFold.MixModifier"/> folds the modifier's stat contributions
+        /// as the CANONICAL sparse vector (length prefix, then per entry <c>(int)StatId</c> + <c>Delta.Raw</c> in
+        /// ascending-StatId order) instead of the four hand-named delta folds — the StatVocabulary registry's fold
+        /// shape, which extends to every future stat with NO further layout change (a new stat only folds when a
+        /// modifier actually authors it — append-safe). Any content authoring an apply_modifier folds differently
+        /// (the intended pre/post-15-24a handshake reject); the mirrored v15 note applies: the shared fold also moves
+        /// <c>ContentHash</c> for such content. Only the <c>hero-start-state</c> golden re-records.
+        /// <c>StartStateHash.AlgoVersion</c> stays 2.</para></summary>
+        public const int AlgoVersion = 17;
 
         private const ulong Offset = 14695981039346656037UL; // FNV-64 offset basis
         private const ulong Prime  = 1099511628211UL;        // FNV-64 prime

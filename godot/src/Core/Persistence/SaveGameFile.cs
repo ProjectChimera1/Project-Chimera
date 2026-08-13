@@ -83,8 +83,20 @@ namespace ProjectChimera.Core.Persistence
         /// the header. The lane is unfolded (it is NOT in SimChecksum), so this bump moves no golden — it exists
         /// because the lane pairs with the FOLDED node-side <c>AssignedGatherers</c> counter, and restoring one half
         /// without the other let a saved yielder gather past a node's capacity with no reservation at all. Same
-        /// reasoning as v7/v8.</para></summary>
-        public const ushort FormatVersion = 9;
+        /// reasoning as v7/v8.</para>
+        ///
+        /// <para>v10 (Story 15-24a, 2026-08-12 — the StatVocabulary pipeline): the entity section gained SIX lanes
+        /// (<c>EffAttackSpeedFactor</c>, <c>EffCooldownReduction</c>, <c>BaseHealthRegen</c>, <c>EffHealthRegen</c>,
+        /// <c>VisionBonusFlat</c>, <c>VisionBonusPct</c> — the new stats' identity-default modifier-term channels +
+        /// health regen's authored base), appended after
+        /// <c>GatherWalkStall</c> at the tail of the per-entity half of the <c>SaveGameState.EA</c> lane enum (still
+        /// before <c>PatrolWpX</c>); the HERO section's <c>AttrStatBase</c>/<c>AttrStatPerLevel</c> rings re-stride
+        /// from 6 to <c>StatVocabulary.Count</c> (the registry supersedes the closed 6-stat AttributeStats list); and
+        /// the research section's cumulative lanes generalize per-stat. A v9 body would misalign every lane from the
+        /// new entries onward; the bump fail-closes a pre-15-24a save at the header — which the SAME story's
+        /// SimChecksum 25→26 / CanonicalModelHash 16→17 / ContentHash 2→3 pins would reject anyway (DW-874: one
+        /// constant, fail-closed, no migrate).</para></summary>
+        public const ushort FormatVersion = 10;
 
         /// <summary>Max player slots in a persisted launch record — a fail-closed corruption bound on the slot count.</summary>
         public const int MaxSlots = 64;

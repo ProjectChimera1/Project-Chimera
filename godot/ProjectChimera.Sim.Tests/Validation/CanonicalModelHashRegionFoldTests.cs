@@ -29,7 +29,7 @@ namespace ProjectChimera.Sim.Tests.Validation
             // re-land merge → 10 (custom-events registry + graph node kinds). StartStateHash's fold structure
             // is unchanged — its VALUE moves via the canonical seed, so its AlgoVersion stays 2 (the v5/v6/v7
             // precedent).
-            Assert.Equal(16, CanonicalModelHash.AlgoVersion);
+            Assert.Equal(17, CanonicalModelHash.AlgoVersion);
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
 

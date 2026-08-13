@@ -132,6 +132,24 @@ namespace ProjectChimera.Core
         }
 
         /// <summary>
+        /// Story 15-24a saturating multiply — <see cref="AddSaturating"/>'s twin for the generalized
+        /// recompute's percent stage (<c>value × (1 + Σ%)</c>): the 64-bit product is computed and shifted
+        /// EXACTLY like <c>operator *</c> (truncating arithmetic shift — so <c>× One</c> is bit-exact, the
+        /// legacy-parity invariant), then clamped to <c>[int.MinValue, int.MaxValue]</c> before narrowing,
+        /// where the unchecked <c>operator *</c> cast would wrap. A saturated flat sum times a large percent
+        /// multiplier therefore pegs at <see cref="MaxValue"/> instead of wrapping negative and collapsing
+        /// to the recompute's zero-floor (the DW-28 class, at the multiply). Integer-only, deterministic.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static Fixed MulSaturating(Fixed a, Fixed b)
+        {
+            long product = ((long)a.Raw * b.Raw) >> FRACTIONAL_BITS;
+            if (product > int.MaxValue) product = int.MaxValue;
+            else if (product < int.MinValue) product = int.MinValue;
+            return new Fixed((int)product);
+        }
+
+        /// <summary>
         /// Integer square root via Newton's method in fixed-point.
         /// </summary>
         public static Fixed Sqrt(Fixed a)

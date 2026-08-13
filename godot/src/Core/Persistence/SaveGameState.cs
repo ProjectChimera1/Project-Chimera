@@ -192,9 +192,15 @@ namespace ProjectChimera.Core.Persistence
             // node-side AssignedGatherers counter (captured in NA), so dropping it desynchronised the two halves of
             // one reservation: a save taken while a worker held SLOT_YIELDED restored it as 0, which is the value that
             // MEANS "holds a slot", and its arrival then skipped BOTH the capacity check and the matching increment.
-            // Last of the per-entity lanes — a new lane must stay BEFORE PatrolWpX, which is where the flat-stride
-            // half begins for Validate's length checks.
             GatherWalkStall,
+            // Story 15-24a (save format v10): the six stat-pipeline lanes — the modifier-term channels
+            // (attack-speed factor / cooldown reduction / vision flat+pct) plus health regen's Base/Effective
+            // pair. Recompute-owned values restore with the legacy-four posture (saved raw, clamped
+            // per-consumer, reproduced exactly by the first post-load recompute for any modifier-carrying
+            // entity); BaseHealthRegen restores raw (authored lane, the BaseArmor posture). APPENDED, still
+            // BEFORE PatrolWpX where the flat-stride half begins for Validate's length checks — all six are
+            // plain per-entity lanes of length EntHwm.
+            EffAttackSpeedFactor, EffCooldownReduction, BaseHealthRegen, EffHealthRegen, VisionBonusFlat, VisionBonusPct,
             // flat (stride) arrays — length EntHwm * stride
             PatrolWpX, PatrolWpY, PatrolWpZ, OrderQCmd, OrderQTargetX, OrderQTargetZ, AbilityId, AbilityCd,
             COUNT
@@ -339,6 +345,9 @@ namespace ProjectChimera.Core.Persistence
             var gen = A(EA.Generation, n); // DW-581 — per-slot recycle generation (the ABA half of a packed entity ref)
             var rmp = A(EA.RallyMovePending, n); // DW-690 — the outstanding rally first leg (bool → 0/1, the HasRally precedent)
             var gws = A(EA.GatherWalkStall, n); // DW-804 — the DW-532 stall streak / SLOT_YIELDED sentinel
+            var asf = A(EA.EffAttackSpeedFactor, n); var ecd = A(EA.EffCooldownReduction, n); // Story 15-24a (v10)
+            var bhr = A(EA.BaseHealthRegen, n); var ehr = A(EA.EffHealthRegen, n); // Story 15-24a (v10)
+            var vbf = A(EA.VisionBonusFlat, n); var vbp = A(EA.VisionBonusPct, n); // Story 15-24a (v10)
             EntDefId = new string[n];
 
             for (int i = 0; i < n; i++)
@@ -367,6 +376,9 @@ namespace ProjectChimera.Core.Persistence
                 gen[i] = w.Generation[i]; // DW-581
                 rmp[i] = w.RallyMovePending[i] ? 1 : 0; // DW-690
                 gws[i] = w.GatherWalkStallTicks[i]; // DW-804
+                asf[i] = w.EffectiveAttackSpeedFactor[i].Raw; ecd[i] = w.EffectiveCooldownReduction[i].Raw; // Story 15-24a
+                bhr[i] = w.BaseHealthRegen[i].Raw; ehr[i] = w.EffectiveHealthRegen[i].Raw; // Story 15-24a
+                vbf[i] = w.VisionBonusFlat[i].Raw; vbp[i] = w.VisionBonusPct[i].Raw; // Story 15-24a
                 EntDefId[i] = w.SourceDefinition[i]?.Id ?? "";
             }
 
@@ -729,6 +741,9 @@ namespace ProjectChimera.Core.Persistence
             var gen = G(EA.Generation); // DW-581
             var rmp = G(EA.RallyMovePending); // DW-690
             var gws = G(EA.GatherWalkStall); // DW-804
+            var asf = G(EA.EffAttackSpeedFactor); var ecd = G(EA.EffCooldownReduction); // Story 15-24a (v10)
+            var bhr = G(EA.BaseHealthRegen); var ehr = G(EA.EffHealthRegen); // Story 15-24a (v10)
+            var vbf = G(EA.VisionBonusFlat); var vbp = G(EA.VisionBonusPct); // Story 15-24a (v10)
 
             for (int i = 0; i < n; i++)
             {
@@ -805,6 +820,28 @@ namespace ProjectChimera.Core.Persistence
                 // here: it is the value that means "this worker HOLDS one of its node's AssignedGatherers slots", so
                 // dropping the lane turned a saved yielder into a claimed holder and let it gather off the books.
                 w.GatherWalkStallTicks[i] = gws[i];
+                // Story 15-24a (v10) — the stat-pipeline lanes, each with its own DW-692-style consumer reasoning:
+                //  • EffAttackSpeedFactor re-clamps into the recompute's own bounds (1 + the registry attack_speed
+                //    Σ clamp, i.e. [0.1, 10]) — the ONE lane where a corrupt raw is actively dangerous both ways:
+                //    a factor ≤ 0 sign-flips/zeroes AttackIntervalOf's division (machine-gun / negative interval),
+                //    a huge one pins every attacker at the one-tick floor. In-bounds saves restore bit-exact.
+                //  • EffCooldownReduction restores RAW — negatives are a VALID authored state (cooldown-increase
+                //    debuffs), and the value was written already-clamped by the recompute; the arming site's math
+                //    tolerates the whole representable range.
+                //  • BaseHealthRegen restores raw (authored lane, the Base* rule: validator-bounded at load,
+                //    flooring here would only mask a corrupt blob at a different field).
+                //  • EffHealthRegen floors at 0 — HealthRegenSystem clamp-ADDS it to the folded Health; a negative
+                //    would drain HP through a lane no kill path audits (degeneration is the DoT graph's job).
+                //  • VisionBonusFlat/Pct restore raw — presentation-only fog inputs whose consumer
+                //    (VisionWithElevation) already floors its merged output at 0.
+                w.EffectiveAttackSpeedFactor[i] = Fixed.Clamp(Fixed.FromRaw(asf[i]),
+                    Fixed.One + Fixed.FromRaw(ProjectChimera.Core.Stats.StatVocabulary.AttackSpeedSumMinRaw),
+                    Fixed.One + Fixed.FromRaw(ProjectChimera.Core.Stats.StatVocabulary.AttackSpeedSumMaxRaw));
+                w.EffectiveCooldownReduction[i] = Fixed.FromRaw(ecd[i]);
+                w.BaseHealthRegen[i]            = Fixed.FromRaw(bhr[i]);
+                w.EffectiveHealthRegen[i]       = Fixed.Max(Fixed.Zero, Fixed.FromRaw(ehr[i]));
+                w.VisionBonusFlat[i]            = Fixed.FromRaw(vbf[i]);
+                w.VisionBonusPct[i]             = Fixed.FromRaw(vbp[i]);
 
                 // Reference-typed SoA: re-resolve the def by id + faction and set the two ref fields directly (NOT via
                 // ApplyUnitDefinition, which would clobber the just-restored numeric SoA and re-fire the self-passive

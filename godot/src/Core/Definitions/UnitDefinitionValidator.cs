@@ -291,6 +291,10 @@ namespace ProjectChimera.Core.Definitions
             // siblings. (regen_rate > 0 with max_energy == 0 stays VALID — an inert-but-harmless intermediate
             // authoring state, not an error.)
             CheckStat(errors, kind, id, "regen_rate", def.RegenRate);
+            // Story 15-24a: health_regen takes the identical DW-889 rule — [0, Range), per-TICK units. A
+            // negative authored value would be a silent unaudited HP drain (degeneration is the DoT graph's
+            // job, routed through DamageResolver's kill semantics), so it fails closed exactly like regen_rate.
+            CheckStat(errors, kind, id, "health_regen", def.HealthRegen);
             CheckStat(errors, kind, id, "vision_range", def.VisionRange);
 
             // ── train_time (DW-481) — ONE rule, chosen by whether this def can ever sit in a production queue.

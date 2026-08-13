@@ -456,7 +456,7 @@ namespace ProjectChimera.Sim.Tests.Persistence
         public void SaveLoad_LeavesHashAlgoVersionsUnchanged()
         {
             Assert.Equal(25, SimChecksum.AlgoVersion);
-            Assert.Equal(16, CanonicalModelHash.AlgoVersion);
+            Assert.Equal(17, CanonicalModelHash.AlgoVersion);
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }
 

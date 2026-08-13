@@ -481,7 +481,15 @@ namespace ProjectChimera.Effects
             }
 
             // Start the cooldown (integer remaining-ticks; Decision #4). Next tick's (a) begins counting it down.
-            world.AbilityCooldownTicks[abBase + slot] = SecondsToTicks(ab.Cooldown);
+            // Story 15-24a: scale the authored cooldown by the caster's cooldown_reduction stat BEFORE the
+            // tick conversion — armed = SecondsToTicks(cooldown × (1 − CDR)). EffectiveCooldownReduction is the
+            // recompute's clamped Σ ([−4, +0.8] from the registry: at the 0.8 cap a cooldown still arms at 20%
+            // of authored; negative = cooldown-increase debuffs, bounded 5×). Zero (every entity with no CDR
+            // modifier) short-circuits to the authored value — byte-identical arming, no golden can move. All
+            // Fixed math; the existing SecondsToTicks truncation stays the single seconds→ticks boundary.
+            Fixed cdr = world.EffectiveCooldownReduction[id];
+            Fixed cooldownSeconds = cdr.Raw == 0 ? ab.Cooldown : ab.Cooldown * (Fixed.One - cdr);
+            world.AbilityCooldownTicks[abBase + slot] = SecondsToTicks(cooldownSeconds);
 
             // Story 2.7 (SD-3): the cast fired → push a presentation-only AbilityCast feedback event carrying the
             // ability's profile (the Story 2.10 "cast plays its CombatFeedbackProfile" / "no new engine code"

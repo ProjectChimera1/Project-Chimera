@@ -491,18 +491,18 @@ namespace ProjectChimera.Combat
                                                  ItemDefinition? def, int entityId, int itemRef)
         {
             if (def is null || !def.HasStatModifier) return true; // nothing to apply → claim succeeds
+            // Story 15-24a: the carried modifier is minted from the item's CANONICAL sparse vector (legacy four
+            // keys + the stat_deltas lane, one merged shape) — the same builder the validator probe and the
+            // content fold consume, so the three can never drift.
             var mod = new Modifier(
                 ItemModifierId(itemRef),
                 durationTicks: -1,               // permanent while carried (removed by RemoveByModifierId on drop)
                 StackRule.Ignore,                // unique per-item id → never re-stacks; Ignore is a safe re-apply guard
                 maxStacks: 1,
-                maxHealthDelta:    def.MaxHealthDelta,
-                attackDamageDelta: def.AttackDamageDelta,
-                moveSpeedDelta:    def.MoveSpeedDelta,
+                def.BuildStatDeltaVector(),
                 status: StatusFlags.None,
                 periodEffect: null,
-                periodTicks: 0,
-                armorDelta:        def.ArmorDelta);
+                periodTicks: 0);
             return modifiers.Apply(entityId, mod, entityId, world.FactionOf[entityId]);
         }
 

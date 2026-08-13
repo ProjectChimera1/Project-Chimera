@@ -1,6 +1,8 @@
 #nullable enable
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
-using ProjectChimera.Effects; // EffectNode (the consumable effect-graph root)
+using ProjectChimera.Core.Stats;  // Story 15-24a — StatDelta / StatVocabulary (the sparse authoring lane)
+using ProjectChimera.Effects;     // EffectNode (the consumable effect-graph root)
 
 namespace ProjectChimera.Core.Definitions
 {
@@ -56,6 +58,55 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("armor_delta")]
         public Fixed ArmorDelta { get; set; } = Fixed.Zero;
 
+        /// <summary>
+        /// Story 15-24a — the SPARSE authoring lane for every non-legacy stat the carried modifier grants:
+        /// <c>"stat_deltas": { "attack_speed": 0.15, "health_regen": 0.5 }</c>. Keys are registry
+        /// <c>JsonName</c>s (validator fail-closes unknown names, duplicates of a legacy key, and
+        /// non-modifier-authorable stats); values quantize at parse via <c>FixedJsonConverter</c>. The four
+        /// legacy keys above stay the canonical spelling for their stats (authoring both lanes for one stat
+        /// is a validation error). Null/empty = no extra stats — pre-15-24a JSON is untouched, and
+        /// <c>ItemWriter</c>'s omit-default discipline keeps round-trips byte-stable.
+        /// </summary>
+        [JsonPropertyName("stat_deltas")]
+        public Dictionary<string, Fixed>? StatDeltas { get; set; }
+
+        /// <summary>
+        /// Story 15-24a — the CANONICAL sparse vector of everything this item grants (legacy four + the
+        /// <see cref="StatDeltas"/> lane, merged/sorted/zero-dropped). The single shape <c>ItemSystem</c>'s
+        /// mint, <c>ItemDefinitionValidator.CarriedModifier</c>'s probe, and <c>ContentHash.FoldItems</c> all
+        /// consume — so the three can never disagree about what the item does. Allocates; call at load/mint
+        /// boundaries, never per tick (mint caches nothing today: pickup/drop frequency is human-scale).
+        /// </summary>
+        public StatDelta[] BuildStatDeltaVector()
+        {
+            var scratch = new List<StatDelta>(4 + (StatDeltas?.Count ?? 0))
+            {
+                new StatDelta(StatId.MaxHealth, MaxHealthDelta),
+                new StatDelta(StatId.AttackDamage, AttackDamageDelta),
+                new StatDelta(StatId.Armor, ArmorDelta),
+                new StatDelta(StatId.MoveSpeed, MoveSpeedDelta),
+            };
+            AppendNamedDeltas(scratch, StatDeltas);
+            return StatVocabulary.Canonicalize(scratch);
+        }
+
+        /// <summary>
+        /// Story 15-24a shared helper — append a <c>stat_deltas</c> authoring dictionary onto a scratch
+        /// vector IN SORTED ORDINAL KEY ORDER (deterministic whatever the dictionary's insertion order; the
+        /// FoldAttrValues rule — a Dictionary walk is never a hash/behavior input). Unknown names are
+        /// SKIPPED here — the validator is the fail-closed gate; this helper must stay total so a validator
+        /// can build the vector to inspect it.
+        /// </summary>
+        internal static void AppendNamedDeltas(List<StatDelta> scratch, Dictionary<string, Fixed>? named)
+        {
+            if (named == null || named.Count == 0) return;
+            var keys = new List<string>(named.Keys);
+            keys.Sort(System.StringComparer.Ordinal);
+            foreach (string key in keys)
+                if (StatVocabulary.TryByJsonName(key, out var def))
+                    scratch.Add(new StatDelta(def.Id, named[key]));
+        }
+
         /// <summary>Optional consumable effect-graph root (the <c>"effect"</c> payload), deserialized by the existing
         /// <c>EffectNodeJsonConverter</c> into the runtime 2.1 <see cref="EffectNode"/> types. Null for a pure stat item.
         /// A charged consumable requires it (the validator rejects <c>charges &gt; 0</c> with no effect).</summary>
@@ -71,9 +122,11 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("cost_crystal")]
         public Fixed CostCrystal { get; set; } = Fixed.Zero;
 
-        /// <summary>True when any of the four stat deltas is non-zero — i.e. carrying this item grants a modifier.</summary>
+        /// <summary>True when any authored stat delta is non-zero (legacy four OR the 15-24a sparse lane) —
+        /// i.e. carrying this item grants a modifier. Defined AS the canonical vector's non-emptiness so this
+        /// predicate and the mint can never partition differently (the CumulativeCarriesPayload lesson);
+        /// allocates a scratch list, so it stays off the per-tick path (pickup/buy/drop are human-scale).</summary>
         [JsonIgnore]
-        public bool HasStatModifier =>
-            MaxHealthDelta.Raw != 0 || AttackDamageDelta.Raw != 0 || MoveSpeedDelta.Raw != 0 || ArmorDelta.Raw != 0;
+        public bool HasStatModifier => BuildStatDeltaVector().Length != 0;
     }
 }

@@ -93,7 +93,7 @@ namespace ProjectChimera.Sim.Tests.Definitions
         [Fact]
         public void AlgoVersions_Unchanged()
         {
-            Assert.Equal(16, CanonicalModelHash.AlgoVersion); // bump history: CanonicalModelHash.AlgoVersion's XML doc
+            Assert.Equal(17, CanonicalModelHash.AlgoVersion); // bump history: CanonicalModelHash.AlgoVersion's XML doc
             Assert.Equal(25, SimChecksum.AlgoVersion);
             Assert.Equal(2, StartStateHash.AlgoVersion);
         }

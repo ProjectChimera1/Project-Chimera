@@ -329,6 +329,19 @@ namespace ProjectChimera.Core.Definitions
         public float RegenRate { get; set; } = 0f;
 
         /// <summary>
+        /// Story 15-24a — flat HEALTH regen per SIM TICK for this unit type (the <see cref="RegenRate"/>
+        /// convention exactly: authored float, quantized once in <c>EntityWorld.ApplyUnitDefinition</c> into
+        /// <c>BaseHealthRegen</c>; at 30 ticks/sec a value of 2 restores 60 HP per second). 0 (the default) =
+        /// no innate regen — byte-for-byte the pre-15-24a behavior, so no shipped unit changes meaning and no
+        /// golden moves. Consumed by <c>HealthRegenSystem</c> through the effective channel
+        /// (<c>EffectiveHealthRegen</c> = base + health_regen modifier deltas, floored at 0). Negative
+        /// authored values are rejected by the validator (the DW-889 regen_rate precedent — degeneration is
+        /// the DoT graph's job, never a regen stat).
+        /// </summary>
+        [JsonPropertyName("health_regen")]
+        public float HealthRegen { get; set; } = 0f;
+
+        /// <summary>
         /// Optional per-unit combat-feedback override (Story 2.7, FR-12a). Presentation-domain — EXCLUDED from
         /// <see cref="ProjectChimera.Core.SimChecksum"/> and the canonical hash; the sim only carries the reference
         /// (copied to <c>EntityWorld.FeedbackProfile</c> in <see cref="ProjectChimera.Core.EntityWorld.ApplyUnitDefinition"/>),

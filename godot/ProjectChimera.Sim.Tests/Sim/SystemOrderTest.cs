@@ -13,7 +13,9 @@ using Xunit;
 namespace ProjectChimera.Sim.Tests.Sim
 {
     /// <summary>
-    /// Pins the canonical 19-system tick order that <see cref="SimulationHost"/> owns (Story 1.8a / AR-6;
+    /// Pins the canonical 20-system tick order that <see cref="SimulationHost"/> owns (Story 1.8a / AR-6;
+    /// Story 15-24a inserted <see cref="HealthRegenSystem"/> at index 7, immediately after its energy twin,
+    /// shifting every system after it down by one;
     /// DW-265 / Story 15.12 inserted <see cref="EnergyRegenSystem"/> at index 5, immediately before
     /// <see cref="AbilityCastSystem"/>, shifting every system after it down by one;
     /// DW-766 appended <see cref="DeathFeedDrainSystem"/> at index 16, past the LAST <c>DeathFeed</c> producer;
@@ -34,8 +36,9 @@ namespace ProjectChimera.Sim.Tests.Sim
     {
         /// <summary>
         /// The canonical order, by runtime type. <see cref="ResearchSystem"/> occupies index 1 (Story 4.9), immediately
-        /// after <see cref="BuildingSystem"/>. <see cref="EnergyRegenSystem"/> occupies index 5 (DW-265 / Story 15.12),
-        /// <see cref="AbilityCastSystem"/> index 6 (Story 2.4a / FR-11) and <see cref="ModifierSystem"/> index 7 (Story
+        /// after <see cref="BuildingSystem"/>. <see cref="EnergyRegenSystem"/> occupies index 6 (DW-265 / Story 15.12)
+        /// with <see cref="HealthRegenSystem"/> its neighbor at index 7 (Story 15-24a — the two regens tick together);
+        /// <see cref="AbilityCastSystem"/> index 8 (Story 2.4a / FR-11) and <see cref="ModifierSystem"/> index 9 (Story
         /// 2.2a / AR-9), both immediately before <see cref="CombatSystem"/>, so a cast's buff is recomputed and combat
         /// reads the recomputed Effective* stats the same tick.
         /// </summary>
@@ -47,19 +50,20 @@ namespace ProjectChimera.Sim.Tests.Sim
             typeof(FlowFieldSteeringSystem), // [3] ← DW-916 per-TICK flow-field path following, immediately before Movement
             typeof(MovementSystem),    // [4]
             typeof(OrderQueueSystem),  // [5]  ← Story 2.12 shift-queue advance (FR-74), after Movement / before EnergyRegen
-            typeof(EnergyRegenSystem), // [6]  ← DW-265 / Story 15.12 energy regen, immediately before AbilityCastSystem
-            typeof(AbilityCastSystem), // [7]  ← Story 2.4a ability-cast spine (FR-11), immediately before ModifierSystem
-            typeof(ModifierSystem),    // [8]  ← AR-9 effective-stat recompute (Story 2.2a), immediately before Combat
-            typeof(CombatSystem),      // [9]
-            typeof(ProjectileSystem),  // [10]
-            typeof(HeroXpSystem),      // [11] ← Story 3.13 hero XP runtime, immediately after ProjectileSystem
-            typeof(ItemSystem),        // [12] ← Story 3.15 item / inventory, after the combat/projectile/hero-XP cluster
-            typeof(SupplySystem),      // [13]
-            typeof(FogOfWarSystem),    // [14]
-            typeof(AiOpponentSystem),  // [15]
-            typeof(WinConditionSystem),// [16] ← Story 7.11 win-condition evaluator, after AI / before ScenarioDirector
-            typeof(ScenarioDirector),  // [17]  the LAST DeathFeed producer (run_effect graphs kill through its EffectContext)
-            typeof(DeathFeedDrainSystem), // [18] ← DW-766 end-of-tick DeathFeed drain — runs LAST, past every producer
+            typeof(EnergyRegenSystem), // [6]  ← DW-265 / Story 15.12 energy regen
+            typeof(HealthRegenSystem), // [7]  ← Story 15-24a health regen (never lethal — clamp-add only), beside its energy twin
+            typeof(AbilityCastSystem), // [8]  ← Story 2.4a ability-cast spine (FR-11), immediately before ModifierSystem
+            typeof(ModifierSystem),    // [9]  ← AR-9 effective-stat recompute (Story 2.2a), immediately before Combat
+            typeof(CombatSystem),      // [10]
+            typeof(ProjectileSystem),  // [11]
+            typeof(HeroXpSystem),      // [12] ← Story 3.13 hero XP runtime, immediately after ProjectileSystem
+            typeof(ItemSystem),        // [13] ← Story 3.15 item / inventory, after the combat/projectile/hero-XP cluster
+            typeof(SupplySystem),      // [14]
+            typeof(FogOfWarSystem),    // [15]
+            typeof(AiOpponentSystem),  // [16]
+            typeof(WinConditionSystem),// [17] ← Story 7.11 win-condition evaluator, after AI / before ScenarioDirector
+            typeof(ScenarioDirector),  // [18]  the LAST DeathFeed producer (run_effect graphs kill through its EffectContext)
+            typeof(DeathFeedDrainSystem), // [19] ← DW-766 end-of-tick DeathFeed drain — runs LAST, past every producer
         };
 
         /// <summary>
@@ -73,7 +77,7 @@ namespace ProjectChimera.Sim.Tests.Sim
             new FactionDefinition());
 
         [Fact]
-        public void Systems_AreTheNineteenCanonicalSystems_InExactOrder()
+        public void Systems_AreTheTwentyCanonicalSystems_InExactOrder()
         {
             IReadOnlyList<ISimSystem> systems = BuildHost().Systems;
 
@@ -116,11 +120,12 @@ namespace ProjectChimera.Sim.Tests.Sim
         {
             IReadOnlyList<ISimSystem> systems = BuildHost().Systems;
 
-            int orderQueueIdx = -1, energyRegenIdx = -1, abilityIdx = -1, modifierIdx = -1, combatIdx = -1, movementIdx = -1, projectileIdx = -1;
+            int orderQueueIdx = -1, energyRegenIdx = -1, healthRegenIdx = -1, abilityIdx = -1, modifierIdx = -1, combatIdx = -1, movementIdx = -1, projectileIdx = -1;
             for (int i = 0; i < systems.Count; i++)
             {
                 if (systems[i] is OrderQueueSystem)   orderQueueIdx = i;
                 if (systems[i] is EnergyRegenSystem)  energyRegenIdx = i;
+                if (systems[i] is HealthRegenSystem)  healthRegenIdx = i;
                 if (systems[i] is AbilityCastSystem)  abilityIdx    = i;
                 if (systems[i] is ModifierSystem)     modifierIdx   = i;
                 if (systems[i] is CombatSystem)       combatIdx     = i;
@@ -133,13 +138,15 @@ namespace ProjectChimera.Sim.Tests.Sim
             Assert.True(abilityIdx >= 0,  "AbilityCastSystem must be registered (Story 2.4a ability-cast spine).");
             Assert.True(modifierIdx >= 0, "ModifierSystem must be registered (AR-9 effective-stat recompute).");
             // Story 2.12 contract: OrderQueueSystem sits immediately AFTER MovementSystem (arrival detected fresh).
-            // DW-265 / Story 15.12: EnergyRegenSystem then sits immediately BEFORE AbilityCastSystem (a unit casts with
-            // energy regenerated this tick). Story 2.4a / AR-9 contract: AbilityCast, Modifier, Combat are then
-            // contiguous, so a cast's buff is recomputed by ModifierSystem and read by combat the SAME tick; Projectile
-            // (snapshots Effective* at spawn) runs after.
+            // DW-265 / Story 15.12: EnergyRegenSystem then leads the regen pair; Story 15-24a: HealthRegenSystem
+            // sits immediately after it (the two regens tick as neighbors), and the pair sits immediately BEFORE
+            // AbilityCastSystem (a unit casts with energy regenerated this tick). Story 2.4a / AR-9 contract:
+            // AbilityCast, Modifier, Combat are then contiguous, so a cast's buff is recomputed by ModifierSystem
+            // and read by combat the SAME tick; Projectile (snapshots Effective* at spawn) runs after.
             Assert.Equal(movementIdx + 1, orderQueueIdx);   // OrderQueue immediately after MovementSystem
             Assert.Equal(orderQueueIdx + 1, energyRegenIdx); // EnergyRegen immediately after OrderQueue
-            Assert.Equal(energyRegenIdx + 1, abilityIdx);    // AbilityCast immediately after EnergyRegen
+            Assert.Equal(energyRegenIdx + 1, healthRegenIdx); // Story 15-24a: HealthRegen immediately after EnergyRegen
+            Assert.Equal(healthRegenIdx + 1, abilityIdx);    // AbilityCast immediately after the regen pair
             Assert.Equal(abilityIdx + 1, modifierIdx);      // ModifierSystem immediately after AbilityCast
             Assert.Equal(combatIdx - 1, modifierIdx);       // ModifierSystem immediately before CombatSystem
             Assert.True(modifierIdx < projectileIdx, "ModifierSystem must run strictly before ProjectileSystem.");

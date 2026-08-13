@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using ProjectChimera.Core;
+using ProjectChimera.Core.Stats;
 
 namespace ProjectChimera.Effects
 {
@@ -45,13 +46,25 @@ namespace ProjectChimera.Effects
     /// </summary>
     public sealed class ModifierSystem : ISimSystem
     {
-        // Private + UNHASHED (see class remarks). All default false/Zero in 2.2a → Tick is a no-op. The bonuses are
-        // the NET modifier deltas the Story 2.2b ModifierStore drives via AccumulateBonus on apply/remove.
-        private readonly bool[]  _dirty                 = new bool[EntityWorld.MAX_ENTITIES];
-        private readonly Fixed[] _flatAttackDamageBonus = new Fixed[EntityWorld.MAX_ENTITIES];
-        private readonly Fixed[] _flatMaxHealthBonus    = new Fixed[EntityWorld.MAX_ENTITIES];
-        private readonly Fixed[] _flatMoveSpeedBonus    = new Fixed[EntityWorld.MAX_ENTITIES];
-        private readonly Fixed[] _flatArmorBonus        = new Fixed[EntityWorld.MAX_ENTITIES]; // Story 2.6
+        // Private + UNHASHED (see class remarks). All default false/Zero in 2.2a → Tick is a no-op.
+        //
+        // Story 15-24a: the four hand-wired bonus arrays generalize to ONE per-stat accumulator table indexed
+        // [(int)StatId][entityId] — the NET summed modifier deltas the ModifierStore drives via
+        // AccumulateDeltas on apply/remove/restore. Percent-aggregation stats accumulate here too (their sum
+        // IS their state; they have no EntityWorld array — the recompute consumes them in place), which keeps
+        // the AC2 order-independence contract: percent is a SUMMED accumulator applied once as ×(1+Σ), never
+        // sequential per-modifier multiplication. Rebuilt from the modifier ring on save-load (RestoreSlot
+        // re-accumulates), so the table stays derived state: never folded, divergence surfaces transitively
+        // through the folded Effective* arrays.
+        private readonly bool[] _dirty = new bool[EntityWorld.MAX_ENTITIES];
+        private readonly Fixed[][] _bonus = AllocBonusTable();
+
+        private static Fixed[][] AllocBonusTable()
+        {
+            var table = new Fixed[StatVocabulary.Count][];
+            for (int s = 0; s < table.Length; s++) table[s] = new Fixed[EntityWorld.MAX_ENTITIES];
+            return table;
+        }
 
         /// <summary>
         /// The Story 2.2b store this system drives each tick (null until <see cref="AttachStore"/>). Held, not
@@ -112,15 +125,63 @@ namespace ProjectChimera.Effects
             if (id < 0 || id >= EntityWorld.MAX_ENTITIES) return;
             if (!world.IsAlive(id)) { _dirty[id] = false; return; }
 
+            // ── Story 15-24a: percent sums first (each clamped to its registry bounds), applied ONCE below ──
+            // The realized multiplier (1 + Σ) is additionally floored at Zero inside ApplyPercent so a deep
+            // percent debuff ZEROES a stat instead of sign-flipping it (a double-negative must never mint a
+            // positive stat). With no percent modifiers every Σ is 0 and ×One is bit-exact (truncating 16.16
+            // multiply), so this whole stage is byte-identical to the pre-15-24a flat recompute — the
+            // legacy-parity invariant StatRecomputeParityTests pins.
+            Fixed pctMaxHealth = ClampedBonus(id, StatId.MaxHealthPercent);
+            Fixed pctAttackDamage = ClampedBonus(id, StatId.AttackDamagePercent);
+            Fixed pctMoveSpeed = ClampedBonus(id, StatId.MoveSpeedPercent);
+            Fixed pctVision = ClampedBonus(id, StatId.VisionPercent);
+
+            // ── Value stats: floor-first (max(0, saturate(Base + Σflat))), then ×(1 + Σ%), then bounds ──
             // Zero-floor (Story 2.2b): a debuff can never drive a stat below zero (which would heal/reverse/invert).
             // DW-28: sum with Fixed.AddSaturating (widen-then-clamp) so a pathological base + large bonus saturates at
-            // Fixed.MaxValue instead of the unchecked-int-add WRAP that could wrap negative and collapse to the floor.
-            world.EffectiveAttackDamage[id] = Fixed.Max(Fixed.Zero, Fixed.AddSaturating(world.BaseAttackDamage[id], _flatAttackDamageBonus[id]));
-            world.EffectiveMaxHealth[id]    = Fixed.Max(Fixed.Zero, Fixed.AddSaturating(world.BaseMaxHealth[id],    _flatMaxHealthBonus[id]));
-            world.EffectiveMoveSpeed[id]    = Fixed.Max(Fixed.Zero, Fixed.AddSaturating(world.BaseMoveSpeed[id],    _flatMoveSpeedBonus[id]));
+            // Fixed.MaxValue instead of the unchecked-int-add WRAP that could wrap negative and collapse to the floor;
+            // the percent stage multiplies with Fixed.MulSaturating for the same reason (15-24a).
+            world.EffectiveAttackDamage[id] = ApplyPercent(FlatFloored(world.BaseAttackDamage[id], id, StatId.AttackDamage), pctAttackDamage);
+            world.EffectiveMaxHealth[id]    = ApplyPercent(FlatFloored(world.BaseMaxHealth[id],    id, StatId.MaxHealth),    pctMaxHealth);
+            world.EffectiveMoveSpeed[id]    = ApplyPercent(FlatFloored(world.BaseMoveSpeed[id],    id, StatId.MoveSpeed),    pctMoveSpeed);
             // Story 2.6: EffectiveArmor = max(0, BaseArmor + Σ armor deltas) — DamageResolver subtracts it (floored at 0).
-            world.EffectiveArmor[id]        = Fixed.Max(Fixed.Zero, Fixed.AddSaturating(world.BaseArmor[id],         _flatArmorBonus[id]));
+            world.EffectiveArmor[id]        = FlatFloored(world.BaseArmor[id], id, StatId.Armor);
+
+            // ── Story 15-24a consumer channels — every one an IDENTITY-DEFAULT modifier TERM, never a mirror of
+            //    a base array, so direct base writers (fallback spawns, test builders) carry no obligation ──
+            world.EffectiveHealthRegen[id]  = FlatFloored(world.BaseHealthRegen[id], id, StatId.HealthRegen);
+            world.EffectiveCooldownReduction[id] = ClampedBonus(id, StatId.CooldownReduction);
+            // attack_speed: the factor (1 + clamped Σ) — the registry's lower clamp keeps it strictly positive;
+            // EntityWorld.AttackIntervalOf divides the authored interval by it (with the one-tick floor there).
+            world.EffectiveAttackSpeedFactor[id] = Fixed.One + ClampedBonus(id, StatId.AttackSpeed);
+            // vision: the two merge terms VisionWithElevation consumes (flat Σ raw; percent Σ clamped).
+            world.VisionBonusFlat[id] = _bonus[(int)StatId.VisionRange][id];
+            world.VisionBonusPct[id]  = pctVision;
+
             _dirty[id] = false;
+        }
+
+        /// <summary>The flat stage for one value stat: <c>max(0, AddSaturating(base, Σflat))</c> — bit-exact
+        /// with the pre-15-24a recompute for the legacy four.</summary>
+        private Fixed FlatFloored(Fixed baseValue, int id, StatId stat) =>
+            Fixed.Max(Fixed.Zero, Fixed.AddSaturating(baseValue, _bonus[(int)stat][id]));
+
+        /// <summary>The percent stage: <c>value × max(0, 1 + Σ)</c>, saturating. <c>Σ == 0</c> short-circuits
+        /// to the input (×One is exact anyway; the branch keeps the hot no-modifier path multiplication-free).</summary>
+        private static Fixed ApplyPercent(Fixed value, Fixed pctSum)
+        {
+            if (pctSum.Raw == 0) return value;
+            Fixed multiplier = Fixed.Max(Fixed.Zero, Fixed.One + pctSum);
+            return Fixed.Max(Fixed.Zero, Fixed.MulSaturating(value, multiplier));
+        }
+
+        /// <summary>One stat's accumulator, clamped to its registry effective bounds (percent/own-value stats:
+        /// the Σ clamp; the flat legacy stats never route through here).</summary>
+        private Fixed ClampedBonus(int id, StatId stat)
+        {
+            StatDefinition def = StatVocabulary.Get(stat);
+            return Fixed.Clamp(_bonus[(int)stat][id],
+                Fixed.FromRaw(def.EffectiveMinRaw), Fixed.FromRaw(def.EffectiveMaxRaw));
         }
 
         /// <summary>
@@ -139,10 +200,7 @@ namespace ProjectChimera.Effects
         internal void ClearEntity(int id)
         {
             if (id < 0 || id >= EntityWorld.MAX_ENTITIES) return;
-            _flatAttackDamageBonus[id] = Fixed.Zero;
-            _flatMaxHealthBonus[id]    = Fixed.Zero;
-            _flatMoveSpeedBonus[id]    = Fixed.Zero;
-            _flatArmorBonus[id]        = Fixed.Zero;   // Story 2.6
+            for (int s = 0; s < _bonus.Length; s++) _bonus[s][id] = Fixed.Zero; // 15-24a: every stat lane (recycle hygiene)
             _dirty[id] = false;
         }
 
@@ -156,10 +214,7 @@ namespace ProjectChimera.Effects
         internal void ClearAll()
         {
             Array.Clear(_dirty);
-            Array.Clear(_flatAttackDamageBonus);
-            Array.Clear(_flatMaxHealthBonus);
-            Array.Clear(_flatMoveSpeedBonus);
-            Array.Clear(_flatArmorBonus);
+            for (int s = 0; s < _bonus.Length; s++) Array.Clear(_bonus[s]); // 15-24a: every stat lane
         }
 
         /// <summary>
@@ -177,11 +232,33 @@ namespace ProjectChimera.Effects
         {
             if (id < 0 || id >= EntityWorld.MAX_ENTITIES) return; // defensive bounds guard (no throw on a bad id)
 
-            _flatAttackDamageBonus[id] += attackDamageDelta;
-            _flatMaxHealthBonus[id]    += maxHealthDelta;
-            _flatMoveSpeedBonus[id]    += moveSpeedDelta;
-            _flatArmorBonus[id]        += armorDelta;   // Story 2.6 (optional trailing param → pre-2.6 callers unchanged)
+            _bonus[(int)StatId.AttackDamage][id] += attackDamageDelta;
+            _bonus[(int)StatId.MaxHealth][id]    += maxHealthDelta;
+            _bonus[(int)StatId.MoveSpeed][id]    += moveSpeedDelta;
+            _bonus[(int)StatId.Armor][id]        += armorDelta;   // Story 2.6 (optional trailing param → pre-2.6 callers unchanged)
             _dirty[id] = true;
         }
+
+        /// <summary>
+        /// Story 15-24a — the generalized accumulator seam: add every entry of a CANONICAL sparse vector,
+        /// each scaled by <paramref name="multiplier"/> (apply: <c>+One</c>; stacked restore/revert:
+        /// <c>±Fixed.FromInt(stacks)</c> — exact for integer multipliers, so apply-per-stack and
+        /// revert-times-stacks stay integer-symmetric exactly like the legacy channels), and mark the entity
+        /// dirty. Same wrapping <c>+=</c> semantics as <see cref="AccumulateBonus"/> (order-independent — the
+        /// AC2 contract; DW-488 closes the wrap on the authoring side). Bounds-guarded, no throw.
+        /// </summary>
+        internal void AccumulateDeltas(int id, StatDelta[] deltas, Fixed multiplier)
+        {
+            if (id < 0 || id >= EntityWorld.MAX_ENTITIES) return; // defensive bounds guard (no throw on a bad id)
+
+            for (int i = 0; i < deltas.Length; i++)
+                _bonus[(int)deltas[i].Stat][id] += deltas[i].Delta * multiplier;
+            _dirty[id] = true;
+        }
+
+        /// <summary>15-24a — one entity's NET accumulated bonus for one stat (test/seam read; the recompute
+        /// reads the table directly). Zero for out-of-range ids.</summary>
+        internal Fixed BonusOf(int id, StatId stat) =>
+            (uint)id < EntityWorld.MAX_ENTITIES ? _bonus[(int)stat][id] : Fixed.Zero;
     }
 }

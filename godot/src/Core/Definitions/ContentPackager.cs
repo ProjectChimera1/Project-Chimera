@@ -629,7 +629,13 @@ namespace ProjectChimera.Core.Definitions
                 {
                     if (n > 99)
                     {
+                        // RS0030 suppression (15-24a release-gate sweep): the ban exists for SIM determinism;
+                        // this is a local-FILESYSTEM collision-escape name for a quarantine move — authoring-side,
+                        // never sim state, never folded, never on the wire. A seeded scheme would defeat the
+                        // purpose (the whole point is a name no prior run could have produced).
+#pragma warning disable RS0030
                         dest = Path.Combine(quarantineDir, Guid.NewGuid().ToString("N") + "_" + leaf);
+#pragma warning restore RS0030
                         break;
                     }
                     dest = Path.Combine(quarantineDir, $"{n}_{leaf}");

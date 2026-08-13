@@ -336,6 +336,26 @@ namespace ProjectChimera.Core
         /// fold of Story 2.6.</summary>
         public readonly Fixed[] EffectiveArmor;
         public readonly Fixed[] AttackSpeed;       // Seconds between attacks
+        /// <summary>
+        /// Story 15-24a — the attack_speed stat's channel as a MULTIPLIER, not a mirror: the clamped
+        /// <c>(1 + Σ attack_speed deltas)</c>, default <see cref="Fixed.One"/> (identity). The swing re-arm reads
+        /// <see cref="AttackIntervalOf"/> = <c>AttackSpeed / factor</c> (floored at one sim tick for attackers —
+        /// the machine-gun guard; a base of 0 stays 0). Written ONLY by <c>ModifierSystem.RecomputeEntity</c> —
+        /// deliberately NOT an <c>Effective*</c> mirror of <see cref="AttackSpeed"/>, so every direct
+        /// <see cref="AttackSpeed"/> writer (fallback spawns, test scenario builders, future code) keeps working
+        /// with NO mirror obligation: the identity default composes with any base. Mutates mid-match once an
+        /// attack_speed modifier exists → FOLDED into <see cref="SimChecksum"/> v26, BOUNDED (mixes only when
+        /// ≠ One — the v23 posture). Create/Clear re-fill the One identity (sentinel-style).
+        /// </summary>
+        public readonly Fixed[] EffectiveAttackSpeedFactor;
+        /// <summary>
+        /// Story 15-24a — the cooldown_reduction stat's consumer channel: the clamped Σ of cooldown_reduction
+        /// deltas (a FRACTION — 0.3 = ability cooldowns arm 30% shorter; negative = longer; clamp
+        /// [−4, +0.8] from the registry). Read by <c>AbilityCastSystem</c>'s single arming site. Default 0 =
+        /// byte-identical arming (identity — no mirror obligation, the factor posture). Recomputed by
+        /// <c>ModifierSystem.RecomputeEntity</c>; FOLDED v26 BOUNDED (≠ 0).
+        /// </summary>
+        public readonly Fixed[] EffectiveCooldownReduction;
 
         // --- Ability resource pool (Story 2.2a substrate; ModifierStore debits it 2.2b; sourced from the def 2.4a) ---
         /// <summary>
@@ -365,6 +385,22 @@ namespace ProjectChimera.Core
         public readonly Fixed[] RegenRate;
 
         /// <summary>
+        /// Story 15-24a — authored base health regen, per SIM TICK (the <see cref="RegenRate"/> convention:
+        /// 2 = 60 HP/s at 30 tps), from <see cref="Core.Definitions.UnitDefinition.HealthRegen"/> via
+        /// <see cref="ApplyUnitDefinition"/> (single-mapper rule). Spawn-constant authored data → NOT folded
+        /// (the <see cref="RegenRate"/> posture). Create-defaulted to Zero.
+        /// </summary>
+        public readonly Fixed[] BaseHealthRegen;
+        /// <summary>
+        /// Story 15-24a — the health_regen stat's consumer channel: <see cref="BaseHealthRegen"/> + Σ flat
+        /// health_regen deltas, floored at 0 (degeneration is the DoT graph's job — a negative-regen death
+        /// path would bypass <c>DamageResolver</c>'s kill semantics, so the effective value never goes
+        /// negative). Read by <c>HealthRegenSystem</c>'s per-tick clamp-add. Recomputed by
+        /// <c>ModifierSystem.RecomputeEntity</c>; FOLDED v26 BOUNDED (≠ <see cref="BaseHealthRegen"/>).
+        /// </summary>
+        public readonly Fixed[] EffectiveHealthRegen;
+
+        /// <summary>
         /// Per-entity boolean status the active <see cref="ProjectChimera.Effects.Modifier"/> instances impose
         /// (the OR-union over a unit's modifiers — Stunned/Rooted/Silenced/Disarmed/Invulnerable). Written by the
         /// Story 2.2b <c>ModifierStore</c> on apply/remove; <c>Create</c>-defaulted to <see cref="StatusFlags.None"/>
@@ -386,8 +422,21 @@ namespace ProjectChimera.Core
         public readonly ArmorType[] ArmorTypeOf;
 
         // --- Vision ---
-        /// <summary>How far this unit can see (world units). Used by FogOfWarSystem.</summary>
+        /// <summary>Authored vision radius (world units) — the vision_range stat's BASE. Spawn-constant → NOT
+        /// folded. Consumers read <see cref="VisionWithElevation"/> (base + modifier terms + elevation).</summary>
         public readonly Fixed[] VisionRange;
+        /// <summary>
+        /// Story 15-24a — the vision_range stat's MODIFIER TERM: the Σ of flat vision_range deltas, default 0
+        /// (identity — no mirror obligation: direct <see cref="VisionRange"/> writers keep working, the
+        /// EffectiveAttackSpeedFactor posture). Written only by <c>ModifierSystem.RecomputeEntity</c>; consumed
+        /// inside <see cref="VisionWithElevation"/>'s Fixed merge. NOT folded — vision feeds only the
+        /// presentation-side fog stamp (the fog Grid posture: no sim system reads vision), and it rederives
+        /// from the folded modifier ring on load.
+        /// </summary>
+        public readonly Fixed[] VisionBonusFlat;
+        /// <summary>Story 15-24a — the vision_percent stat's clamped Σ, default 0. Same posture as
+        /// <see cref="VisionBonusFlat"/> (identity default, recompute-written, NOT folded).</summary>
+        public readonly Fixed[] VisionBonusPct;
 
         // --- Terrain elevation (Story 6.3) ---
         /// <summary>
@@ -1043,14 +1092,20 @@ namespace ProjectChimera.Core
             BaseArmor      = new Fixed[MAX_ENTITIES];   // Story 2.6 (authored — NOT folded)
             EffectiveArmor = new Fixed[MAX_ENTITIES];   // Story 2.6 (folded v8)
             AttackSpeed = new Fixed[MAX_ENTITIES];
+            EffectiveAttackSpeedFactor = new Fixed[MAX_ENTITIES]; // Story 15-24a (folded v26 BOUNDED: ≠ One; One-filled below + per-Create)
+            EffectiveCooldownReduction = new Fixed[MAX_ENTITIES]; // Story 15-24a (folded v26 BOUNDED: ≠ 0)
             Energy         = new Fixed[MAX_ENTITIES];
             MaxEnergy      = new Fixed[MAX_ENTITIES];
             RegenRate      = new Fixed[MAX_ENTITIES];           // DW-265 / Story 15.12 (authored — NOT folded; Create-defaulted Zero)
+            BaseHealthRegen      = new Fixed[MAX_ENTITIES];     // Story 15-24a (authored — NOT folded; the RegenRate posture)
+            EffectiveHealthRegen = new Fixed[MAX_ENTITIES];     // Story 15-24a (folded v26 BOUNDED: ≠ BaseHealthRegen)
             StatusFlagsOf  = new StatusFlags[MAX_ENTITIES];     // Story 2.2b (folded v6); modifier-imposed status
             DamageTypeOf = new DamageType[MAX_ENTITIES];
             ArmorTypeOf = new ArmorType[MAX_ENTITIES];
 
             VisionRange    = new Fixed[MAX_ENTITIES];
+            VisionBonusFlat = new Fixed[MAX_ENTITIES];          // Story 15-24a (NOT folded — presentation-only fog input)
+            VisionBonusPct  = new Fixed[MAX_ENTITIES];          // Story 15-24a (NOT folded — presentation-only fog input)
             Elevation      = new Fixed[MAX_ENTITIES];                    // Story 6.3 (folded v15; Create-sampled from the injected grid, else Zero)
             SplashRadius   = new Fixed[MAX_ENTITIES];
             Delivery       = new AttackDelivery[MAX_ENTITIES];          // Story 3.12 (folded v10; Hitscan == 0, no Array.Fill needed)
@@ -1122,6 +1177,7 @@ namespace ProjectChimera.Core
             Array.Fill(HeroIndex, HERO_NONE);               // Story 3.2: −1 = "not a hero" (default int 0 would falsely alias HeroStore slot 0)
             Array.Fill(KillerOf,        -1);                // Story 7.5: −1 = no killer (default 0 would falsely alias entity 0)
             Array.Fill(KillerFactionOf, -1);                // Story 7.5: −1 = no killer faction (default 0 would falsely alias slot 0 / Player1)
+            Array.Fill(EffectiveAttackSpeedFactor, Fixed.One); // Story 15-24a: One = identity multiplier (default 0 would zero every attack interval)
         }
 
         /// <summary>
@@ -1173,6 +1229,15 @@ namespace ProjectChimera.Core
             BaseArmor[id]              = Fixed.Zero;   // Story 2.6: ApplyUnitDefinition sets from def.Armor for def units
             EffectiveArmor[id]         = Fixed.Zero;
             AttackSpeed[id]   = Fixed.Zero;
+            // Story 15-24a: MANDATORY recycle-reset for the stat-pipeline channels — a recycled slot must never
+            // inherit the prior occupant's modifier terms (SoA-recycle trap). Identity values: factor One,
+            // every bonus/sum 0.
+            EffectiveAttackSpeedFactor[id] = Fixed.One;
+            EffectiveCooldownReduction[id] = Fixed.Zero;
+            BaseHealthRegen[id]            = Fixed.Zero;
+            EffectiveHealthRegen[id]       = Fixed.Zero;
+            VisionBonusFlat[id]            = Fixed.Zero;
+            VisionBonusPct[id]             = Fixed.Zero;
             // Story 2.2a substrate / 2.4a: ability-resource pool defaults to empty here; ApplyUnitDefinition sets it
             // from UnitDefinition.MaxEnergy (start full) for ability-bearing units. A unit with no def stays at 0.
             Energy[id]        = Fixed.Zero;
@@ -1321,17 +1386,43 @@ namespace ProjectChimera.Core
         public void SetPathabilityGrid(ProjectChimera.Navigation.PathabilityGrid? grid) => Pathability = grid;
 
         /// <summary>
-        /// Story 6.3: the vision radius <see cref="ProjectChimera.Core.FogOfWarSystem"/> stamps for this unit — the base
-        /// authored <see cref="VisionRange"/> plus, ONLY when <see cref="HeightAdvantageVision"/> is enabled, an
-        /// elevation-derived <see cref="Fixed"/> bonus. Computed entirely in <see cref="Fixed"/> so it can merge BEFORE
-        /// the existing per-tick <c>.ToFloat()</c> boundary in FogOfWarSystem — no new float on any sim path. Steps =
-        /// <c>floor(Elevation / HEIGHT_STEP_WORLD_UNITS)</c>, clamped ≥ 0 (a sub-step or negative elevation earns no
-        /// bonus). Toggle OFF ⇒ returns the base range unchanged, so the stamped fog Grid stays byte-identical to
-        /// pre-feature.
+        /// Story 15-24a — the attack_speed stat's ONE consumer seam: the modifier-adjusted seconds-between-attacks
+        /// the <c>CombatSystem</c> swing re-arm uses. <c>interval = AttackSpeed / EffectiveAttackSpeedFactor</c>,
+        /// floored at one sim tick for a real attacker (the machine-gun guard — an interval below dt would re-arm
+        /// already-expired and fire every tick, the DW-380 class the validator fences on the AUTHORING side); a
+        /// base of 0 stays 0 (a non-attacker never gains an interval); the identity factor short-circuits to the
+        /// raw base — bit-exact pre-15-24a behavior for every entity with no attack_speed modifier, whatever wrote
+        /// <see cref="AttackSpeed"/> (mapper, fallback spawn, or a test builder — no mirror obligation exists).
         /// </summary>
-        public Fixed EffectiveVisionRange(int id)
+        public Fixed AttackIntervalOf(int id)
+        {
+            Fixed baseInterval = AttackSpeed[id];
+            Fixed factor = EffectiveAttackSpeedFactor[id];
+            if (factor == Fixed.One || baseInterval.Raw <= 0) return baseInterval;
+            return Fixed.Max(SimulationLoop.FixedDt, baseInterval / factor);
+        }
+
+        /// <summary>
+        /// Story 6.3 (renamed from <c>EffectiveVisionRange(int)</c> in 15-24a): the vision radius
+        /// <see cref="ProjectChimera.Core.FogOfWarSystem"/> stamps for this unit — the modifier-adjusted range
+        /// (<c>max(0, saturate(VisionRange + VisionBonusFlat) × max(0, 1 + VisionBonusPct))</c> — the vision_range /
+        /// vision_percent stats' ONE consumer merge) plus, ONLY when <see cref="HeightAdvantageVision"/> is enabled,
+        /// an elevation-derived <see cref="Fixed"/> bonus. Computed entirely in <see cref="Fixed"/> so it can merge
+        /// BEFORE the existing per-tick <c>.ToFloat()</c> boundary in FogOfWarSystem — no new float on any sim path.
+        /// Steps = <c>floor(Elevation / HEIGHT_STEP_WORLD_UNITS)</c>, clamped ≥ 0 (a sub-step or negative elevation
+        /// earns no bonus). Toggle OFF ⇒ returns the modifier-adjusted range unchanged; with no vision modifier the
+        /// identity terms short-circuit to the raw base, so the stamped fog Grid stays byte-identical to
+        /// pre-feature AND pre-15-24a.
+        /// </summary>
+        public Fixed VisionWithElevation(int id)
         {
             Fixed baseR = VisionRange[id];
+            if (VisionBonusFlat[id].Raw != 0 || VisionBonusPct[id].Raw != 0)
+            {
+                Fixed flat = Fixed.Max(Fixed.Zero, Fixed.AddSaturating(baseR, VisionBonusFlat[id]));
+                Fixed multiplier = Fixed.Max(Fixed.Zero, Fixed.One + VisionBonusPct[id]);
+                baseR = Fixed.Max(Fixed.Zero, Fixed.MulSaturating(flat, multiplier));
+            }
             if (!HeightAdvantageVision) return baseR;                 // toggle OFF ⇒ byte-identical fog
             // Whole-step count = floor(Elevation / HEIGHT_STEP_WORLD_UNITS), clamped ≥ 0 (a sub-step or negative
             // elevation earns no bonus). ToInt() == Raw >> FRACTIONAL_BITS (a deterministic floor); dividing by the
@@ -1380,6 +1471,10 @@ namespace ProjectChimera.Core
             BaseArmor[id]      = Fixed.FromFloat(def.Armor);
             EffectiveArmor[id] = BaseArmor[id];
             AttackSpeed[id]  = Fixed.FromFloat(def.AttackSpeed);
+            // Story 15-24a (A2): authored per-tick health regen — the RegenRate pattern (Base authored, Effective
+            // mirrored; the recompute owns Effective once a health_regen modifier exists).
+            BaseHealthRegen[id]      = Fixed.FromFloat(def.HealthRegen);
+            EffectiveHealthRegen[id] = BaseHealthRegen[id];
             DamageTypeOf[id] = def.ParsedDamageType;
             ArmorTypeOf[id]  = def.ParsedArmorType;
             SplashRadius[id] = Fixed.FromFloat(def.SplashRadius);
@@ -1792,8 +1887,11 @@ namespace ProjectChimera.Core
             Array.Clear(EffectiveAttackDamage); Array.Clear(BaseArmor);             Array.Clear(EffectiveArmor);
             Array.Clear(AttackSpeed);           Array.Clear(Energy);                Array.Clear(MaxEnergy);
             Array.Clear(RegenRate);             // DW-265 / Story 15.12 (0 == the fresh-ctor state; no residual regen after a reset)
+            Array.Clear(EffectiveAttackSpeedFactor); Array.Clear(EffectiveCooldownReduction); // Story 15-24a (factor re-filled to One below)
+            Array.Clear(BaseHealthRegen);            Array.Clear(EffectiveHealthRegen);       // Story 15-24a (0 == fresh-ctor)
             Array.Clear(StatusFlagsOf);         Array.Clear(DamageTypeOf);          Array.Clear(ArmorTypeOf);
             Array.Clear(VisionRange);           Array.Clear(SplashRadius);          Array.Clear(CollisionRadius);
+            Array.Clear(VisionBonusFlat);       Array.Clear(VisionBonusPct);        // Story 15-24a (0 == fresh-ctor)
             Array.Clear(Elevation);             // Story 6.3 (0 == the fresh-ctor state; re-sampled at the next spawn)
             Array.Clear(Delivery);              Array.Clear(ProjectileSpeed);       // Story 3.12 (Hitscan==0 / 0 speed == the fresh-ctor state)
             Array.Clear(XpBounty);              // Story 3.13 (0 == the fresh-ctor state)
@@ -1830,6 +1928,7 @@ namespace ProjectChimera.Core
             Array.Fill(HeroIndex, HERO_NONE);
             Array.Fill(KillerOf,        -1);    // Story 7.5 sentinel (matches the ctor fill)
             Array.Fill(KillerFactionOf, -1);    // Story 7.5 sentinel (matches the ctor fill)
+            Array.Fill(EffectiveAttackSpeedFactor, Fixed.One); // Story 15-24a identity (matches the ctor fill)
             DeathLog.Clear();                   // DW-367: count-only reset (records past Count are unread — the PatrolWaypoints discipline)
 
             _freeCount = 0;

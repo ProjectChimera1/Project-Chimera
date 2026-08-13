@@ -875,7 +875,9 @@ namespace ProjectChimera.Combat
 
             if (world.AttackCooldown[attacker] > Fixed.Zero) return;
 
-            world.AttackCooldown[attacker] = world.AttackSpeed[attacker];
+            // Story 15-24a: re-arm through the attack_speed stat's consumer seam (== AttackSpeed at the identity
+            // factor; divides by (1 + Σ attack_speed) with the one-tick machine-gun floor otherwise).
+            world.AttackCooldown[attacker] = world.AttackIntervalOf(attacker);
 
             if (world.Delivery[attacker] == AttackDelivery.Projectile)
             {
@@ -937,7 +939,9 @@ namespace ProjectChimera.Combat
 
             if (world.AttackCooldown[attacker] > Fixed.Zero) return;
 
-            world.AttackCooldown[attacker] = world.AttackSpeed[attacker];
+            // Story 15-24a: re-arm through the attack_speed stat's consumer seam (== AttackSpeed at the identity
+            // factor; divides by (1 + Σ attack_speed) with the one-tick machine-gun floor otherwise).
+            world.AttackCooldown[attacker] = world.AttackIntervalOf(attacker);
 
             if (world.Delivery[attacker] == AttackDelivery.Projectile)
             {

@@ -117,5 +117,44 @@ namespace ProjectChimera.Core.Definitions
         /// <summary>Flat armor delta this level adds, mirroring <see cref="ProjectChimera.Effects.Modifier.ArmorDelta"/>.</summary>
         [JsonPropertyName("armor_delta")]
         public float ArmorDelta { get; set; } = 0f;
+
+        /// <summary>
+        /// Story 15-24a — the SPARSE authoring lane for every non-legacy stat this level adds:
+        /// <c>"stat_deltas": { "attack_speed": 0.05 }</c>. Keys are StatVocabulary registry JsonNames
+        /// (<c>ResearchValidator</c> fail-closes unknown names, legacy-stat names — those author through their
+        /// flat keys above — and non-modifier-authorable stats); values are authoring-time floats exactly like
+        /// the four flat props (dual-path DTO constraint: floats/dicts only, quantization stays 4.9's single
+        /// boundary at completion-time accumulate). Null/empty = no extra stats; <c>FactionWriter.PutLevels</c>
+        /// omits the key, so pre-15-24a faction JSON round-trips byte-stable.
+        /// </summary>
+        [JsonPropertyName("stat_deltas")]
+        public System.Collections.Generic.Dictionary<string, float>? StatDeltas { get; set; }
+
+        /// <summary>
+        /// Story 15-24a — this level's grant as the CANONICAL sparse vector (legacy four + the
+        /// <see cref="StatDeltas"/> lane, quantized float→Fixed HERE — the fold/accumulate boundary, mirroring
+        /// 4.9's completion-time quantize; sorted ascending StatId, zero entries dropped, unknown names skipped —
+        /// <c>ResearchValidator</c> is the fail-closed gate). Consumed by <c>ContentHash.FoldResearch</c> and
+        /// <c>ResearchSystem</c>'s completion accumulate, so hash and behavior can never disagree.
+        /// </summary>
+        public ProjectChimera.Core.Stats.StatDelta[] BuildStatDeltaVector()
+        {
+            var scratch = new System.Collections.Generic.List<ProjectChimera.Core.Stats.StatDelta>(4 + (StatDeltas?.Count ?? 0))
+            {
+                new ProjectChimera.Core.Stats.StatDelta(ProjectChimera.Core.Stats.StatId.MaxHealth, Fixed.FromFloat(MaxHealthDelta)),
+                new ProjectChimera.Core.Stats.StatDelta(ProjectChimera.Core.Stats.StatId.AttackDamage, Fixed.FromFloat(AttackDamageDelta)),
+                new ProjectChimera.Core.Stats.StatDelta(ProjectChimera.Core.Stats.StatId.Armor, Fixed.FromFloat(ArmorDelta)),
+                new ProjectChimera.Core.Stats.StatDelta(ProjectChimera.Core.Stats.StatId.MoveSpeed, Fixed.FromFloat(MoveSpeedDelta)),
+            };
+            if (StatDeltas != null && StatDeltas.Count > 0)
+            {
+                var keys = new System.Collections.Generic.List<string>(StatDeltas.Keys);
+                keys.Sort(System.StringComparer.Ordinal); // deterministic — a Dictionary walk is never a hash/behavior input
+                foreach (string key in keys)
+                    if (ProjectChimera.Core.Stats.StatVocabulary.TryByJsonName(key, out var def))
+                        scratch.Add(new ProjectChimera.Core.Stats.StatDelta(def.Id, Fixed.FromFloat(StatDeltas[key])));
+            }
+            return ProjectChimera.Core.Stats.StatVocabulary.Canonicalize(scratch);
+        }
     }
 }

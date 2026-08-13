@@ -158,6 +158,12 @@ namespace ProjectChimera.Core.Definitions
                             ?? CheckDelta(id, "armor_delta", def.ArmorDelta, MAX_ITEM_STAT_DELTA, nameof(MAX_ITEM_STAT_DELTA));
             if (deltaErr != null) return ItemValidationResult.Fail(deltaErr);
 
+            // ── (c1a) Story 15-24a: the sparse stat_deltas lane's keys (fail-closed; first error wins here —
+            //         the sim gate is single-error-shaped, the editor surface collects them all). ──
+            string? laneErr = null;
+            CheckStatDeltasLane(id, def.StatDeltas, (_, msg) => laneErr ??= msg);
+            if (laneErr != null) return ItemValidationResult.Fail(laneErr);
+
             // ── (c1b) DW-650: the SAME descriptor ItemSystem.ApplyItemStatModifier mints for a carried stat item, run
             //         through DW-488's shared accumulator bound (Modifier.CheckAuthoringBounds). See CarriedModifier. ──
             (string Field, string Reason)? overBound = CarriedModifier(def).CheckAuthoringBounds();
@@ -234,6 +240,7 @@ namespace ProjectChimera.Core.Definitions
             AddDelta(errors, id, "attack_damage_delta", def.AttackDamageDelta, MAX_ITEM_STAT_DELTA, nameof(MAX_ITEM_STAT_DELTA));
             AddDelta(errors, id, "move_speed_delta", def.MoveSpeedDelta, MAX_MOVE_SPEED_DELTA, nameof(MAX_MOVE_SPEED_DELTA));
             AddDelta(errors, id, "armor_delta", def.ArmorDelta, MAX_ITEM_STAT_DELTA, nameof(MAX_ITEM_STAT_DELTA));
+            CheckStatDeltasLane(id, def.StatDeltas, (path, msg) => errors.Add((path, msg))); // Story 15-24a
             // DW-650: the same DW-488 accumulator bound the sim Validate applies, on the editor surface. Runs ONLY when
             // no per-stat cap already badged a delta, so the D-9 "one badge per field" contract holds (a delta over BOTH
             // its per-stat cap and the accumulator bound reports the tighter, more actionable cap).
@@ -295,17 +302,49 @@ namespace ProjectChimera.Core.Definitions
         /// wrapped accumulator in a match.</para>
         /// </summary>
         private static Modifier CarriedModifier(ItemDefinition def) =>
+            // Story 15-24a: built from the SAME canonical vector the mint uses (legacy four + stat_deltas lane),
+            // so probe and runtime descriptor cannot drift — the DW-650 mirror, now shape-exact by construction.
             new Modifier(0,
                          durationTicks: -1,
                          StackRule.Ignore,
                          maxStacks: 1,
-                         maxHealthDelta:    def.MaxHealthDelta,
-                         attackDamageDelta: def.AttackDamageDelta,
-                         moveSpeedDelta:    def.MoveSpeedDelta,
+                         def.BuildStatDeltaVector(),
                          status: StatusFlags.None,
                          periodEffect: null,
-                         periodTicks: 0,
-                         armorDelta:        def.ArmorDelta);
+                         periodTicks: 0);
+
+        /// <summary>
+        /// Story 15-24a — validate the sparse <c>stat_deltas</c> authoring lane's KEYS (fail-closed): every key
+        /// must be a registry JsonName, must not be one of the four legacy stats (those author through their
+        /// historical flat keys — one canonical spelling per stat, so writers/round-trips never have to merge),
+        /// and must be modifier-authorable (the energy pair is declared but its modifier channel is a recorded
+        /// seam). MAGNITUDE checks are deliberately not here: <see cref="CarriedModifier"/> +
+        /// <c>Modifier.CheckAuthoringBounds</c> own them (DW-488 + the registry per-delta caps), field-named
+        /// <c>stat_deltas.&lt;name&gt;</c> by <c>Modifier.AuthoringFieldName</c>. Returns located errors via
+        /// <paramref name="report"/> keyed <c>stat_deltas.&lt;key&gt;</c>.
+        /// </summary>
+        internal static void CheckStatDeltasLane(string id, System.Collections.Generic.Dictionary<string, Fixed>? lane,
+                                                 System.Action<string, string> report)
+        {
+            if (lane == null || lane.Count == 0) return;
+            var keys = new System.Collections.Generic.List<string>(lane.Keys);
+            keys.Sort(System.StringComparer.Ordinal); // deterministic error order (the CheckHeroAttrValues rule)
+            foreach (string key in keys)
+            {
+                string path = "stat_deltas." + key;
+                if (!ProjectChimera.Core.Stats.StatVocabulary.TryByJsonName(key, out var statDef))
+                    report(path, Located(id, path, "unknown stat name (the closed StatVocabulary registry gates this lane)."));
+                else if (statDef.Id == ProjectChimera.Core.Stats.StatId.MaxHealth
+                      || statDef.Id == ProjectChimera.Core.Stats.StatId.AttackDamage
+                      || statDef.Id == ProjectChimera.Core.Stats.StatId.MoveSpeed
+                      || statDef.Id == ProjectChimera.Core.Stats.StatId.Armor)
+                    report(path, Located(id, path,
+                        $"author this stat through its flat '{Modifier.AuthoringFieldName(statDef.Id)}' key — one canonical spelling per stat."));
+                else if (!statDef.ModifierAuthorable)
+                    report(path, Located(id, path,
+                        $"stat '{statDef.JsonName}' is not modifier-authorable yet (its consumer is the {statDef.ConsumerSite} read seam)."));
+            }
+        }
 
         private static void AddDelta(System.Collections.Generic.List<(string, string)> errors, string id, string path,
                                      Fixed delta, Fixed cap, string capName)

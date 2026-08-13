@@ -322,7 +322,8 @@ namespace ProjectChimera.Core.Sim
             // subscribes to nothing — so constructing it before its neighbours changes no observable ordering.
             var heroXp = new HeroXpSystem(Heroes, Modifiers, _deathFeed, Buildings, _revivalRuntime, ReviveSpawn, CombatEvents);
 
-            // ── The canonical 18-system tick order (DW-265 / Story 15.12 inserted EnergyRegenSystem at index 5, before
+            // ── The canonical 20-system tick order (Story 15-24a inserted HealthRegenSystem at index 7, after
+            //    EnergyRegenSystem, shifting every later index by one; DW-265 / Story 15.12 inserted EnergyRegenSystem at index 5, before
             //    AbilityCastSystem, shifting every later index by one; Story 7.11 inserted WinConditionSystem at index 14, after AI /
             //    before ScenarioDirector; Story 2.12 inserted OrderQueueSystem at index 3; Story 3.13
             //    inserted HeroXpSystem [now index 10]; Story 4.9 inserted ResearchSystem at index 1,
@@ -358,63 +359,69 @@ namespace ProjectChimera.Core.Sim
                 //    with every shipped unit at regen_rate=0 the per-tick write is a byte-identical no-op. Holds the
                 //    RegenPerTick seam Story 15.21 extends. ──
                 new EnergyRegenSystem(Heroes),                                             // [6] EnergyRegenSystem  (Effects, DW-265; Story 15-21: hero attribute energy pair)
+                // ── Story 15-24a health regen. Immediately AFTER EnergyRegenSystem (the two regens tick as
+                //    neighbors) and before the modifier/combat cluster, so a heal lands before this tick's combat
+                //    resolves. Writes only the already-folded Health; with every shipped unit at health_regen=0 the
+                //    early-out makes it a byte-identical no-op (the EnergyRegenSystem golden-neutrality pattern).
+                //    NEVER lethal (clamp-add only) ⇒ no before-DeathFeedDrain constraint. ──
+                new HealthRegenSystem(),                                                   // [7] HealthRegenSystem  (Effects, 15-24a)
                 // ── Story 2.4a ability-cast spine. Immediately BEFORE ModifierSystem, so a cast that
                 //    installs a buff is recomputed by ModifierSystem and read by CombatSystem the
                 //    SAME tick. Ticks per-slot cooldowns down, consumes the pending-cast intent, runs the effect graph. ──
-                abilitySys,                                                               // [7] AbilityCastSystem  (Effects, FR-11)
+                abilitySys,                                                               // [8] AbilityCastSystem  (Effects, FR-11)
                 // ── AR-9 effective-stat recompute. Immediately before CombatSystem, so combat & projectile-spawn
                 //    damage read freshly-recomputed Effective* stats the SAME tick a modifier changes them. Drives the
                 //    ModifierStore (Story 2.2b) each tick (periods/expiry) then recomputes. ──
-                modSys,                                                                   // [8] ModifierSystem    (Effects, AR-9)
+                modSys,                                                                   // [9] ModifierSystem    (Effects, AR-9)
                 // Story 2.6: the on-hit rider needs the ability registry (index→graph) + the ModifierStore (apply leaf).
                 // Story 3.13: the DeathFeed threads a lethal hitscan's victim to the XP runtime.
                 new CombatSystem(Projectiles, CombatEvents, MatchStats, damageTable,
-                                 registry ?? AbilityRegistry.Empty, Modifiers, Buildings, _deathFeed, Alliances), // [9] Buildings (2.9a): anti-building combat; DeathFeed (3.13); Alliances (9.14): allied acquisition/force-fire exclusion
+                                 registry ?? AbilityRegistry.Empty, Modifiers, Buildings, _deathFeed, Alliances), // [10] Buildings (2.9a): anti-building combat; DeathFeed (3.13); Alliances (9.14): allied acquisition/force-fire exclusion
                 new ProjectileSystem(Projectiles, CombatEvents, MatchStats, damageTable,
-                                     Buildings, _deathFeed, Alliances),                  // [10] Buildings (2.9a): ranged shells; DeathFeed (3.13); Alliances (9.14): allied splash exclusion
+                                     Buildings, _deathFeed, Alliances),                  // [11] Buildings (2.9a): ranged shells; DeathFeed (3.13); Alliances (9.14): allied splash exclusion
                 // ── Story 3.13 hero XP runtime. Immediately AFTER ProjectileSystem so it drains the SAME
                 //    tick's recorded deaths (combat + projectile impacts) → credits hostile heroes in range → advances
                 //    level → reconciles growth via the folded ModifierStore. Clears the feed at end-of-tick. ──
                 // Story 3.14: also drives hero death-detection, the revival countdown, and respawn (via the shared spawn
                 // hook + the resolved revival rule + BuildingStore); announcements ride CombatEvents.
-                heroXp,                                                                   // [11] HeroXpSystem (Combat, FR-7)
+                heroXp,                                                                   // [12] HeroXpSystem (Combat, FR-7)
                 // ── Story 3.15 item / inventory. AFTER the combat/projectile/hero-XP cluster: death-drops
                 //    happen synchronously at KillEntity (via the OnDestroy hook, during the combat/projectile indices) and
                 //    hero respawn happens in HeroXpSystem, so a revived hero is already empty when this resolves pickups.
                 //    Runs after MovementSystem so it steers a pickup-bound hero from a current position. ──
-                ItemSys,                                                                  // [12] ItemSystem       (Combat, FR-64)
-                new SupplySystem(Resources),                                              // [13] SupplySystem      (Economy)
-                Fog,                                                                      // [14] FogOfWarSystem    (Core)
+                ItemSys,                                                                  // [13] ItemSystem       (Combat, FR-64)
+                new SupplySystem(Resources),                                              // [14] SupplySystem      (Economy)
+                Fog,                                                                      // [15] FogOfWarSystem    (Core)
                 // DW-439/DW-445: Alliances threaded in so the AI's target/raze/threat classification is team-aware —
                 // without it a teamed AI ordered attacks onto its own ally, combat's Story-9.14 allied guard rejected
                 // them, and its whole force reverted to Idle every tick. Null/FFA ⇒ byte-identical to pre-fix.
-                _ai = new AiOpponentSystem(Buildings, Resources, BuildSys, aiLevel, Alliances), // [15] AI opponent (plays Player2)
+                _ai = new AiOpponentSystem(Buildings, Resources, BuildSys, aiLevel, Alliances), // [16] AI opponent (plays Player2)
                 // ── Story 7.11 win-condition evaluator. Immediately AFTER AiOpponentSystem (so it sees post-death
                 //    alive counts) and immediately BEFORE ScenarioDirector (so the director's OnVictory escape hatch
                 //    still runs last). Reads final entity/building state, writes the folded WinStateStore verdict. ──
-                WinCon,                                                                   // [16] WinConditionSystem (Core, FR-win)
-                ScenarioDirector,                                                         // [17] ScenarioDirector — the LAST producer
+                WinCon,                                                                   // [17] WinConditionSystem (Core, FR-win)
+                ScenarioDirector,                                                         // [18] ScenarioDirector — the LAST producer
                 // ── DW-766 end-of-tick DeathFeed drain. Registered LAST, past every producer: the store's DW-325
-                //    ceiling-collapse kill is reachable from ItemSystem [11] and ScenarioDirector [16] holds the feed in
-                //    its run_effect EffectContext, so HeroXpSystem's own [10] Clear could not make the feed empty at the
+                //    ceiling-collapse kill is reachable from ItemSystem [13] and ScenarioDirector [18] holds the feed in
+                //    its run_effect EffectContext, so HeroXpSystem's own [12] Clear could not make the feed empty at the
                 //    checksum boundary — the premise DeathFeed/SimChecksum both state as the reason it is not folded.
                 //    Credits the residue in the SAME tick (folded hero XP no longer lands late) and clears. ANY future
                 //    system that can kill must be registered BEFORE this one; the loop's tick-boundary assertion
                 //    (EnableTickBoundaryInvariants, armed below) fails loudly if one is not. ──
-                new DeathFeedDrainSystem(heroXp),                                          // [18] DeathFeedDrainSystem — runs LAST
+                new DeathFeedDrainSystem(heroXp),                                          // [19] DeathFeedDrainSystem — runs LAST
             };
 
             // ── Story 7.13 — wire the transient sim-event feed to its four PRODUCERS (all tick before the director,
-            //    index 17). Setters (not ctor params) keep the systems' construction signatures untouched (no test/
-            //    golden churn). CombatSystem [9] / ProjectileSystem [10] / HeroXpSystem [11] are retrieved from the
+            //    index 18). Setters (not ctor params) keep the systems' construction signatures untouched (no test/
+            //    golden churn). CombatSystem [10] / ProjectileSystem [11] / HeroXpSystem [12] are retrieved from the
             //    fixed-order array (SystemOrderTest pins the indices); the two field-held systems wire directly. ──
             BuildSys.SetDslSimEvents(DslSimEvents);
             BuildSys.SetCombatEvents(CombatEvents); // Story 11.4 (FR-74): production-completion cue rides the non-folded queue
             BuildSys.SetResourceNodes(Nodes);       // DW-207: QueueWorkerBuild releases the interrupted worker's gather slot
             abilitySys.SetDslSimEvents(DslSimEvents);
-            ((CombatSystem)_systems[9]).SetDslSimEvents(DslSimEvents);
-            ((ProjectileSystem)_systems[10]).SetDslSimEvents(DslSimEvents);
-            ((HeroXpSystem)_systems[11]).SetDslSimEvents(DslSimEvents);
+            ((CombatSystem)_systems[10]).SetDslSimEvents(DslSimEvents);
+            ((ProjectileSystem)_systems[11]).SetDslSimEvents(DslSimEvents);
+            ((HeroXpSystem)_systems[12]).SetDslSimEvents(DslSimEvents);
 
             _loop = new SimulationLoop(World, _systems);
             // DW-766 — arm the end-of-tick invariant: after every system has ticked, the transient DeathFeed must be
@@ -431,7 +438,7 @@ namespace ProjectChimera.Core.Sim
             // The sim spine's only host-side log in 1.8a: a one-shot construction diagnostic through the
             // injected seam. NullLogSink no-ops it (tests/server → zero effect on the golden); GodotLogSink
             // prints it for MainScene. NEVER a per-tick log (D6).
-            _log.Info("[SimulationHost] Sim spine constructed (19 systems; ResearchSystem at index 1, FlowFieldSteeringSystem at index 3, MovementSystem at index 4, OrderQueueSystem at index 5, EnergyRegenSystem at index 6, AbilityCastSystem at index 7, ModifierSystem at index 8, HeroXpSystem at index 11, ItemSystem at index 12, WinConditionSystem at index 16, DeathFeedDrainSystem at index 18).");
+            _log.Info("[SimulationHost] Sim spine constructed (20 systems; ResearchSystem at index 1, FlowFieldSteeringSystem at index 3, MovementSystem at index 4, OrderQueueSystem at index 5, EnergyRegenSystem at index 6, HealthRegenSystem at index 7, AbilityCastSystem at index 8, ModifierSystem at index 9, HeroXpSystem at index 12, ItemSystem at index 13, WinConditionSystem at index 17, DeathFeedDrainSystem at index 19).");
         }
 
         /// <summary>

@@ -35,7 +35,14 @@ namespace ProjectChimera.Multiplayer.Server
         public ulong Mint(int slot)
         {
             System.Span<byte> b = stackalloc byte[8];
+            // RS0030 suppression (15-24a release-gate sweep; introduced by 15-1): the ban exists for SIM
+            // determinism, and this is the opposite case — a SECURITY token whose whole value is that no peer
+            // can predict it. It never enters the sim, a fold, or the wire-agreed state (the class doc's
+            // "determinism rules bind the sim, not the relay"); SimRng here would be a vulnerability (seeded,
+            // predictable), so the crypto RNG is the CORRECT tool and the suppression is permanent by design.
+#pragma warning disable RS0030
             RandomNumberGenerator.Fill(b);
+#pragma warning restore RS0030
             ulong t = System.BitConverter.ToUInt64(b);
             if (t == 0) t = 1; // 0 is the "never issued" sentinel on the wire — never mint it
             _tokens[slot] = t;

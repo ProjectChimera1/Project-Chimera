@@ -1,5 +1,7 @@
 #nullable enable
+using System.Collections.Generic;
 using ProjectChimera.Core;
+using ProjectChimera.Core.Stats;
 
 namespace ProjectChimera.Effects
 {
@@ -135,15 +137,32 @@ namespace ProjectChimera.Effects
         /// <summary>Maximum simultaneous stacks when <see cref="Stacking"/> is <see cref="StackRule.Stack"/>.</summary>
         public readonly int MaxStacks;
 
-        // ── Fixed stat deltas (additive; the effective-stat recompute lives in 2.2b) ──
-        /// <summary>Flat max-health delta while active.</summary>
+        // ── Stat deltas (Story 15-24a: THE SPARSE VECTOR) ──
+        /// <summary>
+        /// Story 15-24a — the modifier's stat contributions as a CANONICAL sparse vector (ascending
+        /// <see cref="StatId"/>, no zero entries, no duplicate ids — <see cref="StatVocabulary.Canonicalize"/>
+        /// enforces it at construction). This replaces the pre-15-24a hand-wired four named channels as the
+        /// single source of truth: the store accumulates it, the recompute consumes it, the save lane
+        /// round-trips it via the canonical descriptor table, and <c>CanonicalFold.MixModifier</c> folds it
+        /// (count + per-entry <c>(int)Stat</c> + <c>Delta.Raw</c>) into the content handshake.
+        /// </summary>
+        public readonly StatDelta[] StatDeltas;
+
+        // ── Legacy channel projections (Story 15-24a) ──
+        // The pre-15-24a named fields survive as DERIVED readonly copies of the vector's entries so the
+        // ~60-file read surface (store internals aside, mostly UI/tests/minters) keeps compiling and
+        // behaving identically for legacy content. They are PROJECTIONS, not state: assigned once in the
+        // ctor from StatDeltas, never folded (EffectFoldCompletenessTests classifies them derived-excluded;
+        // the vector is the folded member). Kept as FIELDS, not properties, because the fold-shape guard
+        // pins Modifier to zero-public-properties so no STATE can hide behind one — these hide none.
+        /// <summary>Derived: the vector's <see cref="StatId.MaxHealth"/> entry (Zero when absent).</summary>
         public readonly Fixed MaxHealthDelta;
-        /// <summary>Flat attack-damage delta while active.</summary>
+        /// <summary>Derived: the vector's <see cref="StatId.AttackDamage"/> entry (Zero when absent).</summary>
         public readonly Fixed AttackDamageDelta;
-        /// <summary>Flat move-speed delta while active.</summary>
+        /// <summary>Derived: the vector's <see cref="StatId.MoveSpeed"/> entry (Zero when absent).</summary>
         public readonly Fixed MoveSpeedDelta;
-        /// <summary>Flat armor delta while active (Story 2.6). Folds into <c>EffectiveArmor</c>; reduces incoming
-        /// post-matrix damage (<c>DamageResolver</c> subtracts <c>EffectiveArmor</c>, floored at 0).</summary>
+        /// <summary>Derived: the vector's <see cref="StatId.Armor"/> entry (Zero when absent) — Story 2.6
+        /// semantics unchanged (folds into <c>EffectiveArmor</c>; DamageResolver subtracts it, floored at 0).</summary>
         public readonly Fixed ArmorDelta;
 
         /// <summary>Status flags imposed while active.</summary>
@@ -166,8 +185,9 @@ namespace ProjectChimera.Effects
         public readonly PeriodicStackMode PeriodicStacking;
 
         /// <summary>
-        /// DW-678 — true iff installing this descriptor could not change ANY observable state: all four stat deltas are
-        /// exactly zero, <see cref="Status"/> is <see cref="StatusFlags.None"/>, and there is no
+        /// DW-678 — true iff installing this descriptor could not change ANY observable state: the sparse
+        /// stat-delta vector is empty (canonical form holds no zero entries, so empty IS the all-zero test —
+        /// 15-24a), <see cref="Status"/> is <see cref="StatusFlags.None"/>, and there is no
         /// <see cref="PeriodEffect"/> to pulse. Such an instance still consumes one of the
         /// <see cref="EffectCaps.MaxModifiersPerEntity"/> slots in its host's ring — and does nothing else with it.
         ///
@@ -193,10 +213,7 @@ namespace ProjectChimera.Effects
         /// 0), so for that one minter "all-zero" really does mean "no reason to hold a slot".</para>
         /// </summary>
         public bool HasNoEffect() =>
-            MaxHealthDelta.Raw    == 0 &&
-            AttackDamageDelta.Raw == 0 &&
-            MoveSpeedDelta.Raw    == 0 &&
-            ArmorDelta.Raw        == 0 &&
+            StatDeltas.Length == 0 &&           // canonical vectors carry no zero entries, so empty == all-zero
             Status == StatusFlags.None &&
             PeriodEffect == null;
 
@@ -258,51 +275,119 @@ namespace ProjectChimera.Effects
                 stacks = MaxStacks;
             }
 
-            return CheckDelta("max_health_delta",    MaxHealthDelta,    stacks)
-                ?? CheckDelta("attack_damage_delta", AttackDamageDelta, stacks)
-                ?? CheckDelta("move_speed_delta",    MoveSpeedDelta,    stacks)
-                ?? CheckDelta("armor_delta",         ArmorDelta,        stacks);
+            // Story 15-24a: the walk generalizes over the sparse vector — the same DW-488 product bound per
+            // entry (field-named for the caller's locate), plus each stat's registry-declared per-delta cap
+            // and its ModifierAuthorable gate (fail-closed for stats whose modifier channel is not wired).
+            for (int i = 0; i < StatDeltas.Length; i++)
+            {
+                var check = CheckDelta(StatDeltas[i], stacks);
+                if (check != null) return check;
+            }
+            return null;
         }
 
         /// <summary>
-        /// DW-488 helper: reject one stat delta whose worst-case contribution (<c>|delta| × stacks</c>) would let
-        /// <see cref="EffectCaps.MaxModifiersPerEntity"/> such instances wrap <c>ModifierSystem</c>'s int accumulator.
-        /// The product is computed in <c>long</c> so the CHECK itself can never overflow.
+        /// Story 15-24a — the authoring field name a bounds/vocabulary error locates for one stat: the four
+        /// legacy channels keep their historical flat JSON keys (<c>max_health_delta</c>…, which every badge
+        /// key and validator error format is contracted to), any other stat locates into the sparse
+        /// authoring object (<c>stat_deltas.&lt;json_name&gt;</c>).
         /// </summary>
-        private static (string Field, string Reason)? CheckDelta(string field, Fixed delta, long stacks)
+        public static string AuthoringFieldName(StatId stat) => stat switch
         {
-            long magnitude = delta.Raw < 0 ? -(long)delta.Raw : delta.Raw; // long-widened: |int.MinValue| is representable
+            StatId.MaxHealth => "max_health_delta",
+            StatId.AttackDamage => "attack_damage_delta",
+            StatId.MoveSpeed => "move_speed_delta",
+            StatId.Armor => "armor_delta",
+            _ => "stat_deltas." + StatVocabulary.Get(stat).JsonName,
+        };
+
+        /// <summary>
+        /// DW-488 helper, generalized over the vector (15-24a): reject one entry whose worst-case
+        /// contribution (<c>|delta| × stacks</c>) would let <see cref="EffectCaps.MaxModifiersPerEntity"/>
+        /// such instances wrap <c>ModifierSystem</c>'s int stat accumulators (product computed in
+        /// <c>long</c> so the CHECK itself can never overflow); additionally enforce the stat's
+        /// registry-declared per-delta cap (<c>MaxAbsDeltaRaw</c>; 0 = no per-stat cap, exactly the legacy
+        /// four's rule) and refuse a delta for a stat whose modifier channel is not authorable yet
+        /// (the 15.12 energy pair — recorded seam).
+        /// </summary>
+        private static (string Field, string Reason)? CheckDelta(StatDelta entry, long stacks)
+        {
+            StatDefinition def = StatVocabulary.Get(entry.Stat);
+            string field = AuthoringFieldName(entry.Stat);
+
+            if (!def.ModifierAuthorable)
+                return (field,
+                    $"stat '{def.JsonName}' is not modifier-authorable yet — its consumer is the {def.ConsumerSite} " +
+                    "read seam, which has no modifier channel (recorded 15-24a seam).");
+
+            long magnitude = entry.Delta.Raw < 0 ? -(long)entry.Delta.Raw : entry.Delta.Raw; // long-widened: |int.MinValue| is representable
             long total = magnitude * stacks;
             if (total > MaxStatDeltaTotalRaw)
                 return (field,
                     $"|delta| x max_stacks = {total} raw exceeds MaxStatDeltaTotalRaw={MaxStatDeltaTotalRaw} — " +
                     $"{EffectCaps.MaxModifiersPerEntity} such modifiers on one host would wrap ModifierSystem's int stat accumulator negative.");
+
+            if (def.MaxAbsDeltaRaw != 0 && magnitude > def.MaxAbsDeltaRaw)
+                return (field,
+                    $"|delta| = {magnitude} raw exceeds the '{def.JsonName}' per-delta cap {def.MaxAbsDeltaRaw} raw " +
+                    "(a percent-family fraction this large is semantically meaningless — the registry bounds it).");
+
             return null;
         }
 
-        /// <summary>Construct a modifier descriptor. Pure data; no execution happens here.
-        /// <paramref name="armorDelta"/> is an optional trailing parameter (Story 2.6) so every pre-2.6
-        /// <c>new Modifier(...)</c> call site stays source-compatible (defaults to <see cref="Fixed.Zero"/>).
-        /// <paramref name="periodicStacking"/> is likewise an optional trailing parameter (DW-272 / Story 15.12) so every
-        /// pre-15.12 call site stays source-compatible (defaults to <see cref="PeriodicStackMode.None"/> = today's
-        /// non-scaling pulse).</summary>
+        /// <summary>
+        /// Story 15-24a PRIMARY ctor — construct from a stat-delta vector. Pure data; no execution happens
+        /// here. <paramref name="statDeltas"/> is canonicalized defensively unless it provably already is
+        /// (ascending ids, no zeros, no duplicates), so every construction path yields THE one canonical
+        /// representation the store, save lane, and content fold agree on. The four legacy projection
+        /// fields are derived from the vector here, once.
+        /// </summary>
         public Modifier(int id, int durationTicks, StackRule stacking, int maxStacks,
-                        Fixed maxHealthDelta, Fixed attackDamageDelta, Fixed moveSpeedDelta,
-                        StatusFlags status, EffectNode? periodEffect, int periodTicks,
-                        Fixed armorDelta = default, PeriodicStackMode periodicStacking = PeriodicStackMode.None)
+                        StatDelta[] statDeltas, StatusFlags status, EffectNode? periodEffect, int periodTicks,
+                        PeriodicStackMode periodicStacking = PeriodicStackMode.None)
         {
             Id = id;
             DurationTicks = durationTicks;
             Stacking = stacking;
             MaxStacks = maxStacks;
-            MaxHealthDelta = maxHealthDelta;
-            AttackDamageDelta = attackDamageDelta;
-            MoveSpeedDelta = moveSpeedDelta;
+            StatDeltas = IsCanonical(statDeltas) ? statDeltas
+                : StatVocabulary.Canonicalize(new List<StatDelta>(statDeltas));
+            MaxHealthDelta = StatVocabulary.DeltaOf(StatDeltas, StatId.MaxHealth);
+            AttackDamageDelta = StatVocabulary.DeltaOf(StatDeltas, StatId.AttackDamage);
+            MoveSpeedDelta = StatVocabulary.DeltaOf(StatDeltas, StatId.MoveSpeed);
+            ArmorDelta = StatVocabulary.DeltaOf(StatDeltas, StatId.Armor);
             Status = status;
             PeriodEffect = periodEffect;
             PeriodTicks = periodTicks;
-            ArmorDelta = armorDelta;
             PeriodicStacking = periodicStacking;
+        }
+
+        /// <summary>Construct a modifier descriptor from the four legacy channels — the pre-15-24a
+        /// signature, kept as a compatibility overload so every existing call site (converter, drafts,
+        /// presets, minters, ~60 test files) stays source-compatible; it builds the canonical sparse vector
+        /// via <see cref="StatVocabulary.FromLegacyFour"/>. <paramref name="armorDelta"/> is an optional
+        /// trailing parameter (Story 2.6); <paramref name="periodicStacking"/> likewise (DW-272 / 15.12).</summary>
+        public Modifier(int id, int durationTicks, StackRule stacking, int maxStacks,
+                        Fixed maxHealthDelta, Fixed attackDamageDelta, Fixed moveSpeedDelta,
+                        StatusFlags status, EffectNode? periodEffect, int periodTicks,
+                        Fixed armorDelta = default, PeriodicStackMode periodicStacking = PeriodicStackMode.None)
+            : this(id, durationTicks, stacking, maxStacks,
+                   StatVocabulary.FromLegacyFour(maxHealthDelta, attackDamageDelta, armorDelta, moveSpeedDelta),
+                   status, periodEffect, periodTicks, periodicStacking)
+        {
+        }
+
+        /// <summary>Is <paramref name="deltas"/> already in canonical form (strictly ascending ids, no zero
+        /// entries)? True for every vector built by <see cref="StatVocabulary"/>'s helpers — the defensive
+        /// re-canonicalization in the primary ctor then costs nothing but this scan.</summary>
+        private static bool IsCanonical(StatDelta[] deltas)
+        {
+            for (int i = 0; i < deltas.Length; i++)
+            {
+                if (deltas[i].Delta.Raw == 0) return false;
+                if (i > 0 && (int)deltas[i].Stat <= (int)deltas[i - 1].Stat) return false;
+            }
+            return true;
         }
     }
 }

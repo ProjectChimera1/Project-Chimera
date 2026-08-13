@@ -49,18 +49,18 @@ namespace ProjectChimera.Sim.Tests.Validation
             PlayerSlots = new[] { new ScenarioPlayerSlot { Slot = 0, StartOre = 200f, StartCrystal = 50f, BaseX = -30f, BaseZ = 0f } },
         };
 
-        /// <summary>The exact value <see cref="FixedContentHash"/> folds to on ContentHash AlgoVersion 2. Re-pinned for
-        /// Story 15-21 (v1→v2): the hero block left the authoring-only allowlist and folds (curve fields were already
-        /// sim-read since 3.13 — a closed handshake gap), plus the per-hero attributes block and the faction
-        /// attribute_model. The fixture authors none of them, so it moved by the AlgoVersion mix + a presence-bit
-        /// Mix(0) per unit/building + one per faction. (Prior re-pin: DW-272 / Story 15.12, regen_rate.)</summary>
-        private const ulong ExpectedContentHash = 985466452649578614UL;
+        /// <summary>The exact value <see cref="FixedContentHash"/> folds to on ContentHash AlgoVersion 3. Re-pinned for
+        /// Story 15-24a (v2→v3, the StatVocabulary pipeline): the unit fold gains <c>health_regen</c> (a Mix(0) per
+        /// unit for the fixture) and the item fold carries stat deltas as the canonical sparse vector — the fixture's
+        /// one item (AttackDamageDelta 5) now folds as a length-1 vector (count + StatId + raw) instead of four raw
+        /// Mixes. The AlgoVersion mix moves it too. (Prior re-pins: Story 15-21 hero fold v1→v2; DW-272 regen_rate.)</summary>
+        private const ulong ExpectedContentHash = 11284293526055517891UL;
 
-        /// <summary>The exact value CanonicalModelHash folds <see cref="FixedModel"/> to (AlgoVersion 16). Re-pinned for
-        /// DW-941's AlgoVersion 15→16 bump (the new building_min_gap fold — the fixture authors none, so it folds the
-        /// resolved 1.0u default; the AlgoVersion mix + the new default fold moved this). A behavior-preserving
-        /// refactor must NOT move it again without a further deliberate bump.</summary>
-        private const ulong ExpectedCanonicalModelHash = 8063299176883624929UL;
+        /// <summary>The exact value CanonicalModelHash folds <see cref="FixedModel"/> to (AlgoVersion 17). Re-pinned for
+        /// Story 15-24a's 16→17 bump (MixModifier folds the canonical sparse stat-delta vector — the fixture embeds no
+        /// apply_modifier, so only the AlgoVersion mix moved this). A behavior-preserving refactor must NOT move it
+        /// again without a further deliberate bump. (Prior re-pin: DW-941 building_min_gap, 15→16.)</summary>
+        private const ulong ExpectedCanonicalModelHash = 9371821912523611146UL;
 
         [Fact]
         public void ContentHash_FixedFixture_PinsExactValue()

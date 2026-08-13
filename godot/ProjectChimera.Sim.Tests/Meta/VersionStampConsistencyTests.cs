@@ -162,7 +162,7 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// <summary>DW-941: 15→16 — the building_min_gap fold (sim-affecting: it gates worker-placement order
         /// acceptance, so a lobby mismatch must handshake-reject). Both machines rebuild together; an old client
         /// computes a v15 hash and is rejected at the lobby, which is the intended migration impact.</summary>
-        private const int ExpectedCanonicalModelHashAlgoVersion = 16;
+        private const int ExpectedCanonicalModelHashAlgoVersion = 17; // Story 15-24a: 16->17 — MixModifier folds the sparse stat-delta vector (StatVocabulary pipeline)
 
         /// <summary>Load-time canonical START-STATE hash algorithm version (Story 3.2, AC3) — a NEW, distinct FNV-64
         /// over the full init state = the <see cref="CanonicalModelHash"/> content seed PLUS the HeroStore rows.
@@ -212,7 +212,7 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// <summary>Story 15-21: 1→2 — the hero block leaves the authoring-only allowlist and folds (curve fields
         /// were ALREADY sim-read since 3.13 — a closed handshake gap), plus the per-hero attributes block and the
         /// faction attribute_model. Every unit gains a presence-bit Mix, so the value moves for all content.</summary>
-        private const int ExpectedContentHashAlgoVersion = 2;
+        private const int ExpectedContentHashAlgoVersion = 3; // Story 15-24a: 2->3 — unit health_regen + item/research sparse stat-delta folds
 
         /// <summary>DW-768 (Story 15-21 rider): SaveGameFile.FormatVersion was the ONE fail-closed version gate
         /// with no pin here — a lane-enum edit could ship without its bump and misalign every positional lane in
@@ -220,7 +220,7 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// appended hero attribute lanes); DW-690 bumped 7→8 (the appended per-entity RallyMovePending lane, so a
         /// worker saved mid-rally keeps its DW-634 stand-down gate across a load); DW-804 bumped 8→9 (the appended
         /// entity GatherWalkStall lane, which shifts every flat-stride entity lane after it).</summary>
-        private const ushort ExpectedSaveFormatVersion = 9;
+        private const ushort ExpectedSaveFormatVersion = 10; // Story 15-24a: 9->10 — five stat-pipeline entity lanes + registry-strided hero attr rings + per-stat research lanes
 
         /// <summary>.chmr replay file-format version. Story 7.9 bumped 2→3 (DslEvent orders). Story 9.11 bumped 3→4
         /// ("replay v2": self-describing tagged body via the frozen MergedTickPacket envelope + a result trailer, and

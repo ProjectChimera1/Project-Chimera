@@ -200,6 +200,23 @@ namespace ProjectChimera.Core.Definitions
             WriteFixed(writer, "attack_damage_delta", m.AttackDamageDelta, options);
             WriteFixed(writer, "move_speed_delta", m.MoveSpeedDelta, options);
             WriteFixed(writer, "armor_delta", m.ArmorDelta, options);
+            // Story 15-24a: every NON-legacy vector entry writes into the sparse "stat_deltas" object, ascending
+            // StatId (the vector's own canonical order), keys = registry JsonNames. OMIT-WHEN-EMPTY (the
+            // periodic_stack_mode discipline) so every pre-15-24a modifier round-trips byte-identically.
+            bool hasSparse = false;
+            for (int i = 0; i < m.StatDeltas.Length; i++)
+                if (!IsLegacyDeltaStat(m.StatDeltas[i].Stat)) { hasSparse = true; break; }
+            if (hasSparse)
+            {
+                writer.WritePropertyName("stat_deltas");
+                writer.WriteStartObject();
+                for (int i = 0; i < m.StatDeltas.Length; i++)
+                {
+                    if (IsLegacyDeltaStat(m.StatDeltas[i].Stat)) continue;
+                    WriteFixed(writer, ProjectChimera.Core.Stats.StatVocabulary.Get(m.StatDeltas[i].Stat).JsonName, m.StatDeltas[i].Delta, options);
+                }
+                writer.WriteEndObject();
+            }
             WriteEnum(writer, "status", m.Status, options);
             WriteOptionalChild(writer, "period_effect", m.PeriodEffect, options);
             writer.WriteNumber("period_ticks", m.PeriodTicks);
@@ -372,6 +389,7 @@ namespace ProjectChimera.Core.Definitions
             RejectUnknownProperties(el, path,
                 "id", "duration_ticks", "stacking", "max_stacks",
                 "max_health_delta", "attack_damage_delta", "move_speed_delta", "armor_delta",
+                "stat_deltas", // Story 15-24a — the sparse lane (its own keys are registry-gated below)
                 "status", "period_effect", "period_ticks", "periodic_stack_mode");
 
             int id                 = ReadInt(el, "id", path, 0);
@@ -391,10 +409,67 @@ namespace ProjectChimera.Core.Definitions
             // fail-closed by the enum converter, exactly like `stacking`/`status`.
             PeriodicStackMode periodicStacking = ReadEnum<PeriodicStackMode>(el, "periodic_stack_mode", path, options, required: false, fallback: PeriodicStackMode.None);
 
+            // Story 15-24a: build the canonical vector — the four legacy keys plus the sparse stat_deltas lane.
+            var scratch = new System.Collections.Generic.List<ProjectChimera.Core.Stats.StatDelta>(4)
+            {
+                new ProjectChimera.Core.Stats.StatDelta(ProjectChimera.Core.Stats.StatId.MaxHealth, maxHealthDelta),
+                new ProjectChimera.Core.Stats.StatDelta(ProjectChimera.Core.Stats.StatId.AttackDamage, attackDamageDelta),
+                new ProjectChimera.Core.Stats.StatDelta(ProjectChimera.Core.Stats.StatId.Armor, armorDelta),
+                new ProjectChimera.Core.Stats.StatDelta(ProjectChimera.Core.Stats.StatId.MoveSpeed, moveSpeedDelta),
+            };
+            ReadStatDeltasLane(el, path, options, scratch);
+
             return new Modifier(id, durationTicks, stacking, maxStacks,
-                                maxHealthDelta, attackDamageDelta, moveSpeedDelta,
-                                status, periodEffect, periodTicks, armorDelta, periodicStacking);
+                                ProjectChimera.Core.Stats.StatVocabulary.Canonicalize(scratch),
+                                status, periodEffect, periodTicks, periodicStacking);
         }
+
+        /// <summary>
+        /// Story 15-24a — parse the optional sparse <c>stat_deltas</c> object into <paramref name="scratch"/>.
+        /// FAIL-CLOSED at the converter (the RejectUnknownProperties posture — the closed vocabulary is enforced
+        /// where the JSON enters, not just at the validator): an unknown stat name, a legacy stat name (those
+        /// author through their flat keys — one canonical spelling per stat), a non-modifier-authorable stat
+        /// (the energy pair), or a non-object value is a located JsonException. Values route through
+        /// FixedJsonConverter (the one quantizer). Document-ordered keys land in the scratch list unsorted —
+        /// <c>StatVocabulary.Canonicalize</c> sorts/merges, so JSON key order can never matter.
+        /// </summary>
+        private static void ReadStatDeltasLane(JsonElement el, string path, JsonSerializerOptions options,
+                                               System.Collections.Generic.List<ProjectChimera.Core.Stats.StatDelta> scratch)
+        {
+            if (!el.TryGetProperty("stat_deltas", out JsonElement lane)) return;
+            string lanePath = $"{path}.stat_deltas";
+            if (lane.ValueKind != JsonValueKind.Object)
+                throw new JsonException($"{lanePath}: must be a JSON object of {{ \"<stat>\": <number> }}, got {lane.ValueKind}.");
+
+            long seen = 0; // duplicate-key bitmask by StatId — fine while Count <= 64 (StatVocabularyGuardTests pins it)
+            foreach (JsonProperty p in lane.EnumerateObject())
+            {
+                if (!ProjectChimera.Core.Stats.StatVocabulary.TryByJsonName(p.Name, out var statDef))
+                    throw new JsonException($"{lanePath}.{p.Name}: unknown stat name (the closed StatVocabulary registry gates this lane).");
+                long bit = 1L << (int)statDef.Id;
+                if ((seen & bit) != 0)
+                    throw new JsonException($"{lanePath}.{p.Name}: duplicate stat key (the RejectUnknownProperties duplicate posture).");
+                seen |= bit;
+                if (statDef.Id == ProjectChimera.Core.Stats.StatId.MaxHealth
+                 || statDef.Id == ProjectChimera.Core.Stats.StatId.AttackDamage
+                 || statDef.Id == ProjectChimera.Core.Stats.StatId.MoveSpeed
+                 || statDef.Id == ProjectChimera.Core.Stats.StatId.Armor)
+                    throw new JsonException($"{lanePath}.{p.Name}: author this stat through its flat '{Modifier.AuthoringFieldName(statDef.Id)}' key — one canonical spelling per stat.");
+                if (!statDef.ModifierAuthorable)
+                    throw new JsonException($"{lanePath}.{p.Name}: stat '{statDef.JsonName}' is not modifier-authorable yet (its consumer is the {statDef.ConsumerSite} read seam).");
+                Fixed value;
+                try { value = p.Value.Deserialize<Fixed>(options); }
+                catch (JsonException ex) { throw new JsonException($"{lanePath}.{p.Name}: {ex.Message}"); }
+                scratch.Add(new ProjectChimera.Core.Stats.StatDelta(statDef.Id, value));
+            }
+        }
+
+        /// <summary>Story 15-24a — is this stat one of the four whose canonical authoring spelling is a flat
+        /// legacy key (<c>max_health_delta</c>…)? The write half keeps those keys; everything else rides
+        /// <c>stat_deltas</c>.</summary>
+        private static bool IsLegacyDeltaStat(ProjectChimera.Core.Stats.StatId stat) =>
+            stat == ProjectChimera.Core.Stats.StatId.MaxHealth || stat == ProjectChimera.Core.Stats.StatId.AttackDamage
+            || stat == ProjectChimera.Core.Stats.StatId.MoveSpeed || stat == ProjectChimera.Core.Stats.StatId.Armor;
 
         // ── Field readers (each wraps a value-converter error with the located field path) ──
 

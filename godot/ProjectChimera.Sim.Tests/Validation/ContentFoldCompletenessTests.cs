@@ -92,6 +92,8 @@ namespace ProjectChimera.Sim.Tests.Validation
             "splash_radius", "delivery", "projectile_speed", "xp_bounty", "collision_radius", "separation_priority",
             "prerequisites", "abilities", "attack_domains", "tags", "is_hero", "revives_heroes", "sells_items",
             "shop_stock", "shop_radius", "max_energy", "regen_rate",
+            "health_regen", // Story 15-24a: sim-read (drives HealthRegenSystem → folded Health) — the regen_rate posture
+
             // Story 15-21: the hero block folds (ContentHash v2 — its curve was ALREADY sim-read since 3.13, and
             // the new attributes block drives stats through HeroAttributeResolver). Leaves the allowlist.
             "hero",
@@ -133,7 +135,9 @@ namespace ProjectChimera.Sim.Tests.Validation
         [Fact]
         public void ItemDefinition_EveryFieldClassified()
             => AssertClassified(typeof(ItemDefinition),
-                folded: new[] { "id", "charges", "max_health_delta", "attack_damage_delta", "move_speed_delta", "armor_delta", "effect", "cost_ore", "cost_crystal" },
+                folded: new[] { "id", "charges", "max_health_delta", "attack_damage_delta", "move_speed_delta", "armor_delta",
+                                "stat_deltas", // Story 15-24a: folds via the canonical sparse vector (BuildStatDeltaVector, ContentHash v3)
+                                "effect", "cost_ore", "cost_crystal" },
                 excluded: new[] { "display_name", "icon" },
                 allowlist: Array.Empty<string>());
 
@@ -154,7 +158,8 @@ namespace ProjectChimera.Sim.Tests.Validation
         [Fact]
         public void ResearchModifierDelta_EveryFieldClassified()
             => AssertClassified(typeof(ResearchModifierDelta),
-                folded: new[] { "max_health_delta", "attack_damage_delta", "move_speed_delta", "armor_delta" },
+                folded: new[] { "max_health_delta", "attack_damage_delta", "move_speed_delta", "armor_delta",
+                                "stat_deltas" }, // Story 15-24a: folds via the canonical sparse vector (BuildStatDeltaVector, ContentHash v3)
                 excluded: Array.Empty<string>(),
                 allowlist: Array.Empty<string>());
 
@@ -189,6 +194,13 @@ namespace ProjectChimera.Sim.Tests.Validation
                 return (new List<ResearchLevel> { new ResearchLevel { TimeTicks = 7 } }, new List<ResearchLevel> { new ResearchLevel { TimeTicks = 9 } });
             if (propType == typeof(ResearchModifierDelta))
                 return (new ResearchModifierDelta { MaxHealthDelta = 7f }, new ResearchModifierDelta { MaxHealthDelta = 9f });
+            // Story 15-24a: the sparse stat_deltas lanes (ContentHash v3 — fold via the canonical vector).
+            if (propType == typeof(Dictionary<string, float>))
+                return (new Dictionary<string, float> { { "attack_speed", 0.1f } },
+                        new Dictionary<string, float> { { "attack_speed", 0.2f } });
+            if (propType == typeof(Dictionary<string, Fixed>))
+                return (new Dictionary<string, Fixed> { { "attack_speed", Fixed.FromRaw(6554) } },
+                        new Dictionary<string, Fixed> { { "attack_speed", Fixed.FromRaw(13107) } });
             // Story 15-21: the hero block (ContentHash v2) + the faction attribute model are folded types now.
             if (propType == typeof(HeroDefinition))
                 return (new HeroDefinition { MaxLevel = 7 }, new HeroDefinition { MaxLevel = 9 });

@@ -50,7 +50,10 @@ namespace ProjectChimera.Sim.Tests.Golden
         // DW-941: CanonicalModelHash.AlgoVersion bumped 15->16 (the building_min_gap fold), stamp moved 15->16 —
         // the same additive stamp-change class (the generated map authors no building_min_gap, so the key is
         // omitted and the bytes are otherwise unchanged).
-        private const uint GoldenHash = 2680846249u;
+        // Story 15-24a: CanonicalModelHash.AlgoVersion bumped 16->17 (MixModifier folds the sparse stat-delta
+        // vector), stamp moved 16->17 — the same additive stamp-change class (the generated map embeds no
+        // apply_modifier, so the bytes are otherwise unchanged).
+        private const uint GoldenHash = 3387691366u;
 
         [Fact]
         public void SameSeed_TwiceProducesByteIdenticalSerialization_AndMatchesGoldenHash()
