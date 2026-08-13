@@ -94,6 +94,10 @@ namespace ProjectChimera.Core.Persistence
         public int[][] ReschCumAtk = Array.Empty<int[]>();
         public int[][] ReschCumMove = Array.Empty<int[]>();
         public int[][] ReschCumArmor = Array.Empty<int[]>();
+        // Story 15-24a (v10): the NON-legacy registry stats' cumulative lanes, one jagged block per stat in
+        // ascending StatId order, SKIPPING the four legacy stats above (which keep their own named lanes for
+        // byte-shape continuity). Length = StatVocabulary.Count − 4; each entry mirrors the ReschCum* shape.
+        public int[][][] ReschCumByStat = Array.Empty<int[][]>();
 
         // ── WinStateStore ──
         public int   WinMatchTicks;
@@ -544,6 +548,11 @@ namespace ProjectChimera.Core.Persistence
             ReschInProgress = new int[f]; ReschRemaining = new int[f];
             ReschStartedX = new int[f]; ReschStartedY = new int[f]; ReschStartedZ = new int[f];
             ReschCompleted = new int[f][]; ReschCumHp = new int[f][]; ReschCumAtk = new int[f][]; ReschCumMove = new int[f][]; ReschCumArmor = new int[f][];
+            // Story 15-24a (v10): every NON-legacy registry stat gets its own jagged block, ascending StatId
+            // (the legacy four keep their named lanes above — byte-shape continuity + the aliasing reads).
+            int extra = ProjectChimera.Core.Stats.StatVocabulary.Count - 4;
+            ReschCumByStat = new int[extra][][];
+            for (int x = 0; x < extra; x++) ReschCumByStat[x] = new int[f][];
             for (int i = 0; i < f; i++)
             {
                 ReschInProgress[i] = r.InProgressIndex[i]; ReschRemaining[i] = r.RemainingTicks[i];
@@ -556,8 +565,22 @@ namespace ProjectChimera.Core.Persistence
                     cmv[k] = r.CumulativeMoveSpeedDelta[i][k].Raw; car[k] = r.CumulativeArmorDelta[i][k].Raw;
                 }
                 ReschCompleted[i] = cl; ReschCumHp[i] = ch; ReschCumAtk[i] = ca; ReschCumMove[i] = cmv; ReschCumArmor[i] = car;
+                int x2 = 0;
+                for (int s = 0; s < r.CumulativeByStat.Length; s++)
+                {
+                    if (IsLegacyReschStat(s)) continue;
+                    var lane = new int[m];
+                    for (int k = 0; k < m; k++) lane[k] = r.CumulativeByStat[s][i][k].Raw;
+                    ReschCumByStat[x2++][i] = lane;
+                }
             }
         }
+
+        /// <summary>Story 15-24a — is registry stat index <paramref name="s"/> one of the four whose research
+        /// cumulative lane is a NAMED legacy save field (ReschCumHp/Atk/Move/Armor)?</summary>
+        private static bool IsLegacyReschStat(int s) =>
+            s == (int)ProjectChimera.Core.Stats.StatId.MaxHealth || s == (int)ProjectChimera.Core.Stats.StatId.AttackDamage
+            || s == (int)ProjectChimera.Core.Stats.StatId.MoveSpeed || s == (int)ProjectChimera.Core.Stats.StatId.Armor;
 
         private void CaptureWinState(WinStateStore w)
         {
@@ -1031,6 +1054,21 @@ namespace ProjectChimera.Core.Persistence
                     r.CumulativeMoveSpeedDelta[i][k] = Fixed.FromRaw(ReschCumMove[i][k]);
                     r.CumulativeArmorDelta[i][k] = Fixed.FromRaw(ReschCumArmor[i][k]);
                 }
+                // Story 15-24a (v10): the non-legacy stat lanes, same bounds discipline as the named four.
+                int x2 = 0;
+                for (int s = 0; s < r.CumulativeByStat.Length; s++)
+                {
+                    if (IsLegacyReschStat(s)) continue;
+                    if (x2 >= ReschCumByStat.Length) break;                 // defensive vs a short blob (Validate gates first)
+                    int[]? lane = i < ReschCumByStat[x2].Length ? ReschCumByStat[x2][i] : null;
+                    if (lane != null)
+                    {
+                        int mmS = Math.Min(mm, lane.Length);
+                        for (int k = 0; k < mmS; k++)
+                            r.CumulativeByStat[s][i][k] = Fixed.FromRaw(lane[k]);
+                    }
+                    x2++;
+                }
             }
         }
 
@@ -1155,6 +1193,10 @@ namespace ProjectChimera.Core.Persistence
             {
                 WI(b, ReschInProgress); WI(b, ReschRemaining); WI(b, ReschStartedX); WI(b, ReschStartedY); WI(b, ReschStartedZ);
                 WJ(b, ReschCompleted); WJ(b, ReschCumHp); WJ(b, ReschCumAtk); WJ(b, ReschCumMove); WJ(b, ReschCumArmor);
+                // Story 15-24a (v10): count-prefixed non-legacy stat blocks, ascending StatId (the count is
+                // written so Validate can check the blob's stat width against this build's registry).
+                b.Write(ReschCumByStat.Length);
+                for (int x = 0; x < ReschCumByStat.Length; x++) WJ(b, ReschCumByStat[x]);
             });
             Frame(w, Tag.WinState, b => { b.Write(WinMatchTicks); WI(b, WinKoth); WI(b, WinSurvival); WI(b, WinVerdict); });
             Frame(w, Tag.Alliances, b => WI(b, AllianceTeam));
@@ -1414,7 +1456,14 @@ namespace ProjectChimera.Core.Persistence
                 case Tag.Projectiles: ProjHwm = b.ReadInt32(); ProjFreeList = RI(b); Proj = RJ(b); break;
                 case Tag.Research:
                     ReschInProgress = RI(b); ReschRemaining = RI(b); ReschStartedX = RI(b); ReschStartedY = RI(b); ReschStartedZ = RI(b);
-                    ReschCompleted = RJ(b); ReschCumHp = RJ(b); ReschCumAtk = RJ(b); ReschCumMove = RJ(b); ReschCumArmor = RJ(b); break;
+                    ReschCompleted = RJ(b); ReschCumHp = RJ(b); ReschCumAtk = RJ(b); ReschCumMove = RJ(b); ReschCumArmor = RJ(b);
+                    // Story 15-24a (v10): count-prefixed non-legacy stat blocks (Validate checks the count).
+                    int statBlocks = b.ReadInt32();
+                    if (statBlocks < 0 || statBlocks > 4096)
+                        throw new InvalidDataException($"Save '{ctx}': research stat-block count {statBlocks} is implausible — corrupt save.");
+                    ReschCumByStat = new int[statBlocks][][];
+                    for (int x = 0; x < statBlocks; x++) ReschCumByStat[x] = RJ(b);
+                    break;
                 case Tag.WinState: WinMatchTicks = b.ReadInt32(); WinKoth = RI(b); WinSurvival = RI(b); WinVerdict = RI(b); break;
                 case Tag.Alliances: AllianceTeam = RI(b); break;
                 case Tag.TriggerEnabled: TriggerEnabled = RI(b); break;

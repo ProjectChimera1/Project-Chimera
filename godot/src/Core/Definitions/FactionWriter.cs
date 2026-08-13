@@ -671,13 +671,26 @@ namespace ProjectChimera.Core.Definitions
                 lo["time_ticks"] = level.TimeTicks;
 
                 ResearchModifierDelta? md = level.ModifierDelta;
-                if (md != null && (md.MaxHealthDelta != 0f || md.AttackDamageDelta != 0f || md.MoveSpeedDelta != 0f || md.ArmorDelta != 0f))
+                // Story 15-24a: the sparse lane joins the presence test + emission — per-key omit-when-zero
+                // (the Story 4.5 cost-map drop class this method's own history warns about), keys sorted
+                // ordinal, so a level whose only grant rides stat_deltas is never silently dropped on Save.
+                bool hasSparse = false;
+                if (md?.StatDeltas != null)
+                    foreach (float v in md.StatDeltas.Values) { if (v != 0f) { hasSparse = true; break; } }
+                if (md != null && (md.MaxHealthDelta != 0f || md.AttackDamageDelta != 0f || md.MoveSpeedDelta != 0f || md.ArmorDelta != 0f || hasSparse))
                 {
                     var mdObj = new JsonObject();
                     if (md.MaxHealthDelta != 0f)    mdObj["max_health_delta"]    = md.MaxHealthDelta;
                     if (md.AttackDamageDelta != 0f) mdObj["attack_damage_delta"] = md.AttackDamageDelta;
                     if (md.MoveSpeedDelta != 0f)    mdObj["move_speed_delta"]    = md.MoveSpeedDelta;
                     if (md.ArmorDelta != 0f)        mdObj["armor_delta"]         = md.ArmorDelta;
+                    if (hasSparse)
+                    {
+                        var laneObj = new JsonObject();
+                        foreach (string k in md.StatDeltas!.Keys.OrderBy(k => k, StringComparer.Ordinal))
+                            if (md.StatDeltas[k] != 0f) laneObj[k] = md.StatDeltas[k];
+                        mdObj["stat_deltas"] = laneObj;
+                    }
                     lo["modifier_delta"] = mdObj;
                 }
                 arr.Add(lo);

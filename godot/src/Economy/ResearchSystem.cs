@@ -372,27 +372,32 @@ namespace ProjectChimera.Economy
             }
             ResearchLevel level = rdef.Levels[levelIdx];
 
-            // DW-623: snapshot the four running cumulative totals BEFORE this level folds into them, so a
+            // DW-623: snapshot ALL running cumulative totals BEFORE this level folds into them, so a
             // fully-refused completion can be rolled back EXACTLY. Subtracting the level's delta back off would NOT
             // be an inverse — SaturatingAdd clamps at the Fixed ceiling, and a clamped add is not invertible.
-            Fixed prevMaxHealthDelta    = _research.CumulativeMaxHealthDelta[f][researchIndex];
-            Fixed prevAttackDamageDelta = _research.CumulativeAttackDamageDelta[f][researchIndex];
-            Fixed prevMoveSpeedDelta    = _research.CumulativeMoveSpeedDelta[f][researchIndex];
-            Fixed prevArmorDelta        = _research.CumulativeArmorDelta[f][researchIndex];
+            // 15-24a: one snapshot slot per registry stat (completions are human-scale; the alloc is fine).
+            var prevCumulative = new Fixed[Core.Stats.StatVocabulary.Count];
+            for (int s = 0; s < prevCumulative.Length; s++)
+                prevCumulative[s] = _research.CumulativeByStat[s][f][researchIndex];
 
-            // Increment the completed-level count and accumulate this level's delta into the running cumulative
-            // Fixed total — the single load-boundary quantization this story owns (each INDIVIDUAL level's value
-            // already range-validated in [-32768, 32768) by 4.8's ResearchValidator). The RUNNING SUM across many
-            // completed levels of a repeatable ladder is NOT individually range-validated, so it is saturated via
-            // SaturatingAdd below rather than wrapping Fixed's underlying int32 (review fix).
+            // Increment the completed-level count and accumulate this level's grant into the running cumulative
+            // Fixed totals — the single load-boundary quantization this story owns (each INDIVIDUAL level's value
+            // already range-validated by 4.8's ResearchValidator). The RUNNING SUM across many completed levels of
+            // a repeatable ladder is NOT individually range-validated, so it is saturated via SaturatingAdd below
+            // rather than wrapping Fixed's underlying int32 (review fix). 15-24a: the level's grant is its
+            // CANONICAL sparse vector (legacy four keys + the stat_deltas lane, quantized in
+            // BuildStatDeltaVector — the same builder ContentHash folds, so hash and behavior agree).
             _research.CompletedLevels[f][researchIndex] = levelIdx + 1;
             ResearchModifierDelta? md = level.ModifierDelta;
             if (md != null)
             {
-                _research.CumulativeMaxHealthDelta[f][researchIndex]    = SaturatingAdd(_research.CumulativeMaxHealthDelta[f][researchIndex],    Fixed.FromFloat(md.MaxHealthDelta));
-                _research.CumulativeAttackDamageDelta[f][researchIndex] = SaturatingAdd(_research.CumulativeAttackDamageDelta[f][researchIndex], Fixed.FromFloat(md.AttackDamageDelta));
-                _research.CumulativeMoveSpeedDelta[f][researchIndex]    = SaturatingAdd(_research.CumulativeMoveSpeedDelta[f][researchIndex],    Fixed.FromFloat(md.MoveSpeedDelta));
-                _research.CumulativeArmorDelta[f][researchIndex]        = SaturatingAdd(_research.CumulativeArmorDelta[f][researchIndex],        Fixed.FromFloat(md.ArmorDelta));
+                var grant = md.BuildStatDeltaVector();
+                for (int d = 0; d < grant.Length; d++)
+                {
+                    int s = (int)grant[d].Stat;
+                    _research.CumulativeByStat[s][f][researchIndex] =
+                        SaturatingAdd(_research.CumulativeByStat[s][f][researchIndex], grant[d].Delta);
+                }
             }
 
             // Apply to every currently alive unit of this faction — mirrors SupplySystem.Tick's ascending-id loop.
@@ -431,11 +436,9 @@ namespace ProjectChimera.Economy
 
             if (nobodyReceivedIt)
             {
-                _research.CompletedLevels[f][researchIndex]             = levelIdx;
-                _research.CumulativeMaxHealthDelta[f][researchIndex]    = prevMaxHealthDelta;
-                _research.CumulativeAttackDamageDelta[f][researchIndex] = prevAttackDamageDelta;
-                _research.CumulativeMoveSpeedDelta[f][researchIndex]    = prevMoveSpeedDelta;
-                _research.CumulativeArmorDelta[f][researchIndex]        = prevArmorDelta;
+                _research.CompletedLevels[f][researchIndex] = levelIdx;
+                for (int s = 0; s < prevCumulative.Length; s++) // 15-24a: exact rollback of every stat lane
+                    _research.CumulativeByStat[s][f][researchIndex] = prevCumulative[s];
                 // Refund exactly what StartResearchCommand spent: the same level's Cost dictionary, re-resolved from
                 // the same levelIdx (nothing can move CompletedLevels between Start and Complete — one order per
                 // faction). Mirrors BuildingSystem.BuyItemCommand's "refund atomically → net zero" + Deny shape.
@@ -497,11 +500,13 @@ namespace ProjectChimera.Economy
         /// neither zero a non-zero total nor un-zero a zero one — and this one stays on the raw totals because it runs
         /// once per completion for a REFUND decision and must not allocate a descriptor to answer.</para>
         /// </summary>
-        private bool CumulativeCarriesPayload(int f, int researchIndex) =>
-            _research.CumulativeMaxHealthDelta[f][researchIndex].Raw    != 0 ||
-            _research.CumulativeAttackDamageDelta[f][researchIndex].Raw != 0 ||
-            _research.CumulativeMoveSpeedDelta[f][researchIndex].Raw    != 0 ||
-            _research.CumulativeArmorDelta[f][researchIndex].Raw        != 0;
+        private bool CumulativeCarriesPayload(int f, int researchIndex)
+        {
+            // 15-24a: every registry stat lane (allocation-free — a raw walk of the banked totals).
+            for (int s = 0; s < _research.CumulativeByStat.Length; s++)
+                if (_research.CumulativeByStat[s][f][researchIndex].Raw != 0) return true;
+            return false;
+        }
 
         /// <summary>
         /// Install/refresh entity <paramref name="id"/>'s ONE cumulative modifier slot for faction-index
@@ -580,26 +585,27 @@ namespace ProjectChimera.Economy
         /// </summary>
         private Modifier BuildCumulativeModifier(int f, int researchIndex)
         {
-            // Read the four banked cumulatives ONCE (same values, same order as the pre-DW-751 inline reads).
-            Fixed maxHealth = _research.CumulativeMaxHealthDelta[f][researchIndex];
-            Fixed attack    = _research.CumulativeAttackDamageDelta[f][researchIndex];
-            Fixed moveSpeed = _research.CumulativeMoveSpeedDelta[f][researchIndex];
-            Fixed armor     = _research.CumulativeArmorDelta[f][researchIndex];
-
-            NoteBoundTruncation(f, researchIndex, maxHealth, attack, moveSpeed, armor); // DW-751 (tally only)
+            // 15-24a: walk every registry stat's banked total, clamp each through BoundedDelta (the same
+            // magnitude-only clamp — it can neither zero a non-zero total nor un-zero a zero one, which is the
+            // agreement CumulativeCarriesPayload's doc argues from), and build the canonical sparse vector.
+            var scratch = new System.Collections.Generic.List<Core.Stats.StatDelta>(4);
+            for (int s = 0; s < _research.CumulativeByStat.Length; s++)
+            {
+                Fixed banked = _research.CumulativeByStat[s][f][researchIndex];
+                if (banked.Raw == 0) continue;
+                NoteBoundTruncation(f, researchIndex, (Core.Stats.StatId)s, banked); // DW-751 (tally only)
+                scratch.Add(new Core.Stats.StatDelta((Core.Stats.StatId)s, BoundedDelta(banked)));
+            }
 
             return new Modifier(
                 ResearchModifierId(researchIndex),
                 durationTicks: -1,
                 StackRule.Refresh,
                 maxStacks: 1,
-                maxHealthDelta:    BoundedDelta(maxHealth),
-                attackDamageDelta: BoundedDelta(attack),
-                moveSpeedDelta:    BoundedDelta(moveSpeed),
+                Core.Stats.StatVocabulary.Canonicalize(scratch),
                 status: StatusFlags.None,
                 periodEffect: null,
-                periodTicks: 0,
-                armorDelta:        BoundedDelta(armor));
+                periodTicks: 0);
         }
 
         /// <summary>
@@ -777,13 +783,15 @@ namespace ProjectChimera.Economy
         /// nothing on the untruncated path (the overwhelmingly common case — it engages only past ≈4096 accumulated
         /// stat units, and no shipped research authors a modifier delta at all).</para>
         /// </summary>
-        private void NoteBoundTruncation(int f, int researchIndex, Fixed maxHealth, Fixed attack, Fixed moveSpeed, Fixed armor)
+        private void NoteBoundTruncation(int f, int researchIndex, Core.Stats.StatId stat, Fixed banked)
         {
-            long worst = 0;
-            worst = WorstOvershoot(worst, maxHealth);
-            worst = WorstOvershoot(worst, attack);
-            worst = WorstOvershoot(worst, moveSpeed);
-            worst = WorstOvershoot(worst, armor);
+            // 15-24a: per-stat form — BuildCumulativeModifier calls once per non-zero banked lane, so the walk
+            // over a hand-kept four-field list is gone (the DW-751 tally covers every registry stat by
+            // construction). `stat` is currently tally-shape-only (the counters aggregate per research, not per
+            // stat — DW-624's aggregation precedent); it is in the signature so a future per-stat report needs
+            // no call-site change.
+            _ = stat;
+            long worst = WorstOvershoot(0, banked);
             if (worst == 0) return; // nothing exceeded the bound → the delivery is exact, nothing to report
 
             if (f < 0 || f >= _boundTruncationsByResearch.Length) return;

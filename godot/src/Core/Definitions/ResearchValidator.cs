@@ -171,6 +171,31 @@ namespace ProjectChimera.Core.Definitions
                             CheckFiniteModifier(errors, id, i, "attack_damage_delta", md.AttackDamageDelta);
                             CheckFiniteModifier(errors, id, i, "move_speed_delta", md.MoveSpeedDelta);
                             CheckFiniteModifier(errors, id, i, "armor_delta", md.ArmorDelta);
+
+                            // Story 15-24a: the sparse stat_deltas lane — registry-gated keys (fail-closed:
+                            // unknown names, legacy stats (one canonical spelling — the flat keys above), and
+                            // non-modifier-authorable stats all reject), each value under the same finite/range
+                            // rule as the four flat fields, iterated in sorted key order (deterministic errors).
+                            if (md.StatDeltas != null && md.StatDeltas.Count > 0)
+                            {
+                                var laneKeys = new List<string>(md.StatDeltas.Keys);
+                                laneKeys.Sort(StringComparer.Ordinal);
+                                foreach (string key in laneKeys)
+                                {
+                                    string path = $"stat_deltas.{key}";
+                                    if (!ProjectChimera.Core.Stats.StatVocabulary.TryByJsonName(key, out var statDef))
+                                        errors.Add($"research '{id}'.levels[{i}].modifier_delta.{path}: unknown stat name (the closed StatVocabulary registry gates this lane).");
+                                    else if (statDef.Id == ProjectChimera.Core.Stats.StatId.MaxHealth
+                                          || statDef.Id == ProjectChimera.Core.Stats.StatId.AttackDamage
+                                          || statDef.Id == ProjectChimera.Core.Stats.StatId.MoveSpeed
+                                          || statDef.Id == ProjectChimera.Core.Stats.StatId.Armor)
+                                        errors.Add($"research '{id}'.levels[{i}].modifier_delta.{path}: author this stat through its flat '{ProjectChimera.Effects.Modifier.AuthoringFieldName(statDef.Id)}' key — one canonical spelling per stat.");
+                                    else if (!statDef.ModifierAuthorable)
+                                        errors.Add($"research '{id}'.levels[{i}].modifier_delta.{path}: stat '{statDef.JsonName}' is not modifier-authorable yet (its consumer is the {statDef.ConsumerSite} read seam).");
+                                    else
+                                        CheckFiniteModifier(errors, id, i, path, md.StatDeltas[key]);
+                                }
+                            }
                         }
                     }
                 }

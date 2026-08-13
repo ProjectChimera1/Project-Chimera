@@ -39,17 +39,26 @@ namespace ProjectChimera.Core
         /// <c>FactionDefinition.Research</c> list order). 0 = never completed a level of this research.</summary>
         public readonly int[][] CompletedLevels;
 
-        /// <summary>Per-faction-per-research cumulative <see cref="Effects.Modifier.MaxHealthDelta"/> — the sum of
-        /// every completed level's <c>ResearchModifierDelta.MaxHealthDelta</c>, quantized once per completion.</summary>
+        /// <summary>
+        /// Story 15-24a — the GENERALIZED cumulative store: one per-faction-per-research <c>Fixed[][]</c> lane
+        /// PER REGISTRY STAT, indexed <c>[(int)StatId][faction][research]</c>. The sum of every completed
+        /// level's contribution to that stat (legacy four keys + the <c>stat_deltas</c> lane), quantized once
+        /// per completion. The four legacy fields below are ALIASES of this table's outer arrays — same
+        /// objects, so every pre-15-24a reader (SimChecksum's hand-named folds, the save lanes, the UI
+        /// upgrade summary) keeps reading exactly the values it always did with zero call-site churn.
+        /// </summary>
+        public readonly Fixed[][][] CumulativeByStat;
+
+        /// <summary>Alias of <c>CumulativeByStat[(int)StatId.MaxHealth]</c> (see <see cref="CumulativeByStat"/>).</summary>
         public readonly Fixed[][] CumulativeMaxHealthDelta;
 
-        /// <summary>Per-faction-per-research cumulative <see cref="Effects.Modifier.AttackDamageDelta"/>.</summary>
+        /// <summary>Alias of <c>CumulativeByStat[(int)StatId.AttackDamage]</c>.</summary>
         public readonly Fixed[][] CumulativeAttackDamageDelta;
 
-        /// <summary>Per-faction-per-research cumulative <see cref="Effects.Modifier.MoveSpeedDelta"/>.</summary>
+        /// <summary>Alias of <c>CumulativeByStat[(int)StatId.MoveSpeed]</c>.</summary>
         public readonly Fixed[][] CumulativeMoveSpeedDelta;
 
-        /// <summary>Per-faction-per-research cumulative <see cref="Effects.Modifier.ArmorDelta"/>.</summary>
+        /// <summary>Alias of <c>CumulativeByStat[(int)StatId.Armor]</c>.</summary>
         public readonly Fixed[][] CumulativeArmorDelta;
 
         public ResearchStore()
@@ -57,20 +66,22 @@ namespace ProjectChimera.Core
             InProgressIndex   = new int[FACTION_COUNT];
             RemainingTicks    = new int[FACTION_COUNT];
             StartedAtPosition = new FixedVec3[FACTION_COUNT];
-            CompletedLevels             = new int[FACTION_COUNT][];
-            CumulativeMaxHealthDelta    = new Fixed[FACTION_COUNT][];
-            CumulativeAttackDamageDelta = new Fixed[FACTION_COUNT][];
-            CumulativeMoveSpeedDelta    = new Fixed[FACTION_COUNT][];
-            CumulativeArmorDelta        = new Fixed[FACTION_COUNT][];
+            CompletedLevels   = new int[FACTION_COUNT][];
+
+            CumulativeByStat = new Fixed[Stats.StatVocabulary.Count][][];
+            for (int s = 0; s < CumulativeByStat.Length; s++)
+                CumulativeByStat[s] = new Fixed[FACTION_COUNT][];
+            CumulativeMaxHealthDelta    = CumulativeByStat[(int)Stats.StatId.MaxHealth];
+            CumulativeAttackDamageDelta = CumulativeByStat[(int)Stats.StatId.AttackDamage];
+            CumulativeMoveSpeedDelta    = CumulativeByStat[(int)Stats.StatId.MoveSpeed];
+            CumulativeArmorDelta        = CumulativeByStat[(int)Stats.StatId.Armor];
 
             for (int f = 0; f < FACTION_COUNT; f++)
             {
                 InProgressIndex[f] = -1; // idle
-                CompletedLevels[f]             = System.Array.Empty<int>();
-                CumulativeMaxHealthDelta[f]    = System.Array.Empty<Fixed>();
-                CumulativeAttackDamageDelta[f] = System.Array.Empty<Fixed>();
-                CumulativeMoveSpeedDelta[f]    = System.Array.Empty<Fixed>();
-                CumulativeArmorDelta[f]        = System.Array.Empty<Fixed>();
+                CompletedLevels[f] = System.Array.Empty<int>();
+                for (int s = 0; s < CumulativeByStat.Length; s++)
+                    CumulativeByStat[s][f] = System.Array.Empty<Fixed>();
             }
         }
 
@@ -90,10 +101,10 @@ namespace ProjectChimera.Core
             if (researchCount <= CompletedLevels[f].Length) return;
 
             System.Array.Resize(ref CompletedLevels[f], researchCount);
-            System.Array.Resize(ref CumulativeMaxHealthDelta[f], researchCount);
-            System.Array.Resize(ref CumulativeAttackDamageDelta[f], researchCount);
-            System.Array.Resize(ref CumulativeMoveSpeedDelta[f], researchCount);
-            System.Array.Resize(ref CumulativeArmorDelta[f], researchCount);
+            // 15-24a: every registry stat's lane grows together (the legacy fields alias four of these outers,
+            // so the resize is visible through them — one growth path, no drift).
+            for (int s = 0; s < CumulativeByStat.Length; s++)
+                System.Array.Resize(ref CumulativeByStat[s][f], researchCount);
         }
 
         /// <summary>
@@ -110,10 +121,8 @@ namespace ProjectChimera.Core
                 RemainingTicks[f]    = 0;
                 StartedAtPosition[f] = default;
                 System.Array.Clear(CompletedLevels[f]);
-                System.Array.Clear(CumulativeMaxHealthDelta[f]);
-                System.Array.Clear(CumulativeAttackDamageDelta[f]);
-                System.Array.Clear(CumulativeMoveSpeedDelta[f]);
-                System.Array.Clear(CumulativeArmorDelta[f]);
+                for (int s = 0; s < CumulativeByStat.Length; s++) // 15-24a: every stat lane
+                    System.Array.Clear(CumulativeByStat[s][f]);
             }
         }
     }

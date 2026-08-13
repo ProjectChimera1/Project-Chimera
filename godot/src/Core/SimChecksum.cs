@@ -328,7 +328,9 @@ namespace ProjectChimera.Core
         ///   v26 — Story 15-24a (the StatVocabulary pipeline): BOUNDED per-entity fold of the three new
         ///        stat-pipeline modifier terms — EffectiveAttackSpeedFactor (≠ One), EffectiveCooldownReduction
         ///        (≠ 0), EffectiveHealthRegen (≠ its authored BaseHealthRegen) — appended after the v23 gather
-        ///        block. The v23 bounded posture exactly: an entity at identity folds ZERO Mix calls, no shipped
+        ///        block — plus a BOUNDED per-stat fold of the research store's NON-legacy banked cumulative
+        ///        totals inside the v14 research loop (a zero total folds nothing; non-zero folds stat-index +
+        ///        raw, so two stats' equal values cannot alias). The v23 bounded posture exactly: an entity at identity folds ZERO Mix calls, no shipped
         ///        content authors the stats, so every recorded golden and the frozen re-baseline control are
         ///        BYTE-IDENTICAL under v26 (zero re-records; the known-state pin holds). The vision terms stay
         ///        unfolded (presentation-only fog input). The bump still fail-closes every pre-15-24a save
@@ -702,6 +704,22 @@ namespace ProjectChimera.Core
                         hash = Mix(hash, research.CumulativeAttackDamageDelta[idx][r].Raw);
                         hash = Mix(hash, research.CumulativeMoveSpeedDelta[idx][r].Raw);
                         hash = Mix(hash, research.CumulativeArmorDelta[idx][r].Raw);
+                        // v26 (Story 15-24a): the NON-legacy registry stats' banked totals, BOUNDED — a zero
+                        // total folds nothing (tagged with its stat index so two stats' identical values cannot
+                        // alias), so every pre-15-24a research scenario folds byte-identically to v25 here.
+                        // The four hand-named folds above stay verbatim (they read the SAME table through the
+                        // legacy aliases — one storage, two fold spellings, zero drift possible).
+                        for (int s = 0; s < research.CumulativeByStat.Length; s++)
+                        {
+                            if (s == (int)ProjectChimera.Core.Stats.StatId.MaxHealth
+                             || s == (int)ProjectChimera.Core.Stats.StatId.AttackDamage
+                             || s == (int)ProjectChimera.Core.Stats.StatId.MoveSpeed
+                             || s == (int)ProjectChimera.Core.Stats.StatId.Armor) continue;
+                            int raw = research.CumulativeByStat[s][idx][r].Raw;
+                            if (raw == 0) continue;
+                            hash = Mix(hash, s);
+                            hash = Mix(hash, raw);
+                        }
                     }
                 }
             }
