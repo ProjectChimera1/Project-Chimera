@@ -35,3 +35,4 @@ Thumbs.db
 .bmad-loop/cache/
 .bmad-loop/policy.toml
 .bmad-loop/scratch_*
+_bmad/render/

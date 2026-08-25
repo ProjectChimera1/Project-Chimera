@@ -1,13 +1,72 @@
 # Deferred Work Format
 
-Canonical entry format for `{implementation_artifacts}/deferred-work.md`. On the
-inner dev path the bmad-dev-auto session appends its own flat entries (review
-defers, multi-goal splits, token splits); the orchestrator owns the ledger and
-normalizes those flat entries into this canonical form on sweep, and a
-`bmad-loop sweep` migration rewrites freeform pre-DW-format content from older
-projects into it wholesale (see `./migration-mode.md`; the TUI displays such
-legacy items read-only until that happens). The file is append-only — never
-rewrite or delete existing entries.
+Canonical entry format for `{implementation_artifacts}/deferred-work.md`. The
+orchestrator owns this file, and two eras of dev session feed it:
+
+- **Current (BMAD-METHOD 6.10.1-next.33+).** The unattended primitive
+  `bmad-build-auto` writes nothing here: it records defer-triaged review findings
+  in its spec's frontmatter `deferred:` list, and after the session the
+  orchestrator harvests those into canonical entries below, carrying a
+  fingerprinted `origin:` that starts with `spec-deferred`, plus `source_spec:`.
+- **Legacy and attended.** Pre-rename primitives (`bmad-dev-auto`) and the
+  attended `bmad-build` append flat `- source_spec:` blocks directly into this
+  file; a `bmad-loop sweep --migrate` session normalizes them into the canonical
+  form, and rewrites freeform pre-DW-format content from older projects wholesale
+  (see `./migration-mode.md`; the TUI shows such legacy items read-only until
+  then).
+
+Either way this file stays the sweep's sole read surface. Multi-goal and token
+splits are a legacy/attended source only — the current unattended primitive does
+not split a multi-goal spec, it records a `multiple-goals` warning in the spec's
+`warnings:` and proceeds.
+
+The file is append-only — never rewrite or delete existing entries. The one
+sanctioned rewrite is operator-run archiving (below): closed entries move to
+`deferred-work-archive.md` — body preserved, with an `archived: <date>` marker
+appended after the status line — leaving a stub behind.
+
+## Archiving (`bmad-loop sweep --archive`)
+
+The operator may periodically move closed entries
+(`status: done <ISO date>`) to the sibling `deferred-work-archive.md`, leaving
+a stub in this file:
+
+```markdown
+### DW-7: Old closed item
+
+status: done 2026-05-25
+archived: 2026-08-24
+```
+
+Rules for sessions reading the ledger:
+
+- The stub's `status: done` line means what it always meant — the entry is
+  closed and not open work.
+- An `archived:` line marks content that lives in `deferred-work-archive.md`.
+  The full body (evidence, resolution, dates) is there, keyed by the same
+  DW- id — read the archive file for anything beyond the stub. An id may own
+  more than one block there once a reopened entry has been archived twice.
+  Narrow by the date on this line; when several blocks share it — one entry
+  closed, archived, reopened and archived again inside a single day — take the
+  **last** of them. The archive file is append-only, so for one id a later
+  block is a later closure.
+- An `archived-body:` line is that same pointer carried by an entry that was
+  archived and then **reopened** — the orchestrator writes it in place of the
+  `archived:` stamp, which would otherwise claim a live entry's body is
+  elsewhere. The entry is open work again and its `status:` says so, but the
+  body it carried before that close is still in the archive file — resolve
+  this line exactly as an `archived:` stamp above: narrow by its date, and take
+  the last of the blocks that share it. Reopening does not bring the body back, and a stub keeps neither `location:` nor `reason:`, so read that block
+  before triaging the entry. Never edit or drop the line.
+- The archive may be absent even when a stub or an `archived-body:` line
+  references it: only the ledger is seeded into an isolated unit worktree. That
+  is not an error — the fields the stub preserves are sufficient for dedupe.
+- Stubs keep load-bearing field lines (`gate:`, `origin:`/`source_spec:`,
+  resolution undo markers) — treat them exactly as if the entry were still
+  whole. Never edit or drop them when touching a stub.
+- When deduping against existing entries, a stub still counts: match on the
+  id and preserved `origin:`/`source_spec:` lines, and check the archive for
+  the full substance before appending.
 
 ## Before appending: dedupe check
 
@@ -50,9 +109,11 @@ an entry; entries written by hand do not need it.
 **Every field line is exactly one line, and so is the title.** The format is
 line-oriented: readers find each field by scanning for `<name>:` at the start of
 a line, and an entry ends at whichever comes first — the next `### DW-<n>`
-entry, any other `#` .. `######` heading, or a `- source_spec:` flat-append
-bullet. A value carrying a line break therefore does not wrap; it becomes new
-ledger content, and three things can follow:
+entry, any other `#` .. `######` heading (indented up to three spaces, and
+followed by a space, a tab or the end of the line; four spaces or a leading tab
+makes an indented code block, which ends nothing), or a `- source_spec:`
+flat-append bullet. A value carrying a line break therefore does not wrap; it
+becomes new ledger content, and three things can follow:
 
 - a break followed by `### ` mints an entry nobody filed;
 - a break before a `status:` line leaves one entry carrying two, so the ledger
@@ -100,7 +161,10 @@ like `auth` does not gate `authz-login`.
 
 Like `source_spec:`, a `gate:` line is never edited or dropped when an entry is
 otherwise touched: removing it un-gates the story silently, which is the exact
-failure this field exists to prevent.
+failure this field exists to prevent. During a `bmad-loop sweep --migrate` that
+is enforced mechanically — the orchestrator refuses a rewrite that drops a token
+a pre-existing entry declared (#519); every other ledger edit is still held by
+this instruction alone.
 
 Until the entry lands, the gate is enforced twice. `bmad-loop validate` **fails**
 (`deferred.hard-gate`) for every story a token matches that the queue would
