@@ -106,6 +106,23 @@ namespace ProjectChimera.AI
                                                    IEnumerable<Faction>? humanOccupiedFactions)
             => Resolve(aiMarkedFactions, humanOccupiedFactions);
 
+        /// <summary>
+        /// Story 15-24e — rebuild a plan from a persisted <see cref="Mask"/> (a replay header's recorded mask, or a
+        /// save's). Deliberately narrow: the ONLY legitimate source of a raw mask is a value this type produced and
+        /// something stored verbatim. Bits outside the playable-faction range are dropped rather than trusted, so a
+        /// corrupt header cannot mark a non-slot AI-driven.
+        /// </summary>
+        public static AiControlPlan FromMask(int mask)
+        {
+            int valid = 0;
+            for (int f = (int)Faction.Player1; f < 32; f++)
+            {
+                if (f > (int)Faction.Player8) break;
+                if ((mask & (1 << f)) != 0) valid |= 1 << f;
+            }
+            return new AiControlPlan(valid);
+        }
+
         /// <summary>True when <paramref name="faction"/> is driven by an AI this match. Allocation-free — this is
         /// called on the sim tick path.</summary>
         public bool Controls(Faction faction) => (Mask & (1 << (int)faction)) != 0;

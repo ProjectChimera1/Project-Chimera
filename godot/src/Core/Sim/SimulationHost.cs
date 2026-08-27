@@ -128,6 +128,11 @@ namespace ProjectChimera.Core.Sim
         /// catch-up). Exposed like <see cref="BuildSys"/> so apply sites can route
         /// <c>OrderApplier.Apply(..., research: ResearchSys)</c>.</summary>
         public ResearchSystem ResearchSys { get; }
+        /// <summary>Story 15-24e — the hero XP/level/growth runtime (spine index 12). Exposed like
+        /// <see cref="ItemSys"/>/<see cref="ResearchSys"/> so apply sites can route
+        /// <c>OrderApplier.Apply(..., heroXp: HeroXp)</c> for a <c>SpendAttributePoint</c> order — the ONE way a
+        /// spend reaches the sim, online and offline alike.</summary>
+        public Combat.HeroXpSystem HeroXp { get; }
         /// <summary>Story 4.9 — the mid-match-mutable per-faction research substrate <see cref="ResearchSys"/> reads/
         /// writes. Folded into <see cref="SimChecksum"/> (v14, Story 4.10).</summary>
         public ResearchStore Research { get; }
@@ -324,6 +329,7 @@ namespace ProjectChimera.Core.Sim
             // hold the SAME instance (the credit rule lives in exactly one place). Its ctor only assigns fields — it
             // subscribes to nothing — so constructing it before its neighbours changes no observable ordering.
             var heroXp = new HeroXpSystem(Heroes, Modifiers, _deathFeed, Buildings, _revivalRuntime, ReviveSpawn, CombatEvents);
+            HeroXp = heroXp; // Story 15-24e — the SpendAttributePoint executor the apply sites route through
 
             // ── The canonical 21-system tick order (Story 15-24d inserted VeterancySystem at index 13, immediately
             //    after HeroXpSystem, shifting every later index by one; Story 15-24a inserted HealthRegenSystem at index 7, after
@@ -574,7 +580,15 @@ namespace ProjectChimera.Core.Sim
         /// every peer. Defaults to <see cref="AiControlPlan.OfflineDefault"/> at construction, so a caller that never
         /// calls this (every golden, every Tier-1 fixture, the headless server) behaves exactly as it did pre-DW-908.
         /// </summary>
-        public void SetAiControlPlan(AiControlPlan plan) => _ai.SetControlPlan(plan);
+        public void SetAiControlPlan(AiControlPlan plan)
+        {
+            _ai.SetControlPlan(plan);
+            // Story 15-24e: the SAME stored value also arms the hero store's spend-mode oracle, so "is this slot
+            // AI-controlled?" has exactly ONE answer per match — the handshake-agreed one — for the AI system and
+            // for hero growth alike. A second derivation here would be a per-peer disagreement, i.e. a desync on
+            // the first level-up under a player_spent model.
+            Heroes.AiControlMask = plan.Mask;
+        }
 
         /// <summary>Story 11.3 — restore the wrapped loop's tick counter to a saved value on load (SP save/load).
         /// Delegates to <see cref="SimulationLoop.RestoreTick"/>; the checksum store wiring is untouched.</summary>

@@ -2979,7 +2979,19 @@ namespace ProjectChimera.Core
             //     with no AI at all (OnMatchStart set the empty online plan and nothing put it back), turning a
             //     desync fix into an "the AI stopped working" bug. AiOpponentSystem.ResetForMatch deliberately
             //     PRESERVES the plan (the online path needs that), which is exactly why this re-assert belongs here.
-            _host.SetAiControlPlan(AI.AiControlPlan.OfflineDefault);
+            //     DW-908 leg (1) / Story 15-24e (review P4): the plan is DERIVED from who actually occupies the
+            //     launched slots, not asserted as the {Player2} constant. OfflineDefault is correct only for a 1v1
+            //     whose AI landed in the second launch position; a 1v3, or a human in a later slot, left real AI
+            //     factions unmarked — and since 15-24e that mask decides hero SPEND MODE, an unmarked AI faction
+            //     would bank attribute points nobody can spend and withhold its attribute growth for the whole
+            //     match. SkirmishSetupToScenario.AiFactionsInLaunchOrder reuses the SAME launch ordering that
+            //     assigned the factions, so the two can never drift. No retained setup (a bare F5 playtest on the
+            //     authored map, every golden and Tier-1 fixture) keeps the historical OfflineDefault exactly.
+            AI.AiControlPlan offlinePlan = _currentSkirmishSetup?.Slots != null
+                ? AI.AiControlPlan.Of(System.Linq.Enumerable.ToArray(
+                      Skirmish.SkirmishSetupToScenario.AiFactionsInLaunchOrder(_currentSkirmishSetup.Slots)))
+                : AI.AiControlPlan.OfflineDefault;
+            _host.SetAiControlPlan(offlinePlan);
 
             // 3-seed. DW-17 / DW-225: mint a fresh per-match seed and re-seed the live world to it AFTER ClearForReset
             //     (which re-seeds to DEFAULT_RNG_SEED to preserve the "a cleared world == a fresh EntityWorld" invariant

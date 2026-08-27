@@ -218,6 +218,10 @@ namespace ProjectChimera.UI
         // a hotkey → UseItem on a slot). Optional — null in headless / online-without-items paths.
         private ItemStore?  _items;
         private ItemSystem? _itemSys;
+        /// <summary>Story 15-24e: the hero runtime the OFFLINE apply arm routes a SpendAttributePoint order through
+        /// (the online arm routes the identical order through LockstepManager → the same OrderApplier branch).
+        /// Injected via <see cref="SetHeroXp"/>; null until wired → the offline spend is a deterministic no-op.</summary>
+        private ProjectChimera.Combat.HeroXpSystem? _heroXp;
 
         // Story 3.16: the inventory grid slot the HUD has selected for a per-slot Use/Drop (retires the 3.15 hard-coded
         // slot 0); -1 = none selected → the T hotkey falls back to slot 0. Set by CommandCardSystem's inventory grid.
@@ -306,6 +310,26 @@ namespace ProjectChimera.UI
                 OrderApplier.Apply(_world, in order, _world.FactionOf[heroEntity], events: _combatEvents, items: _itemSys);
             }
         }
+
+        /// <summary>
+        /// Story 15-24e: issue a SpendAttributePoint order for one banked hero attribute point — mirrors
+        /// <see cref="IssueUseItemCommand"/> VERBATIM, including the <c>?? true</c> offline arm that makes offline
+        /// and online travel the SAME <c>OrderApplier</c> branch (the DW-405 rule: exactly one way into the sim).
+        /// <paramref name="attributeIndex"/> is the index into the faction attribute model's declared
+        /// <c>attributes</c> list and rides TargetX as a RAW int. Public so the hero command card can drive it.
+        /// </summary>
+        public void IssueSpendAttributePointCommand(int heroEntity, int attributeIndex)
+        {
+            if (_lockstep?.EnqueueOrder(_world.PackRef(heroEntity), UnitCommand.SpendAttributePoint, Fixed.FromRaw(attributeIndex), Fixed.Zero) ?? true) // DW-945
+            {
+                var order = new UnitOrder(_world.PackRef(heroEntity), UnitCommand.SpendAttributePoint, Fixed.FromRaw(attributeIndex), Fixed.Zero);
+                OrderApplier.Apply(_world, in order, _world.FactionOf[heroEntity], events: _combatEvents, heroXp: _heroXp);
+            }
+        }
+
+        /// <summary>Story 15-24e: inject the hero runtime so an OFFLINE spend executes (mirrors
+        /// <see cref="SetResearchStore"/>); wired by CameraPhase off the host.</summary>
+        public void SetHeroXp(ProjectChimera.Combat.HeroXpSystem? heroXp) => _heroXp = heroXp;
 
         /// <summary>Story 3.16: the HUD inventory grid sets which slot a subsequent per-slot Use (T / grid button) targets.</summary>
         public void SetSelectedInventorySlot(int slot) => _selectedInventorySlot = slot;

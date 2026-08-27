@@ -211,6 +211,19 @@ namespace ProjectChimera.Sim.Tests.Sim
                     dirty.Mint(new HeroId(22), entityId: 5, level: 2, xp: Fixed.FromInt(6));
                     dirty.Destroy(0); // free-list + _freeCount off their fresh values
                 },
+                Allowlist = new[]
+                {
+                    // Story 15-24e — AiControlMask is the match-agreed AiControlPlan.Mask, deliberately PRESERVED
+                    // by Clear(): shape (1) of this class's taxonomy (launch-owned config a reset must not touch),
+                    // for exactly the reason AiCase allowlists AiOpponentSystem._plan. It is pushed by the single
+                    // SimulationHost.SetAiControlPlan seam that arms the AI itself, and the ONLINE path reaches
+                    // SimulationHost.ClearForReset AFTER OnMatchStart established it — so a reset that "helpfully"
+                    // restored the {Player2} default here would flip a joining human's heroes to AI (auto) growth
+                    // on the very transition the plan exists to get right, and the two peers would then disagree
+                    // about the first level-up. Asserted positively by
+                    // SpendModeTests.Clear_PreservesTheAiControlMask.
+                    "AiControlMask",
+                },
             };
         }
 

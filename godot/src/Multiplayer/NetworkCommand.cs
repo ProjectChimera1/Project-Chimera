@@ -321,7 +321,13 @@ namespace ProjectChimera.Multiplayer
             // unwired live path (a lost player order) is no longer indistinguishable from the intentional
             // golden/headless/replay-without-systems null. Null (goldens/tests that expect the silent no-op) ⇒
             // exactly the pre-DW-304 behavior. Diagnostics only: a sink must never mutate sim state.
-            ILogSink? log = null)
+            ILogSink? log = null,
+            // Story 15-24e — the hero runtime that EXECUTES a SpendAttributePoint order (the deterministic
+            // decrement + spent-lane credit + modifier swap on the canonical HeroStore/ModifierStore). Appended
+            // LAST so every existing positional call site keeps compiling unchanged. Null on golden/headless/
+            // replay-without-heroes paths ⇒ the spend is a deterministic no-op, exactly like `items` == null for
+            // UseItem. Must be the SAME instance the live/offline/replay paths use, or a spend diverges.
+            HeroXpSystem? heroXp = null)
         {
             // Story 2.12 (Decision #2): mask the wire's queued flag (0x80) off the Command byte FIRST, so every
             // downstream compare + the command→state switch sees only the real 0-13 UnitCommand — never a flagged
@@ -502,6 +508,20 @@ namespace ProjectChimera.Multiplayer
             if (cmd == UnitCommand.DropItem)
             {
                 items?.DropItemCommand(id, o.TargetX, events);
+                return;
+            }
+
+            // Story 15-24e: SpendAttributePoint names the HERO ENTITY (== id), so — exactly like UseItem/DropItem
+            // and unlike the Train/Revive/BuyItem building-command family — it is dispatched AFTER the ownership
+            // guard above. Dispatching it before would let a player allocate ANOTHER player's hero's attribute
+            // points, which is the same anti-cheat hole the 3.15 item commands were moved down here to close.
+            // The declared-attribute index rides TargetX as a RAW int (read directly, NEVER via .ToFloat() — the
+            // packed-int lesson). Every guard that matters — mode, banked count, index range, the model actually
+            // deriving something from that attribute — lives inside SpendAttributePointCommand and runs identically
+            // on every peer at the same exec tick. `heroXp` null ⇒ deterministic no-op (golden/replay).
+            if (cmd == UnitCommand.SpendAttributePoint)
+            {
+                heroXp?.SpendAttributePointCommand(world, id, o.TargetX, events);
                 return;
             }
 

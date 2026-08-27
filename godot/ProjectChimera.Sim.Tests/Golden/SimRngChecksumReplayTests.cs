@@ -356,6 +356,7 @@ namespace ProjectChimera.Sim.Tests.Golden
             w.Write(CanonicalModelHash.AlgoVersion); // modelAlgoVersion
             w.Write((ushort)factionCount);
             for (int i = 0; i < factionCount; i++) w.Write((byte)FactionRegistry.ToFaction(i));
+            w.Write(0); // Story 15-24e (replay v8): the trailing AiControlPlan.Mask — no AI in these fixtures
         }
 
         /// <summary>Story 9.11 (P9) — a crash-mid-record file (merged frames, NO 0x1A trailer) still lists: the

@@ -119,8 +119,28 @@ namespace ProjectChimera.Core.Persistence
         /// every flat/strided lane from the new entry onward, so the bump fail-closes it at the header (DW-874:
         /// one constant, fail-closed, no migrate) — which the same story's SimChecksum 27→28 pin would reject
         /// anyway. A veteran's installed rank MODIFIER needs no new format work: it round-trips free through
-        /// v12's <see cref="SaveGameState.KindMintedModifier"/> by-value entry.</para></summary>
-        public const ushort FormatVersion = 13;
+        /// v12's <see cref="SaveGameState.KindMintedModifier"/> by-value entry.</para>
+        ///
+        /// <para>v14 (Story 15-24e, spend mode): the HERO section gained TWO lanes — <c>UnspentPoints</c> (one per
+        /// hero) and <c>AttrStatSpent</c> (a stride-<c>AttributeStats.Count</c> ring, the <c>AttrStatBase</c> shape)
+        /// — appended after <c>AttrStatPerLevel</c>. They are the only state a player-allocated attribute model
+        /// adds and neither is derivable from anything else (an auto model's totals are a pure function of the
+        /// folded Level), so a save without them would resume a hero with its banked points and every allocation
+        /// silently erased. Positional lane addressing means a v13 body read at the v14 layout would misalign every
+        /// later hero lane, so the bump fail-closes it at the header (DW-874: one constant, fail-closed, no
+        /// migrate) — which the same story's SimChecksum 28→29 pin would reject anyway. The installed spent
+        /// MODIFIER needs no format work: it round-trips through v12's by-value minted entry, and
+        /// <c>HeroXpSystem.ReconcileGrowth</c> re-establishes it from the restored lane regardless.</para>
+        ///
+        /// <para>v15 (Story 15-24e, review P3): the HERO frame gained a trailing <c>AiControlMask</c> int — THIS
+        /// match's <c>AiControlPlan.Mask</c>. It is not sim state; it is the half of a hero's SPEND MODE that lives
+        /// in match configuration, and without it a load cannot tell a <c>player_spent</c> hero from an
+        /// AI-controlled one and would silently resume the former as <c>auto</c> (restarting withheld growth and
+        /// stranding its banked points). Restored before the per-hero fail-closed mode check in
+        /// <c>SaveGameState.RestoreHeroes</c>. A v14 body has no such trailing int, so the frame under-reads and the
+        /// bump fail-closes it at the header (DW-874). Free: v14 shipped inside this same story, so no save written
+        /// by any released build is affected.</para></summary>
+        public const ushort FormatVersion = 15;
 
         /// <summary>Max player slots in a persisted launch record — a fail-closed corruption bound on the slot count.</summary>
         public const int MaxSlots = 64;

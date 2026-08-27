@@ -43,14 +43,17 @@ namespace ProjectChimera.Multiplayer.Server
             // DW-304: the client live path forwards its ILogSink so a building-family order dropped for a null
             // system handle WARNS (a lost player order); the golden/spectator pass null → the drop stays the
             // silent deterministic no-op it always was. Diagnostics only — never part of the deterministic state.
-            ILogSink? log = null)
+            ILogSink? log = null,
+            // Story 15-24e: the hero runtime that executes a SpendAttributePoint order. Appended LAST so every
+            // existing positional call keeps compiling; null => the spend is a deterministic no-op.
+            HeroXpSystem? heroXp = null)
         {
             Apply(merged, len, world,
                 new Faction[MergedTickPacket.MERGED_MAX_SUBBUNDLES],
                 new int[MergedTickPacket.MERGED_MAX_SUBBUNDLES],
                 new UnitOrder[MergedTickPacket.MERGED_MAX_SUBBUNDLES * TickCommandPacket.MAX_ORDERS],
                 onRequestPath, onRequestAttackMove, onCancelPath,
-                buildings, events, items, research, dslSink, onSubBundle, winState, log);
+                buildings, events, items, research, dslSink, onSubBundle, winState, log, heroXp);
         }
 
         /// <summary>
@@ -84,7 +87,9 @@ namespace ProjectChimera.Multiplayer.Server
             // DW-304: the client live path forwards its ILogSink so a building-family order dropped for a null
             // system handle WARNS (a lost player order); the golden/spectator pass null → the drop stays the
             // silent deterministic no-op it always was. Diagnostics only — never part of the deterministic state.
-            ILogSink? log = null)
+            ILogSink? log = null,
+            // Story 15-24e: the hero runtime that executes a SpendAttributePoint order (see the wrapper above).
+            HeroXpSystem? heroXp = null)
         {
             // Undersized scratch would IndexOutOfRange mid-decode (or silently work until the first full packet);
             // fail loudly at the call site instead — the MergedTickBuilder ctor-validation precedent.
@@ -112,7 +117,7 @@ namespace ProjectChimera.Multiplayer.Server
                 for (int i = 0; i < count; i++)
                     OrderApplier.Apply(world, in scratchOrdersFlat[baseIdx + i], faction,
                         onRequestPath, onRequestAttackMove, onCancelPath,
-                        buildings, events, items, research, dslSink, winState, log);
+                        buildings, events, items, research, dslSink, winState, log, heroXp);
             }
         }
     }

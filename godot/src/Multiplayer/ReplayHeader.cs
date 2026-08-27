@@ -87,6 +87,12 @@ namespace ProjectChimera.Multiplayer
                     roster[i] = (Faction)rb;
                 }
 
+                // Story 15-24e (replay v8): the trailing AiControlPlan.Mask. This reader does not consume it as a
+                // VALUE (the browser row has no use for it), but it must be SKIPPED or bodyStart lands 4 bytes early
+                // and every frame walk below misparses — the exact failure the two header-read tests caught.
+                if (stream.Length - stream.Position < sizeof(int)) return Unplayable(scenarioPath);
+                reader.ReadInt32();
+
                 long bodyStart = stream.Position;
 
                 // ── P10: fast path — a completed recording's result trailer sits at a fixed 11-byte tail before EOF

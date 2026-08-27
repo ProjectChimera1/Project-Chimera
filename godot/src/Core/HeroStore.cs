@@ -100,6 +100,35 @@ namespace ProjectChimera.Core
         /// sets this to <c>Level-1</c>. Genuine mutable sim state → FOLDED into <see cref="SimChecksum"/> (v11).</summary>
         public readonly int[]    GrowthStacksApplied = new int[MAX_HEROES];
 
+        // ── Story 15-24e (spend mode) — the two lanes a PLAYER-ALLOCATED attribute model needs. Under
+        //    AttributeSpendMode.Auto (every shipped model, and every AI-controlled slot) both stay 0 forever and the
+        //    SimChecksum arms fold ZERO Mix calls, which is what keeps the whole story golden-neutral. ─────────────
+        /// <summary>Story 15-24e: attribute points BANKED and not yet allocated. A level gained under
+        /// <see cref="IsPlayerSpent"/> credits one instead of applying the per-level attribute vector; a
+        /// <c>UnitCommand.SpendAttributePoint</c> order decrements one. Genuinely mutable, player-driven sim truth
+        /// that is a function of NOTHING derivable (unlike an auto model's totals, which are a pure function of the
+        /// folded <see cref="Level"/>) → FOLDED into <see cref="SimChecksum"/> (v29) and PERSISTED.</summary>
+        public readonly int[]    UnspentPoints       = new int[MAX_HEROES];
+
+        /// <summary>
+        /// Story 15-24e: the per-hero, per-STAT total contributed by SPENT attribute points, in
+        /// <see cref="Definitions.AttributeStats"/> index order (stride <c>AttributeStats.Count</c> — the
+        /// <see cref="AttrStatBase"/>/<see cref="AttrStatPerLevel"/> shape exactly).
+        ///
+        /// <para><b>Why per-stat and not per-attribute.</b> The read seam
+        /// (<see cref="AttributeStatAt"/>) and the modifier channel both consume per-STAT contributions; recording
+        /// the spend in that space resolves the model's derived rows (including the WC3 <c>"primary"</c> selector)
+        /// ONCE at the order-apply boundary instead of on every read, and keeps the lane one fixed stride wide
+        /// regardless of how many attributes a creator declares. The cost is that a spent point is not recoverable
+        /// as an attribute COUNT — deliberate: there is no respec, no refund and no undo in 15-24e, and threshold
+        /// rows keep evaluating against the authored auto totals (see
+        /// <c>HeroAttributeResolver.ResolvePointGrant</c>).</para>
+        ///
+        /// <para>FOLDED (v29) + PERSISTED, for the same reason as <see cref="UnspentPoints"/>: it is new mutable
+        /// truth, not a function of Level.</para>
+        /// </summary>
+        public readonly Fixed[]  AttrStatSpent       = new Fixed[MAX_HEROES * Definitions.AttributeStats.Count];
+
         // ── Story 3.13 per-hero runtime curve/growth/share CONSTANTS (def-derived at mint; NOT folded — the
         //    AttackDamage/Delivery authored-constant posture; a divergence surfaces transitively via Level/Xp). ────
         /// <summary>Max level this hero can reach (from <c>HeroDefinition.MaxLevel</c>). Set in <see cref="Mint"/>.</summary>
@@ -123,9 +152,13 @@ namespace ProjectChimera.Core
         public readonly Fixed[]  XpGainFactorOf      = new Fixed[MAX_HEROES];
 
         // ── Story 15-21 per-hero ATTRIBUTE contributions (flattened by HeroAttributeResolver at the scenario-apply
-        //    boundary; stride-AttributeStats.Count flat rings indexed slot * AttributeStats.Count + stat). Authored
-        //    constants, the BaseXpOf posture — NOT folded: a hero's live attribute value is base + perLevel×(Level−1),
-        //    a pure function of the FOLDED Level, so divergence surfaces transitively via ModifierStore/Energy. ──────
+        //    boundary; stride-AttributeStats.Count flat rings indexed slot * AttributeStats.Count + stat). These TWO
+        //    lanes are authored constants, the BaseXpOf posture — NOT folded: divergence surfaces transitively via
+        //    ModifierStore/Energy.
+        //    Story 15-24e CORRECTION to the original claim here: it is no longer true that a hero's live attribute
+        //    value is a pure function of the folded Level. Under spend_mode: player_spent the per-level term is
+        //    WITHHELD and the player's own allocation rides AttrStatSpent, which IS folded and IS persisted (see its
+        //    doc). These two lanes stay unfolded; the third one does not. ──────
         /// <summary>Story 15-21: per-hero per-stat BASE attribute contribution (level 1), in
         /// <see cref="Definitions.AttributeStats"/> index order. Set in <see cref="Mint"/> (null → all-zero).</summary>
         public readonly Fixed[]  AttrStatBase        = new Fixed[MAX_HEROES * Definitions.AttributeStats.Count];
@@ -133,18 +166,77 @@ namespace ProjectChimera.Core
         /// <see cref="Definitions.AttributeStats"/> index order. Set in <see cref="Mint"/> (null → all-zero).</summary>
         public readonly Fixed[]  AttrStatPerLevel    = new Fixed[MAX_HEROES * Definitions.AttributeStats.Count];
 
-        /// <summary>Story 15-21: the hero's LIVE attribute-derived contribution for one closed-vocabulary stat —
-        /// <c>base + perLevel × (Level − 1)</c>, a pure function of the FOLDED <see cref="Level"/> and the two
-        /// authored-constant lanes (which is why the attribute table needs no folded state of its own). Used by the
-        /// energy pair (<c>EnergyRegenSystem</c>) and presentation readouts; the four modifier-channel stats flow
-        /// through the HeroXpSystem growth/base modifiers instead and must NOT be double-read from here.</summary>
+        /// <summary>
+        /// Story 15-21 / 15-24e: the hero's LIVE attribute-derived contribution for one closed-vocabulary stat.
+        ///
+        /// <para>Under <c>spend_mode: auto</c> (every shipped model, and every AI-controlled slot) it is
+        /// <c>base + perLevel × (Level − 1) + spent</c>, where <c>spent</c> is 0 — i.e. exactly the 15-21 formula,
+        /// a pure function of the folded <see cref="Level"/> and the two authored-constant lanes. Under
+        /// <c>player_spent</c> the per-level term is WITHHELD (the level banked a point instead) and the value is
+        /// <c>base + spent</c>, where <c>spent</c> is the FOLDED, PERSISTED
+        /// <see cref="AttrStatSpent"/> lane — genuinely mutable sim truth that no function of Level can reproduce.
+        /// The mode is read from the single <see cref="IsPlayerSpent"/> oracle.</para>
+        ///
+        /// <para>Used by the energy pair (<c>EnergyRegenSystem</c>) and presentation readouts; the modifier-channel
+        /// stats flow through the HeroXpSystem base/growth/spent modifiers instead and must NOT be double-read from
+        /// here.</para>
+        /// </summary>
         public Fixed AttributeStatAt(int slot, int stat)
         {
+            int i = slot * Definitions.AttributeStats.Count + stat;
+            // Story 15-24e: base + SPENT is unconditional; the PER-LEVEL term is mode-conditional — under
+            // player_spent the level granted a point instead of the vector, so auto-growing here as well would
+            // pay the growth twice. Kept in this ONE function (never a second parallel reader) so the energy
+            // pair's read seam and the modifier channel can never disagree about a hero's contributions.
+            Fixed v = AttrStatBase[i] + AttrStatSpent[i];
+            if (IsPlayerSpent(slot)) return v;
+
             int levelsAbove1 = Level[slot] - 1;
             if (levelsAbove1 < 0) levelsAbove1 = 0;
-            int i = slot * Definitions.AttributeStats.Count + stat;
-            return AttrStatBase[i] + AttrStatPerLevel[i] * Fixed.FromInt(levelsAbove1);
+            return v + AttrStatPerLevel[i] * Fixed.FromInt(levelsAbove1);
         }
+
+        /// <summary>
+        /// Story 15-24e — the SINGLE oracle for "does this hero's growth go to the PLAYER?": true iff its faction's
+        /// attribute model authored <c>spend_mode: player_spent</c> AND the owning faction is not AI-driven this
+        /// match. Every consumer (the withholding site in <c>HeroXpSystem.ReconcileGrowth</c>, the level-up credit
+        /// in <c>AdvanceLevels</c>, the spend order's applier branch, <see cref="AttributeStatAt"/>, and the command
+        /// card's affordance) asks THIS function — a second derivation anywhere is a per-site disagreement, and on
+        /// the sim path that is a desync.
+        ///
+        /// <para>The AI half reads <see cref="AiControlMask"/>, which is the match-agreed <c>AiControlPlan.Mask</c>
+        /// — handshake-folded into <c>MatchAgreementHash</c> and match-constant — never any client-local notion of
+        /// who is playing. Alec's 2026-08-26 ruling: an AI-controlled slot behaves exactly as <c>auto</c>, which
+        /// also removes any need for a deterministic AI spending heuristic on a path where <c>AiOpponentSystem</c>
+        /// is still float (DW-204).</para>
+        /// </summary>
+        public bool IsPlayerSpent(int slot)
+        {
+            if ((uint)slot >= (uint)MAX_HEROES) return false;
+            Definitions.AttributeModelDefinition? model = AttrModelOf[slot];
+            if (model == null || model.ParsedSpendMode != Definitions.AttributeSpendMode.PlayerSpent) return false;
+            return (AiControlMask & (1 << (int)OwnerFaction[slot])) == 0; // an AI-driven slot behaves as auto
+        }
+
+        /// <summary>
+        /// Story 15-24e — THIS MATCH's AI-controlled faction set as the raw <c>AiControlPlan.Mask</c> bitmask,
+        /// pushed by <c>SimulationHost.SetAiControlPlan</c> (the same single seam that arms
+        /// <c>AiOpponentSystem</c>, so the store and the AI can never hold two different plans). Stored as a plain
+        /// int rather than the struct so <c>ProjectChimera.Core</c> keeps no dependency on
+        /// <c>ProjectChimera.AI</c>.
+        ///
+        /// <para>NON-FOLDED and NOT persisted: match configuration, not sim state — handshake-agreed
+        /// (<c>MatchAgreementHash</c> folds the plan) and match-CONSTANT, so it cannot diverge per peer or per
+        /// tick. Defaults to <c>AiControlPlan.OfflineDefault</c> ({Player2}) exactly like
+        /// <c>AiOpponentSystem._plan</c>, so every golden scenario, Tier-1 fixture and offline playtest that never
+        /// touches it agrees with the AI system by construction.</para>
+        ///
+        /// <para><see cref="Clear"/> deliberately does NOT reset it — for the same reason
+        /// <c>AiOpponentSystem.ResetForMatch</c> preserves the plan: the Edit↔Play reset runs AFTER the launch path
+        /// established it, and re-arming the offline default there would flip a human slot's heroes to auto growth
+        /// on the very transition this rule exists to get right.</para>
+        /// </summary>
+        public int AiControlMask = 1 << (int)Faction.Player2;
 
         // ── RESERVED for Story 3.14 (death & revival), declared + folded NOW so 3.14 needs no second AlgoVersion bump
         //    (Story 3.13 D-2). Written to their zero/false defaults in Mint; folded at defaults into SimChecksum v11. ─
@@ -278,10 +370,14 @@ namespace ProjectChimera.Core
             {
                 AttrStatBase[attrBase + s]     = attrStatBase     != null && s < attrStatBase.Length     ? attrStatBase[s]     : Fixed.Zero;
                 AttrStatPerLevel[attrBase + s] = attrStatPerLevel != null && s < attrStatPerLevel.Length ? attrStatPerLevel[s] : Fixed.Zero;
+                // Story 15-24e: a freshly-minted hero has spent nothing (there is no cross-match point persistence);
+                // written unconditionally per the SoA-recycle contract so a recycled slot carries no prior spends.
+                AttrStatSpent[attrBase + s]    = Fixed.Zero;
             }
             // Story 3.13 mutable growth-tracking + Story 3.14 reserved revival state — zeroed on (re)mint so a recycled
             // slot never inherits prior growth/revival state (folded into SimChecksum v11).
             GrowthStacksApplied[slot] = 0;
+            UnspentPoints[slot]    = 0;      // Story 15-24e: banked points never survive a (re)mint (set below)
             Alive3_14[slot]        = true;   // a freshly-minted hero is on the field
             AwaitingRevival[slot]  = false;
             RevivalTimer[slot]     = Fixed.Zero;
@@ -295,6 +391,19 @@ namespace ProjectChimera.Core
             int invBase = slot * INVENTORY_SLOTS;
             for (int s = 0; s < INVENTORY_SLOTS; s++)
                 Inventory[invBase + s] = INVENTORY_EMPTY;
+
+            // ── Story 15-24e: the DEPLOY-AT-LEVEL-N credit. A hero minted at level N under a player-spent model has
+            //    ALREADY earned N-1 levels' worth of allocation; the in-match credit lives in
+            //    HeroXpSystem.AdvanceLevels, which by definition never ran for them. Without this, a level-5 hero
+            //    deployed from a profile arrives with level-1 base attributes, ZERO banked points and NO recovery
+            //    path (15-24e has no respec), while the identical hero that climbed to 5 in-match holds 4 points.
+            //    Credited LAST, after AttrModelOf/OwnerFaction are written, because IsPlayerSpent reads both.
+            //    Under auto (all shipped content) and on an AI-controlled slot this is 0 — the golden-neutral path. ──
+            if (IsPlayerSpent(slot))
+            {
+                int earned = Level[slot] - 1;
+                UnspentPoints[slot] = earned > 0 ? earned : 0;
+            }
             return slot;
         }
 
@@ -319,6 +428,8 @@ namespace ProjectChimera.Core
             System.Array.Clear(XpShareRadiusOf);  System.Array.Clear(HealthPerLevelOf); System.Array.Clear(DamagePerLevelOf);
             System.Array.Clear(ArmorPerLevelOf);   System.Array.Clear(XpGainFactorOf); // DW-26 (a re-Mint re-seeds it to One)
             System.Array.Clear(AttrStatBase);      System.Array.Clear(AttrStatPerLevel); // Story 15-21
+            // Story 15-24e: the two spend-mode lanes. AiControlMask is deliberately NOT reset here — see its doc.
+            System.Array.Clear(UnspentPoints);     System.Array.Clear(AttrStatSpent);
             // Story 3.14 reserved revival state + non-folded constants.
             System.Array.Clear(Alive3_14);        System.Array.Clear(AwaitingRevival);  System.Array.Clear(RevivalTimer);
             System.Array.Clear(RevivalLink);      System.Array.Clear(SourceDef);        System.Array.Clear(OwnerFaction);

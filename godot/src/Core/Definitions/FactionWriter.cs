@@ -398,6 +398,10 @@ namespace ProjectChimera.Core.Definitions
         /// (preset apply + the mapping editor), so a deterministic POCO re-serialize of just this key is correct:
         /// write <c>root["attribute_model"]</c> when non-null, drop the key when null. Every other faction key —
         /// buildings, signature_mechanic, … — stays exactly as the creator wrote it.
+        /// <para>Story 15-24e: <c>spend_mode</c> rides <see cref="HeroSerializeOptions"/>'s omit-when-null
+        /// discipline exactly as <c>shape</c>/<c>threshold</c> do — an unauthored (default <c>auto</c>) model
+        /// writes NO <c>"spend_mode"</c> key, so every shipped/preset attribute-model JSON round-trips
+        /// byte-identically and no faction file churns.</para>
         /// </summary>
         public static string SyncFactionAttributeModel(string factionJson, AttributeModelDefinition? model)
         {

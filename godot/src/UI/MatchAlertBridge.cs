@@ -84,6 +84,16 @@ namespace ProjectChimera.UI
                     case CombatEventType.ResearchComplete:
                         _audio?.PlayResearchComplete();
                         break;
+
+                    // Story 15-24e: the hero level-up cue — the FIRST player-facing level-up feedback in the game.
+                    // Under a player_spent attribute model this is also the prompt to go spend the banked point, so
+                    // it is a toast (a sound alone would not say what changed). Reuses the production-completion
+                    // sound rather than inventing an unauthored one.
+                    case CombatEventType.HeroLeveled:
+                        _toasts?.Show("Hero level up!", "Your hero gained a level.",
+                                      ChimeraToastHost.ToastVariant.Ok, 4f);
+                        _audio?.PlayTrainingComplete();
+                        break;
                 }
             }
         }

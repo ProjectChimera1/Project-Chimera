@@ -67,6 +67,17 @@ namespace ProjectChimera.Core.Persistence
         public string[] NodeRequiresStructureId = Array.Empty<string>();
 
         // ── HeroStore ──
+        /// <summary>
+        /// Story 15-24e — THIS MATCH's <c>AiControlPlan.Mask</c>, persisted with the hero store.
+        ///
+        /// <para>Without it a load cannot reconstruct a hero's SPEND MODE: <c>HeroStore.IsPlayerSpent</c> is
+        /// <c>authored player_spent AND the owner is not AI-driven</c>, and the second half lives only in match
+        /// configuration. A save resumed under the wrong mask would silently flip a player-spent hero to
+        /// <c>auto</c> — resuming per-level attribute growth it never earned while its banked points became
+        /// unspendable. Restored BEFORE the per-hero fail-closed mode check below.</para>
+        /// </summary>
+        public int HeroAiControlMask;
+
         public int   HeroCount;
         public int[] HeroFreeList = Array.Empty<int>();
         public int[][] Hero = Array.Empty<int[]>();
@@ -272,8 +283,17 @@ namespace ProjectChimera.Core.Persistence
         {
             Alive, EntityId, Level, Xp, GrowthStacksApplied, MaxLevelOf, BaseXpOf, XpGrowthOf, XpShareRadiusOf,
             HealthPerLevelOf, DamagePerLevelOf, ArmorPerLevelOf, XpGainFactorOf, Alive3_14, AwaitingRevival, RevivalTimer,
-            RevivalLink, OwnerFaction, Generation, Inventory, AttrStatBase, AttrStatPerLevel, COUNT
+            RevivalLink, OwnerFaction, Generation, Inventory, AttrStatBase, AttrStatPerLevel,
+            // Story 15-24e: UnspentPoints (one per hero) + AttrStatSpent (stride-AttributeStats.Count, the
+            // AttrStatBase length shape) APPENDED — a mid-enum insert would silently shift every later lane in an
+            // old save, so the append plus the FormatVersion 13->14 bump fail-closes instead.
+            UnspentPoints, AttrStatSpent, COUNT
         }
+
+        /// <summary>Story 15-24e — the <c>AttrStatSpent</c> lane's position in the append-only <c>HA</c> enum,
+        /// surfaced so a test can address that EXACT lane instead of "the last one" (which the next append would
+        /// silently re-aim). Read-only; the enum itself stays private.</summary>
+        public const int HeroLaneIndexAttrStatSpent = (int)HA.AttrStatSpent;
 
         // ── ItemStore array positions. ──
         private enum IA { Alive, DefId, Charges, PosX, PosZ, Held, CarrierHeroSlot, Generation, COUNT }
@@ -510,6 +530,7 @@ namespace ProjectChimera.Core.Persistence
         {
             int n = h.Count;
             HeroCount = n;
+            HeroAiControlMask = h.AiControlMask; // Story 15-24e — see the field doc
             HeroFreeList = h.CaptureFreeList();
             Hero = new int[(int)HA.COUNT][];
             int[] A(HA e, int len) { var a = new int[len]; Hero[(int)e] = a; return a; }
@@ -523,6 +544,11 @@ namespace ProjectChimera.Core.Persistence
             // Story 15-21: the resolved attribute-contribution lanes (authored constants, stride-Count flat rings).
             var asb = A(HA.AttrStatBase, n * Definitions.AttributeStats.Count);
             var asp = A(HA.AttrStatPerLevel, n * Definitions.AttributeStats.Count);
+            // Story 15-24e: the two FOLDED spend-mode lanes — banked points + the per-stat spent totals. Both are
+            // genuinely un-derivable player state (an auto model's totals are a pure function of Level), so a save
+            // that omitted them would resume a hero with its allocations silently erased.
+            var ups = A(HA.UnspentPoints, n);
+            var asx = A(HA.AttrStatSpent, n * Definitions.AttributeStats.Count);
             HeroId = new ulong[n]; HeroDefId = new string[n];
             for (int i = 0; i < n; i++)
             {
@@ -532,6 +558,7 @@ namespace ProjectChimera.Core.Persistence
                 xgf[i] = h.XpGainFactorOf[i].Raw; // DW-26
                 a314[i] = h.Alive3_14[i] ? 1 : 0; awr[i] = h.AwaitingRevival[i] ? 1 : 0; rti[i] = h.RevivalTimer[i].Raw; rlk[i] = h.RevivalLink[i];
                 of[i] = (int)h.OwnerFaction[i]; gen[i] = h.Generation[i];
+                ups[i] = h.UnspentPoints[i]; // Story 15-24e
                 HeroId[i] = h.Id[i].Value; HeroDefId[i] = h.SourceDef[i]?.Id ?? "";
             }
             for (int i = 0; i < n * HeroStore.INVENTORY_SLOTS; i++) inv[i] = h.Inventory[i];
@@ -539,6 +566,7 @@ namespace ProjectChimera.Core.Persistence
             {
                 asb[i] = h.AttrStatBase[i].Raw;
                 asp[i] = h.AttrStatPerLevel[i].Raw;
+                asx[i] = h.AttrStatSpent[i].Raw; // Story 15-24e
             }
         }
 
@@ -1077,6 +1105,10 @@ namespace ProjectChimera.Core.Persistence
             var a314 = G(HA.Alive3_14); var awr = G(HA.AwaitingRevival); var rti = G(HA.RevivalTimer); var rlk = G(HA.RevivalLink);
             var of = G(HA.OwnerFaction); var gen = G(HA.Generation); var inv = G(HA.Inventory);
             var asb = G(HA.AttrStatBase); var asp = G(HA.AttrStatPerLevel); // Story 15-21
+            var ups = G(HA.UnspentPoints); var asx = G(HA.AttrStatSpent);   // Story 15-24e
+            // Story 15-24e: the match-agreed AI mask must be in force BEFORE any IsPlayerSpent question is asked of
+            // a restored row — it is half of the mode.
+            h.AiControlMask = HeroAiControlMask;
             for (int i = 0; i < n; i++)
             {
                 h.Alive[i] = al[i] != 0; h.Id[i] = new HeroId(HeroId[i]); h.EntityId[i] = eid[i]; h.Level[i] = lv[i]; h.Xp[i] = Fixed.FromRaw(xp[i]);
@@ -1085,6 +1117,7 @@ namespace ProjectChimera.Core.Persistence
                 h.XpGainFactorOf[i] = Fixed.FromRaw(xgf[i]); // DW-26
                 h.Alive3_14[i] = a314[i] != 0; h.AwaitingRevival[i] = awr[i] != 0; h.RevivalTimer[i] = Fixed.FromRaw(rti[i]); h.RevivalLink[i] = rlk[i];
                 h.OwnerFaction[i] = (Faction)of[i]; h.Generation[i] = gen[i];
+                h.UnspentPoints[i] = ups[i]; // Story 15-24e
                 h.SourceDef[i] = ResolveDef(slotDefs, of[i], i < HeroDefId.Length ? HeroDefId[i] : "");
                 // Story 15-24c: the attribute model is a NON-PERSISTED authored ref (the SourceDef posture) —
                 // re-resolved from the owning slot's faction def so a resumed hero evaluates threshold rows
@@ -1093,12 +1126,44 @@ namespace ProjectChimera.Core.Persistence
                     ? slotDefs[of[i]]?.AttributeModel : null;
             }
             for (int i = 0; i < n * HeroStore.INVENTORY_SLOTS && i < inv.Length; i++) h.Inventory[i] = inv[i];
-            for (int i = 0; i < n * Definitions.AttributeStats.Count && i < asb.Length; i++) // Story 15-21
+            for (int i = 0; i < n * Definitions.AttributeStats.Count && i < asb.Length && i < asp.Length; i++) // Story 15-21
             {
                 h.AttrStatBase[i]     = Fixed.FromRaw(asb[i]);
                 h.AttrStatPerLevel[i] = Fixed.FromRaw(asp[i]);
             }
+            // Story 15-24e: bounded by its OWN lane's length (the P10 fix) rather than leaning on Validate's
+            // fail-closed length check having run first — a guard must not depend on call ordering elsewhere.
+            for (int i = 0; i < n * Definitions.AttributeStats.Count && i < asx.Length; i++)
+                h.AttrStatSpent[i] = Fixed.FromRaw(asx[i]);
             h.RestoreManagement(HeroCount, HeroFreeList, HeroFreeList.Length);
+
+            // ── Story 15-24e: FAIL CLOSED on an unreconstructible spend mode. A hero holding banked points or a
+            //    non-zero spent lane is, by construction, a hero whose model authored player_spent on a non-AI slot.
+            //    If that no longer resolves after restore — the faction def is gone or no longer declares the model,
+            //    or the persisted mask now marks the slot AI-driven — resuming would silently reinterpret the hero
+            //    as `auto`: its withheld per-level growth would switch back on and its banked points would become
+            //    permanently unspendable. Refusing the load is strictly better than resuming under a different rule
+            //    set (the DW-874 keep-one-constant posture: a save that silently resumes under changed behaviour is
+            //    worse than one that will not open). ──
+            for (int i = 0; i < n; i++)
+            {
+                if (!h.Alive[i]) continue;
+                bool holdsSpendState = h.UnspentPoints[i] != 0;
+                int aBase = i * Definitions.AttributeStats.Count;
+                for (int st = 0; !holdsSpendState && st < Definitions.AttributeStats.Count; st++)
+                    if (h.AttrStatSpent[aBase + st].Raw != 0) holdsSpendState = true;
+                if (!holdsSpendState || h.IsPlayerSpent(i)) continue;
+
+                string why = h.AttrModelOf[i] == null
+                    ? "its faction declares no attribute_model any more (or the faction def is absent)"
+                    : h.AttrModelOf[i]!.ParsedSpendMode != Definitions.AttributeSpendMode.PlayerSpent
+                        ? $"its attribute_model now authors spend_mode '{h.AttrModelOf[i]!.SpendMode ?? "(absent)"}'"
+                        : $"the saved AI control mask 0x{HeroAiControlMask:X2} marks {h.OwnerFaction[i]} AI-driven";
+                throw new InvalidDataException(
+                    $"Save: hero slot {i} (faction {h.OwnerFaction[i]}) holds player-spent attribute state " +
+                    $"({h.UnspentPoints[i]} banked) but its spend mode cannot be reconstructed - {why}. " +
+                    "Refusing to resume it as 'auto', which would restart withheld growth and strand the points.");
+            }
         }
 
         private void RestoreItems(ItemStore it)
@@ -1333,7 +1398,7 @@ namespace ProjectChimera.Core.Persistence
             Frame(w, Tag.Buildings, b => { b.Write(BCount); WI(b, BFreeList); WJ(b, Bld); WS(b, BDefinitionId); WSJ(b, BShopStock); });
             Frame(w, Tag.Resources, b => { WI(b, ResOre); WI(b, ResCrystal); WI(b, ResSupplyUsed); WI(b, ResSupplyCap); WI(b, ResBaseX); WI(b, ResBaseY); WI(b, ResBaseZ); });
             Frame(w, Tag.Nodes, b => { b.Write(NodeCount); WJ(b, Node); WS(b, NodeRequiresStructureId); });
-            Frame(w, Tag.Heroes, b => { b.Write(HeroCount); WI(b, HeroFreeList); WJ(b, Hero); WU(b, HeroId); WS(b, HeroDefId); });
+            Frame(w, Tag.Heroes, b => { b.Write(HeroCount); WI(b, HeroFreeList); WJ(b, Hero); WU(b, HeroId); WS(b, HeroDefId); b.Write(HeroAiControlMask); }); // Story 15-24e: the mask trails the v14 payload
             Frame(w, Tag.Items, b => { b.Write(ItemCount); WI(b, ItemFreeList); WJ(b, Item); });
             Frame(w, Tag.Projectiles, b => { b.Write(ProjHwm); WI(b, ProjFreeList); WJ(b, Proj); });
             Frame(w, Tag.Research, b =>
@@ -1526,6 +1591,7 @@ namespace ProjectChimera.Core.Persistence
                 if (Hero[e] == null) Fail($"hero lane {e} is null.");
                 int want = e == (int)HA.Inventory ? HeroCount * HeroStore.INVENTORY_SLOTS
                          : e == (int)HA.AttrStatBase || e == (int)HA.AttrStatPerLevel
+                             || e == (int)HA.AttrStatSpent                  // Story 15-24e (same stride shape)
                              ? HeroCount * Definitions.AttributeStats.Count // Story 15-21 stride lanes
                              : HeroCount;
                 if (Hero[e].Length != want) Fail($"hero lane {(HA)e} length mismatch.");
@@ -1629,7 +1695,7 @@ namespace ProjectChimera.Core.Persistence
                 case Tag.Buildings: BCount = b.ReadInt32(); BFreeList = RI(b); Bld = RJ(b); BDefinitionId = RS(b); BShopStock = RSJ(b); break;
                 case Tag.Resources: ResOre = RI(b); ResCrystal = RI(b); ResSupplyUsed = RI(b); ResSupplyCap = RI(b); ResBaseX = RI(b); ResBaseY = RI(b); ResBaseZ = RI(b); break;
                 case Tag.Nodes: NodeCount = b.ReadInt32(); Node = RJ(b); NodeRequiresStructureId = RS(b); break;
-                case Tag.Heroes: HeroCount = b.ReadInt32(); HeroFreeList = RI(b); Hero = RJ(b); HeroId = RU(b); HeroDefId = RS(b); break;
+                case Tag.Heroes: HeroCount = b.ReadInt32(); HeroFreeList = RI(b); Hero = RJ(b); HeroId = RU(b); HeroDefId = RS(b); HeroAiControlMask = b.ReadInt32(); break; // Story 15-24e
                 case Tag.Items: ItemCount = b.ReadInt32(); ItemFreeList = RI(b); Item = RJ(b); break;
                 case Tag.Projectiles: ProjHwm = b.ReadInt32(); ProjFreeList = RI(b); Proj = RJ(b); break;
                 case Tag.Research:

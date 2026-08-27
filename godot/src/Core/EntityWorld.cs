@@ -52,15 +52,18 @@ namespace ProjectChimera.Core
         PlaceBuilding = 24, // Order a WORKER to construct a building — the wire form of what MainScene used to do by mutating the sim directly. WIRE: UnitId = the WORKER ENTITY, Slot = (byte)BuildingType (the CastAbility spare-byte trick — BuildingType is a byte enum, so the fixed 12-byte UnitOrder needs no widening), TargetX/TargetZ = the ground point (Fixed raw, the Move encoding). Handled by OrderApplier **AFTER** the IsAlive/FactionOf entity-ownership guard — UnitId names an ENTITY, not a building, so it is deliberately NOT the Train/Revive pre-guard pattern: dispatching before the guard would let a player spend an ENEMY faction's ore and plant buildings on their behalf (the same anti-cheat reason UseItem/DropItem sit after the guard). Applied immediately even when the wire queued flag is set — there is no queued-build path today, and routing it through the order ring would land PlaceBuilding in CommandState via ApplyActiveOrder, which no per-tick router cases. A fire-and-forget INTENT like CastAbility: it NEVER persists as a CommandState itself — BuildingSystem.QueueWorkerBuild writes UnitCommand.Build (which does persist, and already has arms everywhere) once its status/prereq/affordability guards pass. `buildings` null ⇒ deterministic no-op (golden/replay-without-buildings).
         // ── DW-938 (cancel construction): appended AFTER PlaceBuilding. Values 0-24 stay FROZEN for replay back-compat. Enum stays <= 0x3F (bits 6-7 are the wire queued flag). ──
         CancelConstruction = 25, // Cancel an UNDER-CONSTRUCTION building (UnitId = buildingId, like Train/CancelTrain/SetRally/Revive). WIRE: TargetX/TargetZ unused/reserved (0). Handled by OrderApplier BEFORE the entity-ownership guard (UnitId names a building, not an entity); the building-ownership anti-cheat + under-construction guard, the deterministic exec-tick 100% cost refund (re-resolved from the def, the CancelTrain pattern), the builder release (pop-out, DW-938) and the Destroy live in BuildingSystem.CancelConstructionCommand. `buildings` null ⇒ deterministic no-op (golden/replay). NEVER persists as a CommandState.
+        // ── Story 15-24e (spend mode): appended AFTER CancelConstruction. Values 0-25 stay FROZEN for replay back-compat. Enum stays <= 0x3F (bits 6-7 are the wire queued flag). ──
+        SpendAttributePoint = 26, // Allocate ONE banked hero attribute point (player_spent attribute models only). WIRE: UnitId = the HERO ENTITY (packed ref), TargetX = the index into the faction attribute model's declared `attributes` list (raw int — read directly, NEVER via .ToFloat()). Handled by OrderApplier **AFTER** the IsAlive/FactionOf entity-ownership guard — UnitId names an ENTITY, so it is deliberately NOT the Train/Revive building-command pre-guard pattern: dispatching before the guard would let a player spend ANOTHER player's hero's points (the same 3.15 anti-cheat reason UseItem/DropItem/PlaceBuilding sit after the guard). It then delegates to HeroXpSystem.SpendAttributePointCommand, which silently no-ops on zero banked points / an auto model / an AI-controlled slot / an unknown attribute index. NEVER persists as a CommandState (the allocation is instantaneous). `heroXp` null ⇒ deterministic no-op (golden/replay-without-the-hero-runtime).
     }
 
     /// <summary>
     /// Wire-level flag bits OR'd onto the <see cref="UnitCommand"/> byte of a <see cref="Multiplayer.UnitOrder"/>
-    /// (Story 2.12, Decision #2). <see cref="UnitCommand"/> currently spans values 0-23 (grown from 0-13; the max is
-    /// <see cref="UnitCommand.CancelTrain"/>=23), all &lt;= 0x3F, so the high bits stay free for wire flags/slot; a
+    /// (Story 2.12, Decision #2). <see cref="UnitCommand"/> currently spans values 0-26 (grown from 0-13; the max is
+    /// <see cref="UnitCommand.SpendAttributePoint"/>=26), all &lt;= 0x3F, so the high bits stay free for wire
+    /// flags/slot; a
     /// Shift-issued (queued) order sets <see cref="Queued"/> on the wire and <c>OrderApplier</c> masks it off with
     /// <see cref="CommandMask"/> before the command→state switch. Wire-only — a flagged byte NEVER reaches
-    /// <c>CommandState</c> (only the defined 0-23 are valid enum values there) or <see cref="SimChecksum"/>.
+    /// <c>CommandState</c> (only the defined 0-26 are valid enum values there) or <see cref="SimChecksum"/>.
     /// The &lt;= 0x3F budget (bits 6-7 reserved for the queued flag / Story 15.11 cast slot) is pinned by
     /// <c>Story1511WireAndAffinityTests.CommandBudget_LeavesRoomForTheQueuedSlotBits</c>.
     /// </summary>
@@ -138,6 +141,7 @@ namespace ProjectChimera.Core
                 case UnitCommand.CancelTrain:    // building order
                 case UnitCommand.PlaceBuilding:  // DW-405 — intent: QueueWorkerBuild writes UnitCommand.Build instead
                 case UnitCommand.CancelConstruction: // DW-938 — building order (refund + release + destroy at exec-tick)
+                case UnitCommand.SpendAttributePoint: // Story 15-24e — hero attribute allocation, applied immediately
                     return false;
 
                 default:

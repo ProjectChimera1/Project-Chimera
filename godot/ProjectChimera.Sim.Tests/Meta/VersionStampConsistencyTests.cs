@@ -93,7 +93,7 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// <summary>Story 15-23 (DW-775): 24→25 — generation-validated entity refs; folded id lanes
         /// (CommandTarget entity halves, order-queue entity payloads, DslLoopState rows) now carry PACKED refs.
         /// No fold set/order change; value semantics only (gen-0 packing is bit-identical to raw ids).</summary>
-        private const int ExpectedSimChecksumAlgoVersion = 28; // Story 15-24d: 27->28 — bounded veterancy-kill fold (opt-in gates the increment; zero golden movement)
+        private const int ExpectedSimChecksumAlgoVersion = 29; // Story 15-24e: 28->29 — bounded spend-mode fold (UnspentPoints + AttrStatSpent; the authored opt-in gates the WRITE, so zero golden movement)
 
         /// <summary>Load-time canonical start-state hash algorithm version (lobby handshake value).
         /// v3 (Story 2.9b follow-up): folded ScenarioPlayerSlot.StartCrystal (sim-affecting per-slot start-state).
@@ -212,7 +212,7 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// <summary>Story 15-21: 1→2 — the hero block leaves the authoring-only allowlist and folds (curve fields
         /// were ALREADY sim-read since 3.13 — a closed handshake gap), plus the per-hero attributes block and the
         /// faction attribute_model. Every unit gains a presence-bit Mix, so the value moves for all content.</summary>
-        private const int ExpectedContentHashAlgoVersion = 5; // Story 15-24d: 4->5 — the unit fold gains the veterancy ladder behind a presence bit
+        private const int ExpectedContentHashAlgoVersion = 6; // Story 15-24e: 5->6 — the attribute-model fold gains the spend_mode ordinal
 
         /// <summary>DW-768 (Story 15-21 rider): SaveGameFile.FormatVersion was the ONE fail-closed version gate
         /// with no pin here — a lane-enum edit could ship without its bump and misalign every positional lane in
@@ -220,7 +220,7 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// appended hero attribute lanes); DW-690 bumped 7→8 (the appended per-entity RallyMovePending lane, so a
         /// worker saved mid-rally keeps its DW-634 stand-down gate across a load); DW-804 bumped 8→9 (the appended
         /// entity GatherWalkStall lane, which shifts every flat-stride entity lane after it).</summary>
-        private const ushort ExpectedSaveFormatVersion = 13; // Story 15-24d: 12->13 — the appended per-entity VeterancyKills lane
+        private const ushort ExpectedSaveFormatVersion = 15; // Story 15-24e: 13->14 the two appended hero lanes (UnspentPoints + AttrStatSpent), then 14->15 the trailing AiControlMask (review P3 — the half of a hero's spend mode that lives in match config)
 
         /// <summary>.chmr replay file-format version. Story 7.9 bumped 2→3 (DslEvent orders). Story 9.11 bumped 3→4
         /// ("replay v2": self-describing tagged body via the frozen MergedTickPacket envelope + a result trailer, and
@@ -229,7 +229,7 @@ namespace ProjectChimera.Sim.Tests.Meta
         /// stride would misalign — ReplayPlayer hard-rejects all pre-v5 files at the version gate ("please re-record").</summary>
         /// <summary>Story 15-23 (DW-775): 5→6 — same stride, PACKED entity-target payloads; a v5 replay decoded on
         /// a v6 build would re-interpret raw ids as gen-0 packed refs and diverge on any recycled-slot target.</summary>
-        private const ushort ExpectedReplayFormatVersion = 7; // DW-945: 6->7 — same stride change (v6 bodies misalign at v7)
+        private const ushort ExpectedReplayFormatVersion = 8; // Story 15-24e (review P3): 7->8 — the header gained this match's AiControlPlan.Mask, so playback reproduces the recording's AI arrangement (and hero spend modes) instead of asserting OfflineDefault
 
         /// <summary>Default minimum game version a packaged .chimera.zip declares it requires.</summary>
         private const string ExpectedManifestMinGameVersion = "0.1";

@@ -9,6 +9,8 @@ namespace ProjectChimera.Multiplayer
     ///
     /// File format (v4):
     ///   Header:  magic(4) + version(2) + scenarioPathLen(2) + scenarioPath(UTF8) + seed(8)
+    ///            + scenarioHash(8) + rulesetHash(8) + modelAlgoVersion(4) + factionCount(2) + roster(1 each)
+    ///            + aiControlMask(4)   [v8, Story 15-24e]
     ///            + scenarioHash(8) + rulesetHash(8) + modelAlgoVersion(4) + factionCount(2) + roster(factionCount)
     ///   Body:    a stream of length-framed records: frameLen(2 LE) + frame[frameLen], terminated by frameLen == 0.
     ///            frame[0] self-discriminates:
@@ -45,7 +47,15 @@ namespace ProjectChimera.Multiplayer
         //   on any recycled-slot target — HARD-REJECTED at the version gate ("please re-record"), never decoded.
         // v7 (DW-945): the UnitOrder stride widened 12→14 (4-byte PACKED subject ref). A v6 body decoded at the
         //   v7 stride would misalign every order after the first — HARD-REJECTED at the version gate, never decoded.
-        public const ushort VERSION = 7;
+        // v8 (Story 15-24e, review P3): the header gained a 4-byte AI-CONTROL MASK (this match's
+        //   AiControlPlan.Mask), written after the roster. Playback previously ASSERTED AiControlPlan.OfflineDefault
+        //   regardless of what the recording ran under, which was a live reproduction bug: an online match records
+        //   under AiControlPlan.None and replayed under {Player2}, so the AI acted in playback where it did not in
+        //   the match. It also now decides hero SPEND MODE (HeroStore.IsPlayerSpent), so the wrong mask silently
+        //   changes hero growth on playback. A v7 header ends at the roster, so the trailing int would be read from
+        //   the first body frame — HARD-REJECTED at the version gate ("please re-record"), never decoded. No .chmr
+        //   is committed anywhere in the repo, so the bump costs nothing.
+        public const ushort VERSION = 8;
 
         /// <summary>Legacy (pre-v4) EOF sentinel — retained only so the hard-reject tests can hand-write old headers.</summary>
         public const uint EOF_SENTINEL = 0xFFFFFFFFu;
@@ -105,6 +115,11 @@ namespace ProjectChimera.Multiplayer
         /// <summary>The per-slot roster embedded in the header (roster[i] = the faction in slot i).</summary>
         public Faction[] Roster { get; }
 
+        /// <summary>Story 15-24e — THIS match's <c>AiControlPlan.Mask</c>, embedded in the header so playback runs
+        /// under the plan the recording ran under instead of asserting the offline default. It drives both whether
+        /// the AI acts and (since 15-24e) whether a hero's authored <c>player_spent</c> model is in force.</summary>
+        public int AiControlMask { get; }
+
         /// <summary>Number of player slots (== <see cref="Roster"/> length).</summary>
         public int FactionCount => Roster.Length;
 
@@ -130,8 +145,12 @@ namespace ProjectChimera.Multiplayer
         /// <param name="modelAlgoVersion">This build's <c>CanonicalModelHash.AlgoVersion</c> — a replay recorded on a
         /// newer algo is forward-incompatible and rejected on load.</param>
         /// <param name="roster">The per-slot faction roster (roster[i] = the faction assigned to slot i).</param>
+        /// <param name="aiControlMask">Story 15-24e — this match's <c>AiControlPlan.Mask</c>, so playback reproduces
+        /// the recording's AI arrangement (and therefore its hero spend modes) rather than assuming the offline
+        /// default. Optional so the Tier-1 recorder fixtures, which model no AI, keep their existing construction.</param>
         public ReplayRecorder(string filePath, string scenarioPath, ulong seed,
-            ulong scenarioHash, ulong rulesetHash, int modelAlgoVersion, Faction[] roster)
+            ulong scenarioHash, ulong rulesetHash, int modelAlgoVersion, Faction[] roster,
+            int aiControlMask = 0)
         {
             FilePath         = filePath;
             ScenarioPath     = scenarioPath;
@@ -140,6 +159,7 @@ namespace ProjectChimera.Multiplayer
             RulesetHash      = rulesetHash;
             ModelAlgoVersion = modelAlgoVersion;
             Roster           = roster ?? Array.Empty<Faction>();
+            AiControlMask    = aiControlMask;
 
             var stream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None);
             _writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: false);
@@ -293,6 +313,7 @@ namespace ProjectChimera.Multiplayer
             _writer.Write((ushort)Roster.Length);
             foreach (var f in Roster)
                 _writer.Write((byte)f);
+            _writer.Write(AiControlMask);    // 4 — v8: this match's AiControlPlan.Mask (see the VERSION history)
         }
 
         /// <summary>Emit the buffered tick's sub-bundles as ONE length-framed <see cref="MergedTickPacket"/> frame,

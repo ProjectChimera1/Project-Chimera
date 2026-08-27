@@ -67,6 +67,17 @@ namespace ProjectChimera.Combat
         /// </summary>
         public const int HeroThresholdModifierId = 0x3135_2400; // "31 35 24" ~ 15.24
 
+        /// <summary>
+        /// Story 15-24e: reserved <see cref="Modifier.Id"/> for the per-hero PLAYER-SPENT attribute modifier — the
+        /// total contribution of every attribute point the PLAYER has allocated, read straight off the folded
+        /// <see cref="HeroStore.AttrStatSpent"/> lane. One slot whose vector is SWAPPED on a spend (remove +
+        /// re-apply, the <see cref="HeroThresholdModifierId"/> / <c>ResearchSystem</c> cumulative pattern), because
+        /// <see cref="StackRule.Ignore"/> never rewrites a live instance's deltas. Installed lazily: a hero that has
+        /// spent nothing (every hero under <c>auto</c>, i.e. all shipped content) installs NOTHING and burns no ring
+        /// slot (the DW-678 rule).
+        /// </summary>
+        public const int HeroSpentModifierId = 0x3135_24E0; // "31 35 24 E" ~ 15.24e
+
         /// <summary>Max growth stacks = the hero level ceiling (100) minus 1, so a valid hero never saturates the stack cap.</summary>
         public const int MaxGrowthStacks = 99;
 
@@ -368,6 +379,21 @@ namespace ProjectChimera.Combat
                 {
                     _heroes.Xp[slot]  = _heroes.Xp[slot] - threshold;
                     _heroes.Level[slot]++;
+
+                    // ── Story 15-24e: under a PLAYER-SPENT model on a non-AI slot, the level grants ONE unspent
+                    //    attribute point INSTEAD of the per-level attribute vector (which ReconcileGrowth withholds
+                    //    through the same IsPlayerSpent oracle). Credited here, once per level GAINED, so a
+                    //    multi-level tick banks exactly one point per threshold crossed. Under auto (every shipped
+                    //    model) this arm never runs and the lane stays 0 — the golden-neutrality guarantee. ──
+                    if (_heroes.IsPlayerSpent(slot)) _heroes.UnspentPoints[slot]++;
+
+                    // Story 15-24e: the level-up CUE. There was no player-facing level-up feedback of any kind
+                    // before this story — hero_level went only to the trigger-DSL feed below. Presentation-only:
+                    // CombatEventQueue is not a SimChecksum input, so this push cannot move a golden. The faction
+                    // is stamped so MatchAlertBridge raises it for the LOCAL player only.
+                    if (_events != null && entityId >= 0 && entityId < world.HighWaterMark && world.IsAlive(entityId))
+                        _events.Push(CombatEventType.HeroLeveled, world.Position[entityId], world.FactionOf[entityId]);
+
                     // Story 7.13 — raise hero_level at the level-advance site: the hero's entity id + the NEW level,
                     // keyed on the hero's faction slot. Once per level gained (a multi-level tick raises each).
                     // Null feed (bare tests) → no-op.
@@ -442,6 +468,12 @@ namespace ProjectChimera.Combat
             //    what keeps 15-24c golden-neutral for every shipped model. ──
             ReconcileThresholds(world, slot, entityId, swap: false);
 
+            // ── Story 15-24e: install the PLAYER-SPENT total idempotently (StackRule.Ignore no-ops against a live
+            //    same-id instance). Costs one all-zero scan of the spent lane for a hero that has spent nothing —
+            //    i.e. every hero under `auto`, which is all shipped content — and installs nothing then. It also
+            //    re-establishes the modifier after a save/load resumes the persisted lane. ──
+            ReconcileSpent(world, slot, entityId, swap: false);
+
             int desired = _heroes.Level[slot] - 1;
             if (desired < 0) desired = 0;
             int applied = _heroes.GrowthStacksApplied[slot];
@@ -461,7 +493,13 @@ namespace ProjectChimera.Combat
                 new StatDelta(StatId.Armor, _heroes.ArmorPerLevelOf[slot]),
                 // no flat move-speed growth lane — Story 3.13 scope; the attr term below carries move speed
             };
-            AppendAttrVector(growthScratch, _heroes.AttrStatPerLevel, aBase);
+            // ── Story 15-24e — THE WITHHOLDING SITE. Under a player-spent model on a non-AI slot the ATTRIBUTE
+            //    term is withheld (AdvanceLevels banked a point for it instead); the three FLAT lanes above are
+            //    hero STAT growth, not attributes, and keep applying in EVERY mode. One `if` around one call — the
+            //    whole behavioural change — gated on the same IsPlayerSpent oracle the read seam and the order
+            //    branch use, so no site can disagree about a hero's mode.
+            if (!_heroes.IsPlayerSpent(slot))
+                AppendAttrVector(growthScratch, _heroes.AttrStatPerLevel, aBase);
             var growthMod = new Modifier(
                 HeroGrowthModifierId,
                 durationTicks: -1,               // permanent (never expires by duration; non-dispellable)
@@ -547,6 +585,146 @@ namespace ProjectChimera.Combat
 
             if (world.IsAlive(entityId))
                 world.Health[entityId] = Fixed.Clamp(healthBefore, Fixed.Zero, world.EffectiveMaxHealth[entityId]);
+        }
+
+        /// <summary>
+        /// Story 15-24e — install or SWAP the hero's single PLAYER-SPENT modifier so it carries the total
+        /// contribution of every attribute point the player has allocated, read from the folded
+        /// <see cref="HeroStore.AttrStatSpent"/> lane.
+        ///
+        /// <para>Structurally <see cref="ReconcileThresholds"/> with a different source vector, and deliberately so:
+        /// the swap must REMOVE first (<see cref="StackRule.Ignore"/> never rewrites a live instance's deltas), the
+        /// remove can raise the DW-325 ceiling-collapse death so liveness is re-checked before the re-apply, and the
+        /// DW-85 Health snapshot/restore keeps a re-STATEMENT of a total from acting as a free heal (without it,
+        /// every spend into max_health would top the hero up by the realized ceiling change — a heal exploit priced
+        /// at one attribute point).</para>
+        ///
+        /// <para><paramref name="swap"/> = false is the idempotent install (the per-tick reconcile + the post-load
+        /// re-establish); = true is the post-spend re-statement. An all-zero lane installs NOTHING (DW-678), which
+        /// is the fast path for every hero under <c>auto</c>.</para>
+        /// </summary>
+        private void ReconcileSpent(EntityWorld world, int slot, int entityId, bool swap)
+        {
+            int aBase = slot * AttributeStats.Count;
+
+            // Allocation-free fast exit for a hero that has spent nothing — i.e. EVERY hero under `auto`, which is
+            // all shipped content. This runs once per live hero per tick from ReconcileGrowth, so the scan must not
+            // build the sparse vector just to discover it is empty (the HasThresholdRows posture, 15-24c).
+            if (!swap)
+            {
+                bool any = false;
+                for (int s = 0; s < AttributeStats.Count; s++)
+                    if (_heroes.AttrStatSpent[aBase + s].Raw != 0) { any = true; break; }
+                if (!any) return;
+            }
+
+            StatDelta[] vector = BuildAttrVector(_heroes.AttrStatSpent, aBase);
+            if (!swap && vector.Length == 0) return;               // spent only into non-modifier-channel stats
+
+            if (!IsLiveLinkedHero(world, slot, entityId)) return;  // dead/stale hero → nothing this tick
+
+            Fixed healthBefore = world.Health[entityId];            // DW-85 snapshot (see the remarks)
+            if (swap) _modifiers.RemoveByModifierId(entityId, HeroSpentModifierId);
+
+            if (vector.Length != 0)
+            {
+                // The remove above can raise the DW-325 ceiling-collapse death (reverting a +MaxHealth total), so
+                // re-check liveness before writing anything further for this host — the ModifierStore post-condition.
+                if (!world.IsAlive(entityId)) return;
+                var mod = new Modifier(
+                    HeroSpentModifierId,
+                    durationTicks: -1,       // permanent, non-dispellable (the growth-modifier posture)
+                    StackRule.Ignore,        // install-once idempotence; the swap path removes first
+                    maxStacks: 1,
+                    vector,
+                    status: StatusFlags.None,
+                    periodEffect: null,
+                    periodTicks: 0);
+                _modifiers.Apply(entityId, mod, entityId, world.FactionOf[entityId]);
+            }
+
+            if (world.IsAlive(entityId))
+                world.Health[entityId] = Fixed.Clamp(healthBefore, Fixed.Zero, world.EffectiveMaxHealth[entityId]);
+        }
+
+        /// <summary>
+        /// Story 15-24e — EXECUTE a <c>UnitCommand.SpendAttributePoint</c> order: allocate one banked point into the
+        /// attribute at <paramref name="attributeIndex"/> (an index into the faction model's declared
+        /// <c>attributes</c> list, the order's TargetX payload). Called ONLY by <c>OrderApplier</c>, from the
+        /// POST-ownership-guard arm — the subject is a hero ENTITY, so dispatching it before the guard would let a
+        /// player spend another faction's hero's points (the 3.15 UseItem anti-cheat rule).
+        ///
+        /// <para>Every rejection is a deterministic, SILENT no-op (no points, wrong mode, bad index, an attribute
+        /// the model derives nothing from, a dead/stale hero): the same posture as <c>ItemSystem.UseItemCommand</c>
+        /// on an empty slot, and it runs identically on every peer and in replay. The only state written on the
+        /// success path is the two folded lanes plus the swapped modifier slot.</para>
+        /// </summary>
+        public void SpendAttributePointCommand(EntityWorld world, int entityId, int attributeIndex,
+                                               CombatEventQueue? events = null)
+        {
+            if (world == null || entityId < 0 || entityId >= world.HighWaterMark || !world.IsAlive(entityId)) return;
+            if (!_heroes.TryResolveRef(world.HeroIndex[entityId], out int slot)) return; // not a hero / stale link
+            if (!_heroes.IsPlayerSpent(slot)) return;               // auto model, or an AI-controlled slot: not an
+                                                                   // affordance the player was ever offered → silent
+            if (_heroes.UnspentPoints[slot] <= 0)
+            {
+                Deny(world, entityId, events, DenialReason.None);   // nothing banked (a stale click, or the order ring
+                return;                                            // dropped an earlier spend) → tell the player
+            }
+
+            AttributeModelDefinition? model = _heroes.AttrModelOf[slot];
+            var declared = model?.Attributes;
+            if (declared == null || (uint)attributeIndex >= (uint)declared.Count)
+            {
+                Deny(world, entityId, events, DenialReason.InvalidTarget); // unknown attribute index
+                return;
+            }
+
+            string? attributeId = declared[attributeIndex]?.Id;
+            HeroAttributesDefinition? attrs = _heroes.SourceDef[slot]?.Hero?.Attributes;
+            // The single float→Fixed resolve boundary for "what one point of this attribute contributes". Null means
+            // the model grants NOTHING for this attribute — no linear rule names it, the rules cancel, or the total
+            // quantizes to raw 0. Refuse rather than burn the point on nothing (there is no respec in 15-24e, so a
+            // silently consumed point would be unrecoverable).
+            Fixed[]? grant = HeroAttributeResolver.ResolvePointGrant(model, attrs, attributeId);
+            if (grant == null)
+            {
+                Deny(world, entityId, events, DenialReason.InvalidTarget);
+                return;
+            }
+
+            _heroes.UnspentPoints[slot]--;
+            int aBase = slot * AttributeStats.Count;
+            for (int s = 0; s < AttributeStats.Count; s++)
+            {
+                // Accumulate in LONG and clamp to the 16.16 range. Raw int addition here is the swept SqrDistance
+                // overflow class: enough points at a large authored per_point wraps NEGATIVE, which would turn a
+                // +max_health total into a stat-DESTROYING one and ceiling-collapse the hero (DW-325). Saturating is
+                // the same posture HeroAttributeResolver.EvaluateAt takes at its own quantization boundary.
+                long acc = (long)_heroes.AttrStatSpent[aBase + s].Raw + grant[s].Raw;
+                if (acc > int.MaxValue) acc = int.MaxValue;
+                else if (acc < int.MinValue) acc = int.MinValue;
+                _heroes.AttrStatSpent[aBase + s] = Fixed.FromRaw((int)acc);
+            }
+
+            // Re-state the spent total on its single modifier slot so the modifier-channel stats (max_health,
+            // attack_damage, …) move now; the read-seam stats (the energy pair) pick the lane up on their next read
+            // through HeroStore.AttributeStatAt, which already sums it.
+            ReconcileSpent(world, slot, entityId, swap: true);
+            // No cue on SUCCESS — the command card's own refresh is the feedback, and a "Level up!" toast would be a
+            // lie. Every REFUSAL above cues, though: the affordance disables un-grantable attributes, so a denial
+            // that still reaches here means something the player could not see went wrong (a stale click on a
+            // just-emptied bank, or LockstepManager.EnqueueOrder dropping the order on a full per-tick ring), and
+            // silence there is indistinguishable from the feature being broken.
+        }
+
+        /// <summary>Story 15-24e — the guard-sourced denial cue for a refused spend (the Story 11.4 contract: the
+        /// rejecting guard authors the reason, the reactive UI renders it). Presentation-only; a null queue leaves
+        /// the refusal the same deterministic no-op it already is.</summary>
+        private static void Deny(EntityWorld world, int entityId, CombatEventQueue? events, DenialReason reason)
+        {
+            if (events == null || !world.IsAlive(entityId)) return;
+            events.PushDenied(world.Position[entityId], world.FactionOf[entityId], reason);
         }
 
         /// <summary>

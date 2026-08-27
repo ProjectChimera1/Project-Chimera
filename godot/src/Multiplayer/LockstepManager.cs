@@ -150,6 +150,13 @@ namespace ProjectChimera.Multiplayer
         /// no-ops. Must be the SAME instance the replay/offline paths use, or a concede diverges between live and replay.</summary>
         public WinStateStore? WinState;
 
+        /// <summary>Story 15-24e: the hero runtime the shared OrderApplier uses to EXECUTE a SpendAttributePoint
+        /// command at exec-tick (the deterministic point decrement + spent-lane credit + modifier swap on the
+        /// canonical HeroStore/ModifierStore). Wired by MatchLifecycleController per match; null in headless/tests
+        /// where the command no-ops. Must be the SAME instance the replay/offline paths use, or a spend diverges
+        /// between live and replay — the whole reason the order exists instead of a local mutation (DW-405).</summary>
+        public ProjectChimera.Combat.HeroXpSystem? HeroXp;
+
         // ── Public state ──────────────────────────────────────────────────────
 
         public bool IsOnline   { get; private set; }
@@ -393,7 +400,7 @@ namespace ProjectChimera.Multiplayer
                 var order = new UnitOrder(eventIndex, UnitCommand.DslEvent, Fixed.FromRaw(arg0), Fixed.FromRaw(arg1));
                 OrderApplier.Apply(_world, in order, Faction.Player1,
                     OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings, CombatEvents, Items, Research, DslEventSink,
-                    log: Log);
+                    log: Log, heroXp: HeroXp);
                 return true;
             }
             if (IsSpectator) return false;
@@ -429,7 +436,7 @@ namespace ProjectChimera.Multiplayer
                 var order = new UnitOrder(0, UnitCommand.Concede, Fixed.Zero, Fixed.Zero);
                 OrderApplier.Apply(_world, in order, faction,
                     OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings, CombatEvents, Items, Research, DslEventSink,
-                    WinState, Log);
+                    WinState, Log, HeroXp);
                 return true;
             }
             if (IsSpectator) return false;
@@ -556,7 +563,7 @@ namespace ProjectChimera.Multiplayer
                 _applyFactions, _applyOrderCounts, _applyOrdersFlat, // DW-391: pooled scratch — zero-alloc apply
                 OnRequestPath, OnRequestAttackMove, OnCancelPath,
                 Buildings, CombatEvents, Items, Research, DslEventSink,
-                Recorder != null ? _recordHook : null, WinState, Log);
+                Recorder != null ? _recordHook : null, WinState, Log, HeroXp);
         }
 
         // ── Checksum exchange ─────────────────────────────────────────────────

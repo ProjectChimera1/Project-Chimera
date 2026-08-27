@@ -71,8 +71,15 @@ namespace ProjectChimera.Core.Definitions
         /// <c>Fixed.FromFloat(v).Raw</c> exactly as the runtime reads them. It is sim-READ from day one
         /// (<c>VeterancySystem</c> derives the installed vector from it), so it never sat on the authoring-only
         /// allowlist: peers with divergent ladders must be rejected at the lobby, not desync at the first rank-up.
-        /// Every unit gains one presence-bit <c>Mix(0)</c>, so the pin moves for ALL content.</para></summary>
-        public const int AlgoVersion = 5;
+        /// Every unit gains one presence-bit <c>Mix(0)</c>, so the pin moves for ALL content.</para>
+        /// <para>v6 — Story 15-24e (spend mode): <c>FoldAttributeModel</c> gains the model-level <c>spend_mode</c>
+        /// ORDINAL (never the raw token — it is case-insensitive and absent ≡ "auto", so folding the string would
+        /// make a cosmetic re-spelling a false handshake mismatch). It is sim-READ (<c>HeroStore.IsPlayerSpent</c>
+        /// gates both the growth withholding and the spend order), so peers with divergent modes must be rejected
+        /// at the lobby rather than desync on the first level-up. Only a faction that DECLARES an
+        /// <c>attribute_model</c> folds the extra Mix and no shipped faction declares one, so the VALUE moves for
+        /// model-bearing content only — the AlgoVersion bump moves the pin for all.</para></summary>
+        public const int AlgoVersion = 6;
 
         /// <summary>
         /// The LOCAL per-domain content fingerprint (ruleset-caps, factions, abilities, items, damage-table). Each
@@ -353,6 +360,11 @@ namespace ProjectChimera.Core.Definitions
         {
             h = CanonicalFold.MixInt(h, model != null ? 1 : 0);
             if (model == null) return h;
+            // Story 15-24e: the model-level SPEND MODE, as the parsed ORDINAL. Sim-read (it selects whether a level
+            // applies the attribute vector or banks a point), so divergent peers must fail the lobby handshake.
+            // Never the raw string: the token is case-insensitive and absent ≡ "auto", so an equivalent re-spelling
+            // must fold IDENTICALLY (the 15-24c shape-ordinal rule, restated).
+            h = CanonicalFold.MixInt(h, (int)model.ParsedSpendMode);
             var attrs = model.Attributes ?? new List<AttributeDeclaration>();
             h = CanonicalFold.MixInt(h, attrs.Count);
             foreach (AttributeDeclaration a in attrs)

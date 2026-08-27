@@ -392,6 +392,16 @@ namespace ProjectChimera.Core.Definitions
 
             if (model != null)
             {
+                // ── Story 15-24e: the model-level SPEND MODE token is a CLOSED vocabulary (fail-closed here;
+                // ParsedSpendMode fails OPEN to Auto for the runtime, which never sees an unvalidated model).
+                // An unknown token must NOT silently become Auto — that would ship a model whose creator asked
+                // for player allocation and whose heroes auto-grow instead, with nothing to notice it.
+                if (!string.IsNullOrEmpty(model.SpendMode)
+                    && !string.Equals(model.SpendMode, "auto", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(model.SpendMode, "player_spent", StringComparison.OrdinalIgnoreCase))
+                    errors.Add(("attribute_model", Located(id, "attribute_model.spend_mode",
+                        $"'{model.SpendMode}' is not a spend mode (auto, player_spent).")));
+
                 // Declared attributes: non-empty unique ids.
                 var attrs = model.Attributes;
                 if (attrs == null || attrs.Count == 0)
@@ -399,6 +409,14 @@ namespace ProjectChimera.Core.Definitions
                         "an attribute_model must declare at least one attribute (or remove the block).")));
                 else
                 {
+                    // Story 15-24e: a presentation cap that silently truncated the list would strand every point
+                    // destined for a hidden attribute (there is no respec), so the cap is enforced HERE, fail-closed,
+                    // rather than by the command card quietly rendering the first N.
+                    if (attrs.Count > AttributeModelDefinition.MaxDeclaredAttributes)
+                        errors.Add(("attribute_model", Located(id, "attribute_model.attributes",
+                            $"declares {attrs.Count} attributes; at most {AttributeModelDefinition.MaxDeclaredAttributes} " +
+                            "are supported (the spend affordance renders one control per declared attribute).")));
+
                     for (int i = 0; i < attrs.Count; i++)
                     {
                         string aid = attrs[i]?.Id ?? "";

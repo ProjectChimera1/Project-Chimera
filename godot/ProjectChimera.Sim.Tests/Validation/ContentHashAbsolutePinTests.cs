@@ -49,13 +49,14 @@ namespace ProjectChimera.Sim.Tests.Validation
             PlayerSlots = new[] { new ScenarioPlayerSlot { Slot = 0, StartOre = 200f, StartCrystal = 50f, BaseX = -30f, BaseZ = 0f } },
         };
 
-        /// <summary>The exact value <see cref="FixedContentHash"/> folds to on ContentHash AlgoVersion 5. Re-pinned for
-        /// Story 15-24d (v4→v5): every unit folds the nullable <c>veterancy</c> ladder behind a presence bit; the
-        /// fixture authors no veterancy, so each of its two unit-shaped defs contributes one extra <c>Mix(0)</c>
-        /// alongside the AlgoVersion mix.
-        /// <para>Prior re-pins: v3→v4 Story 15-24c (derivation shape ordinal + threshold); v2→v3 Story 15-24a (unit
-        /// <c>health_regen</c> + the item stat-delta vector); v1→v2 Story 15-21 (the hero fold); DW-272 (regen_rate).</para></summary>
-        private const ulong ExpectedContentHash = 15243153322058459621UL;
+        /// <summary>The exact value <see cref="FixedContentHash"/> folds to on ContentHash AlgoVersion 6. Re-pinned for
+        /// Story 15-24e (v5→v6): the AlgoVersion mix itself moved. The per-model <c>spend_mode</c> ordinal folds only
+        /// for a faction that DECLARES an attribute_model, and this fixture declares none, so nothing else changed —
+        /// the whole delta here is the version mix.
+        /// <para>Prior re-pins: v4→v5 Story 15-24d (the veterancy ladder behind a presence bit); v3→v4 Story 15-24c
+        /// (derivation shape ordinal + threshold); v2→v3 Story 15-24a (unit <c>health_regen</c> + the item stat-delta
+        /// vector); v1→v2 Story 15-21 (the hero fold); DW-272 (regen_rate).</para></summary>
+        private const ulong ExpectedContentHash = 12621164580227008018UL;
 
         /// <summary>The exact value CanonicalModelHash folds <see cref="FixedModel"/> to (AlgoVersion 17). Re-pinned for
         /// Story 15-24a's 16→17 bump (MixModifier folds the canonical sparse stat-delta vector — the fixture embeds no

@@ -28,7 +28,7 @@ namespace ProjectChimera.Sim.Tests.Multiplayer
                    scenarioHash: 0x11UL, rulesetHash: 0x22UL, modelAlgoVersion: CanonicalModelHash.AlgoVersion, roster: Roster2);
 
         [Fact]
-        public void ReplayFormatVersion_IsCurrent() => Assert.Equal(7, ReplayRecorder.VERSION); // DW-945 bumped 6→7 (14-byte stride, packed subject; 15-23 took it to 6)
+        public void ReplayFormatVersion_IsCurrent() => Assert.Equal(8, ReplayRecorder.VERSION); // Story 15-24e bumped 7→8 (the header carries this match's AiControlPlan.Mask; DW-945 took it to 7)
 
         private static ScenarioVariable IntVar(string name) =>
             new() { Name = name, Type = DslValueType.Int, Scope = VarScope.Global, Initial = Fixed.Zero };

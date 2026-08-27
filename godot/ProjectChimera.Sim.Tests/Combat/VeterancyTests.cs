@@ -1061,6 +1061,17 @@ namespace ProjectChimera.Sim.Tests.Combat
             Assert.NotEqual(HeroXpSystem.HeroGrowthModifierId,    VeterancySystem.VeterancyModifierId);
             Assert.NotEqual(HeroXpSystem.HeroAttrBaseModifierId,  VeterancySystem.VeterancyModifierId);
             Assert.NotEqual(HeroXpSystem.HeroThresholdModifierId, VeterancySystem.VeterancyModifierId);
+            Assert.NotEqual(HeroXpSystem.HeroSpentModifierId,     VeterancySystem.VeterancyModifierId); // Story 15-24e
+            // …and the 15-24e id is distinct from every OTHER hero-minted id too (this family is the only place
+            // the four hero slots are compared, so a colliding append would otherwise silently overwrite a live
+            // instance through ModifierStore's id-keyed Ignore/Remove).
+            Assert.NotEqual(HeroXpSystem.HeroGrowthModifierId,    HeroXpSystem.HeroSpentModifierId);
+            Assert.NotEqual(HeroXpSystem.HeroAttrBaseModifierId,  HeroXpSystem.HeroSpentModifierId);
+            Assert.NotEqual(HeroXpSystem.HeroThresholdModifierId, HeroXpSystem.HeroSpentModifierId);
+            Assert.False(HeroXpSystem.HeroSpentModifierId >= ItemSystem.ItemModifierIdBase &&
+                         HeroXpSystem.HeroSpentModifierId < ItemSystem.ItemModifierIdBase + 0x10000);
+            Assert.False(HeroXpSystem.HeroSpentModifierId >= ResearchSystem.ResearchModifierIdBase &&
+                         HeroXpSystem.HeroSpentModifierId < ResearchSystem.ResearchModifierIdBase + 0x10000);
             // The two BASE+index families: assert the id is outside each family's whole reachable range.
             Assert.False(VeterancySystem.VeterancyModifierId >= ItemSystem.ItemModifierIdBase &&
                          VeterancySystem.VeterancyModifierId < ItemSystem.ItemModifierIdBase + 0x10000);

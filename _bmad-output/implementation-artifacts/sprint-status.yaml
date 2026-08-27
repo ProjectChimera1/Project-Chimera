@@ -445,9 +445,24 @@ development_status:
   # untested guards (the v13 negative-count restore floor, QuantizeDeltas' runtime drops) pinned.
   # As-built record: spec-15-24d-veterancy.md. Suite 7061/0/1 (verified independently post-patch).
   # Review deferred 10 findings as DW-1000..DW-1009.
-  # Residual legs: e (spend mode), f (Attribute Editor — IN-ENGINE GATED, takes the
-  # DW-991/994/996/998/999 UI arms), g (item affixes — unblocked by the DW-997 fix).
-  # Open seams: DW-992/993/995/998/999.
+  # 15-24e (spend mode) BUILT + GREEN 2026-08-26, IN-ENGINE GATE PASS: `spend_mode` on
+  # AttributeModelDefinition selects auto (today's behaviour, what the campaign ships) or player_spent;
+  # a level banks a point instead of applying the per-level attribute vector, spent via the new
+  # UnitCommand.SpendAttributePoint (=26) wire order on the hero command card. The flat hero STAT lanes
+  # keep applying in every mode — only the attribute term is withheld. First player-facing level-up cue
+  # in the game (CombatEventQueue.HeroLeveled + toast). AI-held slots behave as auto, the mask now DERIVED
+  # from slot occupancy (Alec's ruling) rather than the Player2-only OfflineDefault.
+  # Stamps: SimChecksum 28->29, ContentHash 5->6, Save 13->15, Replay 7->8. CanonicalModelHash stays 17
+  # (roster-side field — leg d's retraction, applied deliberately). PROTOCOL 6 unmoved. ZERO goldens moved.
+  # As-built record: spec-15-24e-spend-mode.md. Suite 7123/0/1 (verified independently post-patch).
+  # Review found 6 real correctness bugs (deployed-hero banks nothing; Fixed overflow kills the hero;
+  # mode unreconstructible on load; replay played back under the wrong AI plan; offline mask Player2-only;
+  # a zero grant burned the point) + a falsifiable online/replay wiring gap. All patched.
+  # Review deferred 5 findings as DW-1010..DW-1014. DW-1010 is Alec's RULING that an AI taking over a
+  # DROPPED player's slot must NOT auto-spend — a creator toggle, to be built WITH AI takeover (DW-1).
+  # Residual legs: f (Attribute Editor — IN-ENGINE GATED, takes the DW-991/994/996/998/999 UI arms and
+  # the DW-1010 takeover toggle's authoring control), g (item affixes — unblocked by the DW-997 fix).
+  # Open seams: DW-992/993/995/998/999, DW-1000..DW-1014.
   15-24-attribute-system-2-expanded-vocab-rolls-veterancy-editor: in-progress
   epic-15-retrospective: optional
 

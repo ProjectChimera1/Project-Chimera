@@ -65,7 +65,15 @@ namespace ProjectChimera.Combat
         // typed switches no-op on unknown types, but AudioManager's profile-first route is type-AGNOSTIC and
         // would play a profile's impact sound for the roll cue itself. Render arms = DW-996. ──
         AttackDodged,
-        AttackCrit
+        AttackCrit,
+        // ── Story 15-24e: appended AFTER AttackCrit. Pushed by HeroXpSystem.AdvanceLevels once per level GAINED,
+        // at the hero's position and carrying its faction, so MatchAlertBridge raises the cue for the LOCAL player
+        // only. There was no player-facing level-up feedback of ANY kind before this story (hero_level went only to
+        // the trigger-DSL feed, and the sole place a hero's Level rendered anywhere was the revive-button label).
+        // A NOTIFICATION cue, not ambient: it fires at most once per hero per level, and losing it to a battle tick
+        // would silently swallow the one moment the player must notice under player_spent. Presentation-only —
+        // CombatEventQueue is NOT a SimChecksum input, so appending an enum value cannot move any golden. ──
+        HeroLeveled
     }
 
     /// <summary>

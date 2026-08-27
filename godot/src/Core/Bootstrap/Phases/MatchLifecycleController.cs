@@ -148,6 +148,11 @@ namespace ProjectChimera.Core.Bootstrap
             // at exec-tick (the deterministic spend/refund + progress on the canonical ResearchStore/ResourceStore) —
             // the SAME ResearchSystem instance the replay/offline paths use.
             _ctx.Lockstep.Research = _ctx.Host.ResearchSys;
+            // Story 15-24e: give the manager the hero runtime so an online SpendAttributePoint EXECUTES at exec-tick
+            // (the deterministic decrement + spent-lane credit + modifier swap) — the SAME HeroXpSystem instance the
+            // offline SelectionSystem and the replay path use. Without this the online spend would silently vanish,
+            // which is the DW-405 class the wire order exists to close.
+            _ctx.Lockstep.HeroXp = _ctx.Host.HeroXp;
             // Story 7.9: the DslEventSink is wired UNCONDITIONALLY in Run() (offline + online), so nothing to do here.
             // Story 2.12: also give the manager the event bus so a full-ring queued-order reject can emit OrderDenied
             // feedback on the online path (the same bus the offline SelectionSystem path uses); presentation-only.
@@ -255,8 +260,12 @@ namespace ProjectChimera.Core.Bootstrap
                 // single LiveMatchSeed seam, not a hardcoded literal — so a replay restores the identical stream origin
                 // (D6). Online this equals DEFAULT_RNG_SEED (pinned in OnMatchStart below; all peers agree until the
                 // Epic-9 seed handshake); the offline reset mints a per-match seed into the same field (DW-17).
+                // Story 15-24e (review P3): record THIS match's AiControlPlan.Mask (replay v8) so playback runs
+                // under the arrangement the match ran under — for the AI itself and for hero spend mode alike. Read
+                // back off the host, which is the single value SetAiControlPlan established, never a re-derivation.
                 _ctx.ReplayRecorder = new ReplayRecorder(filePath, _ctx.Scene.ScenarioPath, _ctx.LiveMatchSeed,
-                    scenarioHash, rulesetHash, CanonicalModelHash.AlgoVersion, roster);
+                    scenarioHash, rulesetHash, CanonicalModelHash.AlgoVersion, roster,
+                    _ctx.Host.Ai.ControlPlan.Mask);
                 _ctx.Lockstep.Recorder = _ctx.ReplayRecorder;
 
                 if (_ctx.ReplayStatusLabel != null)
@@ -359,15 +368,17 @@ namespace ProjectChimera.Core.Bootstrap
                 // Story 11.2 (FR-66): give the replay the folded WinStateStore so a recorded Concede order latches the
                 // conceding faction's VERDICT_LOST identically to the live match (the one-switch parity rule).
                 _ctx.ReplayPlayer.WinState = _ctx.Host.WinState;
-                // DW-908: replay playback runs the OFFLINE plan — the pre-DW-908 behaviour, restored explicitly rather
-                // than inherited. Replay never routes through ResetToAuthoredStart (ModeTransitionResetPolicy returns
-                // None when hasReplay), so without this a replay loaded AFTER an online match in the same session would
-                // play back with the AI disarmed while the recording ran it, and diverge. The .chmr header carries no
-                // AI-plan field, so a replay of an ONLINE match (recorded with the AI off) still plays back with it on
-                // — a pre-existing reproduction gap for online replays, filed as a DW-908 residual rather than guessed
-                // at here; it is unchanged by this fix, and online replays were already unreproducible under DW-204's
-                // float AI.
-                _ctx.Host.SetAiControlPlan(AI.AiControlPlan.OfflineDefault);
+                // Story 15-24e: give the replay the hero runtime so a recorded SpendAttributePoint order re-allocates
+                // identically to the live match (same decrement + spent lane + modifier swap on the canonical stores).
+                _ctx.ReplayPlayer.HeroXp = _ctx.Host.HeroXp;
+                // DW-908 + Story 15-24e (review P3): playback runs under the plan the RECORDING ran under, read from
+                // the .chmr header (replay v8). This closes the DW-908 residual that used to be documented here: the
+                // header carried no AI-plan field, so an ONLINE recording (plan None) was replayed under
+                // OfflineDefault {Player2} and the AI acted in playback where it had not in the match. Since 15-24e
+                // the same mask also decides hero SPEND MODE, so the wrong mask silently changes hero growth on
+                // playback too. Replay never routes through ResetToAuthoredStart (ModeTransitionResetPolicy returns
+                // None when hasReplay), so this assignment is the only thing that establishes the plan here.
+                _ctx.Host.SetAiControlPlan(AI.AiControlPlan.FromMask(_ctx.ReplayPlayer.AiControlMask));
 
                 if (_ctx.ReplayStatusLabel != null)
                 {

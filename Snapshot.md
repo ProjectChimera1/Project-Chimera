@@ -75,7 +75,56 @@ added for exactly this and turn DW-911(b) from a hypothesis into a number.
 
 ---
 
-## Current State (2026-08-26, SESSION 6 — 15-24d VETERANCY, via `bmad-build`) — read this first
+## Current State (2026-08-26, SESSION 6b — 15-24e SPEND MODE) — read this first
+
+**This block supersedes everything below it.** Same session as 6a (15-24d) below; both legs ran through
+`bmad-build`. Suite at close **7123 / 0 / 1**, zero goldens moved all session.
+
+### What landed
+**15-24e — SPEND MODE BUILT, IN-ENGINE GATE PASS.** `spend_mode` on `AttributeModelDefinition` selects
+`auto` (today's behaviour, what the campaign ships) or `player_spent`. Under `player_spent` a level banks a
+point instead of applying the per-level attribute vector; the player spends it via the new
+`UnitCommand.SpendAttributePoint` (=26) wire order on the hero command card. **Only the attribute term is
+withheld** — the flat hero STAT lanes keep applying in every mode. Ships the **first player-facing level-up
+cue in the game** (`CombatEventQueue.HeroLeveled` + toast); there was none before.
+
+### Version stamps at close (both LAN machines MUST pull + rebuild together; all saves AND replays dead)
+SimChecksum **29** · CanonicalModelHash **17** · ContentHash **6** · StartStateHash 2 · PROTOCOL 6 ·
+**Replay 8** · **Save 15**. Goldens: **NONE moved** (35 intact, none re-recorded, across both legs).
+
+### Rulings taken this session (both Alec's, both load-bearing)
+1. **AI takeover of a DROPPED player's slot must NOT auto-spend** — "I would hate for a player to reconnect
+   and find out that the AI spent the points in a poor way." A creator toggle, default off. **Filed as
+   DW-1010, deliberately NOT built**: AI takeover does not exist (DW-1, blocked on DW-204), so the toggle
+   would be an authored field with no consumer. Build it WITH takeover; authoring control goes in leg f.
+   Note this SPLITS a case: a skirmish AI on a slot from match start behaving as `auto` is correct and shipped.
+2. **The offline AI mask derives from slot occupancy**, not the Player2-only `OfflineDefault` — otherwise AI
+   on Player3/Player4 banked points nobody could spend.
+
+### What review caught (3 blind layers, 26 patches across the two legs)
+Six real correctness bugs in leg e alone: a hero deployed at level N under `player_spent` banked ZERO points
+and lost all attribute growth with no recovery; accumulated spends overflowed `Fixed` NEGATIVE, collapsing
+max health and killing the hero (the swept SqrDistance class, sixth strike); the spend mode was not
+reconstructible after a load; replays played back under a different AI plan than they recorded under; the
+offline mask named only Player2; and a zero-valued grant burned the point. **Plus a falsifiable wiring gap:**
+deleting the `heroXp` forward from any of three call sites left the ENTIRE SUITE GREEN while online and
+replay spends silently vanished — the exact defect `CommandApplyParityTests.cs:563-573` records for
+`Research` one story earlier. Fixing it needed the repo's own three-arm parity shape.
+
+### Open threads for the next session
+- **15-24 residual legs:** f (Attribute Editor — IN-ENGINE GATED; takes the DW-991/994/996/998/999 UI arms
+  plus DW-1010's takeover toggle), g (item affixes — unblocked by DW-997).
+- **DW-1000..DW-1014** filed this session. Two want a ruling before other work consumes their seams:
+  **DW-1001** (razing a building earns no veterancy rank, and `ApplyToBuilding` takes no attacker — decide
+  before `kill_bounty`/`kill_frenzy`/`cdr_on_kill` inherit it) and **DW-1012** (the hero attribute system is
+  UNREACHABLE in shipped content — no faction declares an `attribute_model`, no shipped unit is a hero, and
+  the seven presets are referenced by nothing; the in-engine gate had to synthesize content to assert on).
+- **DW-1013:** `verify-in-engine-gate.ps1` cannot be pointed at a spec without an active bmad-loop run, so
+  the automated gate silently does not run for any `bmad-build` story. 15-24e's block was hand-validated.
+
+---
+
+## Current State (2026-08-26, SESSION 6a — 15-24d VETERANCY, via `bmad-build`)
 
 **This block supersedes everything below it.** First story run through the new `bmad-build` skill
 (bmad 6.11.1-next.27). Committed on master; suite at close **7061 / 0 / 1**, working tree clean.

@@ -249,6 +249,35 @@ namespace ProjectChimera.Core.Skirmish
                 .ToList();
 
         /// <summary>
+        /// DW-908 leg (1) / Story 15-24e — the factions an AI drives in an OFFLINE skirmish built from
+        /// <paramref name="slots"/>: for each <see cref="SlotKind.Ai"/> row, the <see cref="Faction"/> that
+        /// <see cref="Build"/> will renumber it to.
+        ///
+        /// <para>Derived from <see cref="ActiveSlotsInLaunchOrder"/> — the SAME ordering that assigns factions in the
+        /// first place, so "who is Player3" and "is Player3 AI-driven" can never disagree. That single-source rule is
+        /// the whole point: <c>AiControlPlan.OfflineDefault</c> hardcodes <c>{Player2}</c>, which is right only for a
+        /// 1v1 with the AI in the second launch position. In a 1v3, or with the human in a later slot, it left real
+        /// AI factions unmarked — and since Story 15-24e reads this mask to decide hero spend mode, an unmarked AI
+        /// faction would bank attribute points nobody can spend and withhold its growth permanently.</para>
+        ///
+        /// <para>Pure and Godot-free; a null/empty list yields an empty result (no AI).</para>
+        /// </summary>
+        public static IReadOnlyList<Faction> AiFactionsInLaunchOrder(IEnumerable<SetupSlot>? slots)
+        {
+            IReadOnlyList<SetupSlot> active = ActiveSlotsInLaunchOrder(slots);
+            var ai = new List<Faction>();
+            for (int i = 0; i < active.Count; i++)
+            {
+                if (active[i].Kind != SlotKind.Ai) continue;
+                // Build renumbers the i-th active slot to the i-th contiguous player index (Player1 == 1).
+                var f = (Faction)(i + 1);
+                if (f <= Faction.Neutral) continue;
+                ai.Add(f);
+            }
+            return ai;
+        }
+
+        /// <summary>
         /// DW-460 — for each ACTIVE setup slot (keyed by its <see cref="SetupSlot.Slot"/> row ordinal): the
         /// contiguous launch index <see cref="Build"/> renumbers it to, which is also its team-color palette index
         /// (<c>TeamColorPalette.SlotColorAt</c>). Open/Closed rows launch no player and get NO entry — the setup

@@ -24,6 +24,16 @@ namespace ProjectChimera.Core.Definitions
     /// </summary>
     public sealed class AttributeModelDefinition
     {
+        /// <summary>
+        /// Story 15-24e — the hard ceiling on DECLARED attributes, enforced fail-closed by <c>FactionValidator</c>.
+        /// The spend affordance renders one control per declared attribute in a fixed-width strip; without a
+        /// content-side cap a model declaring more would render only the first N with no scroll and no indication,
+        /// and points destined for the hidden ones could never be spent. A presentation bound must never silently
+        /// hide authored content — so the bound is stated HERE, where the authoring gate can refuse it, and the
+        /// card sizes its grid from this same constant. Every shipped preset declares 3-5.
+        /// </summary>
+        public const int MaxDeclaredAttributes = 8;
+
         /// <summary>The declared attributes, in authoring order (order is presentation + resolver-deterministic).</summary>
         [JsonPropertyName("attributes")]
         public List<AttributeDeclaration>? Attributes { get; set; }
@@ -34,10 +44,30 @@ namespace ProjectChimera.Core.Definitions
         [JsonPropertyName("derived")]
         public List<DerivedStatRule>? Derived { get; set; }
 
+        /// <summary>
+        /// Story 15-24e — WHO allocates this faction's hero attribute growth: <c>"auto"</c> (omitted ⇒ the default,
+        /// so every pre-15-24e model is unchanged byte-for-byte) or <c>"player_spent"</c>. Authored as a STRING on
+        /// the dual-path DTO (no enums on the lenient faction loader — the <see cref="DerivedStatRule.Shape"/>
+        /// template); <see cref="ParsedSpendMode"/> is the fail-OPEN accessor and <c>FactionValidator</c> the
+        /// fail-CLOSED token gate. The writer omits the key when null, so shipped faction JSON stays byte-stable.
+        /// </summary>
+        [JsonPropertyName("spend_mode")]
+        public string? SpendMode { get; set; }
+
+        /// <summary>The parsed <see cref="SpendMode"/> — fail-OPEN to <see cref="AttributeSpendMode.Auto"/> exactly
+        /// like <see cref="DerivedStatRule.ParsedShape"/> (the validator is the fail-CLOSED gate, so an unknown
+        /// token is rejected at load and never reaches the runtime).</summary>
+        [JsonIgnore]
+        public AttributeSpendMode ParsedSpendMode =>
+            string.Equals(SpendMode, "player_spent", System.StringComparison.OrdinalIgnoreCase)
+                ? AttributeSpendMode.PlayerSpent
+                : AttributeSpendMode.Auto;
+
         /// <summary>Deep copy (Duplicate-path safety — mirrors <see cref="HeroDefinition.Clone"/>).</summary>
         public AttributeModelDefinition Clone()
         {
             var c = new AttributeModelDefinition();
+            c.SpendMode = SpendMode; // Story 15-24e — omitting this line is the Story 4.5 / DW-1009 silent-drop class
             if (Attributes != null)
             {
                 c.Attributes = new List<AttributeDeclaration>(Attributes.Count);
@@ -284,6 +314,77 @@ namespace ProjectChimera.Core.Definitions
             }
             return (outBase, outPerLevel);
         }
+
+        /// <summary>
+        /// Story 15-24e — what ONE player-spent point of <paramref name="attributeId"/> contributes, as a per-stat
+        /// <see cref="Fixed"/> vector (length <see cref="AttributeStats.Count"/>). Returns null when the model
+        /// declares no rule that the point could feed (an unknown/undeclared attribute id, or a model with no
+        /// derived rows) — the caller then denies the spend rather than burning a point on nothing.
+        ///
+        /// <para>This is the SAME single float→<see cref="Fixed"/> boundary <see cref="Resolve"/> and
+        /// <see cref="EvaluateAt"/> are: authored floats accumulated in <c>double</c> over the DECLARED rule list in
+        /// authoring order, quantized once per stat. Reached from the deterministic order-apply path (the same place
+        /// 15-24c's <see cref="EvaluateAt"/> is reached from), so every peer computes the identical vector from
+        /// identical authored content.</para>
+        ///
+        /// <para><b>LINEAR rows only.</b> A step/gate row (<see cref="DerivationShape.PerStep"/> /
+        /// <see cref="DerivationShape.AtLeast"/>) is a function of the hero's authored attribute TOTAL, which
+        /// <see cref="EvaluateAt"/> owns and re-derives from the folded Level; 15-24e deliberately changes nothing
+        /// there (a spent point is recorded as its per-STAT contribution, not as an attribute total, so it cannot
+        /// move a threshold). Authoring a model that mixes <c>player_spent</c> with threshold rows is therefore
+        /// legal and well-defined: the thresholds follow the authored auto totals, the spends follow the linear
+        /// rows.</para>
+        /// </summary>
+        public static Fixed[]? ResolvePointGrant(AttributeModelDefinition? model, HeroAttributesDefinition? hero,
+                                                 string? attributeId)
+        {
+            if (model?.Derived == null || string.IsNullOrEmpty(attributeId)) return null;
+
+            var acc = new double[AttributeStats.Count];
+            for (int i = 0; i < model.Derived.Count; i++)
+            {
+                DerivedStatRule rule = model.Derived[i];
+                if (rule == null || rule.IsThreshold) continue;                    // step/gate rows: EvaluateAt's half
+                if (!AttributeStats.TryIndexOf(rule.Stat, out int stat)) continue; // validator fail-closes
+
+                // "primary" is the WC3 selector: the row applies to the hero's flagged primary attribute, so a point
+                // spent INTO that attribute feeds it too (the same resolution Resolve/EvaluateAt perform).
+                string? attr = string.Equals(rule.Attribute, "primary", System.StringComparison.Ordinal)
+                    ? hero?.Primary
+                    : rule.Attribute;
+                if (string.IsNullOrEmpty(attr)) continue;
+                if (!string.Equals(attr, attributeId, System.StringComparison.Ordinal)) continue;
+
+                acc[stat] += rule.PerPoint; // exactly ONE point
+            }
+
+            var outVec = new Fixed[AttributeStats.Count];
+            bool anyNonZero = false;
+            for (int s = 0; s < AttributeStats.Count; s++)
+            {
+                double v = acc[s];
+                if (v > MaxRepresentable) v = MaxRepresentable;         // the EvaluateAt saturation rule, same reason
+                else if (v < -MaxRepresentable) v = -MaxRepresentable;
+                outVec[s] = Fixed.FromFloat((float)v);
+                if (outVec[s].Raw != 0) anyNonZero = true;
+            }
+            // The gate is the RESOLVED vector, not merely "a rule mentioned this attribute". A rule authored at
+            // per_point 0, two rules that cancel on one stat, or a per_point so small it quantizes to raw 0 all
+            // produce an all-zero grant — and a spend that writes nothing while consuming a point is unrecoverable
+            // (15-24e has no respec). Refuse instead, so the point stays bankable.
+            return anyNonZero ? outVec : null;
+        }
+
+        /// <summary>
+        /// Story 15-24e — can a point spent on <paramref name="attributeId"/> grant anything at all? The presentation
+        /// question behind <see cref="ResolvePointGrant"/>, asked by the command card so it can DISABLE a button
+        /// whose press would be a silent no-op (an attribute the model derives nothing from, or one served only by
+        /// threshold rows, which spends deliberately do not feed). Same answer as the applier's own gate, by
+        /// construction — it IS the applier's gate.
+        /// </summary>
+        public static bool HasPointGrant(AttributeModelDefinition? model, HeroAttributesDefinition? hero,
+                                         string? attributeId)
+            => ResolvePointGrant(model, hero, attributeId) != null;
 
         /// <summary>
         /// Story 15-24c — does <paramref name="model"/> carry any THRESHOLD row at all? Lets every consumer

@@ -54,6 +54,7 @@ namespace ProjectChimera.Core.Bootstrap
             selection.Initialize(cam, _ctx.World, _ctx.FlowFieldBridge, _ctx.Buildings, _ctx.BuildSys, _ctx.CombatEvents,
                                   _ctx.Host.Items, _ctx.Host.ItemSys); // Story 3.15 — pickup/use affordance
             selection.SetResearchStore(_ctx.Host.Research); // Story 4.11 — aggregate upgrade line on the focus unit's panel
+            selection.SetHeroXp(_ctx.Host.HeroXp); // Story 15-24e — the OFFLINE apply site for a SpendAttributePoint order
             // Story 9.5: inject the live local-faction getter. _ctx.Lockstep is built later (phase 17) and the assigned
             // faction only resolves at match start (GoOnline), so the closure defers the read to gameplay time; the
             // ?? Player1 guard covers any pre-match call and keeps single-player byte-identical.

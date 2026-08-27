@@ -8189,3 +8189,123 @@ location: godot/src/CreationSuite/UnitCardPanel.Edit.cs:1347 (CloneUnit — the 
 severity: medium
 reason: THREE authoring/presentation gaps left open by leg d, which built the runtime + the content model but deliberately touched no in-engine-gated file (its AC pins the diff out of src/UI/**, src/CreationSuite/**, src/Core/Bootstrap/**, MainScene.cs and scenes/**). (1) THE REAL DEFECT — CloneUnit is a hand-enumerated `new UnitDefinition { ... }` field copy, so a duplicated unit comes back with `Veterancy = null` and its ladder is gone on the next Save. This is EXACTLY the DW-72 class that call site already carries a comment about (the Story 3.16 shop trio, omitted for two epics). VeterancyDefinition.Clone() already exists and is deep-copy tested (VeterancyTests.VeterancyDefinition_Clone_IsADeepCopy) — closure is one line, `Veterancy = s.Veterancy?.Clone(),`, alongside the existing `Hero = s.Hero?.Clone(),`. Unreachable today only because no shipped faction authors a `veterancy` block; it becomes live data loss the moment leg f (or a raw-JSON hatch edit) puts one on a unit a creator then duplicates. NOTE the scope: this is a UNIT-only line. BuildingCardPanel's CloneBuilding is deliberately NOT included — 15-24d made veterancy-on-a-building a fail-closed validator REJECT (VeterancySystem sweeps EntityWorld; buildings live in BuildingStore and are never swept), so a building can never legally carry the block and adding the copy line there would be copying state that must not exist. The GENERAL DW-72 risk that both hand-enumerated clone paths carry — every future UnitDefinition field must be added to CloneUnit, and every future BuildingDefinition field to CloneBuilding, or it silently vanishes on Duplicate — remains open and is the real structural fix (a reflective or source-generated copy, or a completeness guard test over the clone paths mirroring EntityWorldSaveCompletenessTests). (2) NO FORM AFFORDANCE: the ladder is authorable only through the panel's raw-JSON pane — fully validated (UnitDefinitionValidator returns one located error per bad rank/key, and rejects it outright on a building), round-tripped (FactionWriter.WriteVeterancy) and hashed (ContentHash v5), so nothing is dropped on save; it is simply not spinbox-editable. Natural closure is leg f's registry-driven authoring pass, which already owes DW-991/DW-998 the same treatment: a rank list + per-rank kills spinner + a stat-delta row set, bounds-fed from the validator constants (the DW-452 spinner-range-from-validator precedent). (3) NO PRESENTATION — and it is WORSE than a missing chevron: the rank rides a real permanent Modifier in the folded ring, and the Story 11.5 buff/debuff icon row (SelectionSubgroupPanel) renders one icon per installed instance keyed by modifier id, so a ranked unit today shows an UNLABELED permanent buff icon with no name, icon or tooltip (the same shape DW-994 records for new-stat research rows). So closure needs a buff-bar/tooltip arm for VeterancySystem.VeterancyModifierId as well as the missing rank-up cue — and the cue needs a sim-side push too, since the story added no CombatEventType (a rank change raises nothing today), pairing with DW-996's dodge/crit render arms. Also unspecified and deliberately out of scope: per-rank abilities, and whether rank should TRANSFER on unit conversion.
 status: open
+
+
+### DW-1000: Veterancy credits a kill against an ALLIED faction — a teamed player can farm ranks off a teammate's units
+origin: review of spec-15-24d-veterancy (edge-case-hunter + blind-hunter, independently), 2026-08-26
+source_spec: `_bmad-output/implementation-artifacts/spec-15-24d-veterancy.md`
+location: godot/src/Combat/DamageResolver.cs (CreditVeterancyKill — the hostility gate)
+severity: low
+reason: The gate is bare faction inequality (`FactionOf[killer] != FactionOf[victim]`), but Story 9.14 / DW-439..445 made combat targeting and AI classification `AllianceStore`-aware, so two ALLIED factions on the same team are "different factions" here and a kill between them credits a rank. Evidence: the gate matches `HeroXpSystem.cs:202`'s XP gate exactly, so it is plausibly a deliberate consistency choice rather than an oversight — but it is undocumented, untested, and absent from the story's I/O matrix, and it means a teamed player can farm veterancy off a teammate's units. Closure = decide the policy once for the whole on-kill credit seam (hero XP and veterancy together, since they share the rule), then thread `AllianceStore` into the gate or record the decision as intentional with a test pinning it.
+status: open
+
+### DW-1001: Razing a BUILDING earns no veterancy — the credit seam ignores the building damage path entirely
+origin: review of spec-15-24d-veterancy (edge-case-hunter + blind-hunter, independently), 2026-08-26
+source_spec: `_bmad-output/implementation-artifacts/spec-15-24d-veterancy.md`
+location: godot/src/Combat/DamageResolver.cs (ApplyToBuilding — the parallel building-damage path, no attackerId, no CreditVeterancyKill)
+severity: low
+reason: `CreditVeterancyKill` is called only from `KillEntity`, which is hard-bound to `EntityWorld`. The parallel `ApplyToBuilding` path takes no `attackerId` at all, so a siege or anti-structure unit whose entire role is razing can never rank up. Evidence: the omission appears in no I/O matrix row, no test, no design note and not in DW-999 — it is simply unaddressed. This needs a recorded answer BEFORE the catalog's on-kill stats consume the same seam: `kill_bounty` (#45), `kill_frenzy` (#19) and `cdr_on_kill` (#42) all inherit whatever this decides, and answering it per-consumer later guarantees three inconsistent answers. Closure = decide whether a structure kill is a "kill" for the credit seam, then either thread attribution through `ApplyToBuilding` or record the exclusion with a test.
+status: open
+
+### DW-1002: A revived hero restarts at veterancy rank 0 while its HeroStore.Level persists
+origin: review of spec-15-24d-veterancy (edge-case-hunter), 2026-08-26
+source_spec: `_bmad-output/implementation-artifacts/spec-15-24d-veterancy.md`
+location: godot/src/Core/EntityWorld.cs (Create resets VeterancyKills) via godot/src/Core/Sim/SimulationHost.cs:544 (ReviveSpawn)
+severity: low
+reason: A hero IS a `UnitDefinition`, so a creator may author a `veterancy` ladder on one. Revival spawns a FRESH entity slot, and `Create` mandatorily zeroes `VeterancyKills` (the SoA-recycle rule — a recycled slot must never inherit the prior occupant's count). So a revived hero returns with its `HeroStore.Level` and XP intact but its earned rank wiped, which reads as a bug to a player even though both halves are individually correct. Evidence: the reset is deliberate and load-bearing (`RecycledSlot_CarriesNoPriorVeterancy` pins it); the inconsistency is with hero identity persisting across the same event. The story's Boundaries scope out "transferring rank on unit conversion", which is the same class and is why this was deferred rather than guessed. Closure = decide whether veterancy is entity-scoped (current) or identity-scoped for heroes; if the latter, carry the count the way HeroStore.Level already survives.
+status: open
+
+### DW-1003: VeterancySystem.Reconcile rebuilds and allocates the rank vector every tick for every blooded veteran
+origin: review of spec-15-24d-veterancy (blind-hunter + edge-case-hunter, independently), 2026-08-26
+source_spec: `_bmad-output/implementation-artifacts/spec-15-24d-veterancy.md`
+location: godot/src/Combat/VeterancySystem.cs (BuildRankVector -> QuantizeDeltas, called from Reconcile on every sweep)
+severity: low
+reason: The no-change path is correctly cheap in MODIFIER terms (one vector compare, no remove/apply, no Health write) but not in ALLOCATION terms: `QuantizeDeltas` builds a `new List<StatDelta>(4)` plus a canonicalized array on every tick for every opted-in unit with a non-zero counter, purely to feed `SameVector`. That is per-tick GC pressure inside the sim loop, scaling with the veteran population. Evidence: harmless today because no shipped content opts in (the sweep population is 0), which is exactly why it will go unnoticed until a creator ships a veterancy faction. Closure = cache the resolved rank INDEX (or the `VeterancyRank` reference) per entity and short-circuit when the row is unchanged — it removes the allocation without adding folded state, since the index is re-derivable from the folded counter.
+status: open
+
+### DW-1004: Neutral-creep veterancy farming is unbounded and the design choice is unrecorded
+origin: review of spec-15-24d-veterancy (blind-hunter), 2026-08-26
+source_spec: `_bmad-output/implementation-artifacts/spec-15-24d-veterancy.md`
+location: godot/ProjectChimera.Sim.Tests/Combat/VeterancyTests.cs (NeutralVictim_StillCredits_ABecauseTheFactionsDiffer)
+severity: low
+reason: Neutral victims credit ranks (the test pins it deliberately), but nothing bounds farming a respawning neutral source, and no design note or GDD entry records that this is intended. WC3's own veterancy caps creep XP by level difference for exactly this reason. Evidence: the behaviour is pinned by a test, so it is a decision — it is just an unrecorded one, which makes it indistinguishable from an accident to the next reader. Closure = record the stance (with a diminishing-returns or level-difference rule if wanted) when the ladder gets its GDD entry. Note: that test's name also carries a typo, `_ABecauseTheFactionsDiffer`.
+status: open
+
+### DW-1005: Veterancy exists in no GDD entry and ships no sample content — the schema is readable only from source
+origin: review of spec-15-24d-veterancy (blind-hunter), 2026-08-26
+source_spec: `_bmad-output/implementation-artifacts/spec-15-24d-veterancy.md`
+location: Project_Chimera_GDD.md (no veterancy entry); resources/data/** (no faction authors a ladder)
+severity: medium
+reason: `grep -i veteran Project_Chimera_GDD.md` returns nothing, so a brand-new creator-facing mechanic — cumulative-not-incremental ranks, hostile-only credit, an 8-rank ceiling, kills-past-max keep counting — is documented only inside a spec file in `_bmad-output/`. No shipped faction authors a ladder (deliberate, for golden neutrality) and the diff adds no example JSON outside test code, so with no form control until leg f a creator's only reference is reading `VeterancyDefinition.cs`. Evidence: `CLAUDE.md` names the GDD as the record of design intent; `docs/` already has a doc-pinning test precedent for creator-facing schema (`DslReferenceDocTests` over `docs/dsl-reference.md`). Closure = a GDD section plus either a commented sample ladder or a docs page pinned by a test; pairs naturally with leg f.
+status: open
+
+### DW-1006: The veterancy rank bound is private and no bound exists on an individual kills threshold
+origin: review of spec-15-24d-veterancy (blind-hunter), 2026-08-26
+source_spec: `_bmad-output/implementation-artifacts/spec-15-24d-veterancy.md`
+location: godot/src/Core/Definitions/UnitDefinitionValidator.cs (VeterancyMaxRanks, private const)
+severity: low
+reason: Two gaps in one place. (1) `VeterancyMaxRanks = 8` is `private` (matching the file's existing `HeroStatGrowthMax` style), but DW-999's prescribed leg-f closure has the editor's spinners "bounds-fed from the validator constants" per the DW-452 spinner-range-from-validator precedent — which requires reading it. (2) There is no upper bound of ANY kind on an individual rank's `kills` threshold, so `kills: 2000000000` validates and produces a rank no match can reach. Evidence: `EmptyOrOverlongRankLadder_IsRejected` jumps straight from a valid ladder to 9 ranks, so the exactly-8 boundary is also unpinned. Closure = expose the bound the way leg f needs, add a sane per-threshold ceiling, and pin the exact boundary.
+status: open
+
+### DW-1007: FactionWriter.WriteVeterancy re-serializes the POCO, dropping any unmodelled key inside the block
+origin: review of spec-15-24d-veterancy (blind-hunter), 2026-08-26
+source_spec: `_bmad-output/implementation-artifacts/spec-15-24d-veterancy.md`
+location: godot/src/Core/Definitions/FactionWriter.cs (WriteVeterancy)
+severity: low
+reason: The new arm justifies a full POCO re-serialize as "fully FORM-owned", explicitly contrasting itself with `WriteCombatFeedback`, which preserves raw JSON precisely BECAUSE it is "authored ONLY via the raw-JSON hatch — the form never touches it". That is exactly veterancy's situation in leg d: DW-999 records that no form control exists, so the raw-JSON hatch is the only authoring route. The justification is therefore inverted for this leg. Consequence: any key inside `veterancy` the POCO does not model is silently dropped, and hand-authored formatting is normalized, on the next unrelated form edit to that unit. Evidence: no round-trip test covers a hand-authored block carrying extra keys. Closure = either preserve verbatim until leg f's form lands, or accept the drop with a test pinning it and a note in the DW-999 form work.
+status: open
+
+### DW-1008: A mistyped stat_deltas key produces a rank that validates, hashes, saves — and does nothing
+origin: review of spec-15-24d-veterancy (blind-hunter), 2026-08-26
+source_spec: `_bmad-output/implementation-artifacts/spec-15-24d-veterancy.md`
+location: godot/src/Core/Definitions/UnitDefinitionValidator.cs (CheckVeterancyDeltas — null/empty stat_deltas is legal by the DW-678 rule)
+severity: low
+reason: An empty or absent `stat_deltas` map is deliberately legal (the DW-678 "an empty rank installs nothing" rule), and nothing rejects unknown keys at the RANK level, so `"stat_delta"` (singular) — or any other typo of the container key — yields a rank that passes validation, folds into ContentHash, saves, and installs nothing. The creator gets no signal at all. Evidence: the story's own Code Map records that `UnitValidationResult` has no `Warnings` channel (unlike `AbilityValidationResult`), and none was added, so there is no non-fatal way to say "this rank is inert". Closure = add a `Warnings` channel to `UnitValidationResult` (the ability-editor precedent) and warn on a rank whose canonicalized vector is empty; pairs with leg f, which needs the same channel to show authoring feedback.
+status: open
+
+### DW-1009: UnitDefinition clone-completeness is hand-enumerated with no reflective guard — DW-72's class is still open
+origin: review of spec-15-24d-veterancy (verification-gap), 2026-08-26
+source_spec: `_bmad-output/implementation-artifacts/spec-15-24d-veterancy.md`
+location: godot/src/CreationSuite/UnitCardPanel.Edit.cs:1323 (CloneUnit) — the general class, not the veterancy instance
+severity: medium
+reason: DW-999 files the veterancy INSTANCE of this defect; this entry files the CLASS, because a ledger entry is not a failing test and the next story can add the veterancy form and still ship with nothing red. `CloneUnit` is a hand-enumerated `new UnitDefinition { … }` field copy carrying `Hero = s.Hero?.Clone(),` for the identically-shaped optional block. Its own DW-72 comment records that the Story 3.16 shop trio was omitted from this very list for TWO EPICS and silently dropped a duplicated unit's shop identity — the same defect, already survived once. Evidence: no reflection-based clone-completeness guard exists (searched the test project for `GetProperties` in `FactionWriteRoundTripTests.cs` — no matches); the nearest test, `HeroAuthoringTests.cs:311-321`, hand-REBUILDS the CloneUnit line rather than calling `CloneUnit`, so it structurally cannot observe a field CloneUnit forgot. Closure = extract a Godot-free clone helper from `CloneUnit` and add a test that reflects over `UnitDefinition`'s `[JsonPropertyName]` properties asserting each is carried — closing the whole class rather than one field at a time.
+status: open
+### DW-1010: RULING — AI takeover of a DROPPED player's slot must not auto-spend attribute points; make it a creator toggle
+origin: Alec's ruling during the 15-24e review, 2026-08-26 (revises his own earlier "AI slots always behave as auto" boundary)
+source_spec: `_bmad-output/implementation-artifacts/spec-15-24e-spend-mode.md`
+location: n/a — the consuming behaviour does not exist yet; see DW-1 (AI takeover) and DW-204 (AiOpponentSystem float→Fixed)
+severity: medium
+reason: **Alec, verbatim intent:** "I was wrong about spending points automatically if a player drops and AI takes over. I would hate for a player to reconnect and find out that the AI spent the points in a poor way. Leave that as an option for a creator to toggle on or off while map editing. Whether the AI auto-enters attributes upon disconnect or not." — This SPLITS a case 15-24e collapsed into one. A skirmish AI holding a slot from match start behaving as `auto` is fine and is what shipped in 15-24e. AI TAKEOVER of a dropped human's slot is the opposite case: the human may reconnect to find their banked points spent badly, which is unrecoverable (15-24e ships no respec). Required shape: a creator-authored toggle on the attribute model governing whether a takeover AI spends banked points or leaves them banked; default OFF (leave them banked) per the stated concern. **Deliberately NOT built in 15-24e**: AI takeover does not exist (DW-1, post-1.0, hard-blocked on DW-204 because `AiOpponentSystem` is float and cannot run in lockstep at all), so the toggle would have been an authored field with no consumer — the DW-918 / DW-920 computed-but-never-consumed class. Closure = build the toggle WITH takeover (DW-1); surface its authoring control in leg f's Attribute Editor, which owns the map-editing UI for the attribute model.
+status: open
+
+### DW-1011: Spent points and auto growth quantize differently, so the two spend modes disagree numerically on identical authored content
+origin: review of spec-15-24e-spend-mode (blind-hunter), 2026-08-26
+source_spec: `_bmad-output/implementation-artifacts/spec-15-24e-spend-mode.md`
+location: godot/src/Core/Definitions/AttributeModelDefinition.cs (HeroAttributeResolver.ResolvePointGrant — quantizes per point) vs the same file's Resolve/EvaluateAt (accumulate in double, quantize once per total)
+severity: low
+reason: A spend quantizes `Fixed.FromFloat(per_point)` ONCE PER POINT and accumulates the results into `AttrStatSpent`, whereas the auto path accumulates in `double` and quantizes once for the whole total. Ten points of `energy_regen 0.0017` therefore bank `10 × 111 = 1110` raw where auto produces `1114`. Deterministic on every peer, so NOT a desync — but it means `auto` and `player_spent` on identical authored content no longer agree numerically, which quietly undercuts the "the two arms diverge by exactly the withheld attribute term" framing the story verified its in-engine gate against. Evidence: the 15-24c precedent (`AttributeModelDefinition.cs:251,282-283`) deliberately accumulates wide and quantizes once per stat for exactly this reason. Closure = either accumulate spent points in a wide lane and quantize on read, or record the divergence as intended with a test pinning the expected drift.
+status: open
+
+### DW-1012: The hero attribute system is unreachable in shipped content — no faction declares an attribute_model and no hero unit exists
+origin: review of spec-15-24e-spend-mode (blind-hunter + verification-gap, and the implementation's own in-engine gate setup), 2026-08-26
+source_spec: `_bmad-output/implementation-artifacts/spec-15-24e-spend-mode.md`
+location: resources/data/factions/** (no `attribute_model` declared) and resources/data/attribute-models/*.json (seven presets, referenced by nothing)
+severity: medium
+reason: Five story legs deep (15-21, 15-24a/b/c/d/e) the hero attribute system — registry, dice, derivation shapes, veterancy, spend mode — cannot be exercised by any shipped faction. No faction JSON declares an `attribute_model`; the seven presets under `resources/data/attribute-models/` are creator starting points referenced by nothing; and no shipped unit is a hero carrying an attributes block. Evidence: the 15-24e in-engine gate could not assert against shipped content at all and had to add two folded-state-writing debug mutators (`DebugMintHero`, `DebugGrantHeroXp`) to synthesize a hero from the `wc3.json` preset — the gate verified real code against fabricated content. This is the "a TOOLING action item is only done when it is load-bearing in the done-gate" lesson from the Epic 9 retro, in content form: a system that no shipped content reaches is a system whose done-gate proves less than it appears to. Closure = author one shipped faction with an attribute model and a hero (one `player_spent` variant would additionally make leg e demonstrable), so the gate has real content to assert on and a creator has a worked example. Pairs naturally with leg f.
+status: open
+
+### DW-1013: verify-in-engine-gate.ps1 cannot be pointed at a spec without an active bmad-loop run
+origin: review of spec-15-24e-spend-mode (implementation report, verified), 2026-08-26
+source_spec: `_bmad-output/implementation-artifacts/spec-15-24e-spend-mode.md`
+location: godot/tools/verify-in-engine-gate.ps1:98-157 (spec-path resolution)
+severity: low
+reason: The script resolves its target spec from the ACTIVE bmad-loop run's story key. With no run live — or, as during 15-24e, with a stale `15-3` run still registered — it cannot be aimed at the spec actually being built, so an interactively-built story (the `bmad-build` path, which is now the official implementation method) cannot run its own gate check. 15-24e's gate block was therefore hand-validated against the script's four regex checks (`### In-Engine Gate` heading, `- digest:` ≥20 chars not starting `<`, `- asserted:` ≥20 chars, `- result: PASS`) rather than by executing it. Evidence: the gate EVIDENCE for 15-24e is strong and was independently arithmetic-checked, so this is a tooling-reach gap, not a false pass — but it means the automated gate silently does not run for any `bmad-build` story. Closure = accept an explicit `-SpecPath` argument (or fall back to the newest `in-progress`/`in-review` spec) so the gate is runnable outside a bmad-loop run.
+status: open
+
+### DW-1014: HeroStore.AiControlMask is a bare public mutable field whose "one seam" invariant nothing enforces
+origin: review of spec-15-24e-spend-mode (blind-hunter), 2026-08-26
+source_spec: `_bmad-output/implementation-artifacts/spec-15-24e-spend-mode.md`
+location: godot/src/Core/HeroStore.cs (AiControlMask)
+severity: low
+reason: Every other lane on `HeroStore` is `readonly`; `AiControlMask` is a bare public mutable field. Its own doc asserts that `SimulationHost.SetAiControlPlan` is the single write seam, but nothing enforces that — any presentation-side caller can write it mid-match, and because it gates `IsPlayerSpent` (which decides whether a level-up banks a point or applies the attribute vector) a mid-match write changes FOLDED state and desyncs on the next level-up. 15-24e raised the stakes: the mask is now persisted in the save and the `.chmr` header (Save 15 / Replay 8), so a stray write also corrupts what a save claims about a hero's mode. Evidence: an asserted invariant with no mechanism is the class the project has repeatedly been bitten by — cf. the `ApplyUnitDefinition` mapper rule, which is written down AND guarded. Closure = an internal setter or a `SetAiControlMask` method mirroring the store's other write disciplines, so the stated single-seam rule is real rather than documentary.
+status: open

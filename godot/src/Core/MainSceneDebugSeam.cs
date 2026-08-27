@@ -126,8 +126,66 @@ namespace ProjectChimera.Core
                 entities.Add(BuildEntityDict(id));
             }
             dict["entities"] = entities;
+            dict["heroes"]   = BuildHeroArray(); // Story 15-24e
             return dict;
         }
+
+        /// <summary>
+        /// Story 15-24e — the HERO half of the digest. The seam read NOTHING from <see cref="HeroStore"/> before
+        /// this story, so the hero runtime (level, XP, banked attribute points, the per-stat spent totals, and the
+        /// resolved spend MODE) was unobservable from the bridge and no in-engine gate could produce a numeric
+        /// claim about it. Emitted in <see cref="HeroStore.FoldOrder"/> order (ascending HeroId — the same
+        /// producer-independent order the checksum folds), with RAW <see cref="Fixed"/> values so an assertion can
+        /// be exact rather than float-approximate.
+        /// </summary>
+        private Godot.Collections.Array BuildHeroArray()
+        {
+            var arr = new Godot.Collections.Array();
+            if (!SeamReady) return arr;
+            HeroStore h = _host.Heroes;
+            int[] order = h.FoldOrder();
+            for (int k = 0; k < order.Length; k++)
+            {
+                int slot = order[k];
+                var spent = new Godot.Collections.Array();
+                int aBase = slot * AttributeStats.Count;
+                for (int s = 0; s < AttributeStats.Count; s++) spent.Add(h.AttrStatSpent[aBase + s].Raw);
+
+                var declared = new Godot.Collections.Array();
+                var attrs = h.AttrModelOf[slot]?.Attributes;
+                if (attrs != null)
+                    foreach (AttributeDeclaration a in attrs) declared.Add(a?.Id ?? "");
+
+                int entity = h.EntityId[slot];
+                arr.Add(new Godot.Collections.Dictionary
+                {
+                    ["slot"]        = slot,
+                    ["entity"]      = entity,
+                    ["faction"]     = (int)h.OwnerFaction[slot],
+                    ["level"]       = h.Level[slot],
+                    ["xp_raw"]      = h.Xp[slot].Raw,
+                    ["unspent"]     = h.UnspentPoints[slot],
+                    ["spend_mode"]  = h.IsPlayerSpent(slot) ? "player_spent" : "auto",
+                    ["authored_mode"] = (h.AttrModelOf[slot]?.SpendMode) ?? "(absent)",
+                    ["ai_mask"]     = h.AiControlMask,
+                    ["attributes"]  = declared,
+                    ["spent_raw"]   = spent,
+                    // The three stats a spend is easiest to READ on: the entity's live effective channels, which
+                    // is where the spent modifier's vector actually lands.
+                    ["eff_max_hp_raw"] = entity >= 0 && entity < _world.HighWaterMark && _world.IsAlive(entity)
+                                            ? _world.EffectiveMaxHealth[entity].Raw : 0,
+                    ["eff_damage_raw"] = entity >= 0 && entity < _world.HighWaterMark && _world.IsAlive(entity)
+                                            ? _world.EffectiveAttackDamage[entity].Raw : 0,
+                    ["eff_armor_raw"]  = entity >= 0 && entity < _world.HighWaterMark && _world.IsAlive(entity)
+                                            ? _world.EffectiveArmor[entity].Raw : 0,
+                });
+            }
+            return arr;
+        }
+
+        /// <summary>Story 15-24e — the hero digest as a JSON string (the guaranteed-marshallable
+        /// <c>godot_exec</c> path, mirroring <see cref="DebugBuildingJson"/>).</summary>
+        public string DebugHeroJson() => Json.Stringify(BuildHeroArray());
 
         private Godot.Collections.Dictionary BuildEntityDict(int id)
         {
@@ -357,6 +415,126 @@ namespace ProjectChimera.Core
                 buildingId, (Faction)faction,
                 new FixedVec3(Fixed.FromFloat(x), Fixed.Zero, Fixed.FromFloat(z)), preBuilt);
             return slot < 0 ? SEAM_BAD_SLOT : slot;
+        }
+
+        // ────────────────────────────────────────────────────────────────────────────
+        //  HERO half (Story 15-24e) — SETUP mutators (debug + offline only; NOT deterministic-safe)
+        //
+        //  Shipped content declares NO hero unit and NO faction attribute model (the seven models under
+        //  resources/data/attribute-models/ are creator PRESETS, referenced by nothing), so there is no map on
+        //  which the hero attribute runtime can be observed in-engine at all. These two mutators construct that
+        //  situation from a shipped preset — they are the only way the required in-engine gate for a hero-growth
+        //  story can produce numbers, and every number they produce is checkable against the preset JSON.
+        // ────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Mint a HERO row onto an existing entity using a shipped attribute-model preset
+        /// (<c>resources/data/attribute-models/{presetId}.json</c>), so the 15-21/15-24c/15-24e hero attribute
+        /// runtime can be driven and read from the bridge.
+        ///
+        /// <para><paramref name="spendMode"/> is the authored token (<c>""</c>/<c>"auto"</c>/<c>"player_spent"</c>)
+        /// written onto a CLONE of the preset — the shipped JSON and every other hero are untouched, and the clone
+        /// also exercises <c>AttributeModelDefinition.Clone</c>'s spend-mode line. Every declared attribute gets
+        /// <paramref name="attrBase"/> at level 1 and <paramref name="attrPerLevel"/> per level, and the FIRST
+        /// declared attribute is flagged primary, so the resulting contributions are a hand-checkable product of
+        /// the preset's own <c>per_point</c> numbers. The XP curve is pinned to base 100 × growth 1.0 so exactly
+        /// 100 XP buys exactly one level.</para>
+        ///
+        /// <para>Writes FOLDED state (the HeroStore row) outside the command stream — hence
+        /// <see cref="GuardMutate"/>'s debug-build + OFFLINE gate, the same posture as
+        /// <see cref="DebugGrantAbility"/>. Returns the hero slot, or a negative seam code.</para>
+        /// </summary>
+        public int DebugMintHero(int entityId, string presetId, string spendMode, int level,
+                                 float attrBase, float attrPerLevel)
+        {
+            int guard = GuardMutate();
+            if (guard != SEAM_OK) return guard;
+            if (entityId < 0 || entityId >= _world.HighWaterMark || !_world.IsAlive(entityId)) return SEAM_BAD_ENTITY;
+            // A second mint on the same entity would re-point HeroIndex at the new row and ORPHAN the old one: still
+            // Alive, still folded into SimChecksum every tick, but never ticked again (its link no longer round-trips
+            // through IsLiveLinkedHero). Refuse rather than silently corrupt the store the gate is measuring.
+            if (_host.Heroes.TryResolveRef(_world.HeroIndex[entityId], out _)) return SEAM_BAD_SLOT;
+
+            AttributeModelDefinition? model = LoadAttributeModelPreset(presetId);
+            if (model?.Attributes == null || model.Attributes.Count == 0) return SEAM_UNKNOWN_ID;
+            model = model.Clone();                                          // never mutate the shipped preset
+            model.SpendMode = string.IsNullOrEmpty(spendMode) ? null : spendMode;
+
+            var attrs = new HeroAttributesDefinition
+            {
+                Primary  = model.Attributes[0]?.Id,
+                Base     = new System.Collections.Generic.Dictionary<string, float>(),
+                PerLevel = new System.Collections.Generic.Dictionary<string, float>(),
+            };
+            foreach (AttributeDeclaration a in model.Attributes)
+            {
+                if (string.IsNullOrWhiteSpace(a?.Id)) continue;
+                attrs.Base![a!.Id!]     = attrBase;
+                attrs.PerLevel![a!.Id!] = attrPerLevel;
+            }
+
+            // A SYNTHETIC source definition carrying only the hero block: HeroStore.SourceDef is read for the
+            // respawn def and for this hero's authored attributes, and the roster's real UnitDefinition (shared,
+            // authored) must never be mutated to add one.
+            var synthetic = new UnitDefinition
+            {
+                Id   = (_world.SourceDefinition[entityId]?.Id ?? "debug_hero"),
+                Hero = new HeroDefinition
+                {
+                    MaxLevel = 10, BaseXp = 100f, XpGrowth = 1f, XpShareRadius = 12f,
+                    HealthPerLevel = 0f, DamagePerLevel = 0f, ArmorPerLevel = 0f,
+                    Attributes = attrs,
+                },
+            };
+
+            var (cBase, cPerLevel) = HeroAttributeResolver.Resolve(model, attrs);
+            int slot = _host.Heroes.Mint(
+                new HeroId(0xDEB0_0000UL + (ulong)(uint)entityId), entityId,
+                level < 1 ? 1 : level, Fixed.Zero,
+                maxLevel: 10, baseXp: Fixed.FromInt(100), xpGrowth: Fixed.One, xpShareRadius: Fixed.FromInt(12),
+                healthPerLevel: Fixed.Zero, damagePerLevel: Fixed.Zero, armorPerLevel: Fixed.Zero,
+                sourceDef: synthetic, ownerFaction: _world.FactionOf[entityId],
+                xpGainFactor: null,
+                attrStatBase: cBase, attrStatPerLevel: cPerLevel,
+                attrModel: model);
+            if (slot < 0) return SEAM_BAD_SLOT;
+
+            _world.HeroIndex[entityId] = _host.Heroes.PackRef(slot); // the entity→hero link the XP runtime validates
+            return slot;
+        }
+
+        /// <summary>Credit raw XP onto a minted hero row so the NEXT tick's <c>HeroXpSystem.AdvanceLevels</c> runs
+        /// the REAL level path (bank-a-point under <c>player_spent</c>, apply-the-vector under <c>auto</c>) rather
+        /// than the seam faking a level. Writes the folded <c>HeroStore.Xp</c>, hence the offline-only guard.</summary>
+        public int DebugGrantHeroXp(int entityId, float xp)
+        {
+            int guard = GuardMutate();
+            if (guard != SEAM_OK) return guard;
+            if (entityId < 0 || entityId >= _world.HighWaterMark || !_world.IsAlive(entityId)) return SEAM_BAD_ENTITY;
+            if (!_host.Heroes.TryResolveRef(_world.HeroIndex[entityId], out int slot)) return SEAM_BAD_ENTITY;
+            _host.Heroes.Xp[slot] = _host.Heroes.Xp[slot] + Fixed.FromFloat(xp);
+            return SEAM_OK;
+        }
+
+        /// <summary>Load a shipped attribute-model preset by file id (e.g. <c>"wc3"</c>). Null when the file is
+        /// missing or unreadable — the seam then returns <see cref="SEAM_UNKNOWN_ID"/>.</summary>
+        private static AttributeModelDefinition? LoadAttributeModelPreset(string presetId)
+        {
+            if (string.IsNullOrWhiteSpace(presetId)) return null;
+            string path = ProjectSettings.GlobalizePath($"res://resources/data/attribute-models/{presetId}.json");
+            try
+            {
+                if (!System.IO.File.Exists(path)) return null;
+                using var doc = System.Text.Json.JsonDocument.Parse(System.IO.File.ReadAllText(path));
+                if (!doc.RootElement.TryGetProperty("attribute_model", out var m)) return null;
+                return System.Text.Json.JsonSerializer.Deserialize<AttributeModelDefinition>(
+                    m.GetRawText(), FactionDefinition.JsonOptions);
+            }
+            catch (System.Exception e)
+            {
+                GD.Print($"[Seam] attribute-model preset '{presetId}' unreadable: {e.Message}");
+                return null;
+            }
         }
 
         /// <summary>Look up a unit definition by id across the loaded faction rosters (null when absent).</summary>

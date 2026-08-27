@@ -190,6 +190,9 @@ namespace ProjectChimera.Sim.Tests.Combat
         // Story 15-24b: dodge/crit cues fire per swing (the MeleeHit volume class) → ambient lane.
         [InlineData(CombatEventType.AttackDodged,      true)]
         [InlineData(CombatEventType.AttackCrit,        true)]
+        // Story 15-24e: the hero level-up cue fires at most once per hero per level and is the prompt to spend a
+        // banked attribute point — a NOTIFICATION, never battle-volume juice.
+        [InlineData(CombatEventType.HeroLeveled,       false)]
         public void LaneClassification_IsPinnedPerEventType(CombatEventType type, bool ambient)
             => Assert.Equal(ambient, CombatEventQueue.IsAmbient(type));
 
@@ -200,7 +203,7 @@ namespace ProjectChimera.Sim.Tests.Combat
         /// </summary>
         [Fact]
         public void LaneClassificationTable_CoversEveryEventType()
-            => Assert.Equal(19, AllEventTypes().Count); // Story 15.13 (DW-248): +PlayVfx/PlaySound/ShakeScreen; Story 15-24b: +AttackDodged/AttackCrit
+            => Assert.Equal(20, AllEventTypes().Count); // Story 15.13 (DW-248): +PlayVfx/PlaySound/ShakeScreen; Story 15-24b: +AttackDodged/AttackCrit; Story 15-24e: +HeroLeveled
 
         // ── capacity + reset invariants ───────────────────────────────────────────────────────────
 

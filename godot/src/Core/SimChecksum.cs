@@ -354,8 +354,22 @@ namespace ProjectChimera.Core
         ///        frozen re-baseline control and the known-state pin stay byte-identical — the v23/v26/v27
         ///        posture, fourth time. (Gating only the FOLD would NOT have been free: the golden scenarios
         ///        contain combat, so an ungated counter would go non-zero mid-replay and move every golden.)
+        ///   v29 — Story 15-24e (spend mode): BOUNDED per-HERO fold of the two lanes a player-allocated attribute
+        ///        model adds — <c>HeroStore.UnspentPoints</c> (≠ 0) and the stride-<c>AttributeStats.Count</c>
+        ///        <c>AttrStatSpent</c> ring (per stat, ≠ 0 → stat index + raw, so two stats' equal values cannot
+        ///        alias — the v26 research-block idiom). Both become mutable-mid-match the moment a creator
+        ///        authors <c>attribute_model.spend_mode: player_spent</c>: a level then banks a point instead of
+        ///        applying the attribute vector, and a spend order writes the spent lane, both of which change
+        ///        effective stats. The INSTALLED vector needs no fold of its own — it rides ModifierStore (folded
+        ///        since v6) into the already-folded Effective* channels, exactly as veterancy's rank vector does.
+        ///        The bound is free because the authored OPT-IN gates the WRITE, not merely the fold: no shipped
+        ///        faction declares an attribute model at all, an AI-controlled slot behaves as <c>auto</c>, and
+        ///        <c>auto</c> never touches either lane — so every hero in every recorded golden sits at zero and
+        ///        folds ZERO Mix calls. That is why the frozen re-baseline control and the known-state pin stay
+        ///        byte-identical — the v23/v26/v27/v28 posture, fifth time. Appended AFTER the v12 inventory
+        ///        block inside the existing ascending-HeroId FoldOrder loop (no new iteration, no order change).
         /// </summary>
-        public const int AlgoVersion = 28;
+        public const int AlgoVersion = 29;
 
         /// <summary>
         /// Compute a full-state checksum for desync detection.
@@ -664,6 +678,24 @@ namespace ProjectChimera.Core
                     int invBase = slot * HeroStore.INVENTORY_SLOTS;
                     for (int s = 0; s < HeroStore.INVENTORY_SLOTS; s++)
                         hash = Mix(hash, heroes.Inventory[invBase + s]);
+
+                    // ── Spend-mode lanes (v29, Story 15-24e) — BOUNDED fold, the v26/v27/v28 posture ──
+                    // Banked points and the per-stat spent totals are the ONLY state a player-allocated attribute
+                    // model adds, and both are genuinely un-derivable (an auto model's totals are a pure function
+                    // of the already-folded Level, which is why 15-21/15-24c needed no lane at all). A hero on an
+                    // auto model — every hero in every recorded golden, and every hero on an AI-controlled slot —
+                    // never writes either, so this block folds ZERO Mix calls and moves nothing. The spent ring is
+                    // folded per-stat with its INDEX so two stats holding equal values cannot alias (the v26
+                    // research-block rule). All int / Fixed.Raw → cross-platform safe.
+                    if (heroes.UnspentPoints[slot] != 0) hash = Mix(hash, heroes.UnspentPoints[slot]);
+                    int spentBase = slot * Definitions.AttributeStats.Count;
+                    for (int s = 0; s < Definitions.AttributeStats.Count; s++)
+                    {
+                        int raw = heroes.AttrStatSpent[spentBase + s].Raw;
+                        if (raw == 0) continue;
+                        hash = Mix(hash, s);
+                        hash = Mix(hash, raw);
+                    }
                 }
             }
             else

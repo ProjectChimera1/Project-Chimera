@@ -108,6 +108,26 @@ namespace ProjectChimera.UI
         private Button[] _invDropBtns       = System.Array.Empty<Button>();
         private int      _lastFocusedHeroId = -1; // entity id whose inventory the grid last rendered (for callbacks)
 
+        // ── Hero attribute points (Story 15-24e) ───────────────────────────────
+        // Shown ONLY for a focused, locally-owned hero whose faction attribute model authored
+        // spend_mode: player_spent AND that currently holds at least one banked point. HeroStore.IsPlayerSpent is
+        // the single mode oracle — the card never re-derives the mode, and it reads false on an AI-controlled slot.
+        // Reuses the `_heroes` handle SetReviveDeps already injects; no new dependency.
+        /// <summary>Buttons the attribute panel can show — one per declared attribute. NOT an independent
+        /// presentation choice: it IS <see cref="AttributeModelDefinition.MaxDeclaredAttributes"/>, the cap
+        /// <c>FactionValidator</c> enforces fail-closed, so a model can never declare an attribute this grid would
+        /// silently hide (which would strand every point destined for it — 15-24e has no respec).</summary>
+        private const int MAX_ATTR_BUTTONS = AttributeModelDefinition.MaxDeclaredAttributes;
+        private Panel    _attrPanel         = null!;
+        private Label    _attrTitle         = null!;
+        private Button[] _attrBtns          = System.Array.Empty<Button>();
+        private int      _attrFocusedHeroId = -1; // entity id the attribute grid last rendered (for the callbacks)
+        // Grantability is a pure function of (model, hero attributes), both match-constant, so it is resolved ONCE
+        // per (hero row, model) — RefreshAttributeCard runs every frame while visible and HasPointGrant allocates.
+        private readonly bool[] _attrGrantable = new bool[MAX_ATTR_BUTTONS];
+        private int             _attrGrantCacheSlot  = -1;
+        private object?         _attrGrantCacheModel;
+
         // ── Research (Story 4.11) ────────────────────────────────────────────────
         // Injected via SetResearchDeps (like SetReviveDeps/SetShopDeps). Null until wired → the research affordance
         // stays inert (no buttons). `_research` (a ResearchSystem) is the offline OrderApplier.Apply(..., research:)
@@ -251,6 +271,7 @@ namespace ProjectChimera.UI
             BuildWorkerPanel();
             BuildAbilityPanel();
             BuildInventoryPanel();
+            BuildAttributePanel(); // Story 15-24e
         }
 
         // ── Per-frame ─────────────────────────────────────────────────────────
@@ -263,6 +284,7 @@ namespace ProjectChimera.UI
                 _workerPanel.Visible    = false;
                 _abilityPanel.Visible   = false;
                 _inventoryPanel.Visible = false;
+                _attrPanel.Visible      = false; // Story 15-24e
                 return;
             }
 
@@ -322,10 +344,26 @@ namespace ProjectChimera.UI
                 && _world.HeroIndex[focusId] != EntityWorld.HERO_NONE;
             _inventoryPanel.Visible = inventorySelected;
 
+            // Story 15-24e: banked attribute points on a focused, LOCALLY-OWNED hero under a player_spent model.
+            // Ownership is the `FactionOf == me` term plus the spectator exclusion: the applier's ownership guard
+            // would reject a foreign spend anyway (3.15 anti-cheat), this keeps the affordance from offering it.
+            bool attrSelected = !buildingSelected
+                && _world != null
+                && _heroes != null
+                && focusId >= 0
+                && _world.IsAlive(focusId)
+                && _world.FactionOf[focusId] == me
+                && !_spectatorView()
+                && _heroes.TryResolveRef(_world.HeroIndex[focusId], out int attrHeroSlot)
+                && _heroes.IsPlayerSpent(attrHeroSlot)
+                && _heroes.UnspentPoints[attrHeroSlot] > 0;
+            _attrPanel.Visible = attrSelected;
+
             if (buildingSelected) RefreshCard(bId, me, _spectatorView());
             if (workerSelected)   RefreshWorkerCard(focusId);
             if (abilitySelected)  RefreshAbilityCard(focusId);
             if (inventorySelected) RefreshInventoryCard(focusId);
+            if (attrSelected)      RefreshAttributeCard(focusId);
         }
 
         // ── Card update ───────────────────────────────────────────────────────
@@ -1092,6 +1130,60 @@ namespace ProjectChimera.UI
             if (_lastFocusedHeroId >= 0) _selection.IssueDropItemCommand(_lastFocusedHeroId, slot);
         }
 
+        // ── Hero attribute points (Story 15-24e) ──────────────────────────────
+
+        /// <summary>Render the banked-point header plus one Spend button per declared attribute of the hero's
+        /// faction model. Each button issues the sim order on that EXACT declared index — the same index the
+        /// applier validates against the model's attribute count — never a hard-coded 0.</summary>
+        private void RefreshAttributeCard(int focusId)
+        {
+            _attrFocusedHeroId = focusId;
+            if (_heroes == null || !_heroes.TryResolveRef(_world.HeroIndex[focusId], out int heroSlot))
+            {
+                for (int i = 0; i < _attrBtns.Length; i++) _attrBtns[i].Visible = false;
+                return;
+            }
+
+            int banked = _heroes.UnspentPoints[heroSlot];
+            _attrTitle.Text = banked == 1 ? "1 attribute point to spend" : $"{banked} attribute points to spend";
+
+            AttributeModelDefinition? model = _heroes.AttrModelOf[heroSlot];
+            var declared = model?.Attributes;
+            int shown = declared == null ? 0 : System.Math.Min(declared.Count, MAX_ATTR_BUTTONS);
+
+            // Resolve (once per hero row + model) which attributes a point could actually BUY. An attribute the model
+            // derives nothing from — or one served only by threshold rows, which spends deliberately do not feed —
+            // must not offer an ENABLED button whose press is a silent no-op the player cannot diagnose.
+            if (_attrGrantCacheSlot != heroSlot || !ReferenceEquals(_attrGrantCacheModel, model))
+            {
+                HeroAttributesDefinition? heroAttrs = _heroes.SourceDef[heroSlot]?.Hero?.Attributes;
+                for (int i = 0; i < _attrGrantable.Length; i++)
+                    _attrGrantable[i] = i < shown
+                        && HeroAttributeResolver.HasPointGrant(model, heroAttrs, declared![i]?.Id);
+                _attrGrantCacheSlot  = heroSlot;
+                _attrGrantCacheModel = model;
+            }
+
+            for (int i = 0; i < _attrBtns.Length; i++)
+            {
+                if (i >= shown) { _attrBtns[i].Visible = false; continue; }
+                AttributeDeclaration? a = declared![i];
+                string label = string.IsNullOrWhiteSpace(a?.Name) ? (a?.Id ?? "?") : a!.Name!;
+                bool grantable = _attrGrantable[i];
+                _attrBtns[i].Text        = "+1\n" + label;
+                _attrBtns[i].TooltipText = grantable
+                    ? $"Spend one point on {label}."
+                    : $"{label} grants nothing in this faction's attribute model — a point spent on it would be lost.";
+                _attrBtns[i].Disabled    = banked <= 0 || !grantable;
+                _attrBtns[i].Visible     = true;
+            }
+        }
+
+        private void OnAttributeSpendPressed(int attributeIndex)
+        {
+            if (_attrFocusedHeroId >= 0) _selection.IssueSpendAttributePointCommand(_attrFocusedHeroId, attributeIndex);
+        }
+
         // ── Panel construction ────────────────────────────────────────────────
 
         private void BuildPanel()
@@ -1339,6 +1431,55 @@ namespace ProjectChimera.UI
                 drop.Pressed += () => OnInventoryDropPressed(s2);
                 _inventoryPanel.AddChild(drop);
                 _invDropBtns[i] = drop;
+            }
+        }
+
+        // ── Attribute panel construction (Story 15-24e) ───────────────────────
+
+        /// <summary>The banked-attribute-point panel: a bottom-right strip stacked directly ABOVE the inventory
+        /// grid (a hero commonly has both), built with this file's own plain hand-built Button convention.</summary>
+        private void BuildAttributePanel()
+        {
+            var canvas = new CanvasLayer();
+            AddChild(canvas);
+
+            _attrPanel = new Panel();
+            const float attrW = 6 * 96f + 16f;   // the inventory panel's width, so the two strips align
+            const float attrH = 84f;
+            _attrPanel.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.BottomRight);
+            _attrPanel.OffsetRight  = -10f;
+            _attrPanel.OffsetLeft   = -10f - attrW;
+            _attrPanel.OffsetTop    = -128f - attrH - 6f; // directly above the inventory strip (which spans -128..-10)
+            _attrPanel.OffsetBottom = -128f - 6f;
+            _attrPanel.Visible      = false;
+            _attrPanel.MouseFilter  = Control.MouseFilterEnum.Stop;
+            var abg = new StyleBoxFlat();
+            abg.BgColor     = new Color(0.07f, 0.05f, 0.09f, 0.88f);
+            abg.BorderColor = new Color(0.55f, 0.40f, 0.75f, 0.9f);
+            abg.BorderWidthTop = abg.BorderWidthBottom = abg.BorderWidthLeft = abg.BorderWidthRight = 2;
+            abg.CornerRadiusTopLeft = abg.CornerRadiusTopRight = abg.CornerRadiusBottomLeft = abg.CornerRadiusBottomRight = 4;
+            _attrPanel.AddThemeStyleboxOverride("panel", abg);
+            canvas.AddChild(_attrPanel);
+
+            _attrTitle = MakeLabel(new Vector2(10f, 5f), 13, new Color(0.85f, 0.75f, 1.00f));
+            _attrTitle.Text = "Attribute points";
+            _attrPanel.AddChild(_attrTitle);
+
+            _attrBtns = new Button[MAX_ATTR_BUTTONS];
+            for (int i = 0; i < MAX_ATTR_BUTTONS; i++)
+            {
+                var btn = new Button();
+                btn.Position     = new Vector2(8f + i * 72f, 26f);
+                btn.Size         = new Vector2(68f, 50f);
+                btn.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+                btn.ClipText     = true;   // DW-921: a 68 px button neither wraps nor clips by default
+                btn.AddThemeFontSizeOverride("font_size", 11);
+                btn.Text    = "—";
+                btn.Visible = false;
+                int captured = i;          // the captured-loop-var lambda carries the DECLARED attribute index
+                btn.Pressed += () => OnAttributeSpendPressed(captured);
+                _attrPanel.AddChild(btn);
+                _attrBtns[i] = btn;
             }
         }
 

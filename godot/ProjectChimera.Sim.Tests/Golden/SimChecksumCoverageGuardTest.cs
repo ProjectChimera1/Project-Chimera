@@ -109,14 +109,15 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// hash still moves.)
         /// </summary>
         [Fact]
-        public void KnownWorldState_ProducesPinnedV28Hash()
+        public void KnownWorldState_ProducesPinnedV29Hash()
         {
-            // Algorithm version must be exactly 28 (Story 15-24d's bounded veterancy-kill fold, on top of 15-24b's
+            // Algorithm version must be exactly 29 (Story 15-24e's bounded spend-mode fold, on top of 15-24d's
+            // bounded veterancy-kill fold at v28 and 15-24b's
             // bounded combat-dice fold at v27 and 15-24a's bounded stat-pipeline fold at v26, Story
             // 15-23's generation-validated entity refs at v25, Phase C's v24 re-record marker, DW-78's bounded
             // worker-gather-state fold at v23 and 11.6's production-queue + head-timer fold at v22).
             // If this fails, the const below is stale.
-            Assert.Equal(28, SimChecksum.AlgoVersion);
+            Assert.Equal(29, SimChecksum.AlgoVersion);
 
             uint actual = ComputeKnownStateHash();
 
@@ -146,10 +147,15 @@ namespace ProjectChimera.Sim.Tests.Golden
             //            this hand-built world (none carries a `veterancy` block) can ever leave 0 and the arm
             //            folds nothing. Same contract as v23/v26/v27 — if a future edit gives this world a
             //            veterancy-authored killer, the pin MUST move, correctly.
-            const uint ExpectedV28Hash = 0x32911831; // unchanged since v22 — see the reasons above (v27->v28: the veterancy fold is bounded and the known world authors no veterancy — the v23/v26/v27 argument, sixth bump)
-            Assert.True(actual == ExpectedV28Hash,
-                $"Known-state v28 checksum changed: expected 0x{ExpectedV28Hash:X8}, actual 0x{actual:X8}. " +
-                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV28Hash to 0x{actual:X8} and bump " +
+            //   v28->v29: Story 15-24e's spend-mode fold is BOUNDED with the SAME stronger bound as veterancy —
+            //            the authored opt-in (attribute_model.spend_mode: player_spent) gates the WRITE to both
+            //            new hero lanes, not merely the fold, and this hand-built world declares no attribute
+            //            model at all (and holds no hero row), so the arm folds nothing. Same contract: an edit
+            //            that gives this world a player-spent hero MUST move the pin, correctly.
+            const uint ExpectedV29Hash = 0x32911831; // unchanged since v22 — see the reasons above (v28->v29: the spend-mode fold is bounded and the known world authors no attribute model — the v23/v26/v27/v28 argument, seventh bump)
+            Assert.True(actual == ExpectedV29Hash,
+                $"Known-state v29 checksum changed: expected 0x{ExpectedV29Hash:X8}, actual 0x{actual:X8}. " +
+                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV29Hash to 0x{actual:X8} and bump " +
                 $"SimChecksum.AlgoVersion. If not, you broke the deterministic checksum — investigate.");
         }
 

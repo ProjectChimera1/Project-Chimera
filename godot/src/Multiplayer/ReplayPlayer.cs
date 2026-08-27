@@ -39,6 +39,13 @@ namespace ProjectChimera.Multiplayer
         /// <summary>The <c>CanonicalModelHash.AlgoVersion</c> the replay was recorded with.</summary>
         public int ModelAlgoVersion { get; }
 
+        /// <summary>Story 15-24e (replay v8) — the <c>AiControlPlan.Mask</c> the match was RECORDED under. The
+        /// playback wiring pushes this into <c>SimulationHost.SetAiControlPlan</c> instead of asserting the offline
+        /// default, which is what makes an online recording (mask 0) reproduce: previously the AI was re-armed on
+        /// {Player2} during playback of a match it never played, and since 15-24e that same mask also decides hero
+        /// spend modes.</summary>
+        public int AiControlMask { get; }
+
         /// <summary>The per-slot roster embedded in the header (roster[i] = the faction in slot i).</summary>
         public Faction[] Roster { get; }
 
@@ -76,6 +83,10 @@ namespace ProjectChimera.Multiplayer
         /// <summary>Story 11.2 (FR-66) — the host's folded WinStateStore, so a recorded Concede order resolves in replay
         /// byte-identically to the live run (the one-switch parity rule). Null ⇒ a Concede is a deterministic no-op.</summary>
         public WinStateStore? WinState;
+        /// <summary>Story 15-24e — the hero runtime, so a recorded SpendAttributePoint order allocates in replay
+        /// byte-identically to the live run (the one-switch parity rule). Null ⇒ a spend is a deterministic
+        /// no-op.</summary>
+        public ProjectChimera.Combat.HeroXpSystem? HeroXp;
         /// <summary>DW-304 — the diagnostic sink the shared <see cref="OrderApplier.Apply"/> WARNS through when a
         /// recorded building-family order (Train/CancelTrain/SetRally/ReviveHero/BuyItem/StartResearch/CancelResearch)
         /// is dropped because its executing system handle (<see cref="Buildings"/>/<see cref="Research"/>) is unwired —
@@ -209,6 +220,12 @@ namespace ProjectChimera.Multiplayer
                 Roster[i] = (Faction)b;
             }
 
+            // Story 15-24e (v8): this match's AiControlPlan.Mask. Playback must run under the plan the RECORDING ran
+            // under — it decides both whether the AI acts and whether a hero's authored player_spent model is in
+            // force. The version gate above guarantees a v8 header, so the int is always present.
+            Require(stream, sizeof(int), filePath);
+            AiControlMask = reader.ReadInt32();
+
             // Forward-incompatibility: a replay recorded on a NEWER canonical-model algo cannot be trusted to
             // reproduce this build's sim (the fold changed) — reject rather than desync.
             if (ModelAlgoVersion > CanonicalModelHash.AlgoVersion)
@@ -315,7 +332,7 @@ namespace ProjectChimera.Multiplayer
         {
             for (int i = 0; i < count; i++)
                 OrderApplier.Apply(_world, in orders[i], expectedFaction,
-                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings, null, Items, Research, DslEventSink, WinState, Log);
+                    OnRequestPath, OnRequestAttackMove, OnCancelPath, Buildings, null, Items, Research, DslEventSink, WinState, Log, HeroXp);
         }
     }
 }
