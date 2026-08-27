@@ -581,6 +581,29 @@ namespace ProjectChimera.Core
         /// </summary>
         public readonly DeathLog DeathLog;
 
+        // --- Veterancy (Story 15-24d) ---
+        /// <summary>
+        /// Story 15-24d — this unit's cumulative count of hostile kills, the ONE piece of folded state veterancy
+        /// adds. Incremented at the single death choke point (<c>DamageResolver.KillEntity</c>, beside the
+        /// <see cref="KillerOf"/> write) when the resolved killer is not the victim, is on a different faction, and
+        /// its <see cref="SourceDefinition"/> OPTS IN with a <c>veterancy</c> block.
+        ///
+        /// <para><b>The opt-in gates the INCREMENT, not just the fold.</b> A unit whose definition carries no
+        /// <c>veterancy</c> block never increments, so this stays 0 across every recorded scenario — which is what
+        /// makes the BOUNDED <see cref="SimChecksum"/> v28 arm (<c>if (VeterancyKills[i] != 0)</c>) fold zero
+        /// <c>Mix</c> calls and every golden byte-identical. Gating only the fold would NOT have been free: the
+        /// golden scenarios contain combat, so an ungated counter would go non-zero mid-replay.</para>
+        ///
+        /// <para>FOLDED (v28) because it is genuinely mutable-mid-match sim truth the moment any content opts in:
+        /// <c>ProjectChimera.Combat.VeterancySystem</c> derives the installed rank vector from it, so a peer
+        /// divergence changes effective stats. PERSISTED (save v13, the <c>EA.VeterancyKills</c> lane) — the rank is
+        /// a pure function of this counter plus the definition, so a load re-derives and re-installs with no second
+        /// lane. <see cref="Create"/> defaults it to 0 (a recycled slot must NEVER inherit the prior occupant's
+        /// rank — the SoA-recycle trap) and it rides <see cref="UnitSnapshot"/> as caller-owned residue, because it
+        /// is neither def-derived nor a <see cref="Create"/> ctor arg (the <c>godot/CLAUDE.md</c> residue rule).</para>
+        /// </summary>
+        public readonly int[] VeterancyKills;
+
         // --- Separation / formation (Story 1.13, DG-2 / FR-54) ---
         /// <summary>
         /// Per-unit separation radius. Summed with a neighbour's (<c>CollisionRadius[i] + CollisionRadius[j]</c>)
@@ -1130,6 +1153,7 @@ namespace ProjectChimera.Core
             KillerOf        = new int[MAX_ENTITIES];                     // Story 7.5 (NOT folded — derived attribution; sentinel −1 via Array.Fill below)
             KillerFactionOf = new int[MAX_ENTITIES];                     // Story 7.5 (NOT folded; sentinel −1 via Array.Fill below)
             DeathLog        = new DeathLog();                            // DW-367 (NOT folded — per-tick transient death log, wiped by the director)
+            VeterancyKills  = new int[MAX_ENTITIES];                      // Story 15-24d (folded v28 BOUNDED: ≠ 0; opt-in gates the increment, so shipped content stays 0)
             CollisionRadius      = new Fixed[MAX_ENTITIES];              // Story 1.13 (folded v5)
             SeparationPriorityOf = new SeparationPriority[MAX_ENTITIES]; // Story 1.13 (folded v5)
             CategoryOf           = new UnitCategory[MAX_ENTITIES];       // Story 1.13 (NOT folded — presentation-read)
@@ -1291,6 +1315,11 @@ namespace ProjectChimera.Core
             // future death payload). Written only by DamageResolver.KillEntity.
             KillerOf[id]        = -1;
             KillerFactionOf[id] = -1;
+            // Story 15-24d: a (re)allocated slot has earned NO veterancy kills. MANDATORY recycle-reset — inheriting
+            // the prior occupant's count would hand a freshly-trained unit a veteran rank on its first tick (and the
+            // folded counter would move for a slot that never killed anything). default(int)==0 makes this line look
+            // redundant; RecycledSlot_CarriesNoPriorVeterancy in VeterancyTests is its only teeth.
+            VeterancyKills[id]  = 0;
             // Story 1.13: default separation/formation fields on (re)allocation. A recycled slot must never carry
             // the previous unit's radius/priority/category (the classic SoA bug — cf. the 1.12 zombie-route fix).
             // SpawnUnit overwrites these from the def; Create must default them for any spawn site that forgets.
@@ -1654,6 +1683,7 @@ namespace ProjectChimera.Core
             GatherState   = GatherState[id],
             CarryCapacity = CarryCapacity[id],
             SupplyCost    = SupplyCost[id],
+            VeterancyKills = VeterancyKills[id], // Story 15-24d: caller-owned residue (the mapper never writes it)
             // Raw combat stats — read ONLY by the def-less restore branch (a def-based unit re-derives these).
             AttackRange  = AttackRange[id],
             AttackDamage = EffectiveAttackDamage[id],
@@ -1737,6 +1767,9 @@ namespace ProjectChimera.Core
             GatherState[id]   = snap.GatherState;
             CarryCapacity[id] = snap.CarryCapacity;
             SupplyCost[id]    = snap.SupplyCost;
+            // Story 15-24d: the earned rank travels with the unit. VeterancySystem re-derives and re-installs the
+            // rank vector from this counter on its next tick, so the restored unit comes back the veteran it was.
+            VeterancyKills[id] = snap.VeterancyKills;
 
             return id;
         }
@@ -1934,6 +1967,7 @@ namespace ProjectChimera.Core
             Array.Clear(Delivery);              Array.Clear(ProjectileSpeed);       // Story 3.12 (Hitscan==0 / 0 speed == the fresh-ctor state)
             Array.Clear(XpBounty);              // Story 3.13 (0 == the fresh-ctor state)
             Array.Clear(KillerOf);              Array.Clear(KillerFactionOf); // Story 7.5 (re-filled to −1 below)
+            Array.Clear(VeterancyKills);        // Story 15-24d (0 == the fresh-ctor state: a reset army has earned no ranks)
             Array.Clear(SeparationPriorityOf);  Array.Clear(CategoryOf);            Array.Clear(AttackDomainOf);
             Array.Clear(TagsOf);                Array.Clear(SupplyCost);            Array.Clear(MeshType);
             Array.Clear(FeedbackProfile);       Array.Clear(SourceDefinition);      Array.Clear(CommandState);

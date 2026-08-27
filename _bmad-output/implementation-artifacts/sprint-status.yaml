@@ -427,9 +427,27 @@ development_status:
   # NO SimChecksum/save bump (zero new folded state, per the leg's contract); zero goldens moved.
   # Rider: DW-997 CLOSED (saving threw whenever a runtime-minted modifier was live — item pickup,
   # research completion or hero level-up; shipped ring_of_vigor reached it). Save 11->12.
-  # Residual legs: d (veterancy), e (spend mode), f (Attribute Editor — IN-ENGINE GATED, takes the
-  # DW-991/994/996/998 UI arms), g (item affixes — unblocked by the DW-997 fix).
-  # Open seams: DW-992/993/995/998.
+  # 15-24d (veterancy) BUILT + GREEN 2026-08-26: a creator-opt-in `veterancy` rank ladder on UnitDefinition;
+  # ONE new folded per-unit counter (EntityWorld.VeterancyKills) incremented at the single kill choke point
+  # (DamageResolver.KillEntity, beside the KillerOf write) and ONE swap-on-change modifier slot installed by
+  # the new VeterancySystem at tick index 13, beside HeroXpSystem. The opt-in gates the INCREMENT, not just
+  # the fold, so shipped content never leaves 0: SimChecksum 27->28 BOUNDED, ContentHash 4->5, Save 12->13,
+  # and ZERO goldens moved - all 35 byte-identical, none re-recorded (frozen v22 control 0x6864F671 +
+  # known-state pin 0x32911831 both unmoved). CanonicalModelHash STAYS 17: the spec's task list called for
+  # 17->18, but review RETRACTED it - that hash walks the SCENARIO MODEL, not the faction rosters, so an
+  # added UnitDefinition field changes nothing it folds; ContentHash 4->5 is the correct and sufficient
+  # handshake cover. The retraction is what keeps the golden count at zero (a CanonicalModelHash bump would
+  # have moved hero-start-state, which StartStateHash seeds from).
+  # Review swept three layers, 11 findings applied: orphaned-rank strip on BOTH Tick early-outs (a rank
+  # vector could outlive its counter or its ladder across a save/load and keep applying), ModifierStore.Apply's
+  # refusal honoured + tallied (RefusedRankInstalls), the ModifierAuthorable gate moved off the probe (a
+  # zero-valued non-authorable key validated clean), veterancy-on-a-BUILDING fail-closed, and the two
+  # untested guards (the v13 negative-count restore floor, QuantizeDeltas' runtime drops) pinned.
+  # As-built record: spec-15-24d-veterancy.md. Suite 7061/0/1 (verified independently post-patch).
+  # Review deferred 10 findings as DW-1000..DW-1009.
+  # Residual legs: e (spend mode), f (Attribute Editor — IN-ENGINE GATED, takes the
+  # DW-991/994/996/998/999 UI arms), g (item affixes — unblocked by the DW-997 fix).
+  # Open seams: DW-992/993/995/998/999.
   15-24-attribute-system-2-expanded-vocab-rolls-veterancy-editor: in-progress
   epic-15-retrospective: optional
 

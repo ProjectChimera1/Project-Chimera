@@ -49,17 +49,24 @@ namespace ProjectChimera.Sim.Tests.Validation
             PlayerSlots = new[] { new ScenarioPlayerSlot { Slot = 0, StartOre = 200f, StartCrystal = 50f, BaseX = -30f, BaseZ = 0f } },
         };
 
-        /// <summary>The exact value <see cref="FixedContentHash"/> folds to on ContentHash AlgoVersion 4. Re-pinned for
-        /// Story 15-24c (v3→v4): every attribute-model derived row folds its parsed shape ordinal + threshold; the
-        /// fixture declares no attribute model, so only the AlgoVersion mix moved it.
-        /// <para>Prior re-pins: v2→v3 Story 15-24a (unit <c>health_regen</c> + the item stat-delta vector);
-        /// v1→v2 Story 15-21 (the hero fold); DW-272 (regen_rate).</para></summary>
-        private const ulong ExpectedContentHash = 17676645355088884384UL;
+        /// <summary>The exact value <see cref="FixedContentHash"/> folds to on ContentHash AlgoVersion 5. Re-pinned for
+        /// Story 15-24d (v4→v5): every unit folds the nullable <c>veterancy</c> ladder behind a presence bit; the
+        /// fixture authors no veterancy, so each of its two unit-shaped defs contributes one extra <c>Mix(0)</c>
+        /// alongside the AlgoVersion mix.
+        /// <para>Prior re-pins: v3→v4 Story 15-24c (derivation shape ordinal + threshold); v2→v3 Story 15-24a (unit
+        /// <c>health_regen</c> + the item stat-delta vector); v1→v2 Story 15-21 (the hero fold); DW-272 (regen_rate).</para></summary>
+        private const ulong ExpectedContentHash = 15243153322058459621UL;
 
         /// <summary>The exact value CanonicalModelHash folds <see cref="FixedModel"/> to (AlgoVersion 17). Re-pinned for
         /// Story 15-24a's 16→17 bump (MixModifier folds the canonical sparse stat-delta vector — the fixture embeds no
         /// apply_modifier, so only the AlgoVersion mix moved this). A behavior-preserving refactor must NOT move it
-        /// again without a further deliberate bump. (Prior re-pin: DW-941 building_min_gap, 15→16.)</summary>
+        /// again without a further deliberate bump. (Prior re-pin: DW-941 building_min_gap, 15→16.)
+        /// <para>Story 15-24d deliberately did NOT move this. Its authored <c>UnitDefinition.veterancy</c> block folds
+        /// into <see cref="ContentHash"/> v5, which is the hash that walks faction rosters and is the
+        /// <c>MatchAgreementHash</c> component covering them. This hash walks the SCENARIO model, which references
+        /// units by id string only — so bumping it would have asserted an algorithm change that did not occur, and
+        /// would have re-recorded <c>hero-start-state.golden.txt</c> (which mixes this value as its seed) for
+        /// nothing.</para></summary>
         private const ulong ExpectedCanonicalModelHash = 9371821912523611146UL;
 
         [Fact]

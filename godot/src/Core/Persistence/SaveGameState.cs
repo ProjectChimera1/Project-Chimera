@@ -228,6 +228,15 @@ namespace ProjectChimera.Core.Persistence
             // chance lanes re-clamp into their registry domains on restore, the crit bonus likewise). APPENDED,
             // still BEFORE PatrolWpX — plain per-entity lanes of length EntHwm.
             EffCritChance, EffDodgeChance, EffCritBonus,
+            // Story 15-24d (save format v13): the veterancy kill counter — the ONE lane veterancy adds. It MUST
+            // persist: the installed rank vector is a pure function of this counter plus the unit's authored
+            // ladder, so a save that dropped it would resume every veteran at rank 0 and VeterancySystem would
+            // strip its bonuses on the first post-load tick. Nothing else is needed — no applied-rank lane —
+            // because the rank RE-DERIVES from this on load (that self-healing property is why the runtime
+            // compares desired-against-installed instead of keeping applied-rank memory). APPENDED, still BEFORE
+            // PatrolWpX where the flat-stride half begins for Validate's length checks — a plain per-entity lane
+            // of length EntHwm.
+            VeterancyKills,
             // flat (stride) arrays — length EntHwm * stride
             PatrolWpX, PatrolWpY, PatrolWpZ, OrderQCmd, OrderQTargetX, OrderQTargetZ, AbilityId, AbilityCd,
             COUNT
@@ -376,6 +385,7 @@ namespace ProjectChimera.Core.Persistence
             var bhr = A(EA.BaseHealthRegen, n); var ehr = A(EA.EffHealthRegen, n); // Story 15-24a (v10)
             var vbf = A(EA.VisionBonusFlat, n); var vbp = A(EA.VisionBonusPct, n); // Story 15-24a (v10)
             var ecc = A(EA.EffCritChance, n); var edc = A(EA.EffDodgeChance, n); var ecb = A(EA.EffCritBonus, n); // Story 15-24b (v11)
+            var vtk = A(EA.VeterancyKills, n); // Story 15-24d (v13) — the earned-rank counter the rank re-derives from
             EntDefId = new string[n];
 
             for (int i = 0; i < n; i++)
@@ -408,6 +418,7 @@ namespace ProjectChimera.Core.Persistence
                 bhr[i] = w.BaseHealthRegen[i].Raw; ehr[i] = w.EffectiveHealthRegen[i].Raw; // Story 15-24a
                 vbf[i] = w.VisionBonusFlat[i].Raw; vbp[i] = w.VisionBonusPct[i].Raw; // Story 15-24a
                 ecc[i] = w.EffectiveCritChance[i].Raw; edc[i] = w.EffectiveDodgeChance[i].Raw; ecb[i] = w.EffectiveCritBonus[i].Raw; // Story 15-24b
+                vtk[i] = w.VeterancyKills[i]; // Story 15-24d
                 EntDefId[i] = w.SourceDefinition[i]?.Id ?? "";
             }
 
@@ -832,6 +843,7 @@ namespace ProjectChimera.Core.Persistence
             var bhr = G(EA.BaseHealthRegen); var ehr = G(EA.EffHealthRegen); // Story 15-24a (v10)
             var vbf = G(EA.VisionBonusFlat); var vbp = G(EA.VisionBonusPct); // Story 15-24a (v10)
             var ecc = G(EA.EffCritChance); var edc = G(EA.EffDodgeChance); var ecb = G(EA.EffCritBonus); // Story 15-24b (v11)
+            var vtk = G(EA.VeterancyKills); // Story 15-24d (v13)
 
             for (int i = 0; i < n; i++)
             {
@@ -947,6 +959,12 @@ namespace ProjectChimera.Core.Persistence
                 w.EffectiveCritBonus[i] = Fixed.Clamp(Fixed.FromRaw(ecb[i]),
                     Fixed.FromRaw(ProjectChimera.Core.Stats.StatVocabulary.CritBonusSumMinRaw),
                     Fixed.FromRaw(ProjectChimera.Core.Stats.StatVocabulary.CritBonusSumMaxRaw));
+                // Story 15-24d (v13) — the veterancy counter, FLOORED at 0 (the DW-643/DW-692 restore class, in its
+                // simplest form). A well-formed save is non-negative, so this is a no-op on one and no golden moves;
+                // a corrupt/tampered blob's negative count would otherwise be FOLDED into SimChecksum by the v28
+                // bounded arm (which gates on ≠ 0, not on > 0) while resolving to no rank at all — an entity whose
+                // hashed state disagrees with its observable state, which is the shape of an unattributable desync.
+                w.VeterancyKills[i] = vtk[i] > 0 ? vtk[i] : 0;
 
                 // Reference-typed SoA: re-resolve the def by id + faction and set the two ref fields directly (NOT via
                 // ApplyUnitDefinition, which would clobber the just-restored numeric SoA and re-fire the self-passive

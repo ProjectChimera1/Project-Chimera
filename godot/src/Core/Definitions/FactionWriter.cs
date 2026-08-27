@@ -285,6 +285,7 @@ namespace ProjectChimera.Core.Definitions
             PutStringArray(obj, "shop_stock", d.ShopStock, defaultsNull: true);
             PutFloat(obj, "shop_radius", d.ShopRadius, 0f);
             WriteHero(obj, d);
+            WriteVeterancy(obj, d);
             WriteCombatFeedback(obj, d);
         }
 
@@ -298,6 +299,23 @@ namespace ProjectChimera.Core.Definitions
         {
             if (d.Hero == null) { obj.Remove("hero"); return; }
             obj["hero"] = JsonNode.Parse(JsonSerializer.Serialize(d.Hero, HeroSerializeOptions));
+        }
+
+        /// <summary>
+        /// Story 15-24d: reconcile the <c>veterancy</c> block. Like <see cref="WriteHero"/> (and unlike
+        /// <see cref="WriteCombatFeedback"/>) this block is fully FORM-owned — it has no raw-only sub-keys to
+        /// preserve — so a deterministic POCO re-serialize is correct: serialize
+        /// <see cref="UnitDefinition.Veterancy"/> to <c>obj["veterancy"]</c> when non-null, else DROP the key.
+        /// A unit that never opted in therefore carries no <c>veterancy</c> block and its JSON round-trips
+        /// byte-identically (no churn in any shipped faction file).
+        /// <para>Shares <see cref="HeroSerializeOptions"/>'s omit-null discipline so an unauthored
+        /// <c>stat_deltas</c> writes no <c>"stat_deltas": null</c> noise; an omitted key deserializes back to null,
+        /// so values round-trip identically.</para>
+        /// </summary>
+        private static void WriteVeterancy(JsonObject obj, UnitDefinition d)
+        {
+            if (d.Veterancy == null) { obj.Remove("veterancy"); return; }
+            obj["veterancy"] = JsonNode.Parse(JsonSerializer.Serialize(d.Veterancy, HeroSerializeOptions));
         }
 
         /// <summary>

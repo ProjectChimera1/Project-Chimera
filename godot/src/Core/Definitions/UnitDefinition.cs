@@ -367,6 +367,24 @@ namespace ProjectChimera.Core.Definitions
         public HeroDefinition? Hero { get; set; }
 
         /// <summary>
+        /// Story 15-24d: the authored VETERANCY block (JSON <c>veterancy</c>) — the creator's OPT-IN to rank growth
+        /// from kills. Null on every unit that does not opt in (every shipped unit today).
+        ///
+        /// <para><b>The opt-in is load-bearing, not merely cosmetic.</b> It gates the kill-count INCREMENT at
+        /// <c>DamageResolver.KillEntity</c>, not just a fold arm: a unit with no block never increments
+        /// <c>EntityWorld.VeterancyKills</c>, so the counter stays 0 in every recorded scenario, the bounded
+        /// <c>SimChecksum</c> v28 arm folds zero <c>Mix</c> calls, and no golden moves. Gating only the fold would
+        /// NOT be free — the golden scenarios contain combat, so an ungated counter would go non-zero mid-replay.</para>
+        ///
+        /// <para>Unlike <see cref="Hero"/> at 3.7 this is sim-READ from the day it lands
+        /// (<c>ProjectChimera.Combat.VeterancySystem</c> derives the current rank from the folded counter plus this
+        /// ladder), so it folds into <see cref="ContentHash"/> (v5) rather than sitting on the authoring-only
+        /// allowlist. Nullable ⇒ omittable ⇒ existing faction JSON is unaffected.</para>
+        /// </summary>
+        [JsonPropertyName("veterancy")]
+        public VeterancyDefinition? Veterancy { get; set; }
+
+        /// <summary>
         /// Registry indices of <see cref="Abilities"/>, back-filled ONCE at scenario link by
         /// <see cref="ResolveAbilities"/>. Unlike <see cref="ParsedCategory"/> (a pure computed prop) this needs the
         /// <see cref="AbilityRegistry"/>, so it is an explicit resolve step run before any spawn. Excluded from JSON.

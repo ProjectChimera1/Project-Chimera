@@ -85,6 +85,12 @@ namespace ProjectChimera.Core.Definitions
         /// stat overflows. 256 keeps the summed growth in range with margin AND dwarfs any realistic per-level gain.</summary>
         private const float HeroStatGrowthMax = 256f;
 
+        /// <summary>Story 15-24d: the maximum number of authorable <c>veterancy.ranks</c> entries. Bounded because
+        /// the ladder is walked ascending on EVERY opted-in unit every tick — an unbounded list would be a per-tick
+        /// content-driven cost — and because a rank ladder longer than this is a design smell, not a feature. A
+        /// creator wanting more edits the raw JSON and re-tests balance (the <see cref="HeroLevelMax"/> posture).</summary>
+        private const int VeterancyMaxRanks = 8;
+
         // The closed authorable sets, mirroring the string switches in UnitDefinition's Parsed* getters + the enum
         // members. Static → allocated once (the ScenarioValidator closed-set idiom), so the per-unit scan allocates
         // nothing. Case-sensitive exact match (an authored "melee" ≠ "Melee"; the lenient loader would fail-open it).
@@ -407,6 +413,9 @@ namespace ProjectChimera.Core.Definitions
             // ── hero: is_hero↔hero coherence + leveling-curve range + ability-slot refs + composition (Story 3.7, AC2) ──
             ValidateHero(errors, kind, id, def, registry);
 
+            // ── veterancy: rank ladder shape + closed-vocabulary stat deltas within the DW-488 bound (Story 15-24d) ──
+            ValidateVeterancy(errors, kind, id, def);
+
             // ── revives_heroes: a HERO-REVIVAL capability that only makes sense on a Structure building (Story 3.14). A
             //    Worker/Melee/etc. unit can't host a revive command card, so the flag on a non-Structure unit is an
             //    authoring error — fail closed with a located badge (the is_hero-coherence precedent). Omitted (false)
@@ -685,6 +694,160 @@ namespace ProjectChimera.Core.Definitions
             if (sig.Length > 0 && ult.Length > 0 && sig == ult)
                 errors.Add(("hero.ultimate_ability", Located(kind, id, "hero.ultimate_ability",
                     "signature and ultimate ability must differ.")));
+        }
+
+        /// <summary>
+        /// Story 15-24d — the VETERANCY rules (multi-error, D-9). A unit with no <c>veterancy</c> block adds no
+        /// errors at all (the opt-in default), so every existing unit is unaffected. For an opted-in unit:
+        /// <list type="number">
+        ///   <item><description><c>ranks</c> must be present, non-empty and no longer than
+        ///   <see cref="VeterancyMaxRanks"/> — a block declaring no rank is inert authoring the runtime would
+        ///   silently ignore, and the runtime walks the ladder per tick per opted-in unit.</description></item>
+        ///   <item><description>each <c>kills</c> threshold is <c>&gt;= 1</c> and STRICTLY ascending — a flat or
+        ///   descending ladder has no well-defined "current rank", so it fail-closes rather than being resolved by
+        ///   list position.</description></item>
+        ///   <item><description>each <c>stat_deltas</c> key resolves in the closed
+        ///   <see cref="ProjectChimera.Core.Stats.StatVocabulary"/> AND is modifier-authorable, and each value is
+        ///   finite and within DW-488's shared accumulator bound applied to the EXACT descriptor
+        ///   <c>VeterancySystem</c> mints (one <see cref="ProjectChimera.Effects.StackRule.Ignore"/> instance,
+        ///   <c>max_stacks: 1</c>). One located error PER bad key — the bound check runs per entry rather than once
+        ///   over the whole vector so a second offending stat is not hidden by the first.</description></item>
+        /// </list>
+        /// <para>Every error is located at its own path (<c>veterancy.ranks[2].stat_deltas.attack_speed</c>) so the
+        /// leg-f editor can badge the exact control, and NONE of the rules short-circuits the others (the D-9
+        /// return-all contract).</para>
+        /// </summary>
+        private static void ValidateVeterancy(List<(string, string)> errors, string kind, string id, UnitDefinition def)
+        {
+            VeterancyDefinition? v = def.Veterancy;
+            if (v == null) return;   // not opted in — the default for every shipped unit; no rules apply
+
+            // A BUILDING can never earn a rank: VeterancySystem sweeps EntityWorld, and buildings live in the
+            // parallel BuildingStore that sweep never touches. BuildingDefinition INHERITS this block from
+            // UnitDefinition (and ContentHash folds it through the shared FoldUnitCommon arm), so without this gate
+            // a creator could author, validate, hash and SAVE a building ladder that silently never runs — the
+            // computed-but-never-consumed class, in authoring form. Story 15-24d's Never list scopes veterancy off
+            // buildings, so it fail-closes here rather than being quietly ignored at runtime. Typed on
+            // BuildingDefinition, not on the `kind` string, so a future caller that forgets to pass kind:"building"
+            // is still gated. Reported and RETURNED: the ladder's own shape rules are moot for a def that may not
+            // carry one at all.
+            if (def is BuildingDefinition)
+            {
+                errors.Add(("veterancy", Located(kind, id, "veterancy",
+                    "is authored on a building — veterancy is a UNIT progression (VeterancySystem sweeps EntityWorld; " +
+                    "buildings live in BuildingStore and are never swept), so a building ladder could never run. " +
+                    "Remove the 'veterancy' block.")));
+                return;
+            }
+
+            List<VeterancyRank>? ranks = v.Ranks;
+            if (ranks == null || ranks.Count == 0)
+            {
+                errors.Add(("veterancy.ranks", Located(kind, id, "veterancy.ranks",
+                    "is empty — a 'veterancy' block must declare at least one rank, or be removed entirely.")));
+                return;
+            }
+            if (ranks.Count > VeterancyMaxRanks)
+            {
+                errors.Add(("veterancy.ranks", Located(kind, id, "veterancy.ranks",
+                    $"declares {ranks.Count} ranks, more than the maximum {VeterancyMaxRanks}.")));
+                // Keep validating the entries below: an over-long ladder still deserves per-rank badges.
+            }
+
+            int prevKills = 0;   // 0 is below the >= 1 floor, so rank[0] is checked against the floor by the same test
+            for (int i = 0; i < ranks.Count; i++)
+            {
+                string rankPath = $"veterancy.ranks[{i}]";
+                VeterancyRank? r = ranks[i];
+                if (r == null)
+                {
+                    errors.Add((rankPath, Located(kind, id, rankPath, "is null.")));
+                    continue;
+                }
+
+                string killsPath = rankPath + ".kills";
+                if (r.Kills < 1)
+                {
+                    errors.Add((killsPath, Located(kind, id, killsPath,
+                        $"={r.Kills} must be >= 1 (a rank reached at zero kills is the unit's base state).")));
+                }
+                else if (r.Kills <= prevKills)
+                {
+                    errors.Add((killsPath, Located(kind, id, killsPath,
+                        $"={r.Kills} must be STRICTLY greater than the previous rank's {prevKills} — " +
+                        "veterancy ranks are resolved by threshold, not by list position.")));
+                }
+                if (r.Kills > prevKills) prevKills = r.Kills;   // only a well-ordered rank advances the cursor
+
+                CheckVeterancyDeltas(errors, kind, id, rankPath, r.StatDeltas);
+            }
+        }
+
+        /// <summary>
+        /// Story 15-24d — one rank's <c>stat_deltas</c> map: closed-vocabulary resolution, the modifier-authorable
+        /// gate, finiteness, and DW-488's per-delta bound, each producing its OWN located error so a map with three
+        /// bad keys badges three controls. Null/empty is valid (the rank installs nothing — the DW-678 rule).
+        /// <para>The bound is checked with a SINGLE-ENTRY probe descriptor per key rather than one probe over the
+        /// whole vector, because <c>Modifier.CheckAuthoringBounds</c> returns the FIRST offender and this validator
+        /// owes the editor all of them. The probe's shape (permanent, <see cref="ProjectChimera.Effects.StackRule.Ignore"/>,
+        /// <c>max_stacks: 1</c>) is exactly what <c>VeterancySystem</c> mints, so the gate bounds the real
+        /// descriptor and not an approximation of it (the DW-650 rule).</para>
+        /// <para>The modifier-authorable rule is checked HERE on the registry row and NOT left to the probe: a
+        /// zero-valued delta canonicalizes away, leaving the probe an empty vector whose bounds walk visits nothing,
+        /// so a delegated gate silently admits <c>"max_energy": 0</c>.</para>
+        /// </summary>
+        private static void CheckVeterancyDeltas(List<(string, string)> errors, string kind, string id,
+                                                 string rankPath, Dictionary<string, float>? deltas)
+        {
+            if (deltas == null || deltas.Count == 0) return;   // an empty rank installs nothing — valid
+
+            foreach (var (key, value) in deltas)
+            {
+                string path = $"{rankPath}.stat_deltas.{key}";
+                if (!ProjectChimera.Core.Stats.StatVocabulary.TryByJsonName(key, out var statDef))
+                {
+                    errors.Add((path, Located(kind, id, path,
+                        $"references unknown stat '{key}' — it is outside the closed stat vocabulary.")));
+                    continue;   // an unknown key's value is meaningless to bound-check
+                }
+                // The MODIFIER-AUTHORABLE gate, checked DIRECTLY on the registry row rather than delegated to the
+                // probe below. Delegating was wrong: a delta that quantizes to 0 canonicalizes to the EMPTY vector,
+                // Modifier.CheckAuthoringBounds then walks zero entries and its own ModifierAuthorable arm is never
+                // reached — so `"max_energy": 0` validated clean, contradicting the fail-closed rule for a
+                // non-authorable stat. The message mirrors Modifier.CheckDelta's so the two lanes read alike.
+                if (!statDef.ModifierAuthorable)
+                {
+                    errors.Add((path, Located(kind, id, path,
+                        $"stat '{statDef.JsonName}' is not modifier-authorable yet — its consumer is the " +
+                        $"{statDef.ConsumerSite} read seam, which has no modifier channel (recorded 15-24a seam).")));
+                    continue;
+                }
+                if (!float.IsFinite(value))
+                {
+                    errors.Add((path, Located(kind, id, path, $"={value} must be finite.")));
+                    continue;   // Fixed.FromFloat of a non-finite value is meaningless to bound-check
+                }
+
+                // One-entry probe = the exact descriptor VeterancySystem mints for this stat, so the DW-488 bound
+                // gates the real thing (the DW-650 rule) rather than an approximation of it.
+                Fixed d = Fixed.FromFloat(value);
+                var vector = d.Raw == 0
+                    ? ProjectChimera.Core.Stats.StatVocabulary.EmptyDeltas
+                    : new[] { new ProjectChimera.Core.Stats.StatDelta(statDef.Id, d) };
+                var probe = new ProjectChimera.Effects.Modifier(
+                    ProjectChimera.Combat.VeterancySystem.VeterancyModifierId,
+                    durationTicks: -1,                                  // permanent, exactly as the system mints it
+                    ProjectChimera.Effects.StackRule.Ignore,
+                    maxStacks: 1,
+                    vector,
+                    status: ProjectChimera.Effects.StatusFlags.None,
+                    periodEffect: null,
+                    periodTicks: 0);
+
+                (string Field, string Reason)? overBound = probe.CheckAuthoringBounds();
+                if (overBound is not null)
+                    errors.Add((path, Located(kind, id, path, overBound.Value.Reason)));
+            }
         }
 
         private static bool IsDuplicateId(UnitDefinition def, string id, IReadOnlyList<UnitDefinition> siblings)

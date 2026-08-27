@@ -13,7 +13,10 @@ using Xunit;
 namespace ProjectChimera.Sim.Tests.Sim
 {
     /// <summary>
-    /// Pins the canonical 20-system tick order that <see cref="SimulationHost"/> owns (Story 1.8a / AR-6;
+    /// Pins the canonical 21-system tick order that <see cref="SimulationHost"/> owns (Story 1.8a / AR-6;
+    /// Story 15-24d inserted <see cref="VeterancySystem"/> at index 13, immediately after
+    /// <see cref="HeroXpSystem"/> — the two progression runtimes tick as neighbours — shifting every system after
+    /// it down by one;
     /// Story 15-24a inserted <see cref="HealthRegenSystem"/> at index 7, immediately after its energy twin,
     /// shifting every system after it down by one;
     /// DW-265 / Story 15.12 inserted <see cref="EnergyRegenSystem"/> at index 5, immediately before
@@ -57,13 +60,14 @@ namespace ProjectChimera.Sim.Tests.Sim
             typeof(CombatSystem),      // [10]
             typeof(ProjectileSystem),  // [11]
             typeof(HeroXpSystem),      // [12] ← Story 3.13 hero XP runtime, immediately after ProjectileSystem
-            typeof(ItemSystem),        // [13] ← Story 3.15 item / inventory, after the combat/projectile/hero-XP cluster
-            typeof(SupplySystem),      // [14]
-            typeof(FogOfWarSystem),    // [15]
-            typeof(AiOpponentSystem),  // [16]
-            typeof(WinConditionSystem),// [17] ← Story 7.11 win-condition evaluator, after AI / before ScenarioDirector
-            typeof(ScenarioDirector),  // [18]  the LAST DeathFeed producer (run_effect graphs kill through its EffectContext)
-            typeof(DeathFeedDrainSystem), // [19] ← DW-766 end-of-tick DeathFeed drain — runs LAST, past every producer
+            typeof(VeterancySystem),   // [13] ← Story 15-24d veterancy, immediately after HeroXpSystem (the progression pair)
+            typeof(ItemSystem),        // [14] ← Story 3.15 item / inventory, after the combat/projectile/hero-XP cluster
+            typeof(SupplySystem),      // [15]
+            typeof(FogOfWarSystem),    // [16]
+            typeof(AiOpponentSystem),  // [17]
+            typeof(WinConditionSystem),// [18] ← Story 7.11 win-condition evaluator, after AI / before ScenarioDirector
+            typeof(ScenarioDirector),  // [19]  the LAST DeathFeed producer (run_effect graphs kill through its EffectContext)
+            typeof(DeathFeedDrainSystem), // [20] ← DW-766 end-of-tick DeathFeed drain — runs LAST, past every producer
         };
 
         /// <summary>
@@ -77,7 +81,7 @@ namespace ProjectChimera.Sim.Tests.Sim
             new FactionDefinition());
 
         [Fact]
-        public void Systems_AreTheTwentyCanonicalSystems_InExactOrder()
+        public void Systems_AreTheTwentyOneCanonicalSystems_InExactOrder()
         {
             IReadOnlyList<ISimSystem> systems = BuildHost().Systems;
 
@@ -99,13 +103,14 @@ namespace ProjectChimera.Sim.Tests.Sim
         {
             IReadOnlyList<ISimSystem> systems = BuildHost().Systems;
 
-            int drainIdx = -1, directorIdx = -1, itemIdx = -1, heroXpIdx = -1;
+            int drainIdx = -1, directorIdx = -1, itemIdx = -1, heroXpIdx = -1, vetIdx = -1;
             for (int i = 0; i < systems.Count; i++)
             {
                 if (systems[i] is DeathFeedDrainSystem) drainIdx    = i;
                 if (systems[i] is ScenarioDirector)     directorIdx = i;
                 if (systems[i] is ItemSystem)           itemIdx     = i;
                 if (systems[i] is HeroXpSystem)         heroXpIdx   = i;
+                if (systems[i] is VeterancySystem)      vetIdx      = i;
             }
 
             Assert.True(drainIdx >= 0, "DeathFeedDrainSystem must be registered (DW-766 end-of-tick drain).");
@@ -113,6 +118,32 @@ namespace ProjectChimera.Sim.Tests.Sim
             Assert.True(directorIdx < drainIdx, "ScenarioDirector (run_effect kills) must run before the drain.");
             Assert.True(itemIdx     < drainIdx, "ItemSystem (ceiling-collapse pickup kills) must run before the drain.");
             Assert.True(heroXpIdx   < drainIdx, "HeroXpSystem's own drain must run before the residue drain.");
+            // Story 15-24d: VeterancySystem's rank SWAP calls ModifierStore.RemoveByModifierId, which can raise the
+            // DW-325 ceiling-collapse death (reverting a +max_health rank) and push a DeathFeed record — so it is a
+            // producer and must sit before the drain, like every other one.
+            Assert.True(vetIdx >= 0, "VeterancySystem must be registered (Story 15-24d veterancy runtime).");
+            Assert.True(vetIdx      < drainIdx, "VeterancySystem (ceiling-collapse rank-swap kills) must run before the drain.");
+        }
+
+        /// <summary>
+        /// Story 15-24d — the veterancy slot's INTENT, pinned separately from the exact-order list so it survives a
+        /// future insertion that legitimately shifts the indices: the two PROGRESSION runtimes tick as neighbours,
+        /// both consuming the kills the combat cluster recorded earlier in the same tick.
+        /// </summary>
+        [Fact]
+        public void Veterancy_RunsImmediatelyAfterHeroXp()
+        {
+            IReadOnlyList<ISimSystem> systems = BuildHost().Systems;
+
+            int heroXpIdx = -1, vetIdx = -1;
+            for (int i = 0; i < systems.Count; i++)
+            {
+                if (systems[i] is HeroXpSystem)    heroXpIdx = i;
+                if (systems[i] is VeterancySystem) vetIdx    = i;
+            }
+
+            Assert.True(heroXpIdx >= 0 && vetIdx >= 0, "Both progression runtimes must be registered.");
+            Assert.Equal(heroXpIdx + 1, vetIdx);
         }
 
         [Fact]

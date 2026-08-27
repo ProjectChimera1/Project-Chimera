@@ -109,13 +109,14 @@ namespace ProjectChimera.Sim.Tests.Golden
         /// hash still moves.)
         /// </summary>
         [Fact]
-        public void KnownWorldState_ProducesPinnedV27Hash()
+        public void KnownWorldState_ProducesPinnedV28Hash()
         {
-            // Algorithm version must be exactly 27 (Story 15-24b's bounded combat-dice fold + 15-24a's bounded stat-pipeline fold at v26, on top of Story
+            // Algorithm version must be exactly 28 (Story 15-24d's bounded veterancy-kill fold, on top of 15-24b's
+            // bounded combat-dice fold at v27 and 15-24a's bounded stat-pipeline fold at v26, Story
             // 15-23's generation-validated entity refs at v25, Phase C's v24 re-record marker, DW-78's bounded
             // worker-gather-state fold at v23 and 11.6's production-queue + head-timer fold at v22).
             // If this fails, the const below is stale.
-            Assert.Equal(27, SimChecksum.AlgoVersion);
+            Assert.Equal(28, SimChecksum.AlgoVersion);
 
             uint actual = ComputeKnownStateHash();
 
@@ -140,10 +141,15 @@ namespace ProjectChimera.Sim.Tests.Golden
             //            CDR 0, effective regen == base — folds ZERO Mix calls) and the known-state world carries no
             //            stat-pipeline modifier, so the added fold is a no-op here. Same contract as v23: a future
             //            edit that gives this world an attack_speed buff MUST move the pin — correctly.
-            const uint ExpectedV27Hash = 0x32911831; // unchanged since v22 — see the reasons above (v26->v27: the dice fold is bounded and the known world carries no dice stats — the v23/v26 argument, fifth bump)
-            Assert.True(actual == ExpectedV27Hash,
-                $"Known-state v27 checksum changed: expected 0x{ExpectedV27Hash:X8}, actual 0x{actual:X8}. " +
-                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV27Hash to 0x{actual:X8} and bump " +
+            //   v27->v28: Story 15-24d's veterancy fold is BOUNDED the same way, and its bound is stronger than
+            //            the others: the authored opt-in gates the kill-count INCREMENT itself, so no unit in
+            //            this hand-built world (none carries a `veterancy` block) can ever leave 0 and the arm
+            //            folds nothing. Same contract as v23/v26/v27 — if a future edit gives this world a
+            //            veterancy-authored killer, the pin MUST move, correctly.
+            const uint ExpectedV28Hash = 0x32911831; // unchanged since v22 — see the reasons above (v27->v28: the veterancy fold is bounded and the known world authors no veterancy — the v23/v26/v27 argument, sixth bump)
+            Assert.True(actual == ExpectedV28Hash,
+                $"Known-state v28 checksum changed: expected 0x{ExpectedV28Hash:X8}, actual 0x{actual:X8}. " +
+                $"If this is an INTENTIONAL algorithm change, re-pin ExpectedV28Hash to 0x{actual:X8} and bump " +
                 $"SimChecksum.AlgoVersion. If not, you broke the deterministic checksum — investigate.");
         }
 

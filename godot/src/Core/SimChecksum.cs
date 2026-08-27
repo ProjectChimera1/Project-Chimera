@@ -342,8 +342,20 @@ namespace ProjectChimera.Core
         ///        desyncs on the tick it happens. No shipped content authors the dice and a zero chance never
         ///        draws, so every recorded golden + the frozen control + the known-state pin stay
         ///        byte-identical (zero re-records — the v23/v26 posture, third time).
+        ///   v28 — Story 15-24d (veterancy): BOUNDED per-entity fold of the new <c>VeterancyKills</c> counter
+        ///        (≠ 0), the ONE piece of state veterancy adds. It becomes mutable-mid-match the moment any
+        ///        content opts in (VeterancySystem derives the installed rank vector from it, so a divergent
+        ///        count changes effective stats) — the fold-on-first-mutability rule. The INSTALLED VECTOR
+        ///        itself needs no fold of its own: it rides ModifierStore, whose instance state has folded
+        ///        since v6, and lands in the already-folded Effective* channels. The bound is free because the
+        ///        OPT-IN gates the INCREMENT, not merely the fold: DamageResolver refuses to credit a killer
+        ///        whose definition carries no <c>veterancy</c> block, and no shipped content authors one, so
+        ///        every entity in every recorded golden sits at 0 and folds ZERO Mix calls. That is why the
+        ///        frozen re-baseline control and the known-state pin stay byte-identical — the v23/v26/v27
+        ///        posture, fourth time. (Gating only the FOLD would NOT have been free: the golden scenarios
+        ///        contain combat, so an ungated counter would go non-zero mid-replay and move every golden.)
         /// </summary>
-        public const int AlgoVersion = 27;
+        public const int AlgoVersion = 28;
 
         /// <summary>
         /// Compute a full-state checksum for desync detection.
@@ -556,6 +568,17 @@ namespace ProjectChimera.Core
                     hash = Mix(hash, world.EffectiveDodgeChance[i].Raw);
                     hash = Mix(hash, world.EffectiveCritBonus[i].Raw);
                 }
+
+                // ── Veterancy kill counter (v28, Story 15-24d) — the same BOUNDED posture, a third gate so the
+                // three 15-24 blocks stay independently boundable. VeterancySystem derives the unit's installed
+                // rank vector from this counter plus its authored ladder, so a peer divergence here changes
+                // effective stats and must desync detectably; the installed VECTOR needs no fold of its own (it
+                // rides the ModifierStore instance state, folded since v6, into the already-folded Effective*
+                // channels). An entity that has killed nothing folds ZERO Mix calls — and no shipped unit can
+                // ever leave 0, because the authored opt-in gates the INCREMENT at DamageResolver.KillEntity,
+                // not merely this arm. Plain int → cross-platform safe.
+                if (world.VeterancyKills[i] != 0)
+                    hash = Mix(hash, world.VeterancyKills[i]);
             }
 
             // ── Building state ────────────────────────────────────────────────────

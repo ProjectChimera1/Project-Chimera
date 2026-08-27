@@ -52,6 +52,15 @@ namespace ProjectChimera.Core
         public Fixed       CarryCapacity;
         public byte        SupplyCost;
 
+        /// <summary>
+        /// Story 15-24d: the unit's earned veterancy kill count. Caller-owned residue exactly like the four above —
+        /// it is neither def-derived (the mapper never writes it) nor a <see cref="EntityWorld.Create"/> ctor arg,
+        /// so without it an editor delete→undo would silently revert a veteran unit to rank 0 and
+        /// <c>VeterancySystem</c> would strip its installed vector on the next tick (the drop-debt class the
+        /// <c>godot/CLAUDE.md</c> residue rule names). That guard is hand-enumerated, not automatic.
+        /// </summary>
+        public int VeterancyKills;
+
         // Raw combat stats — read ONLY by the def-less restore branch (a def-based unit re-derives these).
         public Fixed      AttackRange;
         public Fixed      AttackDamage;

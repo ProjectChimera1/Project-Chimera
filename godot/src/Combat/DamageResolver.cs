@@ -198,15 +198,21 @@ namespace ProjectChimera.Combat
             // the event build resolves it with the attribution rule (dead attacker keeps credit; a recycled slot
             // degrades to −1 rather than crediting the new occupant). Golden-neutral at generation 0.
             // Derived attribution state, NOT folded into SimChecksum (the _prevFlags basis).
-            world.KillerOf[id]        = world.PackRefOrNone(attackerId);
+            int packedKiller          = world.PackRefOrNone(attackerId); // computed once; the SAME value the three uses below took independently
+            world.KillerOf[id]        = packedKiller;
             world.KillerFactionOf[id] = (int)killer - 1; // Neutral (0) → −1; player factions → slot
+            // Story 15-24d: the ONE veterancy kill-credit site, beside the attribution write it reuses. Deliberately
+            // here and not on a DeathLog/DeathFeed drain — every lethal path funnels through this method (including
+            // the effect-graph and DoT kills DW-691 starves of DeathFeed records), so ability kills credit for free
+            // and no second consumer contract is added to a transient per-tick log.
+            CreditVeterancyKill(world, id, packedKiller);
             // DW-367: record this death in the world's per-tick death LOG (victim id, victim faction slot, killer
             // ref (packed — the KillerOf posture above), killer faction slot — snapshotted BEFORE Destroy recycles
             // the slot). ScenarioDirector's unit_dies source drains the log so a same-tick die→recycle→die on one
             // slot surfaces BOTH kills with their own attribution — the per-slot SoA above can only ever carry the
             // last one. On capacity overflow the record deterministically drops and the director's flags-diff
             // fallback covers the slot exactly as before.
-            world.DeathLog.Push(id, (int)world.FactionOf[id] - 1, world.PackRefOrNone(attackerId), (int)killer - 1);
+            world.DeathLog.Push(id, (int)world.FactionOf[id] - 1, packedKiller, (int)killer - 1);
             events?.Push(CombatEventType.UnitKilled, world.Position[id], world.FactionOf[id], world.FeedbackProfile[id]); // Story 11.4: stamp the victim faction
             stats?.RecordKill(world.FactionOf[id], killer);
             // Story 3.13: record the death for the XP runtime BEFORE Destroy recycles the slot (the corpse's
@@ -218,6 +224,40 @@ namespace ProjectChimera.Combat
             if (world.HeroIndex[id] != EntityWorld.HERO_NONE)
                 events?.Push(CombatEventType.HeroFell, world.Position[id], world.FactionOf[id], world.FeedbackProfile[id]); // Story 11.4: stamp the victim faction
             world.Destroy(id);
+        }
+
+        /// <summary>
+        /// Story 15-24d — credit ONE veterancy kill to the killer of <paramref name="victimId"/>, if every gate
+        /// passes. Called once, from <see cref="KillEntity"/>, BEFORE <see cref="EntityWorld.Destroy"/> recycles the
+        /// victim's slot (so <c>FactionOf[victimId]</c> is still the victim's).
+        ///
+        /// <para>The gates, in order — each one a row of the story's edge-case matrix:</para>
+        /// <list type="bullet">
+        ///   <item><description><b>The packed ref must resolve.</b> Reuses <c>ScenarioDirector.ResolveKillerPayload</c>'s
+        ///   rule verbatim via <see cref="EntityWorld.TryResolveRefIncludingDead"/>: a killer that DIED in the same
+        ///   tick keeps its credit (it earned the kill), a killer whose slot was RECYCLED resolves to −1 and credits
+        ///   nothing (never the new occupant). The attacker-less lethal paths — <c>ModifierStore</c>'s DW-325
+        ///   ceiling collapse (Neutral / attacker −1) and any non-combat destroy — pack to −1 and stop here.</description></item>
+        ///   <item><description><b>Not self.</b> A self-lethal <c>cost_health</c> cast is not a kill.</description></item>
+        ///   <item><description><b>Hostile.</b> Killer faction ≠ victim faction, so friendly fire earns nothing.
+        ///   Read from the SoA (not the <c>killer</c> snapshot) so the test is about the entity actually credited.</description></item>
+        ///   <item><description><b>Opted in.</b> The killer's <c>SourceDefinition</c> must carry a <c>veterancy</c>
+        ///   block. This is the gate that keeps every recorded golden byte-identical: no shipped unit opts in, so
+        ///   the counter never leaves 0 and the bounded v28 fold arm never fires.</description></item>
+        /// </list>
+        /// <para>Pure integer work on an already-allocated SoA slot — no allocation, no <see cref="Fixed"/> math, no
+        /// RNG, no order dependence (it touches only the killer's own counter).</para>
+        /// </summary>
+        /// <param name="world">The world whose <see cref="EntityWorld.VeterancyKills"/> lane is credited.</param>
+        /// <param name="victimId">The dying entity — still alive/unrecycled at this point in the sequence.</param>
+        /// <param name="packedKiller">The PACKED killer ref already written to <see cref="EntityWorld.KillerOf"/>.</param>
+        private static void CreditVeterancyKill(EntityWorld world, int victimId, int packedKiller)
+        {
+            if (!world.TryResolveRefIncludingDead(packedKiller, out int killerId)) return; // unknown / recycled slot
+            if (killerId == victimId) return;                                              // a self-kill is not a kill
+            if (world.FactionOf[killerId] == world.FactionOf[victimId]) return;             // friendly fire earns nothing
+            if (world.SourceDefinition[killerId]?.Veterancy == null) return;                // not opted in — the golden-neutrality gate
+            world.VeterancyKills[killerId]++;
         }
 
         /// <summary>

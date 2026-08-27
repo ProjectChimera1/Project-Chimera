@@ -97,6 +97,11 @@ namespace ProjectChimera.Sim.Tests.Validation
             // Story 15-21: the hero block folds (ContentHash v2 — its curve was ALREADY sim-read since 3.13, and
             // the new attributes block drives stats through HeroAttributeResolver). Leaves the allowlist.
             "hero",
+
+            // Story 15-24d: the veterancy ladder folds (ContentHash v5). Sim-read from day one — VeterancySystem
+            // derives the installed rank vector from it against the folded VeterancyKills counter — so it never
+            // sat on the authoring-only allowlist the hero block occupied until 15-21.
+            "veterancy",
         };
         private static readonly string[] UnitExcluded = { "display_name", "mesh_path", "mesh_scale", "combat_feedback" };
         private static readonly string[] UnitAllowlist = { "behaviors" }; // authoring-only, not sim-read (fold when a story reads them)
@@ -163,6 +168,26 @@ namespace ProjectChimera.Sim.Tests.Validation
                 excluded: Array.Empty<string>(),
                 allowlist: Array.Empty<string>());
 
+        // ── Story 15-24d: the NESTED-BLOCK classification guard ──────────────────────────────────────────────
+        //
+        // The per-def tests above cover a folded def's OWN JSON surface, but nothing covered the fields INSIDE a
+        // nested block: `hero`/`attributes` are classified as one name on UnitDefinition, so a new field added to
+        // HeroDefinition (or here, VeterancyRank) could deserialize, reach the sim, and never fold — invisible to
+        // this whole file. These two close that hole for the veterancy types the story introduces: the SAME
+        // AssertClassified machinery, applied one level down, so a future `veterancy.ranks[].<new_field>` is RED
+        // until it is folded or consciously excluded.
+
+        private static readonly string[] VeterancyFolded = { "ranks" };
+        private static readonly string[] VeterancyRankFolded = { "kills", "stat_deltas" };
+
+        [Fact]
+        public void VeterancyDefinition_EveryFieldClassified()
+            => AssertClassified(typeof(VeterancyDefinition), VeterancyFolded, Array.Empty<string>(), Array.Empty<string>());
+
+        [Fact]
+        public void VeterancyRank_EveryFieldClassified()
+            => AssertClassified(typeof(VeterancyRank), VeterancyRankFolded, Array.Empty<string>(), Array.Empty<string>());
+
         // ── P2: fold-actuality sweep — every "folded"-classified field ACTUALLY moves ContentHash ────────────────
         //
         // The classification tests above only prove a field is CLASSIFIED as folded, not that ContentHash actually
@@ -201,6 +226,12 @@ namespace ProjectChimera.Sim.Tests.Validation
             if (propType == typeof(Dictionary<string, Fixed>))
                 return (new Dictionary<string, Fixed> { { "attack_speed", Fixed.FromRaw(6554) } },
                         new Dictionary<string, Fixed> { { "attack_speed", Fixed.FromRaw(13107) } });
+            // Story 15-24d: the veterancy ladder (ContentHash v5) and its rank list.
+            if (propType == typeof(VeterancyDefinition))
+                return (new VeterancyDefinition { Ranks = new List<VeterancyRank> { new() { Kills = 7 } } },
+                        new VeterancyDefinition { Ranks = new List<VeterancyRank> { new() { Kills = 9 } } });
+            if (propType == typeof(List<VeterancyRank>))
+                return (new List<VeterancyRank> { new() { Kills = 7 } }, new List<VeterancyRank> { new() { Kills = 9 } });
             // Story 15-21: the hero block (ContentHash v2) + the faction attribute model are folded types now.
             if (propType == typeof(HeroDefinition))
                 return (new HeroDefinition { MaxLevel = 7 }, new HeroDefinition { MaxLevel = 9 });
@@ -286,6 +317,18 @@ namespace ProjectChimera.Sim.Tests.Validation
             => AssertEveryFoldedFieldMoves(typeof(ResearchLevel),
                 new[] { "cost", "time_ticks", "modifier_delta" },
                 Level);
+
+        // Story 15-24d: the nested veterancy types, embedded through a unit so the real ContentHash walk folds them.
+        private static ulong Veterancy(object o) => Unit(new UnitDefinition { Id = "u", Veterancy = (VeterancyDefinition)o });
+        private static ulong VeterancyRankOf(object o) => Veterancy(new VeterancyDefinition { Ranks = new List<VeterancyRank> { (VeterancyRank)o } });
+
+        [Fact]
+        public void FoldActuality_VeterancyDefinition()
+            => AssertEveryFoldedFieldMoves(typeof(VeterancyDefinition), VeterancyFolded, Veterancy);
+
+        [Fact]
+        public void FoldActuality_VeterancyRank()
+            => AssertEveryFoldedFieldMoves(typeof(VeterancyRank), VeterancyRankFolded, VeterancyRankOf);
 
         [Fact]
         public void FoldActuality_ResearchModifierDelta()

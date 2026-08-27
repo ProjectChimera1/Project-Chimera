@@ -75,7 +75,63 @@ added for exactly this and turn DW-911(b) from a hypothesis into a number.
 
 ---
 
-## Current State (2026-08-13, SESSION 5 — 15-24c DERIVATION SHAPES + the DW-997 save fix) — read this first
+## Current State (2026-08-26, SESSION 6 — 15-24d VETERANCY, via `bmad-build`) — read this first
+
+**This block supersedes everything below it.** First story run through the new `bmad-build` skill
+(bmad 6.11.1-next.27). Committed on master; suite at close **7061 / 0 / 1**, working tree clean.
+
+### What landed
+**15-24d — VETERANCY BUILT.** A creator-opt-in `veterancy` block on `UnitDefinition` declares ascending
+kill-count ranks, each carrying a CUMULATIVE stat-delta set from the closed `StatVocabulary`. One new
+folded per-unit counter (`VeterancyKills`) increments at the single `DamageResolver.KillEntity` choke
+point; a new `VeterancySystem` [13] re-derives the current rank and installs it on ONE swap-on-change
+modifier slot (the `HeroXpSystem.ReconcileThresholds` pattern, DW-85 heal-suppressed).
+
+**Three planning premises were falsified by investigation, all in our favour:**
+1. **The killer-credit seam already existed.** `EntityWorld.KillerOf` / `KillerFactionOf` and
+   `DeathLog.Push(victim, victimSlot, packedKiller, killerSlot)` are written UNCONDITIONALLY at
+   `DamageResolver.cs:201-209`. What lacks a killer is the `DeathRecord` in the transient `DeathFeed` —
+   which is why hero XP is credited by PROXIMITY (every hero within `XpShareRadiusOf`), not by who
+   landed the blow. Veterancy consumes an existing seam; it did not build one.
+2. **DW-691 does NOT block this.** It starves only the XP `DeathFeed` on three effect-graph contexts.
+   `KillerOf` is untouched, so ability and DoT kills credit veterancy correctly with DW-691 left open.
+3. **A new folded array need not move a golden.** Gating the INCREMENT on the authored opt-in (not just
+   the fold) keeps every counter at 0 in shipped content. **ZERO goldens moved — all 35 byte-identical.**
+
+**Review (3 blind layers) found 4 real correctness bugs, all fixed:** an orphaned rank vector surviving
+both `VeterancySystem.Tick` early-outs (kept applying stats on a unit reading 0 kills); a discarded
+`ModifierStore.Apply` bool (a full 8-slot ring silently dropped the rank and re-refused every tick); a
+zero-valued non-authorable stat validating clean (`"max_energy": 0`, because a 0 delta built an empty
+probe vector that skipped the gate); and `veterancy` on a BUILDING validating + folding into ContentHash
+while being unrunnable (`BuildingDefinition : UnitDefinition`). Plus two unfalsifiable branches pinned.
+
+### Version stamps at close (both LAN machines MUST pull + rebuild together; all pre-existing saves dead)
+SimChecksum **28** · CanonicalModelHash **17** · ContentHash **5** · StartStateHash 2 · PROTOCOL 6 ·
+Replay 7 · **Save 13**. Goldens: **NONE moved.** Total golden count still 35.
+
+> **CanonicalModelHash deliberately stayed 17.** The spec's task list mandated a 17→18 bump; that was
+> wrong and was retracted at review. This hash walks the SCENARIO model — `ScenarioData` references
+> units by id string only and never embeds a `UnitDefinition`. The roster fold is
+> `ContentHash.FoldUnitCommon`, and `MatchAgreementHash` consumes ContentHash, so ContentHash 4→5 alone
+> locks out a mismatched peer. The bump's only effect was moving `StartStateHash` (which mixes
+> CanonicalModelHash as its seed), re-recording `hero-start-state.golden.txt` and churning ~19 pins.
+> **STANDING RULE: an `AlgoVersion` moves when THAT hash's fold set changes — never as a generic
+> "content changed" signal. Route a content-model change to the hash that actually folds it.**
+
+### Open threads for the next session
+- **15-24 residual legs:** e (spend mode — `SpendAttributePoint = 26` is the next free UnitCommand
+  value; its player-choice arm needs a level-up UI affordance, so it likely wants a Godot-free core +
+  deferred UI half, the 15-1a/15-1b split), g (item affixes — unblocked by DW-997), f (Attribute Editor
+  — BLOCKED on the in-engine gate; takes the DW-991/994/996/998/999 UI arms).
+- **New from this story: DW-1000..DW-1009.** Two need a ruling before other work consumes the same
+  seam: **DW-1001** (razing a building earns no rank, and `ApplyToBuilding` takes no attacker — decide
+  before `kill_bounty`/`kill_frenzy`/`cdr_on_kill` inherit it) and **DW-1009** (`CloneUnit` is
+  hand-enumerated with no reflective guard; its own comment records the Story 3.16 shop trio being
+  dropped from that same list for TWO EPICS — DW-999 files veterancy's instance, DW-1009 the class).
+
+---
+
+## Current State (2026-08-13, SESSION 5 — 15-24c DERIVATION SHAPES + the DW-997 save fix)
 
 **This block supersedes everything below it.** Continuation of the same day's ultracode run (Alec away
 from the PC ~1 week from 2026-08-13). Committed on master through `a149520d` and PUSHED; suite at close

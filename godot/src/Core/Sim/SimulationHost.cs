@@ -19,7 +19,9 @@ namespace ProjectChimera.Core.Sim
     /// <c>FlowFieldBridge._Process</c>, i.e. once per RENDERED FRAME, so a frame over 33.3 ms let the online pacer
     /// step up to 4 ticks against ONE steering refresh and the folded Position diverged from a peer that was not
     /// stalling; DW-265 / Story 15.12 inserted <c>EnergyRegenSystem</c> at index 6, immediately
-    /// before <c>AbilityCastSystem</c>, shifting every later index by one; DW-766 appended <c>DeathFeedDrainSystem</c> at index 17 — past the LAST
+    /// before <c>AbilityCastSystem</c>, shifting every later index by one; Story 15-24d inserted
+    /// <c>VeterancySystem</c> immediately after <c>HeroXpSystem</c>, shifting every later index by one;
+    /// DW-766 appended <c>DeathFeedDrainSystem</c> LAST — past every
     /// <c>DeathFeed</c> producer, so the feed is genuinely empty at the checksum boundary; Story 7.11 inserted <c>WinConditionSystem</c> at index 14, after
     /// <c>AiOpponentSystem</c> and immediately before <c>ScenarioDirector</c>; Story 3.13 inserted
     /// <c>HeroXpSystem</c> at index 9, after
@@ -49,8 +51,9 @@ namespace ProjectChimera.Core.Sim
         // Story 3.13 — the host-owned transient death feed. Combat + projectile impacts push victim deaths here; the
         // HeroXpSystem (index 9) drains + clears it each tick. Per-tick transient (empty at checksum time → NOT folded);
         // ClearForReset empties it (like CombatEvents).
-        // DW-766: index [9] is NOT the last drain — the store's ceiling-collapse kill is reachable from ItemSystem [10]
-        // and the director [15] holds the feed too, so DeathFeedDrainSystem at [16] credits + clears the residue and the
+        // DW-766: HeroXpSystem's own drain is NOT the last — the store's ceiling-collapse kill is reachable from
+        // ItemSystem and VeterancySystem, and the director holds the feed too, so the LAST-registered
+        // DeathFeedDrainSystem credits + clears the residue and the
         // loop asserts Count == 0 at the tick boundary.
         private readonly DeathFeed _deathFeed;
 
@@ -317,18 +320,19 @@ namespace ProjectChimera.Core.Sim
             // closure alloc at construction (never per-tick), symmetric with the two subscriptions above.
             World.OnUnitDefinitionApplied += id => Modifiers.RecomputeEffectiveStats(id);
 
-            // DW-766: hoisted out of the array literal below so the end-of-tick DeathFeedDrainSystem at index [16] can
+            // DW-766: hoisted out of the array literal below so the end-of-tick DeathFeedDrainSystem (registered LAST) can
             // hold the SAME instance (the credit rule lives in exactly one place). Its ctor only assigns fields — it
             // subscribes to nothing — so constructing it before its neighbours changes no observable ordering.
             var heroXp = new HeroXpSystem(Heroes, Modifiers, _deathFeed, Buildings, _revivalRuntime, ReviveSpawn, CombatEvents);
 
-            // ── The canonical 20-system tick order (Story 15-24a inserted HealthRegenSystem at index 7, after
+            // ── The canonical 21-system tick order (Story 15-24d inserted VeterancySystem at index 13, immediately
+            //    after HeroXpSystem, shifting every later index by one; Story 15-24a inserted HealthRegenSystem at index 7, after
             //    EnergyRegenSystem, shifting every later index by one; DW-265 / Story 15.12 inserted EnergyRegenSystem at index 5, before
             //    AbilityCastSystem, shifting every later index by one; Story 7.11 inserted WinConditionSystem at index 14, after AI /
             //    before ScenarioDirector; Story 2.12 inserted OrderQueueSystem at index 3; Story 3.13
-            //    inserted HeroXpSystem [now index 10]; Story 4.9 inserted ResearchSystem at index 1,
+            //    inserted HeroXpSystem immediately after ProjectileSystem; Story 4.9 inserted ResearchSystem at index 1,
             //    immediately after BuildingSystem, shifting GatheringSystem and everything after down by one;
-            //    DW-766 appended DeathFeedDrainSystem [now index 17], after the LAST DeathFeed producer). The
+            //    DW-766 appended DeathFeedDrainSystem LAST, after every DeathFeed producer). The
             //    registration order IS the determinism contract; SystemOrderTest FAILS on any reorder/add/remove. ──
             _systems = new ISimSystem[]
             {
@@ -385,34 +389,44 @@ namespace ProjectChimera.Core.Sim
                 // Story 3.14: also drives hero death-detection, the revival countdown, and respawn (via the shared spawn
                 // hook + the resolved revival rule + BuildingStore); announcements ride CombatEvents.
                 heroXp,                                                                   // [12] HeroXpSystem (Combat, FR-7)
+                // ── Story 15-24d veterancy. Immediately AFTER HeroXpSystem: the two PROGRESSION runtimes tick as
+                //    neighbours, both consuming the kills the combat cluster [10]/[11] just recorded, so a rank-up
+                //    lands the same tick as the level-up it happened beside. Its RemoveByModifierId can raise the
+                //    DW-325 ceiling-collapse death (reverting a +max_health rank), so it MUST stay before
+                //    DeathFeedDrainSystem — which the "runs LAST" pin below enforces structurally. Golden-neutral:
+                //    no shipped unit authors a veterancy block, so EntityWorld.VeterancyKills never leaves 0 and
+                //    the sweep's early-out makes the whole Tick a byte-identical no-op. ──
+                new VeterancySystem(Modifiers),                                            // [13] VeterancySystem (Combat, 15-24d)
                 // ── Story 3.15 item / inventory. AFTER the combat/projectile/hero-XP cluster: death-drops
                 //    happen synchronously at KillEntity (via the OnDestroy hook, during the combat/projectile indices) and
                 //    hero respawn happens in HeroXpSystem, so a revived hero is already empty when this resolves pickups.
                 //    Runs after MovementSystem so it steers a pickup-bound hero from a current position. ──
-                ItemSys,                                                                  // [13] ItemSystem       (Combat, FR-64)
-                new SupplySystem(Resources),                                              // [14] SupplySystem      (Economy)
-                Fog,                                                                      // [15] FogOfWarSystem    (Core)
+                ItemSys,                                                                  // [14] ItemSystem       (Combat, FR-64)
+                new SupplySystem(Resources),                                              // [15] SupplySystem      (Economy)
+                Fog,                                                                      // [16] FogOfWarSystem    (Core)
                 // DW-439/DW-445: Alliances threaded in so the AI's target/raze/threat classification is team-aware —
                 // without it a teamed AI ordered attacks onto its own ally, combat's Story-9.14 allied guard rejected
                 // them, and its whole force reverted to Idle every tick. Null/FFA ⇒ byte-identical to pre-fix.
-                _ai = new AiOpponentSystem(Buildings, Resources, BuildSys, aiLevel, Alliances), // [16] AI opponent (plays Player2)
+                _ai = new AiOpponentSystem(Buildings, Resources, BuildSys, aiLevel, Alliances), // [17] AI opponent (plays Player2)
                 // ── Story 7.11 win-condition evaluator. Immediately AFTER AiOpponentSystem (so it sees post-death
                 //    alive counts) and immediately BEFORE ScenarioDirector (so the director's OnVictory escape hatch
                 //    still runs last). Reads final entity/building state, writes the folded WinStateStore verdict. ──
-                WinCon,                                                                   // [17] WinConditionSystem (Core, FR-win)
-                ScenarioDirector,                                                         // [18] ScenarioDirector — the LAST producer
+                WinCon,                                                                   // [18] WinConditionSystem (Core, FR-win)
+                ScenarioDirector,                                                         // [19] ScenarioDirector — the LAST producer
                 // ── DW-766 end-of-tick DeathFeed drain. Registered LAST, past every producer: the store's DW-325
-                //    ceiling-collapse kill is reachable from ItemSystem [13] and ScenarioDirector [18] holds the feed in
+                //    ceiling-collapse kill is reachable from ItemSystem [14] AND from VeterancySystem [13] (whose
+                //    rank swap reverts a +max_health vector through RemoveByModifierId), and ScenarioDirector [19]
+                //    holds the feed in
                 //    its run_effect EffectContext, so HeroXpSystem's own [12] Clear could not make the feed empty at the
                 //    checksum boundary — the premise DeathFeed/SimChecksum both state as the reason it is not folded.
                 //    Credits the residue in the SAME tick (folded hero XP no longer lands late) and clears. ANY future
                 //    system that can kill must be registered BEFORE this one; the loop's tick-boundary assertion
                 //    (EnableTickBoundaryInvariants, armed below) fails loudly if one is not. ──
-                new DeathFeedDrainSystem(heroXp),                                          // [19] DeathFeedDrainSystem — runs LAST
+                new DeathFeedDrainSystem(heroXp),                                          // [20] DeathFeedDrainSystem — runs LAST
             };
 
             // ── Story 7.13 — wire the transient sim-event feed to its four PRODUCERS (all tick before the director,
-            //    index 18). Setters (not ctor params) keep the systems' construction signatures untouched (no test/
+            //    index 19). Setters (not ctor params) keep the systems' construction signatures untouched (no test/
             //    golden churn). CombatSystem [10] / ProjectileSystem [11] / HeroXpSystem [12] are retrieved from the
             //    fixed-order array (SystemOrderTest pins the indices); the two field-held systems wire directly. ──
             BuildSys.SetDslSimEvents(DslSimEvents);
@@ -438,7 +452,7 @@ namespace ProjectChimera.Core.Sim
             // The sim spine's only host-side log in 1.8a: a one-shot construction diagnostic through the
             // injected seam. NullLogSink no-ops it (tests/server → zero effect on the golden); GodotLogSink
             // prints it for MainScene. NEVER a per-tick log (D6).
-            _log.Info("[SimulationHost] Sim spine constructed (20 systems; ResearchSystem at index 1, FlowFieldSteeringSystem at index 3, MovementSystem at index 4, OrderQueueSystem at index 5, EnergyRegenSystem at index 6, HealthRegenSystem at index 7, AbilityCastSystem at index 8, ModifierSystem at index 9, HeroXpSystem at index 12, ItemSystem at index 13, WinConditionSystem at index 17, DeathFeedDrainSystem at index 19).");
+            _log.Info("[SimulationHost] Sim spine constructed (21 systems; ResearchSystem at index 1, FlowFieldSteeringSystem at index 3, MovementSystem at index 4, OrderQueueSystem at index 5, EnergyRegenSystem at index 6, HealthRegenSystem at index 7, AbilityCastSystem at index 8, ModifierSystem at index 9, HeroXpSystem at index 12, VeterancySystem at index 13, ItemSystem at index 14, WinConditionSystem at index 18, DeathFeedDrainSystem at index 20).");
         }
 
         /// <summary>

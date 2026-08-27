@@ -111,8 +111,16 @@ namespace ProjectChimera.Core.Persistence
         /// reached it). A minted entry now carries its shape + canonical sparse stat vector inline. Entries of the
         /// two by-index kinds are written exactly as before, so a save with no minted modifier has a
         /// byte-identical Modifiers frame — the bump exists because an OLD reader would mis-parse a NEW blob that
-        /// does contain one.</para></summary>
-        public const ushort FormatVersion = 12;
+        /// does contain one.</para>
+        ///
+        /// <para>v13 (Story 15-24d, veterancy): the entity section gained ONE lane — <c>VeterancyKills</c>, the
+        /// earned-kill counter a unit's rank re-derives from — appended after <c>EffCritBonus</c>, still before
+        /// <c>PatrolWpX</c>. Positional lane addressing means a v12 body read at the v13 layout would misalign
+        /// every flat/strided lane from the new entry onward, so the bump fail-closes it at the header (DW-874:
+        /// one constant, fail-closed, no migrate) — which the same story's SimChecksum 27→28 pin would reject
+        /// anyway. A veteran's installed rank MODIFIER needs no new format work: it round-trips free through
+        /// v12's <see cref="SaveGameState.KindMintedModifier"/> by-value entry.</para></summary>
+        public const ushort FormatVersion = 13;
 
         /// <summary>Max player slots in a persisted launch record — a fail-closed corruption bound on the slot count.</summary>
         public const int MaxSlots = 64;

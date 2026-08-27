@@ -89,6 +89,42 @@ namespace ProjectChimera.Sim.Tests.Persistence
             return load;
         }
 
+        // -- Story 15-24d: the VeterancyKills lane's own restore floor ------------------------------
+
+        /// <summary>
+        /// The v13 <c>EA.VeterancyKills</c> lane restores through <c>vtk[i] &gt; 0 ? vtk[i] : 0</c> — the simplest
+        /// member of this same DW-643/DW-692 class, and the one with the least obvious consumer. A negative count
+        /// is NOT merely "no rank": <c>SimChecksum</c>'s v28 arm is bounded on <c>!= 0</c>, not on <c>&gt; 0</c>, so
+        /// an unfloored negative would be FOLDED into the desync hash while <c>VeterancySystem</c> resolves it to no
+        /// rank at all — an entity whose hashed state disagrees with its observable state, which is the shape of an
+        /// unattributable desync. Without this test the floor could be deleted and nothing would go red.
+        /// </summary>
+        [Fact]
+        public void Restore_FloorsANegativeVeterancyCountToZero()
+        {
+            Applied saved = BuildApplied();
+            int id = FirstAlive(saved.Host.World);
+            saved.Host.World.VeterancyKills[id] = -5;
+
+            Applied load = RoundTrip(saved);
+
+            Assert.Equal(0, load.Host.World.VeterancyKills[id]);
+        }
+
+        /// <summary>The fence on the floor: a well-formed (non-negative) count restores BIT-EXACT, so the floor is
+        /// provably a no-op on every save the game itself can write and no golden can move because of it.</summary>
+        [Fact]
+        public void Restore_LeavesAWellFormedVeterancyCountUntouched()
+        {
+            Applied saved = BuildApplied();
+            int id = FirstAlive(saved.Host.World);
+            saved.Host.World.VeterancyKills[id] = 37;
+
+            Applied load = RoundTrip(saved);
+
+            Assert.Equal(37, load.Host.World.VeterancyKills[id]);
+        }
+
         // ── Field 1: EffectiveMoveSpeed ──────────────────────────────────────────────────
 
         [Fact]

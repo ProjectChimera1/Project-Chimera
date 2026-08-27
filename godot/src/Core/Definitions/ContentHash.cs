@@ -64,8 +64,15 @@ namespace ProjectChimera.Core.Definitions
         /// the regen_rate posture); the item fold and the research fold carry each definition's stat deltas as the
         /// CANONICAL sparse vector (legacy four keys + the new <c>stat_deltas</c> lane, merged and folded per entry
         /// as <c>(int)StatId</c> + raw — sorted ascending StatId, never a Dictionary walk). Every unit folds one
-        /// extra Mix, so the pin moves for ALL content.</para></summary>
-        public const int AlgoVersion = 4;
+        /// extra Mix, so the pin moves for ALL content.</para>
+        /// <para>v5 — Story 15-24d (veterancy): the unit fold gains the nullable <c>veterancy</c> block behind a
+        /// presence bit — the rank ladder's <c>kills</c> thresholds plus each rank's cumulative stat map folded in
+        /// ORDINAL KEY ORDER (never dictionary enumeration order), floats quantized through
+        /// <c>Fixed.FromFloat(v).Raw</c> exactly as the runtime reads them. It is sim-READ from day one
+        /// (<c>VeterancySystem</c> derives the installed vector from it), so it never sat on the authoring-only
+        /// allowlist: peers with divergent ladders must be rejected at the lobby, not desync at the first rank-up.
+        /// Every unit gains one presence-bit <c>Mix(0)</c>, so the pin moves for ALL content.</para></summary>
+        public const int AlgoVersion = 5;
 
         /// <summary>
         /// The LOCAL per-domain content fingerprint (ruleset-caps, factions, abilities, items, damage-table). Each
@@ -267,6 +274,31 @@ namespace ProjectChimera.Core.Definitions
             // drive stats through HeroAttributeResolver), so it leaves the ContentFoldCompletenessTests allowlist
             // and folds here. Behaviors stays allowlisted (still authoring-only).
             h = FoldHero(h, u.Hero);
+            // Story 15-24d: the veterancy ladder is sim-read from day one (VeterancySystem derives the installed
+            // rank vector from it against the folded VeterancyKills counter), so it folds here rather than joining
+            // the authoring-only allowlist. Null (every shipped unit) folds a single Mix(0) presence bit.
+            h = FoldVeterancy(h, u.Veterancy);
+            return h;
+        }
+
+        /// <summary>Story 15-24d: the sim-read veterancy ladder — the rank count, then per rank the <c>kills</c>
+        /// threshold and its CUMULATIVE stat map folded in ORDINAL KEY ORDER (reusing <see cref="FoldAttrValues"/>,
+        /// the same never-enumerate-a-Dictionary rule). Rank ORDER is semantic (the runtime walks ascending and
+        /// takes the last reached), so ranks fold in authored order — only the per-rank map is sorted.
+        /// Null (a unit that did not opt in) folds a single Mix(0) presence bit.</summary>
+        private static ulong FoldVeterancy(ulong h, VeterancyDefinition? vet)
+        {
+            h = CanonicalFold.MixInt(h, vet != null ? 1 : 0);
+            if (vet == null) return h;
+            var ranks = vet.Ranks ?? new List<VeterancyRank>();
+            h = CanonicalFold.MixInt(h, ranks.Count);
+            foreach (VeterancyRank r in ranks)
+            {
+                h = CanonicalFold.MixInt(h, r != null ? 1 : 0);
+                if (r == null) continue;
+                h = CanonicalFold.MixInt(h, r.Kills);
+                h = FoldAttrValues(h, r.StatDeltas);
+            }
             return h;
         }
 
