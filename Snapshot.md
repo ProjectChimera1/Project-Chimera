@@ -7,7 +7,7 @@ status: Active
 
 # Project Chimera — Snapshot
 
-**Last Touched:** `2026-08-26`
+**Last Touched:** `2026-09-10`
 
 ## Current Phase
 **Phase 5 — Polish & 1.0** (Months 25-31 of GDD roadmap)
@@ -15,6 +15,12 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay. **Session 22 scored FR-39 on two machines** — the #1 pre-ship gate, carried since Epic 1 — after closing DW-912, DW-914 and DW-405.
 
 ## Next Action
+**→ 2026-09-10: the next session is EPIC 16 SLICES 1–3 — prove the pipeline on one asset, make Godot able to show
+a texture, then batch and land all 24. See the Session 7 Current State block below (the newest one) for the plan,
+the traps, and the premises that measurement already falsified. Epic 15's burn-down is PAUSED until Alec says
+otherwise; scope any `bmad-loop` run `--epic 16`, though none of Epic 16 needs one. The FR-39 interactive re-run
+described below is still owed, but it is not what is queued next.**
+
 **FR-39 is SCORED (135 clean cross-peer windows, 2026-08-08 — see the newest Current State block). Re-run it
 INTERACTIVELY: both players building, moving and fighting.** DW-405 was the thing that made an interactive run
 impossible and it is now fixed, so the "do not build while scoring" rule below is RETIRED.
@@ -72,6 +78,218 @@ added for exactly this and turn DW-911(b) from a hypothesis into a number.
 ---
 
 *Session type: bmad (prescribed workflow in active execution)*
+
+---
+
+## Current State (2026-09-09, SESSION 7 — ASSET & PRESENTATION ROUGH DRAFT: planned, not started) — read this first
+
+**This block supersedes everything below it.** Nothing here is BUILT yet. This is the plan for the next working
+session, produced by two multi-agent investigations (53 agents on the pipeline question, 34 on the execution plan)
+and hand-verified against the repo. Read the **Stale premises** section before acting — over half of the obvious
+moves are wrong, and several were falsified by measurement this session.
+
+### The brief, in Alec's words
+
+> "make the preliminary textures for the world and units we already have, give it animations, and make sure to get
+> the buildings looking good also. This is going to be the nice looking Rough draft to the game until I can get the
+> entire world created elsewhere (I am working on the entire narrative/universe and that will assist you in
+> re-making the models, meshes, textures, objects and animations and such). My reason for wanting this: I need to
+> see that our pipeline is working to the fullest and this is a great bare minimum test."
+
+### The reframe that governs every decision here (Alec confirmed it 2026-09-09)
+
+**The ART is throwaway. The PIPELINE and the ENGINE CONTRACT are permanent.** The meshes, textures and animations
+produced here get deleted when the narrative/universe work lands and the roster is remade. The shader, the material
+contract, the QA gates, the bake stage, the terrain binding and the environment factory all survive that redo.
+
+So hours skew hard toward permanent work, and throwaway art is generated as cheaply as it can be while still looking
+good. **The acceptance criterion is not "the game looks good" — it is "the pipeline is demonstrably working
+end-to-end on the real roster."** Every step below is marked `[P]` permanent or `[T]` throwaway.
+
+### Stale premises — falsified this session, do NOT act on them
+
+These were all plausible, several were mine, and each would have cost a day or more.
+
+1. **"Bind the four terrain PNGs and the world looks better" — FALSE as scoped.** The bind itself is a ~15-minute
+   code edit, not 2-4 hours. But all 13 shipped scenarios carry `terrain_ref: ""`, so `TerrainPhase.cs:66-83` builds
+   a flat 256×256 region from an all-zero heightmap and passes a **NULL control map**. A uniform control map means
+   texture id 0 everywhere — you get grass over the entire map and `dirt`/`rock`/`snow` are unreachable. The terrain
+   is also dead flat, so `auto_shader`'s slope blending has nothing to key off. **P0 must include a heightmap and a
+   control map, or it changes nothing visible.**
+2. **"A cel-shade ramp makes the current 24 meshes look better" — FALSE, it is a REGRESSION.** All 24 GLBs are 100%
+   flat-shaded (per-face normals, fully unwelded) with no texture, no vertex colour, no AO. The continuous N·L
+   gradient across ~6,000 facets is the *only* channel carrying form; a 2-3 band ramp quantises exactly that channel
+   away. Three variants were tested (two band placements + a welded/smooth-normal version) and all three collapse
+   the model to a near-uniform silhouette. **Replace the ramp with an additive-only lighting pass** — SSAO, a dim
+   *shadowless* opposing fill directional, a smooth linear shadow tint, a low-strength high-power Fresnel rim.
+   The cel ramp becomes viable *after* assets carry albedo, not before.
+3. **"Swap the generator to Pixal3D to fix the grey blobs" — off the critical path entirely.** Nothing about
+   Pixal3D is needed for this pass. See **The texture route** below.
+4. **"VAT animation can be proven on one unit this session" — FALSE, cut it.** UniRig is not installed; the
+   asset-gen venv has no torch; ComfyUI's embedded Python is 3.13 and UniRig's stack has no 3.13 wheels; and Mixamo
+   is a manual Adobe web service with no API, so it cannot be scripted in an agent session. VAT stays a later story.
+5. **"IP-Adapter style-lock" — does not exist.** `workflows.py:sdxl_concept()` is seven nodes: `CheckpointLoaderSimple
+   → CLIPTextEncode ×2 → EmptyLatentImage → KSampler → VAEDecode → SaveImage`. No IPAdapter node, and
+   `D:\ai-models\ipadapter` and `clip_vision` are empty. `tools/asset-gen/SKILL.md` asserts it and is **wrong** —
+   correct it. SKILL.md is also wrong that Hunyuan3D-2 is Apache-2.0 (see the licence item below) and its Status
+   section is stale.
+6. **"Buildings ride along on the unit material work" — half false.** The material path genuinely is shared
+   (`TeamTintMaterial.Build` from `MultiMeshBridge.cs:84` and `BuildingBridge.cs:167/:183`), so a shader change
+   reaches buildings for free. But 4 of 8 buildings are **hollow facades**, and buildings pin to world Y=0 while
+   ignoring the ElevationGrid that units respect. Buildings need their own tracked mesh pass.
+
+### What was measured this session (new ground truth)
+
+- **0 of 24 shipped GLBs have UVs.** The attribute union across every primitive is exactly `{POSITION, NORMAL}` —
+  no TEXCOORD_0, no TANGENT, no COLOR_0, no skins, no animations, no textures. All 24 carry one byte-identical
+  material `asset_flat` with `baseColorFactor [0.8,0.8,0.8,1]`.
+- **Every GLB is fully unwelded** — exactly 3 verts per triangle (acolyte_alchemist: 17,985 verts for 5,995 tris;
+  526,714 verts across the roster). Welding at 1e-5 collapses to 2,658-4,983. This matters for VAT later: a naive
+  one-row-per-frame VAT layout would be 17,985 texels wide, past the 16,384 hardware max. **Weld first, always.**
+- **A Blender Smart-UV unwrap of the existing geometry works on 24/24** — 39.8 s for the whole roster, 0 degenerate
+  UV faces, 0 UVs outside [0,1], and unusually even texel density (p99/p01 = 1.50-2.05). So the geometry is not the
+  obstacle. Unwrapped copies exist in the session scratchpad.
+- **21 of 24 assets carry a fused ground slab** (0.08-26.2% of surface area) — the exact defect `clean_concept.py`
+  exists to prevent, and it is wired to nothing. A tested strip pass removes it for 0.00-0.21% height loss while
+  *improving* texel density.
+- **4 assets are unfixable thin-wall facades** — hollow, not volumes: **`covenant_sanctum` and `sanguine_furnace`,
+  which are BOTH faction command centres**, plus `transmutation_forge` and `bolt_sanctum`.
+- **`blender_pipeline.py` has no unwrap step at all**, and `single_material()` at L101-105 clears every material
+  unconditionally on both branches. That is the root cause of "textures never survive", independent of the generator.
+- **There is no texture-generation model on this rig.** `D:\ai-models` holds exactly two weights — `sd_xl_base_1.0`
+  and `hunyuan3d-dit-v2_fp16` (shape only). No Hunyuan3D-Paint, no BiRefNet, no ControlNet, no LoRAs.
+- **Terrain3D 1.0.1 ships 71 shader uniforms and most of what we want is switched OFF**: `auto_shader` + `auto_slope`
+  (automatic cliff texturing, no painting), `dual_scaling` (close-range detail from the same texture),
+  `enable_macro_variation` (on, but both tints default to neutral so it does nothing today), per-texture detiling,
+  and `enable_projection` triplanar on slopes (already on). Turning these on is ~3 hours and needs no new pixels.
+- **Units face world-north forever.** `MultiMeshBridge.cs:206-208` writes an identity `Basis` while `Velocity[]` is
+  read and available. Fixing this is the single highest legibility-per-line change in the whole plan.
+- **`INSTANCE_CUSTOM` is unreachable today.** It is a vertex-shader builtin needing a `ShaderMaterial` with a
+  `vertex()` function; every shipped asset takes the `Flat` arm which returns a plain `StandardMaterial3D`.
+  `BuildTintShader()` is dead code at runtime and has no `vertex()` anyway.
+
+### The texture route — decided
+
+**Do NOT regenerate the roster, and do NOT unwrap-and-paint the shipped meshes.** Both framings were wrong.
+
+`tools/asset-gen/scripts/qa/hp_to_lp_bake.py` (824 lines, **never once executed**) is a complete drop-in replacement
+for `blender_pipeline.py` — it joins, welds, projects the concept image onto the high-poly, transfers to a decimated
+low-poly, unwraps and bakes. **And its inputs are already on disk**: the raw high-poly GLBs are at
+`D:\tools\asset-gen-work\*_raw.glb` alongside the concept PNGs at `ComfyUI/input/cc_*.png`.
+
+So the route is: **re-run the 20 keepable assets through the bake stage that is already written, from the raws, with
+`clean_concept.py` finally wired in.** No ComfyUI needed for the unit roster at all. Pixal3D/TRELLIS.2 move off the
+critical path and become the candidate for the *final* roster when the narrative work lands.
+
+Two things to know before trusting it: `projection_material()` is **front + back orthographic only**, and its own
+docstring records that the concept's line art and contact shadow bake in as dark texels. Omitting `--project-back`
+mirrors the front concept onto the back of every asset — fine for a rough draft, wrong for a hero asset. Note it so
+nobody re-litigates it as a bug later.
+
+### The plan — five vertical slices
+
+**Re-shaped 2026-09-10 at Alec's direction.** This was first written as fourteen ordered steps and filed as thirteen
+bmad-shaped stories; that was heavier than the job needs. Alec: *"is there a way to de-couple/break epic 16 into
+vertical slices you can handle yourself without using bmad?"* The same scope now sits in **five vertical slices**,
+each one working session, each ending in something to look at, **none needing a `bmad-loop` run** — they are
+executed directly with Bash, headless Blender and the godot-mcp bridge.
+
+| Slice | What you see at the end | Needs | Permanence |
+|---|---|---|---|
+| **1 — Prove the pipeline** | One unit with real UVs and a real texture, in a contact sheet that shows colour instead of grey | Blender only — **no Godot, no ComfyUI** | mostly [P] |
+| **2 — Make Godot able to show it** | The **current** untextured roster already reads better in-engine | Godot bridge | [P] |
+| **3 — Run the roster and land it** | All 24 textured, in the game, with the proof matrix | Blender + Godot | mixed |
+| **4 — The world** | Terrain, sky, cliffs, and a sculpted map to see them on | Godot | [P] + one [T] map |
+| **5 — Motion and buildings** | Units face and move, buildings sit on the ground and rise while building | Godot | [P] |
+
+**NEXT SESSION = SLICES 1–3** (Alec's call, 2026-09-10): prove the pipeline, ready the engine, land the roster.
+
+**Why slice 2 must precede slice 3**, and it is not bureaucracy: the moment a textured GLB reaches
+`godot/assets/`, `TeamTintPolicy.Resolve` (`hasAlbedoTexture ? requested : Flat`) flips **all 24 assets** onto a
+shader branch that has never once rendered, with no code change. Land textures first and the session is spent
+debugging the renderer instead of looking at the models.
+
+**Slice 3 carries checkpoints, because its batch wall-clock is unmeasured.** Prove the bake on TWO assets before
+committing to twenty-four. If the per-asset rate is too slow, land the proven subset, record the measured rate and
+stop rather than running the session dry. If the bake reads badly at gameplay distance, the abort is to keep slice
+2 — which stands on its own and improves the untextured roster — and re-plan the art route.
+
+**One thing to be clear about before starting:** "just re-run the existing pipeline" would reproduce exactly the
+roster we already have. `blender_pipeline.py` has no unwrap step and clears every material unconditionally, which
+is why all 24 shipped meshes carry zero UVs and zero textures. The fix is not a rebuild — `hp_to_lp_bake.py`
+already exists and already unwraps and bakes; it has simply never been called. That wiring is slice 1.
+
+### Hard rules for whoever executes this
+
+- **ORDERING INVARIANT: a textured GLB must never reach `godot/assets/` before the material contract lands.**
+  `TeamTintPolicy.Resolve` is `hasAlbedoTexture ? requested : Flat`, so the instant a baked albedo appears,
+  **all 24 assets flip onto a shader branch that has never rendered** — with no code change — and the existing
+  shader does `ALBEDO = art.rgb * team_color.rgb`.
+- **If the `Flat` arm stays a `StandardMaterial3D`, every shader change renders on zero of 24 assets**, builds
+  green, and passes any gate that only checks "the match runs". Make both arms return a `ShaderMaterial` with the
+  shading model **orthogonal** to `TeamTintMode` — do **not** add a `TeamTintMode.Cel` member (it would change
+  `Resolve`'s arity, move its 13 pinned tests, and enter the enum-indexed-array touch-site class).
+- **Fix apparent size with `mesh_scale` ONLY.** `nav_footprint`, `collision_radius` and any folded stat are out of
+  scope — touching one converts a presentation story into a determinism story (golden re-record + fold decision +
+  AlgoVersion bump). `ContentHash.cs:38/:229` already excludes `DisplayName`/`MeshPath`/`MeshScale`/`Icon`/faction
+  `Color`, so the art work provably folds nothing. Acceptance line: *no golden moves, no hash value moves, no
+  AlgoVersion bump (ContentHash stays 6, CanonicalModelHash 17, SimChecksum 29), no absolute-pin re-pin.*
+- **`src/UI/**` is outside the Tier-1 glob.** A green 7123-test suite proves nothing about any of this. Shader and
+  material work needs an in-engine gate, not a suite — the DW-916 shape.
+- **`godot-mcp` is single-client** on 127.0.0.1:6550 — close idle Claude sessions before any in-engine pass.
+  **ComfyUI is not running** and every entry point hard-exits FATAL on ping failure; start `run_nvidia_gpu.bat`
+  before any generation step. **DW-1013**: `verify-in-engine-gate.ps1` cannot be pointed at a spec without an
+  active bmad-loop run — append the `### In-Engine Gate` digest by hand with plain inline `- digest:` keys.
+- **One GPU.** Cycles bake, ComfyUI, the running game and in-engine verification all want the same 3060, and
+  **DW-924 is still open** (render-cost bursts, amplified 3-5× by a second GPU process). Do not run them concurrently,
+  and re-test on the loopback rig after the texture memory increase or DW-924 becomes unattributable.
+
+### Explicitly out of scope
+
+VAT / skeletal animation (**DW-1018** — the tooling is absent, not merely unbuilt); the Pixal3D or TRELLIS.2
+generator swap; the 32-slot creator-extensible palette editor and the Terrain3D packed-RGBA channel migration
+(**DW-1019**); `AssetValidator` texture allow-listing (**DW-1017**); the `nav_footprint`-vs-mesh-extent question
+(**DW-1016** — deliberately excluded because touching it converts a presentation story into a determinism one);
+the four hollow facades (**DW-1015**); new prop/doodad assets. All are real and worth doing — none of them serve
+*this* pass, and each is now filed rather than remembered.
+
+### Alec's decisions — ALL FOUR ANSWERED 2026-09-09
+
+1. **The 4 hollow facades** (both command centres among them) — **ACCEPTED AS-IS.** No re-roll, no repoint. The
+   whole roster is remade when the narrative work lands, so this is cosmetic debt on disposable art. Filed as
+   **DW-1015**, which also records the trap for whenever it is revisited: a repoint must not put both faction
+   command centres on the same substitute mesh.
+2. **The Hunyuan3D-2 licence — CLEARED by Alec.** No roster regeneration is forced on licence grounds and the
+   existing 24 GLBs stay. `SKILL.md`'s incorrect "Apache-2.0" note is still corrected as part of Story 16.1, so the
+   file stops asserting something false.
+3. **Filing — its own epic: Epic 16, "Presentation & Asset Pipeline".** Not `tools/` and not stories bolted onto
+   Epic 15. The majority of the work is `godot/src/` engine code rather than pipeline scripts, and adding stories
+   to an epic that is simultaneously being paused would contradict the pause. **Re-shaped 2026-09-10 into five
+   vertical slices, 16.1–16.5**, executed directly rather than through `bmad-loop`.
+4. **Sequencing — Epic 15's burn-down is PAUSED**, indefinitely, until Alec says otherwise ("until I say or ask to
+   get back to the meat and potatoes of the game"). Epic 16 gets a clear run. Scope any `bmad-loop` run to
+   `--epic 16`; a bare run would pick Epic 15 stories back up, because the engine's queue counts `backlog`.
+
+### Where this now lives (filed 2026-09-09)
+
+- **`epics.md`** — `## Epic 16: Presentation & Asset Pipeline (rough-draft pass)`, **five slice stories
+  16.1–16.5** (re-shaped 2026-09-10 from the original thirteen, no scope lost), plus an Epic List entry. The table
+  above is the summary; the slice stories are the specification, and each carries its own traps and AC gate.
+- **`sprint-status.yaml`** — `epic-16: backlog` with the five slice keys, edited **as text**. Epic 15 carries a
+  `⏸ PAUSED` note. **The pause is documented, not enforced**: Epic 15's stories are still `backlog` and the
+  engine's queue counts `backlog`, so scope every run `--epic 16`. Their statuses were left alone deliberately —
+  flipping them to `in-progress` to hide them is exactly what was done on 2026-08-04 and reverted.
+- **The ledger** — `DW-1015`..`DW-1019` for everything deliberately out of scope.
+- **One piece of scope was added beyond the original plan**, from the review pass: a *new* sculpted showcase
+  scenario, now inside slice 4. Every shipped map is dead flat with a null control map, which leaves cliff
+  auto-texturing, building elevation and contact shadows with nothing to show; a **new** map moves no golden.
+- **One correction to Alec's decision as literally stated:** the four hollow facades are accepted as-is, but they
+  are still **textured** in slice 3. The hollowness was accepted; the greyness was not — and excluding them would
+  leave both faction command centres and, through shared building art, most of beta's structures grey, which
+  contradicts the epic's own buildings goal.
+- **What each slice needs:** slice 1 needs **neither Godot nor ComfyUI** — the bake reads raw high-polys already
+  on disk. Slices 2–5 need the single-client godot-mcp bridge and a human present, because `src/UI/**` is outside
+  Tier-1 and a green suite proves nothing about any of it. No slice needs a `bmad-loop` run.
 
 ---
 

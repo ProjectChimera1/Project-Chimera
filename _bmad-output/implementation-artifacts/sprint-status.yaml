@@ -275,6 +275,13 @@ development_status:
   #   amortised is a ~10-minute re-record; coupling it to a multi-week feature build keeps the branch
   #   open and queues every other golden-moving fix behind it. Feature stories that move goldens
   #   re-record at the end of their OWN story (15-2, 15-11, 15-12, 15-14, 15-21).
+  # ⏸ PAUSED 2026-09-09 BY ALEC — "Pause the burn down of epic 15 until I say or ask to get back to the meat
+  #   and potatoes of the game." Epic 16 (Presentation & Asset Pipeline) runs instead.
+  #   NOTE THE MECHANISM GAP: this pause is DOCUMENTED, not enforced. Epic-15 story keys below are still
+  #   `backlog`, and the engine's queue counts ONLY `backlog`, so a bare `bmad-loop run` WILL pick Epic 15 back
+  #   up. SCOPE EVERY RUN: `bmad-loop run --epic 16`. The statuses are left untouched deliberately — flipping
+  #   them to `in-progress` to hide them from the queue is exactly what was done on 2026-08-04 and reverted
+  #   (it dropped `bmad-loop status` from 43 to 27 and made the epic invisible). Resume by deleting this note.
   epic-15: in-progress
   # 15-1 DEFERRED 2026-08-06 (Alec) — status `blocked`, NOT `backlog`, so the engine's queue skips it.
   #   `blocked` is outside bmad-loop's STORY_STATUSES set but load() accepts any string and only
@@ -465,6 +472,53 @@ development_status:
   # Open seams: DW-992/993/995/998/999, DW-1000..DW-1014.
   15-24-attribute-system-2-expanded-vocab-rolls-veterancy-editor: in-progress
   epic-15-retrospective: optional
+
+  # ── Epic 16 (added 2026-09-09 by Alec's direction): Presentation & Asset Pipeline — the rough-draft pass.
+  #   Alec's brief: "make the preliminary textures for the world and units we already have, give it animations,
+  #   and make sure to get the buildings looking good also... I need to see that our pipeline is working to the
+  #   fullest and this is a great bare minimum test."
+  #   GOVERNING REFRAME (Alec confirmed 2026-09-09): the ART is throwaway — the roster is remade once his
+  #   narrative/universe work lands — while the PIPELINE and the ENGINE CONTRACT are permanent. Hours skew to
+  #   permanent work; throwaway art is produced as cheaply as it can be while still looking good. Epic acceptance
+  #   is "the pipeline is demonstrably working end-to-end on the real roster", NOT "the game looks good".
+  #   Evidence: the newest Snapshot.md Current State block (2026-09-09, SESSION 7) — read it before speccing any
+  #   story here, because over half the obvious moves were falsified by measurement (a cel ramp is a REGRESSION on
+  #   the current untextured roster; binding the terrain PNGs alone yields grass everywhere because every shipped
+  #   scenario has an empty terrain_ref and therefore a null control map; VAT animation tooling is not installed).
+  #   ALEC'S DECISIONS 2026-09-09: Hunyuan3D-2 licence CLEARED (no regeneration forced); the 4 hollow-facade
+  #   buildings ACCEPTED AS-IS (DW-1015) — but they are still TEXTURED in slice 3, because the hollowness was
+  #   accepted and the greyness was not.
+  #   ORDERING INVARIANT: no textured GLB may reach godot/assets/ until SLICE 2 has landed and been observed
+  #   in-engine. TeamTintPolicy.Resolve is `hasAlbedoTexture ? requested : Flat`, so the first baked albedo flips
+  #   all 24 assets onto a shader branch that has never rendered, with no code change.
+  #   DETERMINISM: presentation-only throughout. Target is no golden moves, no hash value moves, no AlgoVersion
+  #   bump (ContentHash 6 / CanonicalModelHash 17 / SimChecksum 29). Apparent size is corrected with mesh_scale
+  #   ONLY — nav_footprint and collision_radius are folded and out of bounds (DW-1016).
+  #   TIER-1 BLIND SPOT: src/UI/** is outside the Tier-1 glob, so a green suite proves NOTHING about the shader,
+  #   material, facing, motion or building work. Stories 16-2..16-8 and 16-11..16-13 need an in-engine gate, which
+  #   means the single-client godot-mcp bridge and a human-present session.
+  #   DW-1013 applies: verify-in-engine-gate.ps1 cannot be aimed at a spec without an active bmad-loop run, so
+  #   append the "### In-Engine Gate" digest BY HAND with plain inline "- digest:" keys.
+  #   DW-924 (open) re-test is OWED after slice 3 and again after slice 4 — both raise texture memory and
+  #   would otherwise make the next burst report unattributable.
+  epic-16: backlog
+  # RE-SHAPED 2026-09-10 (Alec): the thirteen bmad-shaped stories collapsed into FIVE VERTICAL SLICES with no
+  #   scope lost. These are NOT a bmad-loop backlog — each is one working session executed directly with Bash,
+  #   headless Blender and the godot-mcp bridge, and each ends with something Alec can look at. Alec's words:
+  #   "is there a way to de-couple/break epic 16 into vertical slices you can handle yourself without using bmad?"
+  #   NEXT SESSION = SLICES 1-3 (Alec's call, 2026-09-10): prove the pipeline, ready the engine, land the roster.
+  #   Slice 3 carries explicit checkpoints because its batch wall-clock is UNMEASURED — prove the bake on TWO
+  #   assets before committing to 24; if the rate is too slow, land the proven subset, record the measured rate
+  #   and stop. If the bake reads badly at gameplay distance, keep slice 2 (which stands alone and improves the
+  #   untextured roster) and re-plan the art route.
+  #   Slice 1 needs NEITHER Godot NOR ComfyUI — the bake reads raw high-polys already on disk. Slices 2-5 need
+  #   the single-client godot-mcp bridge and a human present, because src/UI/** is outside Tier-1.
+  16-1-slice1-prove-the-pipeline-on-one-asset: backlog
+  16-2-slice2-make-godot-able-to-show-it: backlog
+  16-3-slice3-run-the-roster-and-land-it: backlog
+  16-4-slice4-the-world: backlog
+  16-5-slice5-motion-and-buildings: backlog
+  epic-16-retrospective: optional
 
 action_items:
   # Epic 5 retrospective action items — epic-5-retro-2026-07-11. Tracked here (not retro-doc-only) per Alec's decision. Fixes the 3-epic "actions evaporate" failure (retro §3.2).
