@@ -237,6 +237,7 @@ def strip_ground_slab(obj):
     # does not.
     rim = _strip_outside_footprint(obj, zmin, height)
     stats["rim_faces"] = rim
+    stats["sliver_faces"] = _strip_ground_slivers(obj)
 
     zs2 = [v.co.z for v in me.vertices]
     stats["stripped"] = True
@@ -248,6 +249,70 @@ def strip_ground_slab(obj):
 
 SLAB_FOOTPRINT_CELLS = 28    # grid resolution across the model's XY extent
 SLAB_FOOTPRINT_DILATE = 1    # cells of margin, so toes and hems are never clipped
+
+SLIVER_BAND_FRAC = 0.02      # slivers all live right at the floor (measured)
+SLIVER_ASPECT = 0.05         # area / longest_edge^2; an equilateral triangle is ~0.433
+SLIVER_MAX_AREA_FRAC = 0.02  # refuse if the test would take more than this much surface
+
+
+def _strip_ground_slivers(obj):
+    """Remove the needle-thin flaps left lying at ground level. Returns the face count removed.
+
+    These are what actually reads as "glitchy lines in front of the feet": degenerate, near-zero-
+    thickness triangles fanning out across the floor, left behind where the slab met the model.
+    Neither earlier pass catches them — they are not near-horizontal enough for the normal test and
+    they sit INSIDE the body's footprint, so the outside-the-footprint test spares them too.
+
+    What identifies them is SHAPE, not position or orientation: `area / longest_edge^2` is about
+    0.433 for an equilateral triangle and tends to zero for a needle. Measured on a baked asset,
+    the bottom 2% band holds 16 faces under 0.05 — and the count is IDENTICAL at the 2%, 5% and 10%
+    bands, which is the signal that they are a discrete artefact lying on the floor rather than
+    ordinary thin geometry that happens to be low. Their total area is 0.07% of the mesh.
+    """
+    import numpy as np
+    me = obj.data
+    if not me.polygons:
+        return 0
+
+    zs = [v.co.z for v in me.vertices]
+    zmin, zmax = min(zs), max(zs)
+    height = (zmax - zmin) or 1.0
+    cut = zmin + SLIVER_BAND_FRAC * height
+    total_area = sum(p.area for p in me.polygons) or 1.0
+
+    victims, victim_area = [], 0.0
+    for p in me.polygons:
+        vs = [me.vertices[i].co for i in p.vertices]
+        if len(vs) < 3:
+            continue
+        if sum(v.z for v in vs) / len(vs) >= cut:
+            continue
+        longest = max((vs[i] - vs[(i + 1) % len(vs)]).length for i in range(len(vs)))
+        if longest <= 1e-9:
+            continue
+        if p.area / (longest * longest) < SLIVER_ASPECT:
+            victims.append(p.index)
+            victim_area += p.area
+
+    if not victims or victim_area / total_area > SLIVER_MAX_AREA_FRAC:
+        return 0
+
+    select_only([obj], obj)
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_mode(type="FACE")
+    bpy.ops.mesh.select_all(action="DESELECT")
+    bpy.ops.object.mode_set(mode="OBJECT")
+    me.vertices.foreach_set("select", np.zeros(len(me.vertices), dtype=bool))
+    me.edges.foreach_set("select", np.zeros(len(me.edges), dtype=bool))
+    sel = np.zeros(len(me.polygons), dtype=bool)
+    sel[victims] = True
+    me.polygons.foreach_set("select", sel)
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.delete(type="FACE")
+    bpy.ops.mesh.select_all(action="DESELECT")
+    bpy.ops.mesh.delete_loose(use_verts=True, use_edges=True, use_faces=False)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    return len(victims)
 
 
 def _strip_outside_footprint(obj, zmin, height):
@@ -961,6 +1026,11 @@ def main():
                     help="apply a procedural checker to the high-poly first (plumbing proof)")
     ap.add_argument("--project-front", help="concept image to project onto the high-poly as its albedo")
     ap.add_argument("--project-back", help="rear concept image; omitted = mirror the front")
+    ap.add_argument("--box-blend", type=float, default=None,
+                    help="triplanar projection blend (0..1). Omit for flat front/back projection. "
+                         "Use on FLAT-WALLED subjects (buildings): a flat projection stretches a "
+                         "single pixel column across any surface running parallel to the projection "
+                         "axis, which is most of a hollow facade.")
     ap.add_argument("--dump-projection", help="write the edge-padded concept here (debug)")
     args = ap.parse_args(argv_after_ddash())
 
@@ -989,7 +1059,8 @@ def main():
     if args.hp_test_material:
         make_test_material(hp)
     elif args.project_front:
-        projection = projection_material(hp, args.project_front, args.project_back)
+        projection = projection_material(hp, args.project_front, args.project_back,
+                                         box_blend=args.box_blend)
     hp_tris = tri_count(hp)
     md = max_dim(hp)
 

@@ -36,8 +36,24 @@ namespace ProjectChimera.UI
         /// </summary>
         public static TeamTintMode Mode { get; set; } = TeamTintMode.Modulate;
 
-        /// <summary>0 = show the art untinted, 1 = full team tint. The second A/B dial.</summary>
-        public static float Strength { get; set; } = 1f;
+        /// <summary>
+        /// 0 = show the art untinted, 1 = full team tint.
+        ///
+        /// <para><b>0.35, set by measurement once real albedo existed.</b> It shipped at 1.0, which was
+        /// harmless while every asset was untextured — <see cref="TeamTintPolicy.Resolve"/> collapsed them
+        /// all to Flat and this value was never read. The moment the baked roster landed it became wrong:
+        /// Modulate is <c>art.rgb * team_color.rgb</c>, so at full strength a blue team crushes the whole
+        /// texture to monochrome blue and every brass, leather and off-white the concept art specifies is
+        /// gone. Measured in-engine across 1.0 / 0.6 / 0.35 / 0.2 / 0.0, hue spread over the subject runs
+        /// 0.520 / 0.569 / 0.658 / 0.717 / 0.728 — it is the art's colour being destroyed, not merely
+        /// shifted.</para>
+        ///
+        /// <para>0.35 is the balance point: the coat, shirt and webbing all read as themselves, while a
+        /// visible team hue remains. That last part is not decoration — in a mirror match the faction art
+        /// is identical for both players and this tint is the ONLY thing telling them apart, which is why
+        /// this is not simply set to 0.</para>
+        /// </summary>
+        public static float Strength { get; set; } = 0.35f;
 
         /// <summary>
         /// Multiplies final albedo. Units ship at 1.0 and buildings slightly below it, so a structure reads

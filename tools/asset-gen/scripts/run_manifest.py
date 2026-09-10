@@ -181,6 +181,9 @@ def main():
     ap.add_argument("--tex", type=int, default=0, help="bake texture size; default = profile texture.min_dim")
     ap.add_argument("--force", action="store_true", help="ignore the cached content hash")
     ap.add_argument("--print-stage-id", action="store_true", help="print the stage identity and exit")
+    ap.add_argument("--land-existing", action="store_true",
+                    help="do not re-run the mesh stage; RE-GATE the outputs already in WORK and land "
+                         "the ones that pass. Nothing unverified ships: the gate runs either way.")
     args = ap.parse_args()
 
     os.makedirs(WORK, exist_ok=True)
@@ -238,6 +241,28 @@ def main():
                     print(f"[{i}/{len(assets)}] SKIP {tag} (cached)", flush=True)
                     summary.append({"asset": tag, "status": "cached"}); continue
             except Exception: pass
+
+        if args.land_existing:
+            out = os.path.join(WORK, f"{a['faction']}_{a['id']}.glb")
+            if not os.path.exists(out):
+                print(f"[{i}/{len(assets)}] MISSING {tag} (nothing at {out})", flush=True)
+                summary.append({"asset": tag, "status": "fail", "gate": {"fails": ["no output in WORK"]}})
+                continue
+            gate_res = gate(out, a["tri_kind"], require_textured=(args.mesh_profile == "bake"))
+            if gate_res["verdict"] != "PASS":
+                print(f"[{i}/{len(assets)}] GATE FAIL {tag}: {gate_res['fails']}", flush=True)
+                summary.append({"asset": tag, "status": "fail", "gate": gate_res})
+                continue
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            shutil.copy(out, dest)
+            json.dump({"content_hash": chash, "asset": tag, "mesh_file": a["mesh_file"],
+                       "tris": gate_res["metrics"].get("tris"), "warns": gate_res["warns"],
+                       "stage_id": stage_id, "blender": bver, "mesh_profile": args.mesh_profile},
+                      open(meta_path, "w"), indent=2)
+            print(f"[{i}/{len(assets)}] LAND {tag} {gate_res['metrics'].get('tris')} tris -> {a['dest']}", flush=True)
+            summary.append({"asset": tag, "status": "pass", "tris": gate_res["metrics"].get("tris"),
+                            "warns": gate_res["warns"], "dest": a["dest"]})
+            continue
 
         print(f"[{i}/{len(assets)}] {'BAKE' if args.from_raw else 'GEN'} {tag} -> {a['mesh_file']}", flush=True)
         tri_kind = a["tri_kind"]
