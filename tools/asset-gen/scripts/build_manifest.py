@@ -140,7 +140,7 @@ for (aid, fac, prefix, tri_kind, mesh, scale, subject) in ASSETS:
 doc = {
     "project_root": "D:/Projects/Project_Chimera",
     "comfy_root": r"D:\tools\ComfyUI_windows_portable\ComfyUI",
-    "tri_target": {"unit": 6000, "building": 10000},
+    "tri_target": {"unit": 8000, "hero": 25000, "building": 20000},
     "concept_steps": 30, "concept_cfg": 7.0,
     "hunyuan_seed_base": 42, "max_rerolls": 4,
     "assets": assets,

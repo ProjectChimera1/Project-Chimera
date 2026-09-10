@@ -2,8 +2,9 @@
   "project_root": "D:/Projects/Project_Chimera",
   "comfy_root": "D:\\tools\\ComfyUI_windows_portable\\ComfyUI",
   "tri_target": {
-    "unit": 6000,
-    "building": 10000
+    "unit": 8000,
+    "hero": 25000,
+    "building": 20000
   },
   "concept_steps": 30,
   "concept_cfg": 7.0,
