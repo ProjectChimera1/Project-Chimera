@@ -55,7 +55,16 @@ creators about how their own asset would look.
 QA gates now proven to fail in both directions, 10/10 — before today L1 passed a broken venv, L2 was physically
 incapable of displaying a texture, and L3 never looked at a material.
 
-**Hunyuan3D-Paint** replaces the projection bake as the texture route (`--mesh-profile paint`). See below.
+**Hunyuan3D-Paint** replaces the projection bake as the texture route (`--mesh-profile paint`), and the
+roster was re-run through it: **24/24 `albedo_source: hunyuan3d_paint_v2_0`, zero fallbacks**, landed and
+verified in a running match. Roster saturation 0.05-0.56, mean 0.260, against 0.017 for the untextured roster
+that shipped the same morning. The four blank-white buildings are now among the best (0.31-0.32) because paint
+conditions on the reference image but generates views of the MESH.
+
+Two defects visible in the landed roster, both inherited from the CONCEPT stage rather than from texturing:
+alpha/barracks and alpha/command_center carry GREEN LAWN on their lower walls (DW-1021's root cause wearing its
+other face -- the plates are scenes with grounds), and alpha/mage (0.05) plus alpha/archery_range (0.12) stay
+pale because their source plates are the palest in the set (mage measures 0.105 against 0.20-0.45).
 
 ### Things that were believed and are false — do not re-derive
 
