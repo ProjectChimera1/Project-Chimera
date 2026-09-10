@@ -15,17 +15,117 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay. **Session 22 scored FR-39 on two machines** — the #1 pre-ship gate, carried since Epic 1 — after closing DW-912, DW-914 and DW-405.
 
 ## Next Action
-**→ 2026-09-10: Epic 16 slices 1-3 are DONE and landed — the roster is textured in-engine and
-Hunyuan3D-Paint is the texture route. Next is SLICE 4 (terrain/world) and SLICE 5 (unit facing, motion,
-buildings sitting on the ground). Read the Session 8 Current State block below first: it records five
-things that were believed and are false, and the Tencent licence question, which is unresolved and
-needs Alec's answer before anything ships commercially.**
+**→ 2026-09-10 (session 9): the roster is being REGENERATED through Tripo 3D, not the local pipeline.
+4 of 24 units are done, gated and in `D:\tripo-out\`. Everything needed to continue is in
+`D:\tripo-input\TRIPO_RUNBOOK.md` — settings, per-asset steps, and 36 prompt blocks. Read the Session 9
+Current State block below first: it records why the route changed, the five things that were established,
+and three open decisions (DW-1023/1024/1025), one of which — the bulwark_adept palette — needs Alec before
+the roster completes.**
+
+Epic 16 slices 4 (terrain/world) and 5 (unit facing, motion, buildings on the ground) are still outstanding.
 
 Epic 15's burn-down stays PAUSED; scope any `bmad-loop` run `--epic 16`, though no slice needs one.
 
 ---
 
 *Session type: bmad (prescribed workflow in active execution)*
+
+---
+
+## Current State (2026-09-10, SESSION 9 — TRIPO 3D EVALUATED, SUBSCRIBED, 4/24 UNITS REGENERATED) — read this first
+
+**This block supersedes everything below it.** The asset route changed. Slices 1-3 remain landed and valid,
+but the roster is being REGENERATED through Tripo 3D (a paid cloud image-to-3D service) rather than the local
+Hunyuan3D pipeline. 4 of 24 units are done, gated and sitting in `D:\tripo-out\`.
+
+### Why the route changed
+
+Alec asked why we were not using a hosted generator. The honest answer at the time was that the local pipeline
+was BUILT and its defects were all DOWNSTREAM of the generator (the reduction stage, inverted normals, the
+white matte, the prompts) — swapping generators would have fixed none of them. That is still true. What changed
+the decision is that Tripo removes two whole stages we maintain by hand: the decimation pass that was destroying
+meshes in 16.3, and the Hunyuan3D-Paint CUDA extension that cost a slice to get working. Alec subscribed.
+
+**Licence:** rights attach to what is generated AND EXPORTED while subscribed, and Tripo words the grant as
+"commercial use on PRIVATE models". Privacy must be set to Private before generating, and everything must be
+exported before the subscription lapses. The free-tier acolyte was regenerated under the subscription for this
+reason.
+
+### What is done
+
+4 of 24 units generated, textured, exported both ways and PASSED the Tier-1 asset gate:
+`acolyte_alchemist` (8,329 tris), `greycrest_bonded` (8,288), `pierce_marksman` (7,178), `bulwark_adept` (7,245).
+All single-material, textured, correct normal orientation (`inside_out: false`), feet on the ground.
+
+**Triangle budgets raised** — commit `1c58cb08`. Measured first: the shipped roster was 16 units at 5,591-5,981
+tris and 8 buildings at 8,351-9,887. Units already sat inside the modern-RTS band, so the raise went where we
+were genuinely short: building 10,000 -> 20,000 (fail 30,000 -> 45,000), a NEW `hero` class at 25,000 (there was
+none, heroes were squeezed into the 6,000 unit budget), units 6,000 -> 8,000. The budget lives in THREE places
+and editing only the profile would have been reverted by the next manifest rebuild: `godot_chimera.json`
+(tri_budget), `build_manifest.py` (tri_target, regenerates the manifest), `chimera_assets.json` (the manifest).
+`hero` also had to go into tri_target because `run_manifest.py:415` does a bare `tri_target[tri_kind]` with no
+fallback. All 24 shipped assets re-gated against the new budget: 0 fails, 0 warns. `content_hash()` folds
+id + faction + prompt + stage_id and NOT tri_target, so this does not invalidate anything — a run that should
+pick up the new targets needs `--force`.
+
+### The five things this session established
+
+1. **The concept plates were the weak link, not the generator.** Seven of the eight building plates are CITY
+   DISTRICTS — multiple structures, streets, hedges, trees, cropping off every edge. The one exception,
+   `covenant_sanctum`, is the only plate regenerated on 2026-09-10 with the corrected prompts from `d257127f`.
+   Same generator, same settings; the prompt was the whole difference. **All 24 shipped assets were built from
+   June plates with the old prompts** — `d257127f` fixed the prompts this morning and has never been run.
+2. **Prompt ORDER decides whether the subject survives.** `pierce_marksman` came back with no rifle, no cap and
+   no goggles because SUBJECT was the last line after three long blocks of style guidance. Moving SUBJECT to the
+   FRONT and closing with a CHECK line fixed it in one re-roll. Instruction-following models weight the start
+   and the end.
+3. **"Nothing is held in the hands" deletes weapons.** Phrase it as the hands being empty BECAUSE the weapon is
+   worn, and state that weapons are never omitted.
+4. **Art style must be pinned explicitly or the route decides it.** Image-to-image (the T Pose template on an
+   existing plate) inherits the plate's flat graphic look; pure text-to-image defaults to painterly
+   semi-realism. The two do not sit together as one faction. STYLE now names the flat graphic look outright.
+5. **Tripo's "Export Current Frame" replaces the Blender idle-pose stage entirely.** Apply the idle animation,
+   scrub to a good frame, export with Current Frame ON and Skeleton OFF — a static mesh already posed. Without
+   it the static export is frozen in T-pose and 200 units stand on the battlefield as scarecrows. The 4 units
+   already exported are in T-pose and need re-exporting (free, export costs no credits on a paid plan).
+
+### Settings that produced these results
+
+Smart Mesh (not HD Model, which produces million-poly sculpts) - AI model P2.0 Preview at 65 credits or
+v3.1 Best Quality at 55 - Topology **Triangle** (a quad is ~2 triangles, so quad counts read half) -
+Polycount **7,500** units / **19,000** buildings / **1,000** props, since Tripo overshoots ~4% -
+Texture on at **2K** (profile caps at `max_dim: 2048`) - **Remove Lighting ON** (strips baked light, which is
+what an albedo-only single-material renderer needs) - Privacy **Private**.
+
+Export twice per asset: `<name>` (Current Frame ON at an idle frame, Skeleton OFF) ships; `<name>_rigged`
+(Skeleton ON, all animations) is banked while the licence window is open.
+
+### Where everything lives
+
+- `D:\tripo-input\TRIPO_RUNBOOK.md` — the runbook: settings, per-asset steps, export rules, the asset table,
+  and **36 prompt blocks** (24 units + 12 weapons) rewritten for Tripo's instruction-following image models.
+- `D:\tripo-input\*.png` — 24 concept plates staged and renamed to the GLB each becomes.
+- `D:\tripo-out\` — finished GLBs.
+- `tools/asset-gen/scripts/qa/tripo_batch_gate.py` — batch-gates the whole folder and reports the `mesh_scale`
+  each asset needs. **Tripo normalises every mesh to a 1.0-unit bounding box**; the shipped Hunyuan meshes were
+  1.2-2.0 units tall, so every `mesh_scale` in the manifest needs recomputing (acolyte 1.872, griffin 2.691,
+  marksman 1.751, adept 2.627 — all measured from T-posed meshes, so they change after the idle re-export).
+
+### Open decisions
+
+- **DW-1025** — `bulwark_adept` reads as brass/gold rather than prussian-blue. Accept as heavy-unit
+  differentiation, or amend the subject and re-roll? Needs Alec, and before the roster completes.
+- **DW-1024** — the weapon attachment renderer. Units are now generated WEAPONLESS with only their empty
+  carrier showing; the 12-piece weapon library is drafted but has no manifest entries.
+- **DW-1023** — LOD (Level of Detail) is declared in the profile and implemented nowhere. It gates any unit
+  budget above 8,000.
+
+### Next action
+
+Regenerate the remaining 20 assets from the runbook prompts, gate in batches rather than all at the end, and
+re-export the 4 finished units with Export Current Frame on an idle frame. The local ComfyUI concept
+regeneration discussed mid-session is MOOT — concepts now come from Tripo's image panel, so the 8 buildings and
+3 machines are covered by the same prompt pack.
 
 ---
 
