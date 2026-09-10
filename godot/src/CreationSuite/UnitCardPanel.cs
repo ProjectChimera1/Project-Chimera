@@ -741,25 +741,9 @@ namespace ProjectChimera.CreationSuite
             _camera = new Camera3D { Position = new Vector3(0f, 1.2f, 3.5f) };
             _subViewport.AddChild(_camera);
 
-            var key = new DirectionalLight3D { LightEnergy = 1.4f };
-            key.RotationDegrees = new Vector3(-45f, 45f, 0f);
-            _subViewport.AddChild(key);
-
-            var fill = new DirectionalLight3D { LightEnergy = 0.6f, LightSpecular = 0f };
-            fill.RotationDegrees = new Vector3(-20f, -120f, 0f);
-            _subViewport.AddChild(fill);
-
-            var worldEnv = new WorldEnvironment();
-            var env = new Godot.Environment
-            {
-                AmbientLightSource = Godot.Environment.AmbientSource.Color,
-                AmbientLightColor  = new Color(0.35f, 0.35f, 0.4f),
-                AmbientLightEnergy = 0.6f,
-                BackgroundMode     = Godot.Environment.BGMode.Color,
-                BackgroundColor    = Tok(ThemeTokens.Surface0),
-            };
-            worldEnv.Environment = env;
-            _subViewport.AddChild(worldEnv);
+            // The SHARED rig, so the card shows a creator what the match will show. Only the flat backdrop
+            // is local — this preview sits inside the UI and has to read against a theme surface.
+            ProjectChimera.UI.WorldPresentation.Apply(_subViewport, shadows: true, background: Tok(ThemeTokens.Surface0));
 
             _turntable = new Node3D();
             _subViewport.AddChild(_turntable);

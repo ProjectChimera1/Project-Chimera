@@ -134,25 +134,10 @@ namespace ProjectChimera.UI
 
         private void SetupLighting()
         {
-            // Key light
-            var key = new DirectionalLight3D();
-            key.Rotation = new Vector3(Mathf.DegToRad(-45), Mathf.DegToRad(45), 0);
-            key.LightEnergy = 1.4f;
-            AddChild(key);
-
-            // Fill light
-            var fill = new DirectionalLight3D();
-            fill.Rotation = new Vector3(Mathf.DegToRad(-20), Mathf.DegToRad(-120), 0);
-            fill.LightEnergy = 0.6f;
-            AddChild(fill);
-
-            var ambient = new WorldEnvironment();
-            var env = new Godot.Environment();
-            env.AmbientLightSource = Godot.Environment.AmbientSource.Color;
-            env.AmbientLightColor = new Color(0.35f, 0.35f, 0.4f);
-            env.AmbientLightEnergy = 0.6f;
-            ambient.Environment = env;
-            AddChild(ambient);
+            // The SHARED rig, not a local one. This preview exists to judge assets, so it is the last place
+            // that should light them differently from the match — it used to run a 1.4 key against the
+            // match's 1.2 and a 0.6 uncoloured fill against the match's 0.35 cool one.
+            WorldPresentation.Apply(this);
         }
 
         private void SetupCamera()

@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using Godot;
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
@@ -163,8 +163,10 @@ namespace ProjectChimera.UI
                     // Per-BUCKET material: each building type carries its own albedo art, so one shared
                     // faction material cannot supply the right texture. Untextured art returns the same
                     // flat team material this bridge always used (see TeamTintMaterial).
-                    _mmi[t, fi] = CreateMmi(mesh, TeamTintMaterial.Build(mesh, colors[fi],
-                                                                         BuildingRoughness, out _));
+                    _mmi[t, fi] = CreateMmi(mesh, TeamTintMaterial.Build(
+                                      mesh, colors[fi], BuildingRoughness, out _,
+                                      assetName: def?.MeshPath is { Length: > 0 } mp ? mp : id,
+                                      valueScale: TeamTintMaterial.BuildingValue));
                     AddChild(_mmi[t, fi]);
                 }
             }
@@ -179,8 +181,10 @@ namespace ProjectChimera.UI
                 _scale[_fallbackBucket, fi]      = 1f;
                 _typeSize[_fallbackBucket, fi]   = aabb.Size;      // scale 1 → no multiply
                 _groundMinY[_fallbackBucket, fi] = aabb.Position.Y; // scale 1
-                _mmi[_fallbackBucket, fi] = CreateMmi(mesh, TeamTintMaterial.Build(mesh, colors[fi],
-                                                                                  BuildingRoughness, out _));
+                _mmi[_fallbackBucket, fi] = CreateMmi(mesh, TeamTintMaterial.Build(
+                                                mesh, colors[fi], BuildingRoughness, out _,
+                                                assetName: "building:CUSTOM_FALLBACK",
+                                                valueScale: TeamTintMaterial.BuildingValue));
                 AddChild(_mmi[_fallbackBucket, fi]);
             }
 

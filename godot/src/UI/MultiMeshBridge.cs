@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using Godot;
 using ProjectChimera.Core;
 using ProjectChimera.Core.Definitions;
@@ -81,7 +81,9 @@ namespace ProjectChimera.UI
                 // Per-TYPE material, not one shared across the faction: each unit type carries its own
                 // albedo art, so a single shared material cannot supply the right texture. For untextured
                 // art TeamTintMaterial returns the identical flat material this loop used to share.
-                var mat = TeamTintMaterial.Build(mesh, teamColor, UnitRoughness, out _);
+                var mat = TeamTintMaterial.Build(mesh, teamColor, UnitRoughness, out _,
+                                                 assetName: def?.MeshPath ?? def?.Id ?? $"unit#{t}",
+                                                 valueScale: TeamTintMaterial.UnitValue);
                 _mmi[t] = BuildSubMesh(t, mesh, scale, mat, GroundOffsetFor(mesh, scale));
             }
 
