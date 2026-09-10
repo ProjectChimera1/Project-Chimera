@@ -1,119 +1,12 @@
 {
-  "content_hash": "d3020ef27f53317b",
+  "content_hash": "74b1a34088d739dc",
   "asset": "beta/siege_workshop",
   "mesh_file": "render_works.glb",
   "tris": 9118,
   "warns": [
     "winding inconsistent (fix_normals + retest)"
   ],
-  "stage_id": "5698e2946272fca1",
+  "stage_id": "c3c84fd6e0f8a735",
   "blender": "Blender 4.5.10 LTS",
-  "mesh_profile": "bake",
-  "stage": {
-    "src": "D:\\tools\\asset-gen-work\\beta_siege_workshop_raw.glb",
-    "dst": "D:\\tools\\asset-gen-work\\beta_siege_workshop.glb",
-    "kind": "building",
-    "device": "OPTIX:NVIDIA GeForce RTX 3060",
-    "tex_size": 1024,
-    "tris_hp": 1136415,
-    "verts_hp_welded": 433524,
-    "tris_before": 1115648,
-    "tris_after": 9121,
-    "tri_target": 10000,
-    "method": "voxel-remesh+collapse",
-    "shells": {
-      "shells": 50,
-      "threshold": 167347,
-      "dropped": 49,
-      "faces_dropped": 20767,
-      "largest_shell_faces": 1115648
-    },
-    "slab": {
-      "high_poly": {
-        "stripped": true,
-        "faces": 99948,
-        "area_frac": 0.1015,
-        "height_before": 1.2216,
-        "rim_faces": 0,
-        "sliver_faces": 6,
-        "height_after": 1.2186,
-        "height_loss_frac": 0.0024,
-        "faces_after": 1036461
-      },
-      "low_poly": {
-        "stripped": true,
-        "faces": 873,
-        "area_frac": 0.1823,
-        "height_before": 1.2124,
-        "rim_faces": 0,
-        "sliver_faces": 6,
-        "height_after": 1.2124,
-        "height_loss_frac": 0.0,
-        "faces_after": 9121
-      }
-    },
-    "materials": 1,
-    "basecolor": {
-      "filled_from_fallback": 1925,
-      "unfilled": 1880,
-      "dilated": 433878
-    },
-    "normal": {
-      "filled_from_fallback": 1419,
-      "unfilled": 2172,
-      "dilated": 482358
-    },
-    "ao_applied": false,
-    "projection": {
-      "front_subject_uv": [
-        0.1064453125,
-        0.248046875,
-        1.0,
-        1.0
-      ],
-      "back_subject_uv": [
-        0.1064453125,
-        0.248046875,
-        1.0,
-        1.0
-      ],
-      "mirrored_back": true,
-      "projection": "flat",
-      "box_blend": null
-    },
-    "min_z": 0.0,
-    "center_xy": [
-      0.0,
-      0.0
-    ],
-    "out_bytes": 4548564,
-    "ok": true
-  },
-  "clean": {
-    "src": "D:\\tools\\ComfyUI_windows_portable\\ComfyUI\\input\\cc_beta_siege_workshop.png",
-    "dst": "D:\\tools\\asset-gen-work\\clean\\beta_siege_workshop_rgba.png",
-    "white": "D:\\tools\\asset-gen-work\\clean\\beta_siege_workshop_white.png",
-    "size": [
-      1024,
-      1024
-    ],
-    "out_size": [
-      1024,
-      1024
-    ],
-    "squared": true,
-    "model": "u2net",
-    "matte_coverage": 0.4495,
-    "final_coverage": 0.439,
-    "kept_of_matte": 0.9986,
-    "stray_blobs_dropped": true,
-    "matte_failed": false,
-    "subject_bbox_px": [
-      109,
-      0,
-      1024,
-      770
-    ],
-    "ok": true
-  }
+  "mesh_profile": "paint"
 }

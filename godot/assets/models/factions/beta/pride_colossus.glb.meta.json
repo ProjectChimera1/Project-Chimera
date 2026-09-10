@@ -1,119 +1,12 @@
 {
-  "content_hash": "c9c80cf2fdd8632c",
+  "content_hash": "05ad6e23385f94ac",
   "asset": "beta/ironclad",
   "mesh_file": "pride_colossus.glb",
   "tris": 5591,
   "warns": [
     "winding inconsistent (fix_normals + retest)"
   ],
-  "stage_id": "5698e2946272fca1",
+  "stage_id": "c3c84fd6e0f8a735",
   "blender": "Blender 4.5.10 LTS",
-  "mesh_profile": "bake",
-  "stage": {
-    "src": "D:\\tools\\asset-gen-work\\beta_ironclad_raw.glb",
-    "dst": "D:\\tools\\asset-gen-work\\beta_ironclad.glb",
-    "kind": "unit",
-    "device": "OPTIX:NVIDIA GeForce RTX 3060",
-    "tex_size": 1024,
-    "tris_hp": 1118357,
-    "verts_hp_welded": 428765,
-    "tris_before": 1093721,
-    "tris_after": 5595,
-    "tri_target": 6000,
-    "method": "voxel-remesh+collapse",
-    "shells": {
-      "shells": 30,
-      "threshold": 164058,
-      "dropped": 29,
-      "faces_dropped": 24636,
-      "largest_shell_faces": 1093721
-    },
-    "slab": {
-      "high_poly": {
-        "stripped": true,
-        "faces": 121590,
-        "area_frac": 0.1316,
-        "height_before": 1.9647,
-        "rim_faces": 27238,
-        "sliver_faces": 642,
-        "height_after": 1.9641,
-        "height_loss_frac": 0.0003,
-        "faces_after": 968887
-      },
-      "low_poly": {
-        "stripped": true,
-        "faces": 364,
-        "area_frac": 0.1835,
-        "height_before": 1.9652,
-        "rim_faces": 20,
-        "sliver_faces": 20,
-        "height_after": 1.9652,
-        "height_loss_frac": -0.0,
-        "faces_after": 5595
-      }
-    },
-    "materials": 1,
-    "basecolor": {
-      "filled_from_fallback": 6247,
-      "unfilled": 1480,
-      "dilated": 479983
-    },
-    "normal": {
-      "filled_from_fallback": 4341,
-      "unfilled": 2401,
-      "dilated": 562239
-    },
-    "ao_applied": false,
-    "projection": {
-      "front_subject_uv": [
-        0.20723684210526316,
-        0.07648026315789473,
-        0.7697368421052632,
-        0.9177631578947368
-      ],
-      "back_subject_uv": [
-        0.20723684210526316,
-        0.07648026315789473,
-        0.7697368421052632,
-        0.9177631578947368
-      ],
-      "mirrored_back": true,
-      "projection": "flat",
-      "box_blend": null
-    },
-    "min_z": 0.0,
-    "center_xy": [
-      0.0,
-      0.0
-    ],
-    "out_bytes": 4636316,
-    "ok": true
-  },
-  "clean": {
-    "src": "D:\\tools\\ComfyUI_windows_portable\\ComfyUI\\input\\cc_beta_ironclad.png",
-    "dst": "D:\\tools\\asset-gen-work\\clean\\beta_ironclad_rgba.png",
-    "white": "D:\\tools\\asset-gen-work\\clean\\beta_ironclad_white.png",
-    "size": [
-      832,
-      1216
-    ],
-    "out_size": [
-      1216,
-      1216
-    ],
-    "squared": true,
-    "model": "u2net",
-    "matte_coverage": 0.4698,
-    "final_coverage": 0.4587,
-    "kept_of_matte": 1.0,
-    "stray_blobs_dropped": false,
-    "matte_failed": false,
-    "subject_bbox_px": [
-      60,
-      100,
-      744,
-      1124
-    ],
-    "ok": true
-  }
+  "mesh_profile": "paint"
 }
