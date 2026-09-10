@@ -501,7 +501,7 @@ development_status:
   #   append the "### In-Engine Gate" digest BY HAND with plain inline "- digest:" keys.
   #   DW-924 (open) re-test is OWED after slice 3 and again after slice 4 — both raise texture memory and
   #   would otherwise make the next burst report unattributable.
-  epic-16: backlog
+  epic-16: in-progress
   # RE-SHAPED 2026-09-10 (Alec): the thirteen bmad-shaped stories collapsed into FIVE VERTICAL SLICES with no
   #   scope lost. These are NOT a bmad-loop backlog — each is one working session executed directly with Bash,
   #   headless Blender and the godot-mcp bridge, and each ends with something Alec can look at. Alec's words:
@@ -513,9 +513,9 @@ development_status:
   #   untextured roster) and re-plan the art route.
   #   Slice 1 needs NEITHER Godot NOR ComfyUI — the bake reads raw high-polys already on disk. Slices 2-5 need
   #   the single-client godot-mcp bridge and a human present, because src/UI/** is outside Tier-1.
-  16-1-slice1-prove-the-pipeline-on-one-asset: backlog
-  16-2-slice2-make-godot-able-to-show-it: backlog
-  16-3-slice3-run-the-roster-and-land-it: backlog
+  16-1-slice1-prove-the-pipeline-on-one-asset: done
+  16-2-slice2-make-godot-able-to-show-it: done
+  16-3-slice3-run-the-roster-and-land-it: done
   16-4-slice4-the-world: backlog
   16-5-slice5-motion-and-buildings: backlog
   epic-16-retrospective: optional

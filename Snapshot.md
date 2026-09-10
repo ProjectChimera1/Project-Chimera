@@ -1,6 +1,6 @@
 ---
 project: Project Chimera
-last_touched: 2026-08-12
+last_touched: 2026-09-10
 phase: Phase 5 — Polish & 1.0
 status: Active
 ---
@@ -15,69 +15,121 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay. **Session 22 scored FR-39 on two machines** — the #1 pre-ship gate, carried since Epic 1 — after closing DW-912, DW-914 and DW-405.
 
 ## Next Action
-**→ 2026-09-10: the next session is EPIC 16 SLICES 1–3 — prove the pipeline on one asset, make Godot able to show
-a texture, then batch and land all 24. See the Session 7 Current State block below (the newest one) for the plan,
-the traps, and the premises that measurement already falsified. Epic 15's burn-down is PAUSED until Alec says
-otherwise; scope any `bmad-loop` run `--epic 16`, though none of Epic 16 needs one. The FR-39 interactive re-run
-described below is still owed, but it is not what is queued next.**
+**→ 2026-09-10: Epic 16 slices 1-3 are DONE and landed — the roster is textured in-engine and
+Hunyuan3D-Paint is the texture route. Next is SLICE 4 (terrain/world) and SLICE 5 (unit facing, motion,
+buildings sitting on the ground). Read the Session 8 Current State block below first: it records five
+things that were believed and are false, and the Tencent licence question, which is unresolved and
+needs Alec's answer before anything ships commercially.**
 
-**FR-39 is SCORED (135 clean cross-peer windows, 2026-08-08 — see the newest Current State block). Re-run it
-INTERACTIVELY: both players building, moving and fighting.** DW-405 was the thing that made an interactive run
-impossible and it is now fixed, so the "do not build while scoring" rule below is RETIRED.
-
-Both machines need `git pull` + a rebuild + a full Godot relaunch (C# is not hot-loaded). Start here, cold:
-
-```powershell
-# BOTH machines
-cd D:\Projects\Project_Chimera
-Get-Process Godot* -ErrorAction SilentlyContinue | Stop-Process -Force
-git pull
-dotnet build godot\godot.csproj
-```
-
-Then, per `godot/tools/lan-determinism-runbook.md`: PC window A = `-Role server`, PC window B =
-`-Role client -ServerIp 127.0.0.1`, laptop = `-Role client -ServerIp 192.168.1.13`.
-
-**Three lines to confirm before scoring anything** (any one missing means that machine is on a stale assembly):
-
-| Where | Line |
-|---|---|
-| both clients | `Match-agreement hash (algo v4): 0xD9E709768053087C` - identical on both |
-| both clients | `Online match - AI control plan: AiControlPlan(none) (AI active this match: False).` |
-| both clients | `[ENet] Peer connected (timeout budget 20000/60000 ms, DW-911)` |
-
-**Success = at least 5 CROSS-PEER ATTESTED windows, sustained past tick 660** with `0 desync`. Read the window
-count, never the `PASS`. `single-reporter ... INCONCLUSIVE` means a peer is still being dropped - that is
-DW-911(b), not a determinism result. Close the CLIENTS before the server or the `MATCH SUMMARY` line is lost.
-
-**~~Do NOT place buildings while scoring.~~ RETIRED 2026-08-08** — DW-405 is closed. Placement is now a real
-`UnitCommand.PlaceBuilding` wire order that replicates to every peer, so building during a scored run is not
-only allowed, it is the point: an interactive run is the only version of this gate that tests anything.
-
-**Verify BOTH machines report the same commit before every run** — `git rev-parse --short HEAD` must read
-**`939c8ea3`** or later on each. Two runs were lost on 2026-08-08 to a stale peer, one of them because a push
-never landed (so the laptop's `git pull` truthfully answered "Already up to date"). A mixed build sails through
-the handshake — `PROTOCOL_VERSION` only bumps on WIRE-format changes — and deadlocks a hundred ticks later,
-presenting exactly like "the fix didn't work". The tell: a shared bug freezes both machines on the SAME tick, so
-peers stopping on DIFFERENT ticks means different code. **DW-915 exists to make this impossible.**
-
-**If a peer still drops:** paste the `[FrameStall]` and `[NavBake]` lines from the weaker machine. They were
-added for exactly this and turn DW-911(b) from a hypothesis into a number.
-
-**FR-39 itself is already scored** — the 2026-08-08 evidence (135 windows, tick 60→8100) belongs in story
-**1-9b**'s Change Log, which is already marked `done`. What is outstanding is the INTERACTIVE run and its
-`MATCH SUMMARY` line. Note that neither closes **DW-204**: the AI's scorer is still float, now merely
-*contained* (it does not run online). DW-204 must land before an AI may fill a vacant slot in a lockstep match.
-
-**Also available, unblocked, no code needed:** A5-E9 leg (b), **live Nakama** - the same two-machine rig plus
-`docs/server-deploy/docker-compose.yml`. Highest-value target there is **DW-435**, the flagged soft-lock risk.
-
-**bmad-loop is stopped**, tree clean. A fresh `bmad-loop run --epic 15` picks up **15-21** and **15-23**;
-**15-14** is `blocked` (DW-200, needs Alec's trust-mechanism decision) and **15-1** stays `blocked` by deferral.
+Epic 15's burn-down stays PAUSED; scope any `bmad-loop` run `--epic 16`, though no slice needs one.
 
 ---
 
 *Session type: bmad (prescribed workflow in active execution)*
+
+---
+
+## Current State (2026-09-10, SESSION 8 — EPIC 16 SLICES 1-3 BUILT + Hunyuan3D-Paint) — read this first
+
+**This block supersedes everything below it.** Slices 1-3 are DONE and landed. The roster is textured in-engine
+for the first time. Hunyuan3D-Paint is installed, working, and is now the default texture route.
+
+### What shipped
+
+**Slice 1 — the pipeline produces a textured model.** Two stages existed, worked, and were called by nothing;
+both are now wired. `run_manifest.py`'s hand-typed `PIPELINE_VERSION` — the ONLY stage-identity term in
+`content_hash()` — is replaced by a sha1 over the BYTES of the stage scripts a run shells out to, plus the
+Blender version and (for the paint profile) the wrapper commit and torch build. The old constant could not see
+a stage swap, so replacing the mesh stage left all 24 hashes byte-identical and the batch printed `SKIP (cached)`
+24 times and exited reporting success. Pinned by `test_stage_identity.py`, 11/11 both directions.
+
+**Slice 2 — the material contract.** Both arms of `TeamTintMaterial.Build` return a `ShaderMaterial`; the
+untextured arm used to return a plain `StandardMaterial3D`, and since 24 of 24 assets were untextured, every
+edit to the tint shader rendered on ZERO assets while building green. Verified in-engine: 28/28 overrides are
+ShaderMaterial, 1 distinct cached Shader object (was 28). `WorldPresentation` is now the single lighting rig for
+match, editor, asset preview and unit card, which each had DIFFERENT values before — the editor was lying to
+creators about how their own asset would look.
+
+**Slice 3 — the roster.** All 24 baked, gated, landed, and observed rendering through the textured shader arm
+(26/28 `has_albedo=true`; the 2 exceptions are box-placeholder buckets, structurally pinned to Flat). All three
+QA gates now proven to fail in both directions, 10/10 — before today L1 passed a broken venv, L2 was physically
+incapable of displaying a texture, and L3 never looked at a material.
+
+**Hunyuan3D-Paint** replaces the projection bake as the texture route (`--mesh-profile paint`). See below.
+
+### Things that were believed and are false — do not re-derive
+
+1. **"The models are ugly because the generator is bad" — FALSE.** The raw high-polys on disk were always good
+   (detailed figure, beard, coat, boots). `blender_pipeline.py`, the REDUCTION stage, was destroying them on the
+   way to 6k tris. That stage is what this epic replaced.
+2. **"The four grey buildings are a 3D problem because they are the known hollow facades" — FALSE**, and the
+   coincidence is what made it convincing. Their CLEANED plates had subject coverage 0.000-0.001 against
+   0.10-0.65 for every character: rembg's u2net is a SALIENT-OBJECT segmenter and those four plates are
+   architectural SCENES with no single salient object. `clean_concept.py` wrote a blank white image and reported
+   `"ok": true`. Triplanar projection was tried as the fix and did nothing (0.019/0.019/0.018), which is what
+   forced the look upstream. Now guarded: below a coverage floor the matte is declared failed and the unmatted
+   plate is used. 0.02 -> 0.23, 0.02 -> 0.38, 0.03 -> 0.18, 0.02 -> 0.21.
+3. **"An import check proves a compiled CUDA extension works" — FALSE, and this cost the most time.** The
+   prebuilt `custom_rasterizer` wheel matched this rig's Python/torch/CUDA exactly, installed and imported
+   cleanly, then failed at the first KERNEL LAUNCH because it was never built for the 3060's sm_86. The error is
+   asynchronous and surfaces inside an unrelated pure-torch indexing expression. Only a kernel launch is
+   evidence; `build_custom_rasterizer.ps1` ends by performing one.
+4. **"The additive lighting will make the untextured roster read better" — MOSTLY FALSE.** A/B'd in-engine:
+   only the Fresnel rim earned its place (silhouette separation 14.6 -> 20.8, +42%). SSAO measured NEUTRAL. The
+   opposing fill light measured ACTIVELY HARMFUL (14.6 -> 13.2) — on a roster whose albedo is one flat colour,
+   the N·L gradient is the only channel carrying form and a fill light fills in exactly that channel. This is
+   the SAME failure mode the epic already identified for a cel ramp and rejected; the ramp was caught by
+   inspection and the fill light was not.
+5. **"`TeamTintMaterial.Strength = 1.0` is harmless" — was true, then silently became wrong.** It was never read
+   while every asset was untextured. The moment real albedo landed, Modulate's `art * team_color` at full
+   strength crushed every texture to monochrome team colour. Measured hue spread 0.520 / 0.569 / 0.658 / 0.717 /
+   0.728 at 1.0 / 0.6 / 0.35 / 0.2 / 0.0. Now 0.35 — not 0, because in a mirror match the tint is the only thing
+   telling two players apart.
+
+### Hunyuan3D-Paint — installed, working, and what it cost
+
+Route: kijai's wrapper as a plain package at `D:\tools\hy3d20`, driven headless from a DEDICATED Python 3.12
+venv at `D:\tools\hy3dpaint-venv` (never ComfyUI's 3.13, and never the deliberately torch-free asset-gen venv).
+Weights ~13 GB at `D:\ai-models\hunyuan3d`. 5 min/asset, peak VRAM 9.9 GB of 12 with the two models PHASED
+rather than co-resident (co-resident surfaces as `CUDNN_STATUS_EXECUTION_FAILED` in a VAE conv, not a clean OOM).
+
+`custom_rasterizer` had to be BUILT from source for sm_86. A minimal CUDA component install silently omits four
+things that each fail differently and minutes apart: `include/crt/` (claimed installed in version.json but
+absent), cusparse/cusolver headers, and `nvvm/cicc` — nvcc's own device front-end, whose absence presents as a
+bare "system cannot find the path specified". `install_cuda_headers.ps1` fetches these from NVIDIA's
+per-component redist archives, which cannot touch the display driver. **Driver 616.92 verified unchanged.**
+nvcc 13.0 also hard-refuses MSVC 14.5x and the documented override does NOT reach the command line through
+`NVCC_APPEND_FLAGS`; it is injected into `setup.py` idempotently.
+
+`hy3d_paint.py` carries FOUR adapter shims, none of them edits to the vendored tree, because kijai drives these
+models from ComfyUI node classes now and the standalone `pipelines.py` has drifted from them: a constructor
+signature, a renderer returning `(image, mask)` where a bare image is expected, a PIL-vs-tensor mismatch
+(patched on the CLASS — dunder lookup ignores instance attributes), and diffusers' `trust_remote_code`.
+
+**THE UV CONTRACT is the thing that would have been invisible.** `pipelines.py:155` calls `mesh_uv_wrap()` ->
+`xatlas.parametrize()`, which REPLACES vertices, faces and UVs. Our low-poly carries the smart-projected UVs the
+shipped GLB and its baked normal map both depend on, so a re-unwrap would paint all 24 textures into a
+coordinate space the meshes do not use — and L1, L2 and L3 would ALL still pass. Three defences: monkeypatch to
+identity, `xatlas` STUBBED rather than installed so any real call raises by name, and a UV hash before/after
+with a mismatch refusing to apply the texture.
+
+### Open decisions for Alec
+
+- **LICENCE, unresolved and material.** `D:\tools\hy3d20\LICENSE.txt` states *"THIS LICENSE AGREEMENT DOES NOT
+  APPLY IN THE EUROPEAN UNION, UNITED KINGDOM AND SOUTH KOREA"*, and **41 files** in that tree carry a per-file
+  `TENCENT HUNYUAN NON-COMMERCIAL LICENSE` header that contradicts the repo-level Community licence. Fine for
+  evaluation. Needs a real answer before shipping commercially. The outputs are regenerable with a different
+  tool if the answer is no — nothing else in the pipeline depends on Tencent.
+- **DW-1015 (four hollow facades)** remains accepted as-is on geometry; their greyness is fixed.
+
+### What is NOT done
+
+Slices 4 (terrain/world) and 5 (unit motion, buildings on the ground) are untouched. `nav_footprint`-vs-mesh
+extent (DW-1016), creator texture allow-listing (DW-1017), VAT/skeletal animation (DW-1018) and the packed-RGBA
+terrain migration (DW-1019) all remain filed and out of scope.
+
+Tier-1 at the end of slice 2: **7123 passed / 0 failed / 1 skipped**, identical to baseline. No golden moved, no
+hash value moved, no AlgoVersion bump.
 
 ---
 
