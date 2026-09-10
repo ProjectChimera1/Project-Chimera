@@ -43,6 +43,24 @@ import time
 HY3D_ROOT = os.environ.get("CHIMERA_HY3D_ROOT", r"D:\tools\hy3d20")
 
 
+def _sys_ram_used_gb():
+    """Physical RAM in use system-wide. The paint stage is bounded by HOST memory as much as by
+    VRAM, and the OS kills for the former without warning."""
+    import ctypes
+
+    class _MS(ctypes.Structure):
+        _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+
+    m = _MS()
+    m.dwLength = ctypes.sizeof(_MS)
+    ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m))
+    return round((m.ullTotalPhys - m.ullAvailPhys) / 1e9, 2)
+
+
 def uv_hash(mesh):
     """Stable fingerprint of a mesh's UV array, used to prove the unwrap did not run."""
     import numpy as np
@@ -73,6 +91,30 @@ def main() -> int:
 
     import torch
     import trimesh
+
+    # MEMORY-MAP EVERY CHECKPOINT LOAD. This is a HOST-RAM fix, not a VRAM one, and it is what
+    # stopped the batch: the paint UNet ships as a 3.6 GB `.bin` (there is no safetensors for it),
+    # and the custom loader calls `torch.load(..., map_location='cpu')`, which materialises the
+    # whole tensor set in RAM and then copies it into the model -- roughly 7 GB transiently, on top
+    # of the delight model, on a 16 GB machine. The first attempt at a 24-asset run was killed by
+    # the OS for low memory partway through asset 5.
+    #
+    # `mmap=True` pages tensors from disk instead of reading them whole, which removes the transient
+    # copy entirely. It applies to any zip-format checkpoint, which is everything torch has written
+    # since 1.6.
+    _torch_load = torch.load
+
+    def _mmap_load(f, *a, **kw):
+        if isinstance(f, (str, os.PathLike)):
+            kw.setdefault("mmap", True)
+            kw.setdefault("map_location", "cpu")
+        try:
+            return _torch_load(f, *a, **kw)
+        except (RuntimeError, ValueError, TypeError):
+            kw.pop("mmap", None)
+            return _torch_load(f, *a, **kw)
+
+    torch.load = _mmap_load
 
     # STUB xatlas RATHER THAN INSTALL IT. `uv_warp_utils.py` does a module-level `import xatlas`,
     # so leaving it uninstalled makes `pipelines.py` unimportable — the tripwire fires too early to
@@ -186,6 +228,36 @@ def main() -> int:
         return 2
 
     torch.cuda.reset_peak_memory_stats()
+
+    # RUN DELIGHT BEFORE THE PAINT PIPELINE EXISTS, not after.
+    #
+    # `Hunyuan3DPaintPipeline.__init__` calls `load_models()`, which loads the delight model AND the
+    # multi-view model back to back, so both sets of weights are resident before any user code gets
+    # control. Freeing delight afterwards -- which is what this script did first -- lowers the
+    # steady state but does nothing about the PEAK, and the peak is what the OS kills for. Measured:
+    # 16.1 GB of 15.9 GB physical, spilling into the pagefile, and a 24-asset run was killed partway
+    # through asset 5.
+    #
+    # Delight is a one-shot preprocessing step on a single image, so it does not need to coexist
+    # with the painter at all. Load it alone, run it, free it, and only then build the pipeline with
+    # `load_models` patched to skip the delight half.
+    import gc
+    _LSR_real = _LSR
+    delight_model = _LSR_real(cfg.light_remover_ckpt_path, cfg.device)
+    from PIL import Image as _IM
+    ref = _IM.open(args.image)
+    delit = delight_model(ref)
+    del delight_model
+    gc.collect()
+    torch.cuda.empty_cache()
+    ram_after_delight = _sys_ram_used_gb()
+
+    def _load_multiview_only(self):
+        torch.cuda.empty_cache()
+        self.models["delight_model"] = lambda x: x      # already applied, above
+        self.models["multiview_model"] = P.Multiview_Diffusion_Net(self.config)
+
+    Hunyuan3DPaintPipeline.load_models = _load_multiview_only
     pipe = Hunyuan3DPaintPipeline(cfg)
 
     # INPUT-SHAPE SHIM. kijai COMMENTED OUT the PIL->tensor conversion inside the custom multi-view
@@ -218,21 +290,7 @@ def main() -> int:
 
     _inner_cls.__call__ = _coerce_call
 
-    # PHASE THE TWO MODELS. Delight and multi-view are both ~4-5 GB in fp16 and the stock pipeline
-    # holds them co-resident for the whole run, which on a 12 GB card surfaces as
-    # `CUDNN_STATUS_EXECUTION_FAILED` inside a VAE conv rather than as a clean OOM. Delight is only
-    # needed once, at the very start, so run it here, free it, and hand the pipeline an
-    # already-delit image behind an identity stand-in.
-    from PIL import Image as _IM
-    ref = _IM.open(args.image)
-    delit = pipe.models["delight_model"](ref)
-    del pipe.models["delight_model"]
-    pipe.models["delight_model"] = lambda x: x
-    import gc
-    gc.collect()
-    torch.cuda.empty_cache()
     after_delight = torch.cuda.memory_allocated() / 1e6
-
     mvp = pipe.models["multiview_model"].pipeline
     for fn in ("enable_attention_slicing", "enable_vae_slicing", "enable_vae_tiling"):
         try:
@@ -250,6 +308,14 @@ def main() -> int:
     img = Image.fromarray(np.clip(tex * 255.0, 0, 255).astype(np.uint8)).convert("RGB")
     os.makedirs(os.path.dirname(os.path.abspath(args.out_texture)) or ".", exist_ok=True)
     img.save(args.out_texture)
+
+    # Sidecar the UV hash beside the texture so an interrupted batch can tell whether this albedo
+    # is still valid for the mesh as it now stands, without repainting to find out.
+    try:
+        with open(args.out_texture + ".uvhash", "w", encoding="utf-8") as fh:
+            fh.write(h_in)
+    except OSError:
+        pass
 
     arr = np.asarray(img)
     distinct = int(len({tuple(c) for c in arr.reshape(-1, 3)[::97]}))
@@ -270,6 +336,8 @@ def main() -> int:
         "render_size": args.render_size,
         "peak_vram_mb": round(peak, 1),
         "vram_after_delight_mb": round(after_delight, 1),
+        "host_ram_after_delight_gb": ram_after_delight,
+        "host_ram_peak_gb": _sys_ram_used_gb(),
         "seconds": round(time.time() - t0, 1),
     }))
     return 0 if ok else 1

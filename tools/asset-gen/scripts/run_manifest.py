@@ -199,14 +199,45 @@ def paint_stage(lp_glb, ref_image, tex=0, timeout=3600):
     successful overnight run ships 24 assets rather than 16.
     """
     tex_png = os.path.splitext(lp_glb)[0] + "_hy3d_albedo.png"
-    cmd = [HY3D_PY, PAINT, "--mesh", lp_glb, "--image", ref_image,
-           "--out-texture", tex_png, "--models", HY3D_MODELS]
-    if tex:
-        cmd += ["--tex", str(tex)]
-    r = sh(cmd, timeout=timeout)
-    line = next((l for l in (r.stdout or "").splitlines() if l.startswith("PAINT_JSON ")), None)
-    info = json.loads(line[len("PAINT_JSON "):]) if line else {
-        "ok": False, "error": (r.stderr or "")[-400:] or "no PAINT_JSON"}
+
+    # RESUME, keyed on the UV HASH rather than on mtime. Paint is ~5 minutes an asset, so a
+    # 24-asset run is hours and WILL be interrupted -- the first attempt was killed by the OS for
+    # low memory partway through asset 5 -- and without this it redoes everything that already
+    # succeeded.
+    #
+    # mtime is the wrong key here and would silently never hit: the paint profile RE-BAKES the mesh
+    # before painting it, so the mesh is always newer than the albedo. What actually decides
+    # validity is whether the albedo was painted for the UV layout the mesh currently has, so
+    # hy3d_paint.py writes its uv_hash beside the texture and that is what is compared.
+    uvfile = tex_png + ".uvhash"
+    resumed = False
+    if os.path.exists(tex_png) and os.path.exists(uvfile):
+        try:
+            r = sh([HY3D_PY, "-c",
+                    "import sys,trimesh,hashlib,numpy as np;"
+                    "m=trimesh.load(sys.argv[1],force='mesh',process=False);"
+                    "uv=getattr(getattr(m,'visual',None),'uv',None);"
+                    "print('none' if uv is None else hashlib.sha1("
+                    "np.ascontiguousarray(np.asarray(uv,dtype=np.float64)).tobytes()).hexdigest()[:12])",
+                    lp_glb], timeout=300)
+            now = (r.stdout or "").strip().splitlines()[-1] if r.stdout else ""
+            want = open(uvfile, encoding="utf-8").read().strip()
+            if now and now == want:
+                info = {"ok": True, "resumed": True, "out_texture": tex_png,
+                        "uv_preserved": True, "uv_hash_in": now}
+                resumed = True
+        except Exception:
+            pass
+
+    if not resumed:
+        cmd = [HY3D_PY, PAINT, "--mesh", lp_glb, "--image", ref_image,
+               "--out-texture", tex_png, "--models", HY3D_MODELS]
+        if tex:
+            cmd += ["--tex", str(tex)]
+        r = sh(cmd, timeout=timeout)
+        line = next((l for l in (r.stdout or "").splitlines() if l.startswith("PAINT_JSON ")), None)
+        info = json.loads(line[len("PAINT_JSON "):]) if line else {
+            "ok": False, "error": (r.stderr or "")[-400:] or "no PAINT_JSON"}
 
     if not info.get("ok") or not os.path.exists(tex_png):
         return info, False
