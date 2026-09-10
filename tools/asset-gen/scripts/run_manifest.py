@@ -23,6 +23,16 @@ Mesh stage is selectable with --mesh-profile:
   bake        hp_to_lp_bake.py -- joins, welds, drops debris, decimates, UNWRAPS, projects the
               concept plate onto the high-poly and bakes it down to the low-poly as a real
               albedo (plus an optional tangent normal map).
+  paint       bake, THEN Hunyuan3D-Paint on top. The bake projects ONE concept image
+              orthographically front-and-back, which by construction stretches every surface
+              running parallel to the projection axis and MIRRORS the front onto the back. Paint
+              instead generates six mutually-consistent views (front/right/back/left/top/bottom)
+              and back-projects all six, so the back is generated rather than mirrored and the
+              sides are seen rather than smeared.
+              Runs in its own Python 3.12 venv (CHIMERA_HY3D_PY) because the asset-gen venv is
+              deliberately torch-free. The bake runs FIRST and its albedo stays on the mesh, so a
+              paint failure degrades to `albedo_source: projection_fallback` rather than losing
+              the asset -- a partly successful overnight batch still ships 24.
 
 ORDERING INVARIANT: the `bake` profile will NOT write into the project tree unless --land is
 passed explicitly. `TeamTintPolicy.Resolve` is `hasAlbedoTexture ? requested : Flat`, so the
@@ -43,6 +53,15 @@ BAKE = os.path.join(QA, "hp_to_lp_bake.py")            # mesh stage: retopo + te
 CLEAN = os.path.join(QA, "clean_concept.py")           # subject isolation, between concept and shape
 GATE = os.path.join(QA, "trimesh_gate.py")             # L1 numeric gate
 RENDER = os.path.join(QA, "blender_qa_render.py")      # L2 contact sheet
+PAINT = os.path.join(QA, "hy3d_paint.py")              # Hunyuan3D-Paint, runs under its own 3.12 venv
+APPLY = os.path.join(QA, "apply_painted_albedo.py")    # Blender: swap albedo, keep the normal map
+
+# The paint stage runs under a DEDICATED venv, not the asset-gen one: asset-gen-venv's charter is
+# torch-free, and a 3 GB torch install there would violate it. Overridable for the same reason
+# CHIMERA_BLENDER is -- so an old roster can be re-painted on the exact environment that made it.
+HY3D_PY = os.environ.get("CHIMERA_HY3D_PY", "D:/tools/hy3dpaint-venv/Scripts/python.exe")
+HY3D_ROOT = os.environ.get("CHIMERA_HY3D_ROOT", "D:/tools/hy3d20")
+HY3D_MODELS = os.environ.get("CHIMERA_HY3D_MODELS", "D:/ai-models/hunyuan3d")
 PROFILE = os.path.join(HERE, "..", "config", "engine_profiles", "godot_chimera.json")
 MANIFEST = os.path.join(HERE, "..", "config", "chimera_assets.json")
 WORK = r"D:\tools\asset-gen-work"
@@ -77,6 +96,31 @@ def blender_version(blender=BLENDER):
         if line.strip().startswith("Blender "):
             return line.strip()
     raise SystemExit("FATAL: could not read a version from %s" % blender)
+
+
+def paint_identity():
+    """Identity of the Hunyuan3D-Paint stage: the wrapper commit plus the torch build.
+
+    Folded into the stage identity for exactly the reason the Blender version is. The weights and
+    the wrapper ARE a pipeline stage; swapping paint-v2-0 for turbo, or `git pull`ing the wrapper,
+    changes every output byte. Without this the batch would print 24 x SKIP (cached) and exit
+    reporting success -- the same defect the hand-typed PIPELINE_VERSION constant caused.
+    """
+    sha = "nogit"
+    try:
+        r = sh(["git", "-C", HY3D_ROOT, "rev-parse", "--short", "HEAD"], timeout=60)
+        if r.returncode == 0 and r.stdout.strip():
+            sha = r.stdout.strip()
+    except Exception:
+        pass
+    tv = "notorch"
+    try:
+        r = sh([HY3D_PY, "-c", "import torch;print(torch.__version__)"], timeout=180)
+        if r.returncode == 0 and r.stdout.strip():
+            tv = r.stdout.strip().splitlines()[-1]
+    except Exception:
+        pass
+    return f"hy3d-paint-v2-0 {sha} torch{tv}"
 
 
 def stage_identity(scripts, blender_id):
@@ -145,12 +189,62 @@ def clean_concept(src_png, faction, aid):
     return rgba, white, json.loads(line[len("CLEAN_JSON "):])
 
 
-def mesh_stage(profile, raw, out, target, tri_kind, project_front=None, tex=0, timeout=1800):
+def paint_stage(lp_glb, ref_image, tex=0, timeout=3600):
+    """Hunyuan3D-Paint over an already-baked low-poly. Returns (info, ok).
+
+    Runs the multi-view paint model in its own venv, then rewires the resulting albedo onto the
+    mesh in Blender. The projection bake has ALREADY run by this point and its albedo is on the
+    mesh, which is the whole point of the ordering: if paint OOMs or times out on one asset, that
+    asset keeps the projection albedo, still passes --require-textured, and still lands. A partly
+    successful overnight run ships 24 assets rather than 16.
+    """
+    tex_png = os.path.splitext(lp_glb)[0] + "_hy3d_albedo.png"
+    cmd = [HY3D_PY, PAINT, "--mesh", lp_glb, "--image", ref_image,
+           "--out-texture", tex_png, "--models", HY3D_MODELS]
+    if tex:
+        cmd += ["--tex", str(tex)]
+    r = sh(cmd, timeout=timeout)
+    line = next((l for l in (r.stdout or "").splitlines() if l.startswith("PAINT_JSON ")), None)
+    info = json.loads(line[len("PAINT_JSON "):]) if line else {
+        "ok": False, "error": (r.stderr or "")[-400:] or "no PAINT_JSON"}
+
+    if not info.get("ok") or not os.path.exists(tex_png):
+        return info, False
+
+    # The UV contract. If the paint stage re-unwrapped the mesh, the texture is painted into a UV
+    # space the shipped mesh does not use -- and every structural gate would still pass.
+    if not info.get("uv_preserved", False):
+        info["error"] = "UVs were NOT preserved by the paint stage; refusing to apply the texture"
+        return info, False
+
+    ar = sh([BLENDER, "-b", "-P", APPLY, "--",
+             "--in", lp_glb, "--albedo", tex_png, "--out", lp_glb], timeout=900)
+    aline = next((l for l in (ar.stdout or "").splitlines() if l.startswith("APPLY_JSON ")), None)
+    info["apply"] = json.loads(aline[len("APPLY_JSON "):]) if aline else {
+        "ok": False, "error": (ar.stderr or "")[-400:]}
+    return info, bool(info["apply"].get("ok"))
+
+
+def mesh_stage(profile, raw, out, target, tri_kind, project_front=None, tex=0, timeout=1800,
+               paint_ref=None):
     """Run the selected mesh stage. Returns (info_dict, stderr_tail).
 
-    Both stages are kept reachable: `normalize` is the path that produced the shipped roster and
-    must stay runnable to reproduce it, `bake` is the path that produces a textured asset.
+    All three stages are kept reachable: `normalize` is the path that produced the original shipped
+    roster and must stay runnable to reproduce it, `bake` is the projection bake, and `paint` is
+    the bake followed by Hunyuan3D-Paint's multi-view albedo.
     """
+    if profile == "paint":
+        info, err = mesh_stage("bake", raw, out, target, tri_kind, project_front, tex, timeout)
+        if not os.path.exists(out):
+            return info, err
+        ref = paint_ref or project_front
+        pinfo, ok = paint_stage(out, ref, tex=tex)
+        info["paint"] = pinfo
+        # Recorded per asset in the .meta.json, so a mixed batch is legible at a glance and only
+        # the fallback assets need re-running.
+        info["albedo_source"] = "hunyuan3d_paint_v2_0" if ok else "projection_fallback"
+        return info, err
+
     if profile == "normalize":
         r = sh([BLENDER, "-b", "-P", PIPELINE, "--", raw, out, str(target), tri_kind], timeout=timeout)
         return {"stage": "normalize"}, (r.stderr or "")[-600:]
@@ -172,8 +266,9 @@ def main():
     ap.add_argument("--only", help="asset id (add --faction when the id exists in both factions)")
     ap.add_argument("--faction")
     ap.add_argument("--limit", type=int)
-    ap.add_argument("--mesh-profile", choices=["normalize", "bake"], default="normalize",
-                    help="normalize = blender_pipeline.py (no UVs, no texture); bake = hp_to_lp_bake.py")
+    ap.add_argument("--mesh-profile", choices=["normalize", "bake", "paint"], default="normalize",
+                    help="normalize = blender_pipeline.py (no UVs, no texture); bake = hp_to_lp_bake.py "
+                         "(projection bake); paint = bake + Hunyuan3D-Paint multi-view albedo")
     ap.add_argument("--from-raw", action="store_true",
                     help="skip concept+shape; re-run the mesh stage from the *_raw.glb already on disk (no ComfyUI)")
     ap.add_argument("--land", action="store_true",
@@ -191,12 +286,16 @@ def main():
 
     # The stage set is exactly the scripts THIS run shells out to -- so selecting a different
     # mesh profile is itself a change of identity, which is the whole point.
-    stages = [CLEAN, GATE, RENDER, BAKE if args.mesh_profile == "bake" else PIPELINE]
+    stages = [CLEAN, GATE, RENDER]
+    stages += [BAKE] if args.mesh_profile in ("bake", "paint") else [PIPELINE]
+    if args.mesh_profile == "paint":
+        stages += [PAINT, APPLY]
     bver = blender_version()
-    stage_id = stage_identity(stages, bver)
+    ident = bver if args.mesh_profile != "paint" else bver + " | " + paint_identity()
+    stage_id = stage_identity(stages, ident)
 
     if args.print_stage_id:
-        print(json.dumps({"stage_id": stage_id, "blender": bver,
+        print(json.dumps({"stage_id": stage_id, "blender": bver, "identity": ident,
                           "stages": [os.path.basename(s) for s in stages],
                           "mesh_profile": args.mesh_profile}, indent=2))
         return
@@ -248,7 +347,7 @@ def main():
                 print(f"[{i}/{len(assets)}] MISSING {tag} (nothing at {out})", flush=True)
                 summary.append({"asset": tag, "status": "fail", "gate": {"fails": ["no output in WORK"]}})
                 continue
-            gate_res = gate(out, a["tri_kind"], require_textured=(args.mesh_profile == "bake"))
+            gate_res = gate(out, a["tri_kind"], require_textured=(args.mesh_profile in ("bake", "paint")))
             if gate_res["verdict"] != "PASS":
                 print(f"[{i}/{len(assets)}] GATE FAIL {tag}: {gate_res['fails']}", flush=True)
                 summary.append({"asset": tag, "status": "fail", "gate": gate_res})
@@ -313,14 +412,19 @@ def main():
                 # 4. mesh stage
                 if os.path.exists(out):
                     os.remove(out)
+                # project_front takes the RGBA cutout: the projection bake genuinely needs the matte
+                # to tell subject from backdrop. paint_ref takes the WHITE composite instead,
+                # because the delight model is RGB and drops alpha -- the identical trap the shape
+                # stage already hit, one stage later.
                 stage_info, err = mesh_stage(
                     args.mesh_profile, raw, out, target, tri_kind,
-                    project_front=(rgba if args.mesh_profile == "bake" else None), tex=args.tex)
+                    project_front=(rgba if args.mesh_profile in ("bake", "paint") else None),
+                    tex=args.tex, paint_ref=white)
                 if not os.path.exists(out):
                     raise RuntimeError(f"{args.mesh_profile} stage produced no glb: {err}")
 
                 # 5. gate
-                gate_res = gate(out, tri_kind, require_textured=(args.mesh_profile == "bake"))
+                gate_res = gate(out, tri_kind, require_textured=(args.mesh_profile in ("bake", "paint")))
                 if gate_res["verdict"] == "PASS":
                     status = "pass"; break
                 print(f"    attempt {attempt+1} gate FAIL: {gate_res['fails']}", flush=True)
