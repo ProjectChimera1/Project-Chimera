@@ -1,8 +1,119 @@
 {
-  "content_hash": "4ee430dc511a12ce",
+  "content_hash": "e9efd3e757864ff6",
   "asset": "alpha/infantry",
   "mesh_file": "covenant_transmuter.glb",
-  "tris": 5986,
-  "warns": [],
-  "pipeline": "v1-remesh240-6k"
+  "tris": 5849,
+  "warns": [
+    "winding inconsistent (fix_normals + retest)"
+  ],
+  "stage_id": "5698e2946272fca1",
+  "blender": "Blender 4.5.10 LTS",
+  "mesh_profile": "bake",
+  "stage": {
+    "src": "D:\\tools\\asset-gen-work\\alpha_infantry_raw.glb",
+    "dst": "D:\\tools\\asset-gen-work\\alpha_infantry.glb",
+    "kind": "unit",
+    "device": "OPTIX:NVIDIA GeForce RTX 3060",
+    "tex_size": 1024,
+    "tris_hp": 1218165,
+    "verts_hp_welded": 416081,
+    "tris_before": 1203103,
+    "tris_after": 5854,
+    "tri_target": 6000,
+    "method": "voxel-remesh+collapse",
+    "shells": {
+      "shells": 19,
+      "threshold": 180465,
+      "dropped": 18,
+      "faces_dropped": 15062,
+      "largest_shell_faces": 1203103
+    },
+    "slab": {
+      "high_poly": {
+        "stripped": true,
+        "faces": 52538,
+        "area_frac": 0.0529,
+        "height_before": 1.9666,
+        "rim_faces": 1608,
+        "sliver_faces": 213,
+        "height_after": 1.9648,
+        "height_loss_frac": 0.0009,
+        "faces_after": 1163806
+      },
+      "low_poly": {
+        "stripped": true,
+        "faces": 128,
+        "area_frac": 0.0841,
+        "height_before": 2.028,
+        "rim_faces": 4,
+        "sliver_faces": 13,
+        "height_after": 2.028,
+        "height_loss_frac": 0.0,
+        "faces_after": 5854
+      }
+    },
+    "materials": 1,
+    "basecolor": {
+      "filled_from_fallback": 5406,
+      "unfilled": 2150,
+      "dilated": 338242
+    },
+    "normal": {
+      "filled_from_fallback": 3568,
+      "unfilled": 3235,
+      "dilated": 421124
+    },
+    "ao_applied": false,
+    "projection": {
+      "front_subject_uv": [
+        0.24424342105263158,
+        0.06825657894736842,
+        0.7549342105263158,
+        0.9243421052631579
+      ],
+      "back_subject_uv": [
+        0.24424342105263158,
+        0.06825657894736842,
+        0.7549342105263158,
+        0.9243421052631579
+      ],
+      "mirrored_back": true,
+      "projection": "flat",
+      "box_blend": null
+    },
+    "min_z": 0.0,
+    "center_xy": [
+      0.0,
+      0.0
+    ],
+    "out_bytes": 4810336,
+    "ok": true
+  },
+  "clean": {
+    "src": "D:\\tools\\ComfyUI_windows_portable\\ComfyUI\\input\\cc_alpha_infantry.png",
+    "dst": "D:\\tools\\asset-gen-work\\clean\\alpha_infantry_rgba.png",
+    "white": "D:\\tools\\asset-gen-work\\clean\\alpha_infantry_white.png",
+    "size": [
+      832,
+      1216
+    ],
+    "out_size": [
+      1216,
+      1216
+    ],
+    "squared": true,
+    "model": "u2net",
+    "matte_coverage": 0.4267,
+    "final_coverage": 0.4186,
+    "kept_of_matte": 1.0,
+    "stray_blobs_dropped": false,
+    "matte_failed": false,
+    "subject_bbox_px": [
+      105,
+      92,
+      726,
+      1133
+    ],
+    "ok": true
+  }
 }

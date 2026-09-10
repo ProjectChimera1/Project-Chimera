@@ -1,8 +1,117 @@
 {
-  "content_hash": "1cf12f27870bcf93",
+  "content_hash": "bb4ebaa2970dc48a",
   "asset": "alpha/siege_engine",
   "mesh_file": "crucible_mortar.glb",
-  "tris": 5988,
+  "tris": 5981,
   "warns": [],
-  "pipeline": "v1-remesh240-6k"
+  "stage_id": "5698e2946272fca1",
+  "blender": "Blender 4.5.10 LTS",
+  "mesh_profile": "bake",
+  "stage": {
+    "src": "D:\\tools\\asset-gen-work\\alpha_siege_engine_raw.glb",
+    "dst": "D:\\tools\\asset-gen-work\\alpha_siege_engine.glb",
+    "kind": "unit",
+    "device": "OPTIX:NVIDIA GeForce RTX 3060",
+    "tex_size": 1024,
+    "tris_hp": 734238,
+    "verts_hp_welded": 347752,
+    "tris_before": 612650,
+    "tris_after": 5984,
+    "tri_target": 6000,
+    "method": "voxel-remesh+collapse",
+    "shells": {
+      "shells": 35,
+      "threshold": 91897,
+      "dropped": 34,
+      "faces_dropped": 121588,
+      "largest_shell_faces": 612650
+    },
+    "slab": {
+      "high_poly": {
+        "stripped": true,
+        "faces": 3161,
+        "area_frac": 0.0044,
+        "height_before": 1.738,
+        "rim_faces": 0,
+        "sliver_faces": 30,
+        "height_after": 1.7348,
+        "height_loss_frac": 0.0018,
+        "faces_after": 731047
+      },
+      "low_poly": {
+        "stripped": true,
+        "faces": 14,
+        "area_frac": 0.002,
+        "height_before": 1.7257,
+        "rim_faces": 0,
+        "sliver_faces": 2,
+        "height_after": 1.7257,
+        "height_loss_frac": 0.0,
+        "faces_after": 5984
+      }
+    },
+    "materials": 1,
+    "basecolor": {
+      "filled_from_fallback": 1956,
+      "unfilled": 3505,
+      "dilated": 424592
+    },
+    "normal": {
+      "filled_from_fallback": 1340,
+      "unfilled": 4770,
+      "dilated": 511252
+    },
+    "ao_applied": false,
+    "projection": {
+      "front_subject_uv": [
+        0.0732421875,
+        0.08984375,
+        0.9677734375,
+        0.9384765625
+      ],
+      "back_subject_uv": [
+        0.0732421875,
+        0.08984375,
+        0.9677734375,
+        0.9384765625
+      ],
+      "mirrored_back": true,
+      "projection": "flat",
+      "box_blend": null
+    },
+    "min_z": 0.0,
+    "center_xy": [
+      0.0,
+      0.0
+    ],
+    "out_bytes": 4234264,
+    "ok": true
+  },
+  "clean": {
+    "src": "D:\\tools\\ComfyUI_windows_portable\\ComfyUI\\input\\cc_alpha_siege_engine.png",
+    "dst": "D:\\tools\\asset-gen-work\\clean\\alpha_siege_engine_rgba.png",
+    "white": "D:\\tools\\asset-gen-work\\clean\\alpha_siege_engine_white.png",
+    "size": [
+      1024,
+      1024
+    ],
+    "out_size": [
+      1024,
+      1024
+    ],
+    "squared": true,
+    "model": "u2net",
+    "matte_coverage": 0.4977,
+    "final_coverage": 0.4856,
+    "kept_of_matte": 1.0,
+    "stray_blobs_dropped": false,
+    "matte_failed": false,
+    "subject_bbox_px": [
+      75,
+      63,
+      991,
+      932
+    ],
+    "ok": true
+  }
 }

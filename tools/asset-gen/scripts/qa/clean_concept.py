@@ -69,6 +69,9 @@ def main():
     ap.add_argument("--feather", type=int, default=1, help="blur radius applied to the final alpha")
     ap.add_argument("--keep-all", action="store_true", help="keep stray blobs instead of the main subject only")
     ap.add_argument("--alpha-threshold", type=float, default=0.5)
+    ap.add_argument("--min-coverage", type=float, default=0.02,
+                    help="below this matte coverage the matte is treated as FAILED and the unmatted "
+                         "plate is used instead (see the matte-failure guard)")
     ap.add_argument("--square", action="store_true",
                     help="pad the outputs to a square canvas (see the note on aspect below)")
     args = ap.parse_args()
@@ -82,6 +85,29 @@ def main():
     kept_ratio = 1.0
     if not args.keep_all:
         mask, kept_ratio = largest_component(mask)
+
+    # MATTE-FAILURE GUARD. rembg's u2net is a SALIENT-OBJECT segmenter: it is trained to find one
+    # foreground subject against a background. It does that well for a character on a plain plate,
+    # and it fails completely on an architectural SCENE — a structure sitting in grounds among other
+    # buildings has no single salient object, so the matte comes back near-empty and
+    # largest_component then keeps a speck.
+    #
+    # Measured across the roster: every character plate mattes to 0.10-0.65 coverage, while four
+    # building plates came back at 0.000-0.001. Those four emitted an essentially BLANK WHITE image,
+    # reported `"ok": true`, and every downstream stage faithfully consumed it — the shape pass was
+    # conditioned on nothing and the bake projected white, producing four grey assets whose cause
+    # looked like a 3D problem and was not.
+    #
+    # A stage that destroys its input must not report success. Below the floor, fall back to the
+    # untouched plate: an unmatted background is a far smaller defect than no image at all, and the
+    # failure is named in the output rather than inferred later from a grey model.
+    matte_failed = float(mask.mean()) < args.min_coverage
+    if matte_failed:
+        print("CLEAN_WARN matte failed on %s (coverage %.4f < %.4f) — falling back to the unmatted "
+              "plate. This usually means the plate is a SCENE rather than one isolated subject."
+              % (os.path.basename(args.src), float(mask.mean()), args.min_coverage), file=sys.stderr)
+        mask = np.ones_like(mask, dtype=bool)
+        kept_ratio = 1.0
 
     if args.erode > 0:
         m = Image.fromarray((mask * 255).astype(np.uint8), mode="L")
@@ -131,6 +157,7 @@ def main():
         "final_coverage": round(float(mask.mean()), 4),
         "kept_of_matte": round(kept_ratio, 4),
         "stray_blobs_dropped": (not args.keep_all) and kept_ratio < 0.999,
+        "matte_failed": bool(matte_failed),
         "subject_bbox_px": bbox,
         "ok": True,
     }))

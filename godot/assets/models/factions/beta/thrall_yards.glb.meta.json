@@ -1,8 +1,117 @@
 {
-  "content_hash": "3dc6fbf209341f70",
+  "content_hash": "c5377059e088d32f",
   "asset": "beta/barracks",
   "mesh_file": "thrall_yards.glb",
-  "tris": 9988,
+  "tris": 9887,
   "warns": [],
-  "pipeline": "v1-remesh240-6k"
+  "stage_id": "5698e2946272fca1",
+  "blender": "Blender 4.5.10 LTS",
+  "mesh_profile": "bake",
+  "stage": {
+    "src": "D:\\tools\\asset-gen-work\\beta_barracks_raw.glb",
+    "dst": "D:\\tools\\asset-gen-work\\beta_barracks.glb",
+    "kind": "building",
+    "device": "OPTIX:NVIDIA GeForce RTX 3060",
+    "tex_size": 1024,
+    "tris_hp": 1018428,
+    "verts_hp_welded": 426837,
+    "tris_before": 997203,
+    "tris_after": 9890,
+    "tri_target": 10000,
+    "method": "voxel-remesh+collapse",
+    "shells": {
+      "shells": 43,
+      "threshold": 149580,
+      "dropped": 42,
+      "faces_dropped": 21225,
+      "largest_shell_faces": 997203
+    },
+    "slab": {
+      "high_poly": {
+        "stripped": true,
+        "faces": 11085,
+        "area_frac": 0.0093,
+        "height_before": 1.8324,
+        "rim_faces": 0,
+        "sliver_faces": 117,
+        "height_after": 1.8324,
+        "height_loss_frac": 0.0,
+        "faces_after": 1007226
+      },
+      "low_poly": {
+        "stripped": true,
+        "faces": 83,
+        "area_frac": 0.0012,
+        "height_before": 1.8228,
+        "rim_faces": 0,
+        "sliver_faces": 27,
+        "height_after": 1.8228,
+        "height_loss_frac": 0.0,
+        "faces_after": 9890
+      }
+    },
+    "materials": 1,
+    "basecolor": {
+      "filled_from_fallback": 794,
+      "unfilled": 2876,
+      "dilated": 361058
+    },
+    "normal": {
+      "filled_from_fallback": 516,
+      "unfilled": 3336,
+      "dilated": 428784
+    },
+    "ao_applied": false,
+    "projection": {
+      "front_subject_uv": [
+        0.0126953125,
+        0.1103515625,
+        0.634765625,
+        0.671875
+      ],
+      "back_subject_uv": [
+        0.0126953125,
+        0.1103515625,
+        0.634765625,
+        0.671875
+      ],
+      "mirrored_back": true,
+      "projection": "flat",
+      "box_blend": null
+    },
+    "min_z": 0.0,
+    "center_xy": [
+      0.0,
+      0.0
+    ],
+    "out_bytes": 3891804,
+    "ok": true
+  },
+  "clean": {
+    "src": "D:\\tools\\ComfyUI_windows_portable\\ComfyUI\\input\\cc_beta_barracks.png",
+    "dst": "D:\\tools\\asset-gen-work\\clean\\beta_barracks_rgba.png",
+    "white": "D:\\tools\\asset-gen-work\\clean\\beta_barracks_white.png",
+    "size": [
+      1024,
+      1024
+    ],
+    "out_size": [
+      1024,
+      1024
+    ],
+    "squared": true,
+    "model": "u2net",
+    "matte_coverage": 0.1729,
+    "final_coverage": 0.1044,
+    "kept_of_matte": 0.6704,
+    "stray_blobs_dropped": true,
+    "matte_failed": false,
+    "subject_bbox_px": [
+      12,
+      336,
+      651,
+      912
+    ],
+    "ok": true
+  }
 }

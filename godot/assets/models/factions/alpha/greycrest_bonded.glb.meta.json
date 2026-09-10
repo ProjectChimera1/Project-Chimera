@@ -1,8 +1,117 @@
 {
-  "content_hash": "2e3f16001d0fc2bf",
+  "content_hash": "456b904a768bd50f",
   "asset": "alpha/griffin",
   "mesh_file": "greycrest_bonded.glb",
-  "tris": 5993,
+  "tris": 5770,
   "warns": [],
-  "pipeline": "v1-remesh240-6k"
+  "stage_id": "5698e2946272fca1",
+  "blender": "Blender 4.5.10 LTS",
+  "mesh_profile": "bake",
+  "stage": {
+    "src": "D:\\tools\\asset-gen-work\\alpha_griffin_raw.glb",
+    "dst": "D:\\tools\\asset-gen-work\\alpha_griffin.glb",
+    "kind": "unit",
+    "device": "OPTIX:NVIDIA GeForce RTX 3060",
+    "tex_size": 1024,
+    "tris_hp": 760983,
+    "verts_hp_welded": 310676,
+    "tris_before": 725851,
+    "tris_after": 5773,
+    "tri_target": 6000,
+    "method": "voxel-remesh+collapse",
+    "shells": {
+      "shells": 22,
+      "threshold": 108877,
+      "dropped": 21,
+      "faces_dropped": 35132,
+      "largest_shell_faces": 725851
+    },
+    "slab": {
+      "high_poly": {
+        "stripped": true,
+        "faces": 118538,
+        "area_frac": 0.2008,
+        "height_before": 1.8812,
+        "rim_faces": 40903,
+        "sliver_faces": 8,
+        "height_after": 1.8775,
+        "height_loss_frac": 0.0019,
+        "faces_after": 601534
+      },
+      "low_poly": {
+        "stripped": true,
+        "faces": 180,
+        "area_frac": 0.2748,
+        "height_before": 1.8708,
+        "rim_faces": 46,
+        "sliver_faces": 0,
+        "height_after": 1.8708,
+        "height_loss_frac": -0.0,
+        "faces_after": 5773
+      }
+    },
+    "materials": 1,
+    "basecolor": {
+      "filled_from_fallback": 3941,
+      "unfilled": 3860,
+      "dilated": 441870
+    },
+    "normal": {
+      "filled_from_fallback": 2559,
+      "unfilled": 5572,
+      "dilated": 529046
+    },
+    "ao_applied": false,
+    "projection": {
+      "front_subject_uv": [
+        0.24671052631578946,
+        0.07236842105263158,
+        0.803453947368421,
+        0.9177631578947368
+      ],
+      "back_subject_uv": [
+        0.24671052631578946,
+        0.07236842105263158,
+        0.803453947368421,
+        0.9177631578947368
+      ],
+      "mirrored_back": true,
+      "projection": "flat",
+      "box_blend": null
+    },
+    "min_z": 0.0,
+    "center_xy": [
+      0.0,
+      1.4901161193847656e-08
+    ],
+    "out_bytes": 4347932,
+    "ok": true
+  },
+  "clean": {
+    "src": "D:\\tools\\ComfyUI_windows_portable\\ComfyUI\\input\\cc_alpha_griffin.png",
+    "dst": "D:\\tools\\asset-gen-work\\clean\\alpha_griffin_rgba.png",
+    "white": "D:\\tools\\asset-gen-work\\clean\\alpha_griffin_white.png",
+    "size": [
+      832,
+      1216
+    ],
+    "out_size": [
+      1216,
+      1216
+    ],
+    "squared": true,
+    "model": "u2net",
+    "matte_coverage": 0.416,
+    "final_coverage": 0.4019,
+    "kept_of_matte": 0.9999,
+    "stray_blobs_dropped": false,
+    "matte_failed": false,
+    "subject_bbox_px": [
+      108,
+      100,
+      785,
+      1129
+    ],
+    "ok": true
+  }
 }

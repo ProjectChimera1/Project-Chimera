@@ -1,8 +1,119 @@
 {
-  "content_hash": "76af8b64a68c46ab",
+  "content_hash": "785753583d205637",
   "asset": "beta/bulwark",
   "mesh_file": "slag_bulwark.glb",
-  "tris": 5989,
-  "warns": [],
-  "pipeline": "v1-remesh240-6k"
+  "tris": 5670,
+  "warns": [
+    "winding inconsistent (fix_normals + retest)"
+  ],
+  "stage_id": "5698e2946272fca1",
+  "blender": "Blender 4.5.10 LTS",
+  "mesh_profile": "bake",
+  "stage": {
+    "src": "D:\\tools\\asset-gen-work\\beta_bulwark_raw.glb",
+    "dst": "D:\\tools\\asset-gen-work\\beta_bulwark.glb",
+    "kind": "unit",
+    "device": "OPTIX:NVIDIA GeForce RTX 3060",
+    "tex_size": 1024,
+    "tris_hp": 788491,
+    "verts_hp_welded": 346421,
+    "tris_before": 781956,
+    "tris_after": 5670,
+    "tri_target": 6000,
+    "method": "voxel-remesh+collapse",
+    "shells": {
+      "shells": 28,
+      "threshold": 117293,
+      "dropped": 27,
+      "faces_dropped": 6535,
+      "largest_shell_faces": 781956
+    },
+    "slab": {
+      "high_poly": {
+        "stripped": true,
+        "faces": 75633,
+        "area_frac": 0.1218,
+        "height_before": 1.9238,
+        "rim_faces": 23824,
+        "sliver_faces": 163,
+        "height_after": 1.9208,
+        "height_loss_frac": 0.0016,
+        "faces_after": 688871
+      },
+      "low_poly": {
+        "stripped": true,
+        "faces": 283,
+        "area_frac": 0.1465,
+        "height_before": 1.9193,
+        "rim_faces": 31,
+        "sliver_faces": 15,
+        "height_after": 1.9193,
+        "height_loss_frac": -0.0,
+        "faces_after": 5670
+      }
+    },
+    "materials": 1,
+    "basecolor": {
+      "filled_from_fallback": 1967,
+      "unfilled": 0,
+      "dilated": 519740
+    },
+    "normal": {
+      "filled_from_fallback": 1360,
+      "unfilled": 78,
+      "dilated": 604737
+    },
+    "ao_applied": false,
+    "projection": {
+      "front_subject_uv": [
+        0.20559210526315788,
+        0.07648026315789473,
+        0.774671052631579,
+        0.9177631578947368
+      ],
+      "back_subject_uv": [
+        0.20559210526315788,
+        0.07648026315789473,
+        0.774671052631579,
+        0.9177631578947368
+      ],
+      "mirrored_back": true,
+      "projection": "flat",
+      "box_blend": null
+    },
+    "min_z": 0.0,
+    "center_xy": [
+      0.0,
+      0.0
+    ],
+    "out_bytes": 4475900,
+    "ok": true
+  },
+  "clean": {
+    "src": "D:\\tools\\ComfyUI_windows_portable\\ComfyUI\\input\\cc_beta_bulwark.png",
+    "dst": "D:\\tools\\asset-gen-work\\clean\\beta_bulwark_rgba.png",
+    "white": "D:\\tools\\asset-gen-work\\clean\\beta_bulwark_white.png",
+    "size": [
+      832,
+      1216
+    ],
+    "out_size": [
+      1216,
+      1216
+    ],
+    "squared": true,
+    "model": "u2net",
+    "matte_coverage": 0.4436,
+    "final_coverage": 0.4304,
+    "kept_of_matte": 1.0,
+    "stray_blobs_dropped": false,
+    "matte_failed": false,
+    "subject_bbox_px": [
+      58,
+      100,
+      750,
+      1123
+    ],
+    "ok": true
+  }
 }

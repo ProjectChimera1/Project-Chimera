@@ -1,8 +1,117 @@
 {
-  "content_hash": "85f74a883d795b97",
+  "content_hash": "4619a356a7ea7e25",
   "asset": "beta/crossbowman",
   "mesh_file": "bolt_penitent.glb",
-  "tris": 5966,
+  "tris": 5755,
   "warns": [],
-  "pipeline": "v1-remesh240-6k"
+  "stage_id": "5698e2946272fca1",
+  "blender": "Blender 4.5.10 LTS",
+  "mesh_profile": "bake",
+  "stage": {
+    "src": "D:\\tools\\asset-gen-work\\beta_crossbowman_raw.glb",
+    "dst": "D:\\tools\\asset-gen-work\\beta_crossbowman.glb",
+    "kind": "unit",
+    "device": "OPTIX:NVIDIA GeForce RTX 3060",
+    "tex_size": 1024,
+    "tris_hp": 1001409,
+    "verts_hp_welded": 363178,
+    "tris_before": 925102,
+    "tris_after": 5759,
+    "tri_target": 6000,
+    "method": "voxel-remesh+collapse",
+    "shells": {
+      "shells": 56,
+      "threshold": 138765,
+      "dropped": 55,
+      "faces_dropped": 76307,
+      "largest_shell_faces": 925102
+    },
+    "slab": {
+      "high_poly": {
+        "stripped": true,
+        "faces": 52096,
+        "area_frac": 0.0655,
+        "height_before": 1.9627,
+        "rim_faces": 1013,
+        "sliver_faces": 314,
+        "height_after": 1.9627,
+        "height_loss_frac": 0.0,
+        "faces_after": 947986
+      },
+      "low_poly": {
+        "stripped": true,
+        "faces": 225,
+        "area_frac": 0.1031,
+        "height_before": 1.9519,
+        "rim_faces": 1,
+        "sliver_faces": 14,
+        "height_after": 1.9483,
+        "height_loss_frac": 0.0019,
+        "faces_after": 5759
+      }
+    },
+    "materials": 1,
+    "basecolor": {
+      "filled_from_fallback": 1954,
+      "unfilled": 3147,
+      "dilated": 447454
+    },
+    "normal": {
+      "filled_from_fallback": 1227,
+      "unfilled": 4356,
+      "dilated": 537701
+    },
+    "ao_applied": false,
+    "projection": {
+      "front_subject_uv": [
+        0.24424342105263158,
+        0.03782894736842105,
+        0.7870065789473685,
+        0.9449013157894737
+      ],
+      "back_subject_uv": [
+        0.24424342105263158,
+        0.03782894736842105,
+        0.7870065789473685,
+        0.9449013157894737
+      ],
+      "mirrored_back": true,
+      "projection": "flat",
+      "box_blend": null
+    },
+    "min_z": 0.0,
+    "center_xy": [
+      0.0,
+      0.0
+    ],
+    "out_bytes": 4673760,
+    "ok": true
+  },
+  "clean": {
+    "src": "D:\\tools\\ComfyUI_windows_portable\\ComfyUI\\input\\cc_beta_crossbowman.png",
+    "dst": "D:\\tools\\asset-gen-work\\clean\\beta_crossbowman_rgba.png",
+    "white": "D:\\tools\\asset-gen-work\\clean\\beta_crossbowman_white.png",
+    "size": [
+      832,
+      1216
+    ],
+    "out_size": [
+      1216,
+      1216
+    ],
+    "squared": true,
+    "model": "u2net",
+    "matte_coverage": 0.4538,
+    "final_coverage": 0.4403,
+    "kept_of_matte": 1.0,
+    "stray_blobs_dropped": false,
+    "matte_failed": false,
+    "subject_bbox_px": [
+      105,
+      67,
+      765,
+      1170
+    ],
+    "ok": true
+  }
 }

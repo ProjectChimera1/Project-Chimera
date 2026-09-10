@@ -1,8 +1,119 @@
 {
-  "content_hash": "469d3858dc38edb5",
+  "content_hash": "d6928fc5e44b810f",
   "asset": "beta/rune_caster",
   "mesh_file": "cinder_cantor.glb",
-  "tris": 5985,
-  "warns": [],
-  "pipeline": "v1-remesh240-6k"
+  "tris": 5859,
+  "warns": [
+    "winding inconsistent (fix_normals + retest)"
+  ],
+  "stage_id": "5698e2946272fca1",
+  "blender": "Blender 4.5.10 LTS",
+  "mesh_profile": "bake",
+  "stage": {
+    "src": "D:\\tools\\asset-gen-work\\beta_rune_caster_raw.glb",
+    "dst": "D:\\tools\\asset-gen-work\\beta_rune_caster.glb",
+    "kind": "unit",
+    "device": "OPTIX:NVIDIA GeForce RTX 3060",
+    "tex_size": 1024,
+    "tris_hp": 1275720,
+    "verts_hp_welded": 428011,
+    "tris_before": 1265404,
+    "tris_after": 5863,
+    "tri_target": 6000,
+    "method": "voxel-remesh+collapse",
+    "shells": {
+      "shells": 27,
+      "threshold": 189810,
+      "dropped": 26,
+      "faces_dropped": 10316,
+      "largest_shell_faces": 1265404
+    },
+    "slab": {
+      "high_poly": {
+        "stripped": true,
+        "faces": 93870,
+        "area_frac": 0.0898,
+        "height_before": 1.9662,
+        "rim_faces": 4343,
+        "sliver_faces": 116,
+        "height_after": 1.9578,
+        "height_loss_frac": 0.0043,
+        "faces_after": 1177391
+      },
+      "low_poly": {
+        "stripped": true,
+        "faces": 125,
+        "area_frac": 0.1478,
+        "height_before": 1.9648,
+        "rim_faces": 4,
+        "sliver_faces": 8,
+        "height_after": 1.9648,
+        "height_loss_frac": -0.0,
+        "faces_after": 5863
+      }
+    },
+    "materials": 1,
+    "basecolor": {
+      "filled_from_fallback": 2332,
+      "unfilled": 3372,
+      "dilated": 398406
+    },
+    "normal": {
+      "filled_from_fallback": 1654,
+      "unfilled": 5882,
+      "dilated": 484427
+    },
+    "ao_applied": false,
+    "projection": {
+      "front_subject_uv": [
+        0.2680921052631579,
+        0.06907894736842106,
+        0.743421052631579,
+        0.9210526315789473
+      ],
+      "back_subject_uv": [
+        0.2680921052631579,
+        0.06907894736842106,
+        0.743421052631579,
+        0.9210526315789473
+      ],
+      "mirrored_back": true,
+      "projection": "flat",
+      "box_blend": null
+    },
+    "min_z": 0.0,
+    "center_xy": [
+      0.0,
+      0.0
+    ],
+    "out_bytes": 4578392,
+    "ok": true
+  },
+  "clean": {
+    "src": "D:\\tools\\ComfyUI_windows_portable\\ComfyUI\\input\\cc_beta_rune_caster.png",
+    "dst": "D:\\tools\\asset-gen-work\\clean\\beta_rune_caster_rgba.png",
+    "white": "D:\\tools\\asset-gen-work\\clean\\beta_rune_caster_white.png",
+    "size": [
+      832,
+      1216
+    ],
+    "out_size": [
+      1216,
+      1216
+    ],
+    "squared": true,
+    "model": "u2net",
+    "matte_coverage": 0.3486,
+    "final_coverage": 0.3321,
+    "kept_of_matte": 1.0,
+    "stray_blobs_dropped": false,
+    "matte_failed": false,
+    "subject_bbox_px": [
+      134,
+      96,
+      712,
+      1132
+    ],
+    "ok": true
+  }
 }

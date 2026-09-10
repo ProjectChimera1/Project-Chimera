@@ -1,8 +1,117 @@
 {
-  "content_hash": "86ea652b31816e7c",
+  "content_hash": "040a60e5a242b5cd",
   "asset": "beta/wyvern",
   "mesh_file": "envy_wraithwing.glb",
-  "tris": 5998,
+  "tris": 5650,
   "warns": [],
-  "pipeline": "v1-remesh240-6k"
+  "stage_id": "5698e2946272fca1",
+  "blender": "Blender 4.5.10 LTS",
+  "mesh_profile": "bake",
+  "stage": {
+    "src": "D:\\tools\\asset-gen-work\\beta_wyvern_raw.glb",
+    "dst": "D:\\tools\\asset-gen-work\\beta_wyvern.glb",
+    "kind": "unit",
+    "device": "OPTIX:NVIDIA GeForce RTX 3060",
+    "tex_size": 1024,
+    "tris_hp": 660611,
+    "verts_hp_welded": 269505,
+    "tris_before": 659845,
+    "tris_after": 5651,
+    "tri_target": 6000,
+    "method": "voxel-remesh+collapse",
+    "shells": {
+      "shells": 6,
+      "threshold": 98976,
+      "dropped": 5,
+      "faces_dropped": 766,
+      "largest_shell_faces": 659845
+    },
+    "slab": {
+      "high_poly": {
+        "stripped": true,
+        "faces": 97476,
+        "area_frac": 0.184,
+        "height_before": 1.8606,
+        "rim_faces": 66776,
+        "sliver_faces": 93,
+        "height_after": 1.8564,
+        "height_loss_frac": 0.0022,
+        "faces_after": 496266
+      },
+      "low_poly": {
+        "stripped": true,
+        "faces": 253,
+        "area_frac": 0.2406,
+        "height_before": 1.86,
+        "rim_faces": 79,
+        "sliver_faces": 16,
+        "height_after": 1.86,
+        "height_loss_frac": -0.0,
+        "faces_after": 5651
+      }
+    },
+    "materials": 1,
+    "basecolor": {
+      "filled_from_fallback": 1286,
+      "unfilled": 25738,
+      "dilated": 370427
+    },
+    "normal": {
+      "filled_from_fallback": 875,
+      "unfilled": 29542,
+      "dilated": 445691
+    },
+    "ao_applied": false,
+    "projection": {
+      "front_subject_uv": [
+        0.20559210526315788,
+        0.054276315789473686,
+        0.8289473684210527,
+        0.9539473684210527
+      ],
+      "back_subject_uv": [
+        0.20559210526315788,
+        0.054276315789473686,
+        0.8289473684210527,
+        0.9539473684210527
+      ],
+      "mirrored_back": true,
+      "projection": "flat",
+      "box_blend": null
+    },
+    "min_z": 0.0,
+    "center_xy": [
+      0.0,
+      -1.4901161193847656e-08
+    ],
+    "out_bytes": 4116260,
+    "ok": true
+  },
+  "clean": {
+    "src": "D:\\tools\\ComfyUI_windows_portable\\ComfyUI\\input\\cc_beta_wyvern.png",
+    "dst": "D:\\tools\\asset-gen-work\\clean\\beta_wyvern_rgba.png",
+    "white": "D:\\tools\\asset-gen-work\\clean\\beta_wyvern_white.png",
+    "size": [
+      832,
+      1216
+    ],
+    "out_size": [
+      1216,
+      1216
+    ],
+    "squared": true,
+    "model": "u2net",
+    "matte_coverage": 0.3967,
+    "final_coverage": 0.3797,
+    "kept_of_matte": 0.9992,
+    "stray_blobs_dropped": false,
+    "matte_failed": false,
+    "subject_bbox_px": [
+      58,
+      54,
+      816,
+      1150
+    ],
+    "ok": true
+  }
 }

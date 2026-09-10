@@ -1,8 +1,119 @@
 {
-  "content_hash": "523ab7104e92b4ff",
+  "content_hash": "7aad384d1d5ddc50",
   "asset": "beta/war_machine",
   "mesh_file": "render_crawler.glb",
-  "tris": 5927,
-  "warns": [],
-  "pipeline": "v1-remesh240-6k"
+  "tris": 5711,
+  "warns": [
+    "winding inconsistent (fix_normals + retest)"
+  ],
+  "stage_id": "5698e2946272fca1",
+  "blender": "Blender 4.5.10 LTS",
+  "mesh_profile": "bake",
+  "stage": {
+    "src": "D:\\tools\\asset-gen-work\\beta_war_machine_raw.glb",
+    "dst": "D:\\tools\\asset-gen-work\\beta_war_machine.glb",
+    "kind": "unit",
+    "device": "OPTIX:NVIDIA GeForce RTX 3060",
+    "tex_size": 1024,
+    "tris_hp": 1200801,
+    "verts_hp_welded": 556150,
+    "tris_before": 1163083,
+    "tris_after": 5717,
+    "tri_target": 6000,
+    "method": "voxel-remesh+collapse",
+    "shells": {
+      "shells": 95,
+      "threshold": 174462,
+      "dropped": 94,
+      "faces_dropped": 37718,
+      "largest_shell_faces": 1163083
+    },
+    "slab": {
+      "high_poly": {
+        "stripped": true,
+        "faces": 51697,
+        "area_frac": 0.0495,
+        "height_before": 1.967,
+        "rim_faces": 574,
+        "sliver_faces": 421,
+        "height_after": 1.9662,
+        "height_loss_frac": 0.0004,
+        "faces_after": 1148109
+      },
+      "low_poly": {
+        "stripped": true,
+        "faces": 274,
+        "area_frac": 0.0584,
+        "height_before": 1.9695,
+        "rim_faces": 2,
+        "sliver_faces": 7,
+        "height_after": 1.9695,
+        "height_loss_frac": 0.0,
+        "faces_after": 5717
+      }
+    },
+    "materials": 1,
+    "basecolor": {
+      "filled_from_fallback": 7945,
+      "unfilled": 466,
+      "dilated": 540421
+    },
+    "normal": {
+      "filled_from_fallback": 5500,
+      "unfilled": 769,
+      "dilated": 620892
+    },
+    "ao_applied": false,
+    "projection": {
+      "front_subject_uv": [
+        0.0390625,
+        0.0234375,
+        0.9599609375,
+        0.9765625
+      ],
+      "back_subject_uv": [
+        0.0390625,
+        0.0234375,
+        0.9599609375,
+        0.9765625
+      ],
+      "mirrored_back": true,
+      "projection": "flat",
+      "box_blend": null
+    },
+    "min_z": 0.0,
+    "center_xy": [
+      0.0,
+      0.0
+    ],
+    "out_bytes": 4898844,
+    "ok": true
+  },
+  "clean": {
+    "src": "D:\\tools\\ComfyUI_windows_portable\\ComfyUI\\input\\cc_beta_war_machine.png",
+    "dst": "D:\\tools\\asset-gen-work\\clean\\beta_war_machine_rgba.png",
+    "white": "D:\\tools\\asset-gen-work\\clean\\beta_war_machine_white.png",
+    "size": [
+      1024,
+      1024
+    ],
+    "out_size": [
+      1024,
+      1024
+    ],
+    "squared": true,
+    "model": "u2net",
+    "matte_coverage": 0.6877,
+    "final_coverage": 0.6758,
+    "kept_of_matte": 0.9999,
+    "stray_blobs_dropped": false,
+    "matte_failed": false,
+    "subject_bbox_px": [
+      40,
+      24,
+      983,
+      1000
+    ],
+    "ok": true
+  }
 }
