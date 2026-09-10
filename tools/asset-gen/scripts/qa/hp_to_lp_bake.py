@@ -144,6 +144,98 @@ def weld(obj, rel=1e-4):
     return len(obj.data.vertices)
 
 
+SLAB_BAND_FRAC    = 0.03    # bottom fraction of mesh height searched for the plate
+SLAB_NORMAL_DOT   = 0.85    # |normal.z| above this is a near-horizontal (plate) face
+SLAB_MAX_AREA_FRAC = 0.30   # refuse to strip more than this — a guard against eating the model
+
+
+def strip_ground_slab(obj):
+    """Remove the fused ground plate under the model. Returns stats.
+
+    Image-to-3D reconstructs the concept plate's CAST SHADOW as real geometry: a wide flat slab
+    fused to the soles, present on 21 of 24 shipped assets. It is not cosmetic damage. A mesh
+    welded to a plinth cannot be rigged or animated -- the feet are not free to move -- so this
+    has to come off before the asset is worth animating, which is why it runs here in the bake
+    rather than in a later cleanup pass that would be overwritten by the next batch.
+
+    The predicate is MEASURED, not guessed. Profiling the raw high-poly by height band shows the
+    plate is a discrete object: near-horizontal area jumps 4.42% -> 8.00% between the 1% and 2%
+    bands and then plateaus (8.01% at 3%, 8.13% at 5%, 8.26% at 8%). A discrete plate produces
+    exactly that step-then-plateau; body geometry would climb steadily. The plate also spans
+    1.598 x 1.062 against a body footprint of 1.349 x 1.335 -- it juts out past the model.
+
+    So: faces whose centroid sits in the bottom SLAB_BAND_FRAC of height AND whose normal is
+    near-vertical. The band is set past the plateau so the whole plate is captured; the normal
+    test spares the near-vertical surfaces of the feet themselves, which is why this trims the
+    plate rather than amputating at a cut plane.
+    """
+    me = obj.data
+    if not me.polygons:
+        return {"stripped": False, "reason": "no polygons"}
+
+    zs = [v.co.z for v in me.vertices]
+    zmin, zmax = min(zs), max(zs)
+    height = (zmax - zmin) or 1.0
+    cut = zmin + SLAB_BAND_FRAC * height
+
+    total_area = sum(p.area for p in me.polygons) or 1.0
+    victims, victim_area = [], 0.0
+    for p in me.polygons:
+        cz = sum(me.vertices[i].co.z for i in p.vertices) / len(p.vertices)
+        if cz < cut and abs(p.normal.z) > SLAB_NORMAL_DOT:
+            victims.append(p.index)
+            victim_area += p.area
+
+    stats = {"stripped": False, "faces": len(victims),
+             "area_frac": round(victim_area / total_area, 4),
+             "height_before": round(height, 4)}
+
+    if not victims:
+        stats["reason"] = "no near-horizontal faces in the bottom band"
+        return stats
+    if victim_area / total_area > SLAB_MAX_AREA_FRAC:
+        # A model that is mostly flat-and-low is not a model with a slab; it is something this
+        # predicate does not understand. Refuse rather than destroy it.
+        stats["reason"] = f"area_frac {victim_area / total_area:.3f} > guard {SLAB_MAX_AREA_FRAC}"
+        return stats
+
+    select_only([obj], obj)
+
+    # Clear the EXISTING selection through the operator, in FACE select mode, before touching a
+    # single flag by hand. This ordering is not fussiness -- it is the bug that deleted the whole
+    # model on the first attempt. weld() leaves edit-mode select-all behind, so every VERTEX is
+    # still flagged selected. Writing polygon.select in object mode does not clear vertex flags,
+    # and edit mode defaults to VERTEX select mode, so `delete(type='FACE')` read the stale
+    # all-vertices selection and removed all 915279 faces, leaving 2 vertices.
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_mode(type="FACE")
+    bpy.ops.mesh.select_all(action="DESELECT")
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+    import numpy as np
+    me.vertices.foreach_set("select", np.zeros(len(me.vertices), dtype=bool))
+    me.edges.foreach_set("select", np.zeros(len(me.edges), dtype=bool))
+    sel = np.zeros(len(me.polygons), dtype=bool)
+    sel[victims] = True
+    me.polygons.foreach_set("select", sel)
+
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.delete(type="FACE")
+    # The plate's thin vertical RIM survives the normal test and would be left as a floating
+    # ring. Once the plate faces are gone the rim is loose geometry, so sweep it here; anything
+    # that survives as a real shell is handled by drop_debris_shells downstream.
+    bpy.ops.mesh.select_all(action="DESELECT")
+    bpy.ops.mesh.delete_loose(use_verts=True, use_edges=True, use_faces=False)
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+    zs2 = [v.co.z for v in me.vertices]
+    stats["stripped"] = True
+    stats["height_after"] = round((max(zs2) - min(zs2)) if zs2 else 0.0, 4)
+    stats["height_loss_frac"] = round(1.0 - (stats["height_after"] / height), 4)
+    stats["faces_after"] = len(me.polygons)
+    return stats
+
+
 def drop_debris_shells(obj):
     """Separate loose parts, delete debris shells, rejoin. Returns (obj, stats).
 
@@ -354,25 +446,46 @@ def set_pixels(img, buf):
     img.update()
 
 
+COVERAGE_FLOOR = 0.999   # alpha below this means the baker did not FULLY cover the texel
+DILATE_ITERS = 24        # how far good colour is grown into the remaining holes
+
+
 def miss_mask(buf4):
-    """Texels the baker never wrote: alpha still 0 AND RGB still the magenta sentinel."""
-    import numpy as np
-    return ((buf4[:, 3] < 0.5)
-            & (np.abs(buf4[:, 0] - MISS_SENTINEL[0]) < 1e-3)
-            & (np.abs(buf4[:, 1] - MISS_SENTINEL[1]) < 1e-3)
-            & (np.abs(buf4[:, 2] - MISS_SENTINEL[2]) < 1e-3))
+    """Texels the baker did not FULLY cover. Alpha is the authoritative hit mask.
+
+    The original test was `alpha < 0.5 AND rgb == the magenta sentinel exactly`. That correctly
+    identifies a texel the baker never touched, and MISSES the case that actually ships: an
+    anti-aliased UV-island-edge texel receives PARTIAL coverage, so its alpha lands strictly
+    between 0 and 1 and its colour is a blend of real albedo and the magenta pre-fill. Such a
+    texel passes the old test as a hit, keeps its magenta component, and renders as a magenta
+    speck on the model — measured at 6857 texels (0.65% of a 1024 albedo) on the first asset
+    through this stage.
+
+    Alpha alone is both simpler and stricter, and it cannot be fooled by an asset that
+    legitimately contains magenta.
+    """
+    return buf4[..., 3] < COVERAGE_FLOOR
 
 
 def composite_fill(tight, fallback, neutral):
-    """Fill texels the tight pass could not reach using the wide-ray fallback pass.
+    """Fill texels the tight pass could not reach, then grow colour into whatever is left.
 
     A short cage hugs the surface (accurate) but misses deep recesses. A long cage reaches
     them but smears elsewhere. Baking both and taking the fallback ONLY where tight missed
-    gets accuracy plus coverage. Anything still unfilled becomes `neutral` — a black normal
-    texel is a catastrophic normal, whereas a mid-grey albedo texel is just a dull patch.
+    gets accuracy plus coverage.
+
+    Whatever both passes miss is then DILATED from its nearest covered neighbours rather than
+    stamped flat `neutral`. Flat fill is fine in the middle of a large hole but wrong at an
+    island edge, where it reads as a hard fringe against the surface it borders; growing the
+    neighbouring colour outward is ordinary edge padding and is what makes the texture safe
+    under bilinear filtering and mipmapping. `neutral` remains the backstop for texels no
+    colour can reach — a black normal texel is a catastrophic normal, whereas a mid-grey
+    albedo texel is just a dull patch.
     """
-    t = pixels_of(tight).reshape(-1, 4)
-    f = pixels_of(fallback).reshape(-1, 4)
+    import numpy as np
+    w, h = tight.size
+    t = pixels_of(tight).reshape(h, w, 4)
+    f = pixels_of(fallback).reshape(h, w, 4)
 
     t_miss = miss_mask(t)
     f_miss = miss_mask(f)
@@ -381,13 +494,40 @@ def composite_fill(tight, fallback, neutral):
     filled_from_fallback = int(recover.sum())
     t[recover] = f[recover]
 
-    still_missing = t_miss & f_miss
-    unfilled = int(still_missing.sum())
-    t[still_missing] = neutral
+    known = ~(t_miss & f_miss)
+    rgb = t[:, :, :3]
+    grown = 0
+    for _ in range(DILATE_ITERS):
+        if known.all():
+            break
+        # All four directions read the SAME snapshot, so growth is isotropic; updating `known`
+        # inside the direction loop lets one direction race ahead and leaves visible streaks.
+        snap_known, snap_rgb = known.copy(), rgb.copy()
+        acc = np.zeros_like(rgb)
+        cnt = np.zeros((h, w, 1), dtype=np.float32)
+        newly = np.zeros_like(known)
+        for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            src_known = np.roll(snap_known, (dy, dx), axis=(0, 1))
+            src_rgb = np.roll(snap_rgb, (dy, dx), axis=(0, 1))
+            m = (~known) & src_known
+            if not m.any():
+                continue
+            acc[m] += src_rgb[m]
+            cnt[m] += 1.0
+            newly |= m
+        if not newly.any():
+            break
+        rgb[newly] = acc[newly] / cnt[newly]
+        known |= newly
+        grown += int(newly.sum())
 
-    t[:, 3] = 1.0            # alpha was only ever the hit mask; ship it opaque
+    unfilled = int((~known).sum())
+    t[:, :, :3] = rgb
+    t[~known] = neutral
+
+    t[..., 3] = 1.0          # alpha was only ever the hit mask; ship it opaque
     set_pixels(tight, t.reshape(-1))
-    return filled_from_fallback, unfilled
+    return filled_from_fallback, unfilled, grown
 
 
 def bake_pass(hp, lp, mat, bake_type, img_name, tex_size, md, is_data, neutral, **kw):
@@ -403,10 +543,10 @@ def bake_pass(hp, lp, mat, bake_type, img_name, tex_size, md, is_data, neutral, 
     mat.node_tree.nodes.active = node
     do_bake(hp, lp, bake_type, 0.020 * md, 0.092 * md, tex_size, **kw)
 
-    filled, unfilled = composite_fill(tight, fallback, neutral)
+    filled, unfilled, grown = composite_fill(tight, fallback, neutral)
     bpy.data.images.remove(fallback)
     mat.node_tree.nodes.remove(node)
-    return tight, filled, unfilled
+    return tight, filled, unfilled, grown
 
 
 def apply_ao(color_img, ao_img):
@@ -430,6 +570,14 @@ def wire_material(mat, color_img, normal_img):
     tex = nt.nodes.new("ShaderNodeTexImage")
     tex.image = color_img; tex.location = (-250, 150)
     nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+
+    # WHITE base colour factor, explicitly. A fresh Principled BSDF's Base Color default is
+    # (0.8, 0.8, 0.8) and the glTF exporter writes that socket's default into `baseColorFactor`,
+    # which the renderer MULTIPLIES with the baked albedo. Left at the default, every texture this
+    # stage bakes would render 20% dark -- uniformly, across the whole roster, in a way that reads
+    # exactly like a lighting bug and would be chased in the engine instead of here. All 24 shipped
+    # meshes carry `baseColorFactor [0.8, 0.8, 0.8, 1]` today for precisely this reason.
+    bsdf.inputs["Base Color"].default_value = (1.0, 1.0, 1.0, 1.0)
 
     if normal_img is not None:
         ntex = nt.nodes.new("ShaderNodeTexImage")
@@ -724,6 +872,8 @@ def main():
     ap.add_argument("--tex", type=int, default=0, help="texture size; default = profile min_dim")
     ap.add_argument("--ao", action="store_true", help="bake AO and multiply into base colour")
     ap.add_argument("--no-normal", action="store_true", help="skip the normal map (smaller GLB)")
+    ap.add_argument("--no-strip-slab", action="store_true",
+                    help="keep the fused ground plate (default is to strip it: it blocks rigging)")
     ap.add_argument("--hp-test-material", action="store_true",
                     help="apply a procedural checker to the high-poly first (plumbing proof)")
     ap.add_argument("--project-front", help="concept image to project onto the high-poly as its albedo")
@@ -751,6 +901,7 @@ def main():
     hp = join_meshes()
     hp.name = "HP_source"
     hp_verts = weld(hp)
+
     projection = None
     if args.hp_test_material:
         make_test_material(hp)
@@ -759,27 +910,41 @@ def main():
     hp_tris = tri_count(hp)
     md = max_dim(hp)
 
-    # Low-poly working copy.
+    # Low-poly working copy, taken while the mesh is still CLOSED.
+    #
+    # The slab is stripped from each mesh at a different point, and the ordering is load-bearing.
+    # Stripping before the low-poly is derived opens the bottom of the mesh, and voxel-remeshing
+    # an open surface produces a double-walled shell whose boundary edges collapse decimation
+    # cannot reduce past: measured 53531 tris against a 6000 budget and a 15000 fail cap. So the
+    # low-poly is decimated while still closed, and loses its slab afterwards.
     select_only([hp], hp)
     bpy.ops.object.duplicate()
     lp = bpy.context.view_layer.objects.active
     lp.name = "LP_baked"
 
+    # The high-poly is only ever a ray target, never decimated, so it can be opened immediately.
+    # It must lose the slab too: otherwise rays leaving the low-poly's soles strike the slab still
+    # present on the high-poly and bake its dark cast-shadow texels onto the feet.
+    slab_hp = strip_ground_slab(hp) if not args.no_strip_slab else {"stripped": False, "reason": "disabled"}
+
     lp, shell_stats = drop_debris_shells(lp)
     lp.name = "LP_baked"
     before, after, method = process_to_budget(lp, target)
+    slab_lp = strip_ground_slab(lp) if not args.no_strip_slab else {"stripped": False, "reason": "disabled"}
+    after = tri_count(lp)
+    slab = {"high_poly": slab_hp, "low_poly": slab_lp}
     unwrap(lp)
     mat = target_material(lp)
 
     # Base colour. Neutral fill = mid grey (a hole, not a void).
-    color_img, c_filled, c_unfilled = bake_pass(
+    color_img, c_filled, c_unfilled, c_grown = bake_pass(
         hp, lp, mat, "DIFFUSE", "chimera_basecolor", tex_size, md,
         is_data=False, neutral=(0.5, 0.5, 0.5, 1.0), pass_filter={"COLOR"})
 
-    normal_img = n_filled = n_unfilled = None
+    normal_img = n_filled = n_unfilled = n_grown = None
     if not args.no_normal:
         # Neutral fill = flat tangent normal (0.5, 0.5, 1.0).
-        normal_img, n_filled, n_unfilled = bake_pass(
+        normal_img, n_filled, n_unfilled, n_grown = bake_pass(
             hp, lp, mat, "NORMAL", "chimera_normal", tex_size, md,
             is_data=True, neutral=(0.5, 0.5, 1.0, 1.0), normal_space="TANGENT")
 
@@ -806,11 +971,11 @@ def main():
         "tex_size": tex_size,
         "tris_hp": hp_tris, "verts_hp_welded": hp_verts,
         "tris_before": before, "tris_after": after,
-        "tri_target": target, "method": method, "shells": shell_stats,
+        "tri_target": target, "method": method, "shells": shell_stats, "slab": slab,
         "materials": len(lp.data.materials),
-        "basecolor": {"filled_from_fallback": c_filled, "unfilled": c_unfilled},
+        "basecolor": {"filled_from_fallback": c_filled, "unfilled": c_unfilled, "dilated": c_grown},
         "normal": None if normal_img is None else {"filled_from_fallback": n_filled,
-                                                   "unfilled": n_unfilled},
+                                                   "unfilled": n_unfilled, "dilated": n_grown},
         "ao_applied": ao_applied,
         "projection": projection,
         "min_z": min(zs),

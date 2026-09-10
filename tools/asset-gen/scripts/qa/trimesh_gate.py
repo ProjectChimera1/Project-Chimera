@@ -36,6 +36,8 @@ def main():
     ap.add_argument("glb")
     ap.add_argument("--kind", default="unit")
     ap.add_argument("--profile", required=True)
+    ap.add_argument("--require-textured", action="store_true",
+                    help="hard-fail unless the asset carries UVs, an albedo texture and a white base-colour factor")
     args = ap.parse_args()
 
     with open(args.profile, "r", encoding="utf-8") as f:
@@ -61,6 +63,38 @@ def main():
     metrics["node_translations"] = [n.get("translation") for n in gj.get("nodes", []) if n.get("translation")]
     if nmat > mp["max_materials"]:
         fails.append(f"materials {nmat} > max {mp['max_materials']}")
+
+    # ---- texture contract (only enforced under --require-textured) ----
+    # Read straight out of the GLB JSON rather than through trimesh: trimesh normalises materials
+    # into its own PBRMaterial and a missing baseColorFactor comes back as an assumed white, which
+    # would mask exactly the 0.8-grey defect this check exists to catch.
+    prims = [p for m in gj.get("meshes", []) for p in m.get("primitives", [])]
+    with_uv = [p for p in prims if any(k.startswith("TEXCOORD_") for k in p.get("attributes", {}))]
+    metrics["primitives_with_uv"] = len(with_uv)
+    metrics["has_uvs"] = bool(prims) and len(with_uv) == len(prims)
+
+    mats = gj.get("materials", [])
+    pbr0 = (mats[0].get("pbrMetallicRoughness", {}) if mats else {})
+    bct = pbr0.get("baseColorTexture")
+    bcf = pbr0.get("baseColorFactor", [1.0, 1.0, 1.0, 1.0])   # glTF default IS white when absent
+    metrics["base_color_factor"] = bcf
+    metrics["has_albedo_texture"] = bct is not None
+    metrics["images"] = len(gj.get("images", []))
+    white = all(abs(float(c) - 1.0) <= 1e-3 for c in bcf[:3])
+    metrics["base_color_factor_white"] = white
+
+    if args.require_textured:
+        if not prims:
+            fails.append("no primitives in glb")
+        elif not metrics["has_uvs"]:
+            fails.append(f"missing UVs: {len(with_uv)}/{len(prims)} primitives carry TEXCOORD_0")
+        if not metrics["has_albedo_texture"]:
+            fails.append("no baseColorTexture on material 0 (asset is untextured)")
+        if not metrics["images"]:
+            fails.append("no images embedded in the glb")
+        if not white:
+            fails.append(f"baseColorFactor {bcf[:3]} is not white — it multiplies the albedo, "
+                         f"so the texture would render dark and read as a lighting bug")
 
     # ---- geometry metrics via trimesh ----
     try:
@@ -101,8 +135,11 @@ def main():
             fails.append("mesh has NaN/Inf vertices")
         if not metrics["winding_consistent"]:
             warns.append("winding inconsistent (fix_normals + retest)")
-    except ImportError:
-        warns.append("trimesh/numpy not installed — geometry checks skipped (install in venv)")
+    except ImportError as e:
+        # HARD failure, not a warning. As a warning this silently skipped every geometry check --
+        # tri budget, NaN, winding, origin -- and still printed PASS, so a broken venv read as a
+        # clean gate. A gate that cannot run its checks has not passed; it has not run.
+        fails.append(f"trimesh/numpy not importable — geometry checks could not run: {e}")
     except Exception as e:
         fails.append(f"trimesh load error: {e}")
 

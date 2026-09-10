@@ -39,3 +39,4 @@ _bmad/render/
 
 # BMAD Book Builder test sandbox (alpha-era BMAD install, ~1.2k files) — throwaway, never commit
 Story test/
+__pycache__/
