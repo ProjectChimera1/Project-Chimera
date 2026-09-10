@@ -34,6 +34,19 @@ Mesh stage is selectable with --mesh-profile:
               paint failure degrades to `albedo_source: projection_fallback` rather than losing
               the asset -- a partly successful overnight batch still ships 24.
 
+TWO-PASS ROSTER RUN — REQUIRED ON A 16 GB / 12 GB MACHINE. ComfyUI holds SDXL and the Hunyuan
+shape model resident, and the paint stage wants ~9.9 GB VRAM and ~7 GB RAM of its own. They do not
+fit together: running the default single-pass route with ComfyUI up gets the process killed by the
+OS for low memory partway through. Split it:
+
+    # pass 1 - needs ComfyUI running. Regenerates concepts and shapes, stops before the GPU work.
+    run_manifest.py --mesh-profile paint --shape-only --force
+    # ...then SHUT COMFYUI DOWN...
+    # pass 2 - needs no ComfyUI. Bakes, paints and lands from the raws pass 1 wrote.
+    run_manifest.py --from-raw --mesh-profile paint --land --force
+
+Pass 2 is resumable (see paint_stage), so an interruption costs one asset, not the batch.
+
 ORDERING INVARIANT: the `bake` profile will NOT write into the project tree unless --land is
 passed explicitly. `TeamTintPolicy.Resolve` is `hasAlbedoTexture ? requested : Flat`, so the
 first textured GLB that reaches godot/assets/ flips ALL assets onto a shader branch with no code
@@ -307,6 +320,9 @@ def main():
     ap.add_argument("--tex", type=int, default=0, help="bake texture size; default = profile texture.min_dim")
     ap.add_argument("--force", action="store_true", help="ignore the cached content hash")
     ap.add_argument("--print-stage-id", action="store_true", help="print the stage identity and exit")
+    ap.add_argument("--shape-only", action="store_true",
+                    help="stop after concept+shape: write the *_raw.glb and exit before the mesh "
+                         "stage. Pass 1 of the two-pass roster run (see the module docstring).")
     ap.add_argument("--land-existing", action="store_true",
                     help="do not re-run the mesh stage; RE-GATE the outputs already in WORK and land "
                          "the ones that pass. Nothing unverified ships: the gate runs either way.")
@@ -440,6 +456,12 @@ def main():
                     gsrc = os.path.join(man["comfy_root"], glbs[0].get("type", "output"), glbs[0]["subfolder"], glbs[0]["filename"])
                     shutil.copy(gsrc, raw)
 
+                if args.shape_only:
+                    # Pass 1 of the two-pass run: the raw high-poly is on disk, stop here so
+                    # ComfyUI can be shut down before the mesh stage claims the GPU.
+                    status = "shape-only"
+                    break
+
                 # 4. mesh stage
                 if os.path.exists(out):
                     os.remove(out)
@@ -461,6 +483,11 @@ def main():
                 print(f"    attempt {attempt+1} gate FAIL: {gate_res['fails']}", flush=True)
             except Exception as e:
                 print(f"    attempt {attempt+1} error: {e}", flush=True)
+
+        if status == "shape-only":
+            print(f"    SHAPE OK -> {raw}", flush=True)
+            summary.append({"asset": tag, "status": "shape-only", "raw": raw})
+            continue
 
         thumb = os.path.join(THUMBS, f"{a['faction']}_{a['id']}")
         if status == "pass":
@@ -492,7 +519,7 @@ def main():
     json.dump({"stage_id": stage_id, "blender": bver, "mesh_profile": args.mesh_profile,
                "from_raw": args.from_raw, "landed": args.land, "results": summary},
               open(sp, "w"), indent=2)
-    npass = sum(1 for s in summary if s["status"] in ("pass", "pass-held", "cached"))
+    npass = sum(1 for s in summary if s["status"] in ("pass", "pass-held", "cached", "shape-only"))
     print(f"=== BATCH DONE: {npass}/{len(assets)} ok. summary -> {sp}; thumbs -> {THUMBS} ===", flush=True)
     sys.exit(0 if npass == len(assets) else 1)
 
