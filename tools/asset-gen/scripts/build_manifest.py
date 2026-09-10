@@ -7,17 +7,23 @@ import json, os
 
 OUT = r"D:\Projects\Project_Chimera\tools\asset-gen\config\chimera_assets.json"
 
-UNIT_PREFIX = ("clean low-poly RTS unit, flat-shaded single-material albedo (engine applies a global "
-    "cel-shade, do not add PBR/specular/roughness/normal-map detail), readable silhouette for a distant "
-    "top-down camera, early-20th-century industrial/European-military FMA-inspired alchemy world, neutral "
-    "relaxed idle pose facing +Z (A-pose, arms slightly away from the body, NOT a rigid T-pose), plain "
-    "white background, origin centered at the feet/base on the +Z axis.")
+UNIT_PREFIX = ("clean low-poly RTS unit, readable silhouette for a distant top-down camera, "
+    "early-20th-century industrial/European-military FMA-inspired alchemy world, neutral relaxed idle "
+    "pose facing +Z (A-pose, arms slightly away from the body, NOT a rigid T-pose), painted in saturated "
+    "readable blocks of local colour with visible MATERIAL identity - woven wool, creased leather, "
+    "stitched seams, riveted brass panels, chipped paint, soot and wear - lit by flat even ambient studio "
+    "light with no cast shadow, no rim light and no strong specular highlights, plain flat mid-grey "
+    "backdrop, origin centered at the feet/base on the +Z axis.")
 # Buildings: force a SOLID 3D structure seen at a 3/4 high angle (NOT top-down / floor plan / facade).
-STRUCTURE_PREFIX = ("clean low-poly RTS building game asset, a SINGLE three-dimensional structure shown from a "
-    "3/4 high-angle isometric perspective with clear volumetric massing — visible roof, walls, and depth, like "
-    "an Age of Empires / Warcraft building render, flat-shaded single-material albedo (engine applies a global "
-    "cel-shade, no PBR/specular/normal-map detail), early-20th-century industrial/European-military FMA-inspired "
-    "alchemy world, the whole building resting on the ground, plain white background.")
+STRUCTURE_PREFIX = ("game-asset concept art of ONE isolated RTS building: a single freestanding structure "
+    "alone in an empty frame, cut out and floating centered on a plain flat mid-grey backdrop with nothing "
+    "around it and nothing underneath it - no ground, no grass, no terrain, no street, no other buildings, "
+    "no trees, no people - its base ending in clean open air; three-quarter view from slightly above so the "
+    "roof, two adjacent walls and the full depth of the massing all read as ONE SOLID VOLUME with clear "
+    "three-dimensional depth; early-20th-century industrial/European-military FMA-inspired alchemy world; "
+    "surfaces carry visible material identity - brick courses, plank seams, roof tiles, riveted iron, "
+    "weathered paint, soot staining - in saturated readable blocks of local colour under flat even ambient "
+    "light, no cast shadow and no dramatic lighting.")
 VEHICLE_PREFIX = UNIT_PREFIX.replace(
     "neutral relaxed idle pose facing +Z (A-pose, arms slightly away from the body, NOT a rigid T-pose)",
     "static neutral orientation, barrel/front facing +Z (no biped pose)")
@@ -28,14 +34,17 @@ AIR_PREFIX = UNIT_PREFIX.replace(
 PREFIXES = {"unit": UNIT_PREFIX, "structure": STRUCTURE_PREFIX, "vehicle": VEHICLE_PREFIX, "air": AIR_PREFIX}
 
 PALETTES = {
-    "alpha": ("FACTION PALETTE: slate-blue greatcoats and leather, matte brass-colored automail accents "
-        "(used sparingly), chalk-white transmutation sigils that flare cyan-white; flat color blocks, no implied metal gloss."),
-    "beta": ("FACTION PALETTE: oxblood-crimson cloth, flat black-iron and brass blocks, faint crimson alchemic "
-        "Core-glow as emissive accent, gothic-uncanny homunculus mood; flat color blocks, no implied metal gloss."),
+    "alpha": ("FACTION PALETTE: deep prussian-blue greatcoats and rich tan leather, warm polished brass "
+        "automail accents, glowing cyan transmutation sigils; colours stay saturated and clearly readable; "
+        "no chrome or mirror reflections."),
+    "beta": ("FACTION PALETTE: oxblood-crimson cloth, deep black-iron and warm brass, crimson alchemic "
+        "Core-glow as emissive accent, gothic-uncanny homunculus mood; colours stay saturated and clearly "
+        "readable; no chrome or mirror reflections."),
 }
 
-NEGATIVE = ("high-poly, photorealistic, PBR, specular highlights, glossy or metallic reflections, normal-map or "
-    "rivet/crack micro-detail, baked shadows, ground plane, base or pedestal, scenery, multiple characters, cropped "
+NEGATIVE = ("high-poly, photorealistic, specular highlights, glossy or metallic reflections, baked shadows, "
+    "3D render, untextured mesh, clay render, greyscale, monochrome, desaturated, washed out, "
+    "faceted low-poly render, ground plane, base or pedestal, scenery, multiple characters, cropped "
     "or missing limbs, text, watermark, logo, signature, busy background, motion blur, depth of field, dramatic "
     "cinematic lighting, off-center framing, action or dynamic pose, character sheet, reference sheet, model sheet, "
     "turnaround, multiple views, multiple poses, item studies, equipment studies, weapon studies, panels, insets, "
@@ -43,41 +52,48 @@ NEGATIVE = ("high-poly, photorealistic, PBR, specular highlights, glossy or meta
 # Extra negatives for buildings — kill the flat/top-down/emblem failure modes.
 BUILDING_NEG = (", top-down view, overhead map, floor plan, blueprint, schematic, flat facade, single wall, "
     "wall panel, elevation drawing, emblem, seal, medallion, circular design, mandala, 2D, orthographic, flat slab, "
-    "tile, rug, coin")
+    "tile, rug, coin, "
+    # Everything from here is NEW: the environment tokens that were entirely absent, and whose
+    # absence let SDXL render two of the buildings as aerial views of a whole village.
+    "lawn, grass, garden, hedge, trees, bushes, street, road, path, courtyard, town, village, city, "
+    "cityscape, settlement, neighbouring buildings, surrounding buildings, background buildings, landscape, "
+    "environment, horizon, terrain, cobblestones, diorama base, aerial photograph, drone shot, satellite view, "
+    "isometric game screenshot, people, crowd, vehicles")
 
-CHAR_SUFFIX = ("(single full-body character, ONE subject only, isolated and centered on a plain seamless white "
-    "background, full figure from head to feet, straight-on front view).")
-STRUCT_SUFFIX = ("(a solid 3D building with real depth and a roof, seen at a 3/4 aerial isometric angle; NOT "
-    "top-down, NOT a floor plan or map, NOT a flat facade or wall, NOT an emblem or seal or medallion, NOT a 2D "
-    "drawing; ONE isolated building centered on plain white).")
+CHAR_SUFFIX = ("(single full-body character, ONE subject only, isolated and centered on a plain flat mid-grey "
+    "backdrop, full figure from head to feet, straight-on front view).")
+STRUCT_SUFFIX = ("(ONE building and one building only, isolated on plain mid-grey, floating with no ground "
+    "beneath it; a SOLID 3D structure with real depth and a roof seen from three-quarters slightly above; NOT a "
+    "town, NOT a village, NOT an aerial view of a settlement, NOT a top-down map, NOT a floor plan, NOT a flat "
+    "facade, NOT an emblem.)")
 
 # (id, faction, prefix, tri_kind, mesh_file, mesh_scale, subject)
 ASSETS = [
     # ---- Crucible Covenant (alpha) ----
     ("worker", "alpha", "unit", "unit", "acolyte_alchemist.glb", 0.95,
-     "a slight young acolyte in a knee-length slate-blue work coat with rolled sleeves, one simple brass automail forearm, chalk satchel and a small pick at the hip; compact unarmed silhouette clearly the smallest humanoid; a faint chalk-white circle glows on the open palm."),
+     "a slight young acolyte in a knee-length prussian-blue work coat with rolled sleeves, one simple brass automail forearm, chalk satchel and a small pick at the hip; compact unarmed silhouette clearly the smallest humanoid; a faint glowing cyan circle glows on the open palm."),
     ("infantry", "alpha", "unit", "unit", "covenant_transmuter.glb", 1.0,
-     "a standing soldier in a belted slate-blue greatcoat over a leather cuirass, etched chalk bracers, a short straight sword at the hip, hands meeting over a small glowing chalk-white circle; bulk the shoulders and pauldrons so this is the widest of the Covenant humanoids; baseline soldier read."),
+     "a standing soldier in a belted prussian-blue greatcoat over a leather cuirass, etched chalk bracers, a short straight sword at the hip, hands meeting over a small glowing cyan circle; bulk the shoulders and pauldrons so this is the widest of the Covenant humanoids; baseline soldier read."),
     ("scout", "alpha", "unit", "unit", "quicksilver_runner.glb", 0.9,
-     "a lean runner in a cropped slate-blue jacket and tight leggings, a long scarf swept hard to one side and a light dagger; low crouched stance with no shoulder bulk so the outline is a thin dart shape; chalk-white speed-streak sigils glow along the boots."),
+     "a lean runner in a cropped prussian-blue jacket and tight leggings, a long scarf swept hard to one side and a light dagger; low crouched stance with no shoulder bulk so the outline is a thin dart shape; glowing cyan speed-streak sigils glow along the boots."),
     ("heavy_infantry", "alpha", "unit", "unit", "bulwark_adept.glb", 1.2,
-     "a broad heavily-built soldier in matte brass-and-iron plate over a slate-blue underlayer, large slab pauldron, heavy two-handed maul held head-down; bulky wide top-heavy silhouette, clearly the tankiest human; one chalk-white circle glowing at a shoulder seam."),
+     "a broad heavily-built soldier in matte brass-and-iron plate over a prussian-blue underlayer, large slab pauldron, heavy two-handed maul held head-down; bulky wide top-heavy silhouette, clearly the tankiest human; one glowing cyan circle glowing at a shoulder seam."),
     ("archer", "alpha", "unit", "unit", "pierce_marksman.glb", 0.95,
-     "a poised marksman in a long slate-blue duster and leather bandolier, peaked cap and goggles, a long brass-fitted bolt-action rifle held horizontally across the body; tall slim vertical figure that reads as ranged; chalk-white sigil glows at the rifle breech."),
+     "a poised marksman in a long prussian-blue duster and leather bandolier, peaked cap and goggles, a long brass-fitted bolt-action rifle held horizontally across the body; tall slim vertical figure that reads as ranged; glowing cyan sigil glows at the rifle breech."),
     ("mage", "alpha", "unit", "unit", "circle_savant.glb", 1.0,
-     "a robed scholar in a flowing hooded slate-blue coat with wide split sleeves, no automail, a large glowing chalk-white transmutation circle held symmetrically between two outstretched hands; distinctive floating-circle silhouette and trailing hem; thin and unarmored."),
+     "a robed scholar in a flowing hooded prussian-blue coat with wide split sleeves, a brass-fitted grimoire and a small brass censer at the hip, a large glowing cyan transmutation circle held symmetrically between two outstretched hands; distinctive floating-circle silhouette and trailing hem; thin and unarmored."),
     ("siege_engine", "alpha", "vehicle", "unit", "crucible_mortar.glb", 1.8,
-     "a two-wheeled brass-and-iron mortar carriage with a stubby upward-angled barrel feeding from a glowing crucible furnace at the rear, slate-blue plating, hand-crank; low wide wheeled machine silhouette, clearly mechanical and much bigger than infantry; chalk-white sigils ring the barrel mouth."),
+     "a two-wheeled brass-and-iron mortar carriage with a stubby upward-angled barrel feeding from a glowing crucible furnace at the rear, prussian-blue plating, hand-crank; low wide wheeled machine silhouette, clearly mechanical and much bigger than infantry; glowing cyan sigils ring the barrel mouth."),
     ("griffin", "alpha", "air", "unit", "greycrest_bonded.glb", 1.4,
-     "a noble eagle-lion chimera with broad smooth rounded feathered wings, a lion's hindquarters, one brass automail foreleg-talon, a slim slate-blue saddle-harness with a chalk-white brand on the shoulder; instantly-readable rounded winged silhouette; alert and loyal, not monstrous."),
+     "a noble eagle-lion chimera with broad smooth rounded feathered wings, a lion's hindquarters, one brass automail foreleg-talon, a slim prussian-blue saddle-harness with a glowing cyan brand on the shoulder; instantly-readable rounded winged silhouette; alert and loyal, not monstrous."),
     ("command_center", "alpha", "structure", "building", "covenant_sanctum.glb", 3.0,
-     "a stout fortified chapel-workshop of slate-blue stone with a steep slate roof, a tall central clocktower-spire, brass-pipe chimneys and telegraph wires, arched doors with a glowing chalk-white sigil banner over the entrance; clearly the largest, tallest friendly structure, civic and protective."),
+     "a stout fortified chapel-workshop of prussian-blue stone with a steep slate roof, a tall central clocktower-spire, brass-pipe chimneys and telegraph wires, arched doors with a glowing cyan sigil banner over the entrance; clearly the largest, tallest friendly structure, civic and protective."),
     ("barracks", "alpha", "structure", "building", "crucible_hall.glb", 2.5,
-     "a long low slate-blue barracks hall with a pitched roof and an arched drilling-yard gateway, a banner of crossed chalk and sword over the door, brick chimney; squat rectangular military building, distinctly lower than the spired command center."),
+     "a long low prussian-blue barracks hall with a pitched roof and an arched drilling-yard gateway, a banner of crossed chalk and sword over the door, brick chimney; squat rectangular military building, distinctly lower than the spired command center."),
     ("archery_range", "alpha", "structure", "building", "sigil_foundry.glb", 2.5,
-     "an open-fronted slate-blue range building with a tall slatted firing canopy roof, hanging brass lanterns, a stacked row of target butts along one side; horizontal open-air building with a distinctive overhanging slatted roof."),
+     "an open-fronted prussian-blue range building with a tall slatted firing canopy roof, hanging brass lanterns, a stacked row of target butts along one side; horizontal open-air building with a distinctive overhanging slatted roof."),
     ("siege_workshop", "alpha", "structure", "building", "transmutation_forge.glb", 2.8,
-     "a heavy industrial forge-hall of slate-blue brick with a tall brick smokestack and a large arched vehicle bay, glowing orange crucible light spilling from the bay, brass gauges on the walls; bulky workshop building with the tall chimney as its read-at-distance marker."),
+     "a heavy industrial forge-hall of prussian-blue brick with a tall brick smokestack and a large arched vehicle bay, glowing orange crucible light spilling from the bay, brass gauges on the walls; bulky workshop building with the tall chimney as its read-at-distance marker."),
     # ---- Sanguine Court (beta) ----
     ("forgehand", "beta", "unit", "unit", "cinderhand_thrall.glb", 1.0,
      "a stooped hollow-eyed laborer in a soot-stained leather apron, one crude brass prosthetic ending in a digging claw, a dim red Core-ember glowing through a chest vent; hunched, the smallest and simplest silhouette so it reads as a non-combatant worker."),

@@ -83,7 +83,21 @@ def main() -> int:
     ap.add_argument("--render-size", type=int, default=1024,
                     help="multi-view render resolution; the config default of 2048 is the main VRAM driver")
     ap.add_argument("--tex", type=int, default=1024, help="output texture size")
-    ap.add_argument("--merge", default="fast", choices=["fast", "graphcut"])
+    # NOTE: "graphcut" is NOT a real option. `bake_from_multiview` has exactly one branch and its
+    # else-arm raises a bare f-string, which dies with `TypeError: exceptions must derive from
+    # BaseException` -- an inscrutable crash rather than an honest "unsupported". The flag is kept
+    # so existing invocations do not break, but only "fast" exists.
+    ap.add_argument("--merge", default="fast", choices=["fast"],
+                    help="only 'fast' exists in this tree; graphcut is not implemented")
+    ap.add_argument("--view-weights", type=float, nargs=6,
+                    default=[1.0, 0.30, 0.60, 0.30, 0.40, 0.05],
+                    metavar=("FRONT", "RIGHT", "BACK", "LEFT", "TOP", "BOTTOM"),
+                    help="per-view trust for the bake. Stock is a hero turntable "
+                         "(1.0 0.1 0.5 0.1 0.05 0.05); the default here is re-aimed at a top-down "
+                         "RTS camera. Buildings benefit from a higher TOP (~0.5).")
+    ap.add_argument("--bake-exp", type=float, default=6.0,
+                    help="exponent on per-texel view selection (stock 4). Higher = each texel "
+                         "takes the view that faces it rather than a grazing blend. Max ~8.")
     args = ap.parse_args()
 
     t0 = time.time()
@@ -219,7 +233,25 @@ def main() -> int:
     # The stock config is 2048/2048, which is the single biggest VRAM term in the whole pipeline.
     cfg.render_size = args.render_size
     cfg.texture_size = args.tex
-    cfg.merge_method = args.merge
+    cfg.merge_method = "fast"          # see the --merge note in the argparse block
+
+    # RE-AIM THE BAKE AT THE ACTUAL CAMERA. This is the highest-value line in the file.
+    #
+    # The six views are front / right / back / left / TOP / bottom, and the stock weights are
+    # [1.0, 0.1, 0.5, 0.1, 0.05, 0.05] -- a hero-turntable weighting, front-biased for a character
+    # you orbit at eye level. Chimera is a TOP-DOWN RTS: the top and upper surfaces are the
+    # majority of the pixels a player ever sees, and at 0.05 they were being reconstructed almost
+    # entirely from the FRONT view smeared over them through the cosine falloff. Five minutes of
+    # GPU per asset was being spent painting surfaces the camera never shows.
+    #
+    # Buildings suffer worst: a pitched roof at 40-60 degrees is past the 75-degree bake angle
+    # threshold of every equator view, so it was covered ONLY by the top view, at 0.05.
+    cfg.candidate_view_weights = args.view_weights
+    # bake_exp is the exponent on the per-texel cosine view-selection weight. Raising it from the
+    # stock 4 makes a texel take the view that genuinely faces it rather than a grazing-angle
+    # blend of several -- that blend is what reads as "smeared" on side walls and corners. Do not
+    # exceed ~8: hard seams appear where the winning view flips.
+    cfg.bake_exp = args.bake_exp
 
     mesh = trimesh.load(args.mesh, force="mesh", process=False)
     h_in = uv_hash(mesh)
@@ -298,7 +330,23 @@ def main() -> int:
         except Exception:
             pass
 
-    textured = pipe(mesh, delit)
+    # LANCZOS, NOT BICUBIC, on the multiview upsample. `pipelines.py` resizes the six generated
+    # views from their hard-coded 512 up to render_size with Pillow's DEFAULT filter (bicubic)
+    # immediately before back-projection. That single resize is the mechanical source of the
+    # "soft" look: every texel that reaches the atlas passes through it. Lanczos is strictly
+    # sharper at identical cost. kijai's own reference workflow uses lanczos here.
+    _orig_resize = _PILImage.Image.resize
+
+    def _lanczos_resize(self, size, resample=None, *a, **kw):
+        if resample is None:
+            resample = _PILImage.LANCZOS
+        return _orig_resize(self, size, resample, *a, **kw)
+
+    _PILImage.Image.resize = _lanczos_resize
+    try:
+        textured = pipe(mesh, delit)
+    finally:
+        _PILImage.Image.resize = _orig_resize
 
     h_out = uv_hash(textured if hasattr(textured, "visual") else mesh)
 
@@ -334,6 +382,8 @@ def main() -> int:
         "distinct_colours_sampled": distinct,
         "texture_size": list(img.size),
         "render_size": args.render_size,
+        "view_weights": list(args.view_weights),
+        "bake_exp": args.bake_exp,
         "peak_vram_mb": round(peak, 1),
         "vram_after_delight_mb": round(after_delight, 1),
         "host_ram_after_delight_gb": ram_after_delight,

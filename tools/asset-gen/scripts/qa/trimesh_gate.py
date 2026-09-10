@@ -135,6 +135,25 @@ def main():
             fails.append("mesh has NaN/Inf vertices")
         if not metrics["winding_consistent"]:
             warns.append("winding inconsistent (fix_normals + retest)")
+
+        # INSIDE-OUT CHECK. An outward-facing closed mesh encloses POSITIVE signed volume; an
+        # inward-facing one encloses negative. This is a different defect from inconsistent
+        # winding and the winding check does not catch it -- 4 of the 5 assets that shipped
+        # inside-out reported `is_winding_consistent == True`.
+        #
+        # It matters because the tangent basis follows surface orientation, so a normal map baked
+        # against an inverted surface inverts too: those 5 shipped with B_mean 0.16-0.32 where a
+        # valid tangent normal map needs B >= 0.5 everywhere, and in engine their bumps read as
+        # dents. Nothing else in the gate noticed.
+        try:
+            vol = float(m.volume)
+            metrics["signed_volume"] = vol
+            metrics["inside_out"] = bool(vol < 0)
+            if vol < 0:
+                fails.append(f"mesh is INSIDE-OUT (signed volume {vol:.3f} < 0) — a normal map "
+                             f"baked against this surface will be inverted and shade backwards")
+        except Exception as e:
+            warns.append(f"could not compute signed volume: {e}")
     except ImportError as e:
         # HARD failure, not a warning. As a warning this silently skipped every geometry check --
         # tri budget, NaN, winding, origin -- and still printed PASS, so a broken venv read as a

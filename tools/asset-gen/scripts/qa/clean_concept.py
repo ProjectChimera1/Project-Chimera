@@ -123,8 +123,15 @@ def main():
     # backdrop under transparent texels: ComfyUI's LoadImage hands CLIPVisionEncode the RGB and drops
     # the alpha, so an RGBA file carrying the old background in RGB would silently condition the
     # shape pass on the very backdrop this stage exists to remove.
+    # BACKDROP GREY, NOT WHITE. This composite is what the texture stage's DELIGHT model consumes
+    # (InstructPix2Pix, image_guidance 1.5). Hunyuan's own reference workflow composites onto 0.8
+    # grey with the note "fully black generally doesn't work, too dark makes the image red, fully
+    # white can be overbright" -- and the two most washed-out assets in the roster (alpha_mage at
+    # 0.05 saturation, alpha_archery_range at 0.12) are precisely the two palest plates fed to
+    # delight on pure white. Do not go below ~0.6 grey; per the same note, darker pushes it red.
+    BACKDROP = 204.0                      # 0.8 * 255
     a = out_alpha.astype(np.float32)[:, :, None] / 255.0
-    comp = (np.asarray(img, dtype=np.float32) * a + 255.0 * (1.0 - a)).astype(np.uint8)
+    comp = (np.asarray(img, dtype=np.float32) * a + BACKDROP * (1.0 - a)).astype(np.uint8)
 
     rgba = Image.fromarray(np.dstack([comp, out_alpha]), mode="RGBA")
     white = Image.fromarray(comp, mode="RGB")
@@ -139,7 +146,7 @@ def main():
         side = max(w, h)
         sq_rgba = Image.new("RGBA", (side, side), (255, 255, 255, 0))
         sq_rgba.paste(rgba, ((side - w) // 2, (side - h) // 2))
-        sq_white = Image.new("RGB", (side, side), (255, 255, 255))
+        sq_white = Image.new("RGB", (side, side), (204, 204, 204))   # match BACKDROP above
         sq_white.paste(white, ((side - w) // 2, (side - h) // 2))
         rgba, white = sq_rgba, sq_white
 

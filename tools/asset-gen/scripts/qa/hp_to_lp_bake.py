@@ -466,6 +466,41 @@ def process_to_budget(obj, target):
 
 # ── UVs ──────────────────────────────────────────────────────────────────────
 
+def ensure_outward_normals(obj):
+    """Flip the mesh if it is globally inside-out. Returns the signed volume before any flip.
+
+    `normals_make_consistent(inside=False)` makes winding CONSISTENT but does not reliably choose
+    the correct global ORIENTATION: on a closed surface-net mesh it can settle on the inward
+    solution, leaving every face consistently pointing the wrong way. Measured on the shipped
+    roster, 5 of 24 assets came out like this (circle_savant, envy_wraithwing, pride_colossus,
+    render_crawler, slag_bulwark).
+
+    The consequence is not cosmetic. A tangent-space normal map baked against an inverted surface
+    inverts too -- those five shipped with B_mean 0.16-0.32 and 70-90% of texels below 0.5, where a
+    valid tangent normal map must have B >= 0.5 everywhere -- so in engine their bumps read as
+    dents and their shading runs backwards.
+
+    Winding consistency does NOT detect this: 4 of the 5 report `is_winding_consistent == True`.
+    The signed volume does, exactly and with no threshold to tune -- an outward-facing closed mesh
+    encloses positive volume, an inward-facing one encloses negative.
+    """
+    me = obj.data
+    me.calc_loop_triangles()
+    vol = 0.0
+    for t in me.loop_triangles:
+        a, b, c = (me.vertices[i].co for i in t.vertices)
+        vol += a.dot(b.cross(c))
+    vol /= 6.0
+
+    if vol < 0.0:
+        select_only([obj], obj)
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.select_all(action="SELECT")
+        bpy.ops.mesh.flip_normals()
+        bpy.ops.object.mode_set(mode="OBJECT")
+    return vol
+
+
 def unwrap(obj):
     """Uniform smooth shading + a clean smart-projected UV set.
 
@@ -483,9 +518,20 @@ def unwrap(obj):
     # winding and Godot renders as dark or one-sided surfaces. Fix before the bake so the cage rays
     # fire outward from every face.
     bpy.ops.mesh.normals_make_consistent(inside=False)
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+    # make_consistent settles on ONE orientation but not necessarily the OUTWARD one. Decide by
+    # signed volume before unwrapping, because the tangent basis the normal bake is built on
+    # follows the surface orientation.
+    signed_volume = ensure_outward_normals(obj)
+
+    select_only([obj], obj)
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
     bpy.ops.uv.smart_project(angle_limit=math.radians(UV_ANGLE_LIMIT),
                              island_margin=UV_ISLAND_MARGIN)
     bpy.ops.object.mode_set(mode="OBJECT")
+    return signed_volume
 
 
 # ── Cycles / GPU ─────────────────────────────────────────────────────────────
@@ -1087,7 +1133,7 @@ def main():
     slab_lp = strip_ground_slab(lp) if not args.no_strip_slab else {"stripped": False, "reason": "disabled"}
     after = tri_count(lp)
     slab = {"high_poly": slab_hp, "low_poly": slab_lp}
-    unwrap(lp)
+    signed_volume = unwrap(lp)
     mat = target_material(lp)
 
     # Base colour. Neutral fill = mid grey (a hole, not a void).
@@ -1126,6 +1172,8 @@ def main():
         "tris_hp": hp_tris, "verts_hp_welded": hp_verts,
         "tris_before": before, "tris_after": after,
         "tri_target": target, "method": method, "shells": shell_stats, "slab": slab,
+        "signed_volume_before_flip": round(signed_volume, 5),
+        "normals_flipped": bool(signed_volume < 0.0),
         "materials": len(lp.data.materials),
         "basecolor": {"filled_from_fallback": c_filled, "unfilled": c_unfilled, "dilated": c_grown},
         "normal": None if normal_img is None else {"filled_from_fallback": n_filled,
