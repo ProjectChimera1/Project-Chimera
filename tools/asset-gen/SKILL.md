@@ -37,6 +37,13 @@ engine-ready files. Project-agnostic: all engine specifics live in a **profile**
    everything visible is added in stage 4. Licence: Tencent Hunyuan Community License, **not**
    Apache-2.0 as this file used to claim. Cleared for this project by the owner (2026-09-09);
    re-check before any commercial redistribution of generated meshes.
+3b. **Texture generation (DEFAULT)** — Hunyuan3D-Paint v2-0 + delight, `scripts/qa/hy3d_paint.py`, run
+   headless from `D:\tools\hy3dpaint-venv` (Python 3.12). Six mutually-consistent views
+   (front/right/back/left/top/bottom) back-projected onto the mesh's EXISTING UVs. ~5 min/asset, peak 9.9 GB
+   VRAM. **Licence: Tencent Hunyuan 3D 2.0 Community License, cleared by the owner 2026-09-10** on the basis
+   that the game will not be sold in the EU, UK or South Korea (the licence's excluded territories). Tencent
+   claims no rights in the generated textures; the live term is a 1M-MAU ceiling. See DW-1020.
+
 4. **Retopo + texture bake** — headless Blender, `scripts/qa/hp_to_lp_bake.py` (the default, via
    `run_manifest.py --mesh-profile bake`): join → weld → strip the fused ground slab → debris-shell
    removal → decimate to tri budget → **smart UV unwrap** → project the concept plate onto the

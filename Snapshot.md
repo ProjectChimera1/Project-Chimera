@@ -124,11 +124,13 @@ with a mismatch refusing to apply the texture.
 
 ### Open decisions for Alec
 
-- **LICENCE, unresolved and material.** `D:\tools\hy3d20\LICENSE.txt` states *"THIS LICENSE AGREEMENT DOES NOT
-  APPLY IN THE EUROPEAN UNION, UNITED KINGDOM AND SOUTH KOREA"*, and **41 files** in that tree carry a per-file
-  `TENCENT HUNYUAN NON-COMMERCIAL LICENSE` header that contradicts the repo-level Community licence. Fine for
-  evaluation. Needs a real answer before shipping commercially. The outputs are regenerable with a different
-  tool if the answer is no — nothing else in the pipeline depends on Tencent.
+- **LICENCE — RESOLVED 2026-09-10, DW-1020 closed.** Alec: *"I won't be selling the game with these models in
+  EU, UK, or South Korea, license works for me."* The territorial exclusion in `D:\tools\hy3d20\LICENSE.txt`
+  is therefore not engaged and Hunyuan3D-Paint is the accepted texture route. Still true, recorded so it is not
+  re-derived: Tencent claims **no rights in the outputs** (the painted textures are ours outright), the live
+  term is a 1M-monthly-active-user ceiling, and the 41 per-file NON-COMMERCIAL headers contradict the
+  controlling repo-level licence. Remaking the roster with a licence-clean generator would drop the dependency
+  entirely, since the meshes and UVs are ours and only the albedo comes from Tencent.
 - **DW-1015 (four hollow facades)** remains accepted as-is on geometry; their greyness is fixed.
 
 ### What is NOT done
