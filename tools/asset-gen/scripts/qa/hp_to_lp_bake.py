@@ -221,12 +221,22 @@ def strip_ground_slab(obj):
 
     bpy.ops.object.mode_set(mode="EDIT")
     bpy.ops.mesh.delete(type="FACE")
-    # The plate's thin vertical RIM survives the normal test and would be left as a floating
-    # ring. Once the plate faces are gone the rim is loose geometry, so sweep it here; anything
-    # that survives as a real shell is handled by drop_debris_shells downstream.
     bpy.ops.mesh.select_all(action="DESELECT")
     bpy.ops.mesh.delete_loose(use_verts=True, use_edges=True, use_faces=False)
     bpy.ops.object.mode_set(mode="OBJECT")
+
+    # SECOND PASS: the plate's thin vertical RIM. Its faces are near-VERTICAL, so the normal test
+    # above spares them by design, and they are still attached to the model so delete_loose does not
+    # reach them either — they survive as flat slivers fanning out past the boots, which is what a
+    # close render of the feet actually shows.
+    #
+    # The rim's defining property is not its normal, it is that it sits OUTSIDE the model. So the
+    # footprint of everything above the band is rasterised into a coarse occupancy grid, dilated by
+    # one cell so real toes are never clipped, and any remaining band face whose centroid lands on
+    # an unoccupied cell is removed. A boot sits inside the body's own footprint; a shadow plate
+    # does not.
+    rim = _strip_outside_footprint(obj, zmin, height)
+    stats["rim_faces"] = rim
 
     zs2 = [v.co.z for v in me.vertices]
     stats["stripped"] = True
@@ -234,6 +244,79 @@ def strip_ground_slab(obj):
     stats["height_loss_frac"] = round(1.0 - (stats["height_after"] / height), 4)
     stats["faces_after"] = len(me.polygons)
     return stats
+
+
+SLAB_FOOTPRINT_CELLS = 28    # grid resolution across the model's XY extent
+SLAB_FOOTPRINT_DILATE = 1    # cells of margin, so toes and hems are never clipped
+
+
+def _strip_outside_footprint(obj, zmin, height):
+    """Delete bottom-band faces that lie outside the footprint of the body above them."""
+    import numpy as np
+    me = obj.data
+    if not me.polygons:
+        return 0
+
+    band_top = zmin + SLAB_BAND_FRAC * height
+    ref_lo = zmin + SLAB_BAND_FRAC * height          # everything above the band defines the footprint
+    ref = [v.co for v in me.vertices if v.co.z >= ref_lo]
+    if len(ref) < 16:
+        return 0
+
+    rx = [c.x for c in ref]
+    ry = [c.y for c in ref]
+    x0, x1 = min(rx), max(rx)
+    y0, y1 = min(ry), max(ry)
+    sx = (x1 - x0) or 1.0
+    sy = (y1 - y0) or 1.0
+    N = SLAB_FOOTPRINT_CELLS
+    occ = np.zeros((N, N), dtype=bool)
+
+    def cell(x, y):
+        i = int(min(N - 1, max(0, (x - x0) / sx * (N - 1))))
+        j = int(min(N - 1, max(0, (y - y0) / sy * (N - 1))))
+        return i, j
+
+    for c in ref:
+        i, j = cell(c.x, c.y)
+        occ[i, j] = True
+    for _ in range(SLAB_FOOTPRINT_DILATE):
+        occ = (occ
+               | np.roll(occ, 1, 0) | np.roll(occ, -1, 0)
+               | np.roll(occ, 1, 1) | np.roll(occ, -1, 1))
+
+    victims = []
+    for p in me.polygons:
+        cz = sum(me.vertices[i].co.z for i in p.vertices) / len(p.vertices)
+        if cz >= band_top:
+            continue
+        cx = sum(me.vertices[i].co.x for i in p.vertices) / len(p.vertices)
+        cy = sum(me.vertices[i].co.y for i in p.vertices) / len(p.vertices)
+        if not (x0 <= cx <= x1 and y0 <= cy <= y1):
+            victims.append(p.index)          # outside the body's bounds entirely
+            continue
+        i, j = cell(cx, cy)
+        if not occ[i, j]:
+            victims.append(p.index)
+    if not victims:
+        return 0
+
+    select_only([obj], obj)
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_mode(type="FACE")
+    bpy.ops.mesh.select_all(action="DESELECT")
+    bpy.ops.object.mode_set(mode="OBJECT")
+    me.vertices.foreach_set("select", np.zeros(len(me.vertices), dtype=bool))
+    me.edges.foreach_set("select", np.zeros(len(me.edges), dtype=bool))
+    sel = np.zeros(len(me.polygons), dtype=bool)
+    sel[victims] = True
+    me.polygons.foreach_set("select", sel)
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.delete(type="FACE")
+    bpy.ops.mesh.select_all(action="DESELECT")
+    bpy.ops.mesh.delete_loose(use_verts=True, use_edges=True, use_faces=False)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    return len(victims)
 
 
 def drop_debris_shells(obj):

@@ -138,7 +138,7 @@ def clean_concept(src_png, faction, aid):
     os.makedirs(CLEANED, exist_ok=True)
     rgba = os.path.join(CLEANED, f"{faction}_{aid}_rgba.png")
     white = os.path.join(CLEANED, f"{faction}_{aid}_white.png")
-    r = sh([sys.executable, CLEAN, src_png, rgba, "--white", white], timeout=600)
+    r = sh([sys.executable, CLEAN, src_png, rgba, "--white", white, "--square"], timeout=600)
     line = next((l for l in r.stdout.splitlines() if l.startswith("CLEAN_JSON ")), None)
     if not line or not os.path.exists(rgba):
         raise RuntimeError("clean_concept failed: " + ((r.stderr or "")[-300:] or "no output"))

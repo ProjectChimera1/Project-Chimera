@@ -69,6 +69,8 @@ def main():
     ap.add_argument("--feather", type=int, default=1, help="blur radius applied to the final alpha")
     ap.add_argument("--keep-all", action="store_true", help="keep stray blobs instead of the main subject only")
     ap.add_argument("--alpha-threshold", type=float, default=0.5)
+    ap.add_argument("--square", action="store_true",
+                    help="pad the outputs to a square canvas (see the note on aspect below)")
     args = ap.parse_args()
 
     img = Image.open(args.src).convert("RGB")
@@ -98,15 +100,33 @@ def main():
     a = out_alpha.astype(np.float32)[:, :, None] / 255.0
     comp = (np.asarray(img, dtype=np.float32) * a + 255.0 * (1.0 - a)).astype(np.uint8)
 
-    Image.fromarray(np.dstack([comp, out_alpha]), mode="RGBA").save(args.dst)
+    rgba = Image.fromarray(np.dstack([comp, out_alpha]), mode="RGBA")
+    white = Image.fromarray(comp, mode="RGB")
+
+    # SQUARE PADDING. The shape pass conditions on CLIPVisionEncode with crop="none", which resizes
+    # the whole plate to CLIP's square 224 input WITHOUT preserving aspect. A portrait plate (the
+    # roster ships 832x1216) is therefore squashed horizontally before the 3D model ever sees it, so
+    # the generator is asked to reconstruct a character it has been shown at the wrong proportions.
+    # Padding to a square canvas first makes that resize a uniform scale instead of a distortion.
+    # Measured on alpha/worker: a visibly cleaner silhouette with less floating debris.
+    if args.square:
+        side = max(w, h)
+        sq_rgba = Image.new("RGBA", (side, side), (255, 255, 255, 0))
+        sq_rgba.paste(rgba, ((side - w) // 2, (side - h) // 2))
+        sq_white = Image.new("RGB", (side, side), (255, 255, 255))
+        sq_white.paste(white, ((side - w) // 2, (side - h) // 2))
+        rgba, white = sq_rgba, sq_white
+
+    rgba.save(args.dst)
     if args.white:
-        Image.fromarray(comp, mode="RGB").save(args.white)
+        white.save(args.white)
 
     ys, xs = np.nonzero(mask)
     bbox = [int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1] if ys.size else None
     print("CLEAN_JSON " + json.dumps({
         "src": args.src, "dst": args.dst, "white": args.white,
-        "size": [w, h], "model": args.model,
+        "size": [w, h], "out_size": list(rgba.size), "squared": bool(args.square),
+        "model": args.model,
         "matte_coverage": round(raw_cover, 4),
         "final_coverage": round(float(mask.mean()), 4),
         "kept_of_matte": round(kept_ratio, 4),
