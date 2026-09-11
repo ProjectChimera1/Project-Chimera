@@ -7,7 +7,7 @@ status: Active
 
 # Project Chimera — Snapshot
 
-**Last Touched:** `2026-09-10`
+**Last Touched:** `2026-09-11`
 
 ## Current Phase
 **Phase 5 — Polish & 1.0** (Months 25-31 of GDD roadmap)
@@ -15,12 +15,13 @@ status: Active
 Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-placed buildings + UI bug sweep. Session 21 (remote, away from computer) shipped Utility AI + Adaptive Input Delay. **Session 22 scored FR-39 on two machines** — the #1 pre-ship gate, carried since Epic 1 — after closing DW-912, DW-914 and DW-405.
 
 ## Next Action
-**→ 2026-09-10 (session 9): the roster is being REGENERATED through Tripo 3D, not the local pipeline.
-4 of 24 units are done, gated and in `D:\tripo-out\`. Everything needed to continue is in
-`D:\tripo-input\TRIPO_RUNBOOK.md` — settings, per-asset steps, and 36 prompt blocks. Read the Session 9
-Current State block below first: it records why the route changed, the five things that were established,
-and three open decisions (DW-1023/1024/1025), one of which — the bulwark_adept palette — needs Alec before
-the roster completes.**
+
+**→ 2026-09-11 (session 10): the Tripo roster is 7 of 24 gated and 3 more plates are accepted and waiting to
+be generated. Everything needed to continue is in `D:\tripo-input\TRIPO_RUNBOOK.md`, which was corrected
+heavily this session — read the Session 10 Current State block below first, then the runbook's prompt-pack
+preamble, which now carries five authoring findings that each cost a re-roll. Next asset is
+`covenant_transmuter` (plate accepted 2026-09-11, GLB not yet exported), then `slag_bulwark` and
+`bolt_penitent` (plates accepted), then the remaining 14.**
 
 Epic 16 slices 4 (terrain/world) and 5 (unit facing, motion, buildings on the ground) are still outstanding.
 
@@ -29,6 +30,90 @@ Epic 15's burn-down stays PAUSED; scope any `bmad-loop` run `--epic 16`, though 
 ---
 
 *Session type: bmad (prescribed workflow in active execution)*
+
+---
+
+## Current State (2026-09-11, SESSION 10 — 7/24 GATED, AND THE PROMPT PACK WAS THE BOTTLENECK) — read this first
+
+**This block supersedes everything below it.** No engine code changed. The entire session was the Tripo roster,
+and it turned into a prompt-authoring session: five distinct authoring defects were found, each of which had
+already cost or was about to cost a re-roll, and all five are now fixed in the runbook rather than in chat.
+
+### Roster position — 7 gated, 3 plates waiting
+
+`tools/asset-gen/scripts/qa/tripo_batch_gate.py` (run with `D:\tools\asset-gen-venv\Scripts\python.exe`,
+the repo python has no trimesh) reports **13 files, all PASS**:
+
+| asset | tris | scale | note |
+|---|---|---|---|
+| `acolyte_alchemist` | 8329 | 1.872 | warn: over the 8000 target |
+| `greycrest_bonded` | 8288 | 2.691 | warn: over target; static export carries the two extensions |
+| `pierce_marksman` | 7178 | 1.751 | clean |
+| `bulwark_adept` | 7245 | 2.627 | clean — but see DW-1025 |
+| `circle_savant` | 7571 | 1.820 | warn: not XZ-centered |
+| `quicksilver_runner` | 7890 | 1.813 | static export carries the two extensions; rigged warns winding inconsistent |
+| `crucible_mortar` | 7143 | 3.613 | static export carries the two extensions |
+
+**Plates accepted, GLBs not yet exported:** `covenant_transmuter`, `slag_bulwark`, `bolt_penitent` — all three
+PNGs are in `D:\tripo-out\`. **Every scale above is measured from a T-POSED mesh and is void** once the idle
+re-export happens (step 4a); re-run the gate after.
+
+### The five authoring findings — all now in the runbook preamble
+
+1. **Containers come back full; straps come back empty, and only deleting the vocabulary fixes it.**
+   `covenant_transmuter`'s scabbard came back armed on **8 of 8 variants across two prompt versions**.
+   Qualifying it failed and naming the parts BACKFIRED — describing the hollow positively and enumerating "no
+   grip, no crossguard, no pommel, no blade" produced *more* ornate hilts than the plain prompt. Fixed by
+   removing every weapon noun from SUBJECT, FRAMING **and** CHECK: the shared FRAMING sentence had been seeding
+   "scabbard" and "sheath" into all ten character blocks. Both container carriers are strap carriers now.
+2. **A shared boilerplate block that contradicts a per-asset block is silently resolved, not flagged.**
+   `slag_bulwark`'s SUBJECT said "the other arm a stubby crushing maul"; the FRAMING shared by all grafted
+   units said "the other hand is empty and holds nothing". The model settled it by giving him an ordinary hand
+   holding a hammer. `bolt_penitent` carried the identical bug. FRAMING is now split into a two-limb and a
+   one-limb variant.
+3. **PALETTE is advisory; SUBJECT decides colour, and the FIRST material named in SUBJECT wins.** Two
+   instances: `slag_bulwark` named no cloth colour and came back olive field-green; `bulwark_adept` named
+   prussian-blue second and as the *under* layer and came back brass (that is DW-1025, and this is its
+   mechanism). `bolt_penitent`, `cinderhand_thrall` and `envy_wraithwing` were amended pre-emptively.
+4. **A silhouette claim must hold in the SHIP pose, not the T-pose.** Plates are authored in a T-pose but the
+   shipped mesh is posed arms-DOWN off the idle clip, so `bolt_penitent`'s "wide horizontal weapon silhouette"
+   did not exist on the battlefield. Check every silhouette claim with the arms hanging.
+5. **A grafted weapon must be mechanically honest on its limb and built from bulk, not working parts.** Two
+   rounds of crossbows-as-bracelets: a prod is a thin bar and a string is sub-pixel, neither survives 7,500
+   triangles, and a bow across a forearm cannot be drawn or aimed. Adjectives did not fix it; changing the
+   MECHANISM did. `bolt_penitent` is now a forearm bolt-driver — riveted tube, box magazine, piston at the
+   elbow, muzzle past the knuckle — and the accepted plate is exactly right.
+
+Also added to the runbook: **step 4 was rewritten** as "Pose it, then export TWICE" (Export Current Frame was
+documented nowhere despite being lesson 5 of session 9), and the **accept gate** now rejects plinths, bases,
+cast shadows, nameplates and captions — the character-SHEET presentation has now turned up on four variants,
+is always the prettiest image in the batch, and the gate as written would have passed it.
+
+### Decisions taken this session
+
+- **The floating transmutation circle becomes an attachment, not baked geometry** (Alec). Tripo did not
+  generate the disc on `circle_savant` and it is "like a weapon in a way". It is also the only route to it
+  actually glowing: the body is gated to `albedo_only` + `max_materials: 1`, so a baked circle could only ever
+  be painted-on. Three units wear one — `circle_savant` (large cyan), `covenant_transmuter` (small cyan),
+  `cinder_cantor` (red, beside the body). Filed as **DW-1027**.
+- **Standing instruction from Alec: always update the runbook, do not ask.** A finding goes in the same turn.
+
+### Open decisions
+
+- **DW-1025** — `bulwark_adept` brass/gold vs prussian-blue. Still needs Alec, and finding 3 above is now its
+  known mechanism: the blue was named second, as the under layer.
+- **The void hood.** `bolt_penitent` ships with a black-void hood and red Core-eyes, which FRAMING forbids
+  outright ("face fully visible ... never blank"). It looks better than a rendered face and a deliberate void
+  generates as a clean cavity rather than mush. Needs a carve-out for the beta hooded thralls in SUBJECT and
+  FRAMING **together** — changing one alone recreates finding 2.
+- **`bolt_penitent`'s hands** are visible past the muzzles, so FRAMING's "both arms end in grafted iron rather
+  than in hands" is unmet on the accepted plate. A forearm-MOUNTED driver with hands beyond it is the honest
+  reading; soften that sentence before any re-roll or it will fight the design.
+
+### Not done
+
+Epic 16 slices 4 (terrain/world) and 5 (unit facing, motion, buildings on the ground) are untouched. Epic 15's
+burn-down stays PAUSED. The four session-9 units are still T-posed and still need the idle re-export.
 
 ---
 
