@@ -1,13 +1,13 @@
 ---
 project: Project Chimera
-last_touched: 2026-09-10
+last_touched: 2026-09-21
 phase: Phase 5 — Polish & 1.0
 status: Active
 ---
 
 # Project Chimera — Snapshot
 
-**Last Touched:** `2026-09-11`
+**Last Touched:** `2026-09-21`
 
 ## Current Phase
 **Phase 5 — Polish & 1.0** (Months 25-31 of GDD roadmap)
@@ -16,12 +16,13 @@ Phases 0–4 are code-complete. Phase 5 is underway. Session 20 shipped worker-p
 
 ## Next Action
 
-**→ 2026-09-11 (session 10): the Tripo roster is 7 of 24 gated and 3 more plates are accepted and waiting to
-be generated. Everything needed to continue is in `D:\tripo-input\TRIPO_RUNBOOK.md`, which was corrected
-heavily this session — read the Session 10 Current State block below first, then the runbook's prompt-pack
-preamble, which now carries five authoring findings that each cost a re-roll. Next asset is
-`covenant_transmuter` (plate accepted 2026-09-11, GLB not yet exported), then `slag_bulwark` and
-`bolt_penitent` (plates accepted), then the remaining 14.**
+**-> 2026-09-21 (session 12): `thrall_yards` is picked and the roof fix is PROVEN; `bolt_sanctum`'s amended
+block is written but has never been batched. Everything needed to continue is in
+`D:\tripo-input\TRIPO_RUNBOOK.md` - read the Session 12 block below, then the runbook's prompt-pack preamble
+and its new "Local generation - ComfyUI + Flux" section. Next: batch `bolt_sanctum` on Tripo (its block is
+the one unvalidated edit), then the remaining five buildings, applying the roof-identity form that is now
+proven. **Before any local plating, settle DW-1029** - the local route runs on a non-commercial model.
+The HD Model question from session 11 is still open and still gates the six buildings.**
 
 Epic 16 slices 4 (terrain/world) and 5 (unit facing, motion, buildings on the ground) are still outstanding.
 
@@ -30,6 +31,193 @@ Epic 15's burn-down stays PAUSED; scope any `bmad-loop` run `--epic 16`, though 
 ---
 
 *Session type: bmad (prescribed workflow in active execution)*
+
+---
+
+## Current State (2026-09-21, SESSION 12 - THE ROOF RULE IS PROVEN, AND THERE IS NOW A LOCAL PLATE ROUTE) - read this first
+
+**This block supersedes everything below it.** No engine code changed. Like sessions 10 and 11 this was an
+asset session, run against `D:\tripo-input\TRIPO_RUNBOOK.md` (now ~1,370 lines) plus one new piece of repo
+tooling, `tools/asset-gen/scripts/comfy/`.
+
+### What was settled
+
+**The roof-identity lesson was written in session 11 and had not been applied to the blocks it was written
+for.** `bolt_sanctum` came back from Tripo as a handsome plate that still failed the rule exactly: measured on
+the plate, **100% of its crimson emissive sat below the 42% line, median at 0.74 of building height**, its roof
+was a blank black barrel vault, and at 40px its silhouette was a featureless rounded box. Two causes: the word
+**"vaulted" beat "steep roof"** in the same sentence, and every identifying feature was specified on the FRONT
+WALL - the surface an overhead camera loses first. Both `bolt_sanctum` and `thrall_yards` were amended to carry
+identity on the roof ridge. Standing rule added: **when a lesson lands, sweep every block it applies to in the
+same session.**
+
+**The fix is validated.** `thrall_yards` first batch off the amended block inverted every number:
+
+| | `bolt_sanctum` (old block) | `thrall_yards` (amended) |
+|---|---|---|
+| crimson above the 42% line | 0.0% | **62.4%** |
+| median glow height | 0.74 | **0.38** |
+| roof detail vs wall detail | 4.65 vs 6.56 (roof emptiest) | **9.54 vs 8.29 (roof richest)** |
+
+The phrasing that did it - "clearly the biggest feature of the building and fully visible from directly
+overhead" - is the same construction that finally worked on `sigil_foundry`, and is now the house form for
+every remaining building. A flat silhouette is correct on a building whose block forbids anything above the
+ridge; **roof colour and pattern is identity in its own right**, not only outline-breaking geometry.
+
+**`thrall_yards` is picked: variant B, the black-iron-and-brass frame.** The first variant came back
+timber-framed, and that was fixed **by looking at the next variant of the same batch, with no prompt edit at
+all** (warm-frame pixels 30.7% -> 10.2%, structure brightness 52.2 -> 37.1). New rule: **a defect that varies
+between variants of one batch is not a prompt defect - check the other three before touching a word.** B does
+not match SUBJECT completely (it dropped the "stone"), and that was accepted deliberately: set-wide palette
+consistency outranks it, and stone was never going to be this building's read.
+
+**Deliberately NOT edited:** `bolt_sanctum`'s "distinct from the squat barracks" (it produced a correctly
+upright 0.647 w/h, so it is a clause that WORKED), `crucible_hall`'s flat ridge, and the "fortified" reading of
+`thrall_yards`, which came back glazed on both variants. All three are logged in the runbook.
+
+### The local route - ComfyUI + Flux
+
+Stood up and proven end to end. ComfyUI on `http://127.0.0.1:8188`; two workflows in its Workflows sidebar,
+`Chimera_Concept_Plate` and `Chimera_Concept_Plate_2View`, both rebuilt per asset by
+`tools/asset-gen/scripts/comfy/build_workflow.py <asset> [--twoview] [--angled]`. ~4 min a generation on the
+3060. **Tripo remains the production route; this is an evaluation.**
+
+**Tripo prompt blocks do not port to Flux, and the fix is deletion.** Tripo obeys negation; Flux conditions on
+nouns, so FRAMING's "no streets, no roads" reliably GENERATES streets and roads - the `covenant_transmuter`
+mechanism again. `tripo_block_to_flux.py` reads a block straight out of the runbook and strips the CHECK block,
+every negated clause and the character-only STYLE boilerplate, and warns past Flux's 512-token cap.
+
+**The two-view front+back sheet is a UNIT technique, not a building one** - three test batches proved it. It
+must be ONE generation split by in-graph crops, never two generations (two runs give two DIFFERENT subjects).
+On `pierce_marksman` it produced a true front and a true back of one consistent figure with the empty sling
+legible on the back. On buildings both framings failed in opposite directions: ortho gives a real back but flat
+elevations that **hide the roof**, angled gives the roof but **Flux will not rotate a building 180 degrees**.
+Stopped at two edits rather than trade a third defect. Buildings stay single-view - step 3 already records that
+Tripo's invented back is a good invention, not a defect.
+
+**DW-1029 opened and it needs Alec:** the local route runs on `flux1-dev`, which is **non-commercial**.
+FLUX.1 [schnell] is Apache-2.0 and is a one-dropdown, ~7 GB swap reusing the same encoders and VAE.
+
+### Position
+
+Buildings: `sigil_foundry` textured and landed; `thrall_yards` plate picked; `bolt_sanctum` block amended but
+**never batched** - that is the one unvalidated edit outstanding. `covenant_sanctum`, `sanguine_furnace` and
+`render_works` already carried roof-borne identity and were not touched. Five buildings still to run. Units
+unchanged from session 11. No engine code, no tests, no goldens touched this session.
+
+---
+
+## Current State (2026-09-17, SESSION 11 — THE BETA ROSTER IS PLATED, AND THE PROMPT PACK PAID FOR TEN MORE LESSONS) — read this first
+
+**This block supersedes everything below it.** No engine code changed. Like session 10 this was a
+prompt-authoring session run entirely against `D:\tripo-input\TRIPO_RUNBOOK.md`, which is now 1,231 lines and
+is the live source of truth for the roster. Every finding below went into the runbook in the same turn it was
+found, per Alec's standing instruction.
+
+### Roster position
+
+**Beta units — all eight now have accepted plates.** `slag_bulwark` and `bolt_penitent` carried over from
+session 10; `maul_fused_wretch`, `pride_colossus`, `cinderhand_thrall`, `cinder_cantor`, `render_crawler` and
+`envy_wraithwing` were plated this session. `envy_wraithwing` needs one more batch for its tail. None of the
+six is generated yet.
+
+**Buildings — `sigil_foundry` is textured, accepted, and is the first building through the whole route.**
+It still needs exporting both ways, gating, and a `mesh_scale` computed off the building rather than off
+Tripo's 1.0 bounding box. `crucible_hall` had one batch, rejected on spires, with one targeted edit made. The
+other six buildings are untouched.
+
+### The ten lessons — all in the runbook preamble
+
+1. **Name a graft by its MASS, never by a hand-tool.** `maul_fused_wretch` said "fused cleaver-maul" and came
+   back holding an axe in an ordinary fist on 4 of 4. A cleaver and a maul are defined by a handle; name
+   either and the handle imports a fist. Renamed to a wedge of riveted iron with the join described
+   physically — 4 of 4 clean on the re-roll. Do not append the absences ("no haft, no grip"); that is the
+   `covenant_transmuter` trap from the other side.
+2. **LAYER POSITION beats word order on the faction colour.** `cinderhand_thrall` was amended in session 10 to
+   lead with crimson and still came back brown, because the crimson is the layer UNDER a leather apron. Third
+   instance of the DW-1025 mechanism. Any block saying "X under Y" is exposed. `pride_colossus` was fixed
+   pre-emptively on this and its crimson then landed 4 of 4.
+3. **Backdrop furniture is free; anything touching the figure is not (Alec).** Tripo removes the background
+   automatically, so titles, captions, logos, frames and blueprint linework are not rejects. A plinth, a base,
+   a pooled shadow or a nameplate overlapping the body still is. This corrected a rule the session had just
+   tightened the wrong way.
+4. **Ask for a torn EDGE, never a hanging STRAND.** `envy_wraithwing`'s SUBJECT asked for "trailing tatters"
+   and returned drip-strands that cannot survive 7,500 triangles — self-inflicted by the prompt. Rewritten to
+   torn, notched wing edges with holes through the membrane.
+5. **No foreshortened axis on the machine blocks.** `render_crawler` returned a barrel aimed at the camera:
+   no readable length, so nothing to extrude. FRAMING on all three machine/creature blocks now requires every
+   barrel, wing, limb and axle laid across the frame at full length.
+6. **CHECK only enforces what it can name — and 13 blocks were checking for GARMENTS.** All 8 buildings and 3
+   machines closed with the character CHECK ("garment, prosthetic, headgear, empty carrier"), spending the
+   prompt's strongest position on nouns with no referent. It showed: `sigil_foundry` lost its target butts on
+   4 of 4 and nothing in the prompt was ever going to catch it. Building and machine CHECK lines rewritten.
+7. **An unnamed element is invisible to the gate, in both directions.** `envy_wraithwing`'s best-built body had
+   no tail because SUBJECT never named one. `sigil_foundry` returned two workers inside it because building
+   FRAMING enumerated every intruder except a living one. Tail now named; all 8 buildings now forbid people,
+   figures, animals and vehicles and say the structure floats EMPTY.
+8. **Emphasis reallocates the composition — it does not just add the thing.** Making the targets "the biggest
+   and highest-contrast feature" turned the next batch into a wall of bullseyes with the building demoted to a
+   backdrop. Fix a missing item by making it specific and PLACED, never by making it the biggest.
+9. **A comparison against another asset is invisible, and only its vocabulary survives.** `crucible_hall` said
+   "distinctly lower than the spired command center" and returned a spire or steeple on 4 of 4 — destroying the
+   exact differentiation the clause existed to protect. State proportion absolutely, in the asset's own terms.
+10. **A building's identity must live on its ROOF or in its SILHOUETTE.** The textured `sigil_foundry` seen
+    from overhead reads as a roof, lanterns and logs — and says nothing about being a shooting range. The
+    targets were always specified standing on the floor of an open-sided shed, the one place an overhead camera
+    cannot see. Four batches went into making a ground-level feature legible to a camera that looks at roofs.
+    The feature was never the problem; its LOCATION was. **The overhead view is now part of the accept step.**
+
+### The expensive one — STOP EDITING A BLOCK THAT PRODUCED A GOOD BATCH
+
+`sigil_foundry`'s first two batches both produced usable buildings. Four edits followed, each a correct local
+fix for the last batch's defect, and the plates got worse every time — ending in a small distant shed with
+"RANGE" in raised 3D letters on its roof, which is geometry, not backdrop text, and ships. Alec called it and
+went back to pick from batches 1 and 2. **Reverted:** SUBJECT to its batch-2 wording, and FRAMING's elevation
+to "elevated three-quarter view" on all 8 buildings. **Kept:** the no-people clause and the rewritten building
+CHECK, both orthogonal to composition. Three rules came out of it — a prompt edit is only validated by a batch,
+so never stack two unvalidated edits; the defect you are chasing may be cheaper than the regression you trade
+for it; and when a batch returns two or three usable variants, the block is DONE.
+
+`crucible_hall`'s re-roll deliberately carries ONE edit for this reason — the spire fix — even though the
+elevation is also wrong. No building batch in five has yet produced the elevated RTS view FRAMING asks for;
+that is the next single edit, once the spire fix is scored.
+
+### Also corrected
+
+- **DW-1027 applied to the prompts.** All three transmutation circles (`circle_savant`, `covenant_transmuter`,
+  `cinder_cantor`) are out of SUBJECT — the decision was taken in session 10 and the blocks never followed. The
+  rule was holding by luck: Tripo happened to DROP the unattached disc on `circle_savant`, but any variant
+  where the disc touches a hand bakes it as painted-on geometry that the attachment then doubles.
+- **P2.0 Preview costs 65 credits, not 100** (Alec). v3.1 Best Quality at 55 is still the cheaper and
+  documented choice.
+- **On an open-sided building, Tripo closes the unseen side.** `sigil_foundry` came back walled in with service
+  doors at the back. That is a good invention, not a defect — do not re-roll over it. Check instead that the
+  invented wall meets the roof and no door floats.
+- **Interior fill is the quiet budget sink.** ~40 individual logs stacked under a canopy the RTS camera cannot
+  see past, competing for the same 19,000 triangles as the structure itself.
+
+### Open decisions
+
+- **HD Model for buildings.** Alec ran HD Model at 20,000 triangles on v3.1 Best Quality and liked the result.
+  The runbook's settings table says HD Model has no real polycount control and produces million-poly sculpts;
+  that note is now in doubt. **Settle it with `tripo_batch_gate.py` on that one asset before committing the
+  other six buildings** — the UI target is not proof, and a wrong assumption costs six buildings of credits.
+  Check triangle count, material count (the renderer needs `max_materials: 1`) and `inside_out`.
+- **The masked / void face.** FRAMING demands a face "fully visible ... never blank" and three beta thralls now
+  ship against it: `bolt_penitent`'s void hood, `maul_fused_wretch` masked on 4 of 4, `cinder_cantor` masked on
+  4 of 4. All three look better for it, and a deliberate void generates as a clean cavity where a rendered face
+  at this scale is mush. Still Alec's call, and it cannot be half-answered — a carve-out has to land in SUBJECT
+  and FRAMING together or it recreates the contradiction bug.
+- **DW-1025** — `bulwark_adept` brass vs prussian-blue. Unchanged, and lesson 2 above is now its third instance.
+- **`cinderhand_thrall` reads brown, not crimson** (the apron is the outer layer, the crimson the layer under
+  it). Accept as differentiation for the one non-combatant, or recolour and re-roll? Block deliberately left
+  unamended pending that call.
+
+### Not done
+
+Epic 16 slices 4 (terrain/world) and 5 (unit facing, motion, buildings on the ground) are untouched. Epic 15's
+burn-down stays PAUSED. The four session-9 units are still T-posed and still need the idle re-export. No
+Godot/C# learnings this session, so the vault LEARNINGS file is unchanged.
 
 ---
 
