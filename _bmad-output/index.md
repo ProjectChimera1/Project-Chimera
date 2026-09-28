@@ -45,7 +45,7 @@
 - [`godot/CLAUDE.md`](../godot/CLAUDE.md) — L2 Godot coding rules
 - [`_bmad-output/project-context.md`](./project-context.md) — **critical AI rules** (determinism, layering, data-driven)
 - [`Project_Chimera_GDD.md`](../Project_Chimera_GDD.md) — full Game Design Document (source of truth)
-- [`Snapshot.md`](../Snapshot.md) — current session state, what's in progress, smoke-test checklists
+- [`HANDOFF.md`](../HANDOFF.md) — current state, what's in progress; full history in [`docs/history/`](../docs/history/)
 - [`implementation-artifacts/deferred-work.md`](./implementation-artifacts/deferred-work.md) — the deferred-work ledger (`DW-<n>` entries)
 - [`implementation-artifacts/sprint-status.yaml`](./implementation-artifacts/sprint-status.yaml) — epic/story status
 - Godot/C# knowledge lives in the vault at `D:\Brain\20_Reference\GameDev\godot-csharp\LEARNINGS.md` (auto-injected each session)

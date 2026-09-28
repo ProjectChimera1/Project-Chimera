@@ -8,7 +8,7 @@ existing_patterns_found: 12
 
 # Project Context for AI Agents
 
-_Critical rules and patterns AI agents MUST follow when implementing game code in Project Chimera. This focuses on unobvious, project-specific details agents otherwise miss. For full design rationale see `Project_Chimera_GDD.md`; for current state see `Snapshot.md`; for the forward 1.0 architecture see `_bmad-output/game-architecture.md`._
+_Critical rules and patterns AI agents MUST follow when implementing game code in Project Chimera. This focuses on unobvious, project-specific details agents otherwise miss. For full design rationale see `Project_Chimera_GDD.md`; for current state see `HANDOFF.md`; for the forward 1.0 architecture see `_bmad-output/game-architecture.md`._
 
 ---
 

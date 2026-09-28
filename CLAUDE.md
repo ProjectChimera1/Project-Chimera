@@ -5,13 +5,14 @@ Project Chimera is an RTS creation platform built in Godot 4.6.3 with C#.
 Solo developer. AI-assisted at every layer.
 
 ## Key Files — Read These First
-- `Snapshot.md` — Current session briefing AND implementation tracker. Read this EVERY session start; the newest dated "Current State" block at the top supersedes every block below it.
+- `HANDOFF.md` — read this FIRST, every session start. Current state only, under ~100 lines.
+  Full history in `docs/history/Snapshot-through-2026-09-21.md`.
 - `_bmad-output/implementation-artifacts/deferred-work.md` — the deferred-work ledger (`DW-<n>` entries). The live record of known defects and what has been closed.
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` — epic/story status. Edit as TEXT, never round-trip it through a YAML parser (it does not strictly parse).
 - `Project_Chimera_GDD.md` — Full Game Design Document. Design INTENT; may describe targets not yet built.
-  Where it and the code disagree, the code plus `Snapshot.md` is the as-built truth.
-- Godot/C# learnings are auto-injected each session from the vault at
-  `D:\Brain\20_Reference\GameDev\godot-csharp\LEARNINGS.md` — append there, not to the repo.
+  Where it and the code disagree, the code plus `HANDOFF.md` is the as-built truth.
+- Godot/C# learnings: read `D:\Brain\20_Reference\GameDev\learnings\godot-csharp.md` when doing
+  Godot/C# work.
 
 ## Sub-Routers
 - `godot/CLAUDE.md` — Godot-specific coding rules, architecture patterns, naming conventions.
@@ -25,11 +26,9 @@ Solo developer. AI-assisted at every layer.
 
 ## Session Protocol
 - **Starting a session:** User runs `/start` — Claude reads the context files above and begins working.
-- **Ending a session:** User runs `/save` — Claude auto-derives all progress and updates `Snapshot.md`
-  (add a new dated "Current State" block rather than editing an older one), the deferred-work ledger,
-  and the vault LEARNINGS file.
-- No manual context-setting required. `Snapshot.md`'s newest "Current State" block plus
-  `sprint-status.yaml` determine what's next.
+- **Ending a session:** User runs `/save` — Claude auto-derives all progress and rewrites `HANDOFF.md`
+  in place (current state only, not appended) plus the deferred-work ledger.
+- No manual context-setting required. `HANDOFF.md` plus `sprint-status.yaml` determine what's next.
 
 ## Rules
 - All C# source files go in `godot/src/` organized by system

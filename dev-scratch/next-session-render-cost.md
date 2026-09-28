@@ -72,6 +72,6 @@ was "the leading suspect" for two weeks and was dismissed on the wrong property
 vision radius, command-card label wrapping. All are confirmed working in live play by
 the developer, but none have been formally observed through the bridge.
 
-Read `Snapshot.md` and the tail of
+Read `HANDOFF.md` and the tail of
 `_bmad-output/implementation-artifacts/deferred-work.md` (DW-916 through DW-923 plus the
 FIELD VERIFICATION block) before starting.
