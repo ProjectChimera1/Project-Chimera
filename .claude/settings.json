@@ -5,9 +5,6 @@
       "Bash(dotnet build:*)",
       "Bash(dotnet test:*)",
       "Bash(git:*)"
-    ],
-    "deny": [
-      "Bash(git push:*)"
     ]
   }
 }

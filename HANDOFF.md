@@ -16,7 +16,14 @@ BMAD is retired in this repo: `_bmad/`, `.bmad-loop/`, the 85 bmad/gds skills, t
 workflows, `tools/verify-in-engine-gate.ps1` and the four bmad-loop hooks in `.claude/settings.json`
 are gone (recoverable from git before this commit, except the untracked `.bmad-loop/` run records).
 `_bmad-output/` stays: it holds the UI mockups, `DESIGN.md`/`EXPERIENCE.md`, the GDD-era planning
-docs and the deferred-work ledger. No engine code, tests or goldens were touched.
+docs and the deferred-work ledger. The superseded `ux-Project_Chimera-2026-06-05` run was deleted;
+its three Claude Design handoff prompts moved to `ux-Project_Chimera-2026-06-20/handoff-prompts/`.
+No engine code, tests or goldens were touched.
+
+**The UI will be redone** with Opus 5.5 for the Unreal build (Alec, 2026-09-29). The 2026-06-20 set
+is now the functional reference (every screen, its contents and flows), not the visual target. Order:
+design system as HTML → one mockup per screen, approved as phone screenshots → built in Unreal C++
+and checked against the approved mockup. It can run alongside the trial.
 
 ## Next step
 
@@ -36,6 +43,8 @@ Unreal repo (simulation carried over with its git history). Features after that 
   low-poly recommended), repo names, anything missing.
 - **UI technology:** native C++ UI (assumed) vs HTML through Ultralight — question left as a comment
   in the spec doc.
+- **UI redo scope and direction:** new look but keep layouts (recommended) vs rethink layouts; alchemy
+  re-theme brief vs the shelved Transmutation Lab (`8265cdf`) vs a fresh direction.
 - **Carried over, unchanged:** DW-1029 (local Flux route runs on non-commercial FLUX.1 dev; schnell is
   a one-dropdown swap), the HD Model triangle-count question for the six remaining buildings,
   DW-1025 (`bulwark_adept` reads brass, not prussian blue), `cinderhand_thrall` reads brown not crimson.
@@ -48,7 +57,7 @@ Unreal repo (simulation carried over with its git history). Features after that 
   flake; re-run in isolation if it's the lone failure).
 - In-engine verification: `godot-verify` skill (Godot MCP bridge).
 - Asset gating: `tools/asset-gen/scripts/qa/tripo_batch_gate.py`.
-- `git push` is denied in `.claude/settings.json` for this project; Alec pushes.
+- Push is allowed (Alec lifted the block 2026-09-29): commit and push at checkpoints.
 
 ## In flight / known issues
 
