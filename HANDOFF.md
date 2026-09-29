@@ -30,12 +30,17 @@ No engine code, tests or goldens were touched. Done this session:
 
 ## Next step
 
-1. Confirm UE 5.8.3 finished (Launcher → Library). Compile a blank C++ project to prove the
-   toolchain. MSVC 14.51 is newer than Epic's recommended 14.50: if UnrealBuildTool rejects it,
-   Alec adds the 14.50 toolset in the Visual Studio Installer.
-2. Create the trial project at `D:\Projects\Chimera-Unreal-Trial` (outside this repo until the trial
-   passes). Enable Epic's Unreal MCP plugin (5.8, experimental; default `http://127.0.0.1:8000/mcp`)
-   and connect it to Claude Code.
+1. **Compile the trial project** (session 14, 2026-09-29): Alec created it from the Blank C++
+   template as `D:\Projects\Chimera-Unreal\ProjectChimera\ProjectChimera.uproject` (named for
+   keeps; outside this repo until the trial passes). UBT accepted MSVC 14.50.35717 + SDK
+   10.0.28000, but the first build died with "The paging file is too small" (UBA shared-memory
+   commit; 16 GB RAM, auto page file was 6.4 GB). Alec set a fixed page file 16–32 GB on C: and
+   rebooted. Next: with the editor CLOSED, run
+   `"D:/Epic Games/UE_5.8/Engine/Build/BatchFiles/Build.bat" ProjectChimeraEditor Win64 Development -Project="D:/Projects/Chimera-Unreal/ProjectChimera/ProjectChimera.uproject" -WaitMutex`
+   from Claude Code; if UBA still fails, add `-NoUBA`.
+2. Then Alec opens the project and enables plugins **Unreal MCP** (`ModelContextProtocol`,
+   Experimental) and **All Toolsets**, restarts, and Claude connects it to Claude Code
+   (default `http://127.0.0.1:8000/mcp` — verify). Python editor scripting is the batch fallback.
 3. **Look test first** (Alec is waiting on it): one map shot of our units/buildings rendered
    Manor-Lords-style and Northgard-style, sent side by side as images. It judges readability of
    armies, the asset redo cost (photoreal = regenerate all 24 models), player-import clash (idea:
