@@ -21,6 +21,39 @@ locked foundation. Use them to lay out every other screen in the game.
 - Microcopy: an arcane touch is fine, stat names stay plain, as in Round 1. The bioluminescent
   accent stays at one per screen.
 
+## Ornament and motion levers
+Round 1 already has ornament levers in the tweaks panel (intensity 1–5, glow, corners, headers,
+rail, buttons, minimap, texture, dividers). Grow that into a full lever panel I can use to switch
+each effect on or off and turn it up or down, live, on every Round 2 screen.
+- Every lever has an off switch and an intensity from 1 to 5. A master intensity scales them all.
+- New ornament levers:
+  - **Border style:** several to choose from, e.g. a single engraved line, a double line, a woven
+    rope, filigree corners only, and a border studded with sigils.
+  - **Gold rope border:** two thin gold lines twisting round each other along a panel's border,
+    like a woven cord. Low intensity shows it only at the corners; high intensity runs it along
+    the whole edge.
+  - **Growth:** the rope and filigree slowly grow along the border when a panel opens, then rest.
+  - **Sigils:** small transmutation symbols at panel corners, section headers and dividers. Choose
+    the symbol set (circles, triangles, the seals from the reference images) and how many appear.
+- New motion levers, each with an off switch plus intensity for speed and strength:
+  - **Pulse:** a slow, breathing glow on the living accent (AI working, the active tool, a Ready
+    or Start button).
+  - **Shimmer:** a faint light that travels along the gold lines every few seconds.
+  - **Turn:** transmutation circles (the minimap ring, loaders, the AI circle) rotate slowly.
+  - **Draw-in:** borders, dividers and sigils trace themselves in when a screen or panel appears.
+  - **Hover:** gold line-work brightens and the rope tightens under the cursor.
+  - **Seal:** the "complete" array closes with a short stamp.
+- Subtle by default: the starting setting is a quiet 2 out of 5. Motion never moves text or
+  controls, never flashes, and never loops faster than about once every 2 seconds. In the match
+  HUD it stays on the edges and alerts, never over the battlefield.
+- The game's Reduced motion setting stops all motion and leaves the ornaments still. Add a player
+  option too: UI ornament Off / Subtle / Full, under Settings (Graphics and Accessibility).
+- Buildable in Unreal and cheap: opacity, colour, a mask sliding along a border, a rotating image or
+  a material parameter. No blur, no particles. Add a one-line note for each saying how it would
+  be built.
+- Add a board, "05 · Ornament and motion", to the design-system page. Show each lever at off, 2 and
+  5, with its animation playing.
+
 ## Corrections to the first brief
 - Roles: players are **Commanders** and creators are **Architects**. Use those words wherever the
   UI names a role.
