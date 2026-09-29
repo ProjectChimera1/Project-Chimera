@@ -1,6 +1,6 @@
 # HANDOFF — Project Chimera
 
-_Updated 2026-09-29 · branch `master` · last commit `16f586a7` (then this handoff commit)_
+_Updated 2026-09-29 · branch `master` · last commit `a956a83d` (then this handoff commit)_
 
 ## Where we stopped
 
@@ -21,6 +21,12 @@ No engine code, tests or goldens were touched. Done this session:
   A Arcane Workshop / B Transmutation Lab / C Modern Atelier + review checklist). Direction B's
   reference images are in that doc and in
   `_bmad-output/planning-artifacts/ux-designs/ux-Project_Chimera-2026-06-20/handoff-prompts/`.
+- **UI Round 1 approved (session 14):** Alec liked **Direction B, Transmutation Lab** (design system
+  + map editor). The Claude Design export is saved in `docs/ui-redesign/round-1-transmutation-lab/`
+  (the reference images are not duplicated there). The **Round 2 prompt** (screen map, then five
+  batches: Front Door, Browse, Match, Editors 1, Editors 2) is in the brief doc's last section and
+  in `docs/ui-redesign/round-2-prompt.md`; it also fixes the brief's stale bits (Commanders and
+  Architects, no "Law of Equal Exchange", photoreal backdrop, any-genre custom games).
 - **Cleanup:** BMAD tooling, the bmad-loop hooks and the 2026-06-05 UX run removed; the project's
   `git push` deny rule was lifted at Alec's request.
 - **PC setup:** Visual Studio 2026 Community 18.10 installed and verified (all four Epic workloads,
@@ -51,8 +57,8 @@ No engine code, tests or goldens were touched. Done this session:
 
 ## Waiting on Alec
 
-- **Claude Design runs** of the brief (three directions); bring back links or screenshots of each
-  design system + map editor for side-by-side review.
+- **UI Round 2** in the same Claude Design project: screen map first, then one batch at a time;
+  each batch comes back for review against the brief's checklist before the next.
 - **World look** final call after the look test.
 - **`.claude/worktrees/wf_bbdf1721-ebb-93/`**: stale leftover of a 2026-08-04 workflow run (89 files,
   duplicates of `_bmad-output` UX files, nothing unique, untracked). Delete when he says OK.

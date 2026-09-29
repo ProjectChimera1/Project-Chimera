@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="icons.js"></script>
+<script src="ornaments.js"></script>
+<style>body{margin:0;background:#0B0C0E;color:#ECE6D8;font-family:Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}a{color:#E3C887;text-decoration:none}a:hover{color:#ECE6D8;text-decoration:underline}*{box-sizing:border-box}</style>
+</helmet>
+
+<div style="display:flex;flex-direction:column;gap:56px;padding:64px;align-items:flex-start">
+
+<div style="display:flex;flex-direction:column;gap:12px;max-width:1920px">
+<div style="font:600 12px/1 Inter;letter-spacing:.16em;text-transform:uppercase;color:#C9A86A">Project Chimera · UI redesign · Review 1</div>
+<div style="font:600 40px/1.1 Cinzel;color:#ECE6D8">The Transmutation Lab — design system</div>
+<div style="font:400 16px/1.55 Inter;color:#9A958A;max-width:1100px;text-wrap:pretty">Static specimens. Controls tagged <span style="color:#4FB39A;font-weight:600">LIVE</span> respond to hover and focus. Map editor: <a href="Map Editor.dc.html">Map Editor.dc.html</a>.</div>
+</div>
+
+<!-- ========== BOARD 01 FOUNDATIONS ========== -->
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">01 · Foundations · 1920×1080 · static</div>
+<div data-screen-label="01 Foundations" style="width:1920px;height:1080px;background:#14161A;position:relative;overflow:hidden;box-shadow:0 0 0 1px #2A2F38;padding:56px 64px;display:flex;flex-direction:column;gap:36px">
+<div style="display:flex;align-items:flex-end;justify-content:space-between">
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font:600 12px/1 Inter;letter-spacing:.16em;text-transform:uppercase;color:#C9A86A">Design system · 01</div>
+<div style="font:600 48px/1 Cinzel;color:#ECE6D8">Foundations</div>
+</div>
+<div style="font:400 15px/1.5 Inter;color:#9A958A;max-width:640px;text-align:right;text-wrap:pretty">Gold for structure. One cold light for meaning.</div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr 1.15fr;gap:28px;flex:1;min-height:0">
+
+<!-- surfaces + metals -->
+<div style="position:relative;isolation:isolate;background:#20242B;border:1px solid #4A4234;box-shadow:inset 0 1px 0 rgba(227,200,135,.07);padding:24px;display:flex;flex-direction:column;gap:18px;position:relative">{{ orn.tex }}{{ orn.corners }}
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">Surfaces &amp; metals</div>{{ orn.hr }}</div>
+<sc-for list="{{ surfaces }}" as="s" hint-placeholder-count="7">
+<div style="display:grid;grid-template-columns:56px 1fr auto;gap:14px;align-items:center">
+<div style="width:56px;height:40px;background:{{ s.h }};border:1px solid #4A4234"></div>
+<div style="display:flex;flex-direction:column;gap:3px"><div style="font:600 14px/1.2 Inter;color:#ECE6D8">{{ s.n }}</div><div style="font:400 13px/1.3 Inter;color:#9A958A">{{ s.r }}</div></div>
+<div style="font:500 13px/1 'JetBrains Mono';color:#9A958A;text-align:right">{{ s.h }}</div>
+</div>
+</sc-for>
+<div style="margin-top:auto;font:400 13px/1.5 Inter;color:#9A958A;border-top:1px solid #3A3F48;padding-top:14px;text-wrap:pretty;position:relative">{{ orn.divTop }}Deep gold <span style="font-family:'JetBrains Mono'">#8A6E3C</span> is 3.2:1 on panel, so it is for borders and engraving only, never text.</div>
+</div>
+
+<!-- signals -->
+<div style="position:relative;isolation:isolate;background:#20242B;border:1px solid #4A4234;box-shadow:inset 0 1px 0 rgba(227,200,135,.07);padding:24px;display:flex;flex-direction:column;gap:18px">{{ orn.tex }}{{ orn.corners }}
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">Signals &amp; text</div>{{ orn.hr }}</div>
+<sc-for list="{{ signals }}" as="s" hint-placeholder-count="6">
+<div style="display:grid;grid-template-columns:56px 1fr auto;gap:14px;align-items:center">
+<div style="width:56px;height:40px;background:#14161A;border:1px solid #3A3F48;display:flex;align-items:center;justify-content:center"><div style="width:26px;height:26px;background:{{ s.h }}"></div></div>
+<div style="display:flex;flex-direction:column;gap:3px"><div style="font:600 14px/1.2 Inter;color:#ECE6D8">{{ s.n }}</div><div style="font:400 13px/1.3 Inter;color:#9A958A">{{ s.r }}</div></div>
+<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end"><div style="font:500 13px/1 'JetBrains Mono';color:#9A958A">{{ s.h }}</div><div style="font:600 12px/1 'JetBrains Mono';color:#4FB39A">{{ s.c }}</div></div>
+</div>
+</sc-for>
+<div style="margin-top:auto;font:400 13px/1.5 Inter;color:#9A958A;border-top:1px solid #3A3F48;padding-top:14px;text-wrap:pretty;position:relative">{{ orn.divTop }}Contrast is measured on panel <span style="font-family:'JetBrains Mono'">#20242B</span>. Crimson <span style="font-family:'JetBrains Mono'">#C8503C</span> is only 3.4:1, so danger text uses the lifted tone <span style="font-family:'JetBrains Mono'">#E2735F</span>. The base crimson is kept for borders.</div>
+</div>
+
+<!-- players -->
+<div style="position:relative;isolation:isolate;background:#20242B;border:1px solid #4A4234;box-shadow:inset 0 1px 0 rgba(227,200,135,.07);padding:24px;display:flex;flex-direction:column;gap:18px">{{ orn.tex }}{{ orn.corners }}
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">Player colours · reserved for the world</div>{{ orn.hr }}</div>
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+<sc-for list="{{ players }}" as="p" hint-placeholder-count="4">
+<div style="background:#14161A;border:1px solid #3A3F48;padding:14px;display:flex;flex-direction:column;gap:12px;align-items:flex-start">
+<div style="width:100%;height:56px;background:{{ p.h }};display:flex;align-items:center;justify-content:center;font:700 26px/1 Inter;color:{{ p.g }}">{{ p.glyph }}</div>
+<div style="font:600 14px/1.2 Inter;color:#ECE6D8">{{ p.id }} · {{ p.n }}</div>
+<div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">{{ p.h }}</div>
+</div>
+</sc-for>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px;font:400 14px/1.5 Inter;color:#ECE6D8;text-wrap:pretty">
+<div>Each player has a glyph, shown on the ground ring, portrait, minimap blip and lobby slot.</div>
+<div style="color:#9A958A">Okabe orange, yellow and bluish-green clash with gold and verdigris, so they only appear as players 5–7 (✚ ★ ⬟). The UI never uses a player hue outside a chip.</div>
+</div>
+<div style="display:flex;gap:10px;align-items:center;margin-top:auto;padding-top:14px;border-top:1px solid #3A3F48">
+<div style="font:600 12px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A">Player chip</div>
+<sc-for list="{{ players }}" as="p" hint-placeholder-count="4">
+<div style="display:flex;align-items:center;gap:8px;background:#14161A;border:1px solid #3A3F48;padding:4px 10px 4px 4px"><div style="width:20px;height:20px;background:{{ p.h }};color:{{ p.g }};font:700 12px/20px Inter;text-align:center">{{ p.glyph }}</div><div style="font:500 13px/1 Inter;color:#ECE6D8">{{ p.id }}</div></div>
+</sc-for>
+</div>
+</div>
+</div>
+
+<!-- type + voice -->
+<div style="display:grid;grid-template-columns:1.6fr 1fr;gap:28px">
+<div style="position:relative;isolation:isolate;background:#20242B;border:1px solid #4A4234;box-shadow:inset 0 1px 0 rgba(227,200,135,.07);padding:24px;display:grid;grid-template-columns:repeat(5,auto);gap:28px;align-items:end;justify-content:space-between">{{ orn.tex }}{{ orn.corners }}
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font:600 44px/1 Cinzel;color:#ECE6D8">Ashfall Ford</div><div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">Display · Cinzel 600 · 44</div></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font:600 18px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">Inspector</div><div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">Section · Cinzel 18 · +14%</div></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font:600 12px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A">Brush strength</div><div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">Label · Inter 600 · 12 caps</div></div>
+<div style="display:flex;flex-direction:column;gap:8px;max-width:260px"><div style="font:400 14px/1.45 Inter;color:#ECE6D8">Raises terrain under the brush. Hold Shift to lower.</div><div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">Body · Inter 400 · 14/20</div></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font:500 22px/1 'JetBrains Mono';color:#ECE6D8">1,240 · 38/60 · 04:12</div><div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">Numbers · JetBrains Mono · tabular</div></div>
+</div>
+<div style="position:relative;isolation:isolate;background:#20242B;border:1px solid #4A4234;box-shadow:inset 0 1px 0 rgba(227,200,135,.07);padding:20px 24px;display:grid;grid-template-columns:auto 1fr;gap:8px 20px;align-content:center">{{ orn.tex }}{{ orn.corners }}
+<div style="font:600 12px/20px Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A">Valid</div><div style="font:500 14px/20px Inter;color:#4FB39A">✓ Array stable</div>
+<div style="font:600 12px/20px Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A">Error</div><div style="font:500 14px/20px Inter;color:#E2735F">⚠ The formula will not bind: the region has no name.</div>
+<div style="font:600 12px/20px Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A">Working</div><div style="font:500 14px/20px Inter;color:#7FE3A1">◌ Transmuting…</div>
+<div style="font:600 12px/20px Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A">Stats</div><div style="font:400 14px/20px Inter;color:#ECE6D8">Always plain: Health, Armor, Move speed</div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- ========== BOARD 02 COMPONENTS ========== -->
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">02 · Components &amp; states · 1920×1080 · static specimens, the “Try it” row is LIVE</div>
+<div data-screen-label="02 Components" style="width:1920px;height:1080px;background:#14161A;position:relative;overflow:hidden;box-shadow:0 0 0 1px #2A2F38;padding:56px 64px;display:flex;flex-direction:column;gap:28px">
+<div style="display:flex;align-items:flex-end;justify-content:space-between">
+<div style="display:flex;flex-direction:column;gap:10px"><div style="font:600 12px/1 Inter;letter-spacing:.16em;text-transform:uppercase;color:#C9A86A">Design system · 02</div><div style="font:600 48px/1 Cinzel;color:#ECE6D8">Components &amp; states</div></div>
+<div style="font:400 15px/1.5 Inter;color:#9A958A;max-width:640px;text-align:right;text-wrap:pretty">Focus: 2px bright-gold ring. Selected: bright-gold border on raised. Disabled: 40%, reason in tooltip.</div>
+</div>
+
+<div style="display:grid;grid-template-columns:1.25fr 1fr 1fr;grid-template-rows:auto 1fr;gap:24px;flex:1;min-height:0">
+
+<!-- buttons -->
+<div style="grid-row:span 2;background:#20242B;border:1px solid #4A4234;box-shadow:inset 0 1px 0 rgba(227,200,135,.07);padding:24px;display:flex;flex-direction:column;gap:18px">
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">Buttons</div>{{ orn.hr }}</div>
+<div style="display:grid;grid-template-columns:92px repeat(5,1fr);gap:12px 10px;align-items:center">
+<div></div>
+<div style="font:600 11px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A">Default</div><div style="font:600 11px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A">Hover</div><div style="font:600 11px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A">Focus</div><div style="font:600 11px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A">Pressed</div><div style="font:600 11px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A">Disabled</div>
+
+<div style="font:500 13px/1.2 Inter;color:#ECE6D8">Primary</div>
+<div style="height:36px;background:#C9A86A;color:#14161A;font:600 13px/36px Inter;text-align:center;border:1px solid #E3C887;position:relative">Publish{{ orn.btnGold }}</div>
+<div style="height:36px;background:#E3C887;color:#14161A;font:600 13px/36px Inter;text-align:center;border:1px solid #F0DDAA;position:relative">Publish{{ orn.btnGold }}</div>
+<div style="height:36px;background:#C9A86A;color:#14161A;font:600 13px/36px Inter;text-align:center;border:1px solid #E3C887;outline:2px solid #E3C887;outline-offset:2px;position:relative">Publish{{ orn.btnGold }}</div>
+<div style="height:36px;background:#A88A52;color:#14161A;font:600 13px/36px Inter;text-align:center;border:1px solid #8A6E3C;box-shadow:inset 0 2px 0 rgba(0,0,0,.25);position:relative">Publish{{ orn.btnGold }}</div>
+<div style="height:36px;background:#C9A86A;color:#14161A;font:600 13px/36px Inter;text-align:center;border:1px solid #E3C887;opacity:.4;position:relative">Publish{{ orn.btnGold }}</div>
+
+<div style="font:500 13px/1.2 Inter;color:#ECE6D8">Secondary</div>
+<div style="height:36px;background:#2A2F38;color:#ECE6D8;font:500 13px/34px Inter;text-align:center;border:1px solid #8A6E3C;position:relative">Save{{ orn.btnDark }}</div>
+<div style="height:36px;background:#333945;color:#ECE6D8;font:500 13px/34px Inter;text-align:center;border:1px solid #C9A86A;position:relative">Save{{ orn.btnDark }}</div>
+<div style="height:36px;background:#2A2F38;color:#ECE6D8;font:500 13px/34px Inter;text-align:center;border:1px solid #8A6E3C;outline:2px solid #E3C887;outline-offset:2px;position:relative">Save{{ orn.btnDark }}</div>
+<div style="height:36px;background:#1B1E24;color:#ECE6D8;font:500 13px/34px Inter;text-align:center;border:1px solid #8A6E3C;position:relative">Save{{ orn.btnDark }}</div>
+<div style="height:36px;background:#2A2F38;color:#ECE6D8;font:500 13px/34px Inter;text-align:center;border:1px solid #8A6E3C;opacity:.4;position:relative">Save{{ orn.btnDark }}</div>
+
+<div style="font:500 13px/1.2 Inter;color:#ECE6D8">Quiet</div>
+<div style="height:36px;color:#C9A86A;font:500 13px/36px Inter;text-align:center">Cancel</div>
+<div style="height:36px;background:#2A2F38;color:#E3C887;font:500 13px/36px Inter;text-align:center">Cancel</div>
+<div style="height:36px;color:#C9A86A;font:500 13px/36px Inter;text-align:center;outline:2px solid #E3C887;outline-offset:-2px">Cancel</div>
+<div style="height:36px;background:#1B1E24;color:#E3C887;font:500 13px/36px Inter;text-align:center">Cancel</div>
+<div style="height:36px;color:#C9A86A;font:500 13px/36px Inter;text-align:center;opacity:.4">Cancel</div>
+
+<div style="font:500 13px/1.2 Inter;color:#ECE6D8">Danger</div>
+<div style="height:36px;background:#20242B;color:#E2735F;font:600 13px/34px Inter;text-align:center;border:1px solid #C8503C;position:relative">Delete{{ orn.btnDark }}</div>
+<div style="height:36px;background:#3A1E1A;color:#F09A88;font:600 13px/34px Inter;text-align:center;border:1px solid #E2735F;position:relative">Delete{{ orn.btnDark }}</div>
+<div style="height:36px;background:#20242B;color:#E2735F;font:600 13px/34px Inter;text-align:center;border:1px solid #C8503C;outline:2px solid #E3C887;outline-offset:2px;position:relative">Delete{{ orn.btnDark }}</div>
+<div style="height:36px;background:#2A1512;color:#E2735F;font:600 13px/34px Inter;text-align:center;border:1px solid #C8503C;position:relative">Delete{{ orn.btnDark }}</div>
+<div style="height:36px;background:#20242B;color:#E2735F;font:600 13px/34px Inter;text-align:center;border:1px solid #C8503C;opacity:.4;position:relative">Delete{{ orn.btnDark }}</div>
+
+<div style="font:500 13px/1.2 Inter;color:#ECE6D8">Playtest</div>
+<div style="grid-column:span 5;display:flex;gap:10px;align-items:center">
+<div style="height:40px;padding:0 14px 0 12px;display:flex;align-items:center;gap:10px;background:#14161A;border:1px solid #4FB39A;color:#ECE6D8;font:600 13px/1 Inter;letter-spacing:.08em;text-transform:uppercase;position:relative">{{ orn.btnDark }}<div style="color:#4FB39A;display:flex">{{ ic.play }}</div>Playtest<div style="font:600 11px/18px 'JetBrains Mono';min-width:24px;height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#14161A;color:#ECE6D8;text-align:center">F5</div></div>
+<div style="height:40px;padding:0 14px 0 12px;display:flex;align-items:center;gap:10px;background:#1B2E29;border:1px solid #7FE3A1;color:#ECE6D8;font:600 13px/1 Inter;letter-spacing:.08em;text-transform:uppercase;position:relative">{{ orn.btnDark }}<div style="color:#7FE3A1;display:flex">{{ ic.stop }}</div>Return to editor<div style="font:600 11px/18px 'JetBrains Mono';min-width:24px;height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#14161A;color:#ECE6D8;text-align:center">F5</div></div>
+
+</div>
+</div>
+
+<div style="border-top:1px solid #3A3F48;padding-top:16px;display:flex;flex-direction:column;gap:12px;position:relative">{{ orn.divTop }}
+<div style="display:flex;align-items:center;gap:10px"><div style="font:600 11px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A">Try it</div><div style="font:700 10px/1 Inter;letter-spacing:.1em;color:#14161A;background:#4FB39A;padding:3px 6px">LIVE</div><div style="font:400 13px/1 Inter;color:#9A958A">Hover, then press Tab to focus</div></div>
+<div style="display:flex;gap:12px">
+<button title="Publish this map to the Workshop (Ctrl+Shift+P)" style="position:relative;height:36px;padding:0 20px;background:#C9A86A;color:#14161A;font:600 13px/1 Inter;border:1px solid #E3C887;cursor:pointer;outline:none" style-hover="background:#E3C887" style-focus="outline:2px solid #E3C887;outline-offset:2px" style-active="background:#A88A52">Publish{{ orn.btnGold }}</button>
+<button title="Save (Ctrl+S)" style="position:relative;height:36px;padding:0 20px;background:#2A2F38;color:#ECE6D8;font:500 13px/1 Inter;border:1px solid #8A6E3C;cursor:pointer;outline:none" style-hover="background:#333945;border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px" style-active="background:#1B1E24">Save{{ orn.btnDark }}</button>
+<button title="Cancel (Esc)" style="height:36px;padding:0 16px;background:transparent;color:#C9A86A;font:500 13px/1 Inter;border:none;cursor:pointer;outline:none" style-hover="background:#2A2F38;color:#E3C887" style-focus="outline:2px solid #E3C887;outline-offset:-2px">Cancel</button>
+<button title="Delete selection (Del). Asks to confirm." style="position:relative;height:36px;padding:0 20px;background:#20242B;color:#E2735F;font:600 13px/1 Inter;border:1px solid #C8503C;cursor:pointer;outline:none" style-hover="background:#3A1E1A;color:#F09A88;border-color:#E2735F" style-focus="outline:2px solid #E3C887;outline-offset:2px">Delete{{ orn.btnDark }}</button>
+<button disabled="" title="Beat your own map first" style="position:relative;height:36px;padding:0 20px;background:#C9A86A;color:#14161A;font:600 13px/1 Inter;border:1px solid #E3C887;opacity:.4;cursor:not-allowed">Disabled</button>
+</div>
+</div>
+
+<div style="border-top:1px solid #3A3F48;padding-top:16px;display:flex;flex-direction:column;gap:12px;position:relative">{{ orn.divTop }}
+<div style="font:600 11px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A">Tool rail item · 48×48</div>
+<div style="display:flex;gap:18px;align-items:flex-end">
+<div style="display:flex;flex-direction:column;gap:8px;align-items:center"><div style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;color:#C9A86A;border:1px solid transparent">{{ ic.terrain }}</div><div style="font:500 12px/1 Inter;color:#9A958A">Default</div></div>
+<div style="display:flex;flex-direction:column;gap:8px;align-items:center"><div style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;color:#E3C887;background:#2A2F38;border:1px solid #3A3F48">{{ ic.terrain }}</div><div style="font:500 12px/1 Inter;color:#9A958A">Hover</div></div>
+<div style="display:flex;flex-direction:column;gap:8px;align-items:center"><div style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;color:#E3C887;background:#2A2F38;border:1px solid #E3C887;position:relative">{{ ic.terrain }}{{ orn.railSel }}<div style="position:absolute;left:-7px;top:19px;width:8px;height:8px;background:#E3C887;transform:rotate(45deg)"></div></div><div style="font:500 12px/1 Inter;color:#9A958A">Selected</div></div>
+<div style="display:flex;flex-direction:column;gap:8px;align-items:center"><div style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;color:#C9A86A;outline:2px solid #E3C887;outline-offset:-2px">{{ ic.terrain }}</div><div style="font:500 12px/1 Inter;color:#9A958A">Focus</div></div>
+<div style="display:flex;flex-direction:column;gap:8px;align-items:center"><div style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;color:#C9A86A;opacity:.4">{{ ic.terrain }}</div><div style="font:500 12px/1 Inter;color:#9A958A">Disabled</div></div>
+<div style="width:1px;height:48px;background:#3A3F48"></div>
+<div style="background:#14161A;border:1px solid #8A6E3C;padding:10px 12px;display:flex;flex-direction:column;gap:6px;max-width:300px;box-shadow:0 4px 0 rgba(0,0,0,.35)">
+<div style="display:flex;align-items:center;gap:8px;justify-content:space-between"><div style="font:600 14px/1 Inter;color:#ECE6D8">Terrain</div><div style="font:600 11px/18px 'JetBrains Mono';min-width:20px;height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#20242B;color:#ECE6D8;text-align:center">T</div></div>
+<div style="font:400 13px/1.4 Inter;color:#9A958A">Sculpt and paint the ground. Hold Shift to invert.</div>
+</div>
+
+</div>
+</div>
+</div>
+
+<!-- inputs -->
+<div style="position:relative;isolation:isolate;background:#20242B;border:1px solid #4A4234;box-shadow:inset 0 1px 0 rgba(227,200,135,.07);padding:24px;display:flex;flex-direction:column;gap:16px">{{ orn.tex }}{{ orn.corners }}
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">Fields</div>{{ orn.hr }}</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font:600 11px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A">Name</div><div style="height:34px;background:#14161A;border:1px solid #3A3F48;padding:0 10px;font:400 14px/32px Inter;color:#ECE6D8">NorthPass</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font:600 11px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#E3C887">Name · focus</div><div style="height:34px;background:#14161A;border:1px solid #E3C887;padding:0 10px;font:400 14px/32px Inter;color:#ECE6D8;display:flex;align-items:center">NorthPa<div style="width:1px;height:16px;background:#E3C887"></div></div></div>
+<div style="grid-column:span 2;display:flex;flex-direction:column;gap:6px"><div style="font:600 11px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#E2735F">Name · error</div><div style="height:34px;background:#14161A;border:1px solid #C8503C;padding:0 10px;font:400 14px/32px Inter;color:#9A958A">Region name</div><div style="font:500 13px/1.3 Inter;color:#E2735F">⚠ The formula will not bind: a region needs a name.</div></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;justify-content:space-between;align-items:center"><div style="font:600 11px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A">Brush size</div><div style="height:26px;width:64px;background:#14161A;border:1px solid #3A3F48;font:500 13px/24px 'JetBrains Mono';color:#ECE6D8;text-align:right;padding:0 8px">12 m</div></div>
+<div style="height:16px;position:relative;display:flex;align-items:center"><div style="position:absolute;left:0;right:0;height:4px;background:#14161A;border:1px solid #3A3F48"></div><div style="position:absolute;left:0;width:38%;height:4px;background:#C9A86A"></div><div style="position:absolute;left:38%;width:14px;height:14px;margin-left:-7px;background:#E3C887;transform:rotate(45deg);border:2px solid #14161A"></div></div>
+<div style="font:400 12px/1 Inter;color:#9A958A">Drag, or type a value. Arrow keys ±1, Shift ±10</div>
+</div>
+<div style="display:flex;gap:12px;align-items:center">
+<div style="display:flex;border:1px solid #3A3F48;background:#14161A">
+<div style="padding:0 12px;height:30px;font:500 13px/30px Inter;color:#14161A;background:#C9A86A">Raise</div>
+<div style="padding:0 12px;height:30px;font:500 13px/30px Inter;color:#ECE6D8;border-left:1px solid #3A3F48">Lower</div>
+<div style="padding:0 12px;height:30px;font:500 13px/30px Inter;color:#ECE6D8;border-left:1px solid #3A3F48">Smooth</div>
+</div>
+<div style="display:flex;align-items:center;gap:8px"><div style="width:34px;height:18px;background:#1B2E29;border:1px solid #4FB39A;position:relative"><div style="position:absolute;right:2px;top:2px;width:12px;height:12px;background:#4FB39A"></div></div><div style="font:500 13px/1 Inter;color:#ECE6D8">Snap</div></div>
+<div style="display:flex;align-items:center;gap:8px"><div style="width:16px;height:16px;border:1px solid #4FB39A;background:#1B2E29;display:flex;align-items:center;justify-content:center;color:#4FB39A">{{ ic.checkSm }}</div><div style="font:500 13px/1 Inter;color:#ECE6D8">Lock</div></div>
+</div>
+</div>
+
+<!-- keys -->
+<div style="position:relative;isolation:isolate;background:#20242B;border:1px solid #4A4234;box-shadow:inset 0 1px 0 rgba(227,200,135,.07);padding:24px;display:flex;flex-direction:column;gap:16px">{{ orn.tex }}{{ orn.corners }}
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">Hotkey glyphs</div>{{ orn.hr }}</div>
+<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+<sc-for list="{{ keys }}" as="k" hint-placeholder-count="10"><div style="font:600 12px/20px 'JetBrains Mono';min-width:24px;height:24px;padding:0 7px;border:1px solid #5C5446;border-bottom-width:3px;border-radius:3px;background:#14161A;color:#ECE6D8;text-align:center">{{ k }}</div></sc-for>
+</div>
+<div style="display:flex;gap:16px;align-items:center">
+<div style="display:flex;align-items:center;gap:8px"><div style="width:16px;height:22px;border:1px solid #9A958A;border-radius:8px 8px 7px 7px;position:relative;overflow:hidden"><div style="position:absolute;left:0;top:0;width:7px;height:9px;background:#E3C887"></div></div><div style="font:500 13px/1 Inter;color:#ECE6D8">Left click</div></div>
+<div style="display:flex;align-items:center;gap:8px"><div style="width:16px;height:22px;border:1px solid #9A958A;border-radius:8px 8px 7px 7px;position:relative;overflow:hidden"><div style="position:absolute;right:0;top:0;width:7px;height:9px;background:#E3C887"></div></div><div style="font:500 13px/1 Inter;color:#ECE6D8">Right click</div></div>
+<div style="display:flex;align-items:center;gap:8px"><div style="width:16px;height:22px;border:1px solid #9A958A;border-radius:8px 8px 7px 7px;position:relative"><div style="position:absolute;left:6px;top:3px;width:3px;height:6px;background:#E3C887"></div></div><div style="font:500 13px/1 Inter;color:#ECE6D8">Wheel</div></div>
+</div>
+<div style="font:400 13px/1.5 Inter;color:#9A958A">Read from the live bindings. Remaps update everywhere.</div>
+</div>
+
+<!-- inspector section -->
+<div style="position:relative;isolation:isolate;background:#20242B;border:1px solid #4A4234;box-shadow:inset 0 1px 0 rgba(227,200,135,.07);padding:24px;display:flex;flex-direction:column;gap:14px">{{ orn.tex }}{{ orn.corners }}
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">Inspector rows</div>{{ orn.hr }}</div>
+<div style="display:flex;flex-direction:column">
+<div style="display:grid;grid-template-columns:1fr 120px;align-items:center;height:34px;border-bottom:1px solid #2A2F38"><div style="font:400 14px/1 Inter;color:#9A958A">Owner</div><div style="display:flex;align-items:center;gap:8px"><div style="width:18px;height:18px;background:#0072B2;color:#fff;font:700 11px/18px Inter;text-align:center">◆</div><div style="font:500 14px/1 Inter;color:#ECE6D8">Player 1</div></div></div>
+<div style="display:grid;grid-template-columns:1fr 120px;align-items:center;height:34px;border-bottom:1px solid #2A2F38;background:#2A2F38;margin:0 -8px;padding:0 8px"><div style="font:400 14px/1 Inter;color:#ECE6D8">Rotation <span style="color:#9A958A">· hover</span></div><div style="font:500 14px/1 'JetBrains Mono';color:#ECE6D8">135°</div></div>
+<div style="display:grid;grid-template-columns:1fr 120px;align-items:center;height:34px;border-bottom:1px solid #2A2F38"><div style="font:400 14px/1 Inter;color:#9A958A">Health</div><div style="font:500 14px/1 'JetBrains Mono';color:#9A958A">— mixed</div></div>
+<div style="display:grid;grid-template-columns:1fr 120px;align-items:center;height:34px"><div style="font:400 14px/1 Inter;color:#9A958A">Supply</div><div style="font:500 14px/1 'JetBrains Mono';color:#ECE6D8">2,500</div></div>
+</div>
+</div>
+
+<!-- context actions + status -->
+<div style="position:relative;isolation:isolate;background:#20242B;border:1px solid #4A4234;box-shadow:inset 0 1px 0 rgba(227,200,135,.07);padding:24px;display:flex;flex-direction:column;gap:14px">{{ orn.tex }}{{ orn.corners }}
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">Context bar &amp; status</div>{{ orn.hr }}</div>
+<div style="display:flex;align-self:flex-start;background:#14161A;border:1px solid #8A6E3C;box-shadow:0 3px 0 rgba(0,0,0,.4)">
+<sc-for list="{{ ctx }}" as="c" hint-placeholder-count="5"><div style="height:36px;padding:0 10px;display:flex;align-items:center;gap:6px;color:#C9A86A;border-right:1px solid #2A2F38">{{ c.icon }}<div style="font:600 11px/1 'JetBrains Mono';color:#9A958A">{{ c.k }}</div></div></sc-for>
+</div>
+<div style="font:400 13px/1.4 Inter;color:#9A958A">Anchored to the selection.</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;gap:10px;height:32px;padding:0 12px;background:#14161A;border:1px solid #2F5A4F;color:#4FB39A;font:500 13px/1 Inter">{{ ic.checkSm }} Array stable · map validates</div>
+<div style="display:flex;align-items:center;gap:10px;height:32px;padding:0 12px;background:#14161A;border:1px solid #C8503C;color:#E2735F;font:500 13px/1 Inter">{{ ic.alertSm }} Under attack · Ironmarsh <span style="margin-left:auto;font:600 11px/1 'JetBrains Mono';color:#9A958A">Space ⟶ jump</span></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- ========== BOARD 03 SHELL & SIGNATURE ========== -->
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">03 · One shell &amp; signature moments · 1920×1080 · static</div>
+<div data-screen-label="03 Shell" style="width:1920px;height:1080px;background:#14161A;position:relative;overflow:hidden;box-shadow:0 0 0 1px #2A2F38;padding:56px 64px;display:flex;flex-direction:column;gap:28px">
+<div style="display:flex;align-items:flex-end;justify-content:space-between">
+<div style="display:flex;flex-direction:column;gap:10px"><div style="font:600 12px/1 Inter;letter-spacing:.16em;text-transform:uppercase;color:#C9A86A">Design system · 03</div><div style="font:600 48px/1 Cinzel;color:#ECE6D8">One shell, every mode</div></div>
+<div style="font:400 15px/1.5 Inter;color:#9A958A;max-width:700px;text-align:right;text-wrap:pretty">Five zones that never move. Create and Play fill them differently.</div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:28px">
+<sc-for list="{{ shells }}" as="sh" hint-placeholder-count="2">
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;align-items:baseline;gap:12px"><div style="font:600 18px/1 Cinzel;letter-spacing:.1em;text-transform:uppercase;color:#E3C887">{{ sh.title }}</div><div style="font:400 14px/1 Inter;color:#9A958A">{{ sh.sub }}</div></div>
+<div style="height:400px;background:#0E0F12;border:1px solid #4A4234;display:grid;grid-template-columns:{{ sh.cols }};grid-template-rows:36px minmax(0,1fr) 22px;gap:3px;padding:3px;overflow:hidden">
+<div style="grid-column:1 / -1;background:#20242B;border:1px solid #8A6E3C;display:flex;align-items:center;padding:0 12px;font:500 13px/1.2 Inter;color:#ECE6D8">{{ sh.top }}</div>
+<div style="min-width:0;min-height:0;overflow:hidden;background:#20242B;border:1px solid #4A4234;padding:10px 8px;font:500 12px/1.35 Inter;color:#ECE6D8;writing-mode:vertical-rl;transform:rotate(180deg);text-align:center">{{ sh.left }}</div>
+<div style="min-width:0;min-height:0;overflow:hidden;background:repeating-linear-gradient(135deg,#1A1D1B 0 10px,#1D201E 10px 20px);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;text-align:center;padding:12px"><div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">{{ sh.center }}</div><div style="font:400 13px/1.3 Inter;color:#9A958A;max-width:280px">{{ sh.centerNote }}</div></div>
+<div style="min-width:0;min-height:0;overflow:hidden;background:#20242B;border:1px solid #4A4234;padding:10px;font:500 12px/1.4 Inter;color:#ECE6D8;display:flex;flex-direction:column;gap:6px"><div>{{ sh.right }}</div><div style="margin-top:auto;align-self:center;width:72px;height:72px;flex:none;border:1px solid #C9A86A;border-radius:50%;display:flex;align-items:center;justify-content:center;font:500 11px/1.2 'JetBrains Mono';color:#9A958A;text-align:center">minimap</div></div>
+<div style="grid-column:1 / -1;background:#20242B;border:1px solid #4A4234;display:flex;align-items:center;padding:0 12px;font:400 12px/1 Inter;color:#9A958A">{{ sh.bottom }}</div>
+</div>
+</div>
+</sc-for>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(4,1fr) 1.3fr;gap:24px;flex:1;min-height:0">
+<sc-for list="{{ moments }}" as="m" hint-placeholder-count="4">
+<div style="position:relative;isolation:isolate;background:#20242B;border:1px solid #4A4234;box-shadow:inset 0 1px 0 rgba(227,200,135,.07);padding:18px;display:flex;flex-direction:column;gap:12px;align-items:center">{{ orn.tex }}{{ orn.corners }}
+<div style="flex:1;display:flex;align-items:center;justify-content:center;min-height:0">{{ m.art }}</div>
+<div style="font:600 14px/1 Cinzel;letter-spacing:.1em;text-transform:uppercase;color:#E3C887;text-align:center">{{ m.t }}</div>
+<div style="font:400 13px/1.4 Inter;color:#9A958A;text-align:center;text-wrap:pretty">{{ m.d }}</div>
+</div>
+</sc-for>
+<div style="position:relative;isolation:isolate;background:#20242B;border:1px solid #4A4234;box-shadow:inset 0 1px 0 rgba(227,200,135,.07);padding:18px;display:flex;flex-direction:column;gap:12px">{{ orn.tex }}{{ orn.corners }}
+<div style="font:600 14px/1 Cinzel;letter-spacing:.1em;text-transform:uppercase;color:#E3C887">Line icons · 24 grid · 1.5 stroke</div>
+<div style="display:grid;grid-template-columns:repeat(9,1fr);gap:6px;color:#C9A86A">
+<sc-for list="{{ iconList }}" as="it" hint-placeholder-count="27"><div title="{{ it.n }}" style="height:34px;display:flex;align-items:center;justify-content:center;background:#14161A;border:1px solid #2A2F38">{{ it.el }}</div></sc-for>
+</div>
+<div style="display:flex;align-items:flex-end;gap:18px;margin-top:auto;border-top:1px solid #3A3F48;padding-top:12px;position:relative">{{ orn.divTop }}
+<div style="font:600 11px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A;align-self:center">UI scale</div>
+<sc-for list="{{ scales }}" as="sc" hint-placeholder-count="3"><div style="display:flex;flex-direction:column;align-items:center;gap:6px"><div style="width:{{ sc.px }}px;height:{{ sc.px }}px;border:1px solid #E3C887;background:#2A2F38;display:flex;align-items:center;justify-content:center;color:#E3C887">{{ sc.icon }}</div><div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">{{ sc.l }}</div></div></sc-for>
+
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;ornIntensity&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:3,&quot;min&quot;:1,&quot;max&quot;:5,&quot;step&quot;:1,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;ornGlow&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;ornCorners&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;ornHeaders&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;ornRail&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;ornButtons&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;ornMinimap&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;ornTexture&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;ornDividers&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;}}">
+class Component extends DCLogic {
+  componentDidMount() {
+    if (!window.CHI_ICON || !window.CHI_ORN) { this._t = setInterval(() => { if (window.CHI_ICON && window.CHI_ORN) { clearInterval(this._t); this.forceUpdate(); } }, 50); }
+  }
+  componentWillUnmount() { clearInterval(this._t); }
+  i(n, s, c, w) { return window.CHI_ICON ? window.CHI_ICON(React, n, s || 18, c, w) : null; }
+  circle(size, progress, done) {
+    const e = React.createElement, r = 44, C = 2 * Math.PI * r;
+    const glow = done || progress > 0;
+    return e('svg', { width: size, height: size, viewBox: '0 0 100 100', fill: 'none', style: { display: 'block' } },
+      e('circle', { cx: 50, cy: 50, r: 48, stroke: '#8A6E3C', strokeWidth: 1 }),
+      e('circle', { cx: 50, cy: 50, r: r, stroke: '#2A2F38', strokeWidth: 4 }),
+      e('circle', { cx: 50, cy: 50, r: r, stroke: done ? '#C9A86A' : '#7FE3A1', strokeWidth: 4, strokeDasharray: C, strokeDashoffset: C * (1 - (done ? 1 : progress)), transform: 'rotate(-90 50 50)' }),
+      e('circle', { cx: 50, cy: 50, r: 38, stroke: '#C9A86A', strokeWidth: 1, strokeDasharray: '1.5 3' }),
+      e('polygon', { points: '50,14 81.2,68 18.8,68', stroke: '#C9A86A', strokeWidth: 1.2, fill: glow && !done ? 'rgba(127,227,161,.10)' : 'none' }),
+      e('polygon', { points: '50,86 18.8,32 81.2,32', stroke: '#C9A86A', strokeWidth: 1.2, fill: 'none' }),
+      e('circle', { cx: 50, cy: 50, r: 14, stroke: done ? '#E3C887' : '#C9A86A', strokeWidth: 1.2, fill: done ? '#C9A86A' : (glow ? 'rgba(127,227,161,.25)' : 'none') }),
+      done ? e('polyline', { points: '43,50 48,55 58,45', stroke: '#14161A', strokeWidth: 2.2, fill: 'none' }) : null,
+      ...[0, 60, 120, 180, 240, 300].map((a, k) => { const t = (a - 90) * Math.PI / 180; return e('circle', { key: k, cx: 50 + 38 * Math.cos(t), cy: 50 + 38 * Math.sin(t), r: 3, fill: '#14161A', stroke: '#C9A86A', strokeWidth: 1 }); })
+    );
+  }
+  vat() {
+    const e = React.createElement;
+    return e('div', { style: { width: 120, height: 150, position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' } },
+      e('div', { style: { width: 84, height: 12, background: '#8A6E3C', border: '1px solid #C9A86A' } }),
+      e('div', { style: { width: 104, flex: 1, border: '1px solid #9A958A', borderTop: 'none', background: 'radial-gradient(ellipse at 50% 60%, rgba(127,227,161,.28), rgba(79,179,154,.06) 60%, #14161A 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', font: "500 10px/1.3 'JetBrains Mono'", color: '#9A958A', textAlign: 'center' } }, 'unit model', e('br'), 'render'),
+      e('div', { style: { width: 116, height: 10, background: '#8A6E3C', border: '1px solid #C9A86A' } }));
+  }
+  ring(orn) {
+    const e = React.createElement, fancy = orn && orn.ring;
+    return e('div', { style: { width: 140, height: 140, borderRadius: '50%', border: fancy ? 'none' : '2px solid #C9A86A', boxShadow: fancy ? 'none' : 'inset 0 0 0 4px #14161A, inset 0 0 0 5px #8A6E3C', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' } },
+      e('div', { style: { width: fancy ? 84 : 112, height: fancy ? 84 : 112, borderRadius: fancy ? 0 : '50%', border: fancy ? '1px solid #8A6E3C' : 'none', background: 'repeating-linear-gradient(135deg,#232821 0 6px,#262B24 6px 12px)', display: 'flex', alignItems: 'center', justifyContent: 'center', font: "500 10px/1 'JetBrains Mono'", color: '#9A958A', position: 'relative', zIndex: 1 } }, 'minimap'),
+      fancy ? orn.ring(140) : null,
+      ...[0, 90, 180, 270].map(a => e('div', { key: a, style: { position: 'absolute', width: 8, height: 8, background: '#C9A86A', transform: `rotate(${a}deg) translateY(-70px) rotate(45deg)`, top: 66, left: 66 } })));
+  }
+  renderVals() {
+    const i = (n, s, c) => this.i(n, s, c);
+    const pr = this.props, b = (v, d) => v === undefined ? d : v;
+    const orn = window.CHI_ORN ? window.CHI_ORN(React, { corners: b(pr.ornCorners, true), headers: b(pr.ornHeaders, true), topBar: b(pr.ornTopBar, true), rail: b(pr.ornRail, true), buttons: b(pr.ornButtons, true), minimap: b(pr.ornMinimap, true), inspector: b(pr.ornInspectorTitle, true), texture: b(pr.ornTexture, true), dividers: b(pr.ornDividers, true), intensity: b(pr.ornIntensity, 3), glow: b(pr.ornGlow, true) }) : {};
+    this.orn = orn;
+    const icNames = ['select','terrain','water','place','unit','resource','start','prop','region','pathing','camera','map','rules','undo','redo','save','play','search','rotate','copy','trash','owner','group','move','win','publish','array'];
+    return {
+      orn,
+      ic: { play: i('play', 16), stop: i('stop', 16), terrain: i('terrain', 22), checkSm: i('check', 14), alertSm: i('alert', 14) },
+      surfaces: [
+        { n: 'Substrate', h: '#14161A', r: 'Deepest wells, field backgrounds' },
+        { n: 'Panel', h: '#20242B', r: 'Every docked zone' },
+        { n: 'Raised', h: '#2A2F38', r: 'Hover, selected rows, keycaps' },
+        { n: 'Hairline', h: '#3A3F48', r: 'Dividers inside a panel' },
+        { n: 'Gold bright', h: '#E3C887', r: 'Titles, selected, focus ring · 9.5:1' },
+        { n: 'Gold', h: '#C9A86A', r: 'Icons, line-work, primary fill · 6.8:1' },
+        { n: 'Gold deep', h: '#8A6E3C', r: 'Panel borders, engraving · 3.2:1' }
+      ],
+      signals: [
+        { n: 'Parchment', h: '#ECE6D8', r: 'Primary text', c: '12.4:1' },
+        { n: 'Muted', h: '#9A958A', r: 'Secondary text, labels', c: '5.2:1' },
+        { n: 'Verdigris', h: '#4FB39A', r: 'Active tool, valid, can place', c: '6.1:1' },
+        { n: 'Bioluminescent', h: '#7FE3A1', r: 'Alive: AI working, draft. One per screen', c: '9.9:1' },
+        { n: 'Crimson', h: '#C8503C', r: 'Danger borders, destructive only', c: '3.4:1' },
+        { n: 'Crimson text', h: '#E2735F', r: 'Danger copy', c: '5.0:1' }
+      ],
+      players: [
+        { id: 'P1', n: 'Blue', h: '#0072B2', g: '#FFFFFF', glyph: '◆' },
+        { id: 'P2', n: 'Vermillion', h: '#D55E00', g: '#14161A', glyph: '▲' },
+        { id: 'P3', n: 'Sky', h: '#56B4E9', g: '#14161A', glyph: '●' },
+        { id: 'P4', n: 'Purple', h: '#CC79A7', g: '#14161A', glyph: '■' }
+      ],
+      keys: ['Ctrl', 'K', 'Space', 'F5', 'Shift', 'Esc', 'Del', 'Q', 'W', 'E', '1', '9', 'Enter', 'Tab'],
+      ctx: [{ icon: i('rotate', 16), k: 'R' }, { icon: i('copy', 16), k: 'Ctrl C' }, { icon: i('owner', 16), k: 'O' }, { icon: i('group', 16), k: 'Ctrl G' }, { icon: i('trash', 16, '#E2735F'), k: 'Del' }],
+      shells: [
+        { title: 'Create', sub: 'map editor · logic editors', cols: '17% 1fr 19%', top: 'Mode · project · formula bar (Ctrl K) · undo/redo · save · publish · PLAYTEST', left: 'Tool rail + tool drawer', center: 'WORLD / GRAPH CANVAS', centerNote: 'Never covered. Handles, previews and the context bar attach to what is selected.', right: 'Inspector: selection or map', bottom: 'Context strip: tool hint · hotkeys · cursor · status' },
+        { title: 'Play', sub: 'in-match HUD, same zones', cols: '4% 1fr 21%', top: 'Resources · supply · clock · menu', left: 'Control groups 1–9', center: 'BATTLEFIELD', centerNote: 'Kept clear. Alerts sit on the edges, and the only banners are "Waiting for player" and pause.', right: 'Selection portraits · command card', bottom: 'Alerts feed · chat · objective' }
+      ],
+      moments: [
+        { art: e2(this.circle(130, 0.62, false)), t: 'Transmute (AI)', d: 'A brass circle that fills with living light while the draft forms, then settles to gold.' },
+        { art: e2(this.circle(130, 1, true)), t: 'Complete seal', d: 'The array closes when every required field binds. Until then the open vertices show what’s missing.' },
+        { art: this.vat(), t: 'Specimen vat', d: 'Unit preview in the unit editor and portraits. Cold inner glow drawn as a flat gradient, no blur.' },
+        { art: this.ring(orn), t: 'Minimap ring', d: 'A square map inside a transmutation ring. Compass pins mark north and the four camera bookmarks.' }
+      ],
+      iconList: icNames.map(n => ({ n, el: i(n, 18) })),
+      scales: [{ px: 38, l: '80%', icon: i('terrain', 17) }, { px: 48, l: '100%', icon: i('terrain', 22) }, { px: 72, l: '150%', icon: i('terrain', 32) }]
+    };
+    function e2(x) { return x; }
+  }
+}
+</script>
+</body>
+</html>
