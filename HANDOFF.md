@@ -1,81 +1,86 @@
 # HANDOFF — Project Chimera
 
-_Updated 2026-09-29 · branch `master` · last commit: BMAD tooling retired (see git log)_
+_Updated 2026-09-29 · branch `master` · last commit `16f586a7` (then this handoff commit)_
 
 ## Where we stopped
 
-Session 13 (2026-09-29) planned a move from Godot to Unreal Engine 5.8, and wrote a new product
-spec for it: **Project Chimera — Unreal Spec**
-(https://claude.ai/code/artifact/5b9ecf08-3568-4a8f-833a-f21c1112b395). The spec covers the game,
-multiplayer, the creator, sharing, UI, the Unreal architecture, the non-negotiables, the build order
-and open decisions. Core idea: the ~75k-line engine-free simulation (6,392 tests) is compiled with
-.NET NativeAOT into a native library, and Unreal is a thin C++ shell that draws its state and sends
-it orders. The match server becomes a plain .NET program, so no source-built Unreal is needed.
+Session 13 (2026-09-29) planned the move from Godot to **Unreal Engine 5.8** and set up for it.
+No engine code, tests or goldens were touched. Done this session:
 
-BMAD is retired in this repo: `_bmad/`, `.bmad-loop/`, the 85 bmad/gds skills, the dw-burndown
-workflows, `tools/verify-in-engine-gate.ps1` and the four bmad-loop hooks in `.claude/settings.json`
-are gone (recoverable from git before this commit, except the untracked `.bmad-loop/` run records).
-`_bmad-output/` stays: it holds the UI mockups, `DESIGN.md`/`EXPERIENCE.md`, the GDD-era planning
-docs and the deferred-work ledger. The superseded `ux-Project_Chimera-2026-06-05` run was deleted;
-its three Claude Design handoff prompts moved to `ux-Project_Chimera-2026-06-20/handoff-prompts/`.
-No engine code, tests or goldens were touched.
-
-**The UI will be redone** with Opus 5.5 for the Unreal build (Alec, 2026-09-29). The 2026-06-20 set
-is now the functional reference (every screen, its contents and flows), not the visual target. Order:
-design system as HTML → one mockup per screen, approved as phone screenshots → built in Unreal C++
-and checked against the approved mockup. It can run alongside the trial.
+- **Unreal Spec** (Claude Doc, the product source of truth):
+  https://claude.ai/code/artifact/5b9ecf08-3568-4a8f-833a-f21c1112b395. Alec reviewed it and
+  settled: trial first; rename the repo only after the trial passes; nothing missing; native
+  Unreal UI only; OpenAI Codex added as an AI provider; Commanders play every custom game
+  Architects publish (any genre, WC3-style); "Law of Equal Exchange" is FMA's term and can't be
+  used, so the setting name and faction styles are placeholders until Alec finishes the story.
+- **World look:** of six Steam references in the spec, Alec picked **Manor Lords** (near-photoreal,
+  UE5), with **Northgard** a close second.
+- **UI redo** with Opus 5.5: one integrated shell (Godot's separate windows were the failure), the
+  map editor first. The brief for Alec's Claude Design runs:
+  https://claude.ai/code/artifact/1a5fc17e-e70b-4d36-bf64-5226ee5e037a (shared brief + directions
+  A Arcane Workshop / B Transmutation Lab / C Modern Atelier + review checklist). Direction B's
+  reference images are in that doc and in
+  `_bmad-output/planning-artifacts/ux-designs/ux-Project_Chimera-2026-06-20/handoff-prompts/`.
+- **Cleanup:** BMAD tooling, the bmad-loop hooks and the 2026-06-05 UX run removed; the project's
+  `git push` deny rule was lifted at Alec's request.
+- **PC setup:** Visual Studio 2026 Community 18.10 installed and verified (all four Epic workloads,
+  Unreal installer/IDE/debugger components, MSVC 14.51, Windows SDK 10.0.26100 + 10.0.28000,
+  .NET 8/9/10). **UE 5.8.3 was at 86% installing** from the Epic Launcher to `D:\Epic Games`
+  with Editor symbols and Engine Source; target platforms Windows only.
 
 ## Next step
 
-Alec reviews the spec (inline edits and comments in the doc) and settles its open decisions. Then
-run the **1–2 week Unreal trial**, with three pass/fail checks:
-1. The NativeAOT simulation library drives 1,000 units in Unreal with the same checksum as Godot.
-2. One HUD screen built in C++ and matched to its mockup by screenshot.
-3. Terrain edited while the game runs (RealtimeMeshComponent vs Errant Landscape runtime).
-
-Only if all three pass: rename this repo/folder to `Godot-ProjectChimera-Archived` and start the
-Unreal repo (simulation carried over with its git history). Features after that get one-page briefs
-(outcome + why, constraints, proof of done, out of scope), not BMAD stories.
+1. Confirm UE 5.8.3 finished (Launcher → Library). Compile a blank C++ project to prove the
+   toolchain. MSVC 14.51 is newer than Epic's recommended 14.50: if UnrealBuildTool rejects it,
+   Alec adds the 14.50 toolset in the Visual Studio Installer.
+2. Create the trial project at `D:\Projects\Chimera-Unreal-Trial` (outside this repo until the trial
+   passes). Enable Epic's Unreal MCP plugin (5.8, experimental; default `http://127.0.0.1:8000/mcp`)
+   and connect it to Claude Code.
+3. **Look test first** (Alec is waiting on it): one map shot of our units/buildings rendered
+   Manor-Lords-style and Northgard-style, sent side by side as images. It judges readability of
+   armies, the asset redo cost (photoreal = regenerate all 24 models), player-import clash (idea:
+   per-map look preset) and frame rate on this PC.
+4. Then the three trial checks: (a) NativeAOT sim library drives 1,000 units in Unreal with the
+   same checksum as Godot; (b) one HUD screen in C++ matched to a mockup by screenshot;
+   (c) runtime terrain editing (RealtimeMeshComponent vs Errant Landscape runtime).
 
 ## Waiting on Alec
 
-- **Spec review + its open decisions:** trial first (recommended), world look (stay stylized
-  low-poly recommended), repo names, anything missing.
-- **UI technology:** native C++ UI (assumed) vs HTML through Ultralight — question left as a comment
-  in the spec doc.
-- **UI redo scope and direction:** new look but keep layouts (recommended) vs rethink layouts; alchemy
-  re-theme brief vs the shelved Transmutation Lab (`8265cdf`) vs a fresh direction.
-- **Carried over, unchanged:** DW-1029 (local Flux route runs on non-commercial FLUX.1 dev; schnell is
-  a one-dropdown swap), the HD Model triangle-count question for the six remaining buildings,
-  DW-1025 (`bulwark_adept` reads brass, not prussian blue), `cinderhand_thrall` reads brown not crimson.
+- **Claude Design runs** of the brief (three directions); bring back links or screenshots of each
+  design system + map editor for side-by-side review.
+- **World look** final call after the look test.
+- **`.claude/worktrees/wf_bbdf1721-ebb-93/`**: stale leftover of a 2026-08-04 workflow run (89 files,
+  duplicates of `_bmad-output` UX files, nothing unique, untracked). Delete when he says OK.
+- **Optional RAM upgrade:** 16 GB vs Epic's 32 GB recommendation; 2 of 4 slots free.
+- Carried over: DW-1029 (Flux dev licence), HD Model triangle question, DW-1025 (`bulwark_adept`
+  palette), `cinderhand_thrall` colour. The Tripo roster may be regenerated photoreal anyway.
 
 ## How to run and check it
 
-- Build: `dotnet build godot/godot.sln`
-- Tests (Tier-1, Godot-free): `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj`
-  — baseline 6392 passed / 0 failed / 1 skipped (`CanonicalModelHashPerf` is a known CPU-contention
-  flake; re-run in isolation if it's the lone failure).
-- In-engine verification: `godot-verify` skill (Godot MCP bridge).
-- Asset gating: `tools/asset-gen/scripts/qa/tripo_batch_gate.py`.
-- Push is allowed (Alec lifted the block 2026-09-29): commit and push at checkpoints.
+- Godot build: `dotnet build godot/godot.sln`
+- Sim tests: `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj`
+  (baseline 6392 / 0 / 1 skipped; `CanonicalModelHashPerf` is a known CPU-contention flake)
+- Godot in-engine checks: `godot-verify` skill.
+- Commit and push at checkpoints (push allowed as of 2026-09-29).
 
 ## In flight / known issues
 
-- Godot asset work (Epic 16) is paused pending the Unreal decision: `bolt_sanctum`'s roof-identity
-  block has never been batched; five more buildings need the same form (`D:\tripo-input\TRIPO_RUNBOOK.md`).
-  The .glb models carry over to Unreal unchanged.
-- Epic 15 burn-down stays paused; bmad-loop no longer exists here.
+- Godot asset work (Epic 16) paused pending the Unreal and world-look decisions.
+- Sim content loading uses reflection-based System.Text.Json and must move to source generation for
+  NativeAOT (trial check a).
+- PC: Ryzen 5 5600 (6 cores, below Epic's 12–16 core compile baseline, so builds are slower),
+  RTX 3060 12 GB (fine, supports Lumen), 16 GB RAM, D: ~700 GB free.
 
 ## Key context
 
-- Simulation source set: `godot/SimSources.props` (Core, Combat, Economy, Navigation, AI, Effects,
-  Dsl). Already checked by AOT analyzers (`ProjectChimera.Sim.Analysis`). Content loading uses
-  reflection-based System.Text.Json and must move to source generation for NativeAOT.
-- Godot-coupled code to rebuild in Unreal: ~58k lines (UI 25k, Creation Suite 15k, bootstrap,
-  ENet transport, mesh loading). The Godot build is the behavioural reference for every screen.
-- Unreal facts checked 2026-09-29 (sources in the spec): UE 5.8 current, UE6 early access aimed at
-  late 2027 (moves gameplay code to Verse); Landscape can't be sculpted in a shipped game; glTFRuntime
-  loads .glb at runtime; Epic's Unreal MCP plugin (5.8, experimental) supports Claude Code; royalty
+- Architecture of record (in the spec): the ~75k-line engine-free sim (`godot/SimSources.props`)
+  compiles with .NET NativeAOT into a native library; Unreal is a thin C++ shell (UI in Slate or
+  UMG-from-C++, no widget Blueprints); the match server becomes a plain .NET program, so no
+  source-built Unreal. ~58k Godot-coupled lines get rebuilt; the Godot build is the behavioural
+  reference.
+- Unreal facts checked 2026-09-29 (sources in the spec): UE6 early access aimed at late 2027
+  (Verse); Landscape can't be sculpted in a shipped game; glTFRuntime loads .glb at runtime; royalty
   5% above $1M lifetime, Epic Games Store sales exempt.
-- Full history: `docs/history/Snapshot-through-2026-09-21.md`. Ledger:
+- Work comes as one-page feature briefs (outcome + why, constraints, proof of done, out of scope).
+- History: `docs/history/Snapshot-through-2026-09-21.md`. Ledger:
   `_bmad-output/implementation-artifacts/deferred-work.md`.
