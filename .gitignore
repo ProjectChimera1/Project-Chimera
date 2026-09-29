@@ -30,12 +30,6 @@ Thumbs.db
 
 # Local Claude Code permissions (machine-specific)
 .claude/settings.local.json
-.bmad-loop/runs/
-.bmad-loop/archive/
-.bmad-loop/cache/
-.bmad-loop/policy.toml
-.bmad-loop/scratch_*
-_bmad/render/
 
 # BMAD Book Builder test sandbox (alpha-era BMAD install, ~1.2k files) — throwaway, never commit
 Story test/

@@ -1,86 +1,72 @@
 # HANDOFF — Project Chimera
 
-_Updated 2026-09-28 · branch `master` · last commit `bbf55e62 docs(16): session 12 save — the roof rule is proven, and a local plate route`_
+_Updated 2026-09-29 · branch `master` · last commit: BMAD tooling retired (see git log)_
 
 ## Where we stopped
 
-Session 12 (2026-09-21) proved the roof-identity rule for building plates: amending a block
-so identity lives on the roof ridge (not the front wall) flips the metrics — `thrall_yards`
-went from 0.0% to 62.4% crimson above the 42% line, roof detail now beats wall detail. Picked
-`thrall_yards` variant B. Also stood up a local ComfyUI + Flux concept-plate route as an
-*evaluation* alongside the production Tripo route (`tools/asset-gen/scripts/comfy/`). No
-engine code, tests, or goldens touched this session. Buildings: `sigil_foundry` textured and
-landed; `thrall_yards` plate picked; `covenant_sanctum`, `sanguine_furnace`, `render_works`
-already carried roof-borne identity. Units unchanged since session 11.
+Session 13 (2026-09-29) planned a move from Godot to Unreal Engine 5.8, and wrote a new product
+spec for it: **Project Chimera — Unreal Spec**
+(https://claude.ai/code/artifact/5b9ecf08-3568-4a8f-833a-f21c1112b395). The spec covers the game,
+multiplayer, the creator, sharing, UI, the Unreal architecture, the non-negotiables, the build order
+and open decisions. Core idea: the ~75k-line engine-free simulation (6,392 tests) is compiled with
+.NET NativeAOT into a native library, and Unreal is a thin C++ shell that draws its state and sends
+it orders. The match server becomes a plain .NET program, so no source-built Unreal is needed.
+
+BMAD is retired in this repo: `_bmad/`, `.bmad-loop/`, the 85 bmad/gds skills, the dw-burndown
+workflows, `tools/verify-in-engine-gate.ps1` and the four bmad-loop hooks in `.claude/settings.json`
+are gone (recoverable from git before this commit, except the untracked `.bmad-loop/` run records).
+`_bmad-output/` stays: it holds the UI mockups, `DESIGN.md`/`EXPERIENCE.md`, the GDD-era planning
+docs and the deferred-work ledger. No engine code, tests or goldens were touched.
 
 ## Next step
 
-Batch `bolt_sanctum` on Tripo — its amended block (roof-identity fix applied) has never been
-run. It is the one unvalidated edit outstanding. Then apply the same proven roof-identity form
-to the remaining five buildings. Everything needed is in `D:\tripo-input\TRIPO_RUNBOOK.md`
-(session 12 preamble + prompt blocks).
+Alec reviews the spec (inline edits and comments in the doc) and settles its open decisions. Then
+run the **1–2 week Unreal trial**, with three pass/fail checks:
+1. The NativeAOT simulation library drives 1,000 units in Unreal with the same checksum as Godot.
+2. One HUD screen built in C++ and matched to its mockup by screenshot.
+3. Terrain edited while the game runs (RealtimeMeshComponent vs Errant Landscape runtime).
 
-Queued after that:
-1. Settle DW-1029 before any further local (ComfyUI/Flux) plating — see Waiting on Alec.
-2. Once buildings are done, Epic 16 slice 4 (terrain/world) is next, then slice 5 (unit
-   facing, motion, buildings on the ground).
-3. Resolve the HD Model triangle-count question (Waiting on Alec) before committing the other
-   six buildings to it.
-4. Epic 15's burn-down stays PAUSED; no `bmad-loop` run is needed for Epic 16 work.
+Only if all three pass: rename this repo/folder to `Godot-ProjectChimera-Archived` and start the
+Unreal repo (simulation carried over with its git history). Features after that get one-page briefs
+(outcome + why, constraints, proof of done, out of scope), not BMAD stories.
 
 ## Waiting on Alec
 
-- **DW-1029 (needs Alec):** the local ComfyUI plate route runs on `flux1-dev`, which is
-  non-commercial. `FLUX.1 [schnell]` (Apache-2.0) is a one-dropdown, ~7 GB swap using the same
-  encoders/VAE. Decide before the local route is used for anything beyond evaluation.
-- **HD Model for buildings (open since session 11):** Alec liked a 20,000-tri HD Model result
-  on v3.1 Best Quality, but the runbook's settings table claims HD Model has no real polycount
-  control and produces million-poly sculpts. Needs settling with `tripo_batch_gate.py` on one
-  asset before committing the other six buildings — a wrong assumption costs six buildings of
-  credits.
-- **DW-1025:** `bulwark_adept` reads brass/gold, not the intended prussian-blue. Palette call
-  pending.
-- **`cinderhand_thrall` colour:** reads brown, not crimson (crimson is a layer under the outer
-  apron). Accept as intentional differentiation, or recolour and re-roll? Left unamended
-  pending the call.
+- **Spec review + its open decisions:** trial first (recommended), world look (stay stylized
+  low-poly recommended), repo names, anything missing.
+- **UI technology:** native C++ UI (assumed) vs HTML through Ultralight — question left as a comment
+  in the spec doc.
+- **Carried over, unchanged:** DW-1029 (local Flux route runs on non-commercial FLUX.1 dev; schnell is
+  a one-dropdown swap), the HD Model triangle-count question for the six remaining buildings,
+  DW-1025 (`bulwark_adept` reads brass, not prussian blue), `cinderhand_thrall` reads brown not crimson.
 
 ## How to run and check it
 
 - Build: `dotnet build godot/godot.sln`
 - Tests (Tier-1, Godot-free): `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj`
-  — baseline is 6392 passed / 0 failed / 1 skipped (`CanonicalModelHashPerf` is a known
-  CPU-contention flake; re-run in isolation if it's the lone failure).
-- In-engine verification: use the `godot-verify` skill (builds, runs the scene via the Godot
-  MCP, screenshots, checks against acceptance criteria). Needed for any change touching
-  `src/UI/**`, `src/Core/Bootstrap/**`, `MainScene.cs`, or `scenes/**`.
-- Asset roster gating: `tools/asset-gen/scripts/qa/tripo_batch_gate.py` (batch-gates
-  `D:/tripo-out` against the engine profile: triangle count, `max_materials: 1`, `inside_out`).
-- Manual run: F5 in the Godot editor (4.6.3, .NET/mono build), or `godot_mcp` `run_project`.
+  — baseline 6392 passed / 0 failed / 1 skipped (`CanonicalModelHashPerf` is a known CPU-contention
+  flake; re-run in isolation if it's the lone failure).
+- In-engine verification: `godot-verify` skill (Godot MCP bridge).
+- Asset gating: `tools/asset-gen/scripts/qa/tripo_batch_gate.py`.
+- `git push` is denied in `.claude/settings.json` for this project; Alec pushes.
 
 ## In flight / known issues
 
-- `bolt_sanctum`'s amended (roof-identity) prompt block is written but has never been batched
-  — see Next step.
-- Local ComfyUI + Flux route is an evaluation only; Tripo remains production. Do not use the
-  local route for shipped assets until DW-1029 is resolved.
-- Epic 16 slices 4 and 5 (terrain/world; unit facing, motion, buildings on the ground) are
-  outstanding.
-- Epic 15's burn-down is deliberately paused.
+- Godot asset work (Epic 16) is paused pending the Unreal decision: `bolt_sanctum`'s roof-identity
+  block has never been batched; five more buildings need the same form (`D:\tripo-input\TRIPO_RUNBOOK.md`).
+  The .glb models carry over to Unreal unchanged.
+- Epic 15 burn-down stays paused; bmad-loop no longer exists here.
 
 ## Key context
 
-- Full multi-session history (sessions 1–12, back to 2026-08-01) is archived at
-  `docs/history/Snapshot-through-2026-09-21.md` — unchanged, just moved. Read it for the roof-
-  identity lesson's origin (session 11), the ten prompt-authoring lessons, and earlier
-  engine-side work (FR-39 LAN determinism, stat pipeline, veterancy).
-- Asset generation is a two-route system: Tripo 3D (paid cloud image-to-3D, production) and a
-  local ComfyUI + Flux concept-plate pipeline (evaluation). Prompt blocks live in
-  `D:\tripo-input\TRIPO_RUNBOOK.md`, not in this repo.
-- Deferred-work ledger (`DW-<n>` entries, the live defect record):
-  `_bmad-output/implementation-artifacts/deferred-work.md`. Epic/story status:
-  `_bmad-output/implementation-artifacts/sprint-status.yaml` — edit both as text, never
-  round-trip `sprint-status.yaml` through a YAML parser (it doesn't strictly parse).
-- Triangle budgets (session 9/16 work): unit 8,000 / hero 25,000 / building 20,000 / prop
-  1,000 — set in three places that must stay in sync: `godot_chimera.json` (`tri_budget`),
-  `build_manifest.py` (`tri_target`), `chimera_assets.json` (`tri_target`).
-- Where the GDD and code disagree, the code plus this file is the as-built truth.
+- Simulation source set: `godot/SimSources.props` (Core, Combat, Economy, Navigation, AI, Effects,
+  Dsl). Already checked by AOT analyzers (`ProjectChimera.Sim.Analysis`). Content loading uses
+  reflection-based System.Text.Json and must move to source generation for NativeAOT.
+- Godot-coupled code to rebuild in Unreal: ~58k lines (UI 25k, Creation Suite 15k, bootstrap,
+  ENet transport, mesh loading). The Godot build is the behavioural reference for every screen.
+- Unreal facts checked 2026-09-29 (sources in the spec): UE 5.8 current, UE6 early access aimed at
+  late 2027 (moves gameplay code to Verse); Landscape can't be sculpted in a shipped game; glTFRuntime
+  loads .glb at runtime; Epic's Unreal MCP plugin (5.8, experimental) supports Claude Code; royalty
+  5% above $1M lifetime, Epic Games Store sales exempt.
+- Full history: `docs/history/Snapshot-through-2026-09-21.md`. Ledger:
+  `_bmad-output/implementation-artifacts/deferred-work.md`.
