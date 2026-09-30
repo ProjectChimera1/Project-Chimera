@@ -1,6 +1,6 @@
 # HANDOFF — Project Chimera
 
-_Updated 2026-09-29 · branch `master` · last commit `a956a83d` (then this handoff commit)_
+_Updated 2026-09-30 · branch `master` · last commit `5762d74d` (then this handoff commit)_
 
 ## Where we stopped
 
@@ -57,8 +57,13 @@ No engine code, tests or goldens were touched. Done this session:
 
 ## Waiting on Alec
 
-- **UI Round 2** in the same Claude Design project: screen map first, then one batch at a time;
-  each batch comes back for review against the brief's checklist before the next.
+- **UI Round 2** in Claude Design (2026-09-30): screen map, Front Door, Browse and Match are done.
+  Match's in-match HUD wrongly used the editor shell (our prompt's fault); the fix is
+  `docs/ui-redesign/batch-3-hud-correction.md` (full-bleed battlefield, top strip, 20% bottom
+  console, square minimap in the ring, redo 3.1, all 3.2, 3.3a, 3.6). Spectator/replay, score and
+  hero picker were approved as-is. Alec is running the redo in a NEW Claude Design chat (same
+  project) with a short rules primer, using three Manor Lords Steam screenshots as stand-in
+  battlefield backgrounds (not in the repo). Then Editors 1 and Editors 2, one fresh chat each.
 - **World look** final call after the look test.
 - **`.claude/worktrees/wf_bbdf1721-ebb-93/`**: stale leftover of a 2026-08-04 workflow run (89 files,
   duplicates of `_bmad-output` UX files, nothing unique, untracked). Delete when he says OK.
