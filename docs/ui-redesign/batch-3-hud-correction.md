@@ -30,4 +30,11 @@ Keep **3.4 Spectator and replay** with side panels: nobody is giving orders ther
 view with every player's panels is right. Put a clear "Spectating" or "Replay" label at the top.
 Pause and score screens can keep the shell.
 
-Redo 3.1, 3.2 and 3.6 with this layout, then stop for review.
+Also:
+- Redo **3.3a Pause** over the new HUD, since it currently sits on the old one.
+- In the arena (3.6), the respawn timer is an overlay on the battlefield, not a slot in a rail.
+- Give 3.4 Spectator and Replay the same realistic battlefield art.
+- On the **00 · Screen map**, mark Match HUD as using the top strip and bottom console only, not
+  the full shell.
+
+Redo 3.1, all of 3.2, 3.3a and 3.6 with this layout, then stop for review.
