@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div style="height:56px;width:100%;display:flex;align-items:stretch;background:#20242B;border-bottom:1px solid #8A6E3C;box-shadow:0 1px 0 #0E0F12;position:relative;z-index:30;isolation:isolate">{{ tex }}{{ topbar }}
+<div title="Project Chimera · Home (Esc from a hub)" style="width:56px;flex:none;display:flex;align-items:center;justify-content:center;color:#C9A86A;border-right:1px solid #3A3F48;cursor:pointer" style-hover="color:#E3C887;background:#2A2F38">{{ logo }}</div>
+<div style="display:flex;align-items:stretch">
+<sc-for list="{{ modes }}" as="m" hint-placeholder-count="3">
+<div title="{{ m.tip }}" tabIndex="0" style="padding:0 16px;display:flex;align-items:center;gap:8px;font:600 12px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:{{ m.fg }};box-shadow:{{ m.sh }};background:{{ m.bg }};cursor:pointer;outline:none" style-hover="color:#ECE6D8;background:#2A2F38" style-focus="outline:2px solid #E3C887;outline-offset:-4px">{{ m.n }}<div style="font:600 10px/14px 'JetBrains Mono';height:18px;padding:0 4px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#14161A;color:#ECE6D8;letter-spacing:0">{{ m.k }}</div></div>
+</sc-for>
+</div>
+<div style="width:1px;background:#3A3F48;margin:12px 6px"></div>
+<div style="display:flex;flex-direction:column;justify-content:center;gap:5px;padding:0 14px 0 10px;min-width:0;max-width:{{ titleMax }};flex:none">
+<div style="font:600 16px/1 Cinzel;color:#E3C887;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ title }}</div>
+<sc-if value="{{ sub }}" hint-placeholder-val="{{ true }}"><div title="{{ sub }}" style="font:500 11px/1 'JetBrains Mono';color:#9A958A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ sub }}</div></sc-if>
+</div>
+<sc-if value="{{ hasEd }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;align-items:stretch;border-left:1px solid #3A3F48">
+<sc-for list="{{ eds }}" as="t" hint-placeholder-count="7">
+<div title="{{ t.tip }}" tabIndex="0" style="padding:0 9px;display:flex;align-items:center;gap:5px;font:500 13px/1 Inter;color:{{ t.fg }};box-shadow:{{ t.sh }};background:{{ t.bg }};cursor:pointer;outline:none;white-space:nowrap" style-hover="color:#ECE6D8;background:#2A2F38" style-focus="outline:2px solid #E3C887;outline-offset:-4px">{{ t.n }}<div style="font:600 9px/12px 'JetBrains Mono';height:15px;padding:0 3px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:2px;background:#14161A;color:#9A958A">{{ t.k }}</div></div>
+</sc-for>
+</div>
+</sc-if>
+<div style="flex:1;display:flex;justify-content:center;align-items:center;padding:0 16px;min-width:0">
+<div title="Command palette: jump to any screen, setting or scenario (Ctrl+K)" tabIndex="0" style="width:{{ palW }};min-width:0;max-width:100%;height:32px;background:#14161A;border:1px solid #4A4234;display:flex;align-items:center;gap:10px;padding:0 6px 0 10px;cursor:text;outline:none" style-hover="border-color:#8A6E3C" style-focus="border-color:#E3C887">
+<div style="color:#9A958A;display:flex">{{ search }}</div>
+<div style="flex:1;font:400 13px/1 Inter;color:#9A958A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ palText }}</div>
+<div style="display:flex;gap:3px"><div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#20242B;color:#ECE6D8">Ctrl</div><div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#20242B;color:#ECE6D8">K</div></div>
+</div>
+</div>
+<div title="{{ netTip }} · {{ netLabelFull }}" style="display:flex;align-items:center;gap:8px;padding:0 14px;font:500 12px/1 Inter;color:{{ netFg }};white-space:nowrap;border-left:1px solid #3A3F48">{{ netIcon }}{{ netLabel }}</div>
+<div title="{{ userTip }}" tabIndex="0" style="display:flex;align-items:center;gap:10px;padding:0 14px 0 10px;border-left:1px solid #3A3F48;cursor:pointer;outline:none" style-hover="background:#2A2F38" style-focus="outline:2px solid #E3C887;outline-offset:-4px">
+<div style="width:32px;height:32px;border:1px solid {{ avBd }};background:#14161A;display:flex;align-items:center;justify-content:center;font:600 13px/1 Cinzel;color:{{ avFg }}">{{ initials }}</div>
+<sc-if value="{{ showName }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:4px"><div style="font:600 13px/1 Inter;color:#ECE6D8;white-space:nowrap">{{ user }}</div><div style="font:500 11px/1 Inter;color:#9A958A;white-space:nowrap">{{ role }}</div></div></sc-if>
+</div>
+<div title="Settings (O on Home · Esc then O in a match)" tabIndex="0" style="width:56px;flex:none;display:flex;align-items:center;justify-content:center;color:#C9A86A;border-left:1px solid #3A3F48;cursor:pointer;outline:none" style-hover="color:#E3C887;background:#2A2F38" style-focus="outline:2px solid #E3C887;outline-offset:-4px">{{ gear }}</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1920,&quot;height&quot;:56},&quot;mode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;&quot;,&quot;Play&quot;,&quot;Create&quot;,&quot;Browse&quot;],&quot;default&quot;:&quot;Play&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;title&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Play&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;sub&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;net&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;online&quot;,&quot;offline&quot;,&quot;connecting&quot;],&quot;default&quot;:&quot;online&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;netLabel&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;user&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Ilse Varga&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;role&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;signedIn&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;palText&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;lv&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;object&quot;},&quot;editor&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;&quot;,&quot;Map&quot;,&quot;Objects&quot;,&quot;Abilities&quot;,&quot;Rules&quot;,&quot;Tech tree&quot;,&quot;Game UI&quot;,&quot;Factions&quot;],&quot;default&quot;:&quot;&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const p = this.props, I = (n, s, c) => window.CHI_ICON ? window.CHI_ICON(React, n, s, c) : null;
+    const lv = p.lv || {}, orn = lv.orn || {}, mode = p.mode || '';
+    const net = p.net || 'online';
+    const netMap = {
+      online: ['#4FB39A', 'cloud', p.netLabel || 'Online · EU-West 32 ms', 'Connected to Chimera services. Browse and Multiplayer are available.'],
+      offline: ['#E2735F', 'cloudOff', p.netLabel || 'Offline', 'No connection. Campaign, Skirmish, installed Custom Games and Create still work.'],
+      connecting: ['#C9A86A', 'refresh', p.netLabel || 'Reconnecting…', 'Trying again every 10 seconds.']
+    }[net];
+    const user = p.user || 'Guest', signed = p.signedIn !== false;
+    return {
+      tex: orn.tex || null, topbar: orn.topbar || null,
+      logo: I('array', 24), search: I('search', 16), gear: I('sliders', 20),
+      modes: [['Play', 'F1', 'Campaign, skirmish, multiplayer and custom games (F1)'], ['Create', 'F2', 'Build maps, units and rules (F2)'], ['Browse', 'F3', 'Find and subscribe to community content (F3)']].map(([n, k, tip]) => ({
+        n, k, tip, fg: n === mode ? '#E3C887' : '#9A958A', sh: n === mode ? 'inset 0 -2px 0 #E3C887' : 'none', bg: n === mode ? '#262A31' : 'transparent'
+      })),
+      hasEd: !!p.editor, palW: p.editor ? '220px' : '440px', titleMax: p.editor ? '200px' : 'none', showName: !p.editor, netLabelFull: netMap[2],
+      eds: [['Map', '1', 'Terrain, objects, regions'], ['Objects', '2', 'Units, items and buildings: one card each'], ['Abilities', '3', 'Snap effect blocks together'], ['Rules', '4', 'When / If / Then'], ['Tech tree', '5', 'Wire upgrades and unlocks'], ['Game UI', '6', 'Scenario widgets on the HUD'], ['Factions', '7', 'Rosters, colours, start setup']].map(([n, k, tip]) => ({ n, k: k, tip: n + ' (Alt ' + k + ') · ' + tip, fg: n === p.editor ? '#E3C887' : '#9A958A', sh: n === p.editor ? 'inset 0 -2px 0 #E3C887' : 'none', bg: n === p.editor ? '#262A31' : 'transparent' })),
+      title: p.title || 'Home', sub: p.sub || '', palText: p.palText || 'Go to a screen, setting or scenario…',
+      netFg: netMap[0], netIcon: I(netMap[1], 16, netMap[0]), netLabel: p.editor ? '' : netMap[2], netTip: netMap[3],
+      user, role: p.role || (signed ? 'Commander' : 'Not signed in · sign in'),
+      initials: user.split(' ').map(w => w[0]).join('').slice(0, 2),
+      avBd: signed ? '#C9A86A' : '#5C5446', avFg: signed ? '#E3C887' : '#9A958A',
+      userTip: signed ? user + ' · profile, friends and sign-out' : 'Sign in to play online and publish'
+    };
+  }
+}
+</script>
+</body>
+</html>

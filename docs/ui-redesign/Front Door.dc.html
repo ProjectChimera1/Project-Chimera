@@ -1,0 +1,1378 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="icons.js"></script>
+<script src="ornaments.js"></script>
+<script src="levers.js"></script>
+<style>body{margin:0;background:#0B0C0E;color:#ECE6D8;font-family:Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}a{color:#E3C887;text-decoration:none}a:hover{color:#ECE6D8;text-decoration:underline}*{box-sizing:border-box}input::placeholder{color:#9A958A}@keyframes chiDrift{from{transform:scale(1.03) translateX(0)}to{transform:scale(1.07) translateX(-1.4%)}}</style>
+</helmet>
+
+<section id="index" style="display:flex;flex-direction:column;gap:12px;padding:64px 64px 96px">
+<div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">1.0 · Index · 1920 wide · interactive</div>
+<div data-screen-label="1.0 Index" style="width:1920px;background:#14161A;position:relative;isolation:isolate;box-shadow:0 0 0 1px #2A2F38;padding:48px 56px;display:grid;grid-template-columns:minmax(0,1fr) 560px;gap:48px">{{ orn.tex }}{{ F }}
+<div style="display:flex;flex-direction:column;gap:22px">
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font:600 12px/1 Inter;letter-spacing:.16em;text-transform:uppercase;color:#C9A86A">Round 2 · Batch 1</div>
+<div style="font:600 48px/1 Cinzel;color:#ECE6D8">Front Door</div>
+<div style="font:400 16px/1.55 Inter;color:#9A958A;max-width:880px;text-wrap:pretty">Title, loading, Home, the Play hub, Skirmish setup, the Multiplayer lobby and Settings. Every hub screen uses the Round 1 shell: top bar, left rail, a centre that is never covered, right inspector, bottom strip. Routes follow <a href="Screen Map.dc.html">00 · Screen map</a>.</div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 24px">
+<sc-for list="{{ index }}" as="x" hint-placeholder-count="20">
+<a href="#{{ x.id }}" title="Jump to {{ x.code }} {{ x.n }}" style="display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 10px;background:#20242B;border:1px solid #3A3F48;text-decoration:none" style-hover="border-color:#C9A86A;background:#2A2F38;text-decoration:none">
+<div style="font:600 12px/1 'JetBrains Mono';color:#E3C887">{{ x.code }}</div>
+<div style="font:500 13px/1.3 Inter;color:#ECE6D8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ x.n }}</div>
+<div style="font:600 10px/1 Inter;letter-spacing:.1em;color:{{ x.tc }};border:1px solid {{ x.tc }};padding:3px 5px;white-space:nowrap">{{ x.tag }}</div>
+</a>
+</sc-for>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">How to review</div>{{ orn.hr }}</div>
+<div style="display:flex;flex-direction:column;gap:10px;font:400 14px/1.5 Inter;color:#ECE6D8;text-wrap:pretty">
+<div><span style="color:#4FB39A;font-weight:600">INTERACTIVE</span> artboards respond to clicks, hover, focus and keys. <span style="color:#9A958A;font-weight:600">STATIC</span> ones are mocks; their motion levers still play.</div>
+<div style="color:#9A958A">Open Tweaks for the lever panel: master intensity, the player’s Off / Subtle / Full, Reduced motion, and every ornament and motion lever with its own switch and 1–5 level. Defaults are 2 of 5.</div>
+<div style="color:#9A958A">Settings (1.6c) toggles Reduced motion and UI ornament for this whole page, the way the game would.</div>
+<div style="color:#9A958A">Home hotkeys K S M G C B H O Q and ↑ ↓ drive the menu in 1.2b.</div>
+</div>
+<button onClick="{{ replay }}" title="Remount every panel so draw-in and growth play again (R)" style="position:relative;align-self:flex-start;height:40px;padding:0 16px;display:flex;align-items:center;gap:10px;background:#2A2F38;border:1px solid #8A6E3C;color:#ECE6D8;font:500 13px/1 Inter;cursor:pointer;outline:none" style-hover="border-color:#C9A86A;background:#333945" style-focus="outline:2px solid #E3C887;outline-offset:2px"><div style="color:#C9A86A;display:flex">{{ ic.refresh }}</div>Replay draw-in and growth<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">R</div>{{ orn.btnDark }}</button>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font:600 11px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#9A958A">Show sections · fewer is faster</div><div style="display:flex;gap:6px;flex-wrap:wrap"><sc-for list="{{ showChips }}" as="c" hint-placeholder-count="7"><div onClick="{{ c.go }}" data-show="{{ c.n }}" title="{{ c.tip }}" tabIndex="0" style="height:30px;padding:0 10px;display:flex;align-items:center;background:{{ c.bg }};border:1px solid {{ c.bd }};font:500 12px/1 Inter;color:{{ c.fg }};cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ c.n }}</div></sc-for></div></div>
+<div style="display:flex;align-items:center;gap:12px;margin-top:6px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">New components → board 04</div>{{ orn.hr }}</div>
+<div style="display:flex;flex-wrap:wrap;gap:8px">
+<sc-for list="{{ newComps }}" as="c" hint-placeholder-count="10">
+<div style="font:500 12px/1 Inter;color:#ECE6D8;background:#20242B;border:1px solid #3A3F48;padding:6px 9px">{{ c }}</div>
+</sc-for>
+</div>
+</div>
+</div>
+</section>
+
+<section id="s11" style="display:flex;flex-direction:column;gap:20px;padding:0 64px 96px">
+<div style="font:600 24px/1 Cinzel;color:#E3C887">1.1 · Title and loading</div>
+<sc-if value="{{ show.s11 }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;gap:64px;align-items:flex-start">
+
+<div id="a11a" style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;gap:10px;align-items:center"><div style="font:600 12px/1 'JetBrains Mono';color:#14161A;background:#C9A86A;padding:4px 7px">1.1a</div><div style="font:500 14px/1 Inter;color:#ECE6D8">Title</div><div style="font:600 10px/1 Inter;letter-spacing:.1em;color:#9A958A;border:1px solid #9A958A;padding:3px 5px">STATIC · MOTION</div></div>
+<div data-screen-label="1.1a Title" style="width:1920px;height:1080px;position:relative;overflow:hidden;background:#14161A;box-shadow:0 0 0 1px #2A2F38">{{ bdDawn }}
+<div style="position:absolute;inset:0;background:linear-gradient(90deg,rgba(11,12,14,.86) 0%,rgba(11,12,14,.55) 38%,rgba(11,12,14,0) 62%)"></div>
+<div style="position:absolute;left:210px;top:190px;opacity:.38">{{ logoCircle }}</div>
+<div style="position:absolute;left:180px;top:392px;display:flex;flex-direction:column;gap:18px">
+<div style="font:600 18px/1 Cinzel;letter-spacing:.5em;color:#C9A86A">PROJECT</div>
+<div style="font:700 124px/.9 Cinzel;letter-spacing:.04em;color:#ECE6D8">CHIMERA</div>
+<div style="display:flex;align-items:center;gap:12px;width:560px">{{ orn.hl }}<div style="font:500 17px/1 Cinzel;letter-spacing:.2em;color:#E3C887;white-space:nowrap">BUILD THE WORLD · COMMAND IT</div>{{ orn.hr }}</div>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:176px;display:flex;justify-content:center">
+<div title="Any key or click continues to Home" style="position:relative;display:flex;align-items:center;gap:14px;padding:14px 26px;background:rgba(20,22,26,.82);border:1px solid #8A6E3C">{{ pulse }}
+<div style="font:600 16px/1 Inter;letter-spacing:.24em;text-transform:uppercase;color:#ECE6D8;white-space:nowrap">Press any key</div>
+</div>
+</div>
+<div style="position:absolute;left:56px;bottom:40px;display:flex;flex-direction:column;gap:6px;font:500 12px/1.4 'JetBrains Mono';color:#9A958A">
+<div style="color:#ECE6D8">Build 0.9.412 · Early Access</div>
+<div>28 Sep 2026 · Unreal 5.6 · DX12</div>
+</div>
+<div style="position:absolute;right:56px;bottom:40px;display:flex;align-items:center;gap:18px;background:rgba(20,22,26,.82);border:1px solid #3A3F48;padding:10px 14px">
+<div style="display:flex;align-items:center;gap:8px;font:500 13px/1 Inter;color:#4FB39A;white-space:nowrap">{{ ic.cloudOk }}Online · services normal</div>
+<div style="width:1px;height:18px;background:#3A3F48"></div>
+<div style="font:500 13px/1 Inter;color:#ECE6D8;white-space:nowrap">Signed in as Ilse Varga</div>
+</div>
+<div style="position:absolute;right:56px;top:40px;white-space:nowrap;font:500 12px/1 Inter;color:#ECE6D8;background:rgba(20,22,26,.82);border:1px solid #3A3F48;padding:8px 10px">Backdrop: live 3D world, near-photoreal · placeholder</div>
+</div>
+</div>
+
+<div id="a11b" style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;gap:10px;align-items:center"><div style="font:600 12px/1 'JetBrains Mono';color:#14161A;background:#C9A86A;padding:4px 7px">1.1b</div><div style="font:500 14px/1 Inter;color:#ECE6D8">Loading · custom map with integrity check</div><div style="font:600 10px/1 Inter;letter-spacing:.1em;color:#4FB39A;border:1px solid #4FB39A;padding:3px 5px">INTERACTIVE · LIVE PROGRESS</div></div>
+<div data-screen-label="1.1b Loading" style="width:1920px;height:1080px;position:relative;overflow:hidden;background:#14161A;box-shadow:0 0 0 1px #2A2F38">{{ bdFord }}
+<div style="position:absolute;inset:0;background:rgba(11,12,14,.62)"></div>
+<div style="position:absolute;left:160px;top:180px;width:440px;height:440px;display:flex;align-items:center;justify-content:center">
+<div style="position:absolute;inset:0">{{ loadRing }}</div>
+<div style="position:absolute;inset:122px;border-radius:50%">{{ pulseRound }}</div>
+<div style="position:relative;display:flex;flex-direction:column;align-items:center;gap:10px">
+<div style="font:600 64px/1 Cinzel;color:#ECE6D8;font-variant-numeric:tabular-nums">{{ loadPct }}</div>
+<div style="font:500 13px/1 Inter;letter-spacing:.08em;color:#E3C887;text-transform:uppercase">{{ loadStage }}</div>
+</div>
+</div>
+<div style="position:absolute;left:700px;top:176px;right:160px;display:flex;flex-direction:column;gap:26px">
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font:600 12px/1 Inter;letter-spacing:.16em;text-transform:uppercase;color:#C9A86A">Custom game · loading</div>
+<div style="font:600 72px/1 Cinzel;color:#ECE6D8">Cinder Keep</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+<div style="font:500 13px/1 Inter;color:#ECE6D8;background:#20242B;border:1px solid #4A4234;padding:6px 10px;white-space:nowrap">Tower defence</div>
+<div style="font:500 13px/1 Inter;color:#ECE6D8;background:#20242B;border:1px solid #4A4234;padding:6px 10px;white-space:nowrap">4 Commanders · co-op</div>
+<div style="font:500 13px/1 Inter;color:#ECE6D8;background:#20242B;border:1px solid #4A4234;padding:6px 10px;white-space:nowrap">by Vell Orrin, Architect</div>
+<div style="font:500 13px/1 'JetBrains Mono';color:#9A958A;background:#20242B;border:1px solid #3A3F48;padding:6px 10px;white-space:nowrap">v1.3 · 212 MB</div>
+</div>
+</div>
+<div style="position:relative;background:#20242B;border:1px solid #4A4234;box-shadow:inset 0 1px 0 rgba(227,200,135,.07);padding:22px 24px;display:flex;flex-direction:column;gap:16px;isolation:isolate" style-hover="--chiH:1">{{ F }}
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">Integrity check</div>{{ orn.hr }}</div>
+<div style="display:flex;align-items:baseline;justify-content:space-between"><div style="font:600 20px/1 Inter;color:#ECE6D8">{{ verifyText }}</div><div style="font:500 14px/1 'JetBrains Mono';color:#9A958A">{{ filesText }}</div></div>
+<div style="height:6px;background:#14161A;border:1px solid #3A3F48;position:relative"><div style="position:absolute;left:0;top:0;bottom:0;width:{{ filesPct }};background:#C9A86A;transition:width 1s linear"></div></div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
+<sc-for list="{{ checks }}" as="c" hint-placeholder-count="3">
+<div style="display:flex;gap:10px;align-items:flex-start;background:#14161A;border:1px solid #3A3F48;padding:10px 12px"><div style="color:{{ c.fg }};display:flex;padding-top:1px">{{ c.icon }}</div><div style="font:400 13px/1.4 Inter;color:#ECE6D8;text-wrap:pretty">{{ c.t }}</div></div>
+</sc-for>
+</div>
+<div style="font:400 13px/1.4 Inter;color:#9A958A">Signed by Vell Orrin. Matches the copy on Browse. A file that fails stops the load and says which one.</div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px">
+<sc-for list="{{ stages }}" as="st" hint-placeholder-count="4">
+<div style="display:flex;flex-direction:column;gap:8px;padding:12px 14px;background:{{ st.bg }};border:1px solid {{ st.bd }}">
+<div style="display:flex;align-items:center;gap:8px"><div style="color:{{ st.fg }};display:flex">{{ st.icon }}</div><div style="font:600 13px/1 Inter;color:{{ st.tf }}">{{ st.n }}</div></div>
+<div style="font:400 12px/1.3 Inter;color:#9A958A">{{ st.sub }}</div>
+</div>
+</sc-for>
+</div>
+<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px">
+<sc-for list="{{ cmdrs }}" as="c" hint-placeholder-count="4">
+<div style="display:flex;flex-direction:column;gap:8px;background:#20242B;border:1px solid #3A3F48;padding:10px 12px">
+<div style="display:flex;align-items:center;gap:8px"><div style="width:20px;height:20px;background:{{ c.h }};color:{{ c.g }};font:700 11px/20px Inter;text-align:center;flex:none">{{ c.glyph }}</div><div style="font:500 13px/1 Inter;color:#ECE6D8;flex:1;white-space:nowrap">{{ c.n }}</div><div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">{{ c.pt }}</div></div>
+<div style="height:3px;background:#14161A;position:relative"><div style="position:absolute;left:0;top:0;bottom:0;width:{{ c.w }};background:#8A6E3C;transition:width 1s linear"></div></div>
+</div>
+</sc-for>
+</div>
+</div>
+<div style="position:absolute;left:160px;right:160px;bottom:64px;height:84px;background:#20242B;border:1px solid #4A4234;display:flex;align-items:center;gap:20px;padding:0 24px;isolation:isolate">{{ F2 }}
+<div style="flex:none">{{ tipSigil }}</div>
+<div style="font:600 12px/1 Inter;letter-spacing:.14em;text-transform:uppercase;color:#C9A86A;flex:none">Tip</div>
+<div style="font:400 17px/1.4 Inter;color:#ECE6D8;flex:1;text-wrap:pretty">Towers on high ground reach two tiles further. Hold Alt to see every tower’s range at once.</div>
+<div title="Next tip (Tab)" style="display:flex;align-items:center;gap:8px;font:500 13px/1 Inter;color:#9A958A;flex:none">Next tip<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">Tab</div></div>
+<div style="width:1px;height:36px;background:#3A3F48"></div>
+<div title="Cancel and go back to the lobby (Esc)" style="display:flex;align-items:center;gap:8px;font:500 13px/1 Inter;color:#9A958A;flex:none">Cancel<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">Esc</div></div>
+</div>
+</div>
+</div>
+
+</div>
+</sc-if>
+</section>
+
+<section id="s12" style="display:flex;flex-direction:column;gap:20px;padding:0 64px 96px">
+<div style="font:600 24px/1 Cinzel;color:#E3C887">1.2 · Home</div>
+<sc-if value="{{ show.s12 }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;gap:64px;align-items:flex-start">
+<sc-for list="{{ homes }}" as="h" hint-placeholder-count="3">
+<div id="{{ h.id }}" style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;gap:10px;align-items:center"><div style="font:600 12px/1 'JetBrains Mono';color:#14161A;background:#C9A86A;padding:4px 7px">{{ h.code }}</div><div style="font:500 14px/1 Inter;color:#ECE6D8">{{ h.label }}</div><div style="font:600 10px/1 Inter;letter-spacing:.1em;color:#4FB39A;border:1px solid #4FB39A;padding:3px 5px">INTERACTIVE</div></div>
+<div data-screen-label="{{ h.code }}" style="width:1920px;height:1080px;position:relative;overflow:hidden;background:#14161A;box-shadow:0 0 0 1px #2A2F38;display:grid;grid-template-rows:56px minmax(0,1fr) 40px">{{ bdDusk }}
+<div style="position:relative;z-index:5"><dc-import name="Shell Top Bar" mode="" title="Home" sub="{{ h.sub }}" net="{{ h.net }}" user="{{ h.user }}" role="{{ h.role }}" signed-in="{{ h.signed }}" lv="{{ LV }}" hint-size="100%,56px"></dc-import></div>
+<div style="display:grid;grid-template-columns:460px minmax(0,1fr) 440px;min-height:0;position:relative;z-index:2">
+
+<div style="background:#20242B;border-right:1px solid #4A4234;position:relative;isolation:isolate;display:flex;flex-direction:column;gap:18px;padding:28px 28px 22px" style-hover="--chiH:1">{{ orn.tex }}{{ F }}
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="font:600 30px/1.1 Cinzel;color:#ECE6D8">{{ h.greet }}</div>
+<div style="font:400 14px/1.4 Inter;color:#9A958A">{{ h.greetSub }}</div>
+</div>
+<div onClick="{{ h.cont.go }}" title="{{ h.cont.tip }}" tabIndex="0" style="position:relative;display:grid;grid-template-columns:136px minmax(0,1fr);gap:14px;padding:12px;background:{{ h.cont.bg }};border:1px solid {{ h.cont.bd }};cursor:pointer;outline:none" style-hover="background:#2A2F38" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ h.cont.pulse }}
+<div style="height:78px;background:{{ h.cont.thumb }};border:1px solid #3A3F48"></div>
+<div style="display:flex;flex-direction:column;gap:6px;min-width:0">
+<div style="display:flex;align-items:center;gap:8px"><div style="font:600 12px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#7FE3A1">{{ h.cont.kicker }}</div><div style="flex:1"></div><div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">Enter</div></div>
+<div style="font:600 16px/1.25 Inter;color:#ECE6D8">{{ h.cont.n }}</div>
+<div style="font:400 12px/1.35 Inter;color:#9A958A">{{ h.cont.m }}</div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:3px">
+<sc-for list="{{ h.menu }}" as="m" hint-placeholder-count="9">
+<div onMouseEnter="{{ m.enter }}" title="{{ m.tip }}" tabIndex="0" style="height:54px;display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:14px;align-items:center;padding:0 12px;background:{{ m.bg }};border:1px solid {{ m.bd }};opacity:{{ m.op }};cursor:{{ m.cur }};outline:none" style-focus="outline:2px solid #E3C887;outline-offset:1px">
+<div style="color:{{ m.ic }};display:flex">{{ m.icon }}</div>
+<div style="display:flex;flex-direction:column;gap:4px;min-width:0"><div style="font:600 16px/1 Inter;color:{{ m.fg }}">{{ m.n }}</div><div style="font:400 12px/1.2 Inter;color:#9A958A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.desc }}</div></div>
+<div style="font:600 11px/16px 'JetBrains Mono';height:20px;min-width:20px;text-align:center;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">{{ m.k }}</div>
+</div>
+</sc-for>
+</div>
+</div>
+
+<div style="position:relative;display:flex;align-items:flex-end;justify-content:space-between;padding:20px">
+<div style="display:flex;align-items:center;gap:10px;background:rgba(20,22,26,.86);border:1px solid #3A3F48;padding:8px 12px;font:500 12px/1 Inter;color:#ECE6D8;white-space:nowrap">{{ ic.eye }}Ashfall Ford at dusk · live 3D view · the camera drifts slowly</div>
+<div title="Hide the menus to look at the world (Tab)" style="display:flex;align-items:center;gap:8px;background:rgba(20,22,26,.86);border:1px solid #3A3F48;padding:6px 8px 6px 12px;font:500 12px/1 Inter;color:#ECE6D8;white-space:nowrap">Hide menus<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">Tab</div></div>
+</div>
+
+<div style="background:#20242B;border-left:1px solid #4A4234;position:relative;isolation:isolate;display:flex;flex-direction:column;gap:22px;padding:24px 24px 20px;min-height:0" style-hover="--chiH:1">{{ orn.tex }}{{ F2 }}
+
+<sc-if value="{{ h.isFirst }}" hint-placeholder-val="{{ false }}">
+<div style="position:relative;background:#14161A;border:1px solid #8A6E3C;padding:20px;display:flex;flex-direction:column;gap:14px;isolation:isolate">{{ Fc }}
+<div style="display:flex;align-items:center;gap:12px">{{ sigBig }}<div style="font:600 22px/1.2 Cinzel;color:#ECE6D8;text-wrap:pretty">Build your first map in 15 minutes</div></div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<sc-for list="{{ guided }}" as="g" hint-placeholder-count="3">
+<div style="display:grid;grid-template-columns:26px minmax(0,1fr) auto;gap:10px;align-items:center"><div style="width:26px;height:26px;border:1px solid #8A6E3C;display:flex;align-items:center;justify-content:center;font:600 12px/1 Cinzel;color:#E3C887">{{ g.n }}</div><div style="font:500 14px/1.3 Inter;color:#ECE6D8">{{ g.t }}</div><div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">{{ g.m }}</div></div>
+</sc-for>
+</div>
+<button title="Start the guided path in Create (C)" style="position:relative;height:44px;display:flex;align-items:center;justify-content:center;gap:10px;background:#C9A86A;border:1px solid #E3C887;color:#14161A;font:600 13px/1 Inter;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;outline:none" style-hover="background:#E3C887" style-focus="outline:2px solid #E3C887;outline-offset:3px">Start the guided path<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid rgba(20,22,26,.5);border-bottom-width:2px;border-radius:3px;white-space:nowrap;color:#14161A;letter-spacing:0">C</div>{{ orn.btnGold }}</button>
+<div style="font:400 12px/1.4 Inter;color:#9A958A">Leave at any step. Your map saves as you go.</div>
+</div>
+</sc-if>
+
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">Recent</div>{{ orn.hr }}</div>
+<sc-if value="{{ h.isFirst }}" hint-placeholder-val="{{ false }}"><div style="font:400 13px/1.5 Inter;color:#9A958A;background:#14161A;border:1px dashed #3A3F48;padding:14px">Nothing yet. Games you play and projects you build appear here.</div></sc-if>
+<sc-for list="{{ h.recent }}" as="r" hint-placeholder-count="4">
+<div title="{{ r.tip }}" tabIndex="0" style="display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:12px;align-items:center;padding:6px;border:1px solid transparent;cursor:pointer;outline:none" style-hover="background:#2A2F38;border-color:#3A3F48" style-focus="outline:2px solid #E3C887">
+<div style="height:38px;background:{{ r.thumb }};border:1px solid #3A3F48"></div>
+<div style="display:flex;flex-direction:column;gap:4px;min-width:0"><div style="font:500 14px/1.2 Inter;color:#ECE6D8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.n }}</div><div style="font:400 12px/1.2 Inter;color:#9A958A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.m }}</div></div>
+<div style="color:#9A958A;display:flex">{{ r.icon }}</div>
+</div>
+</sc-for>
+</div>
+
+<sc-if value="{{ h.notFirst }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887;white-space:nowrap">Subscribed</div>{{ orn.hr }}</div>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px"><div style="font:500 14px/1.3 Inter;color:#ECE6D8">{{ h.subHead }}</div><button disabled="{{ h.subDis }}" title="{{ h.subTip }}" style="height:32px;padding:0 12px;display:flex;align-items:center;gap:8px;background:{{ h.subBg }};border:1px solid {{ h.subBd }};color:{{ h.subFg }};font:500 13px/1 Inter;cursor:{{ h.subCur }};outline:none;white-space:nowrap" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ ic.download }}Update all</button></div>
+<sc-for list="{{ subs }}" as="u" hint-placeholder-count="3">
+<div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 10px;background:#14161A;border:1px solid #3A3F48;opacity:{{ h.subOp }}">
+<div style="display:flex;flex-direction:column;gap:4px;min-width:0"><div style="font:500 13px/1.2 Inter;color:#ECE6D8">{{ u.n }}</div><div style="font:400 12px/1.2 'JetBrains Mono';color:#9A958A">{{ u.v }}</div></div>
+<div style="font:500 12px/1 'JetBrains Mono';color:#C9A86A">{{ u.size }}</div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+<div style="display:flex;flex-direction:column;gap:12px;margin-top:auto">
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887;white-space:nowrap">Featured</div>{{ orn.hr }}</div>
+<div title="Vat Lords Arena · open in Browse" tabIndex="0" style="position:relative;background:#14161A;border:1px solid #4A4234;display:flex;flex-direction:column;cursor:pointer;outline:none;isolation:isolate" style-hover="border-color:#C9A86A;--chiH:1" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ Fc }}
+<div style="height:150px;background:{{ featThumb }};position:relative"><div style="position:absolute;left:10px;top:10px;font:600 11px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#14161A;background:#C9A86A;padding:4px 6px">Featured this week</div></div>
+<div style="padding:14px 16px;display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px"><div style="font:600 20px/1.1 Cinzel;color:#ECE6D8">Vat Lords Arena</div><div style="font:600 13px/1 Inter;color:#E3C887;white-space:nowrap">★ 4.8</div></div>
+<div style="font:400 13px/1.4 Inter;color:#9A958A;text-wrap:pretty">Two teams of five heroes push three lanes toward the enemy vat. By Kestrel &amp; Lune.</div>
+<div style="display:flex;gap:6px;flex-wrap:wrap"><div style="font:500 12px/1 Inter;color:#ECE6D8;border:1px solid #3A3F48;padding:4px 7px;white-space:nowrap">Arena</div><div style="font:500 12px/1 Inter;color:#ECE6D8;border:1px solid #3A3F48;padding:4px 7px;white-space:nowrap">10 Commanders · 5v5</div><div style="font:500 12px/1 Inter;color:{{ h.featFg }};border:1px solid #3A3F48;padding:4px 7px;white-space:nowrap">{{ h.featState }}</div></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<div style="position:relative;z-index:3;background:#20242B;border-top:1px solid #4A4234;display:flex;align-items:center;gap:22px;padding:0 20px">
+<sc-for list="{{ homeHints }}" as="k" hint-placeholder-count="4">
+<div style="display:flex;align-items:center;gap:8px;font:500 12px/1 Inter;color:#9A958A"><div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">{{ k.k }}</div>{{ k.t }}</div>
+</sc-for>
+<div style="flex:1"></div>
+<div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">{{ h.status }}</div>
+</div>
+</div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+</section>
+
+
+<section id="s13" style="display:flex;flex-direction:column;gap:20px;padding:0 64px 96px">
+<div style="font:600 24px/1 Cinzel;color:#E3C887">1.3 · Play hub (F1)</div>
+<sc-if value="{{ show.s13 }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;gap:64px;align-items:flex-start">
+<sc-for list="{{ hubs }}" as="h" hint-placeholder-count="5">
+<div id="{{ h.id }}" style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;gap:10px;align-items:center"><div style="font:600 12px/1 'JetBrains Mono';color:#14161A;background:#C9A86A;padding:4px 7px">{{ h.code }}</div><div style="font:500 14px/1 Inter;color:#ECE6D8">{{ h.label }}</div><div style="font:600 10px/1 Inter;letter-spacing:.1em;color:#4FB39A;border:1px solid #4FB39A;padding:3px 5px">INTERACTIVE · RAIL SWITCHES SECTIONS</div></div>
+<div data-screen-label="{{ h.code }}" style="width:1920px;height:1080px;position:relative;overflow:hidden;background:#14161A;box-shadow:0 0 0 1px #2A2F38;display:grid;grid-template-rows:56px minmax(0,1fr) 40px">
+<dc-import name="Shell Top Bar" mode="Play" title="Play" sub="{{ h.sub }}" net="online" user="Ilse Varga" role="Commander · Architect" lv="{{ LV }}" hint-size="100%,56px"></dc-import>
+<div style="display:grid;grid-template-columns:320px minmax(0,1fr) 440px;min-height:0">
+
+<div style="background:#20242B;border-right:1px solid #4A4234;position:relative;isolation:isolate;display:flex;flex-direction:column;gap:4px;padding:22px 16px 18px" style-hover="--chiH:1">{{ orn.tex }}{{ F }}
+<div style="display:flex;align-items:center;gap:12px;padding:0 6px 12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">Play</div>{{ orn.hr }}</div>
+<sc-for list="{{ h.rail }}" as="r" hint-placeholder-count="5">
+<div onClick="{{ r.go }}" title="{{ r.tip }}" tabIndex="0" style="height:60px;display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:12px;align-items:center;padding:0 12px;background:{{ r.bg }};border:1px solid {{ r.bd }};cursor:pointer;outline:none" style-hover="background:#2A2F38" style-focus="outline:2px solid #E3C887;outline-offset:1px">
+<div style="color:{{ r.ic }};display:flex">{{ r.icon }}</div>
+<div style="display:flex;flex-direction:column;gap:5px;min-width:0"><div style="font:600 15px/1 Inter;color:{{ r.fg }}">{{ r.n }}</div><div style="font:400 12px/1.2 Inter;color:#9A958A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.sub }}</div></div>
+<div style="font:600 11px/16px 'JetBrains Mono';height:20px;min-width:20px;text-align:center;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">{{ r.k }}</div>
+</div>
+</sc-for>
+<div style="margin-top:auto;display:flex;flex-direction:column;gap:10px;padding:16px 6px 0;border-top:1px solid #3A3F48;position:relative">{{ orn.divTop }}
+<div style="display:flex;align-items:center;justify-content:space-between"><div style="font:600 12px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#9A958A">Party · 2</div><div title="Leave the party" style="font:500 12px/1 Inter;color:#9A958A;cursor:pointer" style-hover="color:#ECE6D8">Leave</div></div>
+<sc-for list="{{ party }}" as="m" hint-placeholder-count="2">
+<div style="display:flex;align-items:center;gap:10px"><div style="width:22px;height:22px;background:{{ m.h }};color:{{ m.g }};font:700 11px/22px Inter;text-align:center;flex:none">{{ m.glyph }}</div><div style="flex:1;font:500 13px/1 Inter;color:#ECE6D8">{{ m.n }}</div><div style="font:400 12px/1 Inter;color:#9A958A">{{ m.st }}</div></div>
+</sc-for>
+<button title="Invite a friend to your party (I)" style="position:relative;height:36px;display:flex;align-items:center;justify-content:center;gap:8px;background:#2A2F38;border:1px solid #8A6E3C;color:#ECE6D8;font:500 13px/1 Inter;cursor:pointer;outline:none" style-hover="border-color:#C9A86A;background:#333945" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ ic.plus }}Invite a friend<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">I</div>{{ orn.btnDark }}</button>
+</div>
+</div>
+
+<div style="position:relative;isolation:isolate;padding:32px 40px;display:flex;flex-direction:column;gap:24px;min-width:0;min-height:0;overflow:hidden">{{ orn.tex }}
+
+<sc-if value="{{ h.isCampaign }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font:600 12px/1 Inter;letter-spacing:.16em;text-transform:uppercase;color:#C9A86A">The showcase campaign</div>
+<div style="font:600 44px/1 Cinzel;color:#ECE6D8">Prologue</div>
+<div style="font:400 16px/1.5 Inter;color:#9A958A;max-width:760px;text-wrap:pretty">Three missions. You command the Crucible Covenant against the Sanguine Court on the road to [World].</div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px">
+<sc-for list="{{ missions }}" as="mi" hint-placeholder-count="3">
+<div onClick="{{ mi.go }}" title="{{ mi.tip }}" tabIndex="0" style="position:relative;background:{{ mi.bg }};border:1px solid {{ mi.bd }};display:flex;flex-direction:column;cursor:pointer;outline:none;isolation:isolate" style-hover="border-color:#C9A86A;--chiH:1" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ Fc }}
+<div style="height:230px;background:{{ mi.thumb }};position:relative;opacity:{{ mi.op }}">
+<div style="position:absolute;left:14px;top:14px;width:52px;height:52px;background:#14161A;border:1px solid #8A6E3C;display:flex;align-items:center;justify-content:center;font:600 22px/1 Cinzel;color:#E3C887">{{ mi.n }}</div>
+<sc-if value="{{ mi.isDone }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;right:14px;top:14px">{{ mi.seal }}</div></sc-if>
+<sc-if value="{{ mi.isLocked }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;background:rgba(20,22,26,.55);display:flex;align-items:center;justify-content:center"><div style="width:56px;height:56px;border:1px solid #5C5446;background:#14161A;display:flex;align-items:center;justify-content:center">{{ mi.lockIcon }}</div></div></sc-if>
+</div>
+<div style="padding:18px;display:flex;flex-direction:column;gap:10px">
+<div style="font:600 22px/1.15 Cinzel;color:#ECE6D8">{{ mi.name }}</div>
+<div style="font:400 14px/1.45 Inter;color:#9A958A;text-wrap:pretty;min-height:40px">{{ mi.d }}</div>
+<div style="display:flex;align-items:center;gap:8px;font:500 13px/1 Inter;color:{{ mi.stFg }}">{{ mi.stIcon }}{{ mi.meta }}</div>
+</div>
+</div>
+</sc-for>
+</div>
+<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px">
+<div style="display:flex;align-items:center;gap:14px;background:#20242B;border:1px solid #3A3F48;padding:14px 16px"><div style="width:40px;height:40px;background:#4A5A70;border:1px solid #8A6E3C;flex:none"></div><div style="display:flex;flex-direction:column;gap:5px"><div style="font:600 15px/1 Inter;color:#ECE6D8">Crucible Covenant · you</div><div style="font:400 13px/1.3 Inter;color:#9A958A">Engineers and alchemists. Strong walls, slow to start.</div></div></div>
+<div style="display:flex;align-items:center;gap:14px;background:#20242B;border:1px solid #3A3F48;padding:14px 16px"><div style="width:40px;height:40px;background:#6B2A2A;border:1px solid #8A6E3C;flex:none"></div><div style="display:flex;flex-direction:column;gap:5px"><div style="font:600 15px/1 Inter;color:#ECE6D8">Sanguine Court · the enemy</div><div style="font:400 13px/1.3 Inter;color:#9A958A">Blood-vats and grown beasts. Fast, fragile, hard to stop.</div></div></div>
+</div>
+</sc-if>
+
+<sc-if value="{{ h.isSkirmish }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font:600 44px/1 Cinzel;color:#ECE6D8">Skirmish</div>
+<div style="font:400 16px/1.5 Inter;color:#9A958A">You and allies against the AI. Four personalities, four difficulties, any map with two to four starts.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887;white-space:nowrap">Recent setups</div>{{ orn.hr }}</div>
+<sc-for list="{{ skRecent }}" as="r" hint-placeholder-count="3">
+<div style="display:grid;grid-template-columns:112px minmax(0,1fr) auto auto;gap:18px;align-items:center;padding:10px;background:#20242B;border:1px solid #3A3F48" style-hover="border-color:#8A6E3C">
+<div style="height:62px;background:{{ r.thumb }};border:1px solid #3A3F48"></div>
+<div style="display:flex;flex-direction:column;gap:7px;min-width:0"><div style="font:600 16px/1 Inter;color:#ECE6D8">{{ r.map }}</div><div style="font:400 13px/1.2 Inter;color:#9A958A">{{ r.rules }}</div></div>
+<div style="display:flex;gap:4px"><sc-for list="{{ r.chips }}" as="c" hint-placeholder-count="4"><div title="{{ c.who }}" style="width:22px;height:22px;background:{{ c.h }};color:{{ c.g }};font:700 11px/22px Inter;text-align:center">{{ c.glyph }}</div></sc-for></div>
+<button title="Open this setup in Skirmish setup (Enter)" style="position:relative;height:36px;padding:0 14px;display:flex;align-items:center;gap:8px;background:#2A2F38;border:1px solid #8A6E3C;color:#ECE6D8;font:500 13px/1 Inter;cursor:pointer;outline:none;white-space:nowrap" style-hover="border-color:#C9A86A;background:#333945" style-focus="outline:2px solid #E3C887;outline-offset:2px">Set up again{{ orn.btnDark }}</button>
+</div>
+</sc-for>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px;min-height:0">
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">Maps</div>{{ orn.hr }}</div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px">
+<sc-for list="{{ skGrid }}" as="m" hint-placeholder-count="6">
+<div title="{{ m.n }} · {{ m.pl }} · {{ m.s }}" tabIndex="0" style="background:#20242B;border:1px solid #3A3F48;display:flex;flex-direction:column;cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">
+<div style="height:104px;background:{{ m.thumb }}"></div>
+<div style="padding:10px 12px;display:flex;justify-content:space-between;align-items:baseline;gap:8px"><div style="font:600 15px/1 Inter;color:#ECE6D8;white-space:nowrap">{{ m.n }}</div><div style="font:500 12px/1 'JetBrains Mono';color:#9A958A;white-space:nowrap">{{ m.pl }} · {{ m.s }}</div></div>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ h.isMulti }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:20px">
+<div style="display:flex;flex-direction:column;gap:10px"><div style="font:600 44px/1 Cinzel;color:#ECE6D8">Multiplayer</div><div style="font:400 16px/1.5 Inter;color:#9A958A">Quick match, or pick an open lobby. Any genre an Architect has built.</div></div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) 220px;gap:14px;align-items:stretch">
+<sc-for list="{{ queues }}" as="q" hint-placeholder-count="3">
+<div onClick="{{ q.go }}" title="Queue for {{ q.n }} · {{ q.wait }}" tabIndex="0" style="background:{{ q.bg }};border:1px solid {{ q.bd }};padding:14px 16px;display:flex;flex-direction:column;gap:8px;cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">
+<div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font:600 17px/1 Inter;color:#ECE6D8">{{ q.n }}</div><div style="font:500 12px/1 'JetBrains Mono';color:#C9A86A">{{ q.wait }}</div></div>
+<div style="font:400 13px/1.35 Inter;color:#9A958A;text-wrap:pretty">{{ q.sub }}</div>
+</div>
+</sc-for>
+<button title="Find a match in the selected queue (Enter)" style="position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:#173129;border:1px solid #4FB39A;color:#ECE6D8;font:600 14px/1 Inter;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;outline:none" style-hover="background:#1D3B32" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ pulse }}Find match<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8;letter-spacing:0">Enter</div></button>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px;min-height:0">
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887;white-space:nowrap">Open lobbies · 38</div>{{ orn.hr }}</div>
+<div style="display:grid;grid-template-columns:minmax(0,1fr) 150px 130px 90px 70px 160px;gap:14px;padding:0 12px;font:600 11px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A"><div>Lobby</div><div>Scenario</div><div>Genre</div><div>Players</div><div>Ping</div><div>Your content</div></div>
+<sc-for list="{{ lobs }}" as="l" hint-placeholder-count="7">
+<div onClick="{{ l.go }}" title="{{ l.n }} · hosted by {{ l.host }}" tabIndex="0" style="display:grid;grid-template-columns:minmax(0,1fr) 150px 130px 90px 70px 160px;gap:14px;align-items:center;height:48px;padding:0 12px;background:{{ l.bg }};border:1px solid {{ l.bd }};cursor:pointer;outline:none" style-hover="background:#2A2F38" style-focus="outline:2px solid #E3C887">
+<div style="font:500 14px/1 Inter;color:#ECE6D8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ l.n }}</div>
+<div style="font:400 13px/1 Inter;color:#ECE6D8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ l.sc }}</div>
+<div style="font:400 13px/1 Inter;color:#9A958A">{{ l.g }}</div>
+<div style="font:500 13px/1 'JetBrains Mono';color:#ECE6D8">{{ l.slots }}</div>
+<div title="{{ l.ping }} ms" style="display:flex;align-items:flex-end;gap:2px;height:14px"><sc-for list="{{ l.bars }}" as="b" hint-placeholder-count="4"><div style="width:4px;height:{{ b.h }};background:{{ b.c }}"></div></sc-for></div>
+<div style="display:flex;align-items:center;gap:6px;font:500 12px/1 Inter;color:{{ l.cFg }};white-space:nowrap">{{ l.cIcon }}{{ l.cText }}</div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ h.isCustom }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font:600 44px/1 Cinzel;color:#ECE6D8">Custom games</div>
+<div style="font:400 16px/1.5 Inter;color:#9A958A">Installed scenarios. Play starts straight away; empty slots fill with AI.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><div style="font:600 11px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A;width:74px">Genre</div>
+<sc-for list="{{ genreChips }}" as="g" hint-placeholder-count="8"><div onClick="{{ g.go }}" title="Show {{ g.n }} ({{ g.c }})" tabIndex="0" style="display:flex;align-items:center;gap:7px;height:32px;padding:0 11px;background:{{ g.bg }};border:1px solid {{ g.bd }};font:500 13px/1 Inter;color:{{ g.fg }};cursor:pointer;outline:none;white-space:nowrap" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ g.n }}<div style="font:500 11px/1 'JetBrains Mono';color:#9A958A">{{ g.c }}</div></div></sc-for>
+</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><div style="font:600 11px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A;width:74px">Players</div>
+<sc-for list="{{ pChips }}" as="g" hint-placeholder-count="6"><div onClick="{{ g.go }}" title="Scenarios for {{ g.n }} Commanders" tabIndex="0" style="height:32px;padding:0 11px;display:flex;align-items:center;background:{{ g.bg }};border:1px solid {{ g.bd }};font:500 13px/1 Inter;color:{{ g.fg }};cursor:pointer;outline:none;white-space:nowrap" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ g.n }}</div></sc-for>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px">
+<sc-for list="{{ cards }}" as="c" hint-placeholder-count="8">
+<div onClick="{{ c.go }}" title="{{ c.tip }}" tabIndex="0" style="position:relative;background:{{ c.bg }};border:1px solid {{ c.bd }};display:flex;flex-direction:column;cursor:pointer;outline:none;isolation:isolate" style-hover="border-color:#C9A86A;--chiH:1" style-focus="outline:2px solid #E3C887;outline-offset:2px">
+<div style="height:120px;background:{{ c.thumb }};position:relative"><div style="position:absolute;left:8px;top:8px;font:600 11px/1 Inter;color:#ECE6D8;background:rgba(20,22,26,.88);border:1px solid #3A3F48;padding:4px 6px">{{ c.g }}</div></div>
+<div style="padding:12px;display:flex;flex-direction:column;gap:7px">
+<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><div style="font:600 15px/1.15 Inter;color:#ECE6D8">{{ c.n }}</div><div style="font:600 12px/1 Inter;color:#E3C887;white-space:nowrap">★ {{ c.r }}</div></div>
+<div style="font:400 12px/1.2 Inter;color:#9A958A">by {{ c.a }} · {{ c.pl }}</div>
+</div>
+</div>
+</sc-for>
+</div>
+<sc-if value="{{ noCards }}" hint-placeholder-val="{{ false }}"><div style="background:#20242B;border:1px dashed #3A3F48;padding:24px;font:400 14px/1.5 Inter;color:#9A958A">No installed scenario matches. Browse has more: press F3.</div></sc-if>
+</sc-if>
+
+<sc-if value="{{ h.isSaves }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font:600 44px/1 Cinzel;color:#ECE6D8">Load &amp; replays</div>
+<div style="font:400 16px/1.5 Inter;color:#9A958A">Saves on this PC and in the cloud. Autosaves are marked.</div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px">
+<sc-for list="{{ saves }}" as="v" hint-placeholder-count="6">
+<div onClick="{{ v.go }}" title="{{ v.n }} · {{ v.when }}" tabIndex="0" style="background:{{ v.bg }};border:1px solid {{ v.bd }};display:grid;grid-template-columns:120px minmax(0,1fr);cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">
+<div style="background:{{ v.thumb }};min-height:84px;position:relative"><sc-if value="{{ v.auto }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:6px;bottom:6px;font:600 10px/1 Inter;letter-spacing:.08em;color:#14161A;background:#C9A86A;padding:3px 5px">AUTOSAVE</div></sc-if></div>
+<div style="padding:10px 12px;display:flex;flex-direction:column;gap:6px;min-width:0"><div style="font:600 14px/1.25 Inter;color:#ECE6D8">{{ v.n }}</div><div style="font:400 12px/1.2 Inter;color:#9A958A">{{ v.m }}</div><div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">{{ v.when }}</div></div>
+</div>
+</sc-for>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">Replays</div>{{ orn.hr }}</div>
+<sc-for list="{{ replays }}" as="v" hint-placeholder-count="4">
+<div onClick="{{ v.go }}" title="Watch {{ v.n }} · {{ v.dur }}" tabIndex="0" style="display:grid;grid-template-columns:22px minmax(0,1fr) auto 80px 80px 60px;gap:16px;align-items:center;height:48px;padding:0 12px;background:{{ v.bg }};border:1px solid {{ v.bd }};cursor:pointer;outline:none" style-hover="background:#2A2F38" style-focus="outline:2px solid #E3C887">
+<div style="color:#C9A86A;display:flex">{{ ic.replay }}</div>
+<div style="font:500 14px/1 Inter;color:#ECE6D8">{{ v.n }}</div>
+<div style="display:flex;gap:3px"><sc-for list="{{ v.chips }}" as="c" hint-placeholder-count="4"><div style="width:20px;height:20px;background:{{ c.h }};color:{{ c.g }};font:700 10px/20px Inter;text-align:center">{{ c.glyph }}</div></sc-for></div>
+<div style="font:500 13px/1 'JetBrains Mono';color:#ECE6D8">{{ v.dur }}</div>
+<div style="font:500 13px/1 Inter;color:{{ v.rFg }}">{{ v.res }}</div>
+<div style="font:400 12px/1 Inter;color:#9A958A">{{ v.when }}</div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+</div>
+
+<div style="background:#20242B;border-left:1px solid #4A4234;position:relative;isolation:isolate;display:flex;flex-direction:column;gap:18px;padding:24px 24px 20px;min-height:0" style-hover="--chiH:1">{{ orn.tex }}{{ F2 }}
+
+<sc-if value="{{ h.isCampaign }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font:600 12px/1 Inter;letter-spacing:.14em;text-transform:uppercase;color:#C9A86A">Mission {{ brief.n }} · briefing</div><div style="font:600 26px/1.15 Cinzel;color:#ECE6D8">{{ brief.name }}</div>{{ orn.inspTitle }}</div>
+<div style="height:170px;background:{{ brief.thumb }};border:1px solid #3A3F48"></div>
+<div style="font:400 14px/1.5 Inter;color:#ECE6D8;text-wrap:pretty">{{ brief.d }}</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="font:600 11px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#9A958A">Objectives</div>
+<sc-for list="{{ brief.obj }}" as="o" hint-placeholder-count="3"><div style="display:flex;gap:10px;align-items:flex-start;font:400 14px/1.4 Inter;color:#ECE6D8"><div style="display:flex;padding-top:3px">{{ o.icon }}</div>{{ o.t }}</div></sc-for>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;justify-content:space-between"><div style="font:600 11px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#9A958A">Difficulty</div><div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">{{ brief.time }}</div></div>
+<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px">
+<sc-for list="{{ diffs }}" as="d" hint-placeholder-count="4"><div onClick="{{ d.go }}" title="{{ d.tip }}" tabIndex="0" style="height:36px;display:flex;align-items:center;justify-content:center;background:{{ d.bg }};border:1px solid {{ d.bd }};font:500 13px/1 Inter;color:{{ d.fg }};opacity:{{ d.op }};cursor:{{ d.cur }};outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ d.n }}</div></sc-for>
+</div>
+<div style="font:400 12px/1.4 Inter;color:#9A958A">{{ diffNote }}</div>
+</div>
+<div style="margin-top:auto;display:flex;flex-direction:column;gap:10px">
+<button disabled="{{ brief.locked }}" title="{{ brief.tip }}" style="position:relative;height:56px;display:flex;align-items:center;justify-content:center;gap:12px;background:{{ brief.pBg }};border:1px solid {{ brief.pBd }};color:{{ brief.pFg }};font:600 14px/1 Inter;letter-spacing:.08em;text-transform:uppercase;cursor:{{ brief.pCur }};outline:none" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ brief.pulse }}<div style="display:flex;flex-direction:column;gap:5px;align-items:flex-start"><div>{{ brief.primary }}</div><div style="font:400 12px/1 Inter;letter-spacing:0;text-transform:none;color:#9A958A">{{ brief.primarySub }}</div></div><div style="flex:1"></div><div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8;letter-spacing:0">Enter</div></button>
+<sc-if value="{{ brief.notLocked }}" hint-placeholder-val="{{ true }}"><button title="{{ brief.second }} (R)" style="position:relative;height:40px;display:flex;align-items:center;justify-content:center;gap:8px;background:#2A2F38;border:1px solid #8A6E3C;color:#ECE6D8;font:500 13px/1 Inter;cursor:pointer;outline:none" style-hover="border-color:#C9A86A;background:#333945" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ brief.second }}<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">R</div>{{ orn.btnDark }}</button></sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{ h.isSkirmish }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font:600 12px/1 Inter;letter-spacing:.14em;text-transform:uppercase;color:#C9A86A">Skirmish</div><div style="font:600 26px/1.15 Cinzel;color:#ECE6D8">AI personalities</div>{{ orn.inspTitle }}</div>
+<div style="display:flex;flex-direction:column;gap:10px">
+<sc-for list="{{ persList }}" as="pp" hint-placeholder-count="4"><div style="display:flex;flex-direction:column;gap:5px;padding:12px 14px;background:#14161A;border:1px solid #3A3F48"><div style="font:600 15px/1 Inter;color:#ECE6D8">{{ pp.n }}</div><div style="font:400 13px/1.4 Inter;color:#9A958A">{{ pp.d }}</div></div></sc-for>
+</div>
+<div style="font:400 13px/1.5 Inter;color:#9A958A;text-wrap:pretty">Each personality plays at Easy, Normal, Hard or Brutal. Brutal gets no resource bonus; it just plays better.</div>
+<button title="Open Skirmish setup (S)" style="margin-top:auto;position:relative;height:56px;display:flex;align-items:center;justify-content:center;gap:12px;background:#173129;border:1px solid #4FB39A;color:#ECE6D8;font:600 14px/1 Inter;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;outline:none" style-hover="background:#1D3B32" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ pulse }}New skirmish<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8;letter-spacing:0">S</div></button>
+</sc-if>
+
+<sc-if value="{{ h.isMulti }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font:600 12px/1 Inter;letter-spacing:.14em;text-transform:uppercase;color:#C9A86A">Lobby · hosted by {{ lob.host }}</div><div style="font:600 24px/1.2 Cinzel;color:#ECE6D8;text-wrap:pretty">{{ lob.n }}</div>{{ orn.inspTitle }}</div>
+<div style="height:150px;background:{{ lob.thumb }};border:1px solid #3A3F48"></div>
+<div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px 18px;font:400 14px/1.3 Inter">
+<div style="color:#9A958A">Scenario</div><div style="color:#ECE6D8">{{ lob.sc }}</div>
+<div style="color:#9A958A">Genre</div><div style="color:#ECE6D8">{{ lob.g }}</div>
+<div style="color:#9A958A">Players</div><div style="color:#ECE6D8;font-family:'JetBrains Mono'">{{ lob.cur }} / {{ lob.max }}</div>
+<div style="color:#9A958A">Ping</div><div style="color:#ECE6D8;font-family:'JetBrains Mono'">{{ lob.ping }} ms</div>
+<div style="color:#9A958A">Your content</div><div style="color:{{ lob.cFg }}">{{ lob.cLong }}</div>
+</div>
+<button title="{{ lob.join }} (Enter)" style="position:relative;height:48px;display:flex;align-items:center;justify-content:center;gap:10px;background:#C9A86A;border:1px solid #E3C887;color:#14161A;font:600 13px/1 Inter;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;outline:none" style-hover="background:#E3C887" style-focus="outline:2px solid #E3C887;outline-offset:3px">{{ lob.join }}<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid rgba(20,22,26,.5);border-bottom-width:2px;border-radius:3px;white-space:nowrap;color:#14161A;letter-spacing:0">Enter</div>{{ orn.btnGold }}</button>
+<div style="margin-top:auto;display:flex;flex-direction:column;gap:10px;padding-top:16px;border-top:1px solid #3A3F48;position:relative">{{ orn.divTop }}
+<div style="font:600 11px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#9A958A">Join by code</div>
+<div style="display:flex;gap:8px"><input placeholder="e.g. KX7-42Q" title="Six-character lobby code from a friend" style="flex:1;min-width:0;height:40px;background:#14161A;border:1px solid #4A4234;color:#ECE6D8;font:500 15px/1 'JetBrains Mono';letter-spacing:.12em;padding:0 12px;outline:none" style-focus="border-color:#E3C887"><button title="Join the lobby with this code" style="height:40px;padding:0 16px;background:#2A2F38;border:1px solid #8A6E3C;color:#ECE6D8;font:500 13px/1 Inter;cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">Join</button></div>
+</div>
+</sc-if>
+
+<sc-if value="{{ h.isCustom }}" hint-placeholder-val="{{ false }}">
+<div style="height:190px;background:{{ sc.thumb }};border:1px solid #3A3F48;position:relative"><div style="position:absolute;left:10px;top:10px;font:600 11px/1 Inter;color:#ECE6D8;background:rgba(20,22,26,.88);border:1px solid #3A3F48;padding:4px 6px">{{ sc.g }}</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font:600 28px/1.1 Cinzel;color:#ECE6D8">{{ sc.n }}</div><div style="font:400 14px/1 Inter;color:#9A958A">by {{ sc.a }}, Architect</div>{{ orn.inspTitle }}</div>
+<div style="font:400 14px/1.5 Inter;color:#ECE6D8;text-wrap:pretty">{{ sc.d }}</div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
+<div style="background:#14161A;border:1px solid #3A3F48;padding:10px;display:flex;flex-direction:column;gap:6px"><div style="font:600 11px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A">Players</div><div style="font:600 15px/1 Inter;color:#ECE6D8">{{ sc.pl }}</div></div>
+<div style="background:#14161A;border:1px solid #3A3F48;padding:10px;display:flex;flex-direction:column;gap:6px"><div style="font:600 11px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A">Rating</div><div style="font:600 15px/1 Inter;color:#E3C887">★ {{ sc.r }}</div></div>
+<div style="background:#14161A;border:1px solid #3A3F48;padding:10px;display:flex;flex-direction:column;gap:6px"><div style="font:600 11px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A">Plays</div><div style="font:600 15px/1 Inter;color:#ECE6D8">{{ sc.plays }}</div></div>
+</div>
+<div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">v{{ sc.v }} · {{ sc.size }} · installed · verified</div>
+<div style="margin-top:auto;display:flex;flex-direction:column;gap:10px">
+<button title="Play now against AI in the empty slots (Enter)" style="position:relative;height:56px;display:flex;align-items:center;justify-content:center;gap:12px;background:#173129;border:1px solid #4FB39A;color:#ECE6D8;font:600 14px/1 Inter;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;outline:none" style-hover="background:#1D3B32" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ pulse }}Play now<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8;letter-spacing:0">Enter</div></button>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+<button title="Host a lobby with this scenario (H)" style="position:relative;height:40px;background:#2A2F38;border:1px solid #8A6E3C;color:#ECE6D8;font:500 13px/1 Inter;cursor:pointer;outline:none" style-hover="border-color:#C9A86A;background:#333945" style-focus="outline:2px solid #E3C887;outline-offset:2px">Host a lobby{{ orn.btnDark }}</button>
+<button title="Open this scenario’s Browse page (B)" style="position:relative;height:40px;background:#2A2F38;border:1px solid #8A6E3C;color:#ECE6D8;font:500 13px/1 Inter;cursor:pointer;outline:none" style-hover="border-color:#C9A86A;background:#333945" style-focus="outline:2px solid #E3C887;outline-offset:2px">Details in Browse{{ orn.btnDark }}</button>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ h.isSaves }}" hint-placeholder-val="{{ false }}">
+<div style="height:200px;background:{{ sv.thumb }};border:1px solid #3A3F48"></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font:600 12px/1 Inter;letter-spacing:.14em;text-transform:uppercase;color:#C9A86A">{{ sv.kicker }}</div><div style="font:600 24px/1.2 Cinzel;color:#ECE6D8">{{ sv.n }}</div>{{ orn.inspTitle }}</div>
+<div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px 18px;font:400 14px/1.3 Inter">
+<sc-for list="{{ sv.rows }}" as="r" hint-placeholder-count="3"><div style="color:#9A958A">{{ r.k }}</div><div style="color:#ECE6D8">{{ r.v }}</div></sc-for>
+</div>
+<div style="margin-top:auto;display:flex;flex-direction:column;gap:10px">
+<button title="{{ sv.primary }} (Enter)" style="position:relative;height:56px;display:flex;align-items:center;justify-content:center;gap:12px;background:#173129;border:1px solid #4FB39A;color:#ECE6D8;font:600 14px/1 Inter;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;outline:none" style-hover="background:#1D3B32" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ pulse }}{{ sv.primary }}<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8;letter-spacing:0">Enter</div></button>
+<button title="{{ sv.danger }} · asks you to confirm (Del)" style="height:40px;display:flex;align-items:center;justify-content:center;gap:8px;background:transparent;border:1px solid #C8503C;color:#E2735F;font:500 13px/1 Inter;cursor:pointer;outline:none" style-hover="background:#2A1C1A" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ ic.trash }}{{ sv.danger }}<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">Del</div></button>
+</div>
+</sc-if>
+</div>
+</div>
+
+<div style="background:#20242B;border-top:1px solid #4A4234;display:flex;align-items:center;gap:22px;padding:0 20px">
+<sc-for list="{{ h.hints }}" as="k" hint-placeholder-count="4">
+<div style="display:flex;align-items:center;gap:8px;font:500 12px/1 Inter;color:#9A958A"><div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">{{ k.k }}</div>{{ k.t }}</div>
+</sc-for>
+<div style="flex:1"></div>
+<div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">Esc → Home</div>
+</div>
+</div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+</section>
+
+<section id="s14" style="display:flex;flex-direction:column;gap:20px;padding:0 64px 96px">
+<div style="font:600 24px/1 Cinzel;color:#E3C887">1.4 · Skirmish setup</div>
+<sc-if value="{{ show.s14 }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;gap:64px;align-items:flex-start">
+<sc-for list="{{ sks }}" as="k" hint-placeholder-count="2">
+<div id="{{ k.id }}" style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;gap:10px;align-items:center"><div style="font:600 12px/1 'JetBrains Mono';color:#14161A;background:#C9A86A;padding:4px 7px">{{ k.code }}</div><div style="font:500 14px/1 Inter;color:#ECE6D8">{{ k.label }}</div><div style="font:600 10px/1 Inter;letter-spacing:.1em;color:#4FB39A;border:1px solid #4FB39A;padding:3px 5px">INTERACTIVE · CLICK A FIELD TO CYCLE IT</div></div>
+<div data-screen-label="{{ k.code }}" style="width:1920px;height:1080px;position:relative;overflow:hidden;background:#14161A;box-shadow:0 0 0 1px #2A2F38;display:grid;grid-template-rows:56px minmax(0,1fr) 40px">
+<dc-import name="Shell Top Bar" mode="Play" title="Skirmish setup" sub="{{ k.mapName }}" net="online" user="Ilse Varga" role="Commander · Architect" lv="{{ LV }}" hint-size="100%,56px"></dc-import>
+<div style="display:grid;grid-template-columns:320px minmax(0,1fr) 440px;min-height:0">
+
+<div style="background:#20242B;border-right:1px solid #4A4234;position:relative;isolation:isolate;display:flex;flex-direction:column;gap:6px;padding:22px 16px" style-hover="--chiH:1">{{ orn.tex }}{{ F }}
+<div style="display:flex;align-items:center;gap:12px;padding:0 6px 12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">Map</div>{{ orn.hr }}</div>
+<sc-for list="{{ k.maps }}" as="m" hint-placeholder-count="6">
+<div onClick="{{ m.go }}" title="{{ m.n }} · {{ m.p }} players · {{ m.s }}" tabIndex="0" style="display:grid;grid-template-columns:72px minmax(0,1fr);gap:12px;align-items:center;padding:8px;background:{{ m.bg }};border:1px solid {{ m.bd }};cursor:pointer;outline:none" style-hover="background:#2A2F38" style-focus="outline:2px solid #E3C887;outline-offset:1px">
+<div style="height:44px;background:{{ m.thumb }};border:1px solid #3A3F48"></div>
+<div style="display:flex;flex-direction:column;gap:5px;min-width:0"><div style="font:600 14px/1 Inter;color:{{ m.fg }}">{{ m.n }}</div><div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">{{ m.p }} players · {{ m.s }}</div></div>
+</div>
+</sc-for>
+<div style="margin-top:auto;font:400 12px/1.45 Inter;color:#9A958A;padding:0 6px">Only maps with two to four starts. Custom maps with more starts are under Custom games.</div>
+</div>
+
+<div style="position:relative;isolation:isolate;padding:28px 40px;display:flex;flex-direction:column;gap:22px;min-width:0;min-height:0">{{ orn.tex }}
+<div style="display:grid;grid-template-columns:400px minmax(0,1fr);gap:36px;align-items:center">
+<div style="position:relative;width:400px;height:400px">
+<div style="position:absolute;left:70px;top:70px;width:260px;height:260px;background:{{ k.mapThumb }};border:1px solid #3A3F48">
+<sc-for list="{{ k.markers }}" as="mk" hint-placeholder-count="4"><div title="{{ mk.tip }}" style="position:absolute;left:{{ mk.x }};top:{{ mk.y }};width:26px;height:26px;margin:-13px 0 0 -13px;background:{{ mk.h }};color:{{ mk.g }};font:700 13px/26px Inter;text-align:center;border:1px solid #14161A;box-shadow:0 0 0 1px {{ mk.ring }}">{{ mk.glyph }}</div></sc-for>
+</div>
+{{ k.ringEl }}
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font:600 12px/1 Inter;letter-spacing:.16em;text-transform:uppercase;color:#C9A86A">Map preview</div>
+<div style="font:600 44px/1 Cinzel;color:#ECE6D8">{{ k.mapName }}</div>
+<div style="font:400 16px/1.5 Inter;color:#9A958A;text-wrap:pretty">{{ k.mapDesc }}</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+<div style="font:500 13px/1 Inter;color:#ECE6D8;background:#20242B;border:1px solid #4A4234;padding:6px 10px;white-space:nowrap">{{ k.mapP }} starts</div>
+<div style="font:500 13px/1 'JetBrains Mono';color:#ECE6D8;background:#20242B;border:1px solid #4A4234;padding:6px 10px;white-space:nowrap">{{ k.mapS }}</div>
+<div style="font:500 13px/1 Inter;color:#ECE6D8;background:#20242B;border:1px solid #4A4234;padding:6px 10px;white-space:nowrap">{{ k.mapRes }}</div>
+</div>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887;white-space:nowrap">Slots · {{ k.used }}</div>{{ orn.hr }}</div>
+<div style="display:grid;grid-template-columns:40px 64px 150px 190px 120px 200px 110px;gap:12px;padding:0 12px;font:600 11px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A"><div></div><div>Colour</div><div>Who</div><div>AI personality</div><div>Difficulty</div><div>Faction</div><div>Team</div></div>
+<sc-for list="{{ k.slots }}" as="sl" hint-placeholder-count="4">
+<div style="display:grid;grid-template-columns:40px 64px 150px 190px 120px 200px 110px;gap:12px;align-items:center;padding:8px 12px;background:#20242B;border:1px solid {{ sl.rowBd }}">
+<div style="font:600 13px/1 'JetBrains Mono';color:#9A958A">{{ sl.code }}</div>
+<div onClick="{{ sl.cCol }}" title="Colour: {{ sl.colName }} {{ sl.glyph }} · click for the next free colour" tabIndex="0" style="height:40px;display:flex;align-items:center;gap:6px;padding:0 6px;background:#14161A;border:1px solid {{ sl.colBd }};cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:1px"><div style="width:26px;height:26px;background:{{ sl.h }};color:{{ sl.g }};font:700 13px/26px Inter;text-align:center">{{ sl.glyph }}</div><div style="color:#9A958A;display:flex">{{ ic.downSm }}</div></div>
+<div onClick="{{ sl.cWho }}" title="{{ sl.whoTip }}" tabIndex="0" style="height:40px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 10px;background:#14161A;border:1px solid #3A3F48;font:500 13px/1 Inter;color:#ECE6D8;cursor:{{ sl.whoCur }};outline:none;white-space:nowrap" style-hover="border-color:#8A6E3C" style-focus="outline:2px solid #E3C887;outline-offset:1px">{{ sl.whoText }}<div style="color:#9A958A;display:flex">{{ sl.whoIcon }}</div></div>
+<div onClick="{{ sl.cPer }}" title="{{ sl.perTip }}" tabIndex="0" style="height:40px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 10px;background:#14161A;border:1px solid #3A3F48;font:500 13px/1 Inter;color:#ECE6D8;opacity:{{ sl.aiOp }};cursor:pointer;outline:none;white-space:nowrap" style-hover="border-color:#8A6E3C" style-focus="outline:2px solid #E3C887;outline-offset:1px">{{ sl.perText }}<div style="color:#9A958A;display:flex">{{ ic.downSm }}</div></div>
+<div onClick="{{ sl.cDif }}" title="Difficulty · click to cycle" tabIndex="0" style="height:40px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 10px;background:#14161A;border:1px solid #3A3F48;font:500 13px/1 Inter;color:#ECE6D8;opacity:{{ sl.aiOp }};cursor:pointer;outline:none" style-hover="border-color:#8A6E3C" style-focus="outline:2px solid #E3C887;outline-offset:1px">{{ sl.difText }}<div style="color:#9A958A;display:flex">{{ ic.downSm }}</div></div>
+<div onClick="{{ sl.cFac }}" title="Faction · click to cycle" tabIndex="0" style="height:40px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 10px;background:#14161A;border:1px solid #3A3F48;font:500 13px/1 Inter;color:#ECE6D8;opacity:{{ sl.useOp }};cursor:pointer;outline:none;white-space:nowrap" style-hover="border-color:#8A6E3C" style-focus="outline:2px solid #E3C887;outline-offset:1px">{{ sl.facText }}<div style="color:#9A958A;display:flex">{{ ic.downSm }}</div></div>
+<div onClick="{{ sl.cTeam }}" title="Team · click to cycle" tabIndex="0" style="height:40px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 10px;background:#14161A;border:1px solid {{ sl.teamBd }};font:500 13px/1 Inter;color:#ECE6D8;opacity:{{ sl.useOp }};cursor:pointer;outline:none" style-hover="border-color:#8A6E3C" style-focus="outline:2px solid #E3C887;outline-offset:1px">{{ sl.teamText }}<div style="color:#9A958A;display:flex">{{ ic.downSm }}</div></div>
+</div>
+</sc-for>
+</div>
+</div>
+
+<div style="background:#20242B;border-left:1px solid #4A4234;position:relative;isolation:isolate;display:flex;flex-direction:column;gap:20px;padding:24px 24px 20px;min-height:0" style-hover="--chiH:1">{{ orn.tex }}{{ F2 }}
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font:600 12px/1 Inter;letter-spacing:.14em;text-transform:uppercase;color:#C9A86A">Rules</div><div style="font:600 26px/1.15 Cinzel;color:#ECE6D8">Match settings</div>{{ orn.inspTitle }}</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="font:600 11px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#9A958A">Starting resources</div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px"><sc-for list="{{ k.res }}" as="o" hint-placeholder-count="3"><div onClick="{{ o.go }}" title="{{ o.tip }}" tabIndex="0" style="height:40px;display:flex;align-items:center;justify-content:center;background:{{ o.bg }};border:1px solid {{ o.bd }};font:500 13px/1 Inter;color:{{ o.fg }};cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ o.n }}</div></sc-for></div>
+</div>
+<div onClick="{{ k.fogGo }}" title="Fog of war: unexplored ground is hidden (F)" tabIndex="0" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:#14161A;border:1px solid #3A3F48;cursor:pointer;outline:none" style-hover="border-color:#8A6E3C" style-focus="outline:2px solid #E3C887;outline-offset:2px">
+<div style="display:flex;flex-direction:column;gap:5px"><div style="font:600 14px/1 Inter;color:#ECE6D8">Fog of war</div><div style="font:400 12px/1 Inter;color:#9A958A">{{ k.fogSub }}</div></div>
+<div style="width:44px;height:24px;background:{{ k.fogBg }};border:1px solid {{ k.fogBd }};position:relative"><div style="position:absolute;top:3px;left:{{ k.fogX }};width:16px;height:16px;background:{{ k.fogKnob }};transition:left .15s ease"></div></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="font:600 11px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#9A958A">Game speed</div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px"><sc-for list="{{ k.speeds }}" as="o" hint-placeholder-count="3"><div onClick="{{ o.go }}" title="{{ o.tip }}" tabIndex="0" style="height:40px;display:flex;align-items:center;justify-content:center;background:{{ o.bg }};border:1px solid {{ o.bd }};font:500 13px/1 Inter;color:{{ o.fg }};cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ o.n }}</div></sc-for></div>
+</div>
+<div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 16px;font:400 13px/1.3 Inter;padding-top:14px;border-top:1px solid #3A3F48;position:relative">{{ orn.divTop }}
+<div style="color:#9A958A">Victory</div><div style="color:#ECE6D8">Destroy every enemy building</div>
+<div style="color:#9A958A">Summary</div><div style="color:#ECE6D8">{{ k.summary }}</div>
+</div>
+<sc-if value="{{ k.blocked }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:10px;padding:14px;background:#2A1C1A;border:1px solid #C8503C">
+<div style="display:flex;gap:10px;align-items:flex-start"><div style="display:flex;padding-top:1px">{{ ic.alert }}</div><div style="display:flex;flex-direction:column;gap:6px"><div style="font:600 14px/1.3 Inter;color:#E2735F">Start is blocked</div><sc-for list="{{ k.problems }}" as="pr" hint-placeholder-count="1"><div style="font:400 13px/1.45 Inter;color:#ECE6D8;text-wrap:pretty">{{ pr.t }}</div></sc-for></div></div>
+<button onClick="{{ k.fix }}" title="{{ k.fixTip }}" style="align-self:flex-start;height:34px;padding:0 12px;background:#2A2F38;border:1px solid #8A6E3C;color:#ECE6D8;font:500 13px/1 Inter;cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ k.fixLabel }}</button>
+</div>
+</sc-if>
+<div style="margin-top:auto;display:flex;flex-direction:column;gap:10px">
+<button disabled="{{ k.blocked }}" title="{{ k.startTip }}" style="position:relative;height:56px;display:flex;align-items:center;justify-content:center;gap:12px;background:{{ k.sBg }};border:1px solid {{ k.sBd }};color:{{ k.sFg }};font:600 14px/1 Inter;letter-spacing:.08em;text-transform:uppercase;cursor:{{ k.sCur }};outline:none" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ k.pulse }}Start<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8;letter-spacing:0">Enter</div></button>
+<div style="font:400 12px/1.4 Inter;color:#9A958A;text-align:center">Start goes to Loading. Esc goes back to the Play hub.</div>
+</div>
+</div>
+</div>
+<div style="background:#20242B;border-top:1px solid #4A4234;display:flex;align-items:center;gap:22px;padding:0 20px">
+<sc-for list="{{ skHints }}" as="h" hint-placeholder-count="4"><div style="display:flex;align-items:center;gap:8px;font:500 12px/1 Inter;color:#9A958A"><div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">{{ h.k }}</div>{{ h.t }}</div></sc-for>
+<div style="flex:1"></div><div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">Esc → Play hub</div>
+</div>
+</div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+</section>
+
+<section id="s15" style="display:flex;flex-direction:column;gap:20px;padding:0 64px 96px">
+<div style="font:600 24px/1 Cinzel;color:#E3C887">1.5 · Multiplayer lobby</div>
+<sc-if value="{{ show.s15 }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;gap:64px;align-items:flex-start">
+<sc-for list="{{ lobbies }}" as="lb" hint-placeholder-count="4">
+<div id="{{ lb.id }}" style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;gap:10px;align-items:center"><div style="font:600 12px/1 'JetBrains Mono';color:#14161A;background:#C9A86A;padding:4px 7px">{{ lb.code }}</div><div style="font:500 14px/1 Inter;color:#ECE6D8">{{ lb.label }}</div><div style="font:600 10px/1 Inter;letter-spacing:.1em;color:#9A958A;border:1px solid #9A958A;padding:3px 5px">{{ lb.tag }}</div></div>
+<div data-screen-label="{{ lb.code }}" style="width:1920px;height:1080px;position:relative;overflow:hidden;background:#14161A;box-shadow:0 0 0 1px #2A2F38;display:grid;grid-template-rows:56px minmax(0,1fr) 40px">
+<dc-import name="Shell Top Bar" mode="Play" title="Lobby" sub="{{ lb.view }}" net="online" user="Ilse Varga" role="Commander · Architect" lv="{{ LV }}" hint-size="100%,56px"></dc-import>
+<div style="display:grid;grid-template-columns:360px minmax(0,1fr) 440px;min-height:0">
+
+<div style="background:#20242B;border-right:1px solid #4A4234;position:relative;isolation:isolate;display:flex;flex-direction:column;gap:16px;padding:22px 20px" style-hover="--chiH:1">{{ orn.tex }}{{ F }}
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font:600 12px/1 Inter;letter-spacing:.14em;text-transform:uppercase;color:#C9A86A">Hosted by {{ lb.host }}</div><div style="font:600 22px/1.2 Cinzel;color:#ECE6D8">2v2 at Ashfall Ford · no rush 10</div></div>
+<div style="display:flex;align-items:center;gap:8px"><div style="flex:1;height:38px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;background:#14161A;border:1px solid #4A4234"><div style="font:600 16px/1 'JetBrains Mono';letter-spacing:.14em;color:#E3C887">KX7-42Q</div><div style="font:400 12px/1 Inter;color:#9A958A">Friends + code</div></div><button title="Copy the lobby code (Ctrl+C)" style="width:38px;height:38px;display:flex;align-items:center;justify-content:center;background:#2A2F38;border:1px solid #8A6E3C;cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ ic.copy }}</button></div>
+<div style="height:170px;background:{{ lbThumb }};border:1px solid #3A3F48;position:relative"><div style="position:absolute;left:8px;bottom:8px;font:600 11px/1 Inter;color:#ECE6D8;background:rgba(20,22,26,.88);border:1px solid #3A3F48;padding:4px 6px">Ashfall Ford · RTS · 4 starts</div></div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="font:600 11px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#9A958A">Required content</div>
+<sc-for list="{{ lbContent }}" as="c" hint-placeholder-count="2"><div style="display:flex;justify-content:space-between;gap:10px;font:400 13px/1.3 Inter"><div style="color:#ECE6D8">{{ c.n }}</div><div style="font-family:'JetBrains Mono';font-size:12px;color:#9A958A;white-space:nowrap">{{ c.v }}</div></div></sc-for>
+</div>
+<div style="display:flex;flex-direction:column;gap:6px;padding-top:14px;border-top:1px solid #3A3F48;position:relative">{{ orn.divTop }}
+<div style="display:flex;justify-content:space-between;align-items:center"><div style="font:600 11px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#9A958A">Host settings</div><div style="font:400 12px/1 Inter;color:#9A958A">{{ lb.setNote }}</div></div>
+<sc-for list="{{ lb.settings }}" as="r" hint-placeholder-count="5">
+<div title="{{ r.tip }}" tabIndex="0" style="height:38px;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 10px;background:#14161A;border:1px solid #3A3F48;cursor:{{ r.cur }};outline:none" style-hover="border-color:{{ r.hov }}" style-focus="outline:2px solid #E3C887;outline-offset:1px"><div style="font:400 13px/1 Inter;color:#9A958A">{{ r.k }}</div><div style="display:flex;align-items:center;gap:6px;font:500 13px/1 Inter;color:#ECE6D8">{{ r.v }}<div style="display:flex;color:#9A958A">{{ r.icon }}</div></div></div>
+</sc-for>
+</div>
+</div>
+
+<div style="position:relative;isolation:isolate;padding:28px 36px;display:flex;flex-direction:column;gap:18px;min-width:0;min-height:0">{{ orn.tex }}
+<sc-if value="{{ lb.banner }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;align-items:center;gap:16px;padding:16px 18px;background:#2A2520;border:1px solid #C9A86A">
+<div style="display:flex">{{ ic.crown }}</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:6px"><div style="font:600 16px/1.2 Inter;color:#ECE6D8">Oda Renn, the host, left the lobby.</div><div style="font:400 14px/1.4 Inter;color:#9A958A">Hosting moved to Mara Solt, who has the best connection. Slots and settings are kept; everyone needs to ready again.</div></div>
+</div>
+</sc-if>
+<sc-for list="{{ lb.groups }}" as="g" hint-placeholder-count="3">
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887;white-space:nowrap">{{ g.n }}</div>{{ orn.hr }}</div>
+<sc-for list="{{ g.slots }}" as="sl" hint-placeholder-count="2">
+<div style="display:grid;grid-template-columns:36px minmax(0,1fr) 170px 70px 250px 120px 36px;gap:14px;align-items:center;height:66px;padding:0 14px;background:{{ sl.bg }};border:1px {{ sl.bs }} {{ sl.bd }};opacity:{{ sl.op }}">
+<div style="width:30px;height:30px;background:{{ sl.h }};color:{{ sl.g }};font:700 14px/30px Inter;text-align:center">{{ sl.glyph }}</div>
+<div style="display:flex;flex-direction:column;gap:5px;min-width:0"><div style="display:flex;align-items:center;gap:8px"><div style="font:600 15px/1 Inter;color:#ECE6D8;white-space:nowrap">{{ sl.n }}</div><sc-if value="{{ sl.isHost }}" hint-placeholder-val="{{ false }}"><div title="Host" style="display:flex">{{ ic.crown }}</div></sc-if></div><div style="font:400 12px/1 Inter;color:#9A958A">{{ sl.role }}</div></div>
+<div style="font:400 13px/1.2 Inter;color:#ECE6D8">{{ sl.fac }}</div>
+<div title="{{ sl.pingTip }}" style="display:flex;align-items:flex-end;gap:2px;height:14px"><sc-for list="{{ sl.bars }}" as="b" hint-placeholder-count="4"><div style="width:4px;height:{{ b.h }};background:{{ b.c }}"></div></sc-for><div style="font:500 11px/1 'JetBrains Mono';color:#9A958A;margin-left:6px">{{ sl.pingT }}</div></div>
+<div style="display:flex;flex-direction:column;gap:6px;min-width:0">
+<div style="display:flex;align-items:center;gap:8px;font:500 13px/1.2 Inter;color:{{ sl.cFg }};white-space:nowrap">{{ sl.cIcon }}{{ sl.cText }}</div>
+<sc-if value="{{ sl.isDl }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:8px"><div style="flex:1;height:5px;background:#14161A;border:1px solid #3A3F48;position:relative"><div style="position:absolute;left:0;top:0;bottom:0;width:{{ dlPct }};background:#C9A86A;transition:width 1s linear"></div></div><div style="font:500 11px/1 'JetBrains Mono';color:#9A958A;white-space:nowrap">{{ dlText }}</div></div></sc-if>
+<sc-if value="{{ sl.canDl }}" hint-placeholder-val="{{ false }}"><div style="font:400 12px/1.2 Inter;color:#9A958A">{{ sl.cSub }}</div></sc-if>
+</div>
+<div style="display:flex;align-items:center;gap:8px;font:600 12px/1 Inter;letter-spacing:.08em;text-transform:uppercase;color:{{ sl.rFg }}">{{ sl.rIcon }}{{ sl.rText }}</div>
+<sc-if value="{{ sl.kick }}" hint-placeholder-val="{{ false }}"><button title="Kick {{ sl.n }} · asks you to confirm" style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:transparent;border:1px solid #3A3F48;cursor:pointer;outline:none" style-hover="border-color:#C8503C;background:#2A1C1A" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ ic.x }}</button></sc-if>
+</div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+
+<div style="background:#20242B;border-left:1px solid #4A4234;position:relative;isolation:isolate;display:flex;flex-direction:column;min-height:0" style-hover="--chiH:1">{{ orn.tex }}{{ F2 }}
+<div style="padding:22px 24px 12px;display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">Chat</div>{{ orn.hr }}</div>
+<div style="flex:1;min-height:0;display:flex;flex-direction:column;justify-content:flex-end;gap:10px;padding:0 24px 12px;overflow:hidden">
+<sc-for list="{{ lb.chat }}" as="m" hint-placeholder-count="4">
+<div style="display:flex;gap:10px;align-items:flex-start"><div style="width:18px;height:18px;flex:none;background:{{ m.h }};color:{{ m.g }};font:700 10px/18px Inter;text-align:center;border:1px solid {{ m.bd }}">{{ m.glyph }}</div><div style="font:400 14px/1.4 Inter;color:{{ m.fg }};text-wrap:pretty"><span style="font-weight:600;color:#ECE6D8">{{ m.who }}</span> {{ m.t }}</div></div>
+</sc-for>
+</div>
+<div style="padding:0 24px 16px"><input placeholder="Message the lobby · Enter to send" title="Chat with the lobby (Enter)" style="width:100%;height:40px;background:#14161A;border:1px solid #4A4234;color:#ECE6D8;font:400 14px/1 Inter;padding:0 12px;outline:none" style-focus="border-color:#E3C887"></div>
+<div style="padding:18px 24px 22px;border-top:1px solid #3A3F48;display:flex;flex-direction:column;gap:12px;position:relative">{{ orn.divTop }}
+<sc-if value="{{ lb.isCountdown }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;align-items:center;gap:16px">{{ cdSeal }}<div style="display:flex;flex-direction:column;gap:6px"><div style="font:600 24px/1 Cinzel;color:#ECE6D8">{{ cdText }}</div><div style="font:400 13px/1.3 Inter;color:#9A958A">Everyone is ready and every copy matches.</div></div></div>
+<button title="Stop the countdown (Esc)" style="position:relative;height:44px;display:flex;align-items:center;justify-content:center;gap:10px;background:#2A2F38;border:1px solid #8A6E3C;color:#ECE6D8;font:500 13px/1 Inter;cursor:pointer;outline:none" style-hover="border-color:#C9A86A;background:#333945" style-focus="outline:2px solid #E3C887;outline-offset:2px">Cancel countdown<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">Esc</div>{{ orn.btnDark }}</button>
+</sc-if>
+<sc-if value="{{ lb.hasAction }}" hint-placeholder-val="{{ true }}">
+<div style="font:400 13px/1.45 Inter;color:{{ lb.noteFg }};text-wrap:pretty">{{ lb.note }}</div>
+<button disabled="{{ lb.aDis }}" title="{{ lb.aTip }}" style="position:relative;height:56px;display:flex;align-items:center;justify-content:center;gap:12px;background:{{ lb.aBg }};border:1px solid {{ lb.aBd }};color:{{ lb.aFg }};font:600 14px/1 Inter;letter-spacing:.08em;text-transform:uppercase;cursor:{{ lb.aCur }};outline:none" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ lb.aPulse }}{{ lb.aLabel }}<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8;letter-spacing:0">{{ lb.aKey }}</div></button>
+<button title="{{ lb.bTip }}" style="position:relative;height:40px;display:flex;align-items:center;justify-content:center;gap:10px;background:#2A2F38;border:1px solid #8A6E3C;color:#ECE6D8;font:500 13px/1 Inter;cursor:pointer;outline:none" style-hover="border-color:#C9A86A;background:#333945" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ lb.bLabel }}<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">{{ lb.bKey }}</div>{{ orn.btnDark }}</button>
+</sc-if>
+</div>
+</div>
+</div>
+<div style="background:#20242B;border-top:1px solid #4A4234;display:flex;align-items:center;gap:22px;padding:0 20px">
+<sc-for list="{{ lbHints }}" as="h" hint-placeholder-count="4"><div style="display:flex;align-items:center;gap:8px;font:500 12px/1 Inter;color:#9A958A"><div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">{{ h.k }}</div>{{ h.t }}</div></sc-for>
+<div style="flex:1"></div><div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">Esc → leave lobby (asks first)</div>
+</div>
+</div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+</section>
+
+<section id="s16" style="display:flex;flex-direction:column;gap:20px;padding:0 64px 128px">
+<div style="font:600 24px/1 Cinzel;color:#E3C887">1.6 · Settings</div>
+<sc-if value="{{ show.s16 }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;gap:64px;align-items:flex-start">
+<sc-for list="{{ setBoards }}" as="sb" hint-placeholder-count="4">
+<div id="{{ sb.id }}" style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;gap:10px;align-items:center"><div style="font:600 12px/1 'JetBrains Mono';color:#14161A;background:#C9A86A;padding:4px 7px">{{ sb.code }}</div><div style="font:500 14px/1 Inter;color:#ECE6D8">{{ sb.label }}</div><div style="font:600 10px/1 Inter;letter-spacing:.1em;color:#4FB39A;border:1px solid #4FB39A;padding:3px 5px">INTERACTIVE · ALL 7 CATEGORIES WORK</div></div>
+<div data-screen-label="{{ sb.code }}" style="width:1920px;height:1080px;position:relative;overflow:hidden;background:#14161A;box-shadow:0 0 0 1px #2A2F38;display:grid;grid-template-rows:56px minmax(0,1fr) 40px">
+<dc-import name="Shell Top Bar" mode="" title="Settings" sub="{{ sb.title }}" net="online" user="Ilse Varga" role="Commander · Architect" lv="{{ LV }}" hint-size="100%,56px"></dc-import>
+<div style="display:grid;grid-template-columns:300px minmax(0,1fr) 460px;min-height:0">
+
+<div style="background:#20242B;border-right:1px solid #4A4234;position:relative;isolation:isolate;display:flex;flex-direction:column;gap:4px;padding:22px 16px" style-hover="--chiH:1">{{ orn.tex }}{{ F }}
+<div style="display:flex;align-items:center;gap:12px;padding:0 6px 12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">Settings</div>{{ orn.hr }}</div>
+<div style="height:38px;display:flex;align-items:center;gap:8px;padding:0 10px;margin:0 0 10px;background:#14161A;border:1px solid #4A4234">{{ ic.search }}<input placeholder="Find a setting" title="Search every setting" style="flex:1;min-width:0;background:transparent;border:none;outline:none;color:#ECE6D8;font:400 14px/1 Inter"></div>
+<sc-for list="{{ sb.cats }}" as="c" hint-placeholder-count="7">
+<div onClick="{{ c.go }}" title="{{ c.n }}" tabIndex="0" style="height:48px;display:flex;align-items:center;gap:12px;padding:0 12px;background:{{ c.bg }};border:1px solid {{ c.bd }};cursor:pointer;outline:none" style-hover="background:#2A2F38" style-focus="outline:2px solid #E3C887;outline-offset:1px"><div style="color:{{ c.ic }};display:flex">{{ c.icon }}</div><div style="font:600 15px/1 Inter;color:{{ c.fg }}">{{ c.n }}</div></div>
+</sc-for>
+<div style="margin-top:auto;font:400 12px/1.45 Inter;color:#9A958A;padding:0 6px">Changes apply and save at once. Reset a category from its header.</div>
+</div>
+
+<div style="position:relative;isolation:isolate;padding:28px 40px;display:flex;flex-direction:column;gap:14px;min-width:0;min-height:0;overflow:hidden">{{ orn.tex }}
+<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:20px;padding-bottom:6px">
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font:600 40px/1 Cinzel;color:#ECE6D8">{{ sb.title }}</div><div style="font:400 15px/1.45 Inter;color:#9A958A">{{ sb.desc }}</div></div>
+<button title="Reset {{ sb.title }} to defaults" style="height:34px;padding:0 12px;display:flex;align-items:center;gap:8px;background:transparent;border:1px solid #3A3F48;color:#9A958A;font:500 13px/1 Inter;cursor:pointer;outline:none;white-space:nowrap" style-hover="border-color:#8A6E3C;color:#ECE6D8" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ ic.refresh }}Reset category</button>
+</div>
+
+<sc-if value="{{ sb.isGraphics }}" hint-placeholder-val="{{ false }}">
+<div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px">
+<sc-for list="{{ presets }}" as="pr" hint-placeholder-count="5"><div onClick="{{ pr.go }}" title="{{ pr.tip }}" tabIndex="0" style="display:flex;flex-direction:column;gap:8px;padding:14px;background:{{ pr.bg }};border:1px solid {{ pr.bd }};cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px"><div style="font:600 16px/1 Inter;color:{{ pr.fg }}">{{ pr.n }}</div><div style="font:500 13px/1 'JetBrains Mono';color:#9A958A">{{ pr.fps }}</div></div></sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ sb.isControls }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;align-items:center;gap:16px">
+<div style="display:flex;gap:4px"><sc-for list="{{ keyTabs }}" as="t" hint-placeholder-count="2"><div onClick="{{ t.go }}" title="{{ t.tip }}" tabIndex="0" style="height:38px;padding:0 16px;display:flex;align-items:center;background:{{ t.bg }};border:1px solid {{ t.bd }};font:600 13px/1 Inter;color:{{ t.fg }};cursor:pointer;outline:none;white-space:nowrap" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ t.n }}</div></sc-for></div>
+<div style="font:400 13px/1.4 Inter;color:#9A958A">Play and Create keep separate keymaps, so V can mean Select in Create and something else in a match.</div>
+</div>
+<div style="display:grid;grid-template-columns:minmax(0,1fr) 170px 170px;gap:12px;padding:0 14px;font:600 11px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A"><div>Action</div><div>Key</div><div>Alternate</div></div>
+<div style="display:flex;flex-direction:column;gap:4px">
+<sc-for list="{{ keyRows }}" as="kr" hint-placeholder-count="10">
+<div style="display:grid;grid-template-columns:minmax(0,1fr) 170px 170px;gap:12px;align-items:center;min-height:44px;padding:4px 14px;background:#20242B;border:1px solid {{ kr.bd }}">
+<div style="font:500 14px/1.2 Inter;color:#ECE6D8">{{ kr.n }}</div>
+<div onClick="{{ kr.cap }}" title="{{ kr.tip }}" tabIndex="0" style="height:34px;display:flex;align-items:center;gap:8px;padding:0 10px;background:#14161A;border:1px solid {{ kr.kBd }};cursor:{{ kr.cur }};outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:1px"><div style="font:600 12px/18px 'JetBrains Mono';height:22px;min-width:22px;text-align:center;padding:0 6px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#20242B;color:{{ kr.kFg }}">{{ kr.k }}</div><div style="font:400 12px/1 Inter;color:#9A958A">{{ kr.kNote }}</div></div>
+<div style="height:34px;display:flex;align-items:center;padding:0 10px;background:#14161A;border:1px solid #3A3F48;font:400 13px/1 Inter;color:#9A958A">{{ kr.alt }}</div>
+</div>
+<sc-if value="{{ kr.conflict }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;align-items:center;gap:14px;padding:10px 14px;background:#2A1C1A;border:1px solid #C8503C;margin:-2px 0 4px">
+<div style="display:flex">{{ ic.alert }}</div>
+<div style="flex:1;font:400 13px/1.4 Inter;color:#ECE6D8">{{ kr.conflictText }}</div>
+<button onClick="{{ kr.unbind }}" title="Keep this key here and unbind the other action" style="height:32px;padding:0 12px;background:#2A2F38;border:1px solid #8A6E3C;color:#ECE6D8;font:500 13px/1 Inter;cursor:pointer;outline:none;white-space:nowrap" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">Unbind the other</button>
+<button onClick="{{ kr.cap }}" title="Press a different key for this action" style="height:32px;padding:0 12px;background:transparent;border:1px solid #3A3F48;color:#ECE6D8;font:500 13px/1 Inter;cursor:pointer;outline:none;white-space:nowrap" style-hover="border-color:#8A6E3C" style-focus="outline:2px solid #E3C887;outline-offset:2px">Choose another key</button>
+</div>
+</sc-if>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ sb.isAI }}" hint-placeholder-val="{{ false }}">
+<div onClick="{{ aiToggle }}" title="Turn AI assistance on or off" tabIndex="0" style="display:flex;align-items:center;justify-content:space-between;gap:20px;padding:16px 18px;background:#20242B;border:1px solid #4A4234;cursor:pointer;outline:none" style-hover="border-color:#8A6E3C" style-focus="outline:2px solid #E3C887;outline-offset:2px">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font:600 16px/1 Inter;color:#ECE6D8">AI assistance</div><div style="font:400 13px/1.4 Inter;color:#9A958A">{{ aiSub }}</div></div>
+<div style="width:52px;height:28px;background:{{ aiTg.bg }};border:1px solid {{ aiTg.bd }};position:relative;flex:none"><div style="position:absolute;top:4px;left:{{ aiTg.x }};width:18px;height:18px;background:{{ aiTg.k }};transition:left .15s ease"></div></div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;opacity:{{ aiOp }}">
+<sc-for list="{{ provs }}" as="pv" hint-placeholder-count="4">
+<div style="position:relative;display:flex;flex-direction:column;gap:12px;padding:16px;background:{{ pv.bg }};border:1px solid {{ pv.bd }}">{{ pv.pulse }}
+<div onClick="{{ pv.pick }}" title="Use {{ pv.n }} for AI requests" style="display:flex;align-items:center;gap:12px;cursor:pointer"><div style="width:18px;height:18px;border-radius:50%;border:1px solid {{ pv.rBd }};display:flex;align-items:center;justify-content:center;flex:none"><div style="width:8px;height:8px;border-radius:50%;background:{{ pv.rDot }}"></div></div><div style="display:flex;flex-direction:column;gap:4px"><div style="font:600 16px/1 Inter;color:#ECE6D8">{{ pv.n }}</div><div style="font:400 12px/1 Inter;color:#9A958A">{{ pv.by }}</div></div></div>
+<div style="display:flex;flex-direction:column;gap:5px"><div style="font:600 11px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A">{{ pv.keyLabel }}</div><input value="{{ pv.key }}" placeholder="{{ pv.ph }}" readOnly="{{ true }}" title="{{ pv.keyLabel }}" style="height:36px;background:#14161A;border:1px solid #4A4234;color:#ECE6D8;font:500 13px/1 'JetBrains Mono';padding:0 10px;outline:none" style-focus="border-color:#E3C887"></div>
+<div style="display:flex;gap:8px;align-items:center">
+<div title="Model" style="flex:1;height:36px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;background:#14161A;border:1px solid #3A3F48;font:500 13px/1 Inter;color:#ECE6D8;cursor:pointer" style-hover="border-color:#8A6E3C">{{ pv.model }}{{ ic.downSm }}</div>
+<button onClick="{{ pv.test }}" title="Send a tiny test request" style="height:36px;padding:0 12px;background:#2A2F38;border:1px solid #8A6E3C;color:#ECE6D8;font:500 13px/1 Inter;cursor:pointer;outline:none;white-space:nowrap" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">Test connection</button>
+</div>
+<div style="display:flex;align-items:center;gap:8px;min-height:18px;font:500 13px/1.3 Inter;color:{{ pv.tFg }}">{{ pv.tIcon }}{{ pv.tText }}</div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+<div style="display:flex;flex-direction:column;gap:6px">
+<sc-for list="{{ sb.rows }}" as="r" hint-placeholder-count="7">
+<div onClick="{{ r.focus }}" style="display:grid;grid-template-columns:minmax(0,1fr) 440px;gap:24px;align-items:center;min-height:62px;padding:10px 16px;background:{{ r.bg }};border:1px solid {{ r.bd }}" style-hover="border-color:#4A4234">
+<div style="display:flex;flex-direction:column;gap:6px;min-width:0"><div style="display:flex;align-items:center;gap:10px"><div style="font:600 15px/1.2 Inter;color:#ECE6D8">{{ r.l }}</div><sc-if value="{{ r.cost }}" hint-placeholder-val="{{ false }}"><div style="font:500 11px/1 'JetBrains Mono';color:{{ r.costFg }};border:1px solid #3A3F48;padding:3px 5px;white-space:nowrap">{{ r.cost }}</div></sc-if></div><sc-if value="{{ r.hint }}" hint-placeholder-val="{{ false }}"><div style="font:400 12px/1.3 Inter;color:#9A958A">{{ r.hint }}</div></sc-if></div>
+<div style="display:flex;justify-content:flex-end">
+<sc-if value="{{ r.isSeg }}" hint-placeholder-val="{{ false }}"><div style="display:grid;grid-template-columns:{{ r.cols }};gap:4px;width:100%"><sc-for list="{{ r.opts }}" as="o" hint-placeholder-count="3"><div onClick="{{ o.go }}" title="{{ o.tip }}" tabIndex="0" style="height:38px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:{{ o.bg }};border:1px solid {{ o.bd }};font:500 13px/1 Inter;color:{{ o.fg }};cursor:pointer;outline:none;white-space:nowrap" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ o.t }}<sc-if value="{{ o.sub }}" hint-placeholder-val="{{ false }}"><div style="font:500 10px/1 'JetBrains Mono';color:#9A958A">{{ o.sub }}</div></sc-if></div></sc-for></div></sc-if>
+<sc-if value="{{ r.isToggle }}" hint-placeholder-val="{{ false }}"><div onClick="{{ r.toggle }}" title="{{ r.l }} · {{ r.tState }}" tabIndex="0" style="display:flex;align-items:center;gap:12px;cursor:pointer;outline:none" style-focus="outline:2px solid #E3C887;outline-offset:3px"><div style="font:500 13px/1 Inter;color:#9A958A">{{ r.tState }}</div><div style="width:52px;height:28px;background:{{ r.tBg }};border:1px solid {{ r.tBd }};position:relative"><div style="position:absolute;top:4px;left:{{ r.tX }};width:18px;height:18px;background:{{ r.tK }};transition:left .15s ease"></div></div></div></sc-if>
+<sc-if value="{{ r.isSlider }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:14px;width:100%"><div onPointerDown="{{ r.drag }}" title="{{ r.l }} · drag, or click a point" style="flex:1;height:28px;position:relative;cursor:pointer;touch-action:none"><div style="position:absolute;left:0;right:0;top:13px;height:2px;background:#3A3F48"></div><div style="position:absolute;left:0;top:13px;height:2px;width:{{ r.pct }};background:#C9A86A"></div><div style="position:absolute;top:6px;left:{{ r.pct }};width:16px;height:16px;margin-left:-8px;background:#14161A;border:2px solid #E3C887;transform:rotate(45deg)"></div></div><div style="width:64px;height:32px;display:flex;align-items:center;justify-content:center;background:#14161A;border:1px solid #4A4234;font:500 13px/1 'JetBrains Mono';color:#ECE6D8">{{ r.vText }}</div></div></sc-if>
+<sc-if value="{{ r.isSelect }}" hint-placeholder-val="{{ false }}"><div title="{{ r.l }}" tabIndex="0" style="width:100%;height:38px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;background:#14161A;border:1px solid #4A4234;font:500 13px/1 Inter;color:#ECE6D8;cursor:pointer;outline:none" style-hover="border-color:#8A6E3C" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ r.v }}{{ ic.downSm }}</div></sc-if>
+<sc-if value="{{ r.isInfo }}" hint-placeholder-val="{{ false }}"><div style="font:500 14px/1.3 Inter;color:#ECE6D8;text-align:right">{{ r.v }}</div></sc-if>
+<sc-if value="{{ r.isDanger }}" hint-placeholder-val="{{ false }}"><button title="{{ r.v }} · a confirmation appears first" style="height:38px;padding:0 16px;background:transparent;border:1px solid #C8503C;color:#E2735F;font:500 13px/1 Inter;cursor:pointer;outline:none" style-hover="background:#2A1C1A" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ r.v }}</button></sc-if>
+</div>
+</div>
+</sc-for>
+</div>
+
+<sc-if value="{{ sb.isAccess }}" hint-placeholder-val="{{ false }}">
+<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px">
+<sc-for list="{{ cvdViews }}" as="cv" hint-placeholder-count="4"><div onClick="{{ cv.go }}" title="Preview as {{ cv.n }}" style="display:flex;flex-direction:column;gap:10px;padding:12px;background:{{ cv.bg }};border:1px solid {{ cv.bd }};cursor:pointer"><div style="display:flex;gap:6px"><sc-for list="{{ cv.chips }}" as="c" hint-placeholder-count="4"><div style="width:34px;height:34px;background:{{ c.h }};color:{{ c.g }};font:700 15px/34px Inter;text-align:center">{{ c.glyph }}</div></sc-for></div><div style="font:500 12px/1 Inter;color:{{ cv.fg }}">{{ cv.n }}</div></div></sc-for>
+</div>
+</sc-if>
+</div>
+
+<div style="background:#20242B;border-left:1px solid #4A4234;position:relative;isolation:isolate;display:flex;flex-direction:column;gap:18px;padding:24px 24px 20px;min-height:0" style-hover="--chiH:1">{{ orn.tex }}{{ F2 }}
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font:600 12px/1 Inter;letter-spacing:.14em;text-transform:uppercase;color:#C9A86A">About this setting</div><div style="font:600 24px/1.2 Cinzel;color:#ECE6D8">{{ sb.fN }}</div>{{ orn.inspTitle }}</div>
+<div style="font:400 14px/1.55 Inter;color:#ECE6D8;text-wrap:pretty">{{ sb.fD }}</div>
+
+<sc-if value="{{ sb.isGraphics }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font:600 11px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#9A958A">Live preview</div>
+<div style="height:220px;position:relative;overflow:hidden;border:1px solid #3A3F48">{{ bdFord }}<div style="position:absolute;right:10px;top:10px;font:600 12px/1 'JetBrains Mono';color:#ECE6D8;background:rgba(20,22,26,.88);border:1px solid #3A3F48;padding:5px 7px">{{ gfxPresetName }}</div></div>
+<div style="display:flex;align-items:baseline;gap:12px"><div style="font:600 44px/1 Cinzel;color:#ECE6D8">≈ {{ fpsNow }}</div><div style="font:500 14px/1 Inter;color:#9A958A">fps in a big battle</div></div>
+<div style="height:6px;background:#14161A;border:1px solid #3A3F48;position:relative"><div style="position:absolute;left:0;top:0;bottom:0;width:{{ fpsPct }};background:{{ fpsCol }}"></div></div>
+<div style="font:400 12px/1.4 Inter;color:#9A958A">Measured on this PC: RTX 3070 · Ryzen 7 5800X · 2560 × 1440. The tag beside each setting is its cost against what you have now.</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ sb.isAccess }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;justify-content:space-between"><div style="font:600 11px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#9A958A">Live preview · UI scale {{ uiScaleText }}</div><div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">{{ hitText }}</div></div>
+<div style="height:330px;overflow:hidden;background:#14161A;border:1px solid #3A3F48;position:relative">
+<div style="position:absolute;left:14px;top:14px;width:340px;transform:scale({{ uiS }});transform-origin:0 0;background:#20242B;border:1px solid #4A4234;padding:14px;display:flex;flex-direction:column;gap:10px">
+<div style="font:600 18px/1.1 Cinzel;color:#E3C887">Crucible Sentinel</div>
+<div style="font:400 {{ pvText }}/1.4 Inter;color:#9A958A">Heavy infantry of the Covenant. Holds a line.</div>
+<sc-for list="{{ pvStats }}" as="st" hint-placeholder-count="3"><div style="display:flex;justify-content:space-between;font:500 {{ pvText }}/1 Inter;color:#ECE6D8"><div style="color:#9A958A">{{ st.k }}</div><div style="font-family:'JetBrains Mono'">{{ st.v }}</div></div></sc-for>
+<div style="height:44px;display:flex;align-items:center;justify-content:center;gap:8px;background:#2A2F38;border:1px solid #8A6E3C;font:500 13px/1 Inter;color:#ECE6D8">Train<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">Q</div></div>
+</div>
+</div>
+<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#14161A;border:1px solid #3A3F48"><div style="display:flex">{{ ic.check }}</div><div style="font:400 13px/1.4 Inter;color:#ECE6D8">{{ cvdVerdict }}</div></div>
+</div>
+</sc-if>
+
+<sc-if value="{{ sb.isControls }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font:600 11px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#9A958A">This keymap</div>
+<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
+<div style="background:#14161A;border:1px solid #3A3F48;padding:12px;display:flex;flex-direction:column;gap:6px"><div style="font:600 22px/1 Inter;color:#ECE6D8">{{ keyCount }}</div><div style="font:400 12px/1 Inter;color:#9A958A">actions bound</div></div>
+<div style="background:#14161A;border:1px solid {{ conflictBd }};padding:12px;display:flex;flex-direction:column;gap:6px"><div style="font:600 22px/1 Inter;color:{{ conflictFg }}">{{ conflictCount }}</div><div style="font:400 12px/1 Inter;color:#9A958A">conflicts</div></div>
+</div>
+<div style="font:400 13px/1.5 Inter;color:#9A958A;text-wrap:pretty">Click a key, then press the new one. Esc cancels. Esc and Ctrl K can’t be rebound, so you can always get back to a menu.</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ sb.isAI }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:10px;padding:14px;background:#14161A;border:1px solid #4FB39A">
+<div style="font:600 14px/1.3 Inter;color:#ECE6D8">Everything works with AI off.</div>
+<div style="font:400 13px/1.5 Inter;color:#9A958A;text-wrap:pretty">AI only drafts: you confirm every change it proposes, and it never plays for you. Keys stay encrypted on this PC; requests go straight from your PC to the provider you pick. A local model sends nothing off your PC.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="font:600 11px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#9A958A">Where AI shows up</div>
+<sc-for list="{{ aiUses }}" as="u" hint-placeholder-count="4"><div style="display:flex;gap:10px;font:400 13px/1.4 Inter;color:#ECE6D8"><div style="display:flex;padding-top:2px">{{ ic.info }}</div>{{ u }}</div></sc-for>
+</div>
+</sc-if>
+</div>
+</div>
+<div style="background:#20242B;border-top:1px solid #4A4234;display:flex;align-items:center;gap:22px;padding:0 20px">
+<sc-for list="{{ setHints }}" as="h" hint-placeholder-count="4"><div style="display:flex;align-items:center;gap:8px;font:500 12px/1 Inter;color:#9A958A"><div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">{{ h.k }}</div>{{ h.t }}</div></sc-for>
+<div style="flex:1"></div><div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">Esc → back to where you came from</div>
+</div>
+</div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+</section></x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;uiOrnament&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Off&quot;,&quot;Subtle&quot;,&quot;Full&quot;],&quot;default&quot;:&quot;Full&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;lvMaster&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:5,&quot;min&quot;:1,&quot;max&quot;:5,&quot;step&quot;:1,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;lvBorderStyle&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Engraved line&quot;,&quot;Double line&quot;,&quot;Woven rope&quot;,&quot;Filigree corners&quot;,&quot;Sigil-studded&quot;],&quot;default&quot;:&quot;Woven rope&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;reducedMotion&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;}}">
+const PL = [
+  { n: 'Blue', h: '#0072B2', g: '#FFFFFF', glyph: '◆' }, { n: 'Vermillion', h: '#D55E00', g: '#14161A', glyph: '▲' },
+  { n: 'Sky', h: '#56B4E9', g: '#14161A', glyph: '●' }, { n: 'Purple', h: '#CC79A7', g: '#14161A', glyph: '■' },
+  { n: 'Orange', h: '#E69F00', g: '#14161A', glyph: '✚' }, { n: 'Yellow', h: '#F0E442', g: '#14161A', glyph: '★' }, { n: 'Green', h: '#009E73', g: '#FFFFFF', glyph: '⬟' }];
+const FAC = ['Crucible Covenant', 'Sanguine Court', 'Random'];
+const PERS = [['Warden', 'Walls first, counter-attacks late'], ['Raider', 'Early pressure, many small attacks'], ['Alchemist', 'Economy first, one big late army'], ['Opportunist', 'Scouts you and counters what you build']];
+const DIFF = ['Easy', 'Normal', 'Hard', 'Brutal'];
+const WHO = ['Commander', 'AI', 'Open', 'Closed'];
+const SKMAPS = [
+  { n: 'Ashfall Ford', p: 2, s: '128 × 128', t: 0, d: 'Two fords and one bridge worth dying for. The showcase 1v1 map.', res: '6 gold veins · 2 wells' },
+  { n: 'Cinder Marches', p: 4, s: '192 × 192', t: 1, d: 'Four burnt valleys meet at a central foundry.', res: '12 gold veins · 4 wells' },
+  { n: 'Saltglass Flats', p: 4, s: '160 × 160', t: 4, d: 'Open salt plains. Scouting wins games here.', res: '8 gold veins · 4 wells' },
+  { n: 'Thornwall Pass', p: 2, s: '112 × 112', t: 3, d: 'A single narrow pass with high ground on both sides.', res: '4 gold veins · 2 wells' },
+  { n: 'Hollowmere', p: 4, s: '176 × 176', t: 2, d: 'A drowned town. Shallow water is walkable but slow.', res: '10 gold veins · 6 wells' },
+  { n: 'The Red Vat', p: 3, s: '144 × 144', t: 5, d: 'Three-way fight around the Court’s laboratory.', res: '9 gold veins · 3 wells' }];
+const SCEN = [
+  { n: 'Cinder Keep', a: 'Vell Orrin', g: 'Tower defence', pl: '1–4', lo: 1, hi: 4, r: '4.7', plays: '18k', t: 1, d: 'Forty waves up the keep road. Towers on high ground reach further.', v: '1.3', size: '212 MB' },
+  { n: 'Vat Lords Arena', a: 'Kestrel & Lune', g: 'Arena', pl: '10 · 5v5', lo: 10, hi: 10, r: '4.8', plays: '42k', t: 5, d: 'Two teams of five heroes push three lanes toward the enemy vat.', v: '2.0', size: '340 MB' },
+  { n: 'Siege of Brasswell', a: 'Oda Renn', g: 'Castle fight', pl: '2–6', lo: 2, hi: 6, r: '4.5', plays: '9.1k', t: 2, d: 'Your buildings spawn the army. You choose what to build and when.', v: '1.8', size: '96 MB' },
+  { n: 'The Long Night', a: 'Marrow Guild', g: 'Survival', pl: '1–6', lo: 1, hi: 6, r: '4.6', plays: '12k', t: 3, d: 'Hold Hollowmere until dawn. Each night lasts longer than the last.', v: '0.9', size: '184 MB' },
+  { n: 'Ashen Crown', a: 'Tamsin Oake', g: 'RPG', pl: '1–3', lo: 1, hi: 3, r: '4.4', plays: '5.3k', t: 0, d: 'A six-hour story with one persistent hero per Commander.', v: '1.1', size: '410 MB' },
+  { n: 'Ashfall Ford', a: 'Chimera Studio', g: 'RTS', pl: '2 · 1v1', lo: 2, hi: 2, r: '4.6', plays: '61k', t: 0, d: 'The showcase 1v1 map. Two fords, one bridge.', v: '1.3', size: '48 MB' },
+  { n: 'Mercury Run', a: 'Pell Anders', g: 'Party', pl: '2–8', lo: 2, hi: 8, r: '4.2', plays: '3.8k', t: 4, d: 'Twelve short minigames between legs of a race across the salt flats.', v: '1.0', size: '96 MB' },
+  { n: 'Saltglass Flats', a: 'Chimera Studio', g: 'RTS', pl: '2–4', lo: 2, hi: 4, r: '4.3', plays: '22k', t: 4, d: 'Open salt plains. Scouting wins games.', v: '1.2', size: '52 MB' }];
+const GENRES = ['All', 'RTS', 'Tower defence', 'Castle fight', 'Arena', 'Survival', 'RPG', 'Party'];
+const PFILT = [['Any', 0, 99], ['1', 1, 1], ['2', 2, 2], ['3–4', 3, 4], ['5–8', 5, 8], ['9+', 9, 99]];
+const MENU = [
+  ['campaign', 'Campaign', 'K', 'book', 'The showcase campaign · three missions'], ['skirmish', 'Skirmish', 'S', 'swords', 'You and allies against the AI'],
+  ['multi', 'Multiplayer', 'M', 'users', 'Quick match, open lobbies, your party'], ['custom', 'Custom Games', 'G', 'grid', 'Arenas, tower defence, survival, RPGs…'],
+  ['create', 'Create', 'C', 'terrain', 'Maps, units, abilities and rules'], ['browse', 'Browse', 'B', 'search', 'Community scenarios, factions and models'],
+  ['heroes', 'Heroes', 'H', 'crown', 'Your saved heroes and what they carry'], ['settings', 'Settings', 'O', 'sliders', 'Graphics, controls, accessibility, AI'],
+  ['quit', 'Quit', 'Q', 'door', 'Back to the desktop · asks first']];
+const HUB = [['campaign', 'Campaign', 'K', 'book', 'Prologue · 1 of 3 cleared'], ['skirmish', 'Skirmish', 'S', 'swords', '6 maps · 4 AI personalities'], ['multi', 'Multiplayer', 'M', 'users', '38 open lobbies'], ['custom', 'Custom games', 'G', 'grid', '8 installed'], ['saves', 'Load & replays', 'L', 'save', '6 saves · 4 replays']];
+const MISSIONS = [
+  { n: 'I', name: 'The Ford at Ashfall', st: 'done', meta: 'Cleared on Hard · best 21:40', d: 'Hold the ford until the Covenant engineers finish the bridge.', t: 0, obj: ['Hold both fords for 12 minutes', 'Keep the engineers alive', 'Optional: lose no more than 20 units'], time: '≈ 25 min' },
+  { n: 'II', name: 'Iron in the Ash', st: 'open', meta: 'Autosave · 34 min in', d: 'Take the foundry villages before the Sanguine Court’s vats wake.', t: 1, obj: ['Capture the three foundry villages', 'Destroy the blood-vat at Emberhollow', 'Optional: free the captured smiths'], time: '≈ 40 min' },
+  { n: 'III', name: 'The Red Vat', st: 'locked', meta: 'Clear mission II to unlock', d: 'Carry the fight into the Court’s own laboratory.', t: 5, obj: ['Unknown until mission II is cleared'], time: '≈ 45 min' }];
+const SAVES = [
+  { n: 'Prologue II · Iron in the Ash', m: '34 min played', when: 'Today 18:12', auto: true, t: 1 }, { n: 'Prologue II · before the foundry', m: '22 min played', when: 'Today 17:58', auto: false, t: 1 },
+  { n: 'Cinder Keep · wave 31 of 40', m: '1 h 12 min played', when: 'Sun 21:40', auto: false, t: 1 }, { n: 'Ashen Crown · Chapter 2', m: '2 h 40 min played', when: 'Sat 16:05', auto: true, t: 0 },
+  { n: 'Skirmish · Cinder Marches', m: '18 min played', when: 'Fri 20:31', auto: false, t: 1 }, { n: 'Prologue I · The Ford at Ashfall', m: '19 min played', when: 'Thu 19:02', auto: false, t: 0 }];
+const REPLAYS = [
+  { n: 'Vat Lords Arena · 5v5', dur: '38:12', pl: [0, 1, 2, 3], res: 'Victory', when: 'Tue' }, { n: 'Ashfall Ford · 1v1', dur: '17:44', pl: [0, 1], res: 'Defeat', when: 'Mon' },
+  { n: 'Cinder Marches · 2v2', dur: '26:03', pl: [0, 2, 1, 3], res: 'Victory', when: 'Sun' }, { n: 'Siege of Brasswell · 3v3', dur: '31:50', pl: [0, 2, 4, 1, 3, 6], res: 'Victory', when: 'Sat' }];
+const LOBS = [
+  { n: 'Vat Lords 5v5 · EU · mic optional', sc: 'Vat Lords Arena', g: 'Arena', cur: 7, max: 10, ping: 28, host: 'Kestrel', c: 'ok' },
+  { n: 'Cinder Keep co-op · hard waves', sc: 'Cinder Keep', g: 'Tower defence', cur: 2, max: 4, ping: 41, host: 'Vell Orrin', c: 'ok' },
+  { n: '2v2 Cinder Marches · any skill', sc: 'Cinder Marches', g: 'RTS', cur: 3, max: 4, ping: 35, host: 'Brannoch Vey', c: 'ok' },
+  { n: 'Hollowmere · night 12 attempt', sc: 'The Long Night', g: 'Survival', cur: 4, max: 6, ping: 88, host: 'Marrow', c: 'dl', size: '184 MB' },
+  { n: 'Brasswell castle fight 3v3', sc: 'Siege of Brasswell', g: 'Castle fight', cur: 5, max: 6, ping: 52, host: 'Oda Renn', c: 'upd', size: '14 MB' },
+  { n: 'Ashen Crown ch. 2 · need a healer', sc: 'Ashen Crown', g: 'RPG', cur: 2, max: 3, ping: 120, host: 'Tamsin Oake', c: 'ok' },
+  { n: 'Mercury Run · 8-player party', sc: 'Mercury Run', g: 'Party', cur: 6, max: 8, ping: 47, host: 'Pell Anders', c: 'dl', size: '96 MB' }];
+const QUEUES = [['1v1', 'RTS map pool · Ashfall Ford, Thornwall Pass, Saltglass Flats', '≈ 1 min'], ['2v2 with party', 'You and Mara Solt · RTS map pool', '≈ 3 min'], ['Arena 5v5', 'Vat Lords Arena · heroes', '≈ 4 min']];
+const CATS = [['gameplay', 'Gameplay', 'flag'], ['graphics', 'Graphics', 'monitor'], ['audio', 'Audio', 'volume'], ['controls', 'Controls', 'keyboard'], ['access', 'Accessibility', 'access'], ['ai', 'AI providers', 'cpu'], ['account', 'Account', 'unit']];
+const ORN_ROW = { id: 'orn', l: 'UI ornament', t: 'seg', o: ['Off', 'Subtle', 'Full'], d: 'Gold line-work and its motion. Off keeps plain borders only; Subtle caps every lever at 2. This page obeys it live.' };
+const ROWS = {
+  gameplay: [
+    { id: 'edge', l: 'Edge scroll speed', t: 'slider', min: 1, max: 10, step: 1, u: '', d: 'How fast the camera moves when the cursor touches the screen edge. Middle-drag always works.' },
+    { id: 'hbars', l: 'Health bars', t: 'seg', o: ['Always', 'Damaged', 'Selected'], d: 'When unit health bars show over the battlefield.' },
+    { id: 'hotkeys', l: 'Show hotkeys on buttons', t: 'toggle', d: 'Hotkey glyphs on the command card, menus and rail. Recommended while you learn the keys.' },
+    { id: 'autosave', l: 'Autosave', t: 'seg', o: ['Off', '5 min', '10 min', '15 min'], d: 'Campaign and skirmish autosave. A multiplayer match can only be saved by the host.' },
+    { id: 'netstats', l: 'Show latency and frame rate in a match', t: 'toggle', d: 'Adds ping and fps to the HUD top strip. Off by default so the strip stays clear.' },
+    { id: 'surr', l: 'Confirm before surrender', t: 'toggle', d: 'Asks once before you surrender. Surrender can’t be undone.' },
+    { id: 'chat', l: 'Chat from', t: 'seg', o: ['Everyone', 'Team', 'Friends', 'Off'], d: 'Who can message you during a match. Pings always show.' }],
+  graphics: [
+    { id: 'res', l: 'Resolution', t: 'select', v: '2560 × 1440 (native)', d: 'Your display’s native resolution is 2560 × 1440.' },
+    { id: 'disp', l: 'Display mode', t: 'seg', o: ['Fullscreen', 'Borderless', 'Windowed'], d: 'Borderless switches windows instantly; fullscreen is slightly faster.' },
+    { id: 'cap', l: 'Frame-rate cap', t: 'seg', o: ['60', '120', '144', 'Off'], d: 'Caps the frame rate to save power and heat. Menus stay at 60.' },
+    { id: 'rscale', l: 'Render scale', t: 'slider', min: 50, max: 100, step: 5, u: '%', d: 'Draws the 3D world at a lower resolution and upscales it. The UI stays sharp.', gfx: true },
+    { id: 'shadows', l: 'Shadows', t: 'seg', o: ['Low', 'Medium', 'High', 'Ultra'], d: 'Sun and torch shadows. Ultra adds contact shadows under units.', gfx: true },
+    { id: 'terrain', l: 'Terrain detail', t: 'seg', o: ['Low', 'Medium', 'High', 'Ultra'], d: 'Ground texture resolution and displacement on the near-photoreal terrain.', gfx: true },
+    { id: 'foliage', l: 'Foliage density', t: 'seg', o: ['Low', 'Medium', 'High', 'Ultra'], d: 'Grass and undergrowth. It never hides units: foliage thins around them.', gfx: true },
+    ORN_ROW],
+  audio: [
+    { id: 'master', l: 'Master volume', t: 'slider', min: 0, max: 100, step: 5, u: '%', d: 'Everything together.' },
+    { id: 'music', l: 'Music', t: 'slider', min: 0, max: 100, step: 5, u: '%', d: 'Score and menu music.' },
+    { id: 'sfx', l: 'Effects', t: 'slider', min: 0, max: 100, step: 5, u: '%', d: 'Combat, construction and ambience.' },
+    { id: 'voice', l: 'Voice', t: 'slider', min: 0, max: 100, step: 5, u: '%', d: 'Unit responses, briefings and cutscenes.' },
+    { id: 'alerts', l: 'Alerts', t: 'slider', min: 0, max: 100, step: 5, u: '%', d: '“Under attack”, research done, player joined. Kept above music by default.' },
+    { id: 'bgAlerts', l: 'Alert sounds when the game is in the background', t: 'toggle', d: 'So you hear a match starting or a lobby filling while tabbed out.' },
+    { id: 'out', l: 'Output device', t: 'select', v: 'System default · Headphones', d: 'Follows Windows unless you pick one.' }],
+  access: [
+    { id: 'uiscale', l: 'UI scale', t: 'slider', min: 80, max: 150, step: 5, u: '%', d: 'Scales every panel, font and hit target. The 3D world is not scaled. The preview on the right updates live.' },
+    { id: 'text', l: 'Text size', t: 'seg', o: ['Default', 'Large', 'Largest'], d: 'Raises body text on top of UI scale. Stat numbers stay aligned.' },
+    { id: 'cvd', l: 'Colourblind check', t: 'seg', o: ['Normal', 'Protan', 'Deutan', 'Tritan'], d: 'Shows the player colours as each vision type sees them. Glyphs always travel with the colour, so identity never depends on hue.' },
+    { id: 'subs', l: 'Subtitles', t: 'toggle', d: 'Subtitles for briefings, cutscenes and unit voice lines.' },
+    { id: 'subSize', l: 'Subtitle size', t: 'seg', o: ['Small', 'Medium', 'Large'], d: 'Subtitles sit in the bottom safe zone, above the command card.' },
+    { id: 'rmo', l: 'Reduced motion', t: 'toggle', d: 'Stops every UI animation: pulse, shimmer, turn, draw-in, hover and seal. Ornaments stay, still. This page obeys it live.' },
+    ORN_ROW],
+  account: [
+    { id: 'acct', l: 'Signed in', t: 'info', v: 'Ilse Varga · ilse.varga@mail.example', d: 'Your Chimera account. It holds your heroes, projects and subscriptions.' },
+    { id: 'roles', l: 'Roles', t: 'info', v: 'Commander · Architect (3 published)', d: 'Commander when you play, Architect when you publish. Both use one account.' },
+    { id: 'link', l: 'Platform', t: 'info', v: 'Steam · linked', d: 'Friends and invites come from the linked platform.' },
+    { id: 'cloud', l: 'Cloud saves', t: 'toggle', d: 'Saves, keymaps and projects sync across PCs.' },
+    { id: 'status', l: 'Show me as', t: 'seg', o: ['Online', 'Away', 'Invisible'], d: 'What friends see in their party list.' },
+    { id: 'signout', l: 'Sign out', t: 'danger', v: 'Sign out of Chimera', d: 'You’ll be asked to confirm. Local saves stay on this PC.' }],
+  controls: [], ai: []
+};
+const KEYS = {
+  Play: [['Attack', 'A'], ['Move', 'M'], ['Stop', 'S'], ['Hold position', 'H'], ['Patrol', 'Q'], ['Command card · top-left slot', 'Q'], ['Build menu', 'B'], ['Select idle worker', '.'], ['Camera to last alert', 'Space'], ['Chat', 'Enter'], ['Menu', 'Esc', 1]],
+  Create: [['Select', 'V'], ['Terrain', 'T'], ['Water', 'W'], ['Place', 'G'], ['Region', 'E'], ['Pathing', 'N'], ['Cameras', 'C'], ['Playtest', 'F5'], ['Undo', 'Ctrl Z'], ['Command palette', 'Ctrl K', 1]]
+};
+const PROV = [
+  { id: 'claude', n: 'Claude', by: 'Anthropic · your API key', model: 'Claude Sonnet', key: 'sk-ant-•••• •••• 7Qd2', ok: '412 ms · key accepted' },
+  { id: 'codex', n: 'OpenAI Codex', by: 'OpenAI · your API key', model: 'Codex', key: '', fail: 'Add a key first' },
+  { id: 'or', n: 'OpenRouter', by: 'Many models · your API key', model: 'Pick any listed model', key: 'sk-or-•••• •••• a91c', fail: 'Key rejected (401). Check it on openrouter.ai' },
+  { id: 'ollama', n: 'Local model', by: 'Ollama on this PC · no key', model: 'llama3.1:8b', key: 'http://localhost:11434', ok: '38 ms · running locally' }];
+const CVD = [
+  ['#0072B2', '#D55E00', '#56B4E9', '#CC79A7'], ['#5A70B3', '#8A7B2E', '#9AAEE8', '#8D8BAA'], ['#4072AE', '#9C8A20', '#8AB0E6', '#9D8AA4'], ['#00797F', '#E5534E', '#4FB7C2', '#D8778B']];
+
+class Component extends DCLogic {
+  state = {
+    replay: 0, only: 'All', rmO: null, modeO: null, load: 6, hold: 0, cd: 5, cdHold: 0, dl: 22, homeSel: [0, 1, 0],
+    hub: ['campaign', 'skirmish', 'multi', 'custom', 'saves'], mission: 1, diff: 1, queue: 0, lobbySel: 0, genre: 'All', pf: 'Any', scen: 0, saveTab: 'saves', save: 0, rep: 0,
+    sk: [this.mkSk(false), this.mkSk(true)], sets: ['graphics', 'controls', 'access', 'ai'], focus: [null, null, 'uiscale', null], keymap: 'Play', binds: null, capture: null,
+    provider: 'claude', aiOn: true, test: {},
+    vals: { edge: 6, hbars: 1, hotkeys: true, netstats: false, autosave: 2, surr: true, chat: 1, disp: 1, cap: 2, rscale: 100, shadows: 2, terrain: 2, foliage: 1, preset: 4, master: 80, music: 55, sfx: 70, voice: 85, alerts: 90, bgAlerts: true, uiscale: 120, text: 0, cvd: 0, subs: true, subSize: 1, cloud: true, status: 0 }
+  };
+  mkSk(conflict) {
+    return { map: 1, res: 1, fog: true, speed: 1, slots: [
+      { who: 0, per: 0, dif: 1, fac: 0, col: 0, team: 0 }, { who: 1, per: 1, dif: 2, fac: 1, col: 1, team: 1 },
+      { who: 1, per: 0, dif: 1, fac: 0, col: conflict ? 1 : 2, team: 0 }, { who: 1, per: 2, dif: 1, fac: 1, col: 3, team: 1 }] };
+  }
+  componentDidMount() {
+    this.poll = setInterval(() => { if (window.CHI_LV && window.CHI_ORN && window.CHI_ICON) { clearInterval(this.poll); this.forceUpdate(); } }, 120);
+    this.tick = setInterval(() => this.setState(st => {
+      const o = {};
+      if (st.load >= 100) { o.hold = st.hold + 1; if (o.hold > 3) { o.load = 4; o.hold = 0; } } else o.load = Math.min(100, st.load + 4);
+      if (st.cd <= 0) { o.cdHold = st.cdHold + 1; if (o.cdHold > 3) { o.cd = 5; o.cdHold = 0; } } else o.cd = st.cd - 1;
+      o.dl = st.dl >= 100 ? 22 : Math.min(100, st.dl + 3);
+      return o;
+    }), 1000);
+    this.onKey = ev => {
+      const t = ev.target; if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+      if (this.state.capture) { ev.preventDefault(); if (ev.key === 'Escape') { this.setState({ capture: null }); return; } const k = ev.key === ' ' ? 'Space' : ev.key.length === 1 ? ev.key.toUpperCase() : ev.key; this.setBind(this.state.capture, k); return; }
+      if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+      const i = 'KSMGCBHOQ'.indexOf(ev.key.toUpperCase());
+      if (i >= 0) this.setState(st => ({ homeSel: [st.homeSel[0], i, st.homeSel[2]] }));
+      if (ev.key.toUpperCase() === 'R') this.setState(st => ({ replay: st.replay + 1 }));
+      if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') { const d = ev.key === 'ArrowDown' ? 1 : -1; this.setState(st => ({ homeSel: [st.homeSel[0], (st.homeSel[1] + d + 9) % 9, st.homeSel[2]] })); }
+    };
+    window.addEventListener('keydown', this.onKey);
+  }
+  componentWillUnmount() { clearInterval(this.poll); clearInterval(this.tick); clearTimeout(this.tt); window.removeEventListener('keydown', this.onKey); }
+  getBinds() { return this.state.binds || { Play: KEYS.Play.map(r => r[1]), Create: KEYS.Create.map(r => r[1]) }; }
+  setBind(idx, k) { const b = this.getBinds(); const m = this.state.keymap; const nb = { ...b, [m]: b[m].slice() }; nb[m][idx] = k; this.setState({ binds: nb, capture: null }); }
+  setVal(id, v) {
+    if (id === 'rmo') { this.setState({ rmO: v }); return; }
+    if (id === 'orn') { this.setState({ modeO: ['Off', 'Subtle', 'Full'][v] }); return; }
+    this.setState(st => { const vals = { ...st.vals, [id]: v }; if (['shadows', 'terrain', 'foliage', 'rscale'].indexOf(id) >= 0) vals.preset = 4; return { vals }; });
+  }
+  fps(v) { const x = v || this.state.vals; let f = 190 - 9 * x.shadows - 6 * x.terrain - 5 * x.foliage - .9 * (x.rscale - 50); if (x.shadows === 3) f -= 10; if (x.terrain === 3) f -= 6; if (x.foliage === 3) f -= 8; const cap = [60, 120, 144, 999][x.cap]; return Math.round(Math.min(f, cap)); }
+  applyPreset(i) { const P = [[0, 0, 0, 70], [1, 1, 1, 85], [2, 2, 2, 100], [3, 3, 3, 100]][i]; if (!P) return; this.setState(st => ({ vals: { ...st.vals, shadows: P[0], terrain: P[1], foliage: P[2], rscale: P[3], preset: i } })); }
+  th(i) {
+    const s = [['#7D878B', '#59625E', '#3E4739', '#7E8C89', '#474631'], ['#5B5750', '#4C4A42', '#363A2E', '#6E6A5C', '#3A3927'], ['#5B6468', '#48524B', '#2F3A2E', '#5F6E72', '#3A3B2A'], ['#3F474C', '#4C544F', '#363F33', '#6B7978', '#2F3024'], ['#A39B86', '#7D7663', '#5B5646', '#9AA5A0', '#6A6248'], ['#4A3F3E', '#5A4541', '#3A2E2B', '#7A5A4F', '#2E2622']][i % 6];
+    return `linear-gradient(172deg, ${s[0]} 0 30%, transparent 30%), linear-gradient(186deg, transparent 0 38%, ${s[1]} 38% 52%, transparent 52%), linear-gradient(176deg, transparent 0 48%, ${s[2]} 48% 66%, transparent 66%), linear-gradient(182deg, transparent 0 64%, ${s[3]} 64% 69%, transparent 69%), ${s[4]}`;
+  }
+  bd(v, rm) {
+    const e = React.createElement;
+    const P = {
+      dawn: { sky: 'linear-gradient(180deg,#7D878B 0%,#A6A597 34%,#B9AE92 46%,#7B7862 58%)', far: '#59625E', mid: '#3E4739', near: '#474631', river: '#7E8C89', sun: 'radial-gradient(60% 40% at 70% 44%, rgba(236,220,180,.42), transparent 70%)' },
+      dusk: { sky: 'linear-gradient(180deg,#2E343B 0%,#5B5750 30%,#9A7C5C 45%,#5E503F 58%)', far: '#474B45', mid: '#323A30', near: '#3A3927', river: '#6E6A5C', sun: 'radial-gradient(45% 32% at 58% 46%, rgba(214,160,100,.45), transparent 70%)' },
+      ford: { sky: 'linear-gradient(180deg,#3F474C 0%,#6D6F68 36%,#838070 48%,#55533F 60%)', far: '#4C544F', mid: '#363F33', near: '#3F3E2B', river: '#6B7978', sun: 'radial-gradient(50% 30% at 40% 45%, rgba(220,210,180,.25), transparent 70%)' }
+    }[v];
+    const noise = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 .6 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")";
+    const L = (k, st) => e('div', { key: k, style: Object.assign({ position: 'absolute' }, st) });
+    const kids = [
+      L('s', { inset: 0, background: P.sky }), L('u', { inset: 0, background: P.sun }),
+      L('f', { left: '-5%', right: '-5%', top: '32%', height: '22%', background: P.far, opacity: .92, clipPath: 'polygon(0 70%,6% 52%,12% 60%,19% 38%,26% 50%,33% 30%,41% 46%,48% 36%,56% 52%,63% 34%,71% 48%,78% 40%,86% 55%,93% 44%,100% 58%,100% 100%,0 100%)' }),
+      L('h', { left: 0, right: 0, top: '42%', height: '12%', background: 'linear-gradient(180deg,transparent,rgba(200,195,175,.22),transparent)' }),
+      L('m', { left: 0, right: 0, top: '45%', height: '20%', background: P.mid, clipPath: 'polygon(0 40%,8% 30%,17% 45%,25% 28%,36% 42%,44% 34%,55% 48%,64% 30%,75% 44%,85% 26%,94% 38%,100% 32%,100% 100%,0 100%)' }),
+      L('w', { left: 0, right: 0, top: '51%', height: '11%', opacity: .85, backgroundImage: 'radial-gradient(circle,#232B1C 0 2.5px,transparent 3.5px)', backgroundSize: '9px 7px', clipPath: 'polygon(0 30%,20% 10%,35% 40%,55% 20%,70% 45%,85% 15%,100% 35%,100% 100%,0 100%)' }),
+      L('n', { left: 0, right: 0, top: '58%', bottom: 0, background: `linear-gradient(180deg, ${P.near}, #26251B)` }),
+      L('p', { left: '6%', width: '30%', top: '63%', height: '15%', background: 'rgba(130,118,74,.22)', clipPath: 'polygon(10% 0,100% 12%,88% 100%,0 80%)' }),
+      L('p2', { left: '60%', width: '26%', top: '74%', height: '14%', background: 'rgba(90,100,60,.25)', clipPath: 'polygon(0 10%,90% 0,100% 90%,8% 100%)' }),
+      L('fu', { left: 0, right: 0, top: '60%', bottom: 0, opacity: .7, backgroundImage: 'repeating-linear-gradient(100deg, rgba(0,0,0,.10) 0 3px, transparent 3px 11px)' }),
+      L('r', { left: 0, right: 0, top: '60%', height: '22%', background: P.river, opacity: .85, clipPath: 'polygon(0 44%,14% 40%,28% 48%,40% 42%,50% 52%,58% 58%,66% 54%,78% 62%,90% 58%,100% 64%,100% 71%,90% 65%,78% 69%,66% 61%,58% 65%,50% 59%,40% 49%,28% 55%,14% 47%,0 51%)' }),
+      L('x', { inset: 0, backgroundImage: noise, opacity: .45, mixBlendMode: 'overlay' }),
+      L('v', { inset: 0, background: 'radial-gradient(120% 90% at 50% 45%, transparent 40%, rgba(8,9,11,.6) 100%)' })];
+    return e('div', { key: 'bd' + v, style: { position: 'absolute', inset: 0, overflow: 'hidden', zIndex: 0, pointerEvents: 'none' } },
+      e('div', { style: { position: 'absolute', inset: 0, animation: rm ? 'none' : 'chiDrift 80s ease-in-out infinite alternate' } }, kids));
+  }
+  renderVals() {
+    const s = this.state, p = this.props, I = (n, sz, c) => window.CHI_ICON ? window.CHI_ICON(React, n, sz || 18, c) : null;
+    const rm = s.rmO !== null ? s.rmO : !!p.reducedMotion, mode = s.modeO || p.uiOrnament || 'Full';
+    const lv = window.CHI_LV ? window.CHI_LV(React, p, { replay: s.replay, rm, mode }) : null;
+    const nil = () => null;
+    const LV = lv || { orn: {}, cfg: {}, frame: nil, sigil: nil, pulse: nil, circle: nil, progress: nil, ring: nil, seal: nil, hdiv: nil };
+    const orn = LV.orn, pl = i => PL[i];
+    const kc = (k) => k;
+    const vals = s.vals;
+
+    // loading
+    const L = s.load, stage = L < 50 ? 0 : L < 70 ? 1 : L < 88 ? 2 : L < 100 ? 3 : 4, files = Math.min(214, Math.round(L / 50 * 214));
+    const stages = [['Verify files', '214 files, signatures'], ['Terrain', 'Heightmap, biomes, water'], ['Units and rules', '42 units · 118 rules'], ['Sync Commanders', 'Waiting for all four']].map(([n, sub], i) => {
+      const done = stage > i, cur = stage === i;
+      return { n, sub, icon: I(done ? 'check' : cur ? 'hourglass' : 'clock', 16), fg: done ? '#4FB39A' : cur ? '#E3C887' : '#9A958A', tf: done || cur ? '#ECE6D8' : '#9A958A', bg: cur ? '#2A2F38' : '#20242B', bd: cur ? '#C9A86A' : '#3A3F48' };
+    });
+    const checks = [['Files match the published version, v1.3', files >= 214], ['Scripts run sandboxed: no file or network access', L > 24], ['Every asset is inside the size caps', L > 40]].map(([t, ok]) => ({ t, icon: I(ok ? 'check' : 'hourglass', 16), fg: ok ? '#4FB39A' : '#9A958A' }));
+    const cmdrs = [['Ilse Varga', 0, 1], ['Mara Solt', 2, 1.15], ['Brannoch Vey', 1, .82], ['Oda Renn', 3, 1.25]].map(([n, c, f]) => { const v = Math.min(100, Math.round(L * f)); return { ...pl(c), n, pt: v + '%', w: v + '%' }; });
+
+    // home
+    const homeStates = [
+      { id: 'a12a', code: '1.2a', label: 'Home · first launch', kind: 'first', net: 'online', user: 'Guest', signed: false, role: 'Not signed in · sign in', greet: 'Welcome, Commander', greetSub: 'No saves yet. Start with the prologue or build something.', status: 'Build 0.9.412 · first launch' },
+      { id: 'a12b', code: '1.2b', label: 'Home · returning Commander', kind: 'ret', net: 'online', user: 'Ilse Varga', signed: true, role: 'Commander · Architect', greet: 'Welcome back, Ilse', greetSub: 'Mission II is waiting where you left it.', status: 'Autosaved 2 h ago · 3 updates waiting' },
+      { id: 'a12c', code: '1.2c', label: 'Home · offline', kind: 'off', net: 'offline', user: 'Ilse Varga', signed: true, role: 'Offline · signed in', greet: 'Offline', greetSub: 'Campaign, skirmish, installed custom games and Create all work without a connection.', status: 'Offline · retrying every 10 s' }];
+    const homes = homeStates.map((h, hi) => {
+      const first = h.kind === 'first', off = h.kind === 'off';
+      const dis = { heroes: first ? 'Unlocks after mission I' : null, multi: off ? 'Needs a connection' : null, browse: off ? 'Needs a connection' : null };
+      const menu = MENU.map(([id, n, k, ic, desc], i) => {
+        const why = dis[id], sel = s.homeSel[hi] === i && !why;
+        return { n, k, icon: I(ic, 20), desc: why || desc, tip: why ? `${n} · ${why}` : `${n} (${k}) · ${desc}`,
+          bg: sel ? '#2A2F38' : 'transparent', bd: sel ? '#C9A86A' : 'transparent', fg: sel ? '#E3C887' : '#ECE6D8', ic: sel ? '#E3C887' : '#C9A86A', op: why ? .5 : 1, cur: why ? 'not-allowed' : 'pointer',
+          enter: () => { if (!why) this.setState(st => { const hs = st.homeSel.slice(); hs[hi] = i; return { homeSel: hs }; }); } };
+      });
+      const cont = first
+        ? { kicker: 'Begin', n: 'Prologue I · The Ford at Ashfall', m: 'The showcase campaign · three missions · about 25 min each', thumb: this.th(0), tip: 'Start the prologue (Enter)' }
+        : { kicker: 'Continue', n: 'Prologue II · Iron in the Ash', m: off ? 'Autosave · 34 min in · saved on this PC' : 'Autosave · 34 min in · 2 h ago. Or open your project Ashfall Ford (edited yesterday).', thumb: this.th(1), tip: 'Continue from the autosave (Enter)' };
+      cont.bg = '#14161A'; cont.bd = '#4FB39A'; cont.pulse = first ? null : LV.pulse(); cont.go = () => {};
+      const recent = first ? [] : [
+        { n: 'Prologue II · Iron in the Ash', m: 'Campaign · autosave · 2 h ago', icon: I('book', 16), thumb: this.th(1), tip: 'Continue this save' },
+        { n: 'Ashfall Ford', m: 'Your project · v0.4 · edited yesterday', icon: I('terrain', 16), thumb: this.th(0), tip: 'Open in Create' },
+        { n: 'Vat Lords Arena', m: off ? 'Multiplayer · replay saved locally' : 'Multiplayer · victory · Tue', icon: I('users', 16), thumb: this.th(5), tip: 'Watch the replay' },
+        { n: 'Cinder Keep', m: 'Custom game · wave 31 of 40 · Sun', icon: I('grid', 16), thumb: this.th(1), tip: 'Load this save' }];
+      return { ...h, cont, menu, recent, isFirst: first, notFirst: !first, sub: first ? 'Welcome' : off ? 'Local play only' : '',
+        subHead: off ? 'Updates are checked when you’re back online' : '3 updates waiting · 214 MB', subDis: off, subTip: off ? 'Needs a connection' : 'Download all three updates in the background',
+        subBg: off ? '#1C1F25' : '#2A2F38', subBd: off ? '#3A3F48' : '#8A6E3C', subFg: off ? '#9A958A' : '#ECE6D8', subCur: off ? 'not-allowed' : 'pointer', subOp: off ? .6 : 1,
+        featState: off ? 'Installed · plays offline vs AI' : 'Installed', featFg: '#4FB39A' };
+    });
+
+    const index = [
+      ['a11a', '1.1a', 'Title', 's'], ['a11b', '1.1b', 'Loading · integrity check', 'i'], ['a12a', '1.2a', 'Home · first launch', 'i'], ['a12b', '1.2b', 'Home · returning', 'i'], ['a12c', '1.2c', 'Home · offline', 'i'],
+      ['a13a', '1.3a', 'Play hub · Campaign', 'i'], ['a13b', '1.3b', 'Play hub · Skirmish', 'i'], ['a13c', '1.3c', 'Play hub · Multiplayer', 'i'], ['a13d', '1.3d', 'Play hub · Custom games', 'i'], ['a13e', '1.3e', 'Play hub · Load & replays', 'i'],
+      ['a14a', '1.4a', 'Skirmish setup · valid', 'i'], ['a14b', '1.4b', 'Skirmish setup · slot conflict', 'i'],
+      ['a15a', '1.5a', 'Lobby · host, all ready', 's'], ['a15b', '1.5b', 'Lobby · missing content', 's'], ['a15c', '1.5c', 'Lobby · downloading', 's'], ['a15d', '1.5d', 'Lobby · host has left', 's'],
+      ['a16a', '1.6a', 'Settings · Graphics', 'i'], ['a16b', '1.6b', 'Settings · Controls', 'i'], ['a16c', '1.6c', 'Settings · Accessibility', 'i'], ['a16d', '1.6d', 'Settings · AI providers', 'i']
+    ].map(([id, code, n, t]) => ({ id, code, n, tag: t === 'i' ? 'INTERACTIVE' : 'STATIC', tc: t === 'i' ? '#4FB39A' : '#9A958A' }));
+
+    const base = {
+      LV, orn, F: LV.frame(), F2: LV.frame({ delay: 2.5 }), Fc: LV.frame({ noSigils: true, noCorners: true }), Fbio: LV.frame({ bio: true }),
+      pulse: LV.pulse(), pulseRound: LV.pulse({ round: true, inset: 0 }), logoCircle: LV.circle(700), loadRing: LV.progress(440, L), tipSigil: LV.sigil(30, 2), sigBig: LV.sigil(34, 1),
+      bdDawn: this.bd('dawn', rm), bdDusk: this.bd('dusk', rm), bdFord: this.bd('ford', rm), featThumb: this.th(5),
+      ic: { refresh: I('refresh', 16), cloudOk: I('cloud', 16, '#4FB39A'), eye: I('eye', 16, '#C9A86A'), download: I('download', 16) },
+      replay: () => this.setState(st => ({ replay: st.replay + 1 })),
+      show: ['s11', 's12', 's13', 's14', 's15', 's16'].reduce((o, k) => (o[k] = s.only === 'All' || s.only === k, o), {}),
+      showChips: [['All', 'All'], ['s11', '1.1'], ['s12', '1.2'], ['s13', '1.3'], ['s14', '1.4'], ['s15', '1.5'], ['s16', '1.6']].map(([k, n]) => ({ n, tip: k === 'All' ? 'Show every section' : 'Show only section ' + n, bg: s.only === k ? '#2A2F38' : '#14161A', bd: s.only === k ? '#E3C887' : '#3A3F48', fg: s.only === k ? '#E3C887' : '#ECE6D8', go: () => this.setState({ only: k }) })),
+      index, newComps: ['Shell top bar (Play / Browse)', 'Transmutation progress ring', 'Integrity check', 'Stage steps', 'Continue card', 'Hotkey menu row', 'Scenario card', 'Mission card', 'Lobby slot', 'Ping bars', 'Content-match cell', 'Download progress', 'Setting row', 'Preset tile', 'Keymap row + conflict', 'Provider card', 'Colourblind check', 'Countdown seal'],
+      loadPct: Math.round(L) + '%', loadStage: ['Verifying files', 'Loading terrain', 'Loading units and rules', 'Syncing Commanders', 'Ready'][stage],
+      verifyText: files >= 214 ? 'All 214 files verified' : 'Verifying 214 files', filesText: files + ' / 214', filesPct: (files / 214 * 100).toFixed(1) + '%',
+      stages, checks, cmdrs, homes, subs: [{ n: 'Cinder Keep', v: 'v1.3 → v1.4', size: '18 MB' }, { n: 'Covenant Siegeworks pack', v: 'v2.0 → v2.1', size: '12 MB' }, { n: 'The Long Night', v: 'v0.8 → v0.9', size: '184 MB' }],
+      guided: [{ n: '1', t: 'Shape the land', m: '5 min' }, { n: '2', t: 'Place two bases and gold', m: '5 min' }, { n: '3', t: 'Playtest against the AI', m: '5 min' }],
+      homeHints: [{ k: '↑ ↓', t: 'Choose' }, { k: 'Enter', t: 'Open' }, { k: 'F1 F2 F3', t: 'Play · Create · Browse' }, { k: 'Esc', t: 'Quit' }]
+    };
+    return Object.assign(base, this.hubVals(s, I, LV, pl), this.skVals(s, I, LV, pl), this.lobbyVals(s, I, LV, pl), this.setVals(s, I, LV, pl, rm, mode));
+  }
+  hubVals(s, I, LV, pl) {
+    const codes = 'abcde', labels = { campaign: 'Campaign', skirmish: 'Skirmish', multi: 'Multiplayer', custom: 'Custom games', saves: 'Load & replays' };
+    const HINTS = {
+      campaign: [['Enter', 'Continue'], ['← →', 'Choose mission'], ['K S M G L', 'Sections']], skirmish: [['S', 'New skirmish'], ['Enter', 'Set up again'], ['K S M G L', 'Sections']],
+      multi: [['Enter', 'Find match'], ['↑ ↓', 'Choose lobby'], ['J', 'Join by code'], ['I', 'Invite']], custom: [['Enter', 'Play now'], ['H', 'Host a lobby'], ['F3', 'Browse for more']],
+      saves: [['Enter', 'Load'], ['Del', 'Delete'], ['↑ ↓', 'Choose']]
+    };
+    const hubs = s.hub.map((sec, hi) => ({
+      id: 'a13' + codes[hi], code: '1.3' + codes[hi], label: 'Play hub · ' + labels[sec === s.hub[hi] ? ['campaign', 'skirmish', 'multi', 'custom', 'saves'][hi] : sec], sub: labels[sec],
+      isCampaign: sec === 'campaign', isSkirmish: sec === 'skirmish', isMulti: sec === 'multi', isCustom: sec === 'custom', isSaves: sec === 'saves',
+      hints: HINTS[sec].map(([k, t]) => ({ k, t })),
+      rail: HUB.map(([id, n, k, ic, sub]) => { const on = sec === id; return { n, k, sub, icon: I(ic, 20), bg: on ? '#2A2F38' : 'transparent', bd: on ? '#C9A86A' : 'transparent', fg: on ? '#E3C887' : '#ECE6D8', ic: on ? '#E3C887' : '#C9A86A', tip: `${n} (${k}) · ${sub}`, go: () => this.setState(st => { const hub = st.hub.slice(); hub[hi] = id; return { hub }; }) }; })
+    }));
+    const missions = MISSIONS.map((m, i) => {
+      const sel = s.mission === i, done = m.st === 'done', lock = m.st === 'locked';
+      return { ...m, thumb: this.th(m.t), bg: sel ? '#2A2F38' : '#20242B', bd: sel ? '#E3C887' : '#4A4234', op: lock ? .6 : 1, isDone: done, isLocked: lock, seal: done ? LV.seal(44, 'm' + i) : null,
+        lockIcon: I('lock', 22, '#9A958A'), stIcon: I(done ? 'check' : lock ? 'lock' : 'clock', 15, done ? '#4FB39A' : lock ? '#9A958A' : '#E3C887'), stFg: done ? '#4FB39A' : lock ? '#9A958A' : '#E3C887',
+        go: () => this.setState({ mission: i }), tip: `Mission ${m.n} · ${m.name}${lock ? ' · locked: clear mission II first' : ''}` };
+    });
+    const M = MISSIONS[s.mission], open = M.st === 'open', lock = M.st === 'locked';
+    const brief = {
+      n: M.n, name: M.name, d: M.d, time: M.time, thumb: this.th(M.t), locked: lock, notLocked: !lock,
+      obj: M.obj.map(o => ({ t: o, icon: I(o.startsWith('Optional') ? 'info' : 'check', 14, '#C9A86A') })),
+      primary: open ? 'Continue' : M.st === 'done' ? 'Play again' : 'Locked', primarySub: open ? 'Autosave · 34 min in · 2 h ago' : M.st === 'done' ? 'Best 21:40 on Hard' : 'Clear mission II to unlock',
+      second: open ? 'Restart mission' : 'Watch the briefing', tip: lock ? 'Locked · clear mission II first' : (open ? 'Continue from the autosave' : 'Play this mission again') + ' (Enter)',
+      pBg: lock ? '#1C1F25' : '#173129', pBd: lock ? '#3A3F48' : '#4FB39A', pFg: lock ? '#9A958A' : '#ECE6D8', pCur: lock ? 'not-allowed' : 'pointer', pulse: lock ? null : LV.pulse()
+    };
+    const DD = [['Story', 'Enemies hit softly. For the story.'], ['Normal', 'The intended challenge.'], ['Hard', 'The Court attacks earlier and more often.'], ['Brutal', 'No mistakes forgiven.']];
+    const diffs = DD.map(([n, t], i) => { const on = s.diff === i; return { n, tip: `${n} · ${t}`, bg: on ? '#2A2F38' : '#14161A', bd: on ? '#E3C887' : '#3A3F48', fg: on ? '#E3C887' : '#ECE6D8', op: lock ? .5 : 1, cur: lock ? 'not-allowed' : 'pointer', go: () => { if (!lock) this.setState({ diff: i }); } }; });
+    const chips = (arr, who) => arr.map((c, j) => ({ ...pl(c), who: who ? who[j] : pl(c).n }));
+    const lobs = LOBS.map((l, i) => {
+      const on = s.lobbySel === i, col = l.ping < 50 ? '#4FB39A' : l.ping < 100 ? '#C9A86A' : '#E2735F', nb = l.ping < 40 ? 4 : l.ping < 70 ? 3 : l.ping < 110 ? 2 : 1;
+      return { ...l, slots: l.cur + ' / ' + l.max, bg: on ? '#2A2F38' : 'transparent', bd: on ? '#C9A86A' : 'transparent', go: () => this.setState({ lobbySel: i }),
+        bars: [4, 7, 10, 13].map((h, j) => ({ h: h + 'px', c: j < nb ? col : '#3A3F48' })),
+        cText: l.c === 'ok' ? 'Installed' : l.c === 'upd' ? 'Update ' + l.size : 'Download ' + l.size, cFg: l.c === 'ok' ? '#4FB39A' : '#E3C887', cIcon: I(l.c === 'ok' ? 'check' : 'download', 14, l.c === 'ok' ? '#4FB39A' : '#E3C887') };
+    });
+    const Ls = LOBS[s.lobbySel];
+    const lob = { ...Ls, thumb: this.th(SCEN.findIndex(x => x.n === Ls.sc) >= 0 ? SCEN.find(x => x.n === Ls.sc).t : 1), cFg: Ls.c === 'ok' ? '#4FB39A' : '#E3C887',
+      cLong: Ls.c === 'ok' ? 'Installed · matches the host' : Ls.c === 'upd' ? 'Update required · ' + Ls.size : 'Not installed · ' + Ls.size,
+      join: Ls.c === 'ok' ? 'Join lobby' : Ls.c === 'upd' ? 'Update and join' : 'Download and join' };
+    const [, plo, phi] = PFILT.find(f => f[0] === s.pf);
+    const cards = SCEN.map((c, i) => ({ ...c, i })).filter(c => (s.genre === 'All' || c.g === s.genre) && c.hi >= plo && c.lo <= phi).map(c => ({
+      ...c, thumb: this.th(c.t), bg: s.scen === c.i ? '#2A2F38' : '#20242B', bd: s.scen === c.i ? '#E3C887' : '#4A4234', go: () => this.setState({ scen: c.i }), tip: `${c.n} by ${c.a} · ${c.g} · ${c.pl} Commanders · ★ ${c.r}` }));
+    const chipSt = on => ({ bg: on ? '#2A2F38' : '#14161A', bd: on ? '#E3C887' : '#3A3F48', fg: on ? '#E3C887' : '#ECE6D8' });
+    const SV = s.save < 6 ? SAVES[s.save] : null, RP = s.save >= 6 ? REPLAYS[s.save - 6] : null;
+    const sv = SV ? { kicker: SV.auto ? 'Autosave' : 'Save', n: SV.n, thumb: this.th(SV.t), primary: 'Load', danger: 'Delete save', rows: [{ k: 'Saved', v: SV.when }, { k: 'Played', v: SV.m }, { k: 'Stored', v: 'This PC and cloud' }] }
+      : { kicker: 'Replay · ' + RP.res, n: RP.n, thumb: this.th(2), primary: 'Watch', danger: 'Delete replay', rows: [{ k: 'Length', v: RP.dur }, { k: 'Commanders', v: RP.pl.length + '' }, { k: 'Played', v: RP.when }] };
+    return {
+      hubs, missions, brief, diffs, diffNote: DD[s.diff][1], party: [{ ...pl(0), n: 'Ilse Varga', st: 'Leader · you' }, { ...pl(2), n: 'Mara Solt', st: 'Ready' }],
+      skRecent: [
+        { map: 'Cinder Marches', thumb: this.th(1), rules: '4 slots · standard resources · fog on · normal speed · yesterday', chips: chips([0, 1, 2, 3], ['You', 'AI Raider · Hard', 'AI Warden · Normal', 'AI Alchemist · Normal']) },
+        { map: 'Ashfall Ford', thumb: this.th(0), rules: '2 slots · high resources · fog on · fast · Mon', chips: chips([0, 1], ['You', 'AI Opportunist · Brutal']) },
+        { map: 'Hollowmere', thumb: this.th(2), rules: '4 slots · standard · fog off · normal · last week', chips: chips([0, 2, 1, 3], ['You', 'AI Warden', 'AI Raider', 'AI Raider']) }],
+      skGrid: SKMAPS.map(m => ({ ...m, thumb: this.th(m.t), pl: m.p + ' players' })), persList: PERS.map(([n, d]) => ({ n, d })),
+      queues: QUEUES.map(([n, sub, wait], i) => ({ n, sub, wait, bg: s.queue === i ? '#2A2F38' : '#20242B', bd: s.queue === i ? '#E3C887' : '#3A3F48', go: () => this.setState({ queue: i }) })),
+      lobs, lob, cards, noCards: cards.length === 0,
+      genreChips: GENRES.map(g => ({ n: g, c: g === 'All' ? SCEN.length : SCEN.filter(x => x.g === g).length, ...chipSt(s.genre === g), go: () => this.setState({ genre: g }) })),
+      pChips: PFILT.map(([n]) => ({ n, ...chipSt(s.pf === n), go: () => this.setState({ pf: n }) })),
+      sc: { ...SCEN[s.scen], thumb: this.th(SCEN[s.scen].t) },
+      saves: SAVES.map((v, i) => ({ ...v, thumb: this.th(v.t), bg: s.save === i ? '#2A2F38' : '#20242B', bd: s.save === i ? '#E3C887' : '#3A3F48', go: () => this.setState({ save: i }) })),
+      replays: REPLAYS.map((v, i) => ({ ...v, chips: chips(v.pl), rFg: v.res === 'Victory' ? '#4FB39A' : '#E2735F', bg: s.save === i + 6 ? '#2A2F38' : '#20242B', bd: s.save === i + 6 ? '#E3C887' : '#3A3F48', go: () => this.setState({ save: i + 6 }) })),
+      sv, ic: { refresh: I('refresh', 16), cloudOk: I('cloud', 16, '#4FB39A'), eye: I('eye', 16, '#C9A86A'), download: I('download', 16), plus: I('plus', 16, '#C9A86A'), replay: I('replay', 18), trash: I('trash', 16, '#E2735F'), copy: I('copy', 16, '#C9A86A'), crown: I('crown', 14, '#E3C887'), x: I('x', 14, '#E2735F'), check: I('check', 14, '#4FB39A'), alert: I('alert', 16, '#E2735F'), chat: I('chat', 16, '#C9A86A'), info: I('info', 16, '#C9A86A'), key: I('key', 16, '#C9A86A'), search: I('search', 16, '#9A958A'), lock: I('lock', 14, '#9A958A'), downSm: I('down', 14), signal: I('signal', 16, '#C9A86A'), users: I('users', 16, '#C9A86A'), eyeSm: I('eye', 14, '#9A958A'), monitor: I('monitor', 18, '#C9A86A'), cpu: I('cpu', 18, '#C9A86A') }
+    };
+  }
+  skSet(ai, fn) { this.setState(st => { const sk = st.sk.slice(); const k = JSON.parse(JSON.stringify(sk[ai])); fn(k); sk[ai] = k; return { sk }; }); }
+  skVals(s, I, LV, pl) {
+    const POS = { 2: [[22, 76], [78, 24]], 3: [[20, 72], [80, 72], [50, 18]], 4: [[18, 20], [82, 80], [18, 80], [82, 20]] };
+    const sks = s.sk.map((k, ai) => {
+      const M = SKMAPS[k.map], slots = k.slots.slice(0, M.p), used = slots.filter(x => x.who < 2);
+      const probs = [], dupe = {};
+      slots.forEach((x, i) => { if (x.who >= 2) return; slots.forEach((y, j) => { if (j > i && y.who < 2 && y.col === x.col) { dupe[i] = dupe[j] = 1; probs.push({ t: `P${i + 1} and P${j + 1} both use ${PL[x.col].n} ${PL[x.col].glyph}. Two Commanders can’t share a colour; give P${j + 1} another one.`, fix: j }); } }); });
+      const teams = new Set(used.map(x => x.team)), oneTeam = used.length > 1 && teams.size < 2;
+      if (oneTeam) probs.push({ t: `Every slot is on Team ${used[0].team + 1}, so there’s no one to fight. Move at least one slot to another team.`, team: true });
+      const blocked = probs.length > 0, free = c => { for (let i = 0; i < 4; i++) if (!slots.some((x, j) => x.who < 2 && x.col === i && j !== c)) return i; return 0; };
+      const first = probs[0];
+      return {
+        id: 'a14' + 'ab'[ai], code: '1.4' + 'ab'[ai], label: ai ? 'Skirmish setup · slot conflict blocks Start' : 'Skirmish setup · valid',
+        mapName: M.n, mapDesc: M.d, mapP: M.p, mapS: M.s, mapRes: M.res, mapThumb: this.th(M.t), ringEl: LV.ring(400), used: used.length + ' of ' + M.p,
+        maps: SKMAPS.map((m, i) => ({ ...m, thumb: this.th(m.t), bg: k.map === i ? '#2A2F38' : 'transparent', bd: k.map === i ? '#C9A86A' : 'transparent', fg: k.map === i ? '#E3C887' : '#ECE6D8', go: () => this.skSet(ai, q => { q.map = i; }) })),
+        markers: slots.map((x, i) => x.who < 2 ? { ...PL[x.col], x: POS[M.p][i][0] + '%', y: POS[M.p][i][1] + '%', ring: dupe[i] ? '#C8503C' : '#E3C887', tip: `P${i + 1} start` } : null).filter(Boolean),
+        slots: slots.map((x, i) => {
+          const ai_ = x.who === 1, useSlot = x.who < 2, cyc = (f, n) => () => this.skSet(ai, q => { q.slots[i][f] = (q.slots[i][f] + 1) % n; });
+          return { code: 'P' + (i + 1), ...PL[x.col], colName: PL[x.col].n, colBd: dupe[i] ? '#C8503C' : '#3A3F48', rowBd: dupe[i] ? '#C8503C' : '#3A3F48',
+            whoText: i === 0 ? 'You · Ilse' : WHO[x.who], whoTip: i === 0 ? 'Slot 1 is you' : 'AI, Open or Closed · click to cycle', whoCur: i === 0 ? 'default' : 'pointer', whoIcon: i === 0 ? I('lock', 14, '#9A958A') : I('down', 14),
+            perText: ai_ ? PERS[x.per][0] : '—', perTip: ai_ ? `${PERS[x.per][0]}: ${PERS[x.per][1]} · click to cycle` : 'Only AI slots have a personality',
+            difText: ai_ ? DIFF[x.dif] : '—', facText: useSlot ? FAC[x.fac] : '—', teamText: useSlot ? 'Team ' + (x.team + 1) : '—', teamBd: oneTeam && useSlot ? '#C8503C' : '#3A3F48',
+            aiOp: ai_ ? 1 : .4, useOp: useSlot ? 1 : .4,
+            cCol: () => this.skSet(ai, q => { const taken = q.slots.slice(0, M.p).filter((y, j) => j !== i && y.who < 2).map(y => y.col); let c = q.slots[i].col; for (let n = 0; n < 7; n++) { c = (c + 1) % 7; if (taken.indexOf(c) < 0) break; } q.slots[i].col = c; }),
+            cWho: i === 0 ? () => {} : () => this.skSet(ai, q => { q.slots[i].who = q.slots[i].who === 3 ? 1 : q.slots[i].who + 1; }),
+            cPer: ai_ ? cyc('per', 4) : () => {}, cDif: ai_ ? cyc('dif', 4) : () => {}, cFac: useSlot ? cyc('fac', 3) : () => {}, cTeam: useSlot ? cyc('team', 4) : () => {} };
+        }),
+        res: ['Low', 'Standard', 'High'].map((n, i) => ({ n, tip: n + ' starting resources', bg: k.res === i ? '#2A2F38' : '#14161A', bd: k.res === i ? '#E3C887' : '#3A3F48', fg: k.res === i ? '#E3C887' : '#ECE6D8', go: () => this.skSet(ai, q => { q.res = i; }) })),
+        speeds: ['Slow', 'Normal', 'Fast'].map((n, i) => ({ n, tip: n + ' game speed', bg: k.speed === i ? '#2A2F38' : '#14161A', bd: k.speed === i ? '#E3C887' : '#3A3F48', fg: k.speed === i ? '#E3C887' : '#ECE6D8', go: () => this.skSet(ai, q => { q.speed = i; }) })),
+        fogGo: () => this.skSet(ai, q => { q.fog = !q.fog; }), fogSub: k.fog ? 'On · explore to see the map' : 'Off · the whole map is visible',
+        fogBg: k.fog ? '#173129' : '#14161A', fogBd: k.fog ? '#4FB39A' : '#5C5446', fogKnob: k.fog ? '#4FB39A' : '#9A958A', fogX: k.fog ? '23px' : '3px',
+        summary: `${used.length} Commanders and AI · ${teams.size} teams · ${['Low', 'Standard', 'High'][k.res].toLowerCase()} resources`,
+        blocked, problems: probs.map(x => ({ t: x.t })),
+        fixLabel: first ? (first.team ? 'Put P2 on Team 2' : `Give P${first.fix + 1} ${PL[free(first.fix)].n} ${PL[free(first.fix)].glyph}`) : '',
+        fixTip: 'Apply the suggested fix', fix: () => { if (!first) return; this.skSet(ai, q => { if (first.team) q.slots[1].team = (q.slots[0].team + 1) % 4; else q.slots[first.fix].col = free(first.fix); }); },
+        sBg: blocked ? '#1C1F25' : '#173129', sBd: blocked ? '#3A3F48' : '#4FB39A', sFg: blocked ? '#9A958A' : '#ECE6D8', sCur: blocked ? 'not-allowed' : 'pointer', pulse: blocked ? null : LV.pulse(),
+        startTip: blocked ? 'Blocked: fix the slots first' : 'Start the skirmish (Enter)'
+      };
+    });
+    return { sks, skHints: [{ k: 'Click', t: 'Cycle a field' }, { k: 'Enter', t: 'Start' }, { k: 'F', t: 'Fog of war' }, { k: 'Tab', t: 'Next field' }], ic2: null, downSm: null };
+  }
+  lobbyVals(s, I, LV, pl) {
+    const P = { ilse: ['Ilse Varga', 0, 18, 0], mara: ['Mara Solt', 2, 32, 0], bran: ['Brannoch Vey', 1, 64, 1], oda: ['Oda Renn', 3, 41, 1] };
+    const bars = ping => { const col = ping < 50 ? '#4FB39A' : ping < 100 ? '#C9A86A' : '#E2735F', nb = ping < 40 ? 4 : ping < 70 ? 3 : ping < 110 ? 2 : 1; return [4, 7, 10, 13].map((h, j) => ({ h: h + 'px', c: j < nb ? col : '#3A3F48' })); };
+    const dlMB = Math.round(48 * s.dl / 100), dlLeft = Math.max(0, Math.round((48 - dlMB) / 2.1));
+    const mk = (st) => {
+      const hostIsYou = st.host === 'ilse';
+      const slot = (id, o) => {
+        const [n, c, ping, fac] = P[id], you = id === 'ilse', cst = o.c || 'ok', left = cst === 'left', ready = !!o.ready && !left;
+        const cMap = { ok: ['Content matches', '#4FB39A', 'check'], upd: ['Update required · Siegeworks v2.1 · 12 MB', '#E3C887', 'alert'], dl: ['Downloading Ashfall Ford v1.3', '#E3C887', 'download'], left: ['Left the lobby · 0:12 ago', '#9A958A', 'door'] }[cst];
+        return { ...PL[c], n: n + (you ? ' · you' : ''), role: (st.host === id ? 'Host · ' : '') + 'Commander', fac: left ? '—' : FAC[fac], isHost: st.host === id,
+          bars: left ? bars(999).map(b => ({ ...b, c: '#3A3F48' })) : bars(ping), pingT: left ? '—' : ping + ' ms', pingTip: ping + ' ms to the host',
+          cText: cMap[0], cFg: cMap[1], cIcon: I(cMap[2], 15, cMap[1]), isDl: cst === 'dl', canDl: cst === 'upd', cSub: 'Brannoch sees a one-click Download on his screen',
+          rText: left ? '—' : ready ? 'Ready' : cst === 'dl' || cst === 'upd' ? 'Waiting' : 'Not ready', rFg: ready ? '#4FB39A' : '#9A958A', rIcon: I(ready ? 'check' : 'hourglass', 14, ready ? '#4FB39A' : '#9A958A'),
+          kick: hostIsYou && !you, bg: you ? '#262A31' : '#20242B', bd: cst === 'upd' ? '#C9A86A' : you ? '#8A6E3C' : '#3A3F48', bs: left ? 'dashed' : 'solid', op: left ? .6 : 1 };
+      };
+      const specs = [{ ...PL[6], n: 'Kest · spectating', h: '#2A2F38', g: '#9A958A', glyph: '◌', role: 'Spectator · sees all players', fac: '—', bars: bars(90), pingT: '90 ms', pingTip: '90 ms', cText: 'Content matches', cFg: '#4FB39A', cIcon: I('eye', 15, '#4FB39A'), rText: '—', rFg: '#9A958A', rIcon: null, kick: hostIsYou, bg: '#20242B', bd: '#3A3F48', bs: 'solid', op: 1 },
+        { n: 'Open spectator slot', h: 'transparent', g: '#9A958A', glyph: '+', role: 'Anyone with the code', fac: '', bars: [], pingT: '', cText: '', cFg: '#9A958A', cIcon: null, rText: '', rFg: '#9A958A', rIcon: null, kick: false, bg: 'transparent', bd: '#3A3F48', bs: 'dashed', op: .8 }];
+      return { groups: [
+        { n: 'Team 1', slots: [slot('ilse', st.ilse), slot('mara', st.mara)] },
+        { n: 'Team 2', slots: [slot('bran', st.bran), slot('oda', st.oda)] },
+        { n: 'Spectators · 1 of 2', slots: specs }], hostIsYou };
+    };
+    const chip = (who) => { const x = P[who]; return x ? { ...PL[x[1]], bd: 'transparent', who: x[0].split(' ')[0] } : { h: 'transparent', g: '#9A958A', glyph: '◇', bd: '#5C5446', who: 'Lobby' }; };
+    const msg = (who, t) => ({ ...chip(who), t, fg: who ? '#ECE6D8' : '#9A958A', who: chip(who).who });
+    const stateDefs = [
+      { id: 'a15a', code: '1.5a', label: 'Lobby · host view · all ready', tag: 'STATIC · LIVE COUNTDOWN', view: 'Host view', host: 'ilse', ilse: { ready: 1 }, mara: { ready: 1 }, bran: { ready: 1 }, oda: { ready: 1 }, countdown: true,
+        chat: [msg(null, 'Oda Renn joined.'), msg('mara', 'glhf'), msg('bran', 'ready when you are'), msg(null, 'Everyone is ready. The match starts in 5.')] },
+      { id: 'a15b', code: '1.5b', label: 'Lobby · host view · one player missing content', tag: 'STATIC', view: 'Host view', host: 'ilse', ilse: { ready: 1 }, mara: { ready: 1 }, bran: { c: 'upd' }, oda: { ready: 1 },
+        chat: [msg(null, 'Brannoch Vey needs Covenant Siegeworks v2.1 (12 MB).'), msg('bran', 'one sec, updating'), msg('ilse', 'np'), msg('oda', 'take your time')],
+        note: 'Start waits for Brannoch Vey: his Covenant Siegeworks pack is v2.0 and this lobby uses v2.1. He has a one-click download.', noteFg: '#ECE6D8',
+        a: ['Start', 'Enter', true, 'Blocked until every copy matches'], b: ['Kick Brannoch', 'K', 'Kick Brannoch Vey · asks you to confirm'] },
+      { id: 'a15c', code: '1.5c', label: 'Lobby · guest view · you are downloading', tag: 'STATIC · LIVE DOWNLOAD', view: 'Guest view', host: 'oda', ilse: { c: 'dl' }, mara: { ready: 1 }, bran: { ready: 1 }, oda: { ready: 1 },
+        chat: [msg(null, 'Downloading Ashfall Ford v1.3 for you · 48 MB.'), msg('oda', 'no rush'), msg('mara', 'meanwhile: fast expand or turtle?'), msg('bran', 'turtle, obviously')],
+        note: 'Ready unlocks when your download finishes. Files are verified as they arrive.', noteFg: '#9A958A',
+        a: ['Ready', 'R', true, 'Ready unlocks when the download finishes'], b: ['Pause download', 'P', 'Pause the download'] },
+      { id: 'a15d', code: '1.5d', label: 'Lobby · guest view · the host has left', tag: 'STATIC', view: 'Guest view', host: 'mara', ilse: {}, mara: {}, bran: {}, oda: { c: 'left' }, banner: true,
+        chat: [msg(null, 'Oda Renn left the lobby.'), msg(null, 'Mara Solt is now the host.'), msg('mara', 'kept everything the same, ready up'), msg('bran', 'we need a 4th')],
+        note: 'Hosting moved to Mara Solt. Ready again to stay in; the empty slot can take someone new or an AI.', noteFg: '#ECE6D8',
+        a: ['Ready', 'R', false, 'Ready up in the new host’s lobby (R)', true], b: ['Leave lobby', 'Esc', 'Leave the lobby and go back to the Play hub'] }];
+    const lobbies = stateDefs.map(st => {
+      const g = mk(st), a = st.a;
+      return { ...st, ...g, isCountdown: !!st.countdown, hasAction: !!a,
+        host: P[st.host][0], setNote: g.hostIsYou ? 'You can change these' : 'Set by the host',
+        settings: [['Starting resources', 'Standard'], ['Fog of war', 'On'], ['Game speed', 'Normal'], ['No-rush timer', '10 min'], ['Spectators', 'Allowed · 2']].map(([k, v]) => ({ k, v, icon: g.hostIsYou ? I('down', 14) : I('lock', 13, '#9A958A'), cur: g.hostIsYou ? 'pointer' : 'default', hov: g.hostIsYou ? '#8A6E3C' : '#3A3F48', tip: g.hostIsYou ? k + ' · click to change' : k + ' · only the host can change this' })),
+        aLabel: a ? a[0] : '', aKey: a ? a[1] : '', aDis: a ? a[2] : false, aTip: a ? a[3] : '', aBg: a && a[2] ? '#1C1F25' : '#173129', aBd: a && a[2] ? '#3A3F48' : '#4FB39A', aFg: a && a[2] ? '#9A958A' : '#ECE6D8', aCur: a && a[2] ? 'not-allowed' : 'pointer', aPulse: a && !a[2] ? LV.pulse() : null,
+        bLabel: st.b ? st.b[0] : '', bKey: st.b ? st.b[1] : '', bTip: st.b ? st.b[2] : '' };
+    });
+    return { lobbies, lbThumb: this.th(0), lbContent: [{ n: 'Ashfall Ford', v: 'v1.3 · 48 MB' }, { n: 'Covenant Siegeworks pack', v: 'v2.1 · 12 MB' }],
+      dlPct: s.dl + '%', dlText: `${dlMB} / 48 MB · ${dlLeft} s`, cdText: s.cd > 0 ? 'Starting in ' + s.cd : 'Loading Ashfall Ford…', cdSeal: LV.seal(64, 'cd' + (s.cd > 0 ? 'x' : 'y')),
+      lbHints: [{ k: 'R', t: 'Ready' }, { k: 'Enter', t: 'Chat' }, { k: 'Ctrl C', t: 'Copy code' }, { k: 'Tab', t: 'Scoreboard of pings' }] };
+  }
+  dragger(id, min, max, step) {
+    return ev => {
+      ev.stopPropagation(); ev.preventDefault(); const el = ev.currentTarget, r = el.getBoundingClientRect();
+      const set = x => { const t = Math.max(0, Math.min(1, (x - r.left) / r.width)); this.setVal(id, Math.round((min + t * (max - min)) / step) * step); };
+      set(ev.clientX); const mv = e2 => set(e2.clientX), up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
+      window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+    };
+  }
+  setVals(s, I, LV, pl, rm, mode) {
+    const vals = s.vals, cur = this.fps(), MODES = ['Off', 'Subtle', 'Full'];
+    const valOf = id => id === 'rmo' ? rm : id === 'orn' ? MODES.indexOf(mode) : vals[id];
+    const INFO = {
+      gameplay: ['Gameplay', 'Camera, feedback and autosave.'], graphics: ['Graphics', 'Presets, and what each setting costs in frame rate on this PC.'], audio: ['Audio', 'Volumes and output.'],
+      controls: ['Controls', 'Remap any key. Conflicts are flagged the moment you press.'], access: ['Accessibility', 'UI scale, colour, text, subtitles and motion.'],
+      ai: ['AI providers', 'Bring your own key or run a model on this PC. Optional everywhere.'], account: ['Account', 'Your Chimera account and platform link.']
+    };
+    const mkRow = (r, bi) => {
+      const v = valOf(r.id), foc = s.focus[bi] === r.id;
+      const o = { l: r.l, v: r.v, bg: foc ? '#262A31' : '#20242B', bd: foc ? '#8A6E3C' : '#3A3F48', isSeg: r.t === 'seg', isToggle: r.t === 'toggle', isSlider: r.t === 'slider', isSelect: r.t === 'select', isInfo: r.t === 'info', isDanger: r.t === 'danger',
+        focus: () => this.setState(st => { const f = st.focus.slice(); f[bi] = r.id; return { focus: f }; }),
+        hint: r.id === 'rmo' || r.id === 'orn' ? 'Linked: this whole page follows it' : '' };
+      if (r.t === 'seg') {
+        o.cols = `repeat(${r.o.length}, minmax(0,1fr))`;
+        o.opts = r.o.map((t, i) => { const on = v === i; let sub = ''; if (r.gfx) { const d = this.fps({ ...vals, [r.id]: i }) - cur; sub = d === 0 ? '·' : (d > 0 ? '+' : '−') + Math.abs(d); }
+          return { t, sub, bg: on ? '#2A2F38' : '#14161A', bd: on ? '#E3C887' : '#3A3F48', fg: on ? '#E3C887' : '#ECE6D8', tip: t + (sub && sub !== '·' ? ` · ${sub} fps` : ''), go: () => this.setVal(r.id, i) }; });
+      }
+      if (r.gfx) { const lo = r.id === 'rscale' ? 50 : 0, d = this.fps({ ...vals, [r.id]: lo }) - cur; o.cost = d > 0 ? `costs ${d} fps` : 'no cost'; o.costFg = d > 8 ? '#E3C887' : '#9A958A'; }
+      if (r.t === 'toggle') { const on = !!v; Object.assign(o, { tState: on ? 'On' : 'Off', tBg: on ? '#173129' : '#14161A', tBd: on ? '#4FB39A' : '#5C5446', tK: on ? '#4FB39A' : '#9A958A', tX: on ? '29px' : '4px', toggle: ev => { ev.stopPropagation(); this.setVal(r.id, !on); } }); }
+      if (r.t === 'slider') Object.assign(o, { pct: ((v - r.min) / (r.max - r.min) * 100).toFixed(1) + '%', vText: v + r.u, drag: this.dragger(r.id, r.min, r.max, r.step) });
+      return o;
+    };
+    const binds = this.getBinds(), km = s.keymap, kb = binds[km];
+    const keyRows = KEYS[km].map((row, i) => {
+      const k = kb[i], locked = !!row[2], dup = k !== '—' ? kb.findIndex((x, j) => j !== i && x === k) : -1, cap = s.capture === i;
+      return { n: row[0], k: cap ? 'Press a key…' : k, kNote: locked ? 'fixed' : '', kFg: cap ? '#E3C887' : '#ECE6D8', kBd: cap ? '#E3C887' : dup >= 0 ? '#C8503C' : '#3A3F48', bd: dup >= 0 ? '#C8503C' : '#3A3F48',
+        alt: row[0] === 'Move' ? 'Right-click' : '—', cur: locked ? 'not-allowed' : 'pointer', tip: locked ? `${row[0]} can’t be rebound` : `${row[0]} · click, then press a key`,
+        cap: locked ? () => {} : () => this.setState({ capture: i }), conflict: dup > i, conflictText: dup > i ? `${k} is also bound to “${KEYS[km][dup][0]}”. Both would fire in a match.` : '', unbind: () => this.setBind(dup, '—') };
+    });
+    const nConf = keyRows.filter(r => r.conflict).length;
+    const setBoards = s.sets.map((cat, bi) => {
+      const rows = (ROWS[cat] || []).map(r => mkRow(r, bi)), fr = (ROWS[cat] || []).find(r => r.id === s.focus[bi]) || (ROWS[cat] || [])[0];
+      const catDefault = { controls: ['Remapping', 'Pick a key cell, then press the key you want. A clash shows a warning under the row with a one-click fix.'], ai: ['AI providers', 'Choose who answers AI requests from Create and the command palette. Test a connection before you rely on it.'] }[cat];
+      return {
+        id: 'a16' + 'abcd'[bi], code: '1.6' + 'abcd'[bi], label: 'Settings · ' + INFO[['graphics', 'controls', 'access', 'ai'][bi]][0], title: INFO[cat][0], desc: INFO[cat][1],
+        isGraphics: cat === 'graphics', isControls: cat === 'controls', isAccess: cat === 'access', isAI: cat === 'ai', rows,
+        fN: catDefault && !fr ? catDefault[0] : fr ? fr.l : '', fD: catDefault && !fr ? catDefault[1] : fr ? fr.d : '',
+        cats: CATS.map(([id, n, ic]) => { const on = id === cat; return { n, icon: I(ic, 20), bg: on ? '#2A2F38' : 'transparent', bd: on ? '#C9A86A' : 'transparent', fg: on ? '#E3C887' : '#ECE6D8', ic: on ? '#E3C887' : '#C9A86A', go: () => this.setState(st => { const sets = st.sets.slice(); sets[bi] = id; return { sets }; }) }; })
+      };
+    });
+    const presets = ['Low', 'Medium', 'High', 'Ultra', 'Custom'].map((n, i) => {
+      const P = [[0, 0, 0, 70], [1, 1, 1, 85], [2, 2, 2, 100], [3, 3, 3, 100]][i], f = P ? this.fps({ ...vals, shadows: P[0], terrain: P[1], foliage: P[2], rscale: P[3] }) : cur, on = vals.preset === i;
+      return { n, fps: '≈ ' + f + ' fps', bg: on ? '#2A2F38' : '#20242B', bd: on ? '#E3C887' : '#3A3F48', fg: on ? '#E3C887' : '#ECE6D8', tip: P ? `${n} preset · about ${f} fps here` : 'Your own mix', go: () => this.applyPreset(i) };
+    });
+    const uiS = vals.uiscale / 100;
+    const provs = PROV.map(pv => {
+      const on = s.provider === pv.id, t = s.test[pv.id];
+      return { ...pv, keyLabel: pv.id === 'ollama' ? 'Server address' : 'API key', ph: 'Paste your key', bg: on ? '#262A31' : '#20242B', bd: t === 'testing' ? '#7FE3A1' : on ? '#E3C887' : '#3A3F48', rBd: on ? '#E3C887' : '#5C5446', rDot: on ? '#E3C887' : 'transparent',
+        pulse: t === 'testing' ? LV.pulse({ inset: -1 }) : null, pick: () => this.setState({ provider: pv.id }),
+        test: () => { if (!s.aiOn) return; this.setState(st => ({ test: { ...st.test, [pv.id]: 'testing' } })); clearTimeout(this.tt); this.tt = setTimeout(() => this.setState(st => ({ test: { ...st.test, [pv.id]: pv.ok ? 'ok' : 'fail' } })), 1800); },
+        tText: t === 'testing' ? 'Testing the connection…' : t === 'ok' ? 'Connected · ' + pv.ok : t === 'fail' ? pv.fail : pv.key ? 'Not tested yet' : 'No key yet',
+        tFg: t === 'testing' ? '#7FE3A1' : t === 'ok' ? '#4FB39A' : t === 'fail' ? '#E2735F' : '#9A958A', tIcon: t === 'ok' ? I('check', 14, '#4FB39A') : t === 'fail' ? I('alert', 14, '#E2735F') : t === 'testing' ? I('hourglass', 14, '#7FE3A1') : null };
+    });
+    const f = cur;
+    return {
+      setBoards, presets, keyRows, provs, keyCount: kb.filter(x => x !== '—').length, conflictCount: nConf, conflictFg: nConf ? '#E2735F' : '#4FB39A', conflictBd: nConf ? '#C8503C' : '#3A3F48',
+      keyTabs: ['Play', 'Create'].map(n => ({ n: n + ' keymap', tip: `Keys used in ${n}`, bg: km === n ? '#2A2F38' : '#14161A', bd: km === n ? '#E3C887' : '#3A3F48', fg: km === n ? '#E3C887' : '#ECE6D8', go: () => this.setState({ keymap: n, capture: null }) })),
+      cvdViews: ['Normal vision', 'Protanopia', 'Deuteranopia', 'Tritanopia'].map((n, vi) => ({ n, bg: vals.cvd === vi ? '#2A2F38' : '#20242B', bd: vals.cvd === vi ? '#E3C887' : '#3A3F48', fg: vals.cvd === vi ? '#E3C887' : '#9A958A', go: () => this.setVal('cvd', vi), chips: CVD[vi].map((h, j) => ({ h, g: j === 0 && vi !== 3 ? '#FFFFFF' : '#14161A', glyph: PL[j].glyph })) })),
+      cvdVerdict: 'All four player colours stay apart in every view, and ◆ ▲ ● ■ carry identity on their own.',
+      uiS, uiScaleText: vals.uiscale + '%', hitText: 'Hit target ' + Math.round(44 * uiS) + ' px', pvText: (13 + vals.text * 2) + 'px',
+      pvStats: [{ k: 'Health', v: '420' }, { k: 'Armour', v: '3' }, { k: 'Speed', v: '2.6' }],
+      fpsNow: f, fpsPct: Math.min(100, f / 165 * 100).toFixed(0) + '%', fpsCol: f >= 60 ? '#4FB39A' : '#C9A86A', gfxPresetName: ['Low', 'Medium', 'High', 'Ultra', 'Custom'][vals.preset],
+      aiOn: s.aiOn, aiOp: s.aiOn ? 1 : .45, aiSub: s.aiOn ? 'On · Claude answers AI requests in Create and the command palette' : 'Off · every editor works the same; the AI box is hidden',
+      aiTg: s.aiOn ? { bg: '#173129', bd: '#4FB39A', k: '#4FB39A', x: '29px' } : { bg: '#14161A', bd: '#5C5446', k: '#9A958A', x: '4px' }, aiToggle: () => this.setState(st => ({ aiOn: !st.aiOn })),
+      aiUses: ['Create: turn a sentence into rules, abilities or units, then review the draft', 'Command palette: describe a change when no command matches', 'Cards: suggest balanced numbers you can accept or ignore', 'Never in a match: AI doesn’t play or advise in multiplayer'],
+      setHints: [{ k: '↑ ↓', t: 'Move' }, { k: '← →', t: 'Change' }, { k: 'Tab', t: 'Next category' }, { k: 'Ctrl F', t: 'Find a setting' }]
+    };
+  }
+}
+</script>
+</body>
+</html>

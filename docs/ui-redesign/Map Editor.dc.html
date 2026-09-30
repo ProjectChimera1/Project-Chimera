@@ -12,6 +12,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="icons.js"></script>
 <script src="ornaments.js"></script>
+<script src="levers.js"></script>
 <style>body{margin:0;background:#08090B;color:#ECE6D8;font-family:Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}a{color:#E3C887;text-decoration:none}a:hover{color:#ECE6D8;text-decoration:underline}*{box-sizing:border-box}input::placeholder{color:#9A958A}button{font-family:inherit}</style>
 </helmet>
 <div style="position:fixed;inset:0;display:flex;flex-direction:column;background:#08090B">
@@ -29,7 +30,7 @@
 <div style="position:absolute;left:{{ ox }}px;top:{{ oy }}px;width:1920px;height:1080px;transform:scale({{ s }});transform-origin:0 0;background:#14161A;display:grid;grid-template-columns:{{ cols }};grid-template-rows:48px 1fr 32px;overflow:hidden;box-shadow:0 0 0 1px #2A2F38">
 
 <!-- TOP BAR -->
-<div style="grid-column:1 / -1;grid-row:1;display:flex;align-items:stretch;background:#20242B;border-bottom:1px solid #8A6E3C;box-shadow:0 1px 0 #0E0F12;position:relative;z-index:30;isolation:isolate">{{ orn.tex }}{{ orn.topbar }}
+<div style="grid-column:1 / -1;grid-row:1;display:flex;align-items:stretch;background:#20242B;border-bottom:1px solid #8A6E3C;box-shadow:0 1px 0 #0E0F12;position:relative;z-index:30;isolation:isolate" style-hover="--chiH:1">{{ orn.lvF }}{{ orn.tex }}{{ orn.topbar }}
 <div title="Project Chimera" style="width:56px;flex:none;display:flex;align-items:center;justify-content:center;color:#C9A86A;border-right:1px solid #3A3F48">{{ ic.array }}</div>
 <div style="display:flex;align-items:stretch">
 <sc-for list="{{ modes }}" as="m" hint-placeholder-count="3">
@@ -94,7 +95,7 @@
 
 <sc-if value="{{ editing }}" hint-placeholder-val="{{ true }}">
 <!-- TOOL RAIL -->
-<div style="grid-column:1;grid-row:2;background:#20242B;border-right:1px solid #4A4234;display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:4px;position:relative;z-index:12;isolation:isolate">{{ orn.tex }}{{ orn.rail }}
+<div style="grid-column:1;grid-row:2;background:#20242B;border-right:1px solid #4A4234;display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:4px;position:relative;z-index:12;isolation:isolate" style-hover="--chiH:1">{{ orn.lvF }}{{ orn.tex }}{{ orn.rail }}
 <sc-for list="{{ railA }}" as="t" hint-placeholder-count="8">
 <div onClick="{{ t.go }}" onMouseEnter="{{ t.enter }}" onMouseLeave="{{ leaveTip }}" style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;color:{{ t.fg }};background:{{ t.bg }};border:1px solid {{ t.bd }};cursor:pointer;position:relative" style-hover="background:#2A2F38;color:#E3C887">{{ t.icon }}{{ t.deco }}</div>
 </sc-for>
@@ -106,7 +107,7 @@
 </div>
 
 <!-- DRAWER -->
-<div style="grid-column:2;grid-row:2;background:#1C1F25;border-right:1px solid #4A4234;display:flex;flex-direction:column;min-height:0;position:relative;z-index:10;isolation:isolate">{{ orn.tex }}{{ orn.corners }}
+<div style="grid-column:2;grid-row:2;background:#1C1F25;border-right:1px solid #4A4234;display:flex;flex-direction:column;min-height:0;position:relative;z-index:10;isolation:isolate" style-hover="--chiH:1">{{ orn.lvF }}{{ orn.tex }}{{ orn.corners }}
 <div style="padding:16px 16px 14px;border-bottom:1px solid #3A3F48;display:flex;flex-direction:column;gap:8px;position:relative">{{ orn.divBottom }}
 <div style="display:flex;align-items:center;justify-content:space-between">
 <div style="display:flex;align-items:center;gap:10px"><div style="font:600 17px/1 Cinzel;letter-spacing:.08em;text-transform:uppercase;color:#E3C887;white-space:nowrap">{{ drawer.n }}</div><div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#14161A;color:#ECE6D8;white-space:nowrap">{{ drawer.k }}</div></div>
@@ -385,7 +386,7 @@
 
 <sc-if value="{{ editing }}" hint-placeholder-val="{{ true }}">
 <!-- INSPECTOR -->
-<div style="grid-column:4;grid-row:2;background:#20242B;border-left:1px solid #4A4234;display:flex;flex-direction:column;min-height:0;position:relative;z-index:10;isolation:isolate">{{ orn.tex }}{{ orn.cornersGlow }}
+<div style="grid-column:4;grid-row:2;background:#20242B;border-left:1px solid #4A4234;display:flex;flex-direction:column;min-height:0;position:relative;z-index:10;isolation:isolate" style-hover="--chiH:1">{{ orn.lvF }}{{ orn.tex }}{{ orn.cornersGlow }}
 <div style="padding:16px 18px 14px;border-bottom:1px solid #3A3F48;display:flex;flex-direction:column;gap:6px;position:relative">{{ orn.divBottom }}
 <div style="display:flex;align-items:center;gap:10px">{{ orn.hl }}<div style="font:600 11px/1 Inter;letter-spacing:.14em;text-transform:uppercase;color:#9A958A">Inspector</div>{{ orn.hr }}</div>
 <div style="font:600 22px/1.15 Cinzel;color:#ECE6D8">{{ insp.title }}</div>
@@ -511,7 +512,7 @@
 </sc-if>
 
 <!-- CONTEXT STRIP -->
-<div style="grid-column:1 / -1;grid-row:3;background:#20242B;border-top:1px solid #4A4234;display:flex;align-items:center;gap:18px;padding:0 14px;position:relative;z-index:20;isolation:isolate">{{ orn.tex }}
+<div style="grid-column:1 / -1;grid-row:3;background:#20242B;border-top:1px solid #4A4234;display:flex;align-items:center;gap:18px;padding:0 14px;position:relative;z-index:20;isolation:isolate" style-hover="--chiH:1">{{ orn.lvF }}{{ orn.tex }}
 <div style="font:600 11px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#E3C887;white-space:nowrap">{{ stripTool }}</div>
 <div style="display:flex;align-items:center;gap:16px;min-width:0;overflow:hidden">
 <sc-for list="{{ stripHints }}" as="h" hint-placeholder-count="4">
@@ -537,7 +538,7 @@
 </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;ornIntensity&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:3,&quot;min&quot;:1,&quot;max&quot;:5,&quot;step&quot;:1,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;ornGlow&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;ornCorners&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;ornHeaders&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;ornTopBar&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;ornRail&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;ornButtons&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;ornMinimap&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;ornInspectorTitle&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;ornTexture&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;ornDividers&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;uiOrnament&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Off&quot;,&quot;Subtle&quot;,&quot;Full&quot;],&quot;default&quot;:&quot;Full&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;lvMaster&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:5,&quot;min&quot;:1,&quot;max&quot;:5,&quot;step&quot;:1,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;lvBorderStyle&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Engraved line&quot;,&quot;Double line&quot;,&quot;Woven rope&quot;,&quot;Filigree corners&quot;,&quot;Sigil-studded&quot;],&quot;default&quot;:&quot;Woven rope&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;reducedMotion&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;}}">
 const PC = [
   { h: '#0072B2', g: '◆', t: '#FFFFFF', n: 'Player 1', s: 'P1' },
   { h: '#D55E00', g: '▲', t: '#14161A', n: 'Player 2', s: 'P2' },
@@ -883,6 +884,7 @@ class Component extends DCLogic {
     const s = this.state, I = (n, sz, c) => this.I(n, sz || 18, c);
     const pr = this.props, b = (v, d) => v === undefined ? d : v;
     const orn = window.CHI_ORN ? window.CHI_ORN(React, { corners: b(pr.ornCorners, true), headers: b(pr.ornHeaders, true), topBar: b(pr.ornTopBar, true), rail: b(pr.ornRail, true), buttons: b(pr.ornButtons, true), minimap: b(pr.ornMinimap, true), inspector: b(pr.ornInspectorTitle, true), texture: b(pr.ornTexture, true), dividers: b(pr.ornDividers, true), intensity: b(pr.ornIntensity, 3), glow: b(pr.ornGlow, true) }) : {};
+    if (orn && window.CHI_LV) { this._lv = this._lv || {}; orn.lvF = window.CHI_LV(React, pr, {}).frame({ noCorners: true }); }
     this.orn = orn;
     this.W = s.playtest ? 1920 : 1232; this.CX = this.W / 2;
     const on = (b) => b ? { bg: '#2A2F38', bd: '#E3C887', fg: '#E3C887' } : { bg: 'transparent', bd: 'transparent', fg: '#C9A86A' };

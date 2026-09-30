@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="icons.js"></script>
+<script src="ornaments.js"></script>
+<script src="levers.js"></script>
+<style>body{margin:0;background:#0B0C0E;color:#ECE6D8;font-family:Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}a{color:#E3C887;text-decoration:none}a:hover{color:#ECE6D8;text-decoration:underline}*{box-sizing:border-box}input::placeholder{color:#9A958A}@keyframes hudFade{0%{opacity:0}5%,70%{opacity:1}86%,100%{opacity:0}}@keyframes hudTimer{0%{width:100%}70%,100%{width:0}}@keyframes hudFadeLong{0%{opacity:0}4%,85%{opacity:1}96%,100%{opacity:0}}</style>
+</helmet>
+
+<section id="index" style="display:flex;flex-direction:column;gap:12px;padding:64px 64px 96px">
+<div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">3.0 · Index · 1920 wide · interactive</div>
+<div data-screen-label="3.0 Index" style="width:1920px;background:#14161A;position:relative;isolation:isolate;box-shadow:0 0 0 1px #2A2F38;padding:48px 56px;display:grid;grid-template-columns:minmax(0,1fr) 560px;gap:48px" style-hover="--chiH:1">{{ orn.tex }}{{ F }}
+<div style="display:flex;flex-direction:column;gap:22px">
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font:600 12px/1 Inter;letter-spacing:.16em;text-transform:uppercase;color:#C9A86A">Round 2 · Batch 3</div>
+<div style="font:600 48px/1 Cinzel;color:#ECE6D8">In the match</div>
+<div style="font:400 16px/1.55 Inter;color:#9A958A;max-width:880px;text-wrap:pretty">The HUD in eight states, pause, score, spectator and replay, the hero picker, and an arena scenario whose widgets come from the Game UI builder. The battlefield is the centre: panels sit on the edges and it is never covered. Only the pause and “Waiting for player” banners cross into it.</div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 24px">
+<sc-for list="{{ index }}" as="x" hint-placeholder-count="16">
+<a href="#{{ x.id }}" title="Jump to {{ x.code }} {{ x.n }}" style="display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 10px;background:#20242B;border:1px solid #3A3F48;text-decoration:none" style-hover="border-color:#C9A86A;background:#2A2F38;text-decoration:none">
+<div style="font:600 12px/1 'JetBrains Mono';color:#E3C887">{{ x.code }}</div>
+<div style="font:500 13px/1.3 Inter;color:#ECE6D8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ x.n }}</div>
+<div style="font:600 10px/1 Inter;letter-spacing:.1em;color:{{ x.tc }};border:1px solid {{ x.tc }};padding:3px 5px;white-space:nowrap">{{ x.tag }}</div>
+</a>
+</sc-for>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">HUD zones</div>{{ orn.hr }}</div>
+<div style="display:flex;flex-direction:column;gap:8px;font:400 14px/1.5 Inter;color:#9A958A;text-wrap:pretty">
+<div><span style="color:#ECE6D8">Top</span> resources, supply, clock, game speed, menu. <span style="color:#ECE6D8">Left</span> control groups 1–9 and the hero. <span style="color:#ECE6D8">Right</span> minimap, selection, command card. <span style="color:#ECE6D8">Bottom</span> alerts, chat, objective.</div>
+<div><span style="color:#ECE6D8">Scenario UI zones</span> (dashed): a strip under the top bar and a slot under the control groups. Custom widgets from the Game UI builder can only go there (3.6).</div>
+<div>Motion stays on the edges: the pulse is on alerts only. <span style="color:#4FB39A;font-weight:600">INTERACTIVE</span> HUDs respond to 1–9, Tab, the command card and clicks.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font:600 11px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#9A958A">Show sections · fewer is faster</div><div style="display:flex;gap:6px;flex-wrap:wrap"><sc-for list="{{ showChips }}" as="c" hint-placeholder-count="5"><div onClick="{{ c.go }}" data-show="{{ c.n }}" title="{{ c.tip }}" tabIndex="0" style="height:30px;padding:0 10px;display:flex;align-items:center;background:{{ c.bg }};border:1px solid {{ c.bd }};font:500 12px/1 Inter;color:{{ c.fg }};cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ c.n }}</div></sc-for></div></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font:600 11px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#9A958A">Show one HUD</div><div style="display:flex;gap:4px;flex-wrap:wrap"><sc-for list="{{ hudChips }}" as="c" hint-placeholder-count="13"><div onClick="{{ c.go }}" data-hud="{{ c.n }}" title="{{ c.tip }}" tabIndex="0" style="height:28px;padding:0 8px;display:flex;align-items:center;background:{{ c.bg }};border:1px solid {{ c.bd }};font:500 11px/1 'JetBrains Mono';color:{{ c.fg }};cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ c.n }}</div></sc-for></div></div>
+<div style="display:flex;align-items:center;gap:12px;margin-top:6px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">New components → board 04</div>{{ orn.hr }}</div>
+<div style="display:flex;flex-wrap:wrap;gap:8px"><sc-for list="{{ newComps }}" as="c" hint-placeholder-count="12"><div style="font:500 12px/1 Inter;color:#ECE6D8;background:#20242B;border:1px solid #3A3F48;padding:6px 9px">{{ c }}</div></sc-for></div>
+</div>
+</div>
+</section>
+
+<section id="s3h" style="display:flex;flex-direction:column;gap:20px;padding:0 64px 96px">
+<div style="font:600 24px/1 Cinzel;color:#E3C887">3.1, 3.2, 3.3a, 3.6 · Match HUD · full-bleed battlefield, top strip, bottom console</div>
+<sc-if value="{{ show.s31 }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;gap:64px;align-items:flex-start;flex-wrap:wrap;width:{{ rowW }}">
+<sc-for list="{{ nhuds }}" as="n" hint-placeholder-count="11">
+<div id="{{ n.id }}" style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;gap:10px;align-items:center"><div style="font:600 12px/1 'JetBrains Mono';color:#14161A;background:#C9A86A;padding:4px 7px">{{ n.code }}</div><div style="font:500 14px/1 Inter;color:#ECE6D8">{{ n.label }}</div><div style="font:600 10px/1 Inter;letter-spacing:.1em;color:{{ n.tc }};border:1px solid {{ n.tc }};padding:3px 5px">{{ n.tag }}</div></div>
+<div data-screen-label="{{ n.code }}" style="width:1920px;height:1080px;position:relative;overflow:hidden;background:#14161A;box-shadow:0 0 0 1px #2A2F38">
+{{ n.bg }}
+
+<sc-for list="{{ n.lanes }}" as="l" hint-placeholder-count="0"><div style="position:absolute;inset:0;z-index:1;pointer-events:none">{{ l.el }}</div></sc-for>
+<sc-if value="{{ n.hasRally }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;z-index:1;pointer-events:none">{{ n.rallyEl }}</div></sc-if>
+<sc-for list="{{ n.rings }}" as="r" hint-placeholder-count="0">
+<div style="position:absolute;left:{{ r.x }};top:{{ r.y }};width:0;height:0;z-index:1;pointer-events:none">
+<div style="position:absolute;left:0;top:0;width:{{ r.w }};height:{{ r.h }};transform:translate(-50%,-50%);border:3px {{ r.bs }} {{ r.c }};border-radius:50%;box-shadow:0 0 0 2px rgba(11,12,14,.75), inset 0 0 0 1px rgba(11,12,14,.6)"></div>
+<sc-if value="{{ r.bar }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:0;top:{{ r.bt }};width:{{ r.bw }};height:7px;transform:translateX(-50%);background:#0B0C0E;border:1px solid #0B0C0E;box-shadow:0 0 0 1px rgba(236,230,216,.25)"><div style="width:{{ r.hp }};height:100%;background:{{ r.hc }}"></div></div></sc-if>
+</div>
+</sc-for>
+<sc-for list="{{ n.pings }}" as="pg" hint-placeholder-count="0">
+<div style="position:absolute;left:{{ pg.x }};top:{{ pg.y }};width:0;height:0;z-index:2;pointer-events:none">
+<div style="position:absolute;left:-24px;top:-24px;width:48px;height:48px;border-radius:50%;border:3px solid {{ pg.c }};box-shadow:0 0 0 2px #0B0C0E, inset 0 0 0 2px #0B0C0E;animation:{{ pg.anim }}"></div>
+<div style="position:absolute;left:32px;top:-14px;display:flex;align-items:center;gap:8px;font:600 13px/1 Inter;color:#ECE6D8;background:rgba(20,22,26,.94);border:1px solid {{ pg.c }};padding:6px 8px;white-space:nowrap;animation:{{ pg.anim }}"><div style="width:16px;height:16px;background:{{ pg.h }};color:{{ pg.g }};font:700 9px/16px Inter;text-align:center">{{ pg.glyph }}</div>{{ pg.t }}</div>
+</div>
+</sc-for>
+
+<div style="position:absolute;left:0;right:0;top:0;height:40px;z-index:6;background:#1C1F25;border-bottom:1px solid #3A3F48;display:flex;align-items:center;gap:4px;padding:0 8px">
+<sc-for list="{{ n.res }}" as="r" hint-placeholder-count="4"><div title="{{ r.tip }}" style="height:28px;display:flex;align-items:center;gap:7px;padding:0 10px;background:#14161A;border:1px solid {{ r.bd }}"><div style="display:flex;color:#C9A86A">{{ r.icon }}</div><div style="font:600 15px/1 'JetBrains Mono';color:{{ r.fg }};white-space:nowrap">{{ r.v }}</div><div style="font:500 11px/1 'JetBrains Mono';color:#9A958A">{{ r.rate }}</div></div></sc-for>
+<div style="position:absolute;left:50%;top:0;height:40px;transform:translateX(-50%);display:flex;align-items:center;gap:10px">
+<div title="Match clock" style="font:600 18px/1 'JetBrains Mono';color:#ECE6D8">{{ n.clock }}</div>
+<div title="Game speed · host only (Numpad + / −)" style="font:500 12px/1 Inter;color:#9A958A;border:1px solid #3A3F48;padding:5px 8px;white-space:nowrap">{{ n.speed }}</div>
+</div>
+<div style="flex:1"></div>
+<div title="Alert log · Space jumps to the latest" tabIndex="0" style="height:28px;display:flex;align-items:center;gap:7px;padding:0 10px;background:#14161A;border:1px solid {{ n.alBd }};font:600 13px/1 'JetBrains Mono';color:{{ n.alFg }};cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:1px">{{ n.alIcon }}{{ n.alCount }}</div>
+<div title="Game menu (F10 or Esc)" tabIndex="0" style="height:28px;display:flex;align-items:center;gap:7px;padding:0 10px;background:#14161A;border:1px solid #3A3F48;font:500 12px/1 Inter;color:#ECE6D8;cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:1px">{{ ic.menuSm }}Menu<div style="font:600 10px/14px 'JetBrains Mono';height:18px;padding:0 4px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#20242B;color:#ECE6D8">F10</div></div>
+</div>
+
+<sc-if value="{{ n.isArena }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;left:50%;top:52px;transform:translateX(-50%);z-index:4;display:flex;flex-direction:column;align-items:center;gap:6px">
+<div style="display:flex;align-items:center;gap:18px;padding:8px 14px;background:rgba(20,22,26,.92);border:1px solid #8A6E3C">
+<div style="display:flex;gap:4px"><sc-for list="{{ arenaA }}" as="k" hint-placeholder-count="5"><div title="{{ k.n }} · {{ k.kd }}" style="width:40px;display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:30px;height:30px;background:{{ k.h }};color:{{ k.g }};font:700 12px/30px Inter;text-align:center;opacity:{{ k.op }}">{{ k.glyph }}</div><div style="font:500 10px/1 'JetBrains Mono';color:#ECE6D8">{{ k.kd }}</div></div></sc-for></div>
+<div style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:0 6px"><div style="font:600 10px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#9A958A">Kills</div><div style="font:700 28px/1 'JetBrains Mono';color:#ECE6D8;white-space:nowrap">23 <span style="color:#9A958A">–</span> 19</div><div style="font:500 11px/1 Inter;color:#9A958A;white-space:nowrap">First to 50 · or break the vat</div></div>
+<div style="display:flex;gap:4px"><sc-for list="{{ arenaB }}" as="k" hint-placeholder-count="5"><div title="{{ k.n }} · {{ k.kd }}" style="width:40px;display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:30px;height:30px;background:{{ k.h }};color:{{ k.g }};font:700 12px/30px Inter;text-align:center;opacity:{{ k.op }}">{{ k.glyph }}</div><div style="font:500 10px/1 'JetBrains Mono';color:#ECE6D8">{{ k.kd }}</div></div></sc-for></div>
+</div>
+<div style="font:500 10px/1 'JetBrains Mono';color:#9A958A;background:rgba(20,22,26,.85);border:1px solid #3A3F48;padding:4px 6px;white-space:nowrap">Scenario widget · Kill scoreboard · kills_a, kills_b</div>
+</div>
+<div style="position:absolute;left:16px;top:52px;z-index:4;display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;align-items:center;gap:12px;padding:8px 12px;background:rgba(20,22,26,.92);border:1px solid #8A6E3C">
+<div style="position:relative;width:44px;height:44px;display:flex;align-items:center;justify-content:center"><div style="position:absolute;inset:0">{{ respawnRing }}</div></div>
+<div style="display:flex;flex-direction:column;gap:5px"><div style="font:600 13px/1 Inter;color:#ECE6D8;white-space:nowrap">Vell respawns at the vat</div><div style="font:600 18px/1 'JetBrains Mono';color:#E3C887">0:14</div></div>
+</div>
+<div style="font:500 10px/1 'JetBrains Mono';color:#9A958A;background:rgba(20,22,26,.85);border:1px solid #3A3F48;padding:4px 6px;white-space:nowrap;align-self:flex-start">Scenario widget · Respawn timer · respawn_t</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ n.isAttack }}" hint-placeholder-val="{{ false }}">
+<div title="Space jumps to the Refinery" style="position:absolute;left:50%;top:56px;transform:translateX(-50%);z-index:4;animation:{{ n.fadeLong }}">
+<div style="position:relative;display:flex;align-items:center;gap:12px;padding:12px 16px;background:#2A1C1A;border:1px solid #C8503C">{{ attackPulse }}<div style="display:flex">{{ ic.alertRed }}</div><div style="display:flex;flex-direction:column;gap:5px"><div style="font:600 16px/1 Inter;color:#ECE6D8;white-space:nowrap">Your Refinery is under attack</div><div style="font:400 13px/1 Inter;color:#E2735F;white-space:nowrap">East wells · 6 Vat Hounds</div></div><div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#14161A;color:#ECE6D8">Space</div></div>
+</div>
+</sc-if>
+
+<sc-if value="{{ n.hasBanner }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;left:50%;top:60px;transform:translateX(-50%);z-index:4;width:660px;background:#20242B;border:1px solid #C9A86A;padding:18px 22px;display:flex;align-items:center;gap:18px;isolation:isolate">{{ Fns }}
+<div style="flex:none;position:relative;width:72px;height:72px;display:flex;align-items:center;justify-content:center"><div style="position:absolute;inset:0">{{ n.bRing }}</div><div style="position:relative;font:600 15px/1 'JetBrains Mono';color:#ECE6D8">{{ n.bNum }}</div></div>
+<div style="flex:1;display:flex;flex-direction:column;gap:6px"><div style="font:600 20px/1.2 Cinzel;color:#ECE6D8">{{ n.bT }}</div><div style="font:400 13px/1.45 Inter;color:#9A958A;text-wrap:pretty">{{ n.bSub }}</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><sc-for list="{{ n.bBtns }}" as="b" hint-placeholder-count="2"><button disabled="{{ b.dis }}" title="{{ b.tip }}" style="height:34px;padding:0 12px;display:flex;align-items:center;gap:8px;background:#2A2F38;border:1px solid #8A6E3C;color:#ECE6D8;font:500 13px/1 Inter;opacity:{{ b.op }};cursor:pointer;outline:none;white-space:nowrap" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ b.n }}<div style="font:600 10px/14px 'JetBrains Mono';height:18px;padding:0 4px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#14161A;color:#ECE6D8">{{ b.k }}</div></button></sc-for></div>
+</div>
+</sc-if>
+
+<div style="position:absolute;left:12px;bottom:{{ n.toastBottom }};width:400px;z-index:4;display:flex;flex-direction:column;gap:6px">
+<sc-if value="{{ n.isChat }}" hint-placeholder-val="{{ false }}">
+<sc-for list="{{ n.chat }}" as="m" hint-placeholder-count="4"><div style="display:flex;gap:8px;align-items:flex-start;padding:6px 10px;background:rgba(20,22,26,.88);font:400 14px/1.4 Inter;color:#ECE6D8;animation:{{ m.anim }}"><div style="flex:none;width:16px;height:16px;margin-top:2px;background:{{ m.h }};color:{{ m.g }};font:700 9px/16px Inter;text-align:center">{{ m.glyph }}</div><div><span style="font-weight:600;color:{{ m.nFg }}">{{ m.who }}</span> {{ m.t }}</div></div></sc-for>
+<div style="height:38px;display:flex;align-items:center;gap:8px;padding:0 10px;background:#14161A;border:1px solid #E3C887"><div style="font:600 11px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#E3C887;white-space:nowrap">To allies</div><div style="flex:1;font:400 14px/1 Inter;color:#ECE6D8;white-space:nowrap;overflow:hidden">push north after the Alembics land|</div><div style="font:500 11px/1 Inter;color:#9A958A;white-space:nowrap">Shift Enter · all</div></div>
+</sc-if>
+<sc-for list="{{ n.toasts }}" as="t" hint-placeholder-count="1">
+<div title="{{ t.tip }}" style="position:relative;display:flex;align-items:center;gap:10px;padding:9px 12px;background:rgba(20,22,26,.94);border:1px solid {{ t.bd }};overflow:hidden;animation:{{ t.anim }}"><div style="display:flex">{{ t.icon }}</div><div style="flex:1;font:500 13px/1.3 Inter;color:#ECE6D8">{{ t.t }}</div><sc-if value="{{ t.k }}" hint-placeholder-val="{{ false }}"><div style="font:600 10px/14px 'JetBrains Mono';height:18px;padding:0 4px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#14161A;color:#ECE6D8;white-space:nowrap">{{ t.k }}</div></sc-if><div style="position:absolute;left:0;bottom:0;height:2px;background:{{ t.c }};width:100%;animation:{{ t.anim2 }}"></div></div>
+</sc-for>
+</div>
+
+<div style="position:absolute;left:0;bottom:0;width:256px;height:216px;z-index:5;background:#1C1F25;border-top:1px solid #8A6E3C;border-right:1px solid #3A3F48" style-hover="--chiH:1">
+<div style="position:absolute;left:0;right:0;top:0;height:0;z-index:3">{{ Fc }}</div>
+<div style="position:absolute;left:8px;top:16px;display:flex;flex-direction:column;gap:4px;z-index:2"><sc-for list="{{ mmBtns }}" as="b" hint-placeholder-count="3"><div title="{{ b.tip }}" tabIndex="0" style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;background:#14161A;border:1px solid #3A3F48;color:#C9A86A;cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:1px">{{ b.icon }}</div></sc-for></div>
+<div title="Minimap frame" style="position:absolute;left:44px;top:8px;width:200px;height:200px;background:#262A31;border:1px solid #8A6E3C;box-shadow:0 3px 6px rgba(0,0,0,.4), inset 1px 1px 0 rgba(227,200,135,.25), inset -1px -1px 0 rgba(11,12,14,.5)">
+<div style="position:absolute;inset:3px;border:1px solid #4A4234"></div>
+<div style="position:absolute;left:-3px;top:-3px;width:6px;height:6px;border-radius:50%;background:#14161A;border:1px solid #C9A86A"></div>
+<div style="position:absolute;right:-3px;top:-3px;width:6px;height:6px;border-radius:50%;background:#14161A;border:1px solid #C9A86A"></div>
+<div style="position:absolute;left:-3px;bottom:-3px;width:6px;height:6px;border-radius:50%;background:#14161A;border:1px solid #C9A86A"></div>
+<div style="position:absolute;right:-3px;bottom:-3px;width:6px;height:6px;border-radius:50%;background:#14161A;border:1px solid #C9A86A"></div>
+</div>
+<div onPointerDown="{{ mmDrag }}" title="Minimap · click or drag to move the camera · Alt-click to ping" style="position:absolute;left:52px;top:16px;width:184px;height:184px;background:url(assets/bf-village.jpg) 50% 50% / 300% auto;border:1px solid #0B0C0E;box-shadow:inset 0 2px 6px rgba(0,0,0,.6);cursor:pointer;overflow:hidden;touch-action:none">
+<div style="position:absolute;inset:0;background:rgba(20,22,26,.35)"></div>
+<div style="position:absolute;inset:0;background:radial-gradient(circle at 30% 68%, transparent 30%, rgba(8,9,11,.66) 52%)"></div>
+<sc-for list="{{ n.mmDots }}" as="d" hint-placeholder-count="10"><div style="position:absolute;left:{{ d.x }};top:{{ d.y }};width:{{ d.s }};height:{{ d.s }};background:{{ d.c }};border:1px solid #0B0C0E;transform:translate(-50%,-50%)"></div></sc-for>
+<sc-for list="{{ n.mmPings }}" as="d" hint-placeholder-count="0"><div style="position:absolute;left:{{ d.x }};top:{{ d.y }};width:22px;height:22px;margin:-11px 0 0 -11px;border:2px solid {{ d.c }};border-radius:50%"></div></sc-for>
+<div style="position:absolute;left:{{ camL }};top:{{ camT }};width:54px;height:34px;border:1px solid #ECE6D8"></div>
+</div>
+</div>
+
+<div style="position:absolute;left:268px;bottom:176px;z-index:5;display:flex;gap:3px">
+<sc-for list="{{ n.tabs }}" as="g" hint-placeholder-count="4"><div onClick="{{ g.go }}" title="{{ g.tip }}" tabIndex="0" style="height:30px;display:flex;align-items:center;gap:6px;padding:0 9px;background:{{ g.bg }};border:1px solid {{ g.bd }};border-bottom:none;cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:1px"><div style="font:600 11px/1 'JetBrains Mono';color:{{ g.nFg }}">{{ g.n }}</div><div style="display:flex;color:{{ g.ic }}">{{ g.icon }}</div><div style="font:600 12px/1 'JetBrains Mono';color:#ECE6D8;white-space:nowrap">{{ g.c }}</div></div></sc-for>
+</div>
+
+<div style="position:absolute;left:256px;right:300px;bottom:0;height:176px;z-index:5;background:#1C1F25;border-top:1px solid #8A6E3C;padding:14px 18px;display:flex;gap:20px;align-items:stretch" style-hover="--chiH:1">
+<div style="position:absolute;left:0;right:0;top:0;height:0;z-index:3">{{ Fc2 }}</div>
+<sc-if value="{{ n.selOne }}" hint-placeholder-val="{{ true }}">
+<div style="flex:none;width:124px;background:{{ n.vat }};border:1px solid #8A6E3C;position:relative;display:flex;align-items:flex-end;justify-content:center"><sc-if value="{{ n.isBldg }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#C9A86A">{{ n.bldgIcon }}</div></sc-if><div style="display:{{ n.figDisp }};width:48px;height:78px;background:linear-gradient(180deg,#9FB0BE,#4A5A70 70%,#2E3A4A);clip-path:polygon(50% 0,64% 8%,64% 18%,78% 28%,86% 58%,76% 60%,70% 44%,68% 72%,72% 100%,28% 100%,32% 72%,30% 44%,24% 60%,14% 58%,22% 28%,36% 18%,36% 8%);margin-bottom:12px;opacity:.85"></div><sc-if value="{{ n.lvBadge }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;top:-8px;right:-8px;width:32px;height:32px;background:#14161A;border:1px solid #E3C887;display:flex;align-items:center;justify-content:center;font:700 14px/1 Cinzel;color:#E3C887">{{ n.lvBadge }}</div></sc-if></div>
+<div style="flex:none;width:340px;display:flex;flex-direction:column;gap:7px;justify-content:center">
+<div style="display:flex;align-items:baseline;gap:10px"><div style="font:600 20px/1.1 Cinzel;color:#ECE6D8;white-space:nowrap">{{ n.one.n }}</div></div>
+<div style="font:400 13px/1.2 Inter;color:#9A958A">{{ n.one.role }}</div>
+<div style="display:flex;flex-direction:column;gap:4px"><div style="display:flex;justify-content:space-between;font:500 12px/1 'JetBrains Mono';color:#ECE6D8"><div>{{ n.one.hpT }}</div><div style="color:#9A958A">{{ n.one.mpT }}</div></div><div style="height:7px;background:#0B0C0E;border:1px solid #3A3F48"><div style="width:{{ n.one.hp }};height:100%;background:#4FB39A"></div></div><sc-if value="{{ n.one.mp }}" hint-placeholder-val="{{ false }}"><div style="height:5px;background:#0B0C0E;border:1px solid #3A3F48"><div style="width:{{ n.one.mp }};height:100%;background:#56B4E9"></div></div></sc-if></div>
+<sc-if value="{{ n.one.xp }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:8px"><div style="font:600 11px/1 'JetBrains Mono';color:#9A958A">XP</div><div style="flex:1;height:5px;background:#0B0C0E;border:1px solid #3A3F48"><div style="width:{{ n.one.xp }};height:100%;background:#C9A86A"></div></div><div style="font:500 11px/1 'JetBrains Mono';color:#9A958A;white-space:nowrap">{{ n.one.xpT }}</div></div></sc-if>
+<div style="font:500 12px/1.3 'JetBrains Mono';color:#ECE6D8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ n.statLine }}</div>
+</div>
+<sc-if value="{{ n.inv }}" hint-placeholder-val="{{ false }}">
+<div style="flex:none;display:flex;flex-direction:column;gap:6px;justify-content:center"><div style="font:600 10px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A">{{ n.invHead }}</div><div style="display:grid;grid-template-columns:repeat(3,52px);gap:5px"><sc-for list="{{ n.inv }}" as="it" hint-placeholder-count="6"><div title="{{ it.tip }}" tabIndex="0" style="position:relative;height:52px;background:{{ it.bg }};border:1px {{ it.bs }} {{ it.bd }};display:flex;align-items:center;justify-content:center;color:#C9A86A;cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:1px">{{ it.icon }}<div style="position:absolute;top:2px;left:3px;font:600 9px/1 'JetBrains Mono';color:#9A958A">{{ it.k }}</div><sc-if value="{{ it.ch }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;right:3px;bottom:2px;font:700 10px/1 'JetBrains Mono';color:#ECE6D8">{{ it.ch }}</div></sc-if></div></sc-for></div></div>
+</sc-if>
+<sc-if value="{{ n.queue }}" hint-placeholder-val="{{ false }}">
+<div style="flex:none;display:flex;flex-direction:column;gap:7px;justify-content:center"><div style="font:600 10px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A">Production · 5 deep</div><div style="display:flex;gap:5px"><sc-for list="{{ n.queue }}" as="q" hint-placeholder-count="5"><div title="{{ q.tip }}" style="position:relative;width:60px;height:60px;background:#14161A;border:1px solid {{ q.bd }};display:flex;align-items:center;justify-content:center;color:#C9A86A">{{ q.icon }}<sc-if value="{{ q.cur }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:0;right:0;bottom:0;height:4px;background:#2A2F38"><div style="width:{{ q.p }};height:100%;background:#C9A86A"></div></div><div style="position:absolute;top:3px;right:4px;font:600 10px/1 'JetBrains Mono';color:#ECE6D8">{{ q.t }}</div></sc-if></div></sc-for></div>
+<div style="display:flex;gap:18px;font:500 12px/1 Inter;color:#ECE6D8;white-space:nowrap"><div style="display:flex;align-items:center;gap:6px">{{ ic.flagSm }}Rally · north ford</div><div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">Research · Tempered Plate 62%</div></div></div>
+</sc-if>
+</sc-if>
+<sc-if value="{{ n.selGroup }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:8px;justify-content:center">
+<div style="display:flex;gap:6px"><sc-for list="{{ n.tiles }}" as="t" hint-placeholder-count="4"><div onClick="{{ t.go }}" title="{{ t.tip }}" tabIndex="0" style="position:relative;width:132px;height:78px;background:{{ t.bg }};border:1px solid {{ t.bd }};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:1px"><div style="display:flex;color:{{ t.ic }}">{{ t.icon }}</div><div style="font:600 12px/1 Inter;color:#ECE6D8;white-space:nowrap">{{ t.n }}</div><div style="position:absolute;top:5px;right:6px;font:700 13px/1 'JetBrains Mono';color:#ECE6D8">×{{ t.c }}</div><div style="position:absolute;left:6px;right:6px;bottom:6px;height:4px;background:#0B0C0E"><div style="width:{{ t.hp }};height:100%;background:#4FB39A"></div></div></div></sc-for></div>
+<div style="display:flex;flex-wrap:wrap;gap:3px;max-width:560px"><sc-for list="{{ n.minis }}" as="m" hint-placeholder-count="14"><div title="{{ m.tip }}" style="width:28px;height:28px;background:#14161A;border:1px solid {{ m.bd }};position:relative;display:flex;align-items:center;justify-content:center;color:#C9A86A">{{ m.icon }}<div style="position:absolute;left:2px;right:2px;bottom:2px;height:2px;background:#2A2F38"><div style="width:{{ m.hp }};height:100%;background:{{ m.hc }}"></div></div></div></sc-for></div>
+</div>
+<div style="align-self:center;font:400 12px/1.4 Inter;color:#9A958A;max-width:220px">Tab makes the next type active; the command card follows it.</div>
+</sc-if>
+</div>
+
+<div style="position:absolute;right:0;bottom:0;width:300px;height:216px;z-index:5;background:#1C1F25;border-top:1px solid #8A6E3C;border-left:1px solid #3A3F48;padding:12px" style-hover="--chiH:1">
+<div style="position:absolute;left:0;right:0;top:0;height:0;z-index:3">{{ Fc3 }}</div>
+<div style="display:grid;grid-template-columns:repeat(4,64px);grid-auto-rows:60px;gap:6px">
+<sc-for list="{{ n.card }}" as="b" hint-placeholder-count="12">
+<div title="{{ b.tip }}" tabIndex="0" style="position:relative;background:{{ b.bg }};border:1px {{ b.bs }} {{ b.bd }};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;opacity:{{ b.op }};cursor:{{ b.cur }};outline:none;overflow:hidden" style-hover="border-color:{{ b.hov }}" style-focus="outline:2px solid #E3C887;outline-offset:1px">
+<div style="position:absolute;top:3px;left:3px;font:600 10px/14px 'JetBrains Mono';height:16px;min-width:16px;text-align:center;padding:0 3px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:2px;background:#0B0C0E;color:#ECE6D8">{{ b.k }}</div>
+<div style="display:flex;color:{{ b.ic }}">{{ b.icon }}</div>
+<sc-if value="{{ b.cost }}" hint-placeholder-val="{{ false }}"><div style="width:100%;text-align:center;font:600 9px/1 'JetBrains Mono';color:{{ b.cFg }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 2px">{{ b.cost }}</div></sc-if>
+<sc-if value="{{ b.lock }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;top:4px;right:4px;display:flex">{{ ic.lockSm }}</div></sc-if>
+<sc-if value="{{ b.cd }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:0;right:0;bottom:0;height:{{ b.cd }};background:rgba(11,12,14,.72)"></div><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:700 18px/1 'JetBrains Mono';color:#ECE6D8">{{ b.cdT }}</div></sc-if>
+<sc-if value="{{ b.prog }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:0;right:0;bottom:0;height:4px;background:#2A2F38"><div style="width:{{ b.prog }};height:100%;background:#C9A86A"></div></div></sc-if>
+</div>
+</sc-for>
+</div>
+</div>
+
+<sc-if value="{{ n.isPause }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;inset:0;z-index:8;background:rgba(11,12,14,.62)"></div>
+<div style="position:absolute;left:0;top:40px;bottom:0;width:420px;z-index:9;background:#20242B;border-right:1px solid #8A6E3C;padding:28px;display:flex;flex-direction:column;gap:6px;isolation:isolate" style-hover="--chiH:1">{{ orn.tex }}{{ F }}
+<div style="display:flex;flex-direction:column;gap:8px;padding-bottom:14px"><div style="font:600 12px/1 Inter;letter-spacing:.16em;text-transform:uppercase;color:#C9A86A">Paused by you · 14:32</div><div style="font:600 36px/1 Cinzel;color:#ECE6D8">Paused</div><div style="font:400 13px/1.4 Inter;color:#9A958A">Allies see the pause banner. 2 of 3 pauses left this match.</div></div>
+<sc-for list="{{ pauseMenu }}" as="m" hint-placeholder-count="6">
+<div onMouseEnter="{{ m.enter }}" title="{{ m.tip }}" tabIndex="0" style="height:54px;display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:14px;align-items:center;padding:0 12px;background:{{ m.bg }};border:1px solid {{ m.bd }};cursor:pointer;outline:none" style-focus="outline:2px solid #E3C887;outline-offset:1px"><div style="display:flex;color:{{ m.ic }}">{{ m.icon }}</div><div style="display:flex;flex-direction:column;gap:4px"><div style="font:600 16px/1 Inter;color:{{ m.fg }}">{{ m.n }}</div><div style="font:400 12px/1 Inter;color:#9A958A">{{ m.d }}</div></div><div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#14161A;color:#ECE6D8;white-space:nowrap">{{ m.k }}</div></div>
+</sc-for>
+</div>
+<div style="position:absolute;left:calc(50% + 210px);top:60px;transform:translateX(-50%);z-index:9;display:flex;align-items:center;gap:10px;padding:10px 18px;background:#20242B;border:1px solid #C9A86A"><div style="display:flex">{{ ic.hourGold }}</div><div style="font:600 14px/1 Inter;letter-spacing:.16em;text-transform:uppercase;color:#ECE6D8">Paused</div></div>
+</sc-if>
+</div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+</section>
+
+<section id="s31" style="display:flex;flex-direction:column;gap:20px;padding:0 64px 96px">
+<div style="font:600 24px/1 Cinzel;color:#E3C887">3.4 · Spectator and replay · framed view, nobody gives orders</div>
+<sc-if value="{{ show.s31 }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;gap:64px;align-items:flex-start;flex-wrap:wrap;width:{{ rowW }}">
+<sc-for list="{{ huds }}" as="h" hint-placeholder-count="13">
+<div id="{{ h.id }}" style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;gap:10px;align-items:center"><div style="font:600 12px/1 'JetBrains Mono';color:#14161A;background:#C9A86A;padding:4px 7px">{{ h.code }}</div><div style="font:500 14px/1 Inter;color:#ECE6D8">{{ h.label }}</div><div style="font:600 10px/1 Inter;letter-spacing:.1em;color:{{ h.tc }};border:1px solid {{ h.tc }};padding:3px 5px">{{ h.tag }}</div></div>
+<div data-screen-label="{{ h.code }}" style="width:1920px;height:1080px;position:relative;overflow:hidden;background:#14161A;box-shadow:0 0 0 1px #2A2F38;display:grid;grid-template-rows:48px minmax(0,1fr) 44px;grid-template-columns:{{ h.cols }}">
+<div style="position:absolute;left:{{ h.worldL }};right:400px;top:48px;bottom:44px;z-index:0">{{ h.world }}</div>
+
+<div style="grid-column:1 / -1;grid-row:1;position:relative;z-index:5;display:flex;align-items:stretch;background:#20242B;border-bottom:1px solid #8A6E3C;isolation:isolate" style-hover="--chiH:1">{{ orn.tex }}{{ orn.topbar }}{{ Ft }}
+<div title="Game menu (F10 or Esc)" tabIndex="0" style="width:76px;flex:none;display:flex;align-items:center;justify-content:center;gap:6px;border-right:1px solid #3A3F48;color:#C9A86A;cursor:pointer;outline:none" style-hover="background:#2A2F38;color:#E3C887" style-focus="outline:2px solid #E3C887;outline-offset:-4px">{{ ic.menu }}<div style="font:600 10px/14px 'JetBrains Mono';height:18px;padding:0 4px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#14161A;color:#ECE6D8">F10</div></div>
+<sc-if value="{{ h.notSpec }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;align-items:center;gap:4px;padding:0 10px">
+<sc-for list="{{ h.res }}" as="r" hint-placeholder-count="4"><div title="{{ r.tip }}" style="height:34px;display:flex;align-items:center;gap:8px;padding:0 12px;background:#14161A;border:1px solid {{ r.bd }}"><div style="display:flex;color:#C9A86A">{{ r.icon }}</div><div style="font:600 16px/1 'JetBrains Mono';color:{{ r.fg }};font-variant-numeric:tabular-nums;white-space:nowrap">{{ r.v }}</div><div style="font:500 11px/1 'JetBrains Mono';color:#9A958A">{{ r.rate }}</div></div></sc-for>
+</div>
+</sc-if>
+<sc-if value="{{ h.isSpec }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;align-items:center;gap:12px;padding:0 16px;min-width:0;flex:0 1 auto;overflow:hidden"><div style="display:flex;align-items:center;gap:8px;font:700 15px/1 Inter;letter-spacing:.18em;text-transform:uppercase;color:#14161A;background:#C9A86A;padding:8px 12px;white-space:nowrap">{{ ic.eyeDark }}{{ h.specTitle }}</div><div style="font:500 13px/1 Inter;color:#9A958A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">Ashfall Ford · 2v2 · Mara Solt &amp; Ilse Varga vs Brannoch Vey &amp; Oda Renn</div></div>
+</sc-if>
+<div style="flex:1"></div>
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;border-left:1px solid #3A3F48;border-right:1px solid #3A3F48">
+<div title="Match clock" style="font:600 20px/1 'JetBrains Mono';color:#ECE6D8;font-variant-numeric:tabular-nums">{{ h.clock }}</div>
+<div title="Game speed · host only (Numpad + / −)" style="font:500 12px/1 Inter;color:#9A958A;border:1px solid #3A3F48;padding:5px 8px;white-space:nowrap">{{ h.speed }}</div>
+</div>
+<div style="flex:1"></div>
+<div title="Alerts this match (Space jumps to the latest)" style="display:flex;align-items:center;gap:8px;padding:0 14px;font:500 13px/1 Inter;color:{{ h.alFg }};white-space:nowrap">{{ h.alIcon }}{{ h.alCount }}</div>
+
+</div>
+
+<div style="grid-column:1;grid-row:2;position:relative;z-index:4;background:#20242B;border-right:1px solid #4A4234;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 0;isolation:isolate" style-hover="--chiH:1">{{ orn.rail }}{{ Fr }}
+<sc-if value="{{ h.notSpec }}" hint-placeholder-val="{{ true }}">
+<div title="Select your hero (F1) · double-tap to centre" tabIndex="0" style="position:relative;width:60px;height:60px;background:{{ h.heroBg }};border:1px solid {{ h.heroBd }};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;outline:none" style-hover="border-color:#E3C887" style-focus="outline:2px solid #E3C887;outline-offset:1px"><div style="display:flex;color:#E3C887">{{ ic.crown }}</div><div style="font:600 11px/1 'JetBrains Mono';color:#ECE6D8">Lv {{ h.heroLv }}</div><div style="position:absolute;left:3px;right:3px;bottom:3px;height:3px;background:#14161A"><div style="width:84%;height:100%;background:#4FB39A"></div></div><div style="position:absolute;top:-4px;left:-4px;font:600 9px/12px 'JetBrains Mono';height:14px;padding:0 3px;border:1px solid #5C5446;border-radius:2px;background:#14161A;color:#ECE6D8">F1</div></div>
+<div style="width:44px;height:1px;background:#3A3F48;margin:4px 0"></div>
+<sc-for list="{{ h.groups }}" as="g" hint-placeholder-count="9">
+<div onClick="{{ g.go }}" title="{{ g.tip }}" tabIndex="0" style="position:relative;width:60px;height:62px;background:{{ g.bg }};border:1px {{ g.bs }} {{ g.bd }};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;opacity:{{ g.op }};cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:1px"><div style="position:absolute;top:3px;left:5px;font:600 11px/1 'JetBrains Mono';color:{{ g.nFg }}">{{ g.n }}</div><div style="display:flex;color:{{ g.ic }}">{{ g.icon }}</div><div style="font:600 11px/1 'JetBrains Mono';color:#ECE6D8">{{ g.c }}</div></div>
+</sc-for>
+</sc-if>
+<sc-if value="{{ h.hasSideZone }}" hint-placeholder-val="{{ false }}">
+<div style="margin-top:auto;width:64px;border:1px dashed {{ h.zoneBd }};padding:6px 4px;display:flex;flex-direction:column;align-items:center;gap:6px;background:{{ h.zoneBg }}">
+<sc-if value="{{ h.isArena }}" hint-placeholder-val="{{ false }}"><div style="font:600 9px/1.2 Inter;letter-spacing:.08em;text-transform:uppercase;color:#9A958A;text-align:center">Respawn</div>{{ respawnRing }}<div style="font:600 16px/1 'JetBrains Mono';color:#ECE6D8">0:14</div></sc-if>
+<sc-if value="{{ h.zoneEmpty }}" hint-placeholder-val="{{ true }}"><div style="font:500 9px/1.3 Inter;color:#9A958A;text-align:center">Scenario<br>UI slot</div></sc-if>
+</div>
+</sc-if>
+</div>
+
+<div style="grid-column:2;grid-row:2;position:relative;z-index:2;min-width:0;pointer-events:none">
+<div style="position:absolute;left:50%;top:10px;transform:translateX(-50%);width:{{ h.zoneW }};min-height:56px;opacity:{{ h.zoneOp }};border:1px dashed {{ h.zoneBd }};background:{{ h.zoneBg }};display:flex;align-items:center;justify-content:center;pointer-events:auto">
+<sc-if value="{{ h.zoneText }}" hint-placeholder-val="{{ true }}"><div style="font:500 11px/1 Inter;color:#9A958A;letter-spacing:.08em;text-transform:uppercase;opacity:.8">Scenario UI zone · empty on this map</div></sc-if>
+<sc-if value="{{ h.isArena }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;align-items:center;gap:16px;padding:8px 14px;width:100%">
+<div style="display:flex;gap:4px"><sc-for list="{{ arenaA }}" as="k" hint-placeholder-count="5"><div title="{{ k.n }} · {{ k.kd }}" style="width:40px;display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:30px;height:30px;background:{{ k.h }};color:{{ k.g }};font:700 12px/30px Inter;text-align:center;opacity:{{ k.op }}">{{ k.glyph }}</div><div style="font:500 10px/1 'JetBrains Mono';color:#ECE6D8">{{ k.kd }}</div></div></sc-for></div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px"><div style="font:600 11px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#9A958A">Kills</div><div style="font:700 28px/1 'JetBrains Mono';color:#ECE6D8">23 <span style="color:#9A958A">–</span> 19</div><div style="font:500 11px/1 Inter;color:#9A958A">First to 50 · or break the vat</div></div>
+<div style="display:flex;gap:4px"><sc-for list="{{ arenaB }}" as="k" hint-placeholder-count="5"><div title="{{ k.n }} · {{ k.kd }}" style="width:40px;display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:30px;height:30px;background:{{ k.h }};color:{{ k.g }};font:700 12px/30px Inter;text-align:center;opacity:{{ k.op }}">{{ k.glyph }}</div><div style="font:500 10px/1 'JetBrains Mono';color:#ECE6D8">{{ k.kd }}</div></div></sc-for></div>
+</div>
+</sc-if>
+</div>
+<sc-if value="{{ h.isArena }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:50%;top:104px;transform:translateX(-50%);font:500 10px/1 'JetBrains Mono';color:#9A958A;background:rgba(20,22,26,.85);border:1px solid #3A3F48;padding:4px 6px;white-space:nowrap">Game UI builder widgets · bound to kills_a · kills_b · respawn_t</div></sc-if>
+
+<sc-if value="{{ h.hasBanner }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;left:50%;top:92px;transform:translateX(-50%);width:640px;background:#20242B;border:1px solid #C9A86A;padding:18px 22px;display:flex;align-items:center;gap:18px;pointer-events:auto;isolation:isolate">{{ Fns }}
+<div style="flex:none;position:relative;width:72px;height:72px;display:flex;align-items:center;justify-content:center"><div style="position:absolute;inset:0">{{ h.bRing }}</div><div style="position:relative;font:600 15px/1 'JetBrains Mono';color:#ECE6D8">{{ h.bNum }}</div></div>
+<div style="flex:1;display:flex;flex-direction:column;gap:6px"><div style="font:600 20px/1.2 Cinzel;color:#ECE6D8">{{ h.bT }}</div><div style="font:400 13px/1.45 Inter;color:#9A958A;text-wrap:pretty">{{ h.bSub }}</div></div>
+<sc-if value="{{ h.bBtns }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:6px"><sc-for list="{{ h.bBtns }}" as="b" hint-placeholder-count="2"><button disabled="{{ b.dis }}" title="{{ b.tip }}" style="height:34px;padding:0 12px;display:flex;align-items:center;gap:8px;background:#2A2F38;border:1px solid #8A6E3C;color:#ECE6D8;font:500 13px/1 Inter;opacity:{{ b.op }};cursor:pointer;outline:none;white-space:nowrap" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ b.n }}<div style="font:600 10px/14px 'JetBrains Mono';height:18px;padding:0 4px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#14161A;color:#ECE6D8">{{ b.k }}</div></button></sc-for></div></sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{ h.isAttack }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;right:0;top:46%;display:flex;align-items:center;gap:0;pointer-events:auto" title="Refinery under attack · Space to jump there">
+<div style="position:relative;display:flex;align-items:center;gap:10px;padding:10px 12px;background:#2A1C1A;border:1px solid #C8503C;border-right:none">{{ attackPulse }}<div style="display:flex">{{ ic.alertRed }}</div><div style="display:flex;flex-direction:column;gap:4px"><div style="font:600 13px/1 Inter;color:#ECE6D8;white-space:nowrap">Refinery under attack</div><div style="font:400 11px/1 Inter;color:#E2735F;white-space:nowrap">East wells · 6 Vat Hounds</div></div><div style="font:600 10px/14px 'JetBrains Mono';height:18px;padding:0 4px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#14161A;color:#ECE6D8">Space</div></div>
+<div style="width:0;height:0;border-left:14px solid #C8503C;border-top:22px solid transparent;border-bottom:22px solid transparent"></div>
+</div>
+</sc-if>
+
+<sc-if value="{{ h.isChat }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;left:10px;bottom:10px;width:520px;display:flex;flex-direction:column;gap:6px;pointer-events:auto">
+<div style="display:flex;flex-direction:column;gap:4px;background:rgba(20,22,26,.9);border:1px solid #3A3F48;padding:10px 12px">
+<sc-for list="{{ chatLines }}" as="m" hint-placeholder-count="4"><div style="display:flex;gap:8px;align-items:flex-start;font:400 14px/1.4 Inter;color:#ECE6D8"><div style="flex:none;width:16px;height:16px;margin-top:2px;background:{{ m.h }};color:{{ m.g }};font:700 9px/16px Inter;text-align:center">{{ m.glyph }}</div><div><span style="font-weight:600;color:{{ m.nFg }}">{{ m.who }}</span> {{ m.t }}</div></div></sc-for>
+</div>
+<div style="height:40px;display:flex;align-items:center;gap:8px;padding:0 10px;background:#14161A;border:1px solid #E3C887"><div style="font:600 11px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#E3C887;white-space:nowrap">To allies</div><div style="flex:1;font:400 14px/1 Inter;color:#ECE6D8">push north with me after the Alembics land|</div><div style="font:500 11px/1 Inter;color:#9A958A;white-space:nowrap">Shift Enter · everyone</div></div>
+</div>
+</sc-if>
+
+<sc-if value="{{ h.isPause }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;inset:0;background:rgba(11,12,14,.55);pointer-events:auto"></div>
+<div style="position:absolute;left:0;top:0;bottom:0;width:420px;background:#20242B;border-right:1px solid #8A6E3C;padding:28px;display:flex;flex-direction:column;gap:6px;pointer-events:auto;isolation:isolate" style-hover="--chiH:1">{{ orn.tex }}{{ F }}
+<div style="display:flex;flex-direction:column;gap:8px;padding-bottom:14px"><div style="font:600 12px/1 Inter;letter-spacing:.16em;text-transform:uppercase;color:#C9A86A">Paused by you · 14:32</div><div style="font:600 36px/1 Cinzel;color:#ECE6D8">Paused</div><div style="font:400 13px/1.4 Inter;color:#9A958A">Allies see the pause banner. 2 of 3 pauses left this match.</div></div>
+<sc-for list="{{ pauseMenu }}" as="m" hint-placeholder-count="6">
+<div onMouseEnter="{{ m.enter }}" title="{{ m.tip }}" tabIndex="0" style="height:54px;display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:14px;align-items:center;padding:0 12px;background:{{ m.bg }};border:1px solid {{ m.bd }};cursor:pointer;outline:none" style-focus="outline:2px solid #E3C887;outline-offset:1px"><div style="display:flex;color:{{ m.ic }}">{{ m.icon }}</div><div style="display:flex;flex-direction:column;gap:4px"><div style="font:600 16px/1 Inter;color:{{ m.fg }}">{{ m.n }}</div><div style="font:400 12px/1 Inter;color:#9A958A">{{ m.d }}</div></div><div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#14161A;color:#ECE6D8;white-space:nowrap">{{ m.k }}</div></div>
+</sc-for>
+</div>
+<div style="position:absolute;left:calc(50% + 210px);top:18px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:10px 18px;background:#20242B;border:1px solid #C9A86A;pointer-events:auto"><div style="display:flex">{{ ic.hourGold }}</div><div style="font:600 14px/1 Inter;letter-spacing:.16em;text-transform:uppercase;color:#ECE6D8">Paused</div></div>
+</sc-if>
+</div>
+
+<div style="grid-column:3;grid-row:2;position:relative;z-index:4;background:#20242B;border-left:1px solid #4A4234;display:flex;flex-direction:column;min-height:0;isolation:isolate" style-hover="--chiH:1">{{ orn.tex }}{{ F2 }}
+<div style="height:318px;flex:none;display:flex;align-items:center;justify-content:center;border-bottom:1px solid #3A3F48;position:relative">{{ orn.divBottom }}
+<div style="position:relative;width:300px;height:300px">
+<div style="position:absolute;left:-10px;top:-10px;width:320px;height:320px;z-index:0;overflow:visible">{{ mmRing }}</div>
+<div title="Minimap · click to move the camera · Alt-click to ping" style="position:absolute;z-index:1;box-shadow:0 0 0 3px #20242B;left:44px;top:44px;width:212px;height:212px;background:{{ h.mmBg }};overflow:hidden;cursor:pointer">
+<div style="position:absolute;inset:0;background:{{ h.mmFog }}"></div>
+<sc-for list="{{ h.mmDots }}" as="d" hint-placeholder-count="20"><div style="position:absolute;left:{{ d.x }};top:{{ d.y }};width:{{ d.s }};height:{{ d.s }};background:{{ d.c }};border:1px solid #14161A;transform:translate(-50%,-50%)"></div></sc-for>
+<sc-for list="{{ h.mmPings }}" as="d" hint-placeholder-count="1"><div style="position:absolute;left:{{ d.x }};top:{{ d.y }};width:22px;height:22px;margin:-11px 0 0 -11px;border:2px solid {{ d.c }};border-radius:50%"></div></sc-for>
+<div style="position:absolute;left:{{ h.camX }};top:{{ h.camY }};width:62px;height:40px;border:1px solid #ECE6D8"></div>
+</div>
+</div>
+<div style="position:absolute;left:10px;bottom:8px;display:flex;flex-direction:column;gap:4px"><sc-for list="{{ mmBtns }}" as="b" hint-placeholder-count="3"><div title="{{ b.tip }}" tabIndex="0" style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;background:#14161A;border:1px solid #3A3F48;color:#C9A86A;cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:1px">{{ b.icon }}</div></sc-for></div>
+</div>
+
+<sc-if value="{{ h.isSpec }}" hint-placeholder-val="{{ false }}">
+<div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;flex:1;min-height:0">
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 13px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887;white-space:nowrap">Vision</div>{{ orn.hr }}</div>
+<div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px"><sc-for list="{{ visOpts }}" as="v" hint-placeholder-count="5"><div onClick="{{ v.go }}" title="{{ v.tip }}" tabIndex="0" style="height:36px;display:flex;align-items:center;justify-content:center;gap:5px;background:{{ v.bg }};border:1px solid {{ v.bd }};font:600 12px/1 Inter;color:{{ v.fg }};cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:1px"><sc-if value="{{ v.chip }}" hint-placeholder-val="{{ false }}"><div style="width:16px;height:16px;background:{{ v.h }};color:{{ v.g }};font:700 9px/16px Inter;text-align:center">{{ v.glyph }}</div></sc-if>{{ v.n }}</div></sc-for></div>
+<div style="display:flex;align-items:center;gap:12px;margin-top:4px">{{ orn.hl }}<div style="font:600 13px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887;white-space:nowrap">Every player</div>{{ orn.hr }}</div>
+<div style="display:grid;grid-template-columns:minmax(0,1fr) 52px 52px 44px 54px;gap:6px;font:600 10px/1 Inter;letter-spacing:.08em;text-transform:uppercase;color:#9A958A;padding:0 8px"><div>Commander</div><div>Gold</div><div>Iron</div><div>APM</div><div>Army</div></div>
+<sc-for list="{{ specRows }}" as="r" hint-placeholder-count="4">
+<div style="display:grid;grid-template-columns:minmax(0,1fr) 52px 52px 44px 54px;gap:6px;align-items:center;height:48px;padding:0 8px;background:#14161A;border:1px solid {{ r.bd }}">
+<div style="display:flex;align-items:center;gap:8px;min-width:0"><div style="flex:none;width:22px;height:22px;background:{{ r.h }};color:{{ r.g }};font:700 11px/22px Inter;text-align:center">{{ r.glyph }}</div><div style="display:flex;flex-direction:column;gap:3px;min-width:0"><div style="font:600 13px/1 Inter;color:#ECE6D8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.n }}</div><div style="font:400 11px/1 Inter;color:#9A958A;white-space:nowrap">{{ r.sup }}</div></div></div>
+<div style="font:500 13px/1 'JetBrains Mono';color:#ECE6D8">{{ r.gold }}</div><div style="font:500 13px/1 'JetBrains Mono';color:#ECE6D8">{{ r.iron }}</div><div style="font:500 13px/1 'JetBrains Mono';color:#9A958A">{{ r.apm }}</div><div style="font:500 13px/1 'JetBrains Mono';color:#E3C887">{{ r.army }}</div>
+</div>
+</sc-for>
+<div style="font:400 12px/1.4 Inter;color:#9A958A;margin-top:auto">No command card while spectating. Click a player to follow their camera.</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ h.notSpec }}" hint-placeholder-val="{{ true }}">
+<div style="padding:12px 16px;display:flex;flex-direction:column;gap:10px;flex:1;min-height:0;border-bottom:1px solid #3A3F48;position:relative">{{ orn.divBottom }}
+<div style="display:flex;align-items:center;justify-content:space-between"><div style="font:600 12px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#E3C887;white-space:nowrap">{{ h.selHead }}</div><div style="font:500 11px/1 Inter;color:#9A958A;white-space:nowrap">{{ h.selSub }}</div></div>
+
+<sc-if value="{{ h.selGroup }}" hint-placeholder-val="{{ false }}">
+<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px">
+<sc-for list="{{ h.tiles }}" as="t" hint-placeholder-count="4"><div onClick="{{ t.go }}" title="{{ t.tip }}" tabIndex="0" style="position:relative;height:88px;background:{{ t.bg }};border:1px solid {{ t.bd }};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:1px"><div style="display:flex;color:{{ t.ic }}">{{ t.icon }}</div><div style="font:600 12px/1 Inter;color:#ECE6D8;white-space:nowrap">{{ t.n }}</div><div style="position:absolute;top:4px;right:5px;font:700 13px/1 'JetBrains Mono';color:#ECE6D8">×{{ t.c }}</div><div style="position:absolute;left:6px;right:6px;bottom:6px;height:4px;background:#14161A"><div style="width:{{ t.hp }};height:100%;background:#4FB39A"></div></div></div></sc-for>
+</div>
+<div style="display:flex;flex-wrap:wrap;gap:3px"><sc-for list="{{ h.minis }}" as="m" hint-placeholder-count="14"><div title="{{ m.tip }}" style="width:26px;height:26px;background:#14161A;border:1px solid {{ m.bd }};position:relative;display:flex;align-items:center;justify-content:center;color:#C9A86A">{{ m.icon }}<div style="position:absolute;left:2px;right:2px;bottom:2px;height:2px;background:#2A2F38"><div style="width:{{ m.hp }};height:100%;background:{{ m.hc }}"></div></div></div></sc-for></div>
+</sc-if>
+
+<sc-if value="{{ h.selOne }}" hint-placeholder-val="{{ true }}">
+<div style="display:grid;grid-template-columns:96px minmax(0,1fr);gap:12px">
+<div style="height:112px;background:{{ h.vat }};border:1px solid #8A6E3C;position:relative;display:flex;align-items:flex-end;justify-content:center"><div style="width:44px;height:64px;background:linear-gradient(180deg,#8FA0B0,#4A5A70);clip-path:polygon(50% 0,72% 16%,68% 40%,86% 62%,78% 100%,22% 100%,14% 62%,32% 40%,28% 16%);margin-bottom:10px;opacity:.85"></div><sc-if value="{{ h.lvBadge }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;top:-6px;right:-6px;width:30px;height:30px;background:#14161A;border:1px solid #E3C887;display:flex;align-items:center;justify-content:center;font:700 13px/1 Cinzel;color:#E3C887">{{ h.lvBadge }}</div></sc-if></div>
+<div style="display:flex;flex-direction:column;gap:6px;min-width:0">
+<div style="font:600 17px/1.1 Cinzel;color:#ECE6D8">{{ h.one.n }}</div>
+<div style="font:400 12px/1.2 Inter;color:#9A958A">{{ h.one.role }}</div>
+<div style="display:flex;flex-direction:column;gap:3px"><div style="display:flex;justify-content:space-between;font:500 11px/1 'JetBrains Mono';color:#ECE6D8"><div>{{ h.one.hpT }}</div><div style="color:#9A958A">{{ h.one.mpT }}</div></div><div style="height:6px;background:#14161A;border:1px solid #3A3F48"><div style="width:{{ h.one.hp }};height:100%;background:#4FB39A"></div></div><sc-if value="{{ h.one.mp }}" hint-placeholder-val="{{ false }}"><div style="height:4px;background:#14161A;border:1px solid #3A3F48"><div style="width:{{ h.one.mp }};height:100%;background:#56B4E9"></div></div></sc-if></div>
+<sc-if value="{{ h.one.xp }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:3px"><div style="display:flex;justify-content:space-between;font:500 11px/1 'JetBrains Mono';color:#9A958A"><div>XP</div><div>{{ h.one.xpT }}</div></div><div style="height:4px;background:#14161A;border:1px solid #3A3F48"><div style="width:{{ h.one.xp }};height:100%;background:#C9A86A"></div></div></div></sc-if>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px"><sc-for list="{{ h.one.stats }}" as="st" hint-placeholder-count="4"><div title="{{ st.k }}" style="background:#14161A;border:1px solid #3A3F48;padding:6px;display:flex;flex-direction:column;gap:4px"><div style="font:600 9px/1 Inter;letter-spacing:.08em;text-transform:uppercase;color:#9A958A">{{ st.k }}</div><div style="font:600 13px/1 'JetBrains Mono';color:#ECE6D8;white-space:nowrap">{{ st.v }}</div></div></sc-for></div>
+<sc-if value="{{ h.inv }}" hint-placeholder-val="{{ false }}"><div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px"><sc-for list="{{ h.inv }}" as="it" hint-placeholder-count="6"><div title="{{ it.tip }}" tabIndex="0" style="position:relative;height:50px;background:{{ it.bg }};border:1px {{ it.bs }} {{ it.bd }};display:flex;align-items:center;justify-content:center;color:#C9A86A;cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:1px">{{ it.icon }}<div style="position:absolute;top:2px;left:3px;font:600 9px/1 'JetBrains Mono';color:#9A958A">{{ it.k }}</div><sc-if value="{{ it.ch }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;right:3px;bottom:2px;font:700 10px/1 'JetBrains Mono';color:#ECE6D8">{{ it.ch }}</div></sc-if></div></sc-for></div></sc-if>
+<sc-if value="{{ h.queue }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font:600 10px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A">Production · 5 deep</div><div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px"><sc-for list="{{ h.queue }}" as="q" hint-placeholder-count="5"><div title="{{ q.tip }}" style="position:relative;height:50px;background:#14161A;border:1px solid {{ q.bd }};display:flex;align-items:center;justify-content:center;color:#C9A86A">{{ q.icon }}<sc-if value="{{ q.cur }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:0;right:0;bottom:0;height:4px;background:#2A2F38"><div style="width:{{ q.p }};height:100%;background:#C9A86A"></div></div><div style="position:absolute;top:2px;right:3px;font:600 9px/1 'JetBrains Mono';color:#ECE6D8">{{ q.t }}</div></sc-if></div></sc-for></div>
+<div style="display:flex;justify-content:space-between;align-items:center;font:500 12px/1.2 Inter;color:#ECE6D8"><div style="display:flex;align-items:center;gap:6px">{{ ic.flagSm }}Rally · North ford</div><div style="font:500 11px/1 'JetBrains Mono';color:#9A958A">Research: Tempered Plate 62%</div></div></div>
+</sc-if>
+</sc-if>
+</div>
+
+<div style="padding:12px 16px 14px;display:flex;flex-direction:column;gap:8px;flex:none">
+<div style="display:flex;justify-content:space-between;align-items:center"><div style="font:600 11px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#9A958A">{{ h.cardHead }}</div><div style="font:500 11px/1 Inter;color:#9A958A">{{ h.cardSub }}</div></div>
+<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px">
+<sc-for list="{{ h.card }}" as="b" hint-placeholder-count="12">
+<div onClick="{{ b.go }}" title="{{ b.tip }}" tabIndex="0" style="position:relative;height:78px;background:{{ b.bg }};border:1px {{ b.bs }} {{ b.bd }};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;opacity:{{ b.op }};cursor:{{ b.cur }};outline:none;overflow:hidden" style-hover="border-color:{{ b.hov }}" style-focus="outline:2px solid #E3C887;outline-offset:1px">
+<div style="position:absolute;top:4px;left:4px;font:600 10px/14px 'JetBrains Mono';height:16px;min-width:16px;text-align:center;padding:0 3px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:2px;background:#14161A;color:#ECE6D8">{{ b.k }}</div>
+<div style="display:flex;color:{{ b.ic }}">{{ b.icon }}</div>
+<div style="width:100%;font:500 11px/1.1 Inter;color:#ECE6D8;text-align:center;padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ b.n }}</div>
+<sc-if value="{{ b.cost }}" hint-placeholder-val="{{ false }}"><div style="width:100%;text-align:center;font:600 10px/1 'JetBrains Mono';color:{{ b.cFg }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 3px">{{ b.cost }}</div></sc-if>
+<sc-if value="{{ b.lock }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;top:4px;right:4px;display:flex">{{ ic.lockSm }}</div></sc-if>
+<sc-if value="{{ b.cd }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:0;right:0;bottom:0;height:{{ b.cd }};background:rgba(11,12,14,.72)"></div><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:700 18px/1 'JetBrains Mono';color:#ECE6D8">{{ b.cdT }}</div></sc-if>
+<sc-if value="{{ b.prog }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:0;right:0;bottom:0;height:4px;background:#2A2F38"><div style="width:{{ b.prog }};height:100%;background:#C9A86A"></div></div></sc-if>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-if>
+</div>
+
+<div style="grid-column:1 / -1;grid-row:3;position:relative;z-index:5;background:#20242B;border-top:1px solid #4A4234;display:flex;align-items:center;gap:16px;padding:0 16px;isolation:isolate">{{ orn.tex }}{{ Fb }}
+<sc-if value="{{ h.isReplay }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;align-items:center;gap:6px"><sc-for list="{{ repBtns }}" as="b" hint-placeholder-count="3"><div title="{{ b.tip }}" tabIndex="0" style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:{{ b.bg }};border:1px solid {{ b.bd }};color:#E3C887;cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:1px">{{ b.icon }}</div></sc-for></div>
+<div onPointerDown="{{ scrub }}" title="Timeline · drag to scrub · ← → jump 10 s" style="flex:1;height:32px;position:relative;cursor:pointer;touch-action:none">
+<div style="position:absolute;left:0;right:0;top:15px;height:2px;background:#3A3F48"></div>
+<div style="position:absolute;left:0;top:15px;height:2px;width:{{ repPct }};background:#C9A86A"></div>
+<sc-for list="{{ repMarks }}" as="m" hint-placeholder-count="5"><div title="{{ m.t }}" style="position:absolute;left:{{ m.x }};top:9px;width:2px;height:14px;background:{{ m.c }}"></div></sc-for>
+<div style="position:absolute;top:8px;left:{{ repPct }};width:16px;height:16px;margin-left:-8px;background:#14161A;border:2px solid #E3C887;transform:rotate(45deg)"></div>
+</div>
+<div style="font:600 13px/1 'JetBrains Mono';color:#ECE6D8;white-space:nowrap">{{ repTime }} / 26:03</div>
+<div style="display:flex;gap:3px"><sc-for list="{{ repSpeeds }}" as="o" hint-placeholder-count="5"><div onClick="{{ o.go }}" title="Playback {{ o.n }}" tabIndex="0" style="height:30px;padding:0 8px;display:flex;align-items:center;background:{{ o.bg }};border:1px solid {{ o.bd }};font:600 12px/1 'JetBrains Mono';color:{{ o.fg }};cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:1px">{{ o.n }}</div></sc-for></div>
+</sc-if>
+<sc-if value="{{ h.notReplay }}" hint-placeholder-val="{{ true }}">
+<div title="{{ h.alertTip }}" style="display:flex;align-items:center;gap:10px;min-width:0;flex:1"><div style="display:flex">{{ h.alertIcon }}</div><div style="font:500 13px/1 Inter;color:{{ h.alertFg }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ h.alert }}</div><sc-if value="{{ h.alertKey }}" hint-placeholder-val="{{ false }}"><div style="font:600 10px/14px 'JetBrains Mono';height:18px;padding:0 4px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#14161A;color:#ECE6D8">{{ h.alertKey }}</div></sc-if></div>
+<div style="width:1px;height:24px;background:#3A3F48"></div>
+<div title="Chat (Enter · Shift Enter for everyone)" style="display:flex;align-items:center;gap:8px;font:500 12px/1 Inter;color:#9A958A;white-space:nowrap">{{ ic.chat }}Chat<div style="font:600 10px/14px 'JetBrains Mono';height:18px;padding:0 4px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#14161A;color:#ECE6D8">Enter</div></div>
+<div title="Ping the minimap or the ground (Alt + click)" style="display:flex;align-items:center;gap:8px;font:500 12px/1 Inter;color:#9A958A;white-space:nowrap">Ping<div style="font:600 10px/14px 'JetBrains Mono';height:18px;padding:0 4px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#14161A;color:#ECE6D8">Alt click</div></div>
+<div style="width:1px;height:24px;background:#3A3F48"></div>
+<div title="Current objective" style="display:flex;align-items:center;gap:8px;font:500 13px/1 Inter;color:#ECE6D8;white-space:nowrap">{{ ic.flagSm }}{{ h.obj }}</div>
+</sc-if>
+</div>
+</div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+</section>
+
+
+<section id="s33" style="display:flex;flex-direction:column;gap:20px;padding:0 64px 96px">
+<div style="font:600 24px/1 Cinzel;color:#E3C887">3.3 · Score screen · victory and defeat</div>
+<sc-if value="{{ show.s33 }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;gap:64px;align-items:flex-start">
+<sc-for list="{{ scores }}" as="sc" hint-placeholder-count="2">
+<div id="{{ sc.id }}" style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;gap:10px;align-items:center"><div style="font:600 12px/1 'JetBrains Mono';color:#14161A;background:#C9A86A;padding:4px 7px">{{ sc.code }}</div><div style="font:500 14px/1 Inter;color:#ECE6D8">{{ sc.label }}</div><div style="font:600 10px/1 Inter;letter-spacing:.1em;color:#4FB39A;border:1px solid #4FB39A;padding:3px 5px">INTERACTIVE · TABS</div></div>
+<div data-screen-label="{{ sc.code }}" style="width:1920px;height:1080px;position:relative;overflow:hidden;background:#14161A;box-shadow:0 0 0 1px #2A2F38;display:grid;grid-template-rows:56px minmax(0,1fr) 40px">
+<dc-import name="Shell Top Bar" mode="Play" title="Match results" sub="{{ sc.topSub }}" net="online" user="Ilse Varga" role="Commander · Architect" lv="{{ LV }}" hint-size="100%,56px"></dc-import>
+<div style="display:grid;grid-template-columns:minmax(0,1fr) 440px;min-height:0">
+<div style="position:relative;isolation:isolate;padding:28px 40px;display:flex;flex-direction:column;gap:18px;min-width:0">{{ orn.tex }}
+<div style="display:flex;align-items:center;gap:24px">
+<div style="flex:none">{{ sc.seal }}</div>
+<div style="display:flex;flex-direction:column;gap:10px"><div style="font:600 12px/1 Inter;letter-spacing:.16em;text-transform:uppercase;color:{{ sc.kFg }}">{{ sc.kick }}</div><div style="font:700 64px/1 Cinzel;color:#ECE6D8">{{ sc.title }}</div><div style="font:400 16px/1.4 Inter;color:#9A958A">{{ sc.sub }}</div></div>
+</div>
+<div style="display:flex;gap:4px"><sc-for list="{{ sc.tabs }}" as="t" hint-placeholder-count="4"><div onClick="{{ t.go }}" title="{{ t.n }} ({{ t.k }})" tabIndex="0" style="height:40px;padding:0 18px;display:flex;align-items:center;gap:10px;background:{{ t.bg }};border:1px solid {{ t.bd }};font:600 13px/1 Inter;color:{{ t.fg }};cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ t.n }}<div style="font:600 10px/14px 'JetBrains Mono';height:18px;padding:0 4px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#14161A;color:#ECE6D8">{{ t.k }}</div></div></sc-for></div>
+<sc-if value="{{ sc.isTable }}" hint-placeholder-val="{{ true }}">
+<div style="display:grid;grid-template-columns:minmax(0,1fr) repeat(5,120px);gap:12px;padding:0 16px;font:600 11px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A"><div>Commander</div><sc-for list="{{ sc.cols }}" as="c" hint-placeholder-count="5"><div style="text-align:right">{{ c }}</div></sc-for></div>
+<sc-for list="{{ sc.rows }}" as="r" hint-placeholder-count="4">
+<div style="display:grid;grid-template-columns:minmax(0,1fr) repeat(5,120px);gap:12px;align-items:center;height:64px;padding:0 16px;background:{{ r.bg }};border:1px solid {{ r.bd }}">
+<div style="display:flex;align-items:center;gap:12px"><div style="width:30px;height:30px;background:{{ r.h }};color:{{ r.g }};font:700 14px/30px Inter;text-align:center">{{ r.glyph }}</div><div style="display:flex;flex-direction:column;gap:5px"><div style="font:600 16px/1 Inter;color:#ECE6D8">{{ r.n }}</div><div style="font:400 12px/1 Inter;color:#9A958A">{{ r.team }}</div></div></div>
+<sc-for list="{{ r.v }}" as="v" hint-placeholder-count="5"><div style="text-align:right;font:600 16px/1 'JetBrains Mono';color:{{ v.fg }}">{{ v.t }}</div></sc-for>
+</div>
+</sc-for>
+</sc-if>
+<sc-if value="{{ sc.isGraph }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;min-height:0;background:#20242B;border:1px solid #3A3F48;padding:18px 20px;display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;justify-content:space-between"><div style="font:600 14px/1 Inter;color:#ECE6D8">Army value over time</div><div style="display:flex;gap:14px"><sc-for list="{{ legend }}" as="l" hint-placeholder-count="4"><div style="display:flex;align-items:center;gap:6px;font:500 12px/1 Inter;color:#ECE6D8"><div style="width:16px;height:16px;background:{{ l.h }};color:{{ l.g }};font:700 9px/16px Inter;text-align:center">{{ l.glyph }}</div>{{ l.n }}</div></sc-for></div></div>
+<div style="flex:1;min-height:0;position:relative">{{ graph }}</div>
+</div>
+</sc-if>
+</div>
+<div style="background:#20242B;border-left:1px solid #4A4234;position:relative;isolation:isolate;display:flex;flex-direction:column;gap:16px;padding:24px 24px 20px" style-hover="--chiH:1">{{ orn.tex }}{{ F2 }}
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font:600 12px/1 Inter;letter-spacing:.14em;text-transform:uppercase;color:#C9A86A">Your match</div><div style="font:600 24px/1.2 Cinzel;color:#ECE6D8">Ilse Varga</div>{{ orn.inspTitle }}</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><sc-for list="{{ sc.mine }}" as="m" hint-placeholder-count="6"><div style="background:#14161A;border:1px solid #3A3F48;padding:12px;display:flex;flex-direction:column;gap:6px"><div style="font:600 10px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A">{{ m.k }}</div><div style="font:600 20px/1 'JetBrains Mono';color:#ECE6D8">{{ m.v }}</div></div></sc-for></div>
+<div style="display:flex;flex-direction:column;gap:6px;padding:12px 14px;background:#14161A;border:1px solid #3A3F48"><div style="font:600 11px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A">Hero</div><div style="font:500 14px/1.4 Inter;color:#ECE6D8">{{ sc.heroLine }}</div></div>
+<div style="margin-top:auto;display:flex;flex-direction:column;gap:10px">
+<button title="{{ sc.pTip }}" style="position:relative;height:52px;display:flex;align-items:center;justify-content:center;gap:12px;background:#173129;border:1px solid #4FB39A;color:#ECE6D8;font:600 14px/1 Inter;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;outline:none" style-hover="background:#1D3B32" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ pulse }}{{ sc.primary }}<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#14161A;color:#ECE6D8;letter-spacing:0">Enter</div></button>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><sc-for list="{{ scoreBtns }}" as="b" hint-placeholder-count="2"><button title="{{ b.tip }}" style="position:relative;height:40px;display:flex;align-items:center;justify-content:center;gap:8px;background:#2A2F38;border:1px solid #8A6E3C;color:#ECE6D8;font:500 13px/1 Inter;cursor:pointer;outline:none;white-space:nowrap" style-hover="border-color:#C9A86A;background:#333945" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ b.n }}<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#14161A;color:#ECE6D8">{{ b.k }}</div>{{ orn.btnDark }}</button></sc-for></div>
+</div>
+</div>
+</div>
+<div style="background:#20242B;border-top:1px solid #4A4234;display:flex;align-items:center;gap:22px;padding:0 20px"><div style="font:500 12px/1 Inter;color:#9A958A">1–4 tabs · Enter continue · R watch replay</div><div style="flex:1"></div><div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">Esc → Play hub</div></div>
+</div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+</section>
+
+<section id="s35" style="display:flex;flex-direction:column;gap:20px;padding:0 64px 128px">
+<div style="font:600 24px/1 Cinzel;color:#E3C887">3.5 · Hero picker</div>
+<sc-if value="{{ show.s35 }}" hint-placeholder-val="{{ true }}">
+<div id="a35a" style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;gap:10px;align-items:center"><div style="font:600 12px/1 'JetBrains Mono';color:#14161A;background:#C9A86A;padding:4px 7px">3.5a</div><div style="font:500 14px/1 Inter;color:#ECE6D8">Hero picker · before Ashen Crown, chapter 3</div><div style="font:600 10px/1 Inter;letter-spacing:.1em;color:#4FB39A;border:1px solid #4FB39A;padding:3px 5px">INTERACTIVE · PICK A HERO</div></div>
+<div data-screen-label="3.5a Hero picker" style="width:1920px;height:1080px;position:relative;overflow:hidden;background:#14161A;box-shadow:0 0 0 1px #2A2F38;display:grid;grid-template-rows:56px minmax(0,1fr) 40px">
+<dc-import name="Shell Top Bar" mode="Play" title="Choose your hero" sub="Ashen Crown · chapter 3 · persistent heroes" net="online" user="Ilse Varga" role="Commander · Architect" lv="{{ LV }}" hint-size="100%,56px"></dc-import>
+<div style="display:grid;grid-template-columns:340px minmax(0,1fr) 460px;min-height:0">
+<div style="background:#20242B;border-right:1px solid #4A4234;position:relative;isolation:isolate;display:flex;flex-direction:column;gap:6px;padding:22px 16px" style-hover="--chiH:1">{{ orn.tex }}{{ F }}
+<div style="display:flex;align-items:center;gap:12px;padding:0 6px 12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">Saved heroes · 4</div>{{ orn.hr }}</div>
+<sc-for list="{{ heroes }}" as="hh" hint-placeholder-count="4">
+<div onClick="{{ hh.go }}" title="{{ hh.tip }}" tabIndex="0" style="display:grid;grid-template-columns:60px minmax(0,1fr) auto;gap:12px;align-items:center;padding:8px;background:{{ hh.bg }};border:1px solid {{ hh.bd }};opacity:{{ hh.op }};cursor:{{ hh.cur }};outline:none" style-hover="background:#2A2F38" style-focus="outline:2px solid #E3C887;outline-offset:1px">
+<div style="height:60px;background:{{ hh.vat }};border:1px solid #8A6E3C"></div>
+<div style="display:flex;flex-direction:column;gap:5px;min-width:0"><div style="font:600 15px/1 Inter;color:{{ hh.fg }}">{{ hh.n }}</div><div style="font:400 12px/1.2 Inter;color:#9A958A">{{ hh.cls }}</div><div style="font:400 12px/1 Inter;color:{{ hh.nFg }}">{{ hh.note }}</div></div>
+<div style="width:34px;height:34px;border:1px solid #E3C887;background:#14161A;display:flex;align-items:center;justify-content:center;font:700 14px/1 Cinzel;color:#E3C887">{{ hh.lv }}</div>
+</div>
+</sc-for>
+<button title="Create a new level-1 hero for this scenario (N)" style="margin-top:8px;height:44px;display:flex;align-items:center;justify-content:center;gap:8px;background:transparent;border:1px dashed #5C5446;color:#ECE6D8;font:500 13px/1 Inter;cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ ic.plusG }}New hero · starts at level 1</button>
+</div>
+<div style="position:relative;isolation:isolate;display:flex;align-items:center;justify-content:center">{{ orn.tex }}
+<div style="position:relative;width:520px;height:760px;display:flex;flex-direction:column;align-items:center">
+<div style="position:absolute;top:0;left:50%;transform:translateX(-50%);width:420px;height:24px;background:linear-gradient(90deg,#4A4234,#8A6E3C 50%,#4A4234);border:1px solid #C9A86A"></div>
+<div style="position:absolute;top:24px;left:50%;transform:translateX(-50%);width:380px;height:640px;background:{{ hSel.vatBig }};border-left:1px solid #8A6E3C;border-right:1px solid #8A6E3C;display:flex;align-items:flex-end;justify-content:center;overflow:hidden">
+<div style="width:190px;height:420px;margin-bottom:60px;background:linear-gradient(180deg,#9FB0BE,#4A5A70 70%,#2E3A4A);clip-path:polygon(50% 0,64% 6%,66% 16%,60% 22%,78% 30%,86% 56%,76% 58%,72% 42%,68% 70%,72% 100%,28% 100%,32% 70%,28% 42%,24% 58%,14% 56%,22% 30%,40% 22%,34% 16%,36% 6%);opacity:.9"></div>
+<div style="position:absolute;inset:0;background:repeating-linear-gradient(90deg,rgba(255,255,255,.03) 0 2px,transparent 2px 38px)"></div>
+</div>
+<div style="position:absolute;bottom:40px;left:50%;transform:translateX(-50%);width:440px;height:72px;background:linear-gradient(180deg,#8A6E3C,#4A4234);border:1px solid #C9A86A;display:flex;align-items:center;justify-content:center;gap:14px">{{ vatSigil }}<div style="font:600 22px/1 Cinzel;color:#14161A;letter-spacing:.08em">{{ hSel.n }}</div>{{ vatSigil2 }}</div>
+<div style="position:absolute;bottom:0;left:50%;transform:translateX(-50%);font:500 12px/1 Inter;color:#9A958A;white-space:nowrap">Specimen vat · drag to turn the model</div>
+</div>
+</div>
+<div style="background:#20242B;border-left:1px solid #4A4234;position:relative;isolation:isolate;display:flex;flex-direction:column;gap:16px;padding:24px 24px 20px" style-hover="--chiH:1">{{ orn.tex }}{{ F2 }}
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font:600 12px/1 Inter;letter-spacing:.14em;text-transform:uppercase;color:#C9A86A">{{ hSel.cls }}</div><div style="font:600 30px/1.1 Cinzel;color:#ECE6D8">{{ hSel.n }}</div>{{ orn.inspTitle }}</div>
+<div style="display:flex;align-items:center;gap:12px"><div style="width:44px;height:44px;border:1px solid #E3C887;background:#14161A;display:flex;align-items:center;justify-content:center;font:700 18px/1 Cinzel;color:#E3C887">{{ hSel.lv }}</div><div style="flex:1;display:flex;flex-direction:column;gap:5px"><div style="display:flex;justify-content:space-between;font:500 12px/1 'JetBrains Mono';color:#9A958A"><div>Level {{ hSel.lv }}</div><div>{{ hSel.xpT }}</div></div><div style="height:6px;background:#14161A;border:1px solid #3A3F48"><div style="width:{{ hSel.xp }};height:100%;background:#C9A86A"></div></div></div></div>
+<div style="display:flex;flex-direction:column;gap:6px;padding:12px 14px;background:#14161A;border:1px solid #4A4234"><div style="font:600 10px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A">Signature ability</div><div style="font:600 15px/1.2 Inter;color:#E3C887">{{ hSel.sig }}</div><div style="font:400 13px/1.45 Inter;color:#ECE6D8;text-wrap:pretty">{{ hSel.sigD }}</div></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font:600 10px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A">Carried items · 6 slots</div><div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px"><sc-for list="{{ hSel.items }}" as="it" hint-placeholder-count="6"><div title="{{ it.tip }}" style="height:56px;background:{{ it.bg }};border:1px {{ it.bs }} {{ it.bd }};display:flex;align-items:center;justify-content:center;color:#C9A86A">{{ it.icon }}</div></sc-for></div></div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px"><sc-for list="{{ hSel.stats }}" as="st" hint-placeholder-count="3"><div style="background:#14161A;border:1px solid #3A3F48;padding:10px;display:flex;flex-direction:column;gap:6px"><div style="font:600 10px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A">{{ st.k }}</div><div style="font:600 16px/1 'JetBrains Mono';color:#ECE6D8">{{ st.v }}</div></div></sc-for></div>
+<div style="margin-top:auto;display:flex;flex-direction:column;gap:10px">
+<div style="font:400 13px/1.45 Inter;color:#9A958A">Your hero keeps its level, items and Brass between chapters. The other Commanders are still choosing.</div>
+<button title="Take {{ hSel.n }} into the match (Enter)" style="position:relative;height:54px;display:flex;align-items:center;justify-content:center;gap:12px;background:#173129;border:1px solid #4FB39A;color:#ECE6D8;font:600 14px/1 Inter;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;outline:none" style-hover="background:#1D3B32" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ pulse }}Take {{ hSel.short }}<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#14161A;color:#ECE6D8;letter-spacing:0">Enter</div></button>
+</div>
+</div>
+</div>
+<div style="background:#20242B;border-top:1px solid #4A4234;display:flex;align-items:center;gap:22px;padding:0 20px"><div style="font:500 12px/1 Inter;color:#9A958A">↑ ↓ choose · Enter confirm · drag the vat to turn · 0:38 until the match starts</div><div style="flex:1"></div><div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">Esc → lobby</div></div>
+</div>
+</div>
+</sc-if>
+</section></x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;uiOrnament&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Off&quot;,&quot;Subtle&quot;,&quot;Full&quot;],&quot;default&quot;:&quot;Full&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;lvMaster&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:5,&quot;min&quot;:1,&quot;max&quot;:5,&quot;step&quot;:1,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;lvBorderStyle&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Engraved line&quot;,&quot;Double line&quot;,&quot;Woven rope&quot;,&quot;Filigree corners&quot;,&quot;Sigil-studded&quot;],&quot;default&quot;:&quot;Woven rope&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;reducedMotion&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;}}">
+const PL = [
+  { n: 'Blue', h: '#0072B2', g: '#FFFFFF', glyph: '◆' }, { n: 'Vermillion', h: '#D55E00', g: '#14161A', glyph: '▲' },
+  { n: 'Sky', h: '#56B4E9', g: '#14161A', glyph: '●' }, { n: 'Purple', h: '#CC79A7', g: '#14161A', glyph: '■' },
+  { n: 'Orange', h: '#E69F00', g: '#14161A', glyph: '✚' }, { n: 'Yellow', h: '#F0E442', g: '#14161A', glyph: '★' }, { n: 'Green', h: '#009E73', g: '#FFFFFF', glyph: '⬟' }];
+const rnd = seed => { let x = seed; return () => (x = (x * 16807) % 2147483647) / 2147483647; };
+
+class Component extends DCLogic {
+  state = { only: 'All', hudOnly: 'All', cam: { x: .34, y: .58 }, replay: 0, grp: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], sub: 0, vis: 0, rep: 38, rspd: 2, clock: 872, wait: 42, score: ['overview', 'overview'], sTab: 0, hero: 0, pauseSel: 0, cardHit: null };
+  componentDidMount() {
+    this.poll = setInterval(() => { if (window.CHI_LV && window.CHI_ORN && window.CHI_ICON) { clearInterval(this.poll); this.forceUpdate(); } }, 120);
+    this.tick = setInterval(() => { if (document.hidden) return; this.setState(st => ({ clock: st.clock + 2, wait: st.wait <= 1 ? 42 : st.wait - 2 })); }, 2000);
+    this.onKey = ev => {
+      const t = ev.target; if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+      if (/^[1-9]$/.test(ev.key)) this.setState(st => { const g = st.grp.slice(); g[1] = +ev.key; return { grp: g }; });
+      if (ev.key === 'Tab') { ev.preventDefault(); this.setState(st => ({ sub: (st.sub + 1) % 4 })); }
+    };
+    window.addEventListener('keydown', this.onKey);
+  }
+  componentWillUnmount() { clearInterval(this.poll); clearInterval(this.tick); window.removeEventListener('keydown', this.onKey); }
+  vat(c) { return `radial-gradient(circle at 50% 70%, ${c || '#2E4A44'} 0, #1A1D22 62%), #14161A`; }
+  world(o) {
+    const e = React.createElement, R = rnd(o.seed || 7), kids = [], L = (k, st, ch) => e('div', { key: k, style: Object.assign({ position: 'absolute' }, st) }, ch);
+    kids.push(L('g', { inset: 0, background: 'linear-gradient(160deg,#4B4A34 0%,#3E4530 35%,#434232 60%,#3A3C2C 100%)' }));
+    kids.push(L('f1', { left: '4%', top: '6%', width: '34%', height: '26%', background: 'rgba(128,116,72,.35)', clipPath: 'polygon(6% 0,100% 10%,92% 100%,0 86%)' }));
+    kids.push(L('f2', { left: '58%', top: '62%', width: '30%', height: '24%', background: 'rgba(96,108,62,.35)', clipPath: 'polygon(0 12%,94% 0,100% 88%,6% 100%)' }));
+    kids.push(L('fu', { inset: 0, opacity: .55, backgroundImage: 'repeating-linear-gradient(112deg, rgba(0,0,0,.09) 0 2px, transparent 2px 9px)' }));
+    ['8% 58% 22% 30%', '70% 4% 26% 26%', '40% 70% 20% 26%', '82% 40% 16% 22%'].forEach((q, i) => { const [x, y, w, h] = q.split(' '); kids.push(L('w' + i, { left: x, top: y, width: w, height: h, backgroundImage: 'radial-gradient(circle,#1F271A 0 3px,#2A3322 3px 4px,transparent 5px)', backgroundSize: '11px 9px', clipPath: 'polygon(20% 0,80% 6%,100% 40%,86% 92%,30% 100%,0 60%)', opacity: .95 })); });
+    if (!o.arena) kids.push(L('r', { left: '-5%', right: '-5%', top: '38%', height: '26%', background: 'linear-gradient(180deg,#5D6C6A,#6F7E7B 50%,#5B6966)', clipPath: 'polygon(0 30%,20% 22%,38% 40%,52% 34%,70% 52%,86% 46%,100% 58%,100% 76%,86% 64%,70% 70%,52% 52%,38% 58%,20% 42%,0 50%)', opacity: .9 }));
+    if (!o.arena) kids.push(L('ford', { left: '46%', top: '44%', width: '6%', height: '14%', backgroundImage: 'radial-gradient(circle,#8A8674 0 3px,transparent 4px)', backgroundSize: '10px 8px', opacity: .9 }));
+    kids.push(L('road', { left: '-2%', right: '-2%', top: '68%', height: '3%', background: 'rgba(150,132,96,.45)', transform: 'rotate(-8deg)' }));
+    if (o.arena) [0, 1, 2].forEach(i => kids.push(L('ln' + i, { left: '-5%', right: '-5%', top: (22 + i * 26) + '%', height: '5%', background: 'rgba(160,140,100,.5)', transform: `rotate(${[-10, 0, 10][i]}deg)` })));
+    for (let i = 0; i < 70; i++) kids.push(L('rk' + i, { left: (R() * 100) + '%', top: (R() * 100) + '%', width: 3 + R() * 6, height: 2 + R() * 4, background: R() > .5 ? '#6B6552' : '#2E3226', opacity: .8 }));
+    kids.push(L('x', { inset: 0, opacity: .5, mixBlendMode: 'overlay', backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 .7 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")" }));
+    (o.buildings || []).forEach((b, i) => { kids.push(L('b' + i, { left: b[0] + '%', top: b[1] + '%', width: b[3] || 46, height: b[3] || 46, transform: 'translate(-50%,-50%)', background: b[2] === 0 ? 'linear-gradient(135deg,#6E7C8C,#44505E)' : 'linear-gradient(135deg,#7A3A34,#4A2420)', border: '1px solid #14161A', boxShadow: `0 0 0 2px ${PL[b[4] != null ? b[4] : (b[2] === 0 ? 0 : 1)].h}` })); if (b[5]) kids.push(L('bh' + i, { left: b[0] + '%', top: `calc(${b[1]}% - ${(b[3] || 46) / 2 + 10}px)`, width: 46, height: 4, transform: 'translateX(-50%)', background: '#14161A' }, null)); });
+    (o.units || []).forEach((u, i) => {
+      const [x, y, p, sel, hp] = u, own = p === 0 || p === 2, sz = u[5] || 12;
+      kids.push(L('u' + i, { left: x + '%', top: y + '%', width: sz, height: sz, borderRadius: '50%', transform: 'translate(-50%,-50%)', background: own ? '#8FA0B0' : '#9A4A40', border: '1px solid #14161A', boxShadow: `0 0 0 2px ${PL[p].h}${sel ? ', 0 0 0 4px #4FB39A' : ''}` }));
+      if (sel || hp < 1) kids.push(L('hp' + i, { left: x + '%', top: `calc(${y}% - ${sz / 2 + 8}px)`, width: 18, height: 3, transform: 'translateX(-50%)', background: '#14161A', overflow: 'hidden' }));
+      if (sel || hp < 1) kids.push(L('hq' + i, { left: `calc(${x}% - 9px)`, top: `calc(${y}% - ${sz / 2 + 8}px)`, width: 18 * hp, height: 3, background: own ? '#4FB39A' : '#E2735F' }));
+    });
+    if (o.rally) kids.push(e('svg', { key: 'ral', width: '100%', height: '100%', style: { position: 'absolute', inset: 0 } }, e('line', { x1: o.rally[0] + '%', y1: o.rally[1] + '%', x2: o.rally[2] + '%', y2: o.rally[3] + '%', stroke: '#4FB39A', strokeWidth: 2, strokeDasharray: '6 5' }), e('circle', { cx: o.rally[2] + '%', cy: o.rally[3] + '%', r: 7, fill: 'none', stroke: '#4FB39A', strokeWidth: 2 })));
+    if (o.range) kids.push(L('rg', { left: o.range[0] + '%', top: o.range[1] + '%', width: o.range[2], height: o.range[2] * .62, transform: 'translate(-50%,-50%)', borderRadius: '50%', border: '1px dashed #E3C887', background: 'rgba(227,200,135,.05)' }));
+    (o.pings || []).forEach((pg, i) => { kids.push(L('pg' + i, { left: pg[0] + '%', top: pg[1] + '%', width: 44, height: 44, transform: 'translate(-50%,-50%)', borderRadius: '50%', border: `3px solid ${pg[2]}`, boxShadow: '0 0 0 2px #14161A, inset 0 0 0 2px #14161A' })); kids.push(L('pgl' + i, { left: `calc(${pg[0]}% + 22px)`, top: `calc(${pg[1]}% - 10px)`, font: '600 12px/1 Inter', color: '#ECE6D8', background: 'rgba(20,22,26,.88)', border: '1px solid #3A3F48', padding: '4px 6px', whiteSpace: 'nowrap' }, [pg[3]])); });
+    if (o.fog) kids.push(L('fog', { inset: 0, background: 'rgba(8,9,11,.62)', WebkitMaskImage: `radial-gradient(ellipse 48% 56% at ${o.fog[0]}% ${o.fog[1]}%, transparent 60%, #000 100%)`, maskImage: `radial-gradient(ellipse 48% 56% at ${o.fog[0]}% ${o.fog[1]}%, transparent 60%, #000 100%)` }));
+    return e('div', { key: 'world', style: { position: 'absolute', inset: 0, overflow: 'hidden', background: '#2E3226' } }, kids);
+  }
+  renderVals() {
+    const s = this.state, p = this.props, I = (n, sz, c) => window.CHI_ICON ? window.CHI_ICON(React, n, sz || 18, c) : null, nil = () => null;
+    const lv = window.CHI_LV ? window.CHI_LV(React, p, { replay: s.replay }) : null;
+    const LV = lv || { orn: {}, frame: nil, pulse: nil, seal: nil, progress: nil, ring: nil, sigil: nil, circle: nil };
+    const orn = LV.orn, on = (a, b) => ({ bg: a === b ? '#2A2F38' : '#14161A', bd: a === b ? '#E3C887' : '#3A3F48', fg: a === b ? '#E3C887' : '#ECE6D8' });
+    const R = rnd(11 + s.grp[1] * 0), army = (n, cx, cy, spread, pp, sel) => Array.from({ length: n }, () => [cx + (R() - .5) * spread, cy + (R() - .5) * spread * .7, pp, sel, .4 + R() * .6]);
+    const fmtT = t => Math.floor(t / 60) + ':' + ('0' + (t % 60)).slice(-2);
+    const BLD = [[22, 72, 0, 64, 0, 0], [30, 80, 0, 46], [14, 62, 0, 40], [80, 20, 1, 64, 1], [74, 12, 1, 46, 1]];
+    const C = (k, n, icon, o) => Object.assign({ k, n, icon }, o || {});
+    const CARDS = {
+      worker: [C('Q', 'Foundry', 'place', { cost: '150 g' }), C('W', 'Refinery', 'resource', { cost: '100 g' }), C('E', 'Watchtower', 'prop', { cost: '75 g', lock: 'Needs a Foundry' }), C('R', 'Alembic Works', 'array', { cost: '220 g', lock: 'Needs a Foundry and a Smithy' }),
+        C('A', 'Attack', 'swords'), C('S', 'Stop', 'stop'), C('D', 'Hold', 'pathing'), C('F', 'Patrol', 'flag'), C('Z', 'Gather', 'resource', { active: 1 }), C('X', 'Return cargo', 'undo'), C('C', 'Repair', 'rotate'), C('V', '', null, { empty: 1 })],
+      army: [C('Q', 'Attack', 'swords'), C('W', 'Move', 'move'), C('E', 'Stop', 'stop'), C('R', 'Hold', 'pathing'), C('A', 'Patrol', 'flag'), C('S', 'Shield wall', 'place', { active: 1, tipX: 'Sentinels · autocast on' }), C('D', 'Volley', 'swords', { cd: '60%', cdT: '6' }), C('F', 'Siege shot', 'array', { cost: '40 aether', poor: 1 }),
+        C('Z', 'Formation', 'grid'), C('X', 'Spread', 'move'), C('C', 'Tab: next', 'chevron'), C('V', '', null, { empty: 1 })],
+      hero: [C('Q', 'Sunder · 2', 'swords', { cd: '35%', cdT: '4' }), C('W', 'Oath of Iron · 1', 'place', { cost: '60 aether' }), C('E', 'Transmute Wounds', 'array', { passive: 1 }), C('R', 'Crucible Nova', 'win', { cost: '120 aether' }),
+        C('A', 'Attack', 'swords'), C('S', 'Stop', 'stop'), C('D', 'Hold', 'pathing'), C('F', 'Patrol', 'flag'), C('Z', 'Learn · +1', 'plus', { active: 1 }), C('X', 'Hero inventory', 'grid'), C('C', '', null, { empty: 1 }), C('V', '', null, { empty: 1 })],
+      shop: [C('Q', 'Quicksilver vial', 'water', { cost: '90 g · 3' }), C('W', 'Iron gauntlets', 'unit', { cost: '250 g' }), C('E', 'Salt ward', 'region', { cost: '150 g' }), C('R', 'Phoenix ash', 'win', { cost: '400 g', lock: 'Needs hero level 8' }),
+        C('A', 'Aether draught', 'resource', { cost: '60 g' }), C('S', 'Tunnel map', 'map', { cost: 'Sold out · 0:40', poor: 1 }), C('D', 'Ember charm', 'alert', { cost: '200 g' }), C('F', 'Tome of Brass', 'book', { cost: '1,500 g', poor: 1 }),
+        C('Z', 'Sell item', 'x'), C('X', 'Undo purchase', 'undo', { cost: '0:08' }), C('C', '', null, { empty: 1 }), C('V', '', null, { empty: 1 })],
+      bldg: [C('Q', 'Sentinel', 'unit', { cost: '120 g · 2' }), C('W', 'Arbalest', 'swords', { cost: '140 g · 2' }), C('E', 'Alembic', 'array', { cost: '260 g · 4', lock: 'Needs Alchemy Works' }), C('R', 'Acolyte', 'owner', { cost: '50 g · 1' }),
+        C('A', 'Tempered Plate', 'place', { prog: '62%', cost: 'researching' }), C('S', 'Quench Oil', 'water', { cost: 'queued' }), C('D', 'Set rally', 'flag', { active: 1 }), C('F', 'Cancel last', 'x'),
+        C('Z', 'Great Foundry', 'crown', { cost: '200 iron', poor: 1 }), C('X', '', null, { empty: 1 }), C('C', '', null, { empty: 1 }), C('V', '', null, { empty: 1 })],
+      arena: [C('Q', 'Ember Lash', 'swords', { cd: '50%', cdT: '3' }), C('W', 'Cinder Step', 'move', { cost: '40 mana' }), C('E', 'Kindling', 'array', { passive: 1 }), C('R', 'Pyre', 'win', { cd: '80%', cdT: '41' }),
+        C('A', 'Attack', 'swords'), C('S', 'Stop', 'stop'), C('D', 'Hold', 'pathing'), C('F', 'Back to vat', 'undo', { cost: '8 s channel' }), C('Z', '', null, { empty: 1 }), C('X', 'Shop (in base)', 'grid', { lock: 'Only inside your base' }), C('C', '', null, { empty: 1 }), C('V', '', null, { empty: 1 })]
+    };
+    const mkCard = (list) => list.map(b => {
+      const dis = !!b.lock || !!b.poor, em = !!b.empty;
+      return { k: b.k, n: b.n, icon: b.icon ? I(b.icon, 24) : null, cost: b.cost || '', cFg: b.poor ? '#E2735F' : '#9A958A', lock: !!b.lock, cd: b.cd || '', cdT: b.cdT || '', prog: b.prog || '',
+        bg: em ? 'transparent' : b.active ? '#173129' : '#14161A', bd: em ? '#2A2F38' : b.active ? '#4FB39A' : b.lock ? '#3A3F48' : '#4A4234', bs: em ? 'dashed' : 'solid', op: b.lock ? .55 : 1, ic: b.active ? '#4FB39A' : b.passive ? '#9A958A' : '#C9A86A',
+        cur: em ? 'default' : dis ? 'not-allowed' : 'pointer', hov: em ? '#2A2F38' : '#E3C887',
+        tip: em ? 'Empty slot' : `${b.n} (${b.k})` + (b.cost ? ' · ' + b.cost : '') + (b.lock ? ' · locked: ' + b.lock : '') + (b.poor ? ' · not enough' : '') + (b.passive ? ' · passive' : '') + (b.tipX ? ' · ' + b.tipX : ''),
+        go: () => {} };
+    });
+    const UT = [['Sentinel', 'unit'], ['Arbalest', 'swords'], ['Alembic', 'array'], ['Maren Vail', 'crown']];
+    const groupsFor = (sel, extra) => [[1, 'swords', 14], [2, 'unit', 6], [3, 'owner', 8], [4, 'place', 1], [5, null, 0], [6, null, 0], [7, null, 0], [8, null, 0], [9, null, 0]].map(([n, ic, c]) => ({
+      n, c: c ? '' + c : '', icon: ic ? I(ic, 18) : null, bg: sel === n ? '#2A2F38' : '#14161A', bd: sel === n ? '#E3C887' : c ? '#4A4234' : '#2A2F38', bs: c ? 'solid' : 'dashed', op: c ? 1 : .5, nFg: sel === n ? '#E3C887' : '#9A958A', ic: sel === n ? '#E3C887' : '#C9A86A',
+      tip: c ? `Control group ${n} · ${c} ${n === 4 ? 'building' : 'units'} · press ${n}, double-tap to centre` : `Empty group ${n} · Ctrl ${n} to set`, go: () => {} }));
+    const res = (g, i, a, sup, supFull) => [['resource', g, '+18', 'Gold · +18 every 10 s'], ['terrain', i, '+6', 'Iron · +6 every 10 s'], ['array', a, '+2', 'Aether · regenerates'], [sup.startsWith('Lane') ? 'map' : 'users', sup, '', supFull ? 'Supply full: build a Granary' : sup.startsWith('Lane') ? 'Your lane' : 'Supply used / max']].filter(r => r[1] !== '—').map(([ic, v, rate, tip], j) => ({ icon: I(ic, 16), v, rate, tip, fg: j === 3 && supFull ? '#E2735F' : '#ECE6D8', bd: j === 3 && supFull ? '#C8503C' : '#3A3F48' }));
+    const one = (n, role, hpT, hp, mpT, mp, stats, xp, xpT) => ({ n, role, hpT, hp, mpT: mpT || '', mp: mp || '', xp: xp || '', xpT: xpT || '', stats: stats.map(([k, v]) => ({ k, v })) });
+    const INV = [['Quicksilver vial', 'water', '2'], ['Iron gauntlets', 'unit', ''], ['Salt ward', 'region', '1'], ['Ember charm', 'alert', ''], null, null].map((it, j) => it ? { tip: `${it[0]} (${['1', '2', '3', '4', '5', '6'][j]})`, icon: I(it[1], 22), ch: it[2], k: j + 1, bg: '#14161A', bd: '#4A4234', bs: 'solid' } : { tip: 'Empty slot', icon: null, ch: '', k: j + 1, bg: 'transparent', bd: '#3A3F48', bs: 'dashed' });
+    const mmDotsBase = [[20, 72, '#0072B2', 7], [28, 78, '#0072B2', 5], [16, 64, '#0072B2', 5], [78, 20, '#D55E00', 7], [72, 12, '#D55E00', 5], [46, 50, '#0072B2', 4], [50, 46, '#56B4E9', 4], [54, 44, '#D55E00', 4], [60, 38, '#CC79A7', 4], [86, 58, '#D55E00', 4]];
+    const mm = extra => mmDotsBase.concat(extra || []).map(([x, y, c, sz]) => ({ x: x + '%', y: y + '%', c, s: sz + 'px' }));
+    const mmFog = 'radial-gradient(circle at 30% 68%, transparent 32%, rgba(8,9,11,.6) 52%)';
+    const tiles = UT.map(([n, ic], j) => ({ n, icon: I(ic, 26), c: [6, 5, 2, 1][j], hp: ['82%', '64%', '91%', '76%'][j], ic: s.sub === j ? '#E3C887' : '#C9A86A', bg: s.sub === j ? '#2A2F38' : '#14161A', bd: s.sub === j ? '#E3C887' : '#4A4234', tip: `${n} ×${[6, 5, 2, 1][j]} · click or Tab to make this the active group`, go: () => this.setState({ sub: j }) }));
+    const minis = Array.from({ length: 14 }, (_, j) => { const t = j < 6 ? 0 : j < 11 ? 1 : j < 13 ? 2 : 3, hp = [.9, .4, .75, 1, .6, .82, .5, .7, .95, .3, .64, .9, .92, .76][j]; return { icon: I(UT[t][1], 14), hp: hp * 100 + '%', hc: hp < .45 ? '#E2735F' : '#4FB39A', bd: t === s.sub ? '#C9A86A' : '#3A3F48', tip: UT[t][0] + ' · ' + Math.round(hp * 100) + '% health' }; });
+    const base = { cols: '76px minmax(0,1fr) 400px', worldL: '76px', notSpec: true, isSpec: false, zoneEmpty: true, isArena: false, hasSideZone: true, zoneW: '520px', zoneBd: '#5C5446', zoneBg: 'rgba(20,22,26,.35)', heroLv: 7, heroBg: '#14161A', heroBd: '#8A6E3C', hasBanner: false, isAttack: false, isChat: false, isPause: false, isReplay: false, notReplay: true, speed: 'Normal · ×1.0', alCount: '3', alFg: '#9A958A', alIcon: I('alert', 16, '#9A958A'), obj: 'Hold both fords · 08:12 left', clock: fmtT(s.clock), selGroup: false, selOne: true, lvBadge: '', inv: null, queue: null, alert: 'Research done: Tempered Plate', alertFg: '#ECE6D8', alertIcon: I('check', 16, '#4FB39A'), alertKey: 'Space', alertTip: 'Latest alert · Space jumps to it', tc: '#4FB39A', tag: 'INTERACTIVE', mmPings: [], camX: '34%', camY: '58%', vat: this.vat() };
+    const H = [
+      { code: '3.1a', label: 'HUD · early game', selHead: '1 selected', selSub: 'Acolyte · worker', one: one('Covenant Acolyte', 'Worker · carrying 10 gold', '220 / 220', '100%', '', '', [['Armour', '1'], ['Damage', '6–8'], ['Speed', '2.8'], ['Carry', '10 g']]), cardHead: 'Command card · build', cardSub: 'Locked buttons say what they need', card: 'worker', res: res('340', '60', '20', '9 / 20'), heroLv: 1, clock: '2:14', obj: 'Build a Foundry', alert: 'Acolyte idle at the west wells', alertIcon: I('info', 16, '#C9A86A'), grp: 3,
+        world: { units: army(6, 24, 66, 16, 0, 0).concat([[26, 60, 0, 1, 1]]), buildings: BLD.slice(0, 1), fog: [26, 66] }, mmD: [[20, 72, '#0072B2', 7], [24, 66, '#0072B2', 4]] },
+      { code: '3.2a', label: 'HUD · big battle, 14 selected, grouped by type', selHead: '14 selected', selSub: 'Tab cycles the active group', selGroup: true, selOne: false, cardHead: 'Command card · ' + UT[s.sub][0] + 's', cardSub: 'Shared orders + the active group’s abilities', card: 'army', res: res('1,240', '460', '85', '64 / 100'), grp: 1, clock: '14:32',
+        world: { units: army(14, 48, 48, 18, 0, 1).concat(army(8, 52, 44, 16, 2, 0), army(22, 60, 40, 22, 1, 0), army(8, 64, 34, 14, 3, 0)), buildings: BLD, fog: [52, 46] }, mmD: [], alert: 'Your allies are fighting at the north ford', alertIcon: I('swords', 16, '#C9A86A') },
+      { code: '3.2b', label: 'HUD · hero selected', selHead: 'Hero', selSub: 'Crucible Knight · level 7', lvBadge: '7', heroBg: '#2A2F38', heroBd: '#E3C887', one: one('Maren Vail', 'Crucible Knight · Covenant hero', '1,240 / 1,480', '84%', '180 / 320 aether', '56%', [['Damage', '42–48'], ['Armour', '6'], ['Speed', '3.0'], ['Kills', '11']], '77%', '1,840 / 2,400'), inv: INV, cardHead: 'Command card · abilities', cardSub: '1 point to spend (Z)', card: 'hero', res: res('880', '310', '140', '58 / 100'), grp: 0, clock: '12:08',
+        world: { units: [[44, 52, 0, 1, .84, 18]].concat(army(5, 50, 50, 10, 0, 0), army(4, 58, 44, 10, 1, 0)), buildings: BLD, fog: [46, 52] }, mmD: [] },
+      { code: '3.2c', label: 'HUD · shop selected, buying items', selHead: 'Shop', selSub: 'Maren Vail is in range', one: one('Mercury Exchange', 'Neutral shop · buyers: heroes within range', 'Stock refreshes 0:40', '100%', '', '', [['Your gold', '880'], ['In range', '1 hero'], ['Slots', '4 / 6'], ['Refund', '8 s']]), inv: INV, cardHead: 'Command card · buy', cardSub: 'Costs in red need more gold', card: 'shop', res: res('880', '310', '140', '58 / 100'), grp: 0, clock: '12:31',
+        world: { units: [[52, 54, 0, 1, .84, 18]], buildings: BLD.concat([[48, 46, 0, 58, 6]]), range: [48, 48, 360], fog: [50, 52] }, mmD: [] },
+      { code: '3.2d', label: 'HUD · building with production and research queued', selHead: 'Building', selSub: 'Covenant Foundry', one: one('Covenant Foundry', 'Trains infantry · researches plate', '1,800 / 1,800', '100%', '', '', [['Armour', '5'], ['Queue', '5 / 5'], ['Research', '2'], ['Rally', 'Ford']]), queue: ['unit', 'swords', 'swords', 'unit', 'unit'].map((ic, j) => ({ icon: I(ic, 22), cur: j === 0, p: '62%', t: '0:07', bd: j === 0 ? '#C9A86A' : '#3A3F48', tip: j === 0 ? 'Sentinel · 0:07 left · right-click to cancel' : ['', 'Arbalest', 'Arbalest', 'Sentinel', 'Sentinel'][j] + ' · queued' })), cardHead: 'Command card · train and research', cardSub: 'Right-click the rally button to clear it', card: 'bldg', res: res('640', '140', '85', '64 / 100'), grp: 4, clock: '9:47',
+        world: { units: army(4, 30, 70, 8, 0, 0), buildings: [[26, 70, 0, 72, 0, 1]].concat(BLD.slice(1)), rally: [26, 70, 48, 48], fog: [30, 66] }, mmD: [] },
+      { code: '3.2e', label: 'HUD · “Under attack” alert', isAttack: true, selHead: '1 selected', selSub: 'Acolyte', one: one('Covenant Acolyte', 'Worker', '220 / 220', '100%', '', '', [['Armour', '1'], ['Damage', '6–8'], ['Speed', '2.8'], ['Carry', '0']]), cardHead: 'Command card · build', cardSub: '', card: 'worker', res: res('520', '120', '40', '38 / 60'), grp: 3, clock: '7:02',
+        alert: 'Your Refinery is under attack · east wells', alertFg: '#E2735F', alertIcon: I('alert', 16, '#E2735F'), alCount: '4', alFg: '#E2735F', alIcon: I('alert', 16, '#E2735F'),
+        world: { units: army(7, 26, 66, 14, 0, 0), buildings: BLD, fog: [28, 64] }, mmD: [[88, 60, '#D55E00', 5]], mmPings: [{ x: '88%', y: '60%', c: '#E2735F' }] },
+      { code: '3.2f', label: 'HUD · waiting for player, drop countdown', tag: 'STATIC · LIVE COUNTDOWN', tc: '#9A958A', hasBanner: true, bT: 'Waiting for Brannoch Vey', bSub: 'Connection lost. The match is paused for everyone. Brannoch can rejoin until the countdown ends; then his team can drop him and keep his units.', bNum: fmtT(s.wait), bRing: LV.progress(72, s.wait / 42 * 100), bBtns: [{ n: 'Keep waiting', k: 'W', tip: 'Add 60 s (twice per match)', op: 1 }, { n: 'Drop player', k: 'D', tip: 'Available when the countdown ends', dis: true, op: .45 }],
+        selHead: '14 selected', selSub: '', selGroup: true, selOne: false, cardHead: 'Command card', cardSub: 'Paused', card: 'army', res: res('1,240', '460', '85', '64 / 100'), grp: 1, clock: '14:32', speed: 'Paused', alert: 'Brannoch Vey lost connection', alertIcon: I('cloudOff', 16, '#E3C887'),
+        world: { units: army(14, 48, 48, 18, 0, 1).concat(army(20, 60, 40, 22, 1, 0)), buildings: BLD, fog: [52, 46] }, mmD: [] },
+      { code: '3.2g', label: 'HUD · chat and pings', isChat: true, selHead: '14 selected', selSub: '', selGroup: true, selOne: false, cardHead: 'Command card', cardSub: '', card: 'army', res: res('1,240', '460', '85', '64 / 100'), grp: 1, clock: '15:10', alert: 'Mara Solt pinged: attack here', alertIcon: I('flag', 16, '#56B4E9'),
+        world: { units: army(14, 44, 54, 18, 0, 1).concat(army(10, 70, 30, 16, 1, 0)), buildings: BLD, pings: [[70, 30, '#56B4E9', 'Mara: attack here'], [34, 40, '#0072B2', 'You: on my way']], fog: [48, 50] }, mmD: [], mmPings: [{ x: '70%', y: '30%', c: '#56B4E9' }, { x: '34%', y: '40%', c: '#0072B2' }] },
+      { code: '3.3a', label: 'Pause menu', tag: 'INTERACTIVE · HOVER', isPause: true, selHead: '14 selected', selSub: '', selGroup: true, selOne: false, cardHead: 'Command card', cardSub: 'Paused', card: 'army', res: res('1,240', '460', '85', '64 / 100'), grp: 1, clock: '14:32', speed: 'Paused',
+        world: { units: army(14, 48, 48, 18, 0, 1).concat(army(20, 60, 40, 22, 1, 0)), buildings: BLD, fog: [52, 46] }, mmD: [] },
+      { code: '3.4a', label: 'Spectator · all players, vision switch', tag: 'INTERACTIVE · VISION', isSpec: true, notSpec: false, specTitle: 'Spectating', cols: '0px minmax(0,1fr) 400px', worldL: '0px', hasSideZone: false, zoneEmpty: true, speed: 'Normal · ×1.0', obj: 'Ashfall Ford · 2v2',
+        world: { units: army(14, 48, 48, 18, 0, 0).concat(army(8, 52, 44, 16, 2, 0), army(22, 60, 40, 22, 1, 0), army(8, 64, 34, 14, 3, 0)), buildings: BLD, fog: s.vis === 0 ? null : [[30, 68], [70, 30], [34, 64], [66, 26]][s.vis - 1] }, mmD: [], alert: 'Mara Solt and Brannoch Vey are fighting at the north ford', alertIcon: I('swords', 16, '#C9A86A'), alertKey: '' },
+      { code: '3.4b', label: 'Replay · timeline scrubber and speed', tag: 'INTERACTIVE · SCRUB', isSpec: true, notSpec: false, isReplay: true, notReplay: false, specTitle: 'Replay', cols: '0px minmax(0,1fr) 400px', worldL: '0px', hasSideZone: false, speed: ['×0.5', '×1', '×2', '×4', '×8'][s.rspd], clock: fmtT(Math.round(s.rep / 100 * 1563)),
+        world: { units: army(12, 46, 50, 18, 0, 0).concat(army(10, 58, 42, 20, 1, 0), army(6, 52, 46, 12, 2, 0)), buildings: BLD }, mmD: [] },
+      { code: '3.6a', label: 'Arena scenario · custom widgets from the Game UI builder', tag: 'INTERACTIVE', isArena: true, zoneEmpty: false, zoneW: '640px', zoneBd: '#8A6E3C', zoneBg: 'rgba(20,22,26,.9)', heroLv: 11, heroBg: '#2A2F38', heroBd: '#E3C887', lvBadge: '11',
+        one: one('Sera of the Ember', 'Ember Adept · Vat Lords Arena hero', '640 / 1,120', '57%', '310 / 420 mana', '74%', [['Damage', '58–64'], ['Armour', '4'], ['K / D', '6 / 2'], ['Gold', '1,420']], '48%', '4,100 / 5,600'), inv: INV, selHead: 'Your hero', selSub: 'Dead heroes respawn at the vat', cardHead: 'Command card · abilities', cardSub: '', card: 'arena', res: res('1,420', '—', '—', 'Lane: mid'), clock: '21:44', obj: 'Break the enemy vat · or 50 kills', alert: 'Your team killed Kestrel · 23–19', alertIcon: I('swords', 16, '#C9A86A'),
+        world: { arena: true, units: army(6, 30, 48, 10, 0, 0).concat(army(6, 70, 48, 10, 1, 0), army(4, 50, 22, 12, 2, 0), army(4, 50, 74, 12, 3, 0), [[40, 50, 0, 1, .57, 18]]), buildings: [[8, 50, 0, 70], [92, 50, 1, 70]], fog: [42, 50] }, mmD: [] }
+    ];
+    const huds = H.map((h0, i) => [h0, i]).filter(([h0]) => s.hudOnly === 'All' || s.hudOnly === h0.code).map(([h0, i]) => {
+      const h = Object.assign({}, base, h0), gsel = i === 1 ? s.grp[1] : h.grp;
+      h.id = 'a' + h.code.replace('.', '');
+      if (h.isSpec) h.world = this.photo('valley', '50% 60%', { vis: s.vis });
+      h.card = mkCard(CARDS[h.card || 'army']); h.groups = groupsFor(gsel); h.tiles = tiles; h.minis = minis;
+      h.mmBg = 'linear-gradient(160deg,#4B4A34,#3E4530 45%,#3A3C2C), #2E3226'; h.mmFog = h.isSpec && s.vis === 0 ? 'transparent' : mmFog; h.mmDots = mm(h0.mmD); h.mmPings = h0.mmPings || [];
+      if (!h.tag) h.tag = 'INTERACTIVE';
+      if (h.isSpec) { h.zoneEmpty = false; h.zoneBd = 'transparent'; h.zoneBg = 'transparent'; }
+      h.zoneText = h.zoneEmpty && !h.isPause; h.zoneOp = h.isPause ? 0 : 1;
+      return h;
+    });
+    const specP = [['Mara Solt', 2, '1,020', '380', '142', '2,860', '62 / 100'], ['Ilse Varga', 0, '1,240', '460', '128', '3,120', '64 / 100'], ['Brannoch Vey', 1, '740', '520', '171', '3,480', '78 / 100'], ['Oda Renn', 3, '1,560', '210', '96', '1,940', '41 / 80']];
+    const repPct = s.rep;
+    return {
+      LV, orn, F: LV.frame(), F2: LV.frame({ delay: 2.5 }), Ft: LV.frame({ noSigils: true, noCorners: true }), Fr: LV.frame({ noSigils: true, noCorners: true, delay: 1 }), Fb: LV.frame({ noSigils: true, noCorners: true, delay: 4 }), Fns: LV.frame({ noSigils: true }),
+      mmRing: LV.ring(320), respawnRing: LV.progress(48, 30), attackPulse: LV.pulse({ color: '#C8503C', inset: -3 }),
+      ic: { menu: I('grid', 18), signal: I('signal', 16, '#9A958A'), crown: I('crown', 20), chat: I('chat', 16, '#9A958A'), flagSm: I('flag', 14, '#C9A86A'), lockSm: I('lock', 12, '#9A958A'), alertRed: I('alert', 18, '#E2735F'), hourGold: I('hourglass', 18, '#E3C887'), plusG: I('plus', 16, '#C9A86A'), eyeDark: I('eye', 16, '#14161A'), menuSm: I('grid', 16, '#C9A86A'), bell: I('alert', 16, '#C9A86A'), chatG: I('chat', 16, '#C9A86A') },
+      show: ['s31', 's35', 's33'].reduce((o, k) => (o[k] = s.only === 'All' || s.only === k, o), {}),
+      showChips: [['All', 'All'], ['s31', 'HUDs'], ['s33', 'Score'], ['s35', 'Hero picker']].map(([k, n]) => ({ n, tip: k === 'All' ? 'Show every section' : 'Show only ' + n, ...on(s.only, k), go: () => this.setState({ only: k }) })),
+      index: H.map(h => ({ id: 'a' + h.code.replace('.', ''), code: h.code, n: h.label.replace('HUD · ', ''), tag: (h.tag || 'INTERACTIVE').split(' ')[0], tc: (h.tag || 'INTERACTIVE').startsWith('STATIC') ? '#9A958A' : '#4FB39A' }))
+        .concat([{ id: 'a33b', code: '3.3b', n: 'Score · victory', tag: 'INTERACTIVE', tc: '#4FB39A' }, { id: 'a33c', code: '3.3c', n: 'Score · defeat', tag: 'INTERACTIVE', tc: '#4FB39A' }, { id: 'a35a', code: '3.5a', n: 'Hero picker', tag: 'INTERACTIVE', tc: '#4FB39A' }]),
+      newComps: ['Resource chip', 'Control group slot', 'Hero button', 'Command card button', 'Cooldown and progress overlay', 'Portrait group tile', 'Mini portrait', 'Inventory slot', 'Production queue', 'Edge alert', 'Waiting banner', 'Scenario UI zone', 'Replay scrubber', 'Score graph'],
+      mmRing2: (window.CHI_LV ? window.CHI_LV(React, Object.assign({}, p, { lvTurn: false }), { replay: s.replay }) : LV).circle(208), ringT: LV.cfg && LV.cfg.rm ? 'none' : 'transform .5s ease',
+      camL: (s.cam.x * 184 - 27).toFixed(0) + 'px', camT: (s.cam.y * 184 - 17).toFixed(0) + 'px',
+      mmDrag: ev => { ev.preventDefault(); const r = ev.currentTarget.getBoundingClientRect(); const set = (x, y) => this.setState({ cam: { x: Math.max(.15, Math.min(.85, (x - r.left) / r.width)), y: Math.max(.1, Math.min(.9, (y - r.top) / r.height)) } }); set(ev.clientX, ev.clientY); const mv = e2 => set(e2.clientX, e2.clientY), up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); }; window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up); },
+      Fc: LV.frame({ noCorners: true }), Fc2: LV.frame({ noCorners: true, noSigils: true, delay: 1.5 }), Fc3: LV.frame({ noCorners: true, delay: 3 }),
+      rowW: '4128px', huds: huds.filter(h => h.isSpec), nhuds: huds.filter(h => !h.isSpec).map(h => this.nhud(h, s, I, LV)),
+      hudChips: ['All'].concat(H.map(h => h.code)).map(n => ({ n, tip: n === 'All' ? 'Show every HUD artboard' : 'Show only ' + n, ...on(s.hudOnly, n), go: () => this.setState({ hudOnly: n }) })),
+      mmBtns: [['eye', 'Show allied vision (Alt V)'], ['flag', 'Ping (Alt click)'], ['grid', 'Terrain / units only (Alt T)']].map(([ic, tip]) => ({ icon: I(ic, 16), tip })),
+      arenaA: [['Sera', '6/2'], ['Mara', '4/3'], ['Kest', '5/4'], ['Oda', '3/5'], ['Pell', '5/3']].map(([n, kd], j) => ({ ...PL[j % 2 ? 2 : 0], n, kd, op: 1 })),
+      arenaB: [['Lune', '7/4'], ['Vell', '4/4'], ['Tamsin', '3/6'], ['Bran', '2/5'], ['Marrow', '3/4']].map(([n, kd], j) => ({ ...PL[j % 2 ? 3 : 1], n, kd, op: j === 1 ? .4 : 1 })),
+      chatLines: [{ ...PL[2], who: 'Mara', t: 'their army is at the north ford', nFg: '#ECE6D8' }, { ...PL[0], who: 'You', t: 'on my way, 14 with Maren', nFg: '#ECE6D8' }, { h: 'transparent', g: '#9A958A', glyph: '◇', who: 'Game', t: 'Mara Solt pinged the north ford', nFg: '#9A958A' }, { ...PL[1], who: 'Brannoch (all)', t: 'gl with that', nFg: '#ECE6D8' }],
+      pauseMenu: [['Resume', 'Esc', 'play', 'Back to the match'], ['Settings', 'O', 'sliders', 'Graphics, controls, audio · the match stays paused'], ['Save', 'S', 'save', 'Host only in multiplayer'], ['Load', 'L', 'book', 'Load a save of this match'], ['Surrender', 'G', 'flag', 'Asks you to confirm'], ['Quit to Home', 'Q', 'door', 'Asks you to confirm · counts as a loss']].map(([n, k, ic, d], j) => ({ n, k, d, icon: I(ic, 20), tip: `${n} (${k}) · ${d}`, bg: s.pauseSel === j ? '#2A2F38' : 'transparent', bd: s.pauseSel === j ? '#C9A86A' : 'transparent', fg: j >= 4 ? '#E2735F' : s.pauseSel === j ? '#E3C887' : '#ECE6D8', ic: j >= 4 ? '#E2735F' : s.pauseSel === j ? '#E3C887' : '#C9A86A', enter: () => this.setState({ pauseSel: j }) })),
+      visOpts: [{ n: 'All', chip: false }].concat([0, 2, 1, 3].map((c, j) => ({ ...PL[c], n: ['Mara', 'Ilse', 'Bran', 'Oda'][j], chip: true }))).map((v, j) => ({ ...v, ...on(s.vis, j), tip: j === 0 ? 'See everything (0)' : 'See only what ' + v.n + ' sees (' + j + ')', go: () => this.setState({ vis: j }) })),
+      specRows: specP.map(([n, c, gold, iron, apm, army2, sup], j) => ({ ...PL[c], n, gold, iron, apm, army: army2, sup: 'Supply ' + sup, bd: s.vis === j + 1 ? '#E3C887' : '#3A3F48' })),
+      repBtns: [['undo', 'Back 10 s (←)'], ['stop', 'Pause (Space)'], ['redo', 'Forward 10 s (→)']].map(([ic, tip], j) => ({ icon: I(ic, 16), tip, bg: j === 1 ? '#2A2F38' : '#14161A', bd: j === 1 ? '#C9A86A' : '#3A3F48' })),
+      repPct: repPct + '%', repTime: (() => { const t = Math.round(repPct / 100 * 1563); return Math.floor(t / 60) + ':' + ('0' + (t % 60)).slice(-2); })(),
+      repMarks: [[18, 'First contact · 4:41', '#C9A86A'], [34, 'Mara loses her expansion', '#E2735F'], [52, 'North ford battle', '#E2735F'], [71, 'Brannoch’s Foundry falls', '#4FB39A'], [88, 'Final push', '#E2735F']].map(([x, t, c]) => ({ x: x + '%', t, c })),
+      repSpeeds: ['×0.5', '×1', '×2', '×4', '×8'].map((n, j) => ({ n, ...on(s.rspd, j), go: () => this.setState({ rspd: j }) })),
+      scrub: ev => { ev.preventDefault(); const r = ev.currentTarget.getBoundingClientRect(); const set = x => this.setState({ rep: Math.round(Math.max(0, Math.min(1, (x - r.left) / r.width)) * 100) }); set(ev.clientX); const mv = e2 => set(e2.clientX), up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); }; window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up); },
+      ...this.moreVals(s, I, LV, PL, on)
+    };
+  }
+  photo(key, pos, o) {
+    this._ph = this._ph || {}; const ck = key + pos + (o && o.vis != null ? o.vis : '');
+    if (this._ph[ck]) return this._ph[ck];
+    const e = React.createElement;
+    return (this._ph[ck] = e('div', { key: 'ph' + ck, style: { position: 'absolute', inset: 0, zIndex: 0, overflow: 'hidden', pointerEvents: 'none' } },
+      e('div', { style: { position: 'absolute', inset: 0, backgroundImage: 'url(assets/bf-' + key + '.jpg)', backgroundSize: 'cover', backgroundPosition: pos || '50% 50%', filter: 'saturate(.72) brightness(.8) contrast(1.05)' } }),
+      e('div', { style: { position: 'absolute', inset: 0, background: 'radial-gradient(120% 95% at 50% 42%, transparent 45%, rgba(8,9,11,.62) 100%)' } }),
+      o && o.vis ? e('div', { style: { position: 'absolute', inset: 0, background: 'rgba(8,9,11,.55)', WebkitMaskImage: 'radial-gradient(ellipse 46% 52% at ' + [[30, 68], [70, 30], [34, 64], [66, 26]][o.vis - 1].map(v => v + '%').join(' ') + ', transparent 58%, #000 100%)', maskImage: 'radial-gradient(ellipse 46% 52% at ' + [[30, 68], [70, 30], [34, 64], [66, 26]][o.vis - 1].map(v => v + '%').join(' ') + ', transparent 58%, #000 100%)' } }) : null));
+  }
+  nhud(h, s, I, LV) {
+    const e = React.createElement, rm = LV.cfg && LV.cfg.rm, own = '#4FB39A', foe = '#E2735F', gold = '#E3C887';
+    const ring = (x, y, w, o) => { o = o || {}; const hh = Math.round(w * .42); return { x: x + 'px', y: y + 'px', w: w + 'px', h: hh + 'px', c: o.c || own, bs: o.dash ? 'dashed' : 'solid', bar: !o.noBar, bt: -(hh / 2 + (o.tall || 34)) + 'px', bw: (o.bw || Math.max(28, Math.round(w * .8))) + 'px', hp: Math.round((o.hp == null ? 1 : o.hp) * 100) + '%', hc: o.c === foe ? foe : '#4FB39A' }; };
+    const bar = (x, y, hp, c) => ({ x: x + 'px', y: y + 'px', w: '0px', h: '0px', c: 'transparent', bs: 'solid', bar: true, bt: '0px', bw: '26px', hp: Math.round(hp * 100) + '%', hc: c || foe });
+    const B = [[700, 610], [770, 640], [840, 600], [905, 660], [980, 620], [1050, 650], [1120, 600], [1190, 640], [1260, 610], [760, 720], [880, 740], [1000, 710], [1120, 730], [1240, 700]];
+    const foes = [[820, 470, .6], [930, 450, .4], [1040, 470, .8], [1150, 450, .5], [1260, 470, .3], [1500, 440, .7], [1620, 460, .9]].map(([x, y, hp]) => bar(x, y, hp));
+    const T = (icon, t, k, c, tip) => ({ icon: I(icon, 16, c), t, k, c, bd: c === foe ? '#C8503C' : '#3A3F48', tip: tip || t });
+    const X = {
+      '3.1a': { img: 'village', pos: '50% 50%', tabs: [3], rings: [ring(1010, 560, 38, { tall: 30 })], toasts: [T('info', 'Acolyte idle at the west wells', 'Space', '#C9A86A', 'Space jumps to the idle Acolyte')] },
+      '3.2a': { img: 'battle', pos: '50% 40%', rings: B.map(([x, y], i) => ring(x, y, 46, { hp: [.9, .5, .8, 1, .7, .85, .4, .95, .6, .75, .9, .65, .8, 1][i] })).concat(foes), toasts: [T('swords', 'Mara Solt is fighting at the north ford', 'Space', '#C9A86A')] },
+      '3.2b': { img: 'battle', pos: '50% 40%', rings: [ring(960, 640, 86, { c: gold, hp: .84, tall: 60, bw: 60 }), ring(820, 620, 46, { hp: .7 }), ring(1100, 610, 46, { hp: .9 })].concat(foes.slice(0, 4)), toasts: [T('crown', 'Maren Vail reached level 7 · 1 point to spend', 'Z', gold)] },
+      '3.2c': { img: 'village', pos: '50% 50%', rings: [ring(1300, 590, 230, { c: gold, noBar: true }), ring(1300, 600, 520, { c: gold, dash: true, noBar: true }), ring(1180, 700, 70, { c: gold, hp: .84, tall: 50, bw: 56 })], toasts: [T('clock', 'The Mercury Exchange restocks in 0:40', '', '#C9A86A')], invHead: 'Maren’s inventory · buying' },
+      '3.2d': { img: 'village', pos: '50% 50%', rings: [ring(720, 330, 190, { noBar: true })], rally: [720, 350, 1180, 690], toasts: [T('check', 'Research done: Quench Oil', 'Space', own)] },
+      '3.2e': { img: 'battle', pos: '50% 40%', attack: true, rings: B.slice(0, 6).map(([x, y]) => ring(x, y, 46, { hp: .8 })), toasts: [T('alert', 'Refinery under attack · east wells', 'Space', foe)], mmPing: [{ x: '88%', y: '60%', c: foe }] },
+      '3.2f': { img: 'battle', pos: '50% 40%', rings: B.map(([x, y]) => ring(x, y, 46, { hp: .8 })), toasts: [T('cloudOff', 'Brannoch Vey lost connection', '', gold)] },
+      '3.2g': { img: 'battle', pos: '50% 40%', chat: true, rings: B.slice(0, 10).map(([x, y]) => ring(x, y, 46, { hp: .85 })), pings: [[1520, 400, 2, 'Mara: attack here'], [640, 470, 0, 'You: on my way']], toasts: [], mmPing: [{ x: '70%', y: '30%', c: '#56B4E9' }, { x: '34%', y: '40%', c: '#0072B2' }] },
+      '3.3a': { img: 'winter', pos: '50% 50%', rings: [] , toasts: [] },
+      '3.6a': { tabs: [], img: 'village', pos: '50% 50%', rings: [ring(980, 520, 80, { c: gold, hp: .57, tall: 56, bw: 56 }), ring(900, 560, 40, { hp: .7 }), ring(1060, 560, 40, { hp: .5 })].concat([[1360, 420, .6], [1460, 440, .9], [520, 700, .4]].map(([x, y, hp]) => bar(x, y, hp))), lanes: true, toasts: [T('swords', 'Your team killed Kestrel · 23–19', '', '#C9A86A')] }
+    }[h.code] || { img: 'battle', rings: [], toasts: [] };
+    const fade = (d, long) => rm ? 'none' : (long ? 'hudFadeLong 14s ease-in-out ' : 'hudFade 11s ease-in-out ') + (d || 0) + 's infinite both';
+    const timer = d => rm ? 'none' : 'hudTimer 11s linear ' + (d || 0) + 's infinite both';
+    const PLc = [{ h: '#0072B2', g: '#FFFFFF', glyph: '◆' }, { h: '#D55E00', g: '#14161A', glyph: '▲' }, { h: '#56B4E9', g: '#14161A', glyph: '●' }];
+    const gsel = h.code === '3.2a' ? s.grp[1] : h.grp;
+    let tabs = h.groups.filter(g => g.c && (!X.tabs || X.tabs.indexOf(g.n) >= 0)).map(g => ({ ...g, bg: g.n === gsel ? '#2A2F38' : '#1C1F25', bd: g.n === gsel ? '#E3C887' : '#3A3F48' }));
+    if (h.heroLv > 1 && h.code !== '3.1a') tabs = [{ n: 'F1', icon: I('crown', 14), c: 'Lv ' + h.heroLv, tip: 'Select your hero (F1) · double-tap to centre', nFg: gsel === 0 ? '#E3C887' : '#9A958A', ic: '#E3C887', bg: gsel === 0 ? '#2A2F38' : '#1C1F25', bd: gsel === 0 ? '#E3C887' : '#3A3F48', go: () => {} }].concat(tabs);
+    tabs = tabs.map(t => ({ ...t, icon: t.icon && t.n !== 'F1' ? I(['', 'swords', 'unit', 'owner', 'place'][t.n] || 'unit', 14) : t.icon }));
+    const lanesEl = X.lanes ? e('svg', { key: 'ln', width: 1920, height: 1080, style: { position: 'absolute', inset: 0 } },
+      ['M140 820 C 520 640, 760 360, 1780 180', 'M140 820 C 700 700, 1200 560, 1780 480', 'M140 820 C 400 860, 1300 860, 1780 780'].map((d, i) => e('g', { key: i }, e('path', { d, fill: 'none', stroke: 'rgba(11,12,14,.55)', strokeWidth: 7 }), e('path', { d, fill: 'none', stroke: '#E3C887', strokeWidth: 2.5, strokeDasharray: '14 10', opacity: .9 }))),
+      [['Top lane', 1180, 300], ['Mid lane', 1240, 540], ['Bottom lane', 1320, 845]].map(([t, x, y], i) => e('text', { key: 't' + i, x, y, fill: '#ECE6D8', fontSize: 14, fontFamily: 'Inter', fontWeight: 600, stroke: '#0B0C0E', strokeWidth: 3, paintOrder: 'stroke' }, t))) : null;
+    const rallyEl = X.rally ? e('svg', { width: 1920, height: 1080, style: { position: 'absolute', inset: 0 } }, e('line', { x1: X.rally[0], y1: X.rally[1], x2: X.rally[2], y2: X.rally[3], stroke: '#0B0C0E', strokeWidth: 5, opacity: .5 }), e('line', { x1: X.rally[0], y1: X.rally[1], x2: X.rally[2], y2: X.rally[3], stroke: '#4FB39A', strokeWidth: 2.5, strokeDasharray: '10 7' }), e('circle', { cx: X.rally[2], cy: X.rally[3], r: 10, fill: 'rgba(11,12,14,.5)', stroke: '#4FB39A', strokeWidth: 2.5 }), e('text', { x: X.rally[2] + 16, y: X.rally[3] + 5, fill: '#ECE6D8', fontSize: 13, fontFamily: 'Inter', fontWeight: 600, stroke: '#0B0C0E', strokeWidth: 3, paintOrder: 'stroke' }, 'Rally · north ford')) : null;
+    const one = h.one || {};
+    return {
+      id: h.id, code: h.code, label: h.label.replace('HUD · ', 'HUD · '), tag: h.tag === 'INTERACTIVE · HOVER' ? h.tag : h.tag, tc: h.tc,
+      bg: this.photo(X.img, X.pos), rings: X.rings || [], pings: (X.pings || []).map(([x, y, c, t]) => ({ x: x + 'px', y: y + 'px', ...PLc[c], c: PLc[c].h, t, anim: fade(0, true) })),
+      lanes: lanesEl ? [{ el: lanesEl }] : [], hasRally: !!rallyEl, rallyEl,
+      res: h.res, clock: h.clock, speed: h.speed, alCount: h.alCount, alFg: h.alFg, alIcon: h.alIcon, alBd: h.alFg === '#E2735F' ? '#C8503C' : '#3A3F48',
+      isArena: !!h.isArena, isAttack: !!X.attack, hasBanner: !!h.hasBanner, bT: h.bT, bSub: h.bSub, bNum: h.bNum, bRing: h.bRing, bBtns: h.bBtns || [], isChat: !!X.chat, isPause: !!h.isPause,
+      fadeLong: fade(0, true), toastBottom: '228px',
+      toasts: (X.toasts || []).map((t, i) => ({ ...t, anim: fade(i * 1.5), anim2: timer(i * 1.5) })),
+      chat: [{ ...PLc[2], who: 'Mara', t: 'their army is at the north ford', nFg: '#ECE6D8' }, { ...PLc[0], who: 'You', t: 'on my way with 14', nFg: '#ECE6D8' }, { h: 'transparent', g: '#9A958A', glyph: '◇', who: 'Game', t: 'Mara Solt pinged the north ford', nFg: '#9A958A' }, { ...PLc[1], who: 'Brannoch (all)', t: 'gl with that', nFg: '#ECE6D8' }].map((m, i) => ({ ...m, anim: rm ? 'none' : 'hudFadeLong 14s ease-in-out ' + (i * .8) + 's infinite both' })),
+      tabs, selOne: !!h.selOne, selGroup: !!h.selGroup, one, lvBadge: h.lvBadge, vat: h.vat, inv: h.inv, invHead: X.invHead || 'Inventory · 1–6', queue: h.queue, tiles: h.tiles, minis: h.minis, card: h.card,
+      isBldg: ['3.2c', '3.2d'].indexOf(h.code) >= 0, figDisp: ['3.2c', '3.2d'].indexOf(h.code) >= 0 ? 'none' : 'block', bldgIcon: I(h.code === '3.2c' ? 'grid' : 'place', 60, '#C9A86A'),
+      statLine: (one.stats || []).map(x => x.k + ' ' + x.v).join('  ·  '),
+      mmDots: h.mmDots, mmPings: X.mmPing || [], ringDeg: ((s.cam.x - .5) * 140 + (s.cam.y - .5) * 70).toFixed(1) + 'deg'
+    };
+  }
+  moreVals(s, I, LV, PL, on) {
+    const e = React.createElement;
+    const TABS = [['overview', 'Overview', '1'], ['economy', 'Economy', '2'], ['army', 'Army', '3'], ['timeline', 'Timeline', '4']];
+    const P = [['Ilse Varga · you', 0, 'Team 1'], ['Mara Solt', 2, 'Team 1'], ['Brannoch Vey', 1, 'Team 2'], ['Oda Renn', 3, 'Team 2']];
+    const DATA = {
+      overview: [['Units made', 'Units lost', 'Kills', 'Buildings razed', 'APM'], [['142', '61', '98', '7', '128'], ['118', '74', '64', '3', '142'], ['131', '96', '52', '2', '171'], ['88', '71', '31', '1', '96']]],
+      economy: [['Gold mined', 'Iron mined', 'Aether', 'Peak workers', 'Idle time'], [['18,420', '5,210', '1,340', '34', '2:10'], ['15,980', '4,880', '1,120', '31', '3:42'], ['16,300', '6,010', '980', '29', '1:05'], ['12,450', '3,300', '1,610', '24', '4:48']]],
+      army: [['Peak army', 'Supply cap hits', 'Hero level', 'Abilities cast', 'Top unit'], [['3,480', '2', '9', '212', 'Sentinel'], ['2,860', '4', '8', '188', 'Arbalest'], ['3,120', '1', '9', '240', 'Vat Hound'], ['1,940', '3', '6', '96', 'Thrall']]]
+    };
+    const best = (col, rows) => { const n = rows.map(r => parseFloat(r[col].replace(/[^\d.]/g, '')) || 0); return n.indexOf(Math.max(...n)); };
+    const scores = [0, 1].map(si => {
+      const tab = s.score[si], D = DATA[tab] || DATA.overview, win = si === 0;
+      const rows = (win ? P : [P[2], P[3], P[0], P[1]]).map((pp, ri) => { const idx = P.indexOf(pp); const vals = D[1][idx]; return { ...PL[pp[1]], n: pp[0], team: pp[2] + (pp[2] === (win ? 'Team 1' : 'Team 2') ? ' · won' : ''), bg: idx === 0 ? '#262A31' : '#20242B', bd: idx === 0 ? '#8A6E3C' : '#3A3F48', v: vals.map((t, c) => ({ t, fg: best(c, D[1]) === idx ? '#E3C887' : '#ECE6D8' })) }; });
+      return { id: 'a33' + 'bc'[si], code: '3.3' + 'bc'[si], label: win ? 'Score · victory' : 'Score · defeat', kick: win ? 'Ashfall Ford · 26:03' : 'Cinder Marches · 31:18', kFg: win ? '#4FB39A' : '#E2735F', title: win ? 'Victory' : 'Defeat',
+        sub: win ? 'The Covenant holds both fords. Brannoch’s Foundry fell at 24:40.' : 'The Court broke through the central foundry. Your team held for 31 minutes.',
+        seal: win ? LV.seal(120, 'win') : e('div', { style: { width: 120, height: 120, borderRadius: '50%', border: '1px solid #C8503C', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#14161A' } }, I('x', 48, '#E2735F')),
+        tabs: TABS.map(([id, n, k]) => ({ n, k, ...on(tab, id), go: () => this.setState(st => { const sc = st.score.slice(); sc[si] = id; return { score: sc }; }) })),
+        isTable: tab !== 'timeline', isGraph: tab === 'timeline', cols: D[0], rows,
+        topSub: win ? 'Ashfall Ford · 2v2 · 26:03' : 'Cinder Marches · 2v2 · 31:18',
+        mine: [['Kills', win ? '98' : '71'], ['Units lost', win ? '61' : '104'], ['Gold mined', win ? '18,420' : '16,880'], ['APM', win ? '128' : '124'], ['Hero level', win ? '9' : '8'], ['Rating', win ? '1,642 (+18)' : '1,624 (−14)']].map(([k, v]) => ({ k, v })),
+        heroLine: win ? 'Maren Vail reached level 9 · 11 kills · carried Iron gauntlets and Ember charm' : 'Maren Vail reached level 8 · died twice at the foundry',
+        primary: win ? 'Continue' : 'Rematch', pTip: win ? 'Back to the Play hub (Enter)' : 'Same lobby, same settings (Enter)' };
+    });
+    const series = [[0, 2, 5, 9, 14, 22, 28, 31, 34, 30, 33, 35], [0, 2, 4, 8, 12, 18, 20, 26, 28, 24, 27, 29], [0, 3, 6, 10, 15, 24, 26, 30, 25, 19, 14, 10], [0, 2, 4, 6, 9, 13, 17, 20, 18, 14, 11, 8]];
+    const W = 1000, Hh = 520, px = i => 50 + i * (W - 70) / 11, py = v => Hh - 40 - v * (Hh - 70) / 36;
+    const grid = [0, 9, 18, 27, 36].map(v => e('g', { key: 'g' + v }, e('line', { x1: 50, x2: W - 20, y1: py(v), y2: py(v), stroke: '#2A2F38' }), e('text', { x: 40, y: py(v) + 4, fill: '#9A958A', fontSize: 12, fontFamily: 'JetBrains Mono', textAnchor: 'end' }, (v * 100).toLocaleString())));
+    const xl = [0, 3, 6, 9, 11].map(i => e('text', { key: 'x' + i, x: px(i), y: Hh - 16, fill: '#9A958A', fontSize: 12, fontFamily: 'JetBrains Mono', textAnchor: 'middle' }, Math.round(i * 26 / 11) + ':00'));
+    const lines = series.map((sr, k) => e('polyline', { key: 'l' + k, points: sr.map((v, i) => px(i) + ',' + py(v)).join(' '), fill: 'none', stroke: PL[P[k][1]].h, strokeWidth: k === 0 ? 3 : 2, strokeDasharray: k % 2 ? '6 4' : null }));
+    const marks = [[4.5, 'First contact'], [8, 'North ford battle'], [10.5, 'Foundry falls']].map(([i, t], k) => e('g', { key: 'm' + k }, e('line', { x1: px(i), x2: px(i), y1: 20, y2: Hh - 40, stroke: '#8A6E3C', strokeDasharray: '2 4' }), e('text', { x: k === 2 ? px(i) - 6 : px(i) + 6, y: 32, fill: '#E3C887', fontSize: 12, fontFamily: 'Inter', textAnchor: k === 2 ? 'end' : 'start' }, t)));
+    const graph = e('svg', { viewBox: `0 0 ${W} ${Hh}`, preserveAspectRatio: 'none', style: { position: 'absolute', inset: 0, width: '100%', height: '100%' } }, grid, xl, marks, lines);
+    const HER = [
+      { n: 'Maren Vail', short: 'Maren', cls: 'Crucible Knight', lv: 9, xp: '62%', xpT: '3,720 / 6,000', note: 'Last played chapter 2', vat: '#2E4A44', sig: 'Crucible Nova', sigD: 'Pay 30% of her health to deal twice that as fire to every enemy within 6 tiles.', items: ['water', 'unit', 'region', 'alert', null, null], stats: [['Health', '1,720'], ['Damage', '52–58'], ['Brass', '1,240']] },
+      { n: 'Tamsin of the Choir', short: 'Tamsin', cls: 'Hollow Choir priest', lv: 6, xp: '30%', xpT: '1,210 / 4,000', note: 'Healer · party favourite', vat: '#34403A', sig: 'Healing Prayer', sigD: 'Heals an ally; the more wounded the target, the stronger the prayer.', items: ['book', 'water', null, null, null, null], stats: [['Health', '980'], ['Damage', '24–30'], ['Brass', '610']] },
+      { n: 'Oskar Brine', short: 'Oskar', cls: 'Salt Warden', lv: 4, xp: '80%', xpT: '1,920 / 2,400', note: 'Level 5 soon', vat: '#2A3A4A', sig: 'Salt Circle', sigD: 'Rings the ground with salt; Court beasts inside move at half speed.', items: ['region', null, null, null, null, null], stats: [['Health', '1,100'], ['Damage', '30–36'], ['Brass', '220']] },
+      { n: 'Vesna Red', short: 'Vesna', cls: 'Sanguine duelist', lv: 7, xp: '10%', xpT: '420 / 4,800', note: 'Court hero · not allowed on this map', vat: '#3E2A2A', dis: true, sig: 'Blood Tithe', sigD: 'Spend health to empower nearby allies.', items: ['swords', 'alert', null, null, null, null], stats: [['Health', '1,300'], ['Damage', '48–54'], ['Brass', '900']] }];
+    const hs = HER[s.hero];
+    return {
+      scores, graph, legend: P.map(pp => ({ ...PL[pp[1]], n: pp[0].replace(' · you', '') })),
+      scoreBtns: [{ n: 'Watch replay', k: 'R', tip: 'Open the replay of this match (R)' }, { n: 'Save replay', k: 'Ctrl S', tip: 'Keep it in Load & replays' }],
+      heroes: HER.map((h, i) => ({ ...h, vat: this.vat(h.vat), fg: s.hero === i ? '#E3C887' : '#ECE6D8', nFg: h.dis ? '#E2735F' : '#9A958A', bg: s.hero === i ? '#2A2F38' : 'transparent', bd: s.hero === i ? '#C9A86A' : 'transparent', op: h.dis ? .55 : 1, cur: h.dis ? 'not-allowed' : 'pointer', tip: h.dis ? h.n + ' · not allowed on this map' : `${h.n} · level ${h.lv} ${h.cls}`, go: () => { if (!h.dis) this.setState({ hero: i }); } })),
+      hSel: { ...hs, vatBig: `radial-gradient(ellipse 60% 55% at 50% 64%, ${hs.vat} 0, #1A1D22 70%), #14161A`, items: hs.items.map(ic => ic ? { icon: I(ic, 24), tip: 'Carried item', bg: '#14161A', bd: '#4A4234', bs: 'solid' } : { icon: null, tip: 'Empty slot', bg: 'transparent', bd: '#3A3F48', bs: 'dashed' }), stats: hs.stats.map(([k, v]) => ({ k, v })) },
+      vatSigil: LV.sigil(28, 0), vatSigil2: LV.sigil(28, 2), pulse: LV.pulse()
+    };
+  }
+}
+</script>
+</body>
+</html>

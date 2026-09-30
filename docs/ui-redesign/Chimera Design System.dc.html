@@ -13,6 +13,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="icons.js"></script>
 <script src="ornaments.js"></script>
+<script src="levers.js"></script>
 <style>body{margin:0;background:#0B0C0E;color:#ECE6D8;font-family:Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}a{color:#E3C887;text-decoration:none}a:hover{color:#ECE6D8;text-decoration:underline}*{box-sizing:border-box}</style>
 </helmet>
 
@@ -303,12 +304,179 @@
 </div>
 </div>
 
+<!-- ========== BOARD 04 ROUND 2 COMPONENTS ========== -->
+<div id="b04" style="display:flex;flex-direction:column;gap:12px">
+<div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">04 · Components added in Round 2 · 1920 wide · static specimens, rings and seals animate</div>
+<div data-screen-label="04 Components added in Round 2" style="width:1920px;background:#14161A;position:relative;isolation:isolate;box-shadow:0 0 0 1px #2A2F38;padding:56px 64px;display:flex;flex-direction:column;gap:32px">{{ orn.tex }}
+<div style="display:flex;align-items:flex-end;justify-content:space-between">
+<div style="display:flex;flex-direction:column;gap:10px"><div style="font:600 12px/1 Inter;letter-spacing:.16em;text-transform:uppercase;color:#C9A86A">Design system · 04</div><div style="font:600 48px/1 Cinzel;color:#ECE6D8">Components added in Round 2</div></div>
+<div style="font:400 15px/1.5 Inter;color:#9A958A;max-width:640px;text-align:right;text-wrap:pretty">Built from the Round 1 tokens, type and line icons. Each lists where it is first used.</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">Shell top bar · Play and Browse, online and offline</div>{{ orn.hr }}</div>
+<dc-import name="Shell Top Bar" mode="Play" title="Play" sub="Campaign" net="online" user="Ilse Varga" role="Commander · Architect" lv="{{ lv4 }}" hint-size="100%,56px"></dc-import>
+<dc-import name="Shell Top Bar" mode="Browse" title="Browse" sub="Scenarios" net="offline" user="Guest" signed-in="{{ false }}" lv="{{ lv4 }}" hint-size="100%,56px"></dc-import>
+<div style="font:400 13px/1.4 Inter;color:#9A958A">Same bar as Create: modes with F1–F3, a context title, the Ctrl K palette, connection state, the profile chip with its role, and Settings. Used on every hub screen.</div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:24px">
+
+<div style="position:relative;background:#20242B;border:1px solid #4A4234;padding:22px;display:flex;flex-direction:column;gap:14px;isolation:isolate" style-hover="--chiH:1">{{ F4 }}
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887;white-space:nowrap">Progress ring</div>{{ orn.hr }}</div>
+<div style="display:flex;justify-content:space-between;align-items:center">
+<sc-for list="{{ rings4 }}" as="r" hint-placeholder-count="3"><div style="display:flex;flex-direction:column;align-items:center;gap:8px"><div style="position:relative;width:110px;height:110px;display:flex;align-items:center;justify-content:center"><div style="position:absolute;inset:0">{{ r.el }}</div><div style="position:relative;font:600 20px/1 Cinzel;color:#ECE6D8">{{ r.t }}</div></div><div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">{{ r.l }}</div></div></sc-for>
+</div>
+<div style="font:400 13px/1.4 Inter;color:#9A958A">Loading and long jobs. The arc is progress; the rings turn slowly. 1.1b</div>
+</div>
+
+<div style="position:relative;background:#20242B;border:1px solid #4A4234;padding:22px;display:flex;flex-direction:column;gap:12px;isolation:isolate" style-hover="--chiH:1">{{ F4 }}
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887;white-space:nowrap">Integrity check</div>{{ orn.hr }}</div>
+<div style="display:flex;align-items:baseline;justify-content:space-between"><div style="font:600 15px/1 Inter;color:#ECE6D8">Verifying 214 files</div><div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">131 / 214</div></div>
+<div style="height:6px;background:#14161A;border:1px solid #3A3F48;position:relative"><div style="position:absolute;left:0;top:0;bottom:0;width:61%;background:#C9A86A"></div></div>
+<div style="display:flex;gap:10px;align-items:center;background:#14161A;border:1px solid #3A3F48;padding:8px 10px;font:400 13px/1.3 Inter;color:#ECE6D8"><div style="display:flex">{{ ic4.check }}</div>Files match v1.3</div>
+<div style="display:flex;gap:10px;align-items:center;background:#14161A;border:1px solid #3A3F48;padding:8px 10px;font:400 13px/1.3 Inter;color:#ECE6D8"><div style="display:flex">{{ ic4.wait }}</div>Scripts sandboxed · checking</div>
+<div style="display:flex;gap:10px;align-items:center;background:#2A1C1A;border:1px solid #C8503C;padding:8px 10px;font:400 13px/1.3 Inter;color:#E2735F"><div style="display:flex">{{ ic4.alert }}</div>Failed: units/sentinel.uasset differs</div>
+<div style="font:400 13px/1.4 Inter;color:#9A958A">Pending · passed · failed. 1.1b, Browse detail</div>
+</div>
+
+<div style="position:relative;background:#20242B;border:1px solid #4A4234;padding:22px;display:flex;flex-direction:column;gap:12px;isolation:isolate" style-hover="--chiH:1">{{ F4 }}
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887;white-space:nowrap">Stage steps</div>{{ orn.hr }}</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#20242B;border:1px solid #3A3F48"><div style="display:flex">{{ ic4.check }}</div><div style="font:600 13px/1 Inter;color:#ECE6D8">Verify files</div><div style="margin-left:auto;font:400 12px/1 Inter;color:#9A958A">Done</div></div>
+<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#2A2F38;border:1px solid #C9A86A"><div style="display:flex">{{ ic4.hour }}</div><div style="font:600 13px/1 Inter;color:#ECE6D8">Terrain</div><div style="margin-left:auto;font:400 12px/1 Inter;color:#E3C887">Current</div></div>
+<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#20242B;border:1px solid #3A3F48"><div style="display:flex">{{ ic4.clock }}</div><div style="font:600 13px/1 Inter;color:#9A958A">Sync Commanders</div><div style="margin-left:auto;font:400 12px/1 Inter;color:#9A958A">To do</div></div>
+</div>
+<div style="font:400 13px/1.4 Inter;color:#9A958A">Done · current · to do. Loading, publish, wizard</div>
+</div>
+
+<div style="position:relative;background:#20242B;border:1px solid #4A4234;padding:22px;display:flex;flex-direction:column;gap:12px;isolation:isolate" style-hover="--chiH:1">{{ F4 }}
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887;white-space:nowrap">Hotkey menu row</div>{{ orn.hr }}</div>
+<div style="height:54px;display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:14px;align-items:center;padding:0 12px;border:1px solid transparent"><div style="display:flex;color:#C9A86A">{{ ic4.book }}</div><div style="display:flex;flex-direction:column;gap:4px"><div style="font:600 16px/1 Inter;color:#ECE6D8">Campaign</div><div style="font:400 12px/1 Inter;color:#9A958A">Default</div></div><div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#14161A;color:#ECE6D8">K</div></div>
+<div style="height:54px;display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:14px;align-items:center;padding:0 12px;background:#2A2F38;border:1px solid #C9A86A"><div style="display:flex;color:#E3C887">{{ ic4.swords }}</div><div style="display:flex;flex-direction:column;gap:4px"><div style="font:600 16px/1 Inter;color:#E3C887">Skirmish</div><div style="font:400 12px/1 Inter;color:#9A958A">Hover, focus or ↑ ↓</div></div><div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#14161A;color:#ECE6D8">S</div></div>
+<div style="height:54px;display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:14px;align-items:center;padding:0 12px;opacity:.5"><div style="display:flex;color:#C9A86A">{{ ic4.users }}</div><div style="display:flex;flex-direction:column;gap:4px"><div style="font:600 16px/1 Inter;color:#ECE6D8">Multiplayer</div><div style="font:400 12px/1 Inter;color:#9A958A">Disabled · says why</div></div><div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#14161A;color:#ECE6D8">M</div></div>
+</div>
+
+<div style="position:relative;background:#20242B;border:1px solid #4A4234;padding:22px;display:flex;flex-direction:column;gap:12px;isolation:isolate;grid-column:span 2" style-hover="--chiH:1">{{ F4 }}
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887;white-space:nowrap">Lobby slot · ping bars · content match</div>{{ orn.hr }}</div>
+<sc-for list="{{ slots4 }}" as="sl" hint-placeholder-count="4">
+<div style="display:grid;grid-template-columns:30px minmax(0,1fr) 70px 240px 90px;gap:14px;align-items:center;height:56px;padding:0 12px;background:{{ sl.bg }};border:1px {{ sl.bs }} {{ sl.bd }};opacity:{{ sl.op }}">
+<div style="width:26px;height:26px;background:{{ sl.h }};color:{{ sl.g }};font:700 13px/26px Inter;text-align:center">{{ sl.glyph }}</div>
+<div style="display:flex;flex-direction:column;gap:4px"><div style="font:600 14px/1 Inter;color:#ECE6D8">{{ sl.n }}</div><div style="font:400 12px/1 Inter;color:#9A958A">{{ sl.role }}</div></div>
+<div style="display:flex;align-items:flex-end;gap:2px;height:14px"><sc-for list="{{ sl.bars }}" as="b" hint-placeholder-count="4"><div style="width:4px;height:{{ b.h }};background:{{ b.c }}"></div></sc-for></div>
+<div style="display:flex;flex-direction:column;gap:5px"><div style="display:flex;align-items:center;gap:8px;font:500 13px/1 Inter;color:{{ sl.cFg }};white-space:nowrap">{{ sl.cIcon }}{{ sl.cText }}</div><sc-if value="{{ sl.dl }}" hint-placeholder-val="{{ false }}"><div style="height:5px;background:#14161A;border:1px solid #3A3F48;position:relative"><div style="position:absolute;left:0;top:0;bottom:0;width:64%;background:#C9A86A"></div></div></sc-if></div>
+<div style="font:600 12px/1 Inter;letter-spacing:.08em;text-transform:uppercase;color:{{ sl.rFg }}">{{ sl.r }}</div>
+</div>
+</sc-for>
+<div style="font:400 13px/1.4 Inter;color:#9A958A">Ready · update required · downloading · left. Ping: four bars, verdigris under 50 ms, gold under 100, crimson above. 1.5</div>
+</div>
+
+<div style="position:relative;background:#20242B;border:1px solid #4A4234;padding:22px;display:flex;flex-direction:column;gap:12px;isolation:isolate;grid-column:span 2" style-hover="--chiH:1">{{ F4 }}
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887;white-space:nowrap">Setting row · segmented · toggle · slider · select</div>{{ orn.hr }}</div>
+<div style="display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:20px;align-items:center;padding:10px 14px;background:#20242B;border:1px solid #3A3F48"><div style="display:flex;align-items:center;gap:10px"><div style="font:600 15px/1 Inter;color:#ECE6D8">Shadows</div><div style="font:500 11px/1 'JetBrains Mono';color:#E3C887;border:1px solid #3A3F48;padding:3px 5px">costs 18 fps</div></div><div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px"><div style="height:38px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:#14161A;border:1px solid #3A3F48;font:500 13px/1 Inter;color:#ECE6D8">Low<div style="font:500 10px/1 'JetBrains Mono';color:#9A958A">+18</div></div><div style="height:38px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:#14161A;border:1px solid #C9A86A;font:500 13px/1 Inter;color:#ECE6D8">Medium<div style="font:500 10px/1 'JetBrains Mono';color:#9A958A">+9</div></div><div style="height:38px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:#2A2F38;border:1px solid #E3C887;font:500 13px/1 Inter;color:#E3C887">High<div style="font:500 10px/1 'JetBrains Mono';color:#9A958A">·</div></div><div style="height:38px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:#14161A;border:1px solid #3A3F48;font:500 13px/1 Inter;color:#ECE6D8;opacity:.45">Ultra<div style="font:500 10px/1 'JetBrains Mono';color:#9A958A">−19</div></div></div></div>
+<div style="display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:20px;align-items:center;padding:10px 14px;background:#262A31;border:1px solid #8A6E3C"><div style="font:600 15px/1 Inter;color:#ECE6D8">Subtitles · focused row</div><div style="display:flex;justify-content:flex-end;gap:20px"><div style="display:flex;align-items:center;gap:10px"><div style="font:500 13px/1 Inter;color:#9A958A">On</div><div style="width:52px;height:28px;background:#173129;border:1px solid #4FB39A;position:relative"><div style="position:absolute;top:4px;left:29px;width:18px;height:18px;background:#4FB39A"></div></div></div><div style="display:flex;align-items:center;gap:10px"><div style="font:500 13px/1 Inter;color:#9A958A">Off</div><div style="width:52px;height:28px;background:#14161A;border:1px solid #5C5446;position:relative"><div style="position:absolute;top:4px;left:4px;width:18px;height:18px;background:#9A958A"></div></div></div><div style="display:flex;align-items:center;gap:10px;opacity:.45"><div style="font:500 13px/1 Inter;color:#9A958A">Disabled</div><div style="width:52px;height:28px;background:#14161A;border:1px solid #3A3F48;position:relative"><div style="position:absolute;top:4px;left:4px;width:18px;height:18px;background:#5C5446"></div></div></div></div></div>
+<div style="display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:20px;align-items:center;padding:10px 14px;background:#20242B;border:1px solid #3A3F48"><div style="font:600 15px/1 Inter;color:#ECE6D8">UI scale</div><div style="display:flex;align-items:center;gap:14px"><div style="flex:1;height:28px;position:relative"><div style="position:absolute;left:0;right:0;top:13px;height:2px;background:#3A3F48"></div><div style="position:absolute;left:0;top:13px;height:2px;width:57%;background:#C9A86A"></div><div style="position:absolute;top:6px;left:57%;width:16px;height:16px;margin-left:-8px;background:#14161A;border:2px solid #E3C887;transform:rotate(45deg)"></div></div><div style="width:64px;height:32px;display:flex;align-items:center;justify-content:center;background:#14161A;border:1px solid #4A4234;font:500 13px/1 'JetBrains Mono';color:#ECE6D8">120%</div></div></div>
+<div style="display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:20px;align-items:center;padding:10px 14px;background:#20242B;border:1px solid #3A3F48"><div style="font:600 15px/1 Inter;color:#ECE6D8">Resolution</div><div style="height:38px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;background:#14161A;border:1px solid #4A4234;font:500 13px/1 Inter;color:#ECE6D8">2560 × 1440 (native){{ ic4.down }}</div></div>
+<div style="font:400 13px/1.4 Inter;color:#9A958A">Label left, control right, description in the inspector. Graphics rows carry their frame-rate cost. 1.6</div>
+</div>
+
+<div style="position:relative;background:#20242B;border:1px solid #4A4234;padding:22px;display:flex;flex-direction:column;gap:12px;isolation:isolate;grid-column:span 2" style-hover="--chiH:1">{{ F4 }}
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887;white-space:nowrap">Keymap row · conflict · capture</div>{{ orn.hr }}</div>
+<div style="display:grid;grid-template-columns:minmax(0,1fr) 170px 170px;gap:12px;align-items:center;min-height:44px;padding:4px 14px;background:#20242B;border:1px solid #3A3F48"><div style="font:500 14px/1 Inter;color:#ECE6D8">Attack</div><div style="height:34px;display:flex;align-items:center;padding:0 10px;background:#14161A;border:1px solid #3A3F48"><div style="font:600 12px/18px 'JetBrains Mono';height:22px;min-width:22px;text-align:center;padding:0 6px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#20242B;color:#ECE6D8">A</div></div><div style="height:34px;display:flex;align-items:center;padding:0 10px;background:#14161A;border:1px solid #3A3F48;font:400 13px/1 Inter;color:#9A958A">—</div></div>
+<div style="display:grid;grid-template-columns:minmax(0,1fr) 170px 170px;gap:12px;align-items:center;min-height:44px;padding:4px 14px;background:#20242B;border:1px solid #3A3F48"><div style="font:500 14px/1 Inter;color:#ECE6D8">Stop</div><div style="height:34px;display:flex;align-items:center;padding:0 10px;background:#14161A;border:1px solid #E3C887"><div style="font:600 12px/18px 'JetBrains Mono';height:22px;padding:0 6px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#20242B;color:#E3C887;white-space:nowrap">Press a key…</div></div><div style="height:34px;display:flex;align-items:center;padding:0 10px;background:#14161A;border:1px solid #3A3F48;font:400 13px/1 Inter;color:#9A958A">—</div></div>
+<div style="display:grid;grid-template-columns:minmax(0,1fr) 170px 170px;gap:12px;align-items:center;min-height:44px;padding:4px 14px;background:#20242B;border:1px solid #C8503C"><div style="font:500 14px/1 Inter;color:#ECE6D8">Patrol</div><div style="height:34px;display:flex;align-items:center;padding:0 10px;background:#14161A;border:1px solid #C8503C"><div style="font:600 12px/18px 'JetBrains Mono';height:22px;min-width:22px;text-align:center;padding:0 6px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#20242B;color:#ECE6D8">Q</div></div><div style="height:34px;display:flex;align-items:center;padding:0 10px;background:#14161A;border:1px solid #3A3F48;font:400 13px/1 Inter;color:#9A958A">—</div></div>
+<div style="display:flex;align-items:center;gap:14px;padding:10px 14px;background:#2A1C1A;border:1px solid #C8503C"><div style="display:flex">{{ ic4.alert }}</div><div style="flex:1;font:400 13px/1.4 Inter;color:#ECE6D8">Q is also bound to “Command card · top-left slot”. Both would fire in a match.</div><div style="height:32px;padding:0 12px;display:flex;align-items:center;background:#2A2F38;border:1px solid #8A6E3C;color:#ECE6D8;font:500 13px/1 Inter;white-space:nowrap">Unbind the other</div><div style="height:32px;padding:0 12px;display:flex;align-items:center;border:1px solid #3A3F48;color:#ECE6D8;font:500 13px/1 Inter;white-space:nowrap">Choose another key</div></div>
+<div style="font:400 13px/1.4 Inter;color:#9A958A">Default · capturing · conflict with the one-click fix. 1.6b</div>
+</div>
+
+<div style="position:relative;background:#20242B;border:1px solid #4A4234;padding:22px;display:flex;flex-direction:column;gap:12px;isolation:isolate;grid-column:span 2" style-hover="--chiH:1">{{ F4 }}
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887;white-space:nowrap">Provider card · untested · testing · connected · failed</div>{{ orn.hr }}</div>
+<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">
+<sc-for list="{{ provs4 }}" as="pv" hint-placeholder-count="4">
+<div style="position:relative;display:flex;flex-direction:column;gap:10px;padding:14px;background:{{ pv.bg }};border:1px solid {{ pv.bd }}">{{ pv.pulse }}
+<div style="display:flex;align-items:center;gap:12px"><div style="width:18px;height:18px;border-radius:50%;border:1px solid {{ pv.rBd }};display:flex;align-items:center;justify-content:center"><div style="width:8px;height:8px;border-radius:50%;background:{{ pv.rDot }}"></div></div><div style="font:600 15px/1 Inter;color:#ECE6D8">{{ pv.n }}</div><div style="margin-left:auto;font:400 12px/1 Inter;color:#9A958A">{{ pv.by }}</div></div>
+<div style="height:34px;display:flex;align-items:center;padding:0 10px;background:#14161A;border:1px solid #4A4234;font:500 13px/1 'JetBrains Mono';color:{{ pv.kFg }}">{{ pv.key }}</div>
+<div style="display:flex;align-items:center;gap:8px;font:500 13px/1.3 Inter;color:{{ pv.tFg }}">{{ pv.tIcon }}{{ pv.t }}</div>
+</div>
+</sc-for>
+</div>
+<div style="font:400 13px/1.4 Inter;color:#9A958A">Testing is the screen’s one living accent while it runs. 1.6d</div>
+</div>
+
+<div style="position:relative;background:#20242B;border:1px solid #4A4234;padding:22px;display:flex;flex-direction:column;gap:12px;isolation:isolate;grid-column:span 2" style-hover="--chiH:1">{{ F4 }}
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887;white-space:nowrap">Scenario card · mission card · continue card</div>{{ orn.hr }}</div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px">
+<div style="background:#2A2F38;border:1px solid #E3C887;display:flex;flex-direction:column"><div style="height:100px;background:{{ th4a }};position:relative"><div style="position:absolute;left:8px;top:8px;font:600 11px/1 Inter;color:#ECE6D8;background:rgba(20,22,26,.88);border:1px solid #3A3F48;padding:4px 6px">Tower defence</div></div><div style="padding:12px;display:flex;flex-direction:column;gap:6px"><div style="display:flex;justify-content:space-between"><div style="font:600 15px/1 Inter;color:#ECE6D8">Cinder Keep</div><div style="font:600 12px/1 Inter;color:#E3C887">★ 4.7</div></div><div style="font:400 12px/1 Inter;color:#9A958A">by Vell Orrin · 1–4 · selected</div></div></div>
+<div style="position:relative;background:#20242B;border:1px solid #4A4234;display:flex;flex-direction:column"><div style="height:100px;background:{{ th4b }};position:relative"><div style="position:absolute;left:8px;top:8px;width:36px;height:36px;background:#14161A;border:1px solid #8A6E3C;display:flex;align-items:center;justify-content:center;font:600 16px/1 Cinzel;color:#E3C887">I</div><div style="position:absolute;right:8px;top:8px">{{ seal4 }}</div></div><div style="padding:12px;display:flex;flex-direction:column;gap:6px"><div style="font:600 16px/1.1 Cinzel;color:#ECE6D8">The Ford at Ashfall</div><div style="display:flex;align-items:center;gap:6px;font:500 12px/1 Inter;color:#4FB39A">{{ ic4.check }}Cleared on Hard</div></div></div>
+<div style="position:relative;display:flex;flex-direction:column;gap:8px;padding:12px;background:#14161A;border:1px solid #4FB39A">{{ pulse4 }}<div style="height:62px;background:{{ th4c }};border:1px solid #3A3F48"></div><div style="display:flex;align-items:center;justify-content:space-between"><div style="font:600 12px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#7FE3A1">Continue</div><div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;background:#14161A;color:#ECE6D8">Enter</div></div><div style="font:600 14px/1.2 Inter;color:#ECE6D8">Prologue II · Iron in the Ash</div></div>
+</div>
+<div style="font:400 13px/1.4 Inter;color:#9A958A">Cards share one frame: thumbnail, genre tag, name, Architect, rating. The Continue card carries Home’s living accent. 1.2, 1.3</div>
+</div>
+
+<div style="position:relative;background:#20242B;border:1px solid #4A4234;padding:22px;display:flex;flex-direction:column;gap:12px;isolation:isolate;grid-column:span 2" style-hover="--chiH:1">{{ F4 }}
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887;white-space:nowrap">Colourblind check · countdown seal · preset tile</div>{{ orn.hr }}</div>
+<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px">
+<sc-for list="{{ cvd4 }}" as="cv" hint-placeholder-count="4"><div style="display:flex;flex-direction:column;gap:8px;padding:10px;background:#14161A;border:1px solid #3A3F48"><div style="display:flex;gap:5px"><sc-for list="{{ cv.chips }}" as="c" hint-placeholder-count="4"><div style="width:28px;height:28px;background:{{ c.h }};color:{{ c.g }};font:700 13px/28px Inter;text-align:center">{{ c.glyph }}</div></sc-for></div><div style="font:500 12px/1 Inter;color:#9A958A">{{ cv.n }}</div></div></sc-for>
+</div>
+<div style="display:grid;grid-template-columns:auto minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:center">
+<div style="display:flex;align-items:center;gap:14px">{{ seal4b }}<div style="display:flex;flex-direction:column;gap:5px"><div style="font:600 20px/1 Cinzel;color:#ECE6D8">Starting in 5</div><div style="font:400 12px/1 Inter;color:#9A958A">All ready, all copies match</div></div></div>
+<div style="display:flex;flex-direction:column;gap:6px;padding:12px;background:#20242B;border:1px solid #3A3F48"><div style="font:600 15px/1 Inter;color:#ECE6D8">High</div><div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">≈ 105 fps</div></div>
+<div style="display:flex;flex-direction:column;gap:6px;padding:12px;background:#2A2F38;border:1px solid #E3C887"><div style="font:600 15px/1 Inter;color:#E3C887">Custom · selected</div><div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">≈ 110 fps</div></div>
+</div>
+<div style="font:400 13px/1.4 Inter;color:#9A958A">Player colours as each vision type sees them; the glyph always travels with the colour. 1.5a, 1.6</div>
+</div>
+
+</div>
+</div>
+</div>
+
+<!-- ========== BOARD 05 ORNAMENT AND MOTION ========== -->
+<div id="b05" style="display:flex;flex-direction:column;gap:12px">
+<div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">05 · Ornament and motion · 1920 wide · every lever at off, 2 and 5, playing</div>
+<div data-screen-label="05 Ornament and motion" style="width:1920px;background:#14161A;position:relative;isolation:isolate;box-shadow:0 0 0 1px #2A2F38;padding:56px 64px;display:flex;flex-direction:column;gap:28px">{{ orn.tex }}
+<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:40px">
+<div style="display:flex;flex-direction:column;gap:10px"><div style="font:600 12px/1 Inter;letter-spacing:.16em;text-transform:uppercase;color:#C9A86A">Design system · 05</div><div style="font:600 48px/1 Cinzel;color:#ECE6D8">Ornament and motion</div></div>
+<button onClick="{{ replay5 }}" title="Play every entrance again: growth, draw-in, seal" style="position:relative;height:44px;padding:0 18px;display:flex;align-items:center;gap:10px;background:#2A2F38;border:1px solid #8A6E3C;color:#ECE6D8;font:500 14px/1 Inter;cursor:pointer;outline:none;white-space:nowrap" style-hover="border-color:#C9A86A;background:#333945" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ ic4.refresh }}Replay entrances{{ orn.btnDark }}</button>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px">
+<div style="background:#20242B;border:1px solid #3A3F48;padding:16px;display:flex;flex-direction:column;gap:6px"><div style="font:600 15px/1 Inter;color:#ECE6D8">Every lever: off, then 1–5</div><div style="font:400 13px/1.45 Inter;color:#9A958A;text-wrap:pretty">Motion levers have separate speed and strength. Master intensity scales them all: level × master ÷ 2. Default master 2, every lever 2.</div></div>
+<div style="background:#20242B;border:1px solid #3A3F48;padding:16px;display:flex;flex-direction:column;gap:6px"><div style="font:600 15px/1 Inter;color:#ECE6D8">Player option: Off · Subtle · Full</div><div style="font:400 13px/1.45 Inter;color:#9A958A;text-wrap:pretty">In Settings › Graphics and Settings › Accessibility. Off keeps plain borders; Subtle caps every lever at 2; Full uses the Architect’s levels.</div></div>
+<div style="background:#20242B;border:1px solid #3A3F48;padding:16px;display:flex;flex-direction:column;gap:6px"><div style="font:600 15px/1 Inter;color:#ECE6D8">Reduced motion</div><div style="font:400 13px/1.45 Inter;color:#9A958A;text-wrap:pretty">Stops all motion and leaves the ornaments still. {{ lvNotes.rm }}</div></div>
+<div style="background:#20242B;border:1px solid #3A3F48;padding:16px;display:flex;flex-direction:column;gap:6px"><div style="font:600 15px/1 Inter;color:#ECE6D8">Limits</div><div style="font:400 13px/1.45 Inter;color:#9A958A;text-wrap:pretty">Motion never moves text or controls, never flashes, and never loops faster than every 2.4 s. In a match it stays on edges and alerts. No blur, no particles.</div></div>
+</div>
+
+<div style="display:grid;grid-template-columns:260px repeat(3,minmax(0,1fr));gap:16px;padding:0 4px;font:600 11px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#9A958A"><div>Lever · how it’s built</div><div>Off</div><div>2 · default</div><div>5</div></div>
+<sc-for list="{{ levRows }}" as="lr" hint-placeholder-count="12">
+<div style="display:grid;grid-template-columns:260px repeat(3,minmax(0,1fr));gap:16px;align-items:stretch">
+<div style="display:flex;flex-direction:column;gap:8px;padding:4px 4px 0"><div style="font:600 17px/1.1 Cinzel;color:#E3C887">{{ lr.n }}</div><div style="font:400 12px/1.45 Inter;color:#9A958A;text-wrap:pretty">{{ lr.note }}</div></div>
+<sc-for list="{{ lr.cells }}" as="c" hint-placeholder-count="3">
+<div style="position:relative;height:150px;background:#20242B;border:1px solid #3A3F48;isolation:isolate;display:flex;align-items:center;justify-content:center;gap:18px;padding:18px" style-hover="--chiH:1">{{ c.tex }}{{ c.frame }}
+<sc-if value="{{ c.hasText }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:6px;min-width:0"><div style="display:flex;align-items:center;gap:10px">{{ c.hl }}<div style="font:600 13px/1 Cinzel;letter-spacing:.12em;text-transform:uppercase;color:#E3C887;white-space:nowrap">{{ c.t }}</div></div><div style="font:400 12px/1.4 Inter;color:#9A958A">{{ c.sub }}</div></div></sc-if>
+{{ c.el }}
+</div>
+</sc-for>
+</div>
+</sc-for>
+
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887;white-space:nowrap">Border styles at 3 · sigil sets</div>{{ orn.hr }}</div>
+<div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:16px">
+<sc-for list="{{ styles5 }}" as="c" hint-placeholder-count="5"><div style="position:relative;height:120px;background:#20242B;border:1px solid #3A3F48;isolation:isolate;display:flex;align-items:center;justify-content:center" style-hover="--chiH:1">{{ c.frame }}<div style="font:600 13px/1 Inter;color:#ECE6D8">{{ c.n }}</div></div></sc-for>
+</div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px">
+<sc-for list="{{ sets5 }}" as="c" hint-placeholder-count="3"><div style="height:90px;background:#20242B;border:1px solid #3A3F48;display:flex;align-items:center;gap:18px;padding:0 20px"><div style="font:600 14px/1 Inter;color:#ECE6D8;width:90px">{{ c.n }}</div><sc-for list="{{ c.glyphs }}" as="g" hint-placeholder-count="4"><div style="display:flex">{{ g }}</div></sc-for></div></sc-for>
+</div>
+</div>
+</div>
+</div>
+
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props="{&quot;ornIntensity&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:3,&quot;min&quot;:1,&quot;max&quot;:5,&quot;step&quot;:1,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;ornGlow&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;ornCorners&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;ornHeaders&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;ornRail&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;ornButtons&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;ornMinimap&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;ornTexture&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;ornDividers&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;}}">
 class Component extends DCLogic {
   componentDidMount() {
-    if (!window.CHI_ICON || !window.CHI_ORN) { this._t = setInterval(() => { if (window.CHI_ICON && window.CHI_ORN) { clearInterval(this._t); this.forceUpdate(); } }, 50); }
+    if (!window.CHI_ICON || !window.CHI_ORN || !window.CHI_LV) { this._t = setInterval(() => { if (window.CHI_ICON && window.CHI_ORN && window.CHI_LV) { clearInterval(this._t); this.forceUpdate(); } }, 50); }
   }
   componentWillUnmount() { clearInterval(this._t); }
   i(n, s, c, w) { return window.CHI_ICON ? window.CHI_ICON(React, n, s || 18, c, w) : null; }
@@ -341,7 +509,65 @@ class Component extends DCLogic {
       fancy ? orn.ring(140) : null,
       ...[0, 90, 180, 270].map(a => e('div', { key: a, style: { position: 'absolute', width: 8, height: 8, background: '#C9A86A', transform: `rotate(${a}deg) translateY(-70px) rotate(45deg)`, top: 66, left: 66 } })));
   }
-  renderVals() {
+  renderVals() { return Object.assign(this.renderVals1(), this.r2Vals()); }
+  r2Vals() {
+    if (!window.CHI_LV) return { lv4: null, levRows: [], styles5: [], sets5: [], rings4: [], slots4: [], provs4: [], cvd4: [], ic4: {}, lvNotes: {} };
+    const e = React.createElement, I = (n, s, c) => window.CHI_ICON(React, n, s || 16, c), rp = (this.state && this.state.rp) || 0;
+    const lv4 = window.CHI_LV(React, {}, { replay: rp });
+    const OFF = { ornCorners: false, ornHeaders: false, ornDividers: false, ornTexture: false, ornGlow: false, ornTopBar: false, ornRail: false, ornButtons: false, ornMinimap: false, lvBorder: false, lvRope: false, lvGrowth: false, lvSigil: false, lvPulse: false, lvShimmer: false, lvTurn: false, lvDraw: false, lvHover: false, lvSeal: false, lvMaster: 2 };
+    const iso = (x) => window.CHI_LV(React, Object.assign({}, OFF, x), { replay: rp });
+    const btn = (L) => e('div', { style: { position: 'relative', height: 40, padding: '0 16px', display: 'flex', alignItems: 'center', gap: 8, background: '#173129', border: '1px solid #4FB39A', color: '#ECE6D8', font: '600 12px/1 Inter', letterSpacing: '.08em', textTransform: 'uppercase', flex: 'none' } }, L.pulse(), 'Ready');
+    const th = (i) => { const s = [['#5B5750', '#4C4A42', '#363A2E', '#6E6A5C', '#3A3927'], ['#4A3F3E', '#5A4541', '#3A2E2B', '#7A5A4F', '#2E2622'], ['#7D878B', '#59625E', '#3E4739', '#7E8C89', '#474631']][i]; return `linear-gradient(172deg, ${s[0]} 0 30%, transparent 30%), linear-gradient(186deg, transparent 0 38%, ${s[1]} 38% 52%, transparent 52%), linear-gradient(176deg, transparent 0 48%, ${s[2]} 48% 66%, transparent 66%), linear-gradient(182deg, transparent 0 64%, ${s[3]} 64% 69%, transparent 69%), ${s[4]}`; };
+    const N = window.CHI_LV_NOTES;
+    const ROWS = [
+      ['Border style', N.border, v => ({ lvBorder: v > 0, lvBorderLvl: v, lvBorderStyle: 'Double line' }), 'frame', 'Double line shown'],
+      ['Gold rope', N.rope, v => ({ lvRope: v > 0, lvRopeLvl: v }), 'frame', 'Corners at 2, whole edge at 5'],
+      ['Growth', N.growth, v => ({ lvRope: true, lvRopeLvl: 5, lvGrowth: v > 0, lvGrowthLvl: v }), 'frame', 'Rope grows in on open · replay above'],
+      ['Sigils', N.sigils, v => ({ lvSigil: v > 0, lvSigilLvl: v, ornHeaders: v > 0, lvBorder: true, lvBorderLvl: 1 }), 'frame', 'Seals · count rises with level'],
+      ['Pulse', N.pulse, v => ({ lvPulse: v > 0, lvPulseSpeed: v, lvPulseStr: v }), 'pulse', 'The living accent breathes'],
+      ['Shimmer', N.shimmer, v => ({ lvBorder: true, lvBorderLvl: 3, lvShimmer: v > 0, lvShimmerSpeed: v, lvShimmerStr: v }), 'frame', 'Light travels the gold edge'],
+      ['Turn', N.turn, v => ({ lvTurn: v > 0, lvTurnSpeed: v, lvTurnStr: v }), 'turn', 'Rings rotate; more layers at 5'],
+      ['Draw-in', N.draw, v => ({ lvBorder: true, lvBorderLvl: 3, lvSigil: true, lvSigilLvl: 3, ornDividers: true, lvDraw: v > 0, lvDrawSpeed: v, lvDrawStr: v }), 'frame', 'Fades at 2, traces at 5 · replay'],
+      ['Hover', N.hover, v => ({ lvBorder: true, lvBorderLvl: 3, lvRope: true, lvRopeLvl: 3, lvHover: v > 0, lvHoverSpeed: v, lvHoverStr: v }), 'frame', 'Hover the tile: brighter, tighter'],
+      ['Seal', N.seal, v => ({ lvSeal: v > 0, lvSealSpeed: v, lvSealStr: v }), 'seal', 'Stamps once · replay above'],
+      ['Round 1 families', N.r1, v => ({ ornCorners: v > 0, ornCornersLvl: v, ornHeaders: v > 0, ornHeadersLvl: v, ornTexture: v > 0, ornTextureLvl: v, ornGlow: v > 0 }), 'r1', 'Corners, headers, texture, glow']
+    ];
+    const levRows = ROWS.map(([n, note, fn, kind, sub]) => ({
+      n, note, cells: [0, 2, 5].map(v => {
+        const L = iso(fn(v));
+        const c = { t: v === 0 ? 'Off' : 'Level ' + v, sub, hl: L.orn.hl, hasText: true, frame: kind === 'frame' || kind === 'r1' ? L.frame() : null, tex: kind === 'r1' ? L.orn.tex : null, el: null };
+        if (kind === 'pulse') { c.el = btn(L); c.hasText = true; }
+        if (kind === 'turn') c.el = L.circle(104);
+        if (kind === 'seal') c.el = L.seal(64, 'lv' + v);
+        return c;
+      })
+    }));
+    const lvS = st => iso({ lvBorder: true, lvBorderLvl: 3, lvBorderStyle: st, lvHover: true, lvHoverStr: 3 });
+    const styles5 = ['Engraved line', 'Double line', 'Woven rope', 'Filigree corners', 'Sigil-studded'].map(n => ({ n, frame: lvS(n).frame() }));
+    const sets5 = ['Circles', 'Triangles', 'Seals'].map(n => ({ n, glyphs: [0, 1, 2, 3].map(i => lv4.sigil(40, i, null, n)) }));
+    const bars = ping => { const col = ping < 50 ? '#4FB39A' : ping < 100 ? '#C9A86A' : '#E2735F', nb = ping < 40 ? 4 : ping < 70 ? 3 : ping < 110 ? 2 : 1; return [4, 7, 10, 13].map((h, j) => ({ h: h + 'px', c: j < nb ? col : '#3A3F48' })); };
+    const P = [{ h: '#0072B2', g: '#FFFFFF', glyph: '◆' }, { h: '#D55E00', g: '#14161A', glyph: '▲' }, { h: '#56B4E9', g: '#14161A', glyph: '●' }, { h: '#CC79A7', g: '#14161A', glyph: '■' }];
+    const CVD = [['Normal', ['#0072B2', '#D55E00', '#56B4E9', '#CC79A7']], ['Protanopia', ['#5A70B3', '#8A7B2E', '#9AAEE8', '#8D8BAA']], ['Deuteranopia', ['#4072AE', '#9C8A20', '#8AB0E6', '#9D8AA4']], ['Tritanopia', ['#00797F', '#E5534E', '#4FB7C2', '#D8778B']]];
+    return {
+      lv4, F4: lv4.frame(), pulse4: lv4.pulse(), seal4: lv4.seal(34, 'b4'), seal4b: lv4.seal(56, 'b4b'), th4a: th(0), th4b: th(2), th4c: th(0), lvNotes: N,
+      replay5: () => this.setState(s => ({ rp: ((s && s.rp) || 0) + 1 })),
+      rings4: [[0, '0%', 'Start'], [42, '42%', 'Working'], [100, '100%', 'Done']].map(([p, t, l]) => ({ el: lv4.progress(110, p), t, l })),
+      ic4: { check: I('check', 16, '#4FB39A'), wait: I('hourglass', 16, '#9A958A'), alert: I('alert', 16, '#E2735F'), hour: I('hourglass', 16, '#E3C887'), clock: I('clock', 16, '#9A958A'), book: I('book', 20), swords: I('swords', 20), users: I('users', 20), down: I('down', 14, '#9A958A'), refresh: I('refresh', 16, '#C9A86A') },
+      slots4: [
+        { ...P[0], n: 'Ilse Varga · you', role: 'Host · Commander', bars: bars(18), cText: 'Content matches', cFg: '#4FB39A', cIcon: I('check', 15, '#4FB39A'), r: 'Ready', rFg: '#4FB39A', bg: '#262A31', bd: '#8A6E3C', bs: 'solid', op: 1 },
+        { ...P[1], n: 'Brannoch Vey', role: 'Commander', bars: bars(64), cText: 'Update required · 12 MB', cFg: '#E3C887', cIcon: I('alert', 15, '#E3C887'), r: 'Waiting', rFg: '#9A958A', bg: '#20242B', bd: '#C9A86A', bs: 'solid', op: 1 },
+        { ...P[2], n: 'Mara Solt', role: 'Commander', bars: bars(32), cText: 'Downloading · 31 / 48 MB', cFg: '#E3C887', cIcon: I('download', 15, '#E3C887'), dl: true, r: 'Waiting', rFg: '#9A958A', bg: '#20242B', bd: '#3A3F48', bs: 'solid', op: 1 },
+        { ...P[3], n: 'Oda Renn', role: 'Left 0:12 ago', bars: bars(999).map(b => ({ ...b, c: '#3A3F48' })), cText: 'Left the lobby', cFg: '#9A958A', cIcon: I('door', 15, '#9A958A'), r: '—', rFg: '#9A958A', bg: '#20242B', bd: '#3A3F48', bs: 'dashed', op: .6 }],
+      provs4: [
+        { n: 'OpenAI Codex', by: 'No key yet', key: 'Paste your key', kFg: '#9A958A', t: 'Untested', tFg: '#9A958A', tIcon: null, bg: '#20242B', bd: '#3A3F48', rBd: '#5C5446', rDot: 'transparent', pulse: null },
+        { n: 'Claude', by: 'Anthropic', key: 'sk-ant-•••• 7Qd2', kFg: '#ECE6D8', t: 'Testing the connection…', tFg: '#7FE3A1', tIcon: I('hourglass', 14, '#7FE3A1'), bg: '#262A31', bd: '#7FE3A1', rBd: '#E3C887', rDot: '#E3C887', pulse: lv4.pulse({ inset: -1 }) },
+        { n: 'Local model', by: 'Ollama', key: 'http://localhost:11434', kFg: '#ECE6D8', t: 'Connected · 38 ms', tFg: '#4FB39A', tIcon: I('check', 14, '#4FB39A'), bg: '#20242B', bd: '#3A3F48', rBd: '#5C5446', rDot: 'transparent', pulse: null },
+        { n: 'OpenRouter', by: 'Many models', key: 'sk-or-•••• a91c', kFg: '#ECE6D8', t: 'Key rejected (401)', tFg: '#E2735F', tIcon: I('alert', 14, '#E2735F'), bg: '#20242B', bd: '#3A3F48', rBd: '#5C5446', rDot: 'transparent', pulse: null }],
+      cvd4: CVD.map(([n, cs], vi) => ({ n, chips: cs.map((h, j) => ({ h, g: j === 0 && vi !== 3 ? '#FFFFFF' : '#14161A', glyph: P[j].glyph })) })),
+      levRows, styles5, sets5
+    };
+  }
+  renderVals1() {
     const i = (n, s, c) => this.i(n, s, c);
     const pr = this.props, b = (v, d) => v === undefined ? d : v;
     const orn = window.CHI_ORN ? window.CHI_ORN(React, { corners: b(pr.ornCorners, true), headers: b(pr.ornHeaders, true), topBar: b(pr.ornTopBar, true), rail: b(pr.ornRail, true), buttons: b(pr.ornButtons, true), minimap: b(pr.ornMinimap, true), inspector: b(pr.ornInspectorTitle, true), texture: b(pr.ornTexture, true), dividers: b(pr.ornDividers, true), intensity: b(pr.ornIntensity, 3), glow: b(pr.ornGlow, true) }) : {};

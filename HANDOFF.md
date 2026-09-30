@@ -1,6 +1,6 @@
 # HANDOFF — Project Chimera
 
-_Updated 2026-09-30 · branch `master` · last commit `5762d74d` (then this handoff commit)_
+_Updated 2026-09-30 · branch `master` · last commit `ec53e0ed` (then the UI-spec commit)_
 
 ## Where we stopped
 
@@ -21,12 +21,15 @@ No engine code, tests or goldens were touched. Done this session:
   A Arcane Workshop / B Transmutation Lab / C Modern Atelier + review checklist). Direction B's
   reference images are in that doc and in
   `_bmad-output/planning-artifacts/ux-designs/ux-Project_Chimera-2026-06-20/handoff-prompts/`.
-- **UI Round 1 approved (session 14):** Alec liked **Direction B, Transmutation Lab** (design system
-  + map editor). The Claude Design export is saved in `docs/ui-redesign/round-1-transmutation-lab/`
-  (the reference images are not duplicated there). The **Round 2 prompt** (screen map, then five
-  batches: Front Door, Browse, Match, Editors 1, Editors 2) is in the brief doc's last section and
-  in `docs/ui-redesign/round-2-prompt.md`; it also fixes the brief's stale bits (Commanders and
-  Architects, no "Law of Equal Exchange", photoreal backdrop, any-genre custom games).
+- **UI design complete (2026-09-30):** Alec approved the full Claude Design export (Round 1
+  Transmutation Lab + all five Round 2 batches, Match HUD corrected to full-bleed). It is now the
+  ONLY mockup of record, in `docs/ui-redesign/` (start with its `README.md`: tokens, shell,
+  ornament/motion levers with Unreal build notes, every screen). The Round 1 export was removed
+  (git history); the prompts that produced it are in `docs/history/ui-redesign-prompts/`. The four
+  Manor Lords `assets/bf-*.jpg` stand-ins are left out of the repo. Assessment: reproducible in
+  UMG/Common UI to the eye (designed with no blur/particles); SVG ornaments and icons become
+  textures/materials; text rendering won't be pixel-identical. Fonts are Cinzel/Inter/JetBrains
+  Mono for now; Alec may commission a custom font if they look lacklustre in engine.
 - **Cleanup:** BMAD tooling, the bmad-loop hooks and the 2026-06-05 UX run removed; the project's
   `git push` deny rule was lifted at Alec's request.
 - **PC setup:** Visual Studio 2026 Community 18.10 installed and verified (all four Epic workloads,
@@ -52,18 +55,12 @@ No engine code, tests or goldens were touched. Done this session:
    armies, the asset redo cost (photoreal = regenerate all 24 models), player-import clash (idea:
    per-map look preset) and frame rate on this PC.
 4. Then the three trial checks: (a) NativeAOT sim library drives 1,000 units in Unreal with the
-   same checksum as Godot; (b) one HUD screen in C++ matched to a mockup by screenshot;
+   same checksum as Godot; (b) one HUD screen in C++ matched to a mockup by screenshot: use Match HUD board 3.1 in
+   `docs/ui-redesign/Match.dc.html`;
    (c) runtime terrain editing (RealtimeMeshComponent vs Errant Landscape runtime).
 
 ## Waiting on Alec
 
-- **UI Round 2** in Claude Design (2026-09-30): screen map, Front Door, Browse and Match are done.
-  Match's in-match HUD wrongly used the editor shell (our prompt's fault); the fix is
-  `docs/ui-redesign/batch-3-hud-correction.md` (full-bleed battlefield, top strip, 20% bottom
-  console, square minimap in the ring, redo 3.1, all 3.2, 3.3a, 3.6). Spectator/replay, score and
-  hero picker were approved as-is. Alec is running the redo in a NEW Claude Design chat (same
-  project) with a short rules primer, using three Manor Lords Steam screenshots as stand-in
-  battlefield backgrounds (not in the repo). Then Editors 1 and Editors 2, one fresh chat each.
 - **World look** final call after the look test.
 - **`.claude/worktrees/wf_bbdf1721-ebb-93/`**: stale leftover of a 2026-08-04 workflow run (89 files,
   duplicates of `_bmad-output` UX files, nothing unique, untracked). Delete when he says OK.

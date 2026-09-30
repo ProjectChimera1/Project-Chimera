@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="icons.js"></script>
+<script src="ornaments.js"></script>
+<script src="levers.js"></script>
+<style>body{margin:0;background:#0B0C0E;color:#ECE6D8;font-family:Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}a{color:#E3C887;text-decoration:none}a:hover{color:#ECE6D8;text-decoration:underline}*{box-sizing:border-box}input::placeholder,textarea::placeholder{color:#9A958A}</style>
+</helmet>
+
+<section id="index" style="display:flex;flex-direction:column;gap:12px;padding:64px 64px 96px">
+<div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">2.0 · Index · 1920 wide · interactive</div>
+<div data-screen-label="2.0 Index" style="width:1920px;background:#14161A;position:relative;isolation:isolate;box-shadow:0 0 0 1px #2A2F38;padding:48px 56px;display:grid;grid-template-columns:minmax(0,1fr) 560px;gap:48px" style-hover="--chiH:1">{{ orn.tex }}{{ F }}
+<div style="display:flex;flex-direction:column;gap:22px">
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font:600 12px/1 Inter;letter-spacing:.16em;text-transform:uppercase;color:#C9A86A">Round 2 · Batch 2</div>
+<div style="font:600 48px/1 Cinzel;color:#ECE6D8">Browse and publish</div>
+<div style="font:400 16px/1.55 Inter;color:#9A958A;max-width:880px;text-wrap:pretty">Browse home (F3), a scenario’s detail page in five states, My library, and the Publish flow from Create (Ctrl Shift P). Same shell as Batch 1; the Publish flow lives inside Create’s shell. Routes follow <a href="Screen Map.dc.html">00 · Screen map</a>; the first batch is <a href="Front Door.dc.html">Front Door</a>.</div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 24px">
+<sc-for list="{{ index }}" as="x" hint-placeholder-count="13">
+<a href="#{{ x.id }}" title="Jump to {{ x.code }} {{ x.n }}" style="display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 10px;background:#20242B;border:1px solid #3A3F48;text-decoration:none" style-hover="border-color:#C9A86A;background:#2A2F38;text-decoration:none">
+<div style="font:600 12px/1 'JetBrains Mono';color:#E3C887">{{ x.code }}</div>
+<div style="font:500 13px/1.3 Inter;color:#ECE6D8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ x.n }}</div>
+<div style="font:600 10px/1 Inter;letter-spacing:.1em;color:{{ x.tc }};border:1px solid {{ x.tc }};padding:3px 5px;white-space:nowrap">{{ x.tag }}</div>
+</a>
+</sc-for>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">How to review</div>{{ orn.hr }}</div>
+<div style="display:flex;flex-direction:column;gap:10px;font:400 14px/1.5 Inter;color:#9A958A;text-wrap:pretty">
+<div><span style="color:#4FB39A;font-weight:600">INTERACTIVE</span> artboards respond to clicks, typing and hover. Browse home filters live: search, tags, sort, players, size and AI.</div>
+<div>Levers are in Tweaks, same panel as Front Door. Master 5 and UI ornament Full are now the defaults.</div>
+<div>The one modal in this batch is 2.3b, a destructive confirmation.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font:600 11px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#9A958A">Show sections · fewer is faster</div><div style="display:flex;gap:6px;flex-wrap:wrap"><sc-for list="{{ showChips }}" as="c" hint-placeholder-count="5"><div onClick="{{ c.go }}" data-show="{{ c.n }}" title="{{ c.tip }}" tabIndex="0" style="height:30px;padding:0 10px;display:flex;align-items:center;background:{{ c.bg }};border:1px solid {{ c.bd }};font:500 12px/1 Inter;color:{{ c.fg }};cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ c.n }}</div></sc-for></div></div>
+<div style="display:flex;align-items:center;gap:12px;margin-top:6px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">New components → board 04</div>{{ orn.hr }}</div>
+<div style="display:flex;flex-wrap:wrap;gap:8px"><sc-for list="{{ newComps }}" as="c" hint-placeholder-count="10"><div style="font:500 12px/1 Inter;color:#ECE6D8;background:#20242B;border:1px solid #3A3F48;padding:6px 9px">{{ c }}</div></sc-for></div>
+</div>
+</div>
+</section>
+
+<section id="s21" style="display:flex;flex-direction:column;gap:20px;padding:0 64px 96px">
+<div style="font:600 24px/1 Cinzel;color:#E3C887">2.1 · Browse home (F3)</div>
+<sc-if value="{{ show.s21 }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;gap:64px;align-items:flex-start">
+<sc-for list="{{ homes }}" as="h" hint-placeholder-count="2">
+<div id="{{ h.id }}" style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;gap:10px;align-items:center"><div style="font:600 12px/1 'JetBrains Mono';color:#14161A;background:#C9A86A;padding:4px 7px">{{ h.code }}</div><div style="font:500 14px/1 Inter;color:#ECE6D8">{{ h.label }}</div><div style="font:600 10px/1 Inter;letter-spacing:.1em;color:#4FB39A;border:1px solid #4FB39A;padding:3px 5px">INTERACTIVE · LIVE FILTERS</div></div>
+<div data-screen-label="{{ h.code }}" style="width:1920px;height:1080px;position:relative;overflow:hidden;background:#14161A;box-shadow:0 0 0 1px #2A2F38;display:grid;grid-template-rows:56px minmax(0,1fr) 40px">
+<dc-import name="Shell Top Bar" mode="Browse" title="Browse" sub="{{ h.tabName }}" net="online" user="Ilse Varga" role="Commander · Architect" lv="{{ LV }}" hint-size="100%,56px"></dc-import>
+<div style="display:grid;grid-template-columns:300px minmax(0,1fr) 420px;min-height:0">
+
+<div style="background:#20242B;border-right:1px solid #4A4234;position:relative;isolation:isolate;display:flex;flex-direction:column;gap:6px;padding:22px 16px" style-hover="--chiH:1">{{ orn.tex }}{{ F }}
+<div style="display:flex;align-items:center;gap:12px;padding:0 6px 12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">Browse</div>{{ orn.hr }}</div>
+<sc-for list="{{ h.tabs }}" as="t" hint-placeholder-count="4">
+<div onClick="{{ t.go }}" title="{{ t.n }} ({{ t.k }})" tabIndex="0" style="height:50px;display:grid;grid-template-columns:20px minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:0 12px;background:{{ t.bg }};border:1px solid {{ t.bd }};cursor:pointer;outline:none" style-hover="background:#2A2F38" style-focus="outline:2px solid #E3C887;outline-offset:1px"><div style="display:flex;color:{{ t.ic }}">{{ t.icon }}</div><div style="font:600 15px/1 Inter;color:{{ t.fg }};white-space:nowrap">{{ t.n }}</div><div style="font:500 11px/1 'JetBrains Mono';color:#9A958A">{{ t.c }}</div><div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">{{ t.k }}</div></div>
+</sc-for>
+<sc-if value="{{ h.isScen }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;flex-direction:column;gap:16px;padding:18px 6px 0;margin-top:10px;border-top:1px solid #3A3F48;position:relative">{{ orn.divTop }}
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font:600 11px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#9A958A">Players</div><div style="display:flex;gap:4px;flex-wrap:wrap"><sc-for list="{{ pChips }}" as="c" hint-placeholder-count="6"><div onClick="{{ c.go }}" title="{{ c.tip }}" tabIndex="0" style="height:30px;padding:0 9px;display:flex;align-items:center;background:{{ c.bg }};border:1px solid {{ c.bd }};font:500 13px/1 Inter;color:{{ c.fg }};cursor:pointer;outline:none;white-space:nowrap" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ c.n }}</div></sc-for></div></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font:600 11px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#9A958A">Map size</div><div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px"><sc-for list="{{ sizeChips }}" as="c" hint-placeholder-count="5"><div onClick="{{ c.go }}" title="{{ c.tip }}" tabIndex="0" style="height:30px;display:flex;align-items:center;justify-content:center;background:{{ c.bg }};border:1px solid {{ c.bd }};font:500 13px/1 Inter;color:{{ c.fg }};cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ c.n }}</div></sc-for></div></div>
+<div onClick="{{ aiGo }}" title="Only scenarios with AI opponents (A)" tabIndex="0" style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#14161A;border:1px solid #3A3F48;cursor:pointer;outline:none" style-hover="border-color:#8A6E3C" style-focus="outline:2px solid #E3C887;outline-offset:2px"><div style="font:500 14px/1 Inter;color:#ECE6D8">Has AI opponents</div><div style="width:44px;height:24px;background:{{ aiT.bg }};border:1px solid {{ aiT.bd }};position:relative"><div style="position:absolute;top:3px;left:{{ aiT.x }};width:16px;height:16px;background:{{ aiT.k }};transition:left .15s ease"></div></div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font:600 11px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#9A958A">Genre</div><sc-for list="{{ genreList }}" as="g" hint-placeholder-count="8"><div onClick="{{ g.go }}" title="Show {{ g.n }}" style="display:flex;align-items:center;gap:10px;height:26px;cursor:pointer;font:400 13px/1 Inter;color:{{ g.fg }}" style-hover="color:#ECE6D8"><div style="width:14px;height:14px;border:1px solid {{ g.bd }};display:flex;align-items:center;justify-content:center"><div style="width:6px;height:6px;background:{{ g.dot }}"></div></div>{{ g.n }}<div style="margin-left:auto;font:500 11px/1 'JetBrains Mono';color:#9A958A">{{ g.c }}</div></div></sc-for></div>
+<div onClick="{{ clearAll }}" title="Clear every filter (Backspace)" style="font:500 13px/1 Inter;color:#C9A86A;cursor:pointer" style-hover="color:#E3C887">Clear filters</div>
+</div>
+</sc-if>
+</div>
+
+<div style="position:relative;isolation:isolate;padding:26px 36px;display:flex;flex-direction:column;gap:16px;min-width:0;min-height:0;overflow:hidden">{{ orn.tex }}
+<div style="display:flex;gap:12px;align-items:center">
+<div style="flex:1;height:44px;display:flex;align-items:center;gap:10px;padding:0 12px;background:#14161A;border:1px solid #4A4234" style-focus-within="border-color:#E3C887">{{ ic.search }}<input value="{{ q }}" onChange="{{ onQ }}" placeholder="Search scenarios, Architects, units…" title="Search Browse (Ctrl F)" style="flex:1;min-width:0;background:transparent;border:none;outline:none;color:#ECE6D8;font:400 15px/1 Inter"><div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#20242B;color:#ECE6D8">Ctrl F</div></div>
+<div style="display:flex;gap:4px"><sc-for list="{{ sorts }}" as="o" hint-placeholder-count="4"><div onClick="{{ o.go }}" title="Sort by {{ o.n }}" tabIndex="0" style="height:44px;padding:0 14px;display:flex;align-items:center;background:{{ o.bg }};border:1px solid {{ o.bd }};font:500 13px/1 Inter;color:{{ o.fg }};cursor:pointer;outline:none;white-space:nowrap" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ o.n }}</div></sc-for></div>
+</div>
+<sc-if value="{{ h.isScen }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;gap:6px;flex-wrap:wrap"><sc-for list="{{ tagChips }}" as="g" hint-placeholder-count="8"><div onClick="{{ g.go }}" title="Genre: {{ g.n }}" tabIndex="0" style="height:32px;padding:0 11px;display:flex;align-items:center;gap:7px;background:{{ g.bg }};border:1px solid {{ g.bd }};font:500 13px/1 Inter;color:{{ g.fg }};cursor:pointer;outline:none;white-space:nowrap" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ g.n }}<div style="font:500 11px/1 'JetBrains Mono';color:#9A958A">{{ g.c }}</div></div></sc-for></div>
+</sc-if>
+<div style="display:flex;justify-content:space-between;align-items:center"><div style="font:500 13px/1 Inter;color:#9A958A">{{ h.count }}</div><div style="font:400 12px/1 Inter;color:#9A958A">Every listing is checked for integrity before it appears here.</div></div>
+<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px">
+<sc-for list="{{ h.cards }}" as="c" hint-placeholder-count="12">
+<div onClick="{{ c.go }}" title="{{ c.tip }}" tabIndex="0" style="position:relative;background:{{ c.bg }};border:1px solid {{ c.bd }};display:flex;flex-direction:column;cursor:pointer;outline:none;isolation:isolate" style-hover="border-color:#C9A86A;--chiH:1" style-focus="outline:2px solid #E3C887;outline-offset:2px">
+<div style="height:112px;background:{{ c.thumb }};position:relative"><div style="position:absolute;left:8px;top:8px;font:600 11px/1 Inter;color:#ECE6D8;background:rgba(20,22,26,.88);border:1px solid #3A3F48;padding:4px 6px;white-space:nowrap">{{ c.tag }}</div><sc-if value="{{ c.badge }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;right:8px;top:8px;display:flex;align-items:center;gap:5px;font:600 11px/1 Inter;color:{{ c.bFg }};background:rgba(20,22,26,.9);border:1px solid {{ c.bFg }};padding:3px 6px;white-space:nowrap">{{ c.bIcon }}{{ c.badge }}</div></sc-if></div>
+<div style="padding:11px 12px;display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><div style="font:600 15px/1.15 Inter;color:#ECE6D8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.n }}</div><div style="font:600 12px/1 Inter;color:#E3C887;white-space:nowrap">★ {{ c.r }}</div></div>
+<div style="font:400 12px/1.2 Inter;color:#9A958A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.meta }}</div>
+</div>
+</div>
+</sc-for>
+</div>
+<sc-if value="{{ h.none }}" hint-placeholder-val="{{ false }}"><div style="background:#20242B;border:1px dashed #3A3F48;padding:24px;font:400 14px/1.5 Inter;color:#9A958A">Nothing matches. Try fewer filters, or clear them.</div></sc-if>
+</div>
+
+<div style="background:#20242B;border-left:1px solid #4A4234;position:relative;isolation:isolate;display:flex;flex-direction:column;gap:16px;padding:24px 24px 20px;min-height:0" style-hover="--chiH:1">{{ orn.tex }}{{ F2 }}
+<div style="height:190px;background:{{ h.sel.thumb }};border:1px solid #3A3F48"></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font:600 12px/1 Inter;letter-spacing:.14em;text-transform:uppercase;color:#C9A86A">{{ h.sel.tag }}</div><div style="font:600 28px/1.1 Cinzel;color:#ECE6D8">{{ h.sel.n }}</div><div style="font:400 14px/1 Inter;color:#9A958A">by {{ h.sel.a }}, Architect</div>{{ orn.inspTitle }}</div>
+<div style="font:400 14px/1.5 Inter;color:#ECE6D8;text-wrap:pretty">{{ h.sel.d }}</div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px"><sc-for list="{{ h.sel.stats }}" as="st" hint-placeholder-count="3"><div style="background:#14161A;border:1px solid #3A3F48;padding:10px;display:flex;flex-direction:column;gap:6px"><div style="font:600 11px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A">{{ st.k }}</div><div style="font:600 15px/1 Inter;color:#ECE6D8;white-space:nowrap">{{ st.v }}</div></div></sc-for></div>
+<div style="display:flex;align-items:center;gap:8px;font:500 12px/1.3 Inter;color:#4FB39A">{{ ic.check }}Verified · signatures match · scripts sandboxed</div>
+<div style="margin-top:auto;display:flex;flex-direction:column;gap:10px">
+<button title="{{ h.sel.pTip }}" style="position:relative;height:52px;display:flex;align-items:center;justify-content:center;gap:12px;background:#173129;border:1px solid #4FB39A;color:#ECE6D8;font:600 14px/1 Inter;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;outline:none" style-hover="background:#1D3B32" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ pulse }}{{ h.sel.primary }}<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8;letter-spacing:0">S</div></button>
+<button title="Open the full page (Enter)" style="position:relative;height:40px;display:flex;align-items:center;justify-content:center;gap:10px;background:#2A2F38;border:1px solid #8A6E3C;color:#ECE6D8;font:500 13px/1 Inter;cursor:pointer;outline:none" style-hover="border-color:#C9A86A;background:#333945" style-focus="outline:2px solid #E3C887;outline-offset:2px">View details<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">Enter</div>{{ orn.btnDark }}</button>
+</div>
+</div>
+</div>
+<div style="background:#20242B;border-top:1px solid #4A4234;display:flex;align-items:center;gap:22px;padding:0 20px">
+<sc-for list="{{ homeHints }}" as="k" hint-placeholder-count="5"><div style="display:flex;align-items:center;gap:8px;font:500 12px/1 Inter;color:#9A958A"><div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">{{ k.k }}</div>{{ k.t }}</div></sc-for>
+<div style="flex:1"></div><div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">Esc → Home</div>
+</div>
+</div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+</section>
+
+<section id="s22" style="display:flex;flex-direction:column;gap:20px;padding:0 64px 96px">
+<div style="font:600 24px/1 Cinzel;color:#E3C887">2.2 · Detail page · five states</div>
+<sc-if value="{{ show.s22 }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;gap:64px;align-items:flex-start">
+<sc-for list="{{ details }}" as="d" hint-placeholder-count="5">
+<div id="{{ d.id }}" style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;gap:10px;align-items:center"><div style="font:600 12px/1 'JetBrains Mono';color:#14161A;background:#C9A86A;padding:4px 7px">{{ d.code }}</div><div style="font:500 14px/1 Inter;color:#ECE6D8">{{ d.label }}</div><div style="font:600 10px/1 Inter;letter-spacing:.1em;color:{{ d.tc }};border:1px solid {{ d.tc }};padding:3px 5px">{{ d.tag }}</div></div>
+<div data-screen-label="{{ d.code }}" style="width:1920px;height:1080px;position:relative;overflow:hidden;background:#14161A;box-shadow:0 0 0 1px #2A2F38;display:grid;grid-template-rows:56px minmax(0,1fr) 40px">
+<dc-import name="Shell Top Bar" mode="Browse" title="Cinder Keep" sub="Scenario · by Vell Orrin" net="online" user="Ilse Varga" role="Commander · Architect" lv="{{ LV }}" hint-size="100%,56px"></dc-import>
+<div style="display:grid;grid-template-columns:300px minmax(0,1fr) 440px;min-height:0">
+
+<div style="background:#20242B;border-right:1px solid #4A4234;position:relative;isolation:isolate;display:flex;flex-direction:column;gap:14px;padding:22px 20px" style-hover="--chiH:1">{{ orn.tex }}{{ F }}
+<div title="Back to results (Esc)" style="display:flex;align-items:center;gap:8px;font:500 13px/1 Inter;color:#C9A86A;cursor:pointer" style-hover="color:#E3C887"><div style="display:flex;transform:scaleX(-1)">{{ ic.chev }}</div>Back to results</div>
+<div style="display:flex;flex-direction:column;gap:2px">
+<sc-for list="{{ dNav }}" as="n" hint-placeholder-count="5"><div title="{{ n.n }}" style="height:40px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;background:{{ n.bg }};border:1px solid {{ n.bd }};font:500 14px/1 Inter;color:{{ n.fg }};cursor:pointer" style-hover="background:#2A2F38">{{ n.n }}<div style="font:500 11px/1 'JetBrains Mono';color:#9A958A">{{ n.c }}</div></div></sc-for>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;padding-top:16px;border-top:1px solid #3A3F48;position:relative">{{ orn.divTop }}
+<div style="display:flex;align-items:center;gap:12px"><div style="width:44px;height:44px;border:1px solid #C9A86A;background:#14161A;display:flex;align-items:center;justify-content:center;font:600 16px/1 Cinzel;color:#E3C887">VO</div><div style="display:flex;flex-direction:column;gap:5px"><div style="font:600 15px/1 Inter;color:#ECE6D8">Vell Orrin</div><div style="font:400 12px/1 Inter;color:#9A958A">Architect · 6 published · since 2025</div></div></div>
+<button title="Follow Vell Orrin: new work shows on Home" style="height:34px;background:#2A2F38;border:1px solid #8A6E3C;color:#ECE6D8;font:500 13px/1 Inter;cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">Follow</button>
+<div style="font:600 11px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#9A958A">Other work</div>
+<sc-for list="{{ otherWork }}" as="o" hint-placeholder-count="3"><div title="{{ o.n }} · {{ o.g }}" style="display:grid;grid-template-columns:64px minmax(0,1fr);gap:10px;align-items:center;cursor:pointer;padding:4px;border:1px solid transparent" style-hover="border-color:#3A3F48;background:#2A2F38"><div style="height:38px;background:{{ o.thumb }};border:1px solid #3A3F48"></div><div style="display:flex;flex-direction:column;gap:4px;min-width:0"><div style="font:500 13px/1.2 Inter;color:#ECE6D8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ o.n }}</div><div style="font:400 12px/1 Inter;color:#9A958A">{{ o.g }} · ★ {{ o.r }}</div></div></div></sc-for>
+</div>
+</div>
+
+<div style="position:relative;isolation:isolate;padding:24px 32px;display:flex;flex-direction:column;gap:18px;min-width:0;min-height:0;overflow:hidden">{{ orn.tex }}
+<sc-if value="{{ d.failed }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;gap:14px;align-items:flex-start;padding:14px 16px;background:#2A1C1A;border:1px solid #C8503C"><div style="display:flex;padding-top:1px">{{ ic.alertRed }}</div><div style="display:flex;flex-direction:column;gap:6px"><div style="font:600 15px/1.3 Inter;color:#E2735F">Verification failed. Chimera won’t load this copy.</div><div style="font:400 13px/1.45 Inter;color:#ECE6D8">2 of 214 files don’t match what Vell Orrin published: <span style="font-family:'JetBrains Mono';font-size:12px">rules/waves_31-40.json</span> and <span style="font-family:'JetBrains Mono';font-size:12px">units/frost_tower.uasset</span>. Usually a damaged download. Repair fetches only those files.</div></div></div>
+</sc-if>
+<div style="display:grid;grid-template-columns:minmax(0,1fr) 150px;gap:10px;height:420px">
+<div style="position:relative;background:{{ gMain }};border:1px solid #3A3F48"><div style="position:absolute;left:12px;bottom:12px;font:500 12px/1 Inter;color:#ECE6D8;background:rgba(20,22,26,.88);border:1px solid #3A3F48;padding:6px 8px;white-space:nowrap">{{ gCap }}</div><div style="position:absolute;right:12px;bottom:12px;font:500 12px/1 'JetBrains Mono';color:#ECE6D8;background:rgba(20,22,26,.88);border:1px solid #3A3F48;padding:6px 8px;white-space:nowrap">{{ gNum }}</div></div>
+<div style="display:flex;flex-direction:column;gap:8px"><sc-for list="{{ gThumbs }}" as="g" hint-placeholder-count="5"><div onClick="{{ g.go }}" title="{{ g.cap }}" tabIndex="0" style="flex:1;background:{{ g.thumb }};border:1px solid {{ g.bd }};cursor:pointer;outline:none" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:1px"></div></sc-for></div>
+</div>
+<div style="display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:28px;min-height:0">
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">About</div>{{ orn.hr }}</div>
+<div style="font:400 15px/1.55 Inter;color:#ECE6D8;text-wrap:pretty">Forty waves climb the keep road, each with its own mix of Sanguine Court beasts. Up to four Commanders share one gold pool and build towers along the switchbacks. High ground adds two tiles of range; the Frost tower slows anything it touches.</div>
+<div style="font:400 14px/1.5 Inter;color:#9A958A;text-wrap:pretty">Best with 2–4 Commanders. Solo is balanced but hard after wave 30. Remixing is allowed with credit.</div>
+<div style="display:flex;align-items:center;gap:12px;margin-top:6px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">Reviews · ★ 4.7 · 1,284</div>{{ orn.hr }}</div>
+<sc-for list="{{ reviews }}" as="r" hint-placeholder-count="2"><div style="display:flex;flex-direction:column;gap:6px;padding:12px 14px;background:#20242B;border:1px solid #3A3F48"><div style="display:flex;align-items:center;gap:10px"><div style="font:600 13px/1 Inter;color:#E3C887;letter-spacing:.1em">{{ r.stars }}</div><div style="font:600 13px/1 Inter;color:#ECE6D8">{{ r.who }}</div><div style="font:400 12px/1 Inter;color:#9A958A">{{ r.meta }}</div></div><div style="font:400 13px/1.45 Inter;color:#ECE6D8;text-wrap:pretty">{{ r.t }}</div></div></sc-for>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;align-items:center;gap:12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887;white-space:nowrap">Version history</div>{{ orn.hr }}</div>
+<sc-for list="{{ d.versions }}" as="v" hint-placeholder-count="4"><div style="display:grid;grid-template-columns:52px minmax(0,1fr);gap:12px;padding:8px 0;border-bottom:1px solid #2A2F38"><div style="font:600 13px/1.3 'JetBrains Mono';color:{{ v.fg }}">{{ v.v }}</div><div style="display:flex;flex-direction:column;gap:4px"><div style="font:400 13px/1.4 Inter;color:#ECE6D8">{{ v.t }}</div><div style="font:400 12px/1 Inter;color:#9A958A">{{ v.when }}</div></div></div></sc-for>
+</div>
+</div>
+</div>
+
+<div style="background:#20242B;border-left:1px solid #4A4234;position:relative;isolation:isolate;display:flex;flex-direction:column;gap:16px;padding:24px 24px 20px;min-height:0" style-hover="--chiH:1">{{ orn.tex }}{{ F2 }}
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font:600 12px/1 Inter;letter-spacing:.14em;text-transform:uppercase;color:#C9A86A">Tower defence · 1–4 Commanders</div><div style="font:600 32px/1.05 Cinzel;color:#ECE6D8">Cinder Keep</div>{{ orn.inspTitle }}</div>
+<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:#14161A;border:1px solid {{ d.vBd }}"><div style="flex:none">{{ d.vSeal }}</div><div style="display:flex;flex-direction:column;gap:5px"><div style="font:600 14px/1.2 Inter;color:{{ d.vFg }}">{{ d.vT }}</div><div style="font:400 12px/1.35 Inter;color:#9A958A">{{ d.vSub }}</div></div></div>
+<div style="display:flex;flex-direction:column;gap:8px;padding:14px;background:#14161A;border:1px solid {{ d.sBd }}">
+<div style="display:flex;align-items:center;gap:8px;font:600 14px/1.2 Inter;color:{{ d.sFg }}">{{ d.sIcon }}{{ d.sT }}</div>
+<sc-if value="{{ d.isDl }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:6px"><div style="height:6px;background:#20242B;border:1px solid #3A3F48;position:relative"><div style="position:absolute;left:0;top:0;bottom:0;width:{{ dlPct }};background:#C9A86A;transition:width 1s linear"></div></div><div style="display:flex;justify-content:space-between;font:500 12px/1 'JetBrains Mono';color:#9A958A"><div>{{ dlText }}</div><div>6.2 MB/s</div></div></div></sc-if>
+<div style="font:400 13px/1.45 Inter;color:#9A958A;text-wrap:pretty">{{ d.sSub }}</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px">
+<button disabled="{{ d.pDis }}" title="{{ d.pTip }}" style="position:relative;height:52px;display:flex;align-items:center;justify-content:center;gap:12px;background:{{ d.pBg }};border:1px solid {{ d.pBd }};color:{{ d.pFg }};font:600 14px/1 Inter;letter-spacing:.08em;text-transform:uppercase;cursor:{{ d.pCur }};outline:none" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ d.pulse }}{{ d.primary }}<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8;letter-spacing:0">{{ d.pKey }}</div></button>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+<sc-for list="{{ d.second }}" as="b" hint-placeholder-count="2"><button disabled="{{ b.dis }}" title="{{ b.tip }}" style="position:relative;height:40px;display:flex;align-items:center;justify-content:center;gap:8px;background:#2A2F38;border:1px solid #8A6E3C;color:#ECE6D8;font:500 13px/1 Inter;cursor:{{ b.cur }};opacity:{{ b.op }};outline:none;white-space:nowrap" style-hover="border-color:#C9A86A;background:#333945" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ b.n }}<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">{{ b.k }}</div>{{ orn.btnDark }}</button></sc-for>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px 16px;font:400 13px/1.3 Inter;padding-top:14px;border-top:1px solid #3A3F48;position:relative">{{ orn.divTop }}
+<div style="color:#9A958A">Version</div><div style="color:#ECE6D8;font-family:'JetBrains Mono'">{{ d.ver }}</div>
+<div style="color:#9A958A">Size</div><div style="color:#ECE6D8;font-family:'JetBrains Mono'">212 MB + 12 MB required</div>
+<div style="color:#9A958A">Plays</div><div style="color:#ECE6D8">18,204 · 9,410 subscribers</div>
+<div style="color:#9A958A">AI opponents</div><div style="color:#ECE6D8">Waves are AI-driven; no AI Commanders</div>
+<div style="color:#9A958A">Remixing</div><div style="color:#ECE6D8">Allowed with credit</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="font:600 11px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#9A958A">Required content</div>
+<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#14161A;border:1px solid #3A3F48"><div style="display:flex;flex-direction:column;gap:4px"><div style="font:500 13px/1 Inter;color:#ECE6D8">Covenant Siegeworks pack</div><div style="font:400 12px/1 Inter;color:#9A958A">by Chimera Studio · v2.1 · 12 MB</div></div><div style="display:flex;align-items:center;gap:6px;font:500 12px/1 Inter;color:{{ d.reqFg }};white-space:nowrap">{{ d.reqIcon }}{{ d.reqT }}</div></div>
+</div>
+<div title="Report this listing to moderators" style="margin-top:auto;display:flex;align-items:center;gap:8px;font:500 13px/1 Inter;color:#9A958A;cursor:pointer" style-hover="color:#E2735F">{{ ic.flag }}Report</div>
+</div>
+</div>
+<div style="background:#20242B;border-top:1px solid #4A4234;display:flex;align-items:center;gap:22px;padding:0 20px">
+<sc-for list="{{ dHints }}" as="k" hint-placeholder-count="5"><div style="display:flex;align-items:center;gap:8px;font:500 12px/1 Inter;color:#9A958A"><div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">{{ k.k }}</div>{{ k.t }}</div></sc-for>
+<div style="flex:1"></div><div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">Esc → Browse home</div>
+</div>
+</div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+</section>
+
+<section id="s23" style="display:flex;flex-direction:column;gap:20px;padding:0 64px 96px">
+<div style="font:600 24px/1 Cinzel;color:#E3C887">2.3 · My library</div>
+<sc-if value="{{ show.s23 }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;gap:64px;align-items:flex-start">
+<sc-for list="{{ libs }}" as="lb" hint-placeholder-count="2">
+<div id="{{ lb.id }}" style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;gap:10px;align-items:center"><div style="font:600 12px/1 'JetBrains Mono';color:#14161A;background:#C9A86A;padding:4px 7px">{{ lb.code }}</div><div style="font:500 14px/1 Inter;color:#ECE6D8">{{ lb.label }}</div><div style="font:600 10px/1 Inter;letter-spacing:.1em;color:#4FB39A;border:1px solid #4FB39A;padding:3px 5px">{{ lb.tag }}</div></div>
+<div data-screen-label="{{ lb.code }}" style="width:1920px;height:1080px;position:relative;overflow:hidden;background:#14161A;box-shadow:0 0 0 1px #2A2F38;display:grid;grid-template-rows:56px minmax(0,1fr) 40px">
+<dc-import name="Shell Top Bar" mode="Browse" title="My library" sub="8 subscriptions · 1.24 GB" net="online" user="Ilse Varga" role="Commander · Architect" lv="{{ LV }}" hint-size="100%,56px"></dc-import>
+<div style="display:grid;grid-template-columns:300px minmax(0,1fr) 420px;min-height:0">
+<div style="background:#20242B;border-right:1px solid #4A4234;position:relative;isolation:isolate;display:flex;flex-direction:column;gap:6px;padding:22px 16px" style-hover="--chiH:1">{{ orn.tex }}{{ F }}
+<div style="display:flex;align-items:center;gap:12px;padding:0 6px 12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">Library</div>{{ orn.hr }}</div>
+<sc-for list="{{ libTabs }}" as="t" hint-placeholder-count="4"><div onClick="{{ t.go }}" title="{{ t.n }}" tabIndex="0" style="height:46px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;background:{{ t.bg }};border:1px solid {{ t.bd }};font:600 15px/1 Inter;color:{{ t.fg }};cursor:pointer;outline:none" style-hover="background:#2A2F38" style-focus="outline:2px solid #E3C887;outline-offset:1px">{{ t.n }}<div style="font:500 12px/1 'JetBrains Mono';color:{{ t.cFg }}">{{ t.c }}</div></div></sc-for>
+<div style="margin-top:auto;display:flex;flex-direction:column;gap:10px;padding:16px 6px 0;border-top:1px solid #3A3F48;position:relative">{{ orn.divTop }}
+<div style="font:600 11px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#9A958A">Disk use</div>
+<div style="display:flex;align-items:baseline;gap:8px"><div style="font:600 26px/1 Cinzel;color:#ECE6D8">1.24 GB</div><div style="font:400 13px/1 Inter;color:#9A958A">of 412 GB free</div></div>
+<div style="display:flex;height:8px;border:1px solid #3A3F48;background:#14161A"><div style="width:46%;background:#C9A86A"></div><div style="width:33%;background:#8A6E3C"></div><div style="width:14%;background:#5C5446"></div></div>
+<div style="display:flex;flex-direction:column;gap:6px;font:400 12px/1 Inter;color:#9A958A"><div style="display:flex;gap:8px;align-items:center"><div style="width:10px;height:10px;background:#C9A86A"></div>Scenarios · 570 MB</div><div style="display:flex;gap:8px;align-items:center"><div style="width:10px;height:10px;background:#8A6E3C"></div>Updates waiting · 218 MB</div><div style="display:flex;gap:8px;align-items:center"><div style="width:10px;height:10px;background:#5C5446"></div>Factions, units, models · 79 MB</div></div>
+</div>
+</div>
+<div style="position:relative;isolation:isolate;padding:26px 36px;display:flex;flex-direction:column;gap:14px;min-width:0;min-height:0">{{ orn.tex }}
+<div style="display:flex;align-items:flex-end;justify-content:space-between"><div style="display:flex;flex-direction:column;gap:8px"><div style="font:600 40px/1 Cinzel;color:#ECE6D8">My library</div><div style="font:400 15px/1.45 Inter;color:#9A958A">Everything you subscribe to. Updates download in the background unless you’re in a match.</div></div>
+<button title="Download every waiting update · 218 MB (U)" style="position:relative;height:44px;padding:0 16px;display:flex;align-items:center;gap:10px;background:#C9A86A;border:1px solid #E3C887;color:#14161A;font:600 13px/1 Inter;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;outline:none;white-space:nowrap" style-hover="background:#E3C887" style-focus="outline:2px solid #E3C887;outline-offset:3px">{{ ic.dlDark }}Update all · 218 MB{{ orn.btnGold }}</button></div>
+<div style="display:grid;grid-template-columns:72px minmax(0,1fr) 130px 150px 110px 190px;gap:14px;padding:0 12px;font:600 11px/1 Inter;letter-spacing:.1em;text-transform:uppercase;color:#9A958A"><div></div><div>Name</div><div>Type</div><div>State</div><div>Size</div><div></div></div>
+<sc-for list="{{ libRows }}" as="r" hint-placeholder-count="8">
+<div onClick="{{ r.go }}" title="{{ r.n }}" tabIndex="0" style="display:grid;grid-template-columns:72px minmax(0,1fr) 130px 150px 110px 190px;gap:14px;align-items:center;height:64px;padding:0 12px;background:{{ r.bg }};border:1px solid {{ r.bd }};cursor:pointer;outline:none" style-hover="background:#2A2F38" style-focus="outline:2px solid #E3C887">
+<div style="height:42px;background:{{ r.thumb }};border:1px solid #3A3F48"></div>
+<div style="display:flex;flex-direction:column;gap:5px;min-width:0"><div style="font:600 15px/1 Inter;color:#ECE6D8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.n }}</div><div style="font:400 12px/1 Inter;color:#9A958A">by {{ r.a }} · {{ r.v }}</div></div>
+<div style="font:400 13px/1 Inter;color:#ECE6D8">{{ r.type }}</div>
+<div style="display:flex;align-items:center;gap:7px;font:500 13px/1 Inter;color:{{ r.sFg }};white-space:nowrap">{{ r.sIcon }}{{ r.st }}</div>
+<div style="font:500 13px/1 'JetBrains Mono';color:#ECE6D8">{{ r.size }}</div>
+<div style="display:flex;gap:6px;justify-content:flex-end"><button title="{{ r.aTip }}" style="height:34px;padding:0 12px;background:{{ r.aBg }};border:1px solid {{ r.aBd }};color:{{ r.aFg }};font:500 13px/1 Inter;cursor:pointer;outline:none;white-space:nowrap" style-hover="border-color:#E3C887" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ r.act }}</button><button title="Unsubscribe from {{ r.n }} · asks first" style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;background:transparent;border:1px solid #3A3F48;cursor:pointer;outline:none" style-hover="border-color:#C8503C;background:#2A1C1A" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ ic.trash }}</button></div>
+</div>
+</sc-for>
+</div>
+<div style="background:#20242B;border-left:1px solid #4A4234;position:relative;isolation:isolate;display:flex;flex-direction:column;gap:16px;padding:24px 24px 20px;min-height:0" style-hover="--chiH:1">{{ orn.tex }}{{ F2 }}
+<div style="height:180px;background:{{ libSel.thumb }};border:1px solid #3A3F48"></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font:600 12px/1 Inter;letter-spacing:.14em;text-transform:uppercase;color:#C9A86A">{{ libSel.type }}</div><div style="font:600 26px/1.1 Cinzel;color:#ECE6D8">{{ libSel.n }}</div>{{ orn.inspTitle }}</div>
+<div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px 16px;font:400 13px/1.3 Inter"><sc-for list="{{ libSel.rows }}" as="x" hint-placeholder-count="4"><div style="color:#9A958A">{{ x.k }}</div><div style="color:#ECE6D8">{{ x.v }}</div></sc-for></div>
+<div style="margin-top:auto;display:flex;flex-direction:column;gap:10px">
+<button title="{{ libSel.act }} (Enter)" style="position:relative;height:50px;display:flex;align-items:center;justify-content:center;gap:12px;background:#173129;border:1px solid #4FB39A;color:#ECE6D8;font:600 14px/1 Inter;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;outline:none" style-hover="background:#1D3B32" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ pulse }}{{ libSel.act }}<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8;letter-spacing:0">Enter</div></button>
+<button title="Unsubscribe and remove the files · asks first (Del)" style="height:40px;display:flex;align-items:center;justify-content:center;gap:8px;background:transparent;border:1px solid #C8503C;color:#E2735F;font:500 13px/1 Inter;cursor:pointer;outline:none" style-hover="background:#2A1C1A" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ ic.trash }}Unsubscribe · frees {{ libSel.size }}</button>
+</div>
+</div>
+</div>
+<div style="background:#20242B;border-top:1px solid #4A4234;display:flex;align-items:center;gap:22px;padding:0 20px">
+<sc-for list="{{ libHints }}" as="k" hint-placeholder-count="4"><div style="display:flex;align-items:center;gap:8px;font:500 12px/1 Inter;color:#9A958A"><div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">{{ k.k }}</div>{{ k.t }}</div></sc-for>
+<div style="flex:1"></div><div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">Esc → Browse home</div>
+</div>
+<sc-if value="{{ lb.modal }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;inset:0;background:rgba(8,9,11,.72);display:flex;align-items:center;justify-content:center;z-index:40">
+<div role="dialog" aria-label="Unsubscribe from The Long Night" style="position:relative;width:640px;background:#20242B;border:1px solid #C8503C;padding:28px;display:flex;flex-direction:column;gap:16px;isolation:isolate">{{ Fns }}
+<div style="display:flex;align-items:center;gap:12px">{{ ic.alertRed }}<div style="font:600 24px/1.2 Cinzel;color:#ECE6D8">Unsubscribe from The Long Night?</div></div>
+<div style="font:400 15px/1.5 Inter;color:#ECE6D8;text-wrap:pretty">This removes 184 MB from this PC. Your saves and replays for it stay, and you can subscribe again at any time.</div>
+<div style="font:400 13px/1.4 Inter;color:#9A958A">Two lobbies you’re in use it: you’ll leave them.</div>
+<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:6px">
+<button title="Keep it (Esc)" style="height:44px;padding:0 18px;display:flex;align-items:center;gap:10px;background:#2A2F38;border:1px solid #8A6E3C;color:#ECE6D8;font:500 14px/1 Inter;cursor:pointer;white-space:nowrap;outline:2px solid #E3C887;outline-offset:2px">Keep it<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">Esc</div></button>
+<button title="Unsubscribe and remove 184 MB (Enter)" style="height:44px;padding:0 18px;display:flex;align-items:center;gap:10px;background:#3A1F1A;border:1px solid #C8503C;color:#ECE6D8;font:600 14px/1 Inter;cursor:pointer;outline:none;white-space:nowrap" style-hover="background:#4A2620">Unsubscribe and remove<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">Enter</div></button>
+</div>
+<div style="font:400 12px/1.4 Inter;color:#9A958A">Focus starts on “Keep it”, so Enter-mashing can’t remove anything.</div>
+</div>
+</div>
+</sc-if>
+</div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+</section>
+
+<section id="s24" style="display:flex;flex-direction:column;gap:20px;padding:0 64px 128px">
+<div style="font:600 24px/1 Cinzel;color:#E3C887">2.4 · Publish flow (Create · Ctrl Shift P)</div>
+<sc-if value="{{ show.s24 }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;gap:64px;align-items:flex-start">
+<sc-for list="{{ pubs }}" as="pb" hint-placeholder-count="4">
+<div id="{{ pb.id }}" style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;gap:10px;align-items:center"><div style="font:600 12px/1 'JetBrains Mono';color:#14161A;background:#C9A86A;padding:4px 7px">{{ pb.code }}</div><div style="font:500 14px/1 Inter;color:#ECE6D8">{{ pb.label }}</div><div style="font:600 10px/1 Inter;letter-spacing:.1em;color:{{ pb.tc }};border:1px solid {{ pb.tc }};padding:3px 5px">{{ pb.tag }}</div></div>
+<div data-screen-label="{{ pb.code }}" style="width:1920px;height:1080px;position:relative;overflow:hidden;background:#14161A;box-shadow:0 0 0 1px #2A2F38;display:grid;grid-template-rows:56px minmax(0,1fr) 40px">
+<dc-import name="Shell Top Bar" mode="Create" title="Publish · Ashfall Ford" sub="v0.4 · 128×128 · RTS" net="online" user="Ilse Varga" role="Architect" lv="{{ LV }}" hint-size="100%,56px"></dc-import>
+<div style="display:grid;grid-template-columns:320px minmax(0,1fr) 440px;min-height:0">
+<div style="background:#20242B;border-right:1px solid #4A4234;position:relative;isolation:isolate;display:flex;flex-direction:column;gap:4px;padding:22px 16px" style-hover="--chiH:1">{{ orn.tex }}{{ F }}
+<div style="display:flex;align-items:center;gap:12px;padding:0 6px 12px">{{ orn.hl }}<div style="font:600 14px/1 Cinzel;letter-spacing:.14em;text-transform:uppercase;color:#E3C887">Checklist</div>{{ orn.hr }}</div>
+<sc-for list="{{ pb.steps }}" as="st" hint-placeholder-count="9">
+<div onClick="{{ st.go }}" title="{{ st.tip }}" tabIndex="0" style="min-height:48px;display:grid;grid-template-columns:22px minmax(0,1fr);gap:12px;align-items:center;padding:6px 12px;background:{{ st.bg }};border:1px solid {{ st.bd }};cursor:pointer;outline:none" style-hover="background:#2A2F38" style-focus="outline:2px solid #E3C887;outline-offset:1px"><div style="display:flex">{{ st.icon }}</div><div style="display:flex;flex-direction:column;gap:4px;min-width:0"><div style="font:600 14px/1.1 Inter;color:#ECE6D8">{{ st.n }}</div><div style="font:400 12px/1.2 Inter;color:{{ st.sFg }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ st.s }}</div></div></div>
+</sc-for>
+<div style="margin-top:auto;font:400 12px/1.45 Inter;color:#9A958A;padding:0 6px">Every item is required. Click one to jump to its field.</div>
+</div>
+
+<div style="position:relative;isolation:isolate;padding:24px 32px;display:flex;flex-direction:column;gap:16px;min-width:0;min-height:0;overflow:hidden">{{ orn.tex }}
+<sc-if value="{{ pb.banner }}" hint-placeholder-val="{{ false }}"><div style="display:flex;gap:14px;align-items:center;padding:14px 16px;background:{{ pb.bBg }};border:1px solid {{ pb.bBd }}"><div style="display:flex">{{ pb.bIcon }}</div><div style="flex:1;display:flex;flex-direction:column;gap:5px"><div style="font:600 15px/1.3 Inter;color:{{ pb.bFg }}">{{ pb.bT }}</div><div style="font:400 13px/1.45 Inter;color:#ECE6D8">{{ pb.bSub }}</div></div><sc-if value="{{ pb.bBtn }}" hint-placeholder-val="{{ false }}"><button title="{{ pb.bBtnTip }}" style="height:40px;padding:0 14px;display:flex;align-items:center;gap:8px;background:#2A2F38;border:1px solid #8A6E3C;color:#ECE6D8;font:500 13px/1 Inter;cursor:pointer;outline:none;white-space:nowrap" style-hover="border-color:#C9A86A" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ pb.bBtn }}<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">{{ pb.bKey }}</div></button></sc-if></div></sc-if>
+<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;min-height:0">
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;flex-direction:column;gap:8px;padding:14px;background:#20242B;border:1px solid {{ pb.f.proof.bd }}"><div style="display:flex;justify-content:space-between"><div style="font:600 13px/1 Inter;color:#ECE6D8">Proof of play</div><div style="font:500 12px/1 Inter;color:{{ pb.f.proof.fg }}">{{ pb.f.proof.s }}</div></div><div style="font:400 13px/1.45 Inter;color:#9A958A;text-wrap:pretty">{{ pb.proofText }}</div></div>
+<div style="display:flex;flex-direction:column;gap:8px;padding:14px;background:#20242B;border:1px solid {{ pb.f.thumb.bd }}"><div style="display:flex;justify-content:space-between"><div style="font:600 13px/1 Inter;color:#ECE6D8">Thumbnail · 16:9</div><div style="font:500 12px/1 Inter;color:{{ pb.f.thumb.fg }}">{{ pb.f.thumb.s }}</div></div><div style="height:150px;background:{{ pubThumb }};border:1px solid #3A3F48"></div></div>
+<div style="display:flex;flex-direction:column;gap:8px;padding:14px;background:#20242B;border:1px solid {{ pb.f.shots.bd }}"><div style="display:flex;justify-content:space-between"><div style="font:600 13px/1 Inter;color:#ECE6D8">Screenshots · at least 3</div><div style="font:500 12px/1 Inter;color:{{ pb.f.shots.fg }}">{{ pb.f.shots.s }}</div></div><div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px"><sc-for list="{{ pb.shots }}" as="sh" hint-placeholder-count="4"><div style="height:62px;background:{{ sh.bg }};border:1px {{ sh.bs }} {{ sh.bd }};display:flex;align-items:center;justify-content:center;font:500 11px/1 Inter;color:#9A958A">{{ sh.t }}</div></sc-for></div></div>
+<div style="display:flex;flex-direction:column;gap:8px;padding:14px;background:#20242B;border:1px solid {{ pb.f.rights.bd }}"><div style="display:flex;justify-content:space-between"><div style="font:600 13px/1 Inter;color:#ECE6D8">Rights · 2 imported assets</div><div style="font:500 12px/1 Inter;color:{{ pb.f.rights.fg }}">{{ pb.f.rights.s }}</div></div>
+<sc-for list="{{ pb.assets }}" as="as" hint-placeholder-count="2"><div style="display:flex;align-items:center;gap:10px;font:400 13px/1.3 Inter;color:#ECE6D8"><div style="width:18px;height:18px;border:1px solid {{ as.bd }};background:{{ as.bg }};display:flex;align-items:center;justify-content:center;flex:none">{{ as.check }}</div><div style="flex:1">{{ as.n }}</div><div style="font:400 12px/1 Inter;color:#9A958A">{{ as.src }}</div></div></sc-for>
+<div style="font:400 12px/1.4 Inter;color:#9A958A">I made these or have the right to share them in a Chimera scenario.</div></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;flex-direction:column;gap:8px;padding:14px;background:#20242B;border:1px solid {{ pb.f.desc.bd }}"><div style="display:flex;justify-content:space-between"><div style="font:600 13px/1 Inter;color:#ECE6D8">Description</div><div style="font:500 12px/1 Inter;color:{{ pb.f.desc.fg }}">{{ pb.f.desc.s }}</div></div><textarea value="{{ pb.descText }}" readOnly="{{ true }}" title="What Commanders see on Browse" style="height:112px;resize:none;background:#14161A;border:1px solid #4A4234;color:#ECE6D8;font:400 14px/1.5 Inter;padding:10px 12px;outline:none" style-focus="border-color:#E3C887"></textarea></div>
+<div style="display:flex;flex-direction:column;gap:8px;padding:14px;background:#20242B;border:1px solid {{ pb.f.tags.bd }}"><div style="display:flex;justify-content:space-between"><div style="font:600 13px/1 Inter;color:#ECE6D8">Genre and tags</div><div style="font:500 12px/1 Inter;color:{{ pb.f.tags.fg }}">{{ pb.f.tags.s }}</div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><sc-for list="{{ pubTags }}" as="t" hint-placeholder-count="6"><div style="height:30px;padding:0 10px;display:flex;align-items:center;background:{{ t.bg }};border:1px solid {{ t.bd }};font:500 13px/1 Inter;color:{{ t.fg }};white-space:nowrap">{{ t.n }}</div></sc-for></div></div>
+<div style="display:flex;flex-direction:column;gap:8px;padding:14px;background:#20242B;border:1px solid #3A3F48"><div style="font:600 13px/1 Inter;color:#ECE6D8">Visibility</div><div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px"><sc-for list="{{ vis }}" as="v" hint-placeholder-count="3"><div title="{{ v.tip }}" style="height:38px;display:flex;align-items:center;justify-content:center;background:{{ v.bg }};border:1px solid {{ v.bd }};font:500 13px/1 Inter;color:{{ v.fg }}">{{ v.n }}</div></sc-for></div></div>
+<div style="display:flex;flex-direction:column;gap:8px;padding:14px;background:#20242B;border:1px solid #3A3F48"><div style="display:flex;justify-content:space-between"><div style="font:600 13px/1 Inter;color:#ECE6D8">Version notes · v0.4</div><div style="font:500 12px/1 Inter;color:#4FB39A">Done</div></div><div style="font:400 13px/1.5 Inter;color:#ECE6D8;background:#14161A;border:1px solid #4A4234;padding:10px 12px">North ford is shallower; the bridge takes 20 s longer to build. New start camera.</div></div>
+</div>
+</div>
+</div>
+
+<div style="background:#20242B;border-left:1px solid #4A4234;position:relative;isolation:isolate;display:flex;flex-direction:column;gap:16px;padding:24px 24px 20px;min-height:0" style-hover="--chiH:1">{{ orn.tex }}{{ F2 }}
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font:600 12px/1 Inter;letter-spacing:.14em;text-transform:uppercase;color:#C9A86A">{{ pb.rKick }}</div><div style="font:600 26px/1.15 Cinzel;color:#ECE6D8">{{ pb.rTitle }}</div>{{ orn.inspTitle }}</div>
+<sc-if value="{{ pb.isDone }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;align-items:center;gap:14px;padding:20px 0">{{ bigSeal }}<div style="font:400 14px/1.5 Inter;color:#ECE6D8;text-align:center;text-wrap:pretty">Ashfall Ford v0.4 is live on Browse. Subscribers get the update the next time they open Chimera.</div><div style="display:flex;align-items:center;gap:8px;font:600 16px/1 'JetBrains Mono';letter-spacing:.12em;color:#E3C887;background:#14161A;border:1px solid #4A4234;padding:10px 14px;white-space:nowrap">CHIM-AF04-7QK</div></div></sc-if>
+<sc-if value="{{ pb.isUp }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;align-items:center;gap:14px;padding:6px 0"><div style="position:relative;width:200px;height:200px;display:flex;align-items:center;justify-content:center"><div style="position:absolute;inset:0">{{ upRing }}</div><div style="position:relative;font:600 36px/1 Cinzel;color:#ECE6D8">{{ upPctT }}</div></div><div style="font:500 13px/1 'JetBrains Mono';color:#9A958A">{{ upText }}</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><sc-for list="{{ upSteps }}" as="u" hint-placeholder-count="4"><div style="display:flex;align-items:center;gap:10px;font:500 13px/1 Inter;color:{{ u.fg }}">{{ u.icon }}{{ u.n }}</div></sc-for></div></sc-if>
+<sc-if value="{{ pb.isForm }}" hint-placeholder-val="{{ true }}">
+<div style="font:600 11px/1 Inter;letter-spacing:.12em;text-transform:uppercase;color:#9A958A">How it will look on Browse</div>
+<div style="background:#14161A;border:1px solid #4A4234;display:flex;flex-direction:column"><div style="height:150px;background:{{ pubThumb }};position:relative"><div style="position:absolute;left:8px;top:8px;font:600 11px/1 Inter;color:#ECE6D8;background:rgba(20,22,26,.88);border:1px solid #3A3F48;padding:4px 6px">RTS</div></div><div style="padding:12px;display:flex;flex-direction:column;gap:6px"><div style="font:600 16px/1 Inter;color:#ECE6D8">Ashfall Ford</div><div style="font:400 12px/1 Inter;color:#9A958A">by Ilse Varga · 2 · 1v1 · new</div></div></div>
+</sc-if>
+<div style="margin-top:auto;display:flex;flex-direction:column;gap:10px">
+<div style="font:400 13px/1.45 Inter;color:{{ pb.nFg }};text-wrap:pretty">{{ pb.note }}</div>
+<button disabled="{{ pb.pDis }}" title="{{ pb.pTip }}" style="position:relative;height:54px;display:flex;align-items:center;justify-content:center;gap:12px;background:{{ pb.pBg }};border:1px solid {{ pb.pBd }};color:{{ pb.pFg }};font:600 14px/1 Inter;letter-spacing:.08em;text-transform:uppercase;cursor:{{ pb.pCur }};outline:none" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ pb.pulse }}{{ pb.primary }}<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8;letter-spacing:0">{{ pb.pKey }}</div></button>
+<button title="{{ pb.sTip }}" style="position:relative;height:40px;display:flex;align-items:center;justify-content:center;gap:10px;background:#2A2F38;border:1px solid #8A6E3C;color:#ECE6D8;font:500 13px/1 Inter;cursor:pointer;outline:none" style-hover="border-color:#C9A86A;background:#333945" style-focus="outline:2px solid #E3C887;outline-offset:2px">{{ pb.second }}<div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">{{ pb.sKey }}</div>{{ orn.btnDark }}</button>
+</div>
+</div>
+</div>
+<div style="background:#20242B;border-top:1px solid #4A4234;display:flex;align-items:center;gap:22px;padding:0 20px">
+<sc-for list="{{ pubHints }}" as="k" hint-placeholder-count="4"><div style="display:flex;align-items:center;gap:8px;font:500 12px/1 Inter;color:#9A958A"><div style="font:600 11px/16px 'JetBrains Mono';height:20px;padding:0 5px;border:1px solid #5C5446;border-bottom-width:2px;border-radius:3px;white-space:nowrap;background:#14161A;color:#ECE6D8">{{ k.k }}</div>{{ k.t }}</div></sc-for>
+<div style="flex:1"></div><div style="font:500 12px/1 'JetBrains Mono';color:#9A958A">Esc → Map editor</div>
+</div>
+</div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;uiOrnament&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Off&quot;,&quot;Subtle&quot;,&quot;Full&quot;],&quot;default&quot;:&quot;Full&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;lvMaster&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:5,&quot;min&quot;:1,&quot;max&quot;:5,&quot;step&quot;:1,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;lvBorderStyle&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Engraved line&quot;,&quot;Double line&quot;,&quot;Woven rope&quot;,&quot;Filigree corners&quot;,&quot;Sigil-studded&quot;],&quot;default&quot;:&quot;Woven rope&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Ornament&quot;},&quot;reducedMotion&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ornament&quot;}}">
+const SC = [
+  { n: 'Cinder Keep', a: 'Vell Orrin', g: 'Tower defence', lo: 1, hi: 4, sz: 'M', ai: true, r: 4.7, plays: 18204, t: 1, sub: 'sub', age: 9, trend: 94, d: 'Forty waves up the keep road. Towers on high ground reach further.' },
+  { n: 'Vat Lords Arena', a: 'Kestrel & Lune', g: 'Arena', lo: 10, hi: 10, sz: 'L', ai: true, r: 4.8, plays: 42310, t: 5, sub: 'upd', age: 40, trend: 99, d: 'Two teams of five heroes push three lanes toward the enemy vat.' },
+  { n: 'Siege of Brasswell', a: 'Oda Renn', g: 'Castle fight', lo: 2, hi: 6, sz: 'M', ai: true, r: 4.5, plays: 9120, t: 2, sub: null, age: 22, trend: 71, d: 'Your buildings spawn the army. You choose what to build and when.' },
+  { n: 'The Long Night', a: 'Marrow Guild', g: 'Survival', lo: 1, hi: 6, sz: 'L', ai: true, r: 4.6, plays: 12040, t: 3, sub: 'upd', age: 3, trend: 88, d: 'Hold Hollowmere until dawn. Each night lasts longer than the last.' },
+  { n: 'Ashen Crown', a: 'Tamsin Oake', g: 'RPG', lo: 1, hi: 3, sz: 'XL', ai: true, r: 4.4, plays: 5310, t: 0, sub: 'sub', age: 60, trend: 52, d: 'A six-hour story with one persistent hero per Commander.' },
+  { n: 'Ashfall Ford', a: 'Chimera Studio', g: 'RTS', lo: 2, hi: 2, sz: 'S', ai: true, r: 4.6, plays: 61200, t: 0, sub: 'sub', age: 120, trend: 80, d: 'The showcase 1v1 map. Two fords, one bridge worth dying for.' },
+  { n: 'Mercury Run', a: 'Pell Anders', g: 'Party', lo: 2, hi: 8, sz: 'M', ai: false, r: 4.2, plays: 3820, t: 4, sub: 'sub', age: 14, trend: 64, d: 'Twelve short minigames between legs of a race across the salt flats.' },
+  { n: 'Saltglass Flats', a: 'Chimera Studio', g: 'RTS', lo: 2, hi: 4, sz: 'M', ai: true, r: 4.3, plays: 22400, t: 4, sub: null, age: 120, trend: 58, d: 'Open salt plains. Scouting wins games.' },
+  { n: 'Hollowmere Tides', a: 'Brannoch Vey', g: 'RTS', lo: 4, hi: 4, sz: 'L', ai: true, r: 4.1, plays: 2100, t: 2, sub: null, age: 1, trend: 76, d: 'The drowned town at high tide: shallow fords open and close every five minutes.' },
+  { n: 'Red Vat Rumble', a: 'Kestrel & Lune', g: 'Arena', lo: 6, hi: 6, sz: 'S', ai: true, r: 4.5, plays: 7700, t: 5, sub: null, age: 30, trend: 69, d: '3v3 heroes in a single lane under the Court’s laboratory.' },
+  { n: 'Thornwall Holdout', a: 'Vell Orrin', g: 'Tower defence', lo: 1, hi: 2, sz: 'S', ai: true, r: 4.0, plays: 4100, t: 3, sub: null, age: 5, trend: 61, d: 'A two-player defence of the pass. Fewer towers, harder choices.' },
+  { n: 'Brasswell Bounty', a: 'Tamsin Oake', g: 'RPG', lo: 1, hi: 4, sz: 'L', ai: true, r: 3.9, plays: 1900, t: 2, sub: null, age: 2, trend: 57, d: 'Hunt contracts across the Brasswell marches with a party of heroes.' }];
+const GEN = ['All', 'RTS', 'Tower defence', 'Castle fight', 'Arena', 'Survival', 'RPG', 'Party'];
+const PF = [['Any', 0, 99], ['1', 1, 1], ['2', 2, 2], ['3–4', 3, 4], ['5–8', 5, 8], ['9+', 9, 99]];
+const OTHER = {
+  factions: [['Crucible Covenant', 'Chimera Studio', 'Official faction · 24 units', 4.8], ['Sanguine Court', 'Chimera Studio', 'Official faction · 22 units', 4.7], ['Salt Wardens', 'Marrow Guild', 'Nomads of the flats · 18 units', 4.5], ['Mercury Guild', 'Pell Anders', 'Alchemist merchants · 16 units', 4.2], ['Hollow Choir', 'Tamsin Oake', 'Drowned monks · 15 units', 4.4], ['Ember Pact', 'Vell Orrin', 'Fire cult · 19 units', 4.3]],
+  units: [['Frost Warden', 'Vell Orrin', 'Unit · Covenant · used in 112 scenarios', 4.6], ['Blood Tithe', 'Kestrel & Lune', 'Ability · pay health, empower allies', 4.7], ['Vat Hound', 'Chimera Studio', 'Unit · Court · fast biter', 4.5], ['Healing Prayer', 'Tamsin Oake', 'Ability · stronger on the wounded', 4.8], ['Siege Alembic', 'Oda Renn', 'Building · artillery that brews', 4.3], ['Mercury Step', 'Pell Anders', 'Ability · short blink, leaves a slick', 4.1], ['Ashen Knight', 'Tamsin Oake', 'Hero · level 1–10, six items', 4.6], ['Salt Golem', 'Marrow Guild', 'Unit · slow, splits on death', 4.2]],
+  models: [['Covenant Siegeworks', 'Chimera Studio', 'Model pack · 38 models · 4.1k tris avg', 4.7], ['Emberhollow village', 'Vell Orrin', 'Model pack · 52 models', 4.6], ['Salt flats props', 'Marrow Guild', 'Model pack · 30 models', 4.3], ['Court vat-beasts', 'Kestrel & Lune', 'Model pack · 12 creatures', 4.5], ['Foundry buildings', 'Oda Renn', 'Model pack · 16 buildings', 4.4], ['Ruined chapel', 'Tamsin Oake', 'Model pack · 21 models', 4.2], ['Marsh foliage', 'Brannoch Vey', 'Model pack · 44 plants', 4.1], ['Banners and standards', 'Pell Anders', 'Model pack · 26 models', 4.0]]
+};
+const TABS = [['scen', 'Scenarios', 'map', '1', '12.4k'], ['factions', 'Factions', 'flag', '2', '318'], ['units', 'Units and abilities', 'unit', '3', '4.9k'], ['models', 'Models', 'prop', '4', '2.2k']];
+
+class Component extends DCLogic {
+  state = { only: 'All', replay: 0, tabs: ['scen', 'units'], sel: [0, 1], q: '', genre: 'All', pf: 'Any', size: 'Any', ai: false, sort: 'Trending', gal: 0, lib: 2, libTab: 'All', pubFocus: null, dl: 30, up: 12 };
+  componentDidMount() {
+    this.poll = setInterval(() => { if (window.CHI_LV && window.CHI_ORN && window.CHI_ICON) { clearInterval(this.poll); this.forceUpdate(); } }, 120);
+    this.tick = setInterval(() => this.setState(st => ({ dl: st.dl >= 100 ? 30 : Math.min(100, st.dl + 2), up: st.up >= 100 ? 12 : Math.min(100, st.up + 2) })), 1000);
+  }
+  componentWillUnmount() { clearInterval(this.poll); clearInterval(this.tick); }
+  th(i) {
+    const s = [['#7D878B', '#59625E', '#3E4739', '#7E8C89', '#474631'], ['#5B5750', '#4C4A42', '#363A2E', '#6E6A5C', '#3A3927'], ['#5B6468', '#48524B', '#2F3A2E', '#5F6E72', '#3A3B2A'], ['#3F474C', '#4C544F', '#363F33', '#6B7978', '#2F3024'], ['#A39B86', '#7D7663', '#5B5646', '#9AA5A0', '#6A6248'], ['#4A3F3E', '#5A4541', '#3A2E2B', '#7A5A4F', '#2E2622']][i % 6];
+    return `linear-gradient(172deg, ${s[0]} 0 30%, transparent 30%), linear-gradient(186deg, transparent 0 38%, ${s[1]} 38% 52%, transparent 52%), linear-gradient(176deg, transparent 0 48%, ${s[2]} 48% 66%, transparent 66%), linear-gradient(182deg, transparent 0 64%, ${s[3]} 64% 69%, transparent 69%), ${s[4]}`;
+  }
+  vat(i) { const c = ['#2E4A44', '#3E2A2A', '#34403A', '#2A3A4A'][i % 4]; return `radial-gradient(circle at 50% 62%, ${c} 0, #1A1D22 58%), linear-gradient(180deg, #14161A, #20242B)`; }
+  renderVals() {
+    const s = this.state, p = this.props, I = (n, sz, c) => window.CHI_ICON ? window.CHI_ICON(React, n, sz || 16, c) : null;
+    const nil = () => null, lv = window.CHI_LV ? window.CHI_LV(React, p, { replay: s.replay }) : null;
+    const LV = lv || { orn: {}, frame: nil, pulse: nil, seal: nil, progress: nil, sigil: nil };
+    const orn = LV.orn, on = (a, b) => ({ bg: a === b ? '#2A2F38' : '#14161A', bd: a === b ? '#E3C887' : '#3A3F48', fg: a === b ? '#E3C887' : '#ECE6D8' });
+    const [, plo, phi] = PF.find(f => f[0] === s.pf), q = s.q.trim().toLowerCase();
+    const match = c => (s.genre === 'All' || c.g === s.genre) && c.hi >= plo && c.lo <= phi && (s.size === 'Any' || c.sz === s.size) && (!s.ai || c.ai) && (!q || (c.n + ' ' + c.a + ' ' + c.g).toLowerCase().indexOf(q) >= 0);
+    const sortFn = { 'Trending': (a, b) => b.trend - a.trend, 'Top rated': (a, b) => b.r - a.r, 'Newest': (a, b) => a.age - b.age, 'Most played': (a, b) => b.plays - a.plays }[s.sort];
+    const fmt = n => n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k' : '' + n;
+    const homes = s.tabs.map((tab, hi) => {
+      let cards, sel;
+      if (tab === 'scen') {
+        const list = SC.map((c, i) => ({ ...c, i })).filter(match).sort(sortFn);
+        cards = list.map(c => ({ n: c.n, r: c.r.toFixed(1), tag: c.g, thumb: this.th(c.t), meta: `by ${c.a} · ${c.lo === c.hi ? c.lo : c.lo + '–' + c.hi} · ${fmt(c.plays)} plays`,
+          badge: c.sub === 'sub' ? 'Subscribed' : c.sub === 'upd' ? 'Update' : '', bFg: c.sub === 'upd' ? '#E3C887' : '#4FB39A', bIcon: I(c.sub === 'upd' ? 'download' : 'check', 12, c.sub === 'upd' ? '#E3C887' : '#4FB39A'),
+          bg: s.sel[hi] === c.i ? '#2A2F38' : '#20242B', bd: s.sel[hi] === c.i ? '#E3C887' : '#4A4234', tip: `${c.n} by ${c.a} · ${c.g} · ★ ${c.r}`, go: () => this.setState(st => { const sl = st.sel.slice(); sl[hi] = c.i; return { sel: sl }; }) }));
+        const c = SC[s.sel[hi]];
+        sel = { n: c.n, a: c.a, tag: c.g, d: c.d, thumb: this.th(c.t), primary: c.sub === 'sub' ? 'Play' : c.sub === 'upd' ? 'Update · 18 MB' : 'Subscribe', pTip: 'Subscribe or play (S)',
+          stats: [{ k: 'Players', v: c.lo === c.hi ? '' + c.lo : c.lo + '–' + c.hi }, { k: 'Rating', v: '★ ' + c.r }, { k: 'Plays', v: fmt(c.plays) }] };
+      } else {
+        const L = OTHER[tab].map((x, i) => ({ x, i })).filter(({ x }) => !q || (x[0] + x[1] + x[2]).toLowerCase().indexOf(q) >= 0);
+        cards = L.map(({ x, i }) => ({ n: x[0], r: x[3].toFixed(1), tag: x[2].split(' · ')[0], thumb: tab === 'models' ? this.th(i) : this.vat(i), meta: `by ${x[1]} · ${x[2].split(' · ').slice(1).join(' · ')}`, badge: i === 0 ? 'Subscribed' : '', bFg: '#4FB39A', bIcon: I('check', 12, '#4FB39A'),
+          bg: s.sel[hi] === i ? '#2A2F38' : '#20242B', bd: s.sel[hi] === i ? '#E3C887' : '#4A4234', tip: x.join(' · '), go: () => this.setState(st => { const sl = st.sel.slice(); sl[hi] = i; return { sel: sl }; }) }));
+        const x = OTHER[tab][s.sel[hi]] || OTHER[tab][0];
+        sel = { n: x[0], a: x[1], tag: x[2].split(' · ')[0], d: x[2] + '. Subscribing adds it to Create’s library, ready to drop into any map.', thumb: tab === 'models' ? this.th(s.sel[hi]) : this.vat(s.sel[hi]), primary: 'Subscribe', pTip: 'Subscribe (S)',
+          stats: [{ k: 'Rating', v: '★ ' + x[3] }, { k: 'Used in', v: '112' }, { k: 'Size', v: '3 MB' }] };
+      }
+      const tn = TABS.find(t => t[0] === tab)[1];
+      return { id: 'a21' + 'ab'[hi], code: '2.1' + 'ab'[hi], label: hi ? 'Browse home · Units and abilities tab' : 'Browse home · Scenarios', tabName: tn, isScen: tab === 'scen', cards, sel, none: cards.length === 0,
+        count: `${cards.length} ${tab === 'scen' ? 'scenarios' : 'results'} · sorted by ${s.sort.toLowerCase()}`,
+        tabs: TABS.map(([id, n, ic, k, c]) => ({ n, k, c, icon: I(ic, 18), ...on(id, tab), bg: id === tab ? '#2A2F38' : 'transparent', bd: id === tab ? '#C9A86A' : 'transparent', ic: id === tab ? '#E3C887' : '#C9A86A', go: () => this.setState(st => { const t = st.tabs.slice(); t[hi] = id; const sl = st.sel.slice(); sl[hi] = 0; return { tabs: t, sel: sl }; }) })) };
+    });
+    const gc = g => g === 'All' ? SC.length : SC.filter(x => x.g === g).length;
+    const DS = [
+      { k: 'not', label: 'Detail · not subscribed', tag: 'INTERACTIVE · GALLERY', tc: '#4FB39A' }, { k: 'dl', label: 'Detail · downloading', tag: 'STATIC · LIVE PROGRESS', tc: '#9A958A' },
+      { k: 'inst', label: 'Detail · installed', tag: 'STATIC', tc: '#9A958A' }, { k: 'upd', label: 'Detail · update available', tag: 'STATIC', tc: '#9A958A' }, { k: 'fail', label: 'Detail · verification failed', tag: 'STATIC', tc: '#9A958A' }];
+    const VERS = [['v1.4', 'Wave 34 rebalanced · new Frost tower · fixes a path exploit on the west switchback', '28 Sep 2026 · 18 MB'], ['v1.3', 'Four-Commander scaling; shared gold pool', '21 Sep 2026'], ['v1.2', 'Waves 31–40 added', '2 Sep 2026'], ['v1.1', 'High ground adds range', '14 Aug 2026'], ['v1.0', 'First release', '1 Aug 2026']];
+    const details = DS.map((d, di) => {
+      const st = d.k, has14 = st === 'upd';
+      const S = {
+        not: { sT: 'Not subscribed', sSub: 'Subscribe to download 224 MB and keep it updated.', sIcon: I('cloud', 16, '#9A958A'), sFg: '#ECE6D8', sBd: '#3A3F48', primary: 'Subscribe · 224 MB', pKey: 'S', second: [['Play', 'P', 1, 'Subscribe first'], ['Open in Create', 'C', 0, 'Remix a copy in Create']], req: 'Downloads with it' },
+        dl: { sT: 'Downloading', sSub: 'Play unlocks when it finishes and passes verification.', sIcon: I('download', 16, '#E3C887'), sFg: '#E3C887', sBd: '#8A6E3C', primary: 'Play', pKey: 'P', pDis: 1, second: [['Pause', 'Space', 0, 'Pause the download'], ['Cancel', 'Esc', 0, 'Cancel and unsubscribe']], req: 'Queued' },
+        inst: { sT: 'Subscribed · installed · v1.3', sSub: 'Up to date. 224 MB on this PC.', sIcon: I('check', 16, '#4FB39A'), sFg: '#4FB39A', sBd: '#3A3F48', primary: 'Play', pKey: 'P', second: [['Unsubscribe', 'U', 0, 'Remove it from this PC · asks first'], ['Open in Create', 'C', 0, 'Remix a copy in Create']], req: 'Installed' },
+        upd: { sT: 'Update available · v1.3 → v1.4', sSub: '18 MB. Multiplayer lobbies need v1.4; solo play can still use v1.3.', sIcon: I('download', 16, '#E3C887'), sFg: '#E3C887', sBd: '#8A6E3C', primary: 'Update · 18 MB', pKey: 'U', second: [['Play v1.3', 'P', 0, 'Play the version you have, solo only'], ['What’s new', 'N', 0, 'Jump to the version history']], req: 'Installed' },
+        fail: { sT: 'Verification failed', sSub: '2 files differ from the published v1.3. Repair re-downloads 3 MB.', sIcon: I('alert', 16, '#E2735F'), sFg: '#E2735F', sBd: '#C8503C', primary: 'Repair · 3 MB', pKey: 'R', second: [['Play', 'P', 1, 'Blocked until the files match'], ['Tell the Architect', 'T', 0, 'Send the mismatch report to Vell Orrin']], req: 'Installed' }
+      }[st];
+      const ok = st !== 'fail', dis = !!S.pDis;
+      return { id: 'a22' + 'abcde'[di], code: '2.2' + 'abcde'[di], label: d.label, tag: d.tag, tc: d.tc, failed: st === 'fail', isDl: st === 'dl', ...S,
+        pDis: dis, pTip: dis ? 'Unlocks when the download finishes' : S.primary + ' (' + S.pKey + ')', pBg: dis ? '#1C1F25' : '#173129', pBd: dis ? '#3A3F48' : '#4FB39A', pFg: dis ? '#9A958A' : '#ECE6D8', pCur: dis ? 'not-allowed' : 'pointer', pulse: dis ? null : LV.pulse(),
+        second: S.second.map(([n, k, dd, tip]) => ({ n, k, tip: tip + (dd ? '' : ' (' + k + ')'), dis: !!dd, op: dd ? .45 : 1, cur: dd ? 'not-allowed' : 'pointer' })),
+        vSeal: ok ? LV.seal(40, 'v' + di) : I('alert', 28, '#E2735F'), vT: ok ? 'Verified by Chimera' : 'This copy failed verification', vFg: ok ? '#4FB39A' : '#E2735F', vBd: ok ? '#3A3F48' : '#C8503C',
+        vSub: ok ? 'Signatures match the Architect’s upload · scripts sandboxed · checked 21 Sep' : 'The listing itself is verified; your downloaded copy isn’t.',
+        ver: has14 ? 'v1.3 installed · v1.4 out' : 'v1.3 · 21 Sep 2026', reqT: S.req, reqFg: S.req === 'Installed' ? '#4FB39A' : '#9A958A', reqIcon: S.req === 'Installed' ? I('check', 14, '#4FB39A') : null,
+        versions: VERS.filter(v => has14 || v[0] !== 'v1.4').slice(0, 4).map(([v, t, when]) => ({ v, t, when, fg: v === 'v1.4' ? '#E3C887' : '#9A958A' })) };
+    });
+    const GAL = [[1, 'Wave 31 at the west switchback'], [3, 'Frost towers on the high ground'], [0, 'The keep road at dusk'], [5, 'The Court’s vat-beasts'], [2, 'Four Commanders, one gold pool']];
+    const LIB = [
+      ['Cinder Keep', 'Vell Orrin', 'v1.3', 'Scenario', 'inst', '212 MB', 1], ['Vat Lords Arena', 'Kestrel & Lune', 'v2.0 → v2.1', 'Scenario', 'upd', '22 MB', 5], ['The Long Night', 'Marrow Guild', 'v0.8 → v0.9', 'Scenario', 'upd', '184 MB', 3],
+      ['Covenant Siegeworks', 'Chimera Studio', 'v2.0 → v2.1', 'Model pack', 'upd', '12 MB', 0], ['Ashen Crown', 'Tamsin Oake', 'v1.1', 'Scenario', 'inst', '410 MB', 0], ['Mercury Run', 'Pell Anders', 'v1.0', 'Scenario', 'none', '96 MB', 4],
+      ['Salt Wardens', 'Marrow Guild', 'v1.2', 'Faction', 'inst', '64 MB', 2], ['Frost Warden', 'Vell Orrin', 'v1.0', 'Unit', 'inst', '3 MB', 3]];
+    const libFilter = { All: () => true, 'Updates waiting': r => r[4] === 'upd', Installed: r => r[4] !== 'none', 'Not installed': r => r[4] === 'none' }[s.libTab];
+    const libRows = LIB.map((r, i) => ({ r, i })).filter(({ r }) => libFilter(r)).map(({ r, i }) => {
+      const [n, a, v, type, st, size, t] = r;
+      const M = { inst: ['Installed', '#4FB39A', 'check', 'Play', 'Play (Enter)'], upd: ['Update waiting', '#E3C887', 'download', 'Update', 'Download the update'], none: ['Not installed', '#9A958A', 'cloud', 'Install', 'Installs when you first play it'] }[st];
+      return { n, a, v, type, size, st: M[0], sFg: M[1], sIcon: I(M[2], 14, M[1]), act: M[3], aTip: M[4], thumb: type === 'Scenario' || type === 'Model pack' ? this.th(t) : this.vat(t),
+        aBg: st === 'upd' ? '#C9A86A' : '#2A2F38', aBd: st === 'upd' ? '#E3C887' : '#8A6E3C', aFg: st === 'upd' ? '#14161A' : '#ECE6D8',
+        bg: s.lib === i ? '#2A2F38' : '#20242B', bd: s.lib === i ? '#E3C887' : '#3A3F48', go: () => this.setState({ lib: i }) };
+    });
+    const LS = LIB[s.lib];
+    const libSel = { n: LS[0], type: LS[3], size: LS[5], thumb: LS[3] === 'Scenario' || LS[3] === 'Model pack' ? this.th(LS[6]) : this.vat(LS[6]), act: LS[4] === 'upd' ? 'Update · ' + LS[5] : LS[4] === 'none' ? 'Install · ' + LS[5] : 'Play',
+      rows: [{ k: 'Architect', v: LS[1] }, { k: 'Version', v: LS[2] }, { k: 'On disk', v: LS[4] === 'none' ? '—' : LS[5] }, { k: 'Subscribed', v: '12 Sep 2026' }, { k: 'Used by', v: LS[3] === 'Scenario' ? 'Your saves: 2' : '3 of your scenarios' }] };
+    const cnt = f => LIB.filter(f).length;
+    // publish
+    const PS = [
+      { k: 'blocked', label: 'Publish · blocked: map not beaten', tag: 'INTERACTIVE · CHECKLIST', tc: '#4FB39A' }, { k: 'errors', label: 'Publish · validation errors', tag: 'INTERACTIVE · JUMP TO FIELD', tc: '#4FB39A' },
+      { k: 'up', label: 'Publish · uploading', tag: 'STATIC · LIVE PROGRESS', tc: '#9A958A' }, { k: 'done', label: 'Publish · published', tag: 'STATIC', tc: '#9A958A' }];
+    const good = { s: 'Done', fg: '#4FB39A', bd: '#3A3F48' }, bad = t => ({ s: t, fg: '#E2735F', bd: '#C8503C' });
+    const pubs = PS.map((P, pi) => {
+      const k = P.k, err = k === 'errors', blk = k === 'blocked', form = err || blk;
+      const f = { proof: blk ? bad('Not beaten') : good, thumb: good, shots: err ? bad('1 of 3') : good, desc: err ? bad('38 of 120 characters') : good, tags: good, rights: err ? bad('2 unconfirmed') : good };
+      const foc = s.pubFocus;
+      if (form && foc && f[foc]) f[foc] = { ...f[foc], bd: '#E3C887' };
+      const stepDefs = [['validator', 'Validator', 'Array stable · 0 errors', 1], ['proof', 'Proof of play', blk ? 'Beat v0.4 yourself first' : 'Won in 18:40 · today', !blk], ['thumb', 'Thumbnail', '1920 × 1080', 1], ['desc', 'Description', err ? 'Too short · 38 of 120' : '184 characters', !err],
+        ['shots', 'Screenshots', err ? '1 of 3 added' : '4 added', !err], ['tags', 'Genre and tags', 'RTS · 1v1 · fords', 1], ['rights', 'Rights attestation', err ? '2 imported assets to confirm' : 'Confirmed', !err], ['vis', 'Visibility', 'Public', 1], ['notes', 'Version notes', 'v0.4 · 2 lines', 1]];
+      const steps = stepDefs.map(([id, n, sub, ok]) => ({ n, s: sub, sFg: ok ? '#9A958A' : '#E2735F', icon: I(ok ? 'check' : 'alert', 16, ok ? '#4FB39A' : '#E2735F'), bg: foc === id && form ? '#2A2F38' : 'transparent', bd: foc === id && form ? '#E3C887' : ok ? 'transparent' : '#C8503C',
+        tip: ok ? n + ' · done' : n + ' · click to jump to the field', go: () => this.setState({ pubFocus: id }) }));
+      const B = {
+        blocked: { banner: 1, bBg: '#2A1C1A', bBd: '#C8503C', bIcon: I('lock', 18, '#E2735F'), bFg: '#E2735F', bT: 'Beat your own scenario before you publish it', bSub: 'You haven’t won Ashfall Ford v0.4 yet. Last attempt: defeat at 14:32 on v0.3. Win once against the AI and this unlocks.', bBtn: 'Playtest to beat it', bKey: 'F5', bBtnTip: 'Start a playtest against the AI (F5)' },
+        errors: { banner: 1, bBg: '#2A1C1A', bBd: '#C8503C', bIcon: I('alert', 18, '#E2735F'), bFg: '#E2735F', bT: 'Three fields need attention', bSub: 'Description is too short, two more screenshots are needed, and two imported assets need your rights confirmation. Click a red item on the left to jump to it.', bBtn: 'Jump to first', bKey: 'J', bBtnTip: 'Jump to the first problem (J)' },
+        up: { banner: 1, bBg: '#20242B', bBd: '#8A6E3C', bIcon: I('publish', 18, '#E3C887'), bFg: '#E3C887', bT: 'Uploading Ashfall Ford v0.4', bSub: 'You can keep working in Create. Closing Chimera pauses the upload.' },
+        done: { banner: 1, bBg: '#16261F', bBd: '#4FB39A', bIcon: I('check', 18, '#4FB39A'), bFg: '#4FB39A', bT: 'Published', bSub: 'Ashfall Ford v0.4 is public on Browse. Version notes are posted to its history.', bBtn: 'View on Browse', bKey: 'F3', bBtnTip: 'Open the listing (F3)' }
+      }[k];
+      const pDis = form, living = k === 'up' ? null : k === 'done' ? null : null;
+      return { ...P, id: 'a24' + 'abcd'[pi], code: '2.4' + 'abcd'[pi], steps, f, ...B, bBtn: B.bBtn || '', isForm: form, isUp: k === 'up', isDone: k === 'done',
+        proofText: blk ? 'Required: win once against the AI on this exact version. Your last clear was on v0.2.' : 'Won in 18:40 on v0.4 against Opportunist · Hard, today 16:05.',
+        descText: err ? 'Two fords and one bridge. 1v1.' : 'Two fords and one bridge worth dying for. Hold the crossings, build the bridge, and push before the other Commander does. Tuned for 1v1 with fast expands.',
+        shots: [0, 1, 2, 3].map(i => { const have = err ? i < 1 : true; return { bg: have ? this.th([0, 3, 1, 2][i]) : '#14161A', bs: have ? 'solid' : 'dashed', bd: have ? '#3A3F48' : (err ? '#C8503C' : '#5C5446'), t: have ? '' : 'Add' }; }),
+        assets: [['Ford stones · rock_set_04.fbx', 'imported'], ['River loop · water_amb.ogg', 'imported']].map(([n, src]) => ({ n, src, bd: err ? '#C8503C' : '#4FB39A', bg: err ? '#14161A' : '#173129', check: err ? null : I('check', 12, '#4FB39A') })),
+        rKick: k === 'done' ? 'Live' : k === 'up' ? 'Uploading' : 'Ready check', rTitle: k === 'done' ? 'The array is sealed' : k === 'up' ? 'Sending to Browse' : form ? (blk ? '1 item blocks publishing' : '3 items block publishing') : '',
+        note: blk ? 'Publish unlocks after you beat v0.4.' : err ? 'Publish unlocks when every item is done.' : k === 'up' ? 'Files are signed before they leave this PC.' : 'Share code copies a direct link for friends.',
+        nFg: form ? '#E2735F' : '#9A958A', primary: k === 'done' ? 'Copy share code' : k === 'up' ? 'Uploading…' : 'Publish', pKey: k === 'done' ? 'Ctrl C' : 'Ctrl ⇧ P',
+        pDis: pDis || k === 'up', pTip: form ? 'Blocked: finish the checklist first' : k === 'up' ? 'Upload in progress' : 'Copy the share code', pBg: pDis || k === 'up' ? '#1C1F25' : '#C9A86A', pBd: pDis || k === 'up' ? '#3A3F48' : '#E3C887', pFg: pDis || k === 'up' ? '#9A958A' : '#14161A', pCur: pDis || k === 'up' ? 'not-allowed' : 'pointer', pulse: living,
+        second: k === 'done' ? 'Back to the map' : k === 'up' ? 'Pause upload' : 'Save as draft', sKey: k === 'done' ? 'Esc' : k === 'up' ? 'Space' : 'Ctrl S', sTip: k === 'done' ? 'Back to the map editor (Esc)' : k === 'up' ? 'Pause the upload (Space)' : 'Keep these fields for later (Ctrl S)' };
+    });
+    const up = s.up, upStage = up < 15 ? 0 : up < 30 ? 1 : up < 95 ? 2 : 3;
+    return {
+      LV, orn, F: LV.frame(), F2: LV.frame({ delay: 2.5 }), Fns: LV.frame({ noSigils: true }), pulse: LV.pulse(), bigSeal: LV.seal(140, 'pub'), upRing: LV.progress(200, up),
+      ic: { search: I('search', 16, '#9A958A'), check: I('check', 14, '#4FB39A'), chev: I('chevron', 14, '#C9A86A'), alertRed: I('alert', 20, '#E2735F'), flag: I('flag', 16), trash: I('trash', 16, '#E2735F'), dlDark: I('download', 16, '#14161A') },
+      show: ['s21', 's22', 's23', 's24'].reduce((o, k) => (o[k] = s.only === 'All' || s.only === k, o), {}),
+      showChips: [['All', 'All'], ['s21', '2.1'], ['s22', '2.2'], ['s23', '2.3'], ['s24', '2.4']].map(([k, n]) => ({ n, tip: k === 'All' ? 'Show every section' : 'Show only ' + n, ...on(s.only, k), go: () => this.setState({ only: k }) })),
+      index: [['a21a', '2.1a', 'Browse home · Scenarios', 'i'], ['a21b', '2.1b', 'Browse home · Units and abilities', 'i'], ['a22a', '2.2a', 'Detail · not subscribed', 'i'], ['a22b', '2.2b', 'Detail · downloading', 's'], ['a22c', '2.2c', 'Detail · installed', 's'], ['a22d', '2.2d', 'Detail · update available', 's'], ['a22e', '2.2e', 'Detail · verification failed', 's'],
+        ['a23a', '2.3a', 'My library', 'i'], ['a23b', '2.3b', 'My library · unsubscribe confirm', 's'], ['a24a', '2.4a', 'Publish · blocked, not beaten', 'i'], ['a24b', '2.4b', 'Publish · validation errors', 'i'], ['a24c', '2.4c', 'Publish · uploading', 's'], ['a24d', '2.4d', 'Publish · published', 's']].map(([id, code, n, t]) => ({ id, code, n, tag: t === 'i' ? 'INTERACTIVE' : 'STATIC', tc: t === 'i' ? '#4FB39A' : '#9A958A' })),
+      newComps: ['Content-type tabs', 'Filter chips + toggle', 'Sort segmented', 'Subscribed badge', 'Gallery', 'Review', 'Version row', 'Verified badge', 'Status block', 'Library row', 'Disk-use bar', 'Checklist step', 'Required field', 'Confirm dialog'],
+      homes, q: s.q, onQ: e => this.setState({ q: e.target.value }),
+      sorts: ['Trending', 'Top rated', 'Newest', 'Most played'].map(n => ({ n, ...on(s.sort, n), go: () => this.setState({ sort: n }) })),
+      tagChips: GEN.map(g => ({ n: g, c: gc(g), ...on(s.genre, g), go: () => this.setState({ genre: g }) })),
+      genreList: GEN.map(g => ({ n: g, c: gc(g), fg: s.genre === g ? '#E3C887' : '#9A958A', bd: s.genre === g ? '#E3C887' : '#5C5446', dot: s.genre === g ? '#E3C887' : 'transparent', go: () => this.setState({ genre: g }) })),
+      pChips: PF.map(([n]) => ({ n, tip: n + ' Commanders', ...on(s.pf, n), go: () => this.setState({ pf: n }) })),
+      sizeChips: ['Any', 'S', 'M', 'L', 'XL'].map(n => ({ n, tip: n === 'Any' ? 'Any size' : { S: 'Small · up to 128', M: 'Medium · up to 192', L: 'Large · up to 256', XL: 'Huge · over 256' }[n], ...on(s.size, n), go: () => this.setState({ size: n }) })),
+      aiGo: () => this.setState(st => ({ ai: !st.ai })), aiT: s.ai ? { bg: '#173129', bd: '#4FB39A', k: '#4FB39A', x: '23px' } : { bg: '#14161A', bd: '#5C5446', k: '#9A958A', x: '3px' },
+      clearAll: () => this.setState({ q: '', genre: 'All', pf: 'Any', size: 'Any', ai: false }),
+      homeHints: [{ k: 'Ctrl F', t: 'Search' }, { k: '1–4', t: 'Content type' }, { k: 'Enter', t: 'Details' }, { k: 'S', t: 'Subscribe' }, { k: 'L', t: 'My library' }],
+      details, dlPct: s.dl + '%', dlText: Math.round(224 * s.dl / 100) + ' / 224 MB',
+      gMain: this.th(GAL[s.gal][0]), gCap: GAL[s.gal][1], gNum: (s.gal + 1) + ' / 5',
+      gThumbs: GAL.map(([t, cap], i) => ({ cap, thumb: this.th(t), bd: s.gal === i ? '#E3C887' : '#3A3F48', go: () => this.setState({ gal: i }) })),
+      dNav: [['Overview', ''], ['Gallery', '5'], ['Reviews', '1,284'], ['Version history', '5'], ['Required content', '1']].map(([n, c], i) => ({ n, c, bg: i === 0 ? '#2A2F38' : 'transparent', bd: i === 0 ? '#C9A86A' : 'transparent', fg: i === 0 ? '#E3C887' : '#ECE6D8' })),
+      otherWork: [['Thornwall Holdout', 'Tower defence', '4.0', 3], ['Ember Pact', 'Faction', '4.3', 5], ['Frost Warden', 'Unit', '4.6', 2]].map(([n, g, r, t]) => ({ n, g, r, thumb: this.th(t) })),
+      reviews: [{ stars: '★★★★★', who: 'Mara Solt', meta: '41 h played · Commander', t: 'Best co-op TD on Browse. Wave 36 made our party of four actually talk to each other.' }, { stars: '★★★★☆', who: 'Kest', meta: '9 h played', t: 'Solo gets brutal after 30. The Frost tower is the answer; I wish the game told me sooner.' }],
+      dHints: [{ k: 'S', t: 'Subscribe' }, { k: 'P', t: 'Play' }, { k: 'C', t: 'Open in Create' }, { k: '← →', t: 'Gallery' }],
+      libs: [{ id: 'a23a', code: '2.3a', label: 'My library', tag: 'INTERACTIVE', modal: false }, { id: 'a23b', code: '2.3b', label: 'My library · unsubscribe confirmation (the one modal)', tag: 'STATIC', modal: true }],
+      libTabs: [['All', cnt(() => true)], ['Updates waiting', cnt(r => r[4] === 'upd')], ['Installed', cnt(r => r[4] !== 'none')], ['Not installed', cnt(r => r[4] === 'none')]].map(([n, c]) => ({ n, c, bg: s.libTab === n ? '#2A2F38' : 'transparent', bd: s.libTab === n ? '#C9A86A' : 'transparent', fg: s.libTab === n ? '#E3C887' : '#ECE6D8', cFg: n === 'Updates waiting' ? '#E3C887' : '#9A958A', go: () => this.setState({ libTab: n }) })),
+      libRows, libSel, libHints: [{ k: 'Enter', t: 'Play or update' }, { k: 'U', t: 'Update all' }, { k: 'Del', t: 'Unsubscribe' }, { k: '↑ ↓', t: 'Choose' }],
+      pubs, pubThumb: this.th(0),
+      pubTags: ['RTS', '1v1', 'Fords', 'Fast expand', 'Covenant vs Court', '+ Add tag'].map((n, i) => ({ n, bg: i === 0 ? '#2A2F38' : '#14161A', bd: i === 0 ? '#E3C887' : i === 5 ? '#5C5446' : '#3A3F48', fg: i === 0 ? '#E3C887' : i === 5 ? '#9A958A' : '#ECE6D8' })),
+      vis: [['Public', 'Anyone on Browse'], ['Friends', 'Friends and share code'], ['Unlisted', 'Share code only']].map(([n, tip], i) => ({ n, tip, ...on(0, i) })),
+      upPctT: up + '%', upText: Math.round(48 * up / 100) + ' / 48 MB · 3.1 MB/s',
+      upSteps: ['Pack 214 files', 'Sign with your Architect key', 'Upload', 'Chimera verifies the listing'].map((n, i) => ({ n, fg: i < upStage ? '#4FB39A' : i === upStage ? '#E3C887' : '#9A958A', icon: I(i < upStage ? 'check' : i === upStage ? 'hourglass' : 'clock', 14, i < upStage ? '#4FB39A' : i === upStage ? '#E3C887' : '#9A958A') })),
+      pubHints: [{ k: 'Ctrl ⇧ P', t: 'Publish' }, { k: 'F5', t: 'Playtest' }, { k: 'J', t: 'Jump to problem' }, { k: 'Ctrl S', t: 'Save draft' }]
+    };
+  }
+}
+</script>
+</body>
+</html>

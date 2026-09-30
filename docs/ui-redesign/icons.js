@@ -38,7 +38,31 @@ window.CHI_ICONS = {
   sliders: [["line", { x1: 4, y1: 7, x2: 20, y2: 7 }], ["line", { x1: 4, y1: 17, x2: 20, y2: 17 }], ["rect", { x: 7, y: 5, width: 4, height: 4 }], ["rect", { x: 13, y: 15, width: 4, height: 4 }]],
   array: [["circle", { cx: 12, cy: 12, r: 9.5 }], ["polygon", { points: "12,3.5 19.4,16.3 4.6,16.3" }], ["polygon", { points: "12,20.5 4.6,7.7 19.4,7.7" }], ["circle", { cx: 12, cy: 12, r: 3 }]],
   alert: [["polygon", { points: "12,3 22,20 2,20" }], ["line", { x1: 12, y1: 9, x2: 12, y2: 14 }], ["line", { x1: 12, y1: 16.5, x2: 12, y2: 17.5 }]],
-  info: [["circle", { cx: 12, cy: 12, r: 9 }], ["line", { x1: 12, y1: 11, x2: 12, y2: 17 }], ["line", { x1: 12, y1: 7.5, x2: 12, y2: 8.5 }]]
+  info: [["circle", { cx: 12, cy: 12, r: 9 }], ["line", { x1: 12, y1: 11, x2: 12, y2: 17 }], ["line", { x1: 12, y1: 7.5, x2: 12, y2: 8.5 }]],
+  // Round 2 additions, same grid and stroke
+  download: [["line", { x1: 12, y1: 3, x2: 12, y2: 15 }], ["polyline", { points: "7,10 12,15 17,10" }], ["polyline", { points: "4,17 4,21 20,21 20,17" }]],
+  cloud: [["path", { d: "M7 18h10.5a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.4 9.2 4.5 4.5 0 0 0 7 18z" }]],
+  cloudOff: [["path", { d: "M7 18h10.5a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.4 9.2 4.5 4.5 0 0 0 7 18z" }], ["line", { x1: 3, y1: 3, x2: 21, y2: 21 }]],
+  clock: [["circle", { cx: 12, cy: 12, r: 9 }], ["polyline", { points: "12,7 12,12 15.5,14" }]],
+  chat: [["path", { d: "M4 5h16v11H10l-4 4v-4H4z" }]],
+  users: [["circle", { cx: 9, cy: 8, r: 3 }], ["path", { d: "M3.5 19a5.5 5.5 0 0 1 11 0" }], ["circle", { cx: 16.5, cy: 9, r: 2.4 }], ["path", { d: "M15.5 14.2A4.5 4.5 0 0 1 21 18.5" }]],
+  keyboard: [["rect", { x: 2.5, y: 6, width: 19, height: 12 }], ["line", { x1: 6, y1: 10, x2: 7, y2: 10 }], ["line", { x1: 10, y1: 10, x2: 11, y2: 10 }], ["line", { x1: 14, y1: 10, x2: 15, y2: 10 }], ["line", { x1: 18, y1: 10, x2: 18, y2: 10 }], ["line", { x1: 7, y1: 14.5, x2: 17, y2: 14.5 }]],
+  volume: [["polygon", { points: "4,9 8,9 13,5 13,19 8,15 4,15" }], ["path", { d: "M16.5 9a4 4 0 0 1 0 6" }], ["path", { d: "M19 6.5a7.5 7.5 0 0 1 0 11" }]],
+  monitor: [["rect", { x: 3, y: 4, width: 18, height: 12 }], ["line", { x1: 8, y1: 20, x2: 16, y2: 20 }], ["line", { x1: 12, y1: 16, x2: 12, y2: 20 }]],
+  access: [["circle", { cx: 12, cy: 12, r: 9.5 }], ["circle", { cx: 12, cy: 7.5, r: 1.4 }], ["polyline", { points: "7,10 12,11 17,10" }], ["polyline", { points: "9.5,18 12,13 14.5,18" }], ["line", { x1: 12, y1: 11, x2: 12, y2: 13 }]],
+  key: [["circle", { cx: 8, cy: 14, r: 4 }], ["line", { x1: 11, y1: 11, x2: 20, y2: 2 }], ["line", { x1: 16, y1: 6, x2: 19, y2: 9 }]],
+  globe: [["circle", { cx: 12, cy: 12, r: 9 }], ["line", { x1: 3, y1: 12, x2: 21, y2: 12 }], ["path", { d: "M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18" }]],
+  door: [["polyline", { points: "14,4 5,4 5,20 14,20" }], ["line", { x1: 10, y1: 12, x2: 21, y2: 12 }], ["polyline", { points: "17,8 21,12 17,16" }]],
+  book: [["path", { d: "M4 5h6a2 2 0 0 1 2 2v13a2 2 0 0 0-2-2H4z" }], ["path", { d: "M20 5h-6a2 2 0 0 0-2 2v13a2 2 0 0 1 2-2h6z" }]],
+  swords: [["line", { x1: 4, y1: 4, x2: 16, y2: 16 }], ["line", { x1: 20, y1: 4, x2: 8, y2: 16 }], ["line", { x1: 14, y1: 18, x2: 18, y2: 14 }], ["line", { x1: 6, y1: 14, x2: 10, y2: 18 }]],
+  crown: [["polygon", { points: "3,8 7.5,12 12,5 16.5,12 21,8 19,18 5,18" }], ["line", { x1: 5, y1: 21, x2: 19, y2: 21 }]],
+  refresh: [["path", { d: "M20 12a8 8 0 0 1-14 5.3" }], ["path", { d: "M4 12a8 8 0 0 1 14-5.3" }], ["polyline", { points: "18,2.5 18,6.7 13.8,6.7" }], ["polyline", { points: "6,21.5 6,17.3 10.2,17.3" }]],
+  link: [["path", { d: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" }], ["path", { d: "M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" }]],
+  replay: [["circle", { cx: 12, cy: 12, r: 9 }], ["polygon", { points: "10,8.5 16,12 10,15.5" }]],
+  signal: [["line", { x1: 5, y1: 19, x2: 5, y2: 16 }], ["line", { x1: 10, y1: 19, x2: 10, y2: 12 }], ["line", { x1: 15, y1: 19, x2: 15, y2: 8 }], ["line", { x1: 20, y1: 19, x2: 20, y2: 4 }]],
+  flag: [["line", { x1: 5, y1: 21, x2: 5, y2: 3 }], ["path", { d: "M5 4h12l-2.5 4L17 12H5" }]],
+  hourglass: [["line", { x1: 6, y1: 3, x2: 18, y2: 3 }], ["line", { x1: 6, y1: 21, x2: 18, y2: 21 }], ["path", { d: "M7 3c0 5 10 5 10 9s-10 4-10 9M17 3c0 5-10 5-10 9s10 4 10 9" }]],
+  cpu: [["rect", { x: 6, y: 6, width: 12, height: 12 }], ["rect", { x: 9.5, y: 9.5, width: 5, height: 5 }], ["line", { x1: 9, y1: 2.5, x2: 9, y2: 6 }], ["line", { x1: 15, y1: 2.5, x2: 15, y2: 6 }], ["line", { x1: 9, y1: 18, x2: 9, y2: 21.5 }], ["line", { x1: 15, y1: 18, x2: 15, y2: 21.5 }], ["line", { x1: 2.5, y1: 9, x2: 6, y2: 9 }], ["line", { x1: 2.5, y1: 15, x2: 6, y2: 15 }], ["line", { x1: 18, y1: 9, x2: 21.5, y2: 9 }], ["line", { x1: 18, y1: 15, x2: 21.5, y2: 15 }]]
 };
 window.CHI_ICON = function (React, name, size, color, sw) {
   var parts = window.CHI_ICONS[name] || [];
