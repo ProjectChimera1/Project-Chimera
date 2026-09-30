@@ -13,6 +13,9 @@ locked foundation. Use them to lay out every other screen in the game.
   centre that is never covered, the right inspector, the bottom context strip and the Ctrl+K
   palette. Play and Browse fill the same zones differently, the way board 03 shows Create and
   the HUD doing it. No floating windows. Modal dialogs are for destructive confirmations only.
+  **Exception (added 2026-09-30 after Batch 3):** the live match HUD does NOT use this shell. The
+  battlefield is full-bleed with a thin top strip and a compact bottom console; see
+  `batch-3-hud-correction.md`. Spectator and replay may use side panels.
 - The Round 1 rules still apply: 1920×1080 artboards; real hover, focus, selected and disabled
   states; hotkey glyphs and a tooltip on every control; a simple and an advanced mode in every
   editor; player colours only inside chips (Okabe-Ito with glyphs); WCAG AA contrast; UI scale
