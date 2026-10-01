@@ -1,0 +1,1002 @@
+diff -ruN --strip-trailing-cr -x bin -x obj -x '*.uid' /d/Projects/Project_Chimera/godot/src/AI/BalanceSuggestionApplier.cs trial2/godot/src/AI/BalanceSuggestionApplier.cs
+--- /d/Projects/Project_Chimera/godot/src/AI/BalanceSuggestionApplier.cs	2026-08-03 22:54:03.841185300 -0400
++++ trial2/godot/src/AI/BalanceSuggestionApplier.cs	2026-10-01 01:16:02.959094800 -0400
+@@ -78,7 +78,7 @@
+             try
+             {
+                 string json = FactionWriter.SerializeUnitClean(target);
+-                candidate = JsonSerializer.Deserialize<UnitDefinition>(json, FactionDefinition.JsonOptions)
++                candidate = ProjectChimera.Core.Definitions.AotJson.Deserialize<UnitDefinition>(json, FactionDefinition.JsonOptions)
+                     ?? throw new InvalidOperationException("clone deserialized to null.");
+             }
+             catch (Exception ex)
+diff -ruN --strip-trailing-cr -x bin -x obj -x '*.uid' /d/Projects/Project_Chimera/godot/src/AI/LLMService.cs trial2/godot/src/AI/LLMService.cs
+--- /d/Projects/Project_Chimera/godot/src/AI/LLMService.cs	2026-08-12 19:43:13.271691800 -0400
++++ trial2/godot/src/AI/LLMService.cs	2026-10-01 01:16:02.987938300 -0400
+@@ -484,7 +484,7 @@
+             TriggerDefinition trigger;
+             try
+             {
+-                trigger = JsonSerializer.Deserialize<TriggerDefinition>(json, ContentJson.ModelOutputOptions)
++                trigger = ProjectChimera.Core.Definitions.AotJson.Deserialize<TriggerDefinition>(json, ContentJson.ModelOutputOptions)
+                     ?? throw new InvalidOperationException("Deserialised to null.");
+             }
+             catch (Exception ex)
+@@ -870,7 +870,7 @@
+                 // widens the syntax accepted, never the values trusted. What it ADDS over the old inline set is the
+                 // name-only enum boundary (a numeric enum now fails closed instead of silently resolving to whichever
+                 // member holds that ordinal — the same tightening DW-274 gave the scenario FILE format).
+-                scenario = JsonSerializer.Deserialize<ScenarioData>(json, ContentJson.ModelOutputOptions)
++                scenario = ProjectChimera.Core.Definitions.AotJson.Deserialize<ScenarioData>(json, ContentJson.ModelOutputOptions)
+                     ?? throw new InvalidOperationException("Deserialised to null.");
+             }
+             catch (JsonException jex)
+@@ -1500,7 +1500,7 @@
+                 // DW-526: this site used to build a per-call option set that registered NO converters at all — so it
+                 // was the ONE model-output parse path that could not read a Fixed-typed field, and it rejected the
+                 // trailing commas / // comments every other LLM path tolerates. Now on the shared posture.
+-                report = JsonSerializer.Deserialize<BalanceReport>(json, ContentJson.ModelOutputOptions)
++                report = ProjectChimera.Core.Definitions.AotJson.Deserialize<BalanceReport>(json, ContentJson.ModelOutputOptions)
+                     ?? throw new InvalidOperationException("Deserialised to null.");
+             }
+             catch (Exception ex)
+@@ -1655,7 +1655,7 @@
+             List<ProjectChimera.Effects.EffectNode>? nodes;
+             try
+             {
+-                nodes = JsonSerializer.Deserialize<List<ProjectChimera.Effects.EffectNode>>(json, ContentJson.Options);
++                nodes = ProjectChimera.Core.Definitions.AotJson.Deserialize<List<ProjectChimera.Effects.EffectNode>>(json, ContentJson.Options);
+             }
+             catch (Exception ex)
+             {
+@@ -1682,7 +1682,7 @@
+             FactionDefinition def;
+             try
+             {
+-                def = JsonSerializer.Deserialize<FactionDefinition>(json, FactionDefinition.JsonOptions)
++                def = ProjectChimera.Core.Definitions.AotJson.Deserialize<FactionDefinition>(json, FactionDefinition.JsonOptions)
+                     ?? throw new InvalidOperationException("Deserialised to null.");
+             }
+             catch (Exception ex)
+@@ -1718,7 +1718,7 @@
+         {
+             try
+             {
+-                def = JsonSerializer.Deserialize<UnitDefinition>(json, FactionDefinition.JsonOptions)
++                def = ProjectChimera.Core.Definitions.AotJson.Deserialize<UnitDefinition>(json, FactionDefinition.JsonOptions)
+                     ?? throw new InvalidOperationException("Deserialised to null.");
+                 error = null;
+                 return true;
+diff -ruN --strip-trailing-cr -x bin -x obj -x '*.uid' /d/Projects/Project_Chimera/godot/src/AI/Providers/AnthropicProvider.cs trial2/godot/src/AI/Providers/AnthropicProvider.cs
+--- /d/Projects/Project_Chimera/godot/src/AI/Providers/AnthropicProvider.cs	2026-07-21 21:10:37.193502900 -0400
++++ trial2/godot/src/AI/Providers/AnthropicProvider.cs	2026-10-01 01:16:03.018282300 -0400
+@@ -37,17 +37,11 @@
+ 
+         public async Task<NormalizedResult> GenerateAsync(NormalizedRequest request, CancellationToken ct)
+         {
+-            var body = new
+-            {
+-                model      = _model,
+-                max_tokens = request.MaxTokens,
+-                system     = request.SystemPrompt,
+-                messages   = new[] { new { role = "user", content = request.UserMessage } },
+-            };
++            var body = new AnthropicRequestBody { Model = _model, MaxTokens = request.MaxTokens, System = request.SystemPrompt, Messages = new[] { new LlmMessageBody { Role = "user", Content = request.UserMessage } } };
+ 
+             using var req = new HttpRequestMessage(HttpMethod.Post, _endpoint)
+             {
+-                Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json"),
++                Content = new StringContent(ProjectChimera.Core.Definitions.AotJson.Serialize(body), Encoding.UTF8, "application/json"),
+             };
+             // A pasted key with an invalid header character (embedded space/newline/control char) makes
+             // HttpHeaders.Add throw FormatException. Catch it here so GenerateAsync honours the ILLMProvider
+diff -ruN --strip-trailing-cr -x bin -x obj -x '*.uid' /d/Projects/Project_Chimera/godot/src/AI/Providers/LlmRequestBodies.cs trial2/godot/src/AI/Providers/LlmRequestBodies.cs
+--- /d/Projects/Project_Chimera/godot/src/AI/Providers/LlmRequestBodies.cs	1969-12-31 19:00:00.000000000 -0500
++++ trial2/godot/src/AI/Providers/LlmRequestBodies.cs	2026-10-01 01:15:18.333178800 -0400
+@@ -0,0 +1,34 @@
++#nullable enable
++using System.Text.Json.Serialization;
++
++namespace ProjectChimera.AI.Providers
++{
++    /// <summary>TRIAL — named request-body DTOs replacing the three providers' anonymous-type bodies (an anonymous type
++    /// cannot be a source-gen root). Property order == the old anonymous-type declaration order, so the bytes are identical.</summary>
++    internal sealed class LlmMessageBody
++    {
++        [JsonPropertyName("role")]    public string Role { get; set; } = "";
++        [JsonPropertyName("content")] public string Content { get; set; } = "";
++    }
++
++    internal sealed class AnthropicRequestBody
++    {
++        [JsonPropertyName("model")]      public string Model { get; set; } = "";
++        [JsonPropertyName("max_tokens")] public int MaxTokens { get; set; }
++        [JsonPropertyName("system")]     public string System { get; set; } = "";
++        [JsonPropertyName("messages")]   public LlmMessageBody[] Messages { get; set; } = global::System.Array.Empty<LlmMessageBody>();
++    }
++
++    internal sealed class ChatRequestBody
++    {
++        [JsonPropertyName("model")]    public string Model { get; set; } = "";
++        [JsonPropertyName("messages")] public LlmMessageBody[] Messages { get; set; } = global::System.Array.Empty<LlmMessageBody>();
++    }
++
++    internal sealed class OllamaRequestBody
++    {
++        [JsonPropertyName("model")]    public string Model { get; set; } = "";
++        [JsonPropertyName("messages")] public LlmMessageBody[] Messages { get; set; } = global::System.Array.Empty<LlmMessageBody>();
++        [JsonPropertyName("stream")]   public bool Stream { get; set; }
++    }
++}
+diff -ruN --strip-trailing-cr -x bin -x obj -x '*.uid' /d/Projects/Project_Chimera/godot/src/AI/Providers/OllamaProvider.cs trial2/godot/src/AI/Providers/OllamaProvider.cs
+--- /d/Projects/Project_Chimera/godot/src/AI/Providers/OllamaProvider.cs	2026-07-21 20:27:31.726654500 -0400
++++ trial2/godot/src/AI/Providers/OllamaProvider.cs	2026-10-01 01:16:03.064257800 -0400
+@@ -31,20 +31,11 @@
+ 
+         public async Task<NormalizedResult> GenerateAsync(NormalizedRequest request, CancellationToken ct)
+         {
+-            var body = new
+-            {
+-                model    = _model,
+-                messages = new[]
+-                {
+-                    new { role = "system", content = request.SystemPrompt },
+-                    new { role = "user",   content = request.UserMessage },
+-                },
+-                stream = false,
+-            };
++            var body = new OllamaRequestBody { Model = _model, Messages = new[] { new LlmMessageBody { Role = "system", Content = request.SystemPrompt }, new LlmMessageBody { Role = "user", Content = request.UserMessage } }, Stream = false };
+ 
+             using var req = new HttpRequestMessage(HttpMethod.Post, _endpoint)
+             {
+-                Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json"),
++                Content = new StringContent(ProjectChimera.Core.Definitions.AotJson.Serialize(body), Encoding.UTF8, "application/json"),
+             };
+ 
+             var (ok, respBody, kind, error) = await LlmHttp.SendAsync(_http, req, ct);
+diff -ruN --strip-trailing-cr -x bin -x obj -x '*.uid' /d/Projects/Project_Chimera/godot/src/AI/Providers/OpenRouterProvider.cs trial2/godot/src/AI/Providers/OpenRouterProvider.cs
+--- /d/Projects/Project_Chimera/godot/src/AI/Providers/OpenRouterProvider.cs	2026-07-21 21:10:47.731637100 -0400
++++ trial2/godot/src/AI/Providers/OpenRouterProvider.cs	2026-10-01 01:16:03.077271800 -0400
+@@ -34,19 +34,11 @@
+ 
+         public async Task<NormalizedResult> GenerateAsync(NormalizedRequest request, CancellationToken ct)
+         {
+-            var body = new
+-            {
+-                model    = _model,
+-                messages = new[]
+-                {
+-                    new { role = "system", content = request.SystemPrompt },
+-                    new { role = "user",   content = request.UserMessage },
+-                },
+-            };
++            var body = new ChatRequestBody { Model = _model, Messages = new[] { new LlmMessageBody { Role = "system", Content = request.SystemPrompt }, new LlmMessageBody { Role = "user", Content = request.UserMessage } } };
+ 
+             using var req = new HttpRequestMessage(HttpMethod.Post, _endpoint)
+             {
+-                Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json"),
++                Content = new StringContent(ProjectChimera.Core.Definitions.AotJson.Serialize(body), Encoding.UTF8, "application/json"),
+             };
+             // A pasted key with an invalid header character makes HttpHeaders.Add throw FormatException; catch it so
+             // GenerateAsync honours the ILLMProvider "never throws for a provider-side failure" contract. A bad key is
+diff -ruN --strip-trailing-cr -x bin -x obj -x '*.uid' /d/Projects/Project_Chimera/godot/src/Combat/DamageTable.cs trial2/godot/src/Combat/DamageTable.cs
+--- /d/Projects/Project_Chimera/godot/src/Combat/DamageTable.cs	2026-08-13 03:55:05.551315300 -0400
++++ trial2/godot/src/Combat/DamageTable.cs	2026-10-01 01:16:05.876778000 -0400
+@@ -104,7 +104,7 @@
+ 
+         /// <summary>Load-time DTO. The Dictionary exists ONLY here — it is baked into the dense
+         /// <see cref="_cells"/> array immediately and never enumerated during a tick.</summary>
+-        private sealed class Dto
++        internal sealed class Dto
+         {
+             [JsonPropertyName("multipliers")]
+             public Dictionary<DamageType, Dictionary<ArmorType, Fixed>>? Multipliers { get; set; }
+@@ -117,7 +117,8 @@
+         {
+             ReadCommentHandling = JsonCommentHandling.Skip,
+             AllowTrailingCommas = true,
+-            Converters = { new JsonStringEnumConverter(), new FixedJsonConverter() },
++            Converters = { new JsonStringEnumConverter<DamageType>(), new JsonStringEnumConverter<ArmorType>(), new FixedJsonConverter() },
++            TypeInfoResolver = ProjectChimera.Core.Definitions.ChimeraJsonContext.Default,
+         };
+ 
+         // Raw-document options for the DW-227 duplicate-key pass — must accept exactly the same JSON
+@@ -143,7 +144,7 @@
+         public static DamageTable FromJson(string json)
+         {
+             // NaN/Inf/over-range rejected here (located JsonException from FixedJsonConverter) — AC4 half #1.
+-            Dto? dto = JsonSerializer.Deserialize<Dto>(json, _opts);
++            Dto? dto = ProjectChimera.Core.Definitions.AotJson.Deserialize<Dto>(json, _opts);
+             if (dto?.Multipliers is null)
+                 throw new InvalidDataException("damage_table: missing required 'multipliers' object.");
+ 
+diff -ruN --strip-trailing-cr -x bin -x obj -x '*.uid' /d/Projects/Project_Chimera/godot/src/Core/Definitions/AbilityLoader.cs trial2/godot/src/Core/Definitions/AbilityLoader.cs
+--- /d/Projects/Project_Chimera/godot/src/Core/Definitions/AbilityLoader.cs	2026-06-26 18:58:15.951327600 -0400
++++ trial2/godot/src/Core/Definitions/AbilityLoader.cs	2026-10-01 01:16:03.343304700 -0400
+@@ -29,7 +29,7 @@
+             AbilityDefinition? def;
+             try
+             {
+-                def = JsonSerializer.Deserialize<AbilityDefinition>(json, ContentJson.Options);
++                def = ProjectChimera.Core.Definitions.AotJson.Deserialize<AbilityDefinition>(json, ContentJson.Options);
+             }
+             catch (JsonException ex)
+             {
+diff -ruN --strip-trailing-cr -x bin -x obj -x '*.uid' /d/Projects/Project_Chimera/godot/src/Core/Definitions/AotJson.cs trial2/godot/src/Core/Definitions/AotJson.cs
+--- /d/Projects/Project_Chimera/godot/src/Core/Definitions/AotJson.cs	1969-12-31 19:00:00.000000000 -0500
++++ trial2/godot/src/Core/Definitions/AotJson.cs	2026-10-01 01:29:46.841627000 -0400
+@@ -0,0 +1,116 @@
++#nullable enable
++using System;
++using System.Collections.Generic;
++using System.Diagnostics.CodeAnalysis;
++using System.Text.Json;
++using System.Text.Json.Serialization;
++using System.Text.Json.Serialization.Metadata;
++using ProjectChimera.Combat;
++using ProjectChimera.Core;
++using ProjectChimera.Dsl;
++using ProjectChimera.Effects;
++
++namespace ProjectChimera.Core.Definitions
++{
++    /// <summary>
++    /// TRIAL (R1 research spike) — the single AOT-safe call surface for every System.Text.Json (de)serialize in the sim
++    /// source set. Each method resolves the <see cref="JsonTypeInfo{T}"/> from the options' <c>TypeInfoResolver</c>
++    /// (a source-generated <c>ChimeraJsonContext</c>) instead of the reflection overloads, so no IL2026/IL3050 site remains.
++    /// An options object WITHOUT a resolver (a hand-built test/Godot-panel options) takes the reflection fallback, which is
++    /// reachable only while <see cref="JsonSerializer.IsReflectionEnabledByDefault"/> (false under NativeAOT).
++    /// </summary>
++    public static class AotJson
++    {
++        /// <summary>Default-posture options (the old <c>JsonSerializer.Deserialize&lt;T&gt;(json)</c> with no options), bound to the context.</summary>
++        public static readonly JsonSerializerOptions DefaultOptions = new() { TypeInfoResolver = ChimeraJsonContext.Default };
++
++        private static JsonTypeInfo<T> Info<T>(JsonSerializerOptions o) => (JsonTypeInfo<T>)o.GetTypeInfo(typeof(T));
++        private static bool Bound(JsonSerializerOptions o) => o.TypeInfoResolver is not null;
++
++        public static T? Deserialize<T>(string json) => JsonSerializer.Deserialize(json, Info<T>(DefaultOptions));
++        public static T? Deserialize<T>(string json, JsonSerializerOptions options) =>
++            Bound(options) ? JsonSerializer.Deserialize(json, Info<T>(options)) : Reflection.Deserialize<T>(json, options);
++        public static T? Deserialize<T>(JsonElement element, JsonSerializerOptions options) =>
++            Bound(options) ? element.Deserialize(Info<T>(options)) : Reflection.Deserialize<T>(element, options);
++        public static string Serialize<T>(T value) => JsonSerializer.Serialize(value, Info<T>(DefaultOptions));
++        public static string Serialize<T>(T value, JsonSerializerOptions options) =>
++            Bound(options) ? JsonSerializer.Serialize(value, Info<T>(options)) : Reflection.Serialize(value, options);
++        public static void Serialize<T>(Utf8JsonWriter writer, T value, JsonSerializerOptions options)
++        {
++            if (Bound(options)) JsonSerializer.Serialize(writer, value, Info<T>(options));
++            else Reflection.Serialize(writer, value, options);
++        }
++
++        /// <summary>The reflection overloads, quarantined behind the runtime feature switch (dead + trimmed under NativeAOT).</summary>
++        private static class Reflection
++        {
++            private static void Guard()
++            {
++                if (!JsonSerializer.IsReflectionEnabledByDefault)
++                    throw new InvalidOperationException("JsonSerializerOptions without a TypeInfoResolver cannot be used when reflection-based serialization is disabled; bind it to ChimeraJsonContext.");
++            }
++            [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Reachable only when IsReflectionEnabledByDefault (JIT: Godot / Tier-1); false and trimmed under NativeAOT.")]
++            [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "As above.")]
++            public static T? Deserialize<T>(string json, JsonSerializerOptions o) { Guard(); return JsonSerializer.Deserialize<T>(json, o); }
++            [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "As above.")]
++            [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "As above.")]
++            public static T? Deserialize<T>(JsonElement e, JsonSerializerOptions o) { Guard(); return e.Deserialize<T>(o); }
++            [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "As above.")]
++            [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "As above.")]
++            public static string Serialize<T>(T v, JsonSerializerOptions o) { Guard(); return JsonSerializer.Serialize(v, o); }
++            [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "As above.")]
++            [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "As above.")]
++            public static void Serialize<T>(Utf8JsonWriter w, T v, JsonSerializerOptions o) { Guard(); JsonSerializer.Serialize(w, v, o); }
++        }
++
++        /// <summary>Name-only (allowIntegerValues:false) converter for one enum — same underlying EnumConverter as before.</summary>
++        public sealed class StrictEnum<TEnum> : JsonStringEnumConverter<TEnum> where TEnum : struct, Enum
++        {
++            public StrictEnum() : base(namingPolicy: null, allowIntegerValues: false) { }
++        }
++
++        /// <summary>
++        /// The AOT-safe replacement for <c>new JsonStringEnumConverter(namingPolicy: null, allowIntegerValues: false)</c>: ONE
++        /// factory registered per posture, dispatching to a closed registry of per-enum converters (no <c>MakeGenericType</c>).
++        /// An enum outside the registry throws loudly — it never silently falls back to the lenient numeric converter.
++        /// </summary>
++        public sealed class StrictEnumConverterFactory : JsonConverterFactory
++        {
++            private static readonly Dictionary<Type, JsonConverterFactory> Registry = new()
++            {
++                [typeof(WinCondition)]       = new StrictEnum<WinCondition>(),
++                [typeof(WinPresetKind)]      = new StrictEnum<WinPresetKind>(),
++                [typeof(ObjectiveState)]     = new StrictEnum<ObjectiveState>(),
++                [typeof(DslValueType)]       = new StrictEnum<DslValueType>(),
++                [typeof(VarScope)]           = new StrictEnum<VarScope>(),
++                [typeof(UnitTag)]            = new StrictEnum<UnitTag>(),
++                [typeof(PeriodicStackMode)]  = new StrictEnum<PeriodicStackMode>(),
++                [typeof(StatusFlags)]        = new StrictEnum<StatusFlags>(),
++                [typeof(StackRule)]          = new StrictEnum<StackRule>(),
++                [typeof(TargetFilter)]       = new StrictEnum<TargetFilter>(),
++                [typeof(DamageType)]         = new StrictEnum<DamageType>(),
++                [typeof(ArmorType)]          = new StrictEnum<ArmorType>(),
++                [typeof(AttackDomain)]       = new StrictEnum<AttackDomain>(),
++                [typeof(SeparationPriority)] = new StrictEnum<SeparationPriority>(),
++                [typeof(UnitCategory)]       = new StrictEnum<UnitCategory>(),
++                [typeof(AnchorPoint)]        = new StrictEnum<AnchorPoint>(),
++                [typeof(WidgetKind)]         = new StrictEnum<WidgetKind>(),
++                [typeof(LocalUiAction)]      = new StrictEnum<LocalUiAction>(),
++                [typeof(DataWireType)]       = new StrictEnum<DataWireType>(),
++            };
++
++            /// <summary>Every enum type the registry covers (for the completeness guard test).</summary>
++            public static IReadOnlyCollection<Type> RegisteredEnums => Registry.Keys;
++
++            public override bool CanConvert(Type typeToConvert) => typeToConvert.IsEnum;
++
++            public override JsonConverter CreateConverter(Type typeToConvert, JsonSerializerOptions options) =>
++                Registry.TryGetValue(typeToConvert, out JsonConverterFactory? f)
++                    ? f.CreateConverter(typeToConvert, options)
++                    : throw new NotSupportedException($"Enum '{typeToConvert.FullName}' is not in AotJson.StrictEnumConverterFactory's closed registry — add it (and a [JsonSerializable] root).");
++        }
++
++        /// <summary>Registers the strict name-only enum policy on a posture (replaces the old per-posture JsonStringEnumConverter).</summary>
++        public static void AddStrictEnums(JsonSerializerOptions o) => o.Converters.Add(new StrictEnumConverterFactory());
++    }
++}
+diff -ruN --strip-trailing-cr -x bin -x obj -x '*.uid' /d/Projects/Project_Chimera/godot/src/Core/Definitions/BehaviorRegistry.cs trial2/godot/src/Core/Definitions/BehaviorRegistry.cs
+--- /d/Projects/Project_Chimera/godot/src/Core/Definitions/BehaviorRegistry.cs	2026-07-19 15:41:32.242390100 -0400
++++ trial2/godot/src/Core/Definitions/BehaviorRegistry.cs	2026-10-01 01:16:03.453247900 -0400
+@@ -86,7 +86,7 @@
+         {
+             try
+             {
+-                BehaviorDefinition? def = JsonSerializer.Deserialize<BehaviorDefinition>(File.ReadAllText(file));
++                BehaviorDefinition? def = ProjectChimera.Core.Definitions.AotJson.Deserialize<BehaviorDefinition>(File.ReadAllText(file));
+                 if (def == null || string.IsNullOrEmpty(def.Id)) return null;
+                 // A compatible_archetypes token outside the 6-archetype closed set names a non-existent archetype, so the
+                 // whole behavior is rejected (dropped at load). The closed set is the shared source of truth
+diff -ruN --strip-trailing-cr -x bin -x obj -x '*.uid' /d/Projects/Project_Chimera/godot/src/Core/Definitions/ChimeraJsonContext.cs trial2/godot/src/Core/Definitions/ChimeraJsonContext.cs
+--- /d/Projects/Project_Chimera/godot/src/Core/Definitions/ChimeraJsonContext.cs	1969-12-31 19:00:00.000000000 -0500
++++ trial2/godot/src/Core/Definitions/ChimeraJsonContext.cs	2026-10-01 01:14:31.837098100 -0400
+@@ -0,0 +1,63 @@
++#nullable enable
++using System.Collections.Generic;
++using System.Text.Json.Serialization;
++using ProjectChimera.AI;
++using ProjectChimera.AI.Providers;
++using ProjectChimera.Combat;
++using ProjectChimera.Dsl;
++using ProjectChimera.Effects;
++
++namespace ProjectChimera.Core.Definitions
++{
++    /// <summary>
++    /// TRIAL (R1 research spike) — the ONE source-generated metadata context for the sim's JSON surface. Metadata mode
++    /// only (no fast-path serializers) so the behaviour is driven by the posture's <c>JsonSerializerOptions</c>
++    /// (<see cref="ContentJson"/>), exactly as the reflection serializer was. Used as the <c>TypeInfoResolver</c> of every posture.
++    /// </summary>
++    [JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
++    // ── content roots (every DTO a loader / writer / editor reads or writes) ──
++    [JsonSerializable(typeof(UnitDefinition))]
++    [JsonSerializable(typeof(BuildingDefinition))]
++    [JsonSerializable(typeof(FactionDefinition))]
++    [JsonSerializable(typeof(ResearchDefinition))]
++    [JsonSerializable(typeof(HeroDefinition))]
++    [JsonSerializable(typeof(VeterancyDefinition))]
++    [JsonSerializable(typeof(AttributeModelDefinition))]
++    [JsonSerializable(typeof(CombatFeedbackProfile))]
++    [JsonSerializable(typeof(AbilityDefinition))]
++    [JsonSerializable(typeof(ItemDefinition))]
++    [JsonSerializable(typeof(TriggerDefinition))]
++    [JsonSerializable(typeof(ScenarioData))]
++    [JsonSerializable(typeof(BehaviorDefinition))]
++    [JsonSerializable(typeof(ContentPackageManifest))]
++    [JsonSerializable(typeof(PlayerProfile))]
++    [JsonSerializable(typeof(List<PlayerProfile>))]
++    [JsonSerializable(typeof(SettingsData))]
++    [JsonSerializable(typeof(ProofOfPlayToken))]
++    [JsonSerializable(typeof(CustomUiTree))]
++    [JsonSerializable(typeof(DamageTable.Dto))]
++    [JsonSerializable(typeof(TriggerGraph.GraphJsonShape))]
++    // ── converter-handled roots (hand-written closed-registry converters; metadata = the converter) ──
++    [JsonSerializable(typeof(EffectNode))]
++    [JsonSerializable(typeof(List<EffectNode>))]
++    [JsonSerializable(typeof(NodeBase))]
++    [JsonSerializable(typeof(DataEdge))]
++    [JsonSerializable(typeof(ExecEdge))]
++    [JsonSerializable(typeof(WidgetBase))]
++    [JsonSerializable(typeof(Fixed))]
++    // ── enums that the hand-written converters re-enter the serializer for (WriteEnum/ReadEnum) ──
++    [JsonSerializable(typeof(UnitTag))]
++    [JsonSerializable(typeof(PeriodicStackMode))]
++    [JsonSerializable(typeof(StatusFlags))]
++    [JsonSerializable(typeof(StackRule))]
++    [JsonSerializable(typeof(TargetFilter))]
++    [JsonSerializable(typeof(DamageType))]
++    // ── LLM (presentation-adjacent) ──
++    [JsonSerializable(typeof(BalanceReport))]
++    [JsonSerializable(typeof(AnthropicRequestBody))]
++    [JsonSerializable(typeof(ChatRequestBody))]
++    [JsonSerializable(typeof(OllamaRequestBody))]
++    internal partial class ChimeraJsonContext : JsonSerializerContext
++    {
++    }
++}
+diff -ruN --strip-trailing-cr -x bin -x obj -x '*.uid' /d/Projects/Project_Chimera/godot/src/Core/Definitions/ContentJson.cs trial2/godot/src/Core/Definitions/ContentJson.cs
+--- /d/Projects/Project_Chimera/godot/src/Core/Definitions/ContentJson.cs	2026-08-05 22:31:47.651564600 -0400
++++ trial2/godot/src/Core/Definitions/ContentJson.cs	2026-10-01 01:16:05.857290000 -0400
+@@ -60,6 +60,7 @@
+         {
+             ReadCommentHandling = JsonCommentHandling.Skip,
+             AllowTrailingCommas = true,
++            TypeInfoResolver = ChimeraJsonContext.Default,
+         };
+ 
+         /// <summary>
+@@ -158,7 +159,7 @@
+             // never silently ignored. (Effect-node objects are guarded inside EffectNodeJsonConverter — see above.)
+             o.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
+             // allowIntegerValues:false → enums are authored by NAME only; a numeric enum value fails closed.
+-            o.Converters.Add(new JsonStringEnumConverter(namingPolicy: null, allowIntegerValues: false));
++            AotJson.AddStrictEnums(o);
+             o.Converters.Add(new FixedJsonConverter());
+             o.Converters.Add(new EffectNodeJsonConverter());
+             return o;
+@@ -172,7 +173,7 @@
+         {
+             JsonSerializerOptions o = Base();
+             o.WriteIndented = true;
+-            o.Converters.Add(new JsonStringEnumConverter(namingPolicy: null, allowIntegerValues: false));
++            AotJson.AddStrictEnums(o);
+             o.Converters.Add(new FixedJsonConverter());
+             o.Converters.Add(new WidgetBaseJsonConverter());
+             return o;
+diff -ruN --strip-trailing-cr -x bin -x obj -x '*.uid' /d/Projects/Project_Chimera/godot/src/Core/Definitions/ContentPackager.cs trial2/godot/src/Core/Definitions/ContentPackager.cs
+--- /d/Projects/Project_Chimera/godot/src/Core/Definitions/ContentPackager.cs	2026-08-12 22:29:50.893349900 -0400
++++ trial2/godot/src/Core/Definitions/ContentPackager.cs	2026-10-01 01:16:05.925377500 -0400
+@@ -32,6 +32,7 @@
+             WriteIndented = true,
+             ReadCommentHandling = JsonCommentHandling.Skip,
+             AllowTrailingCommas = true,
++            TypeInfoResolver    = ChimeraJsonContext.Default,
+         };
+ 
+         // ── Pack ─────────────────────────────────────────────────────────────────
+@@ -321,7 +322,7 @@
+                 using (var archive = ZipFile.Open(stagePath, ZipArchiveMode.Create))
+                 {
+                     // manifest.json
+-                    string manifestJson = JsonSerializer.Serialize(manifest, _jsonOpts);
++                    string manifestJson = ProjectChimera.Core.Definitions.AotJson.Serialize(manifest, _jsonOpts);
+                     WriteEntry(archive, "manifest.json", Encoding.UTF8.GetBytes(manifestJson));
+ 
+                     // scenario.json — the SAME byte snapshot ScenarioHash covered (DW-423), never a re-read.
+@@ -436,7 +437,7 @@
+             using (var ms = new MemoryStream())
+             {
+                 manifestEntry.Open().CopyTo(ms);
+-                manifest = JsonSerializer.Deserialize<ContentPackageManifest>(
++                manifest = ProjectChimera.Core.Definitions.AotJson.Deserialize<ContentPackageManifest>(
+                     Encoding.UTF8.GetString(ms.ToArray()), _jsonOpts)
+                     ?? throw new InvalidDataException("Failed to parse manifest.json.");
+             }
+@@ -590,7 +591,7 @@
+             {
+                 string manifestPath = Path.Combine(extractDir, "manifest.json");
+                 if (!File.Exists(manifestPath)) return null;
+-                return JsonSerializer.Deserialize<ContentPackageManifest>(
++                return ProjectChimera.Core.Definitions.AotJson.Deserialize<ContentPackageManifest>(
+                     File.ReadAllText(manifestPath), _jsonOpts);
+             }
+             catch
+@@ -665,7 +666,7 @@
+         /// <param name="zipPath">Absolute path to the .chimera.zip to update in place.</param>
+         /// <param name="manifest">The manifest to serialize over the existing <c>manifest.json</c>.</param>
+         public static void RewriteManifest(string zipPath, ContentPackageManifest manifest) =>
+-            RewriteManifest(zipPath, () => Encoding.UTF8.GetBytes(JsonSerializer.Serialize(manifest, _jsonOpts)));
++            RewriteManifest(zipPath, () => Encoding.UTF8.GetBytes(ProjectChimera.Core.Definitions.AotJson.Serialize(manifest, _jsonOpts)));
+ 
+         /// <summary>
+         /// DW-421 core (internal so the atomicity contract is fault-injection testable) — the previous
+@@ -726,7 +727,7 @@
+                 if (entry == null) return null;
+                 using var ms = new MemoryStream();
+                 entry.Open().CopyTo(ms);
+-                return JsonSerializer.Deserialize<ContentPackageManifest>(
++                return ProjectChimera.Core.Definitions.AotJson.Deserialize<ContentPackageManifest>(
+                     Encoding.UTF8.GetString(ms.ToArray()), _jsonOpts);
+             }
+             catch
+diff -ruN --strip-trailing-cr -x bin -x obj -x '*.uid' /d/Projects/Project_Chimera/godot/src/Core/Definitions/EffectNodeJsonConverter.cs trial2/godot/src/Core/Definitions/EffectNodeJsonConverter.cs
+--- /d/Projects/Project_Chimera/godot/src/Core/Definitions/EffectNodeJsonConverter.cs	2026-08-12 22:12:31.906178700 -0400
++++ trial2/godot/src/Core/Definitions/EffectNodeJsonConverter.cs	2026-10-01 01:16:03.623754000 -0400
+@@ -242,20 +242,20 @@
+         {
+             if (feedback is null) return;
+             writer.WritePropertyName("feedback");
+-            JsonSerializer.Serialize(writer, feedback, options);
++            ProjectChimera.Core.Definitions.AotJson.Serialize(writer, feedback, options);
+         }
+ 
+         private static void WriteFixed(Utf8JsonWriter writer, string name, Fixed value, JsonSerializerOptions options)
+         {
+             writer.WritePropertyName(name);
+-            JsonSerializer.Serialize(writer, value, options);   // → FixedJsonConverter (number); never a hand-rolled ToFloat (CHM0005)
++            ProjectChimera.Core.Definitions.AotJson.Serialize(writer, value, options);   // → FixedJsonConverter (number); never a hand-rolled ToFloat (CHM0005)
+         }
+ 
+         private static void WriteEnum<TEnum>(Utf8JsonWriter writer, string name, TEnum value, JsonSerializerOptions options)
+             where TEnum : struct, Enum
+         {
+             writer.WritePropertyName(name);
+-            JsonSerializer.Serialize(writer, value, options);   // → JsonStringEnumConverter (name-only, allowIntegerValues:false)
++            ProjectChimera.Core.Definitions.AotJson.Serialize(writer, value, options);   // → JsonStringEnumConverter (name-only, allowIntegerValues:false)
+         }
+ 
+         // Story 2.11 (D-4 / AC3.4): the optional tag gate shared by search_area AND every leaf kind. OMIT-WHEN-None so
+@@ -458,7 +458,7 @@
+                 if (!statDef.ModifierAuthorable)
+                     throw new JsonException($"{lanePath}.{p.Name}: stat '{statDef.JsonName}' is not modifier-authorable yet (its consumer is the {statDef.ConsumerSite} read seam).");
+                 Fixed value;
+-                try { value = p.Value.Deserialize<Fixed>(options); }
++                try { value = ProjectChimera.Core.Definitions.AotJson.Deserialize<Fixed>(p.Value, options); }
+                 catch (JsonException ex) { throw new JsonException($"{lanePath}.{p.Name}: {ex.Message}"); }
+                 scratch.Add(new ProjectChimera.Core.Stats.StatDelta(statDef.Id, value));
+             }
+@@ -486,14 +486,14 @@
+         {
+             if (!parent.TryGetProperty(prop, out JsonElement el))
+                 throw new JsonException($"{path}.{prop}: missing required numeric field.");
+-            try { return el.Deserialize<Fixed>(options); }            // routes through FixedJsonConverter (the one quantizer)
++            try { return ProjectChimera.Core.Definitions.AotJson.Deserialize<Fixed>(el, options); }            // routes through FixedJsonConverter (the one quantizer)
+             catch (JsonException ex) { throw new JsonException($"{path}.{prop}: {ex.Message}"); }
+         }
+ 
+         private static Fixed ReadFixedOpt(JsonElement parent, string prop, string path, JsonSerializerOptions options, Fixed fallback)
+         {
+             if (!parent.TryGetProperty(prop, out JsonElement el)) return fallback;
+-            try { return el.Deserialize<Fixed>(options); }
++            try { return ProjectChimera.Core.Definitions.AotJson.Deserialize<Fixed>(el, options); }
+             catch (JsonException ex) { throw new JsonException($"{path}.{prop}: {ex.Message}"); }
+         }
+ 
+@@ -513,7 +513,7 @@
+                 if (required) throw new JsonException($"{path}.{prop}: missing required '{typeof(TEnum).Name}' value (authored by name).");
+                 return fallback;
+             }
+-            try { return el.Deserialize<TEnum>(options); }            // routes through JsonStringEnumConverter (name-only)
++            try { return ProjectChimera.Core.Definitions.AotJson.Deserialize<TEnum>(el, options); }            // routes through JsonStringEnumConverter (name-only)
+             catch (JsonException ex) { throw new JsonException($"{path}.{prop}: {ex.Message}"); }
+         }
+ 
+@@ -534,7 +534,7 @@
+             // InvalidOperationException, etc. from the nested Deserialize — rethrow ALL of them as a LOCATED
+             // JsonException carrying the "{path}.feedback: …" prefix (the surrounding located-error contract), inner
+             // preserved. A missing/explicit-null feedback is handled above (returns null) and never reaches here.
+-            try { return fbEl.Deserialize<CombatFeedbackProfile>(options); }
++            try { return ProjectChimera.Core.Definitions.AotJson.Deserialize<CombatFeedbackProfile>(fbEl, options); }
+             catch (Exception ex) { throw new JsonException($"{path}.feedback: {ex.Message}", ex); }
+         }
+ 
+diff -ruN --strip-trailing-cr -x bin -x obj -x '*.uid' /d/Projects/Project_Chimera/godot/src/Core/Definitions/FactionDefinerWizardCore.cs trial2/godot/src/Core/Definitions/FactionDefinerWizardCore.cs
+--- /d/Projects/Project_Chimera/godot/src/Core/Definitions/FactionDefinerWizardCore.cs	2026-08-12 19:43:13.436799200 -0400
++++ trial2/godot/src/Core/Definitions/FactionDefinerWizardCore.cs	2026-10-01 01:16:03.643270900 -0400
+@@ -154,8 +154,8 @@
+         /// fields.</summary>
+         public static T DeepClone<T>(T source) where T : notnull
+         {
+-            string json = JsonSerializer.Serialize(source, FactionDefinition.JsonOptions);
+-            return JsonSerializer.Deserialize<T>(json, FactionDefinition.JsonOptions)
++            string json = ProjectChimera.Core.Definitions.AotJson.Serialize(source, FactionDefinition.JsonOptions);
++            return ProjectChimera.Core.Definitions.AotJson.Deserialize<T>(json, FactionDefinition.JsonOptions)
+                    ?? throw new InvalidOperationException("DeepClone: round-trip produced null.");
+         }
+ 
+@@ -329,7 +329,7 @@
+             FactionDefinition? parsed;
+             try
+             {
+-                parsed = JsonSerializer.Deserialize<FactionDefinition>(json ?? "", FactionDefinition.JsonOptions);
++                parsed = ProjectChimera.Core.Definitions.AotJson.Deserialize<FactionDefinition>(json ?? "", FactionDefinition.JsonOptions);
+             }
+             catch (Exception ex)
+             {
+diff -ruN --strip-trailing-cr -x bin -x obj -x '*.uid' /d/Projects/Project_Chimera/godot/src/Core/Definitions/FactionDefinition.cs trial2/godot/src/Core/Definitions/FactionDefinition.cs
+--- /d/Projects/Project_Chimera/godot/src/Core/Definitions/FactionDefinition.cs	2026-08-12 19:43:13.436799200 -0400
++++ trial2/godot/src/Core/Definitions/FactionDefinition.cs	2026-10-01 01:16:03.658486200 -0400
+@@ -248,7 +248,7 @@
+         /// former <c>Units.Count</c> NRE'd; and a <c>"units": [null, {...}]</c> document handed the caller a NULL
+         /// <see cref="UnitDefinition"/> as the faction's PRIMARY unit, merely relocating the NRE. Both are reachable
+         /// from any path that bypasses <see cref="FactionValidator"/>'s structural pre-check (a direct
+-        /// <c>JsonSerializer.Deserialize</c>, hand-built defs in tests/tools, the Story 6.8 scenario-buildings gate).
++        /// <c>ProjectChimera.Core.Definitions.AotJson.Deserialize</c>, hand-built defs in tests/tools, the Story 6.8 scenario-buildings gate).
+         /// Mirrors <see cref="GetUnit"/>/<see cref="IndexOfUnit"/>: null list ⇒ null, null elements skipped.</para>
+         /// </summary>
+         public UnitDefinition? PrimaryUnit
+@@ -343,7 +343,7 @@
+             // "this file is unreadable/absent" is not a content error and must not masquerade as one.
+             try
+             {
+-                def = JsonSerializer.Deserialize<FactionDefinition>(json, JsonOptions);
++                def = ProjectChimera.Core.Definitions.AotJson.Deserialize<FactionDefinition>(json, JsonOptions);
+             }
+             catch (JsonException ex)
+             {
+@@ -460,7 +460,7 @@
+                     // The raw text is hoisted into a local (still INSIDE the try, so an I/O fault keeps taking the
+                     // never-throws onExcluded path) because the DW-537 duplicate-key pass below re-walks it.
+                     text = File.ReadAllText(file);
+-                    def = JsonSerializer.Deserialize<FactionDefinition>(text, JsonOptions);
++                    def = ProjectChimera.Core.Definitions.AotJson.Deserialize<FactionDefinition>(text, JsonOptions);
+                 }
+                 catch (System.Exception ex)
+                 {
+diff -ruN --strip-trailing-cr -x bin -x obj -x '*.uid' /d/Projects/Project_Chimera/godot/src/Core/Definitions/FactionWriter.cs trial2/godot/src/Core/Definitions/FactionWriter.cs
+--- /d/Projects/Project_Chimera/godot/src/Core/Definitions/FactionWriter.cs	2026-08-26 21:30:32.135057600 -0400
++++ trial2/godot/src/Core/Definitions/FactionWriter.cs	2026-10-01 01:16:05.857290000 -0400
+@@ -108,7 +108,7 @@
+         /// default-promoted hero writes no <c>"signature_ability": null</c> noise — matching <see cref="ApplyFields"/>'s
+         /// omit-on-default discipline. Values round-trip identically (an omitted key deserializes back to null).</summary>
+         private static readonly JsonSerializerOptions HeroSerializeOptions =
+-            new() { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull };
++            new() { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull, TypeInfoResolver = ChimeraJsonContext.Default };
+ 
+         /// <summary>
+         /// Apply one <paramref name="edit"/> to a faction JSON string and return the patched JSON. Pure — parses the
+@@ -134,7 +134,7 @@
+                         ?? throw new InvalidOperationException("Create requires a unit definition.");
+                     var obj = new JsonObject();
+                     ApplyFields(obj, def);          // fresh object → writes only non-default fields (+ id)
+-                    units.Add(obj);
++                    units.Add((System.Text.Json.Nodes.JsonNode)obj);
+                     break;
+                 }
+ 
+@@ -169,7 +169,7 @@
+                     // Deep-clone by re-parse (preserves EVERY field of the source verbatim, incl. combat_feedback + unknown keys).
+                     JsonObject clone = (JsonNode.Parse(target.ToJsonString())!).AsObject();
+                     clone["id"] = newId;
+-                    units.Add(clone);
++                    units.Add((System.Text.Json.Nodes.JsonNode)clone);
+                     break;
+                 }
+ 
+@@ -298,7 +298,7 @@
+         private static void WriteHero(JsonObject obj, UnitDefinition d)
+         {
+             if (d.Hero == null) { obj.Remove("hero"); return; }
+-            obj["hero"] = JsonNode.Parse(JsonSerializer.Serialize(d.Hero, HeroSerializeOptions));
++            obj["hero"] = JsonNode.Parse(ProjectChimera.Core.Definitions.AotJson.Serialize(d.Hero, HeroSerializeOptions));
+         }
+ 
+         /// <summary>
+@@ -315,7 +315,7 @@
+         private static void WriteVeterancy(JsonObject obj, UnitDefinition d)
+         {
+             if (d.Veterancy == null) { obj.Remove("veterancy"); return; }
+-            obj["veterancy"] = JsonNode.Parse(JsonSerializer.Serialize(d.Veterancy, HeroSerializeOptions));
++            obj["veterancy"] = JsonNode.Parse(ProjectChimera.Core.Definitions.AotJson.Serialize(d.Veterancy, HeroSerializeOptions));
+         }
+ 
+         /// <summary>
+@@ -326,7 +326,7 @@
+         /// </summary>
+         private static void WriteCombatFeedback(JsonObject obj, UnitDefinition d)
+         {
+-            string? pocoJson = d.CombatFeedback != null ? JsonSerializer.Serialize(d.CombatFeedback) : null;
++            string? pocoJson = d.CombatFeedback != null ? ProjectChimera.Core.Definitions.AotJson.Serialize(d.CombatFeedback) : null;
+ 
+             string? diskNormalized = null;
+             if (obj["combat_feedback"] is JsonNode disk)
+@@ -335,8 +335,8 @@
+                 // making the "unchanged" comparison semantic (not textual). A clean float/int/string DTO round-trips.
+                 try
+                 {
+-                    var dto = JsonSerializer.Deserialize<CombatFeedbackProfile>(disk.ToJsonString());
+-                    diskNormalized = dto != null ? JsonSerializer.Serialize(dto) : null;
++                    var dto = ProjectChimera.Core.Definitions.AotJson.Deserialize<CombatFeedbackProfile>(disk.ToJsonString());
++                    diskNormalized = dto != null ? ProjectChimera.Core.Definitions.AotJson.Serialize(dto) : null;
+                 }
+                 catch { diskNormalized = null; }
+             }
+@@ -378,13 +378,13 @@
+                     byId.Remove(u.Id);
+                     oldArr.Remove(existing);        // detach so it can re-parent into newArr
+                     ApplyFields(existing, u);       // reconcile in place (untouched tokens preserved)
+-                    newArr.Add(existing);
++                    newArr.Add((System.Text.Json.Nodes.JsonNode)existing);
+                 }
+                 else
+                 {
+                     var fresh = new JsonObject();
+                     ApplyFields(fresh, u);          // only non-default fields (+ id, + combat_feedback if authored)
+-                    newArr.Add(fresh);
++                    newArr.Add((System.Text.Json.Nodes.JsonNode)fresh);
+                 }
+             }
+             // Anything still in byId is an on-disk unit no longer in the list → dropped (a delete).
+@@ -409,7 +409,7 @@
+             JsonNode root = JsonNode.Parse(factionJson)
+                             ?? throw new InvalidOperationException("faction JSON did not parse to an object.");
+             if (model == null) ((JsonObject)root).Remove("attribute_model");
+-            else root["attribute_model"] = JsonNode.Parse(JsonSerializer.Serialize(model, HeroSerializeOptions));
++            else root["attribute_model"] = JsonNode.Parse(ProjectChimera.Core.Definitions.AotJson.Serialize(model, HeroSerializeOptions));
+             return root.ToJsonString(IndentedOptions);
+         }
+ 
+@@ -439,7 +439,7 @@
+                         ?? throw new InvalidOperationException("Create requires a building definition.");
+                     var obj = new JsonObject();
+                     ApplyBuildingFields(obj, def);          // fresh object → writes only non-default fields (+ id)
+-                    buildings.Add(obj);
++                    buildings.Add((System.Text.Json.Nodes.JsonNode)obj);
+                     break;
+                 }
+ 
+@@ -474,7 +474,7 @@
+                     // Deep-clone by re-parse (preserves EVERY field of the source verbatim, incl. unknown keys).
+                     JsonObject clone = (JsonNode.Parse(target.ToJsonString())!).AsObject();
+                     clone["id"] = newId;
+-                    buildings.Add(clone);
++                    buildings.Add((System.Text.Json.Nodes.JsonNode)clone);
+                     break;
+                 }
+ 
+@@ -578,13 +578,13 @@
+                     byId.Remove(b.Id);
+                     oldArr.Remove(existing);            // detach so it can re-parent into newArr
+                     ApplyBuildingFields(existing, b);   // reconcile in place (untouched tokens preserved)
+-                    newArr.Add(existing);
++                    newArr.Add((System.Text.Json.Nodes.JsonNode)existing);
+                 }
+                 else
+                 {
+                     var fresh = new JsonObject();
+                     ApplyBuildingFields(fresh, b);       // only non-default fields (+ id) + the required building trio
+-                    newArr.Add(fresh);
++                    newArr.Add((System.Text.Json.Nodes.JsonNode)fresh);
+                 }
+             }
+             // Anything still in byId is an on-disk building no longer in the list → dropped (a delete).
+@@ -633,13 +633,13 @@
+                     oldArr.Remove(existing);           // detach so it can re-parent into newArr
+                     ApplyResearchFields(existing, r);  // reconcile in place (id/display_name/cancel_refund_fraction/
+                                                         // prerequisites preserve untouched tokens; levels rewrites fresh)
+-                    newArr.Add(existing);
++                    newArr.Add((System.Text.Json.Nodes.JsonNode)existing);
+                 }
+                 else
+                 {
+                     var fresh = new JsonObject();
+                     ApplyResearchFields(fresh, r);
+-                    newArr.Add(fresh);
++                    newArr.Add((System.Text.Json.Nodes.JsonNode)fresh);
+                 }
+             }
+             // Anything still in byId is an on-disk research entry no longer in the list → dropped (a delete).
+@@ -715,7 +715,7 @@
+                     }
+                     lo["modifier_delta"] = mdObj;
+                 }
+-                arr.Add(lo);
++                arr.Add((System.Text.Json.Nodes.JsonNode)lo);
+             }
+             o[key] = arr;
+         }
+diff -ruN --strip-trailing-cr -x bin -x obj -x '*.uid' /d/Projects/Project_Chimera/godot/src/Core/Definitions/ItemLoader.cs trial2/godot/src/Core/Definitions/ItemLoader.cs
+--- /d/Projects/Project_Chimera/godot/src/Core/Definitions/ItemLoader.cs	2026-07-08 04:51:52.249635600 -0400
++++ trial2/godot/src/Core/Definitions/ItemLoader.cs	2026-10-01 01:16:03.783957100 -0400
+@@ -24,7 +24,7 @@
+             ItemDefinition? def;
+             try
+             {
+-                def = JsonSerializer.Deserialize<ItemDefinition>(json, ContentJson.Options);
++                def = ProjectChimera.Core.Definitions.AotJson.Deserialize<ItemDefinition>(json, ContentJson.Options);
+             }
+             catch (JsonException ex)
+             {
+diff -ruN --strip-trailing-cr -x bin -x obj -x '*.uid' /d/Projects/Project_Chimera/godot/src/Core/Definitions/ItemWriter.cs trial2/godot/src/Core/Definitions/ItemWriter.cs
+--- /d/Projects/Project_Chimera/godot/src/Core/Definitions/ItemWriter.cs	2026-08-05 22:31:47.654081400 -0400
++++ trial2/godot/src/Core/Definitions/ItemWriter.cs	2026-10-01 01:16:03.812388800 -0400
+@@ -39,6 +39,6 @@
+         }
+ 
+         /// <summary>Serialize <paramref name="def"/> to indented JSON. Never throws for a well-formed POCO.</summary>
+-        public static string Serialize(ItemDefinition def) => JsonSerializer.Serialize(def, Options);
++        public static string Serialize(ItemDefinition def) => ProjectChimera.Core.Definitions.AotJson.Serialize(def, Options);
+     }
+ }
+diff -ruN --strip-trailing-cr -x bin -x obj -x '*.uid' /d/Projects/Project_Chimera/godot/src/Core/Definitions/LocalProfileSource.cs trial2/godot/src/Core/Definitions/LocalProfileSource.cs
+--- /d/Projects/Project_Chimera/godot/src/Core/Definitions/LocalProfileSource.cs	2026-07-24 14:55:56.090220300 -0400
++++ trial2/godot/src/Core/Definitions/LocalProfileSource.cs	2026-10-01 01:16:05.918500900 -0400
+@@ -30,6 +30,7 @@
+             WriteIndented       = true,
+             ReadCommentHandling = JsonCommentHandling.Skip,
+             AllowTrailingCommas = true,
++            TypeInfoResolver    = ChimeraJsonContext.Default,
+         };
+ 
+         /// <summary>Construct the rail over <paramref name="directory"/> (an OS-absolute path; the Godot layer resolves
+@@ -52,7 +53,7 @@
+             try
+             {
+                 string json = File.ReadAllText(_filePath);
+-                var list = JsonSerializer.Deserialize<List<PlayerProfile>>(json, JsonOptions);
++                var list = ProjectChimera.Core.Definitions.AotJson.Deserialize<List<PlayerProfile>>(json, JsonOptions);
+                 return list ?? new List<PlayerProfile>();
+             }
+             catch
+@@ -120,7 +121,7 @@
+         {
+             list.Sort((a, b) => string.CompareOrdinal(a.ProfileId, b.ProfileId));
+             Directory.CreateDirectory(_directory);
+-            File.WriteAllText(_filePath, JsonSerializer.Serialize(list, JsonOptions));
++            File.WriteAllText(_filePath, ProjectChimera.Core.Definitions.AotJson.Serialize(list, JsonOptions));
+         }
+     }
+ }
+diff -ruN --strip-trailing-cr -x bin -x obj -x '*.uid' /d/Projects/Project_Chimera/godot/src/Core/Definitions/ScenarioData.cs trial2/godot/src/Core/Definitions/ScenarioData.cs
+--- /d/Projects/Project_Chimera/godot/src/Core/Definitions/ScenarioData.cs	2026-08-12 10:24:41.286640100 -0400
++++ trial2/godot/src/Core/Definitions/ScenarioData.cs	2026-10-01 01:16:05.909688500 -0400
+@@ -7,7 +7,7 @@
+     /// <summary>
+     /// Win condition evaluated each simulation tick by the (future) WinConditionSystem.
+     /// </summary>
+-    [JsonConverter(typeof(JsonStringEnumConverter))]
++    [JsonConverter(typeof(JsonStringEnumConverter<WinCondition>))]
+     public enum WinCondition
+     {
+         /// <summary>First faction to have all buildings destroyed loses.</summary>
+@@ -23,7 +23,7 @@
+     /// typed <see cref="WinConditionSpec"/>; each is also expressible as canonical public-DSL graph-IR
+     /// (<c>WinConditionPresets</c>) for the round-trip stability proof.
+     /// </summary>
+-    [JsonConverter(typeof(JsonStringEnumConverter))]
++    [JsonConverter(typeof(JsonStringEnumConverter<WinPresetKind>))]
+     public enum WinPresetKind
+     {
+         /// <summary>No preset — fall back to the built-in <see cref="WinCondition"/> enum.</summary>
+@@ -97,7 +97,7 @@
+     /// int, and presentation reads the int back. Serialized by NAME (an authored <c>initial_state</c>). NEVER
+     /// enters the tick as a string; only the int ordinal folds.
+     /// </summary>
+-    [JsonConverter(typeof(JsonStringEnumConverter))]
++    [JsonConverter(typeof(JsonStringEnumConverter<ObjectiveState>))]
+     public enum ObjectiveState
+     {
+         /// <summary>Not yet revealed to the player (ordinal 0). A <c>show_objective</c> flips it to Active.</summary>
+diff -ruN --strip-trailing-cr -x bin -x obj -x '*.uid' /d/Projects/Project_Chimera/godot/src/Core/Definitions/ScenarioSerializer.cs trial2/godot/src/Core/Definitions/ScenarioSerializer.cs
+--- /d/Projects/Project_Chimera/godot/src/Core/Definitions/ScenarioSerializer.cs	2026-08-05 22:31:47.656081100 -0400
++++ trial2/godot/src/Core/Definitions/ScenarioSerializer.cs	2026-10-01 01:16:04.040949900 -0400
+@@ -112,7 +112,7 @@
+             string json = File.ReadAllText(absolutePath);
+             try
+             {
+-                return JsonSerializer.Deserialize<ScenarioData>(json, ContentJson.ScenarioOptions);
++                return ProjectChimera.Core.Definitions.AotJson.Deserialize<ScenarioData>(json, ContentJson.ScenarioOptions);
+             }
+             catch (JsonException e)
+             {
+@@ -235,7 +235,7 @@
+             // (\r\n on Windows, \n on Linux), which made this method's bytes — and every golden hash
+             // pinned on them — platform-dependent. Linux output is already LF, so this is a no-op
+             // there and no goldens move. Switch to JsonSerializerOptions.NewLine if/when on .NET 9.
+-            return JsonSerializer.Serialize(copy, ContentJson.ScenarioOptions).Replace("\r\n", "\n");
++            return ProjectChimera.Core.Definitions.AotJson.Serialize(copy, ContentJson.ScenarioOptions).Replace("\r\n", "\n");
+         }
+ 
+         /// <summary>
+diff -ruN --strip-trailing-cr -x bin -x obj -x '*.uid' /d/Projects/Project_Chimera/godot/src/Core/Definitions/SettingsData.cs trial2/godot/src/Core/Definitions/SettingsData.cs
+--- /d/Projects/Project_Chimera/godot/src/Core/Definitions/SettingsData.cs	2026-08-11 11:59:22.461435600 -0400
++++ trial2/godot/src/Core/Definitions/SettingsData.cs	2026-10-01 01:16:04.101603300 -0400
+@@ -331,6 +331,6 @@
+         /// in try/catch → <c>GD.PrintErr</c> + defaults). Any other caller that needs fail-soft must catch likewise.
+         /// </summary>
+         public static SettingsData FromJson(string json, JsonSerializerOptions options)
+-            => (JsonSerializer.Deserialize<SettingsData>(json, options) ?? new SettingsData()).MigrateForward();
++            => (ProjectChimera.Core.Definitions.AotJson.Deserialize<SettingsData>(json, options) ?? new SettingsData()).MigrateForward();
+     }
+ }
+diff -ruN --strip-trailing-cr -x bin -x obj -x '*.uid' /d/Projects/Project_Chimera/godot/src/Core/Definitions/SettingsJson.cs trial2/godot/src/Core/Definitions/SettingsJson.cs
+--- /d/Projects/Project_Chimera/godot/src/Core/Definitions/SettingsJson.cs	2026-08-12 19:43:13.470695200 -0400
++++ trial2/godot/src/Core/Definitions/SettingsJson.cs	2026-10-01 01:16:05.909688500 -0400
+@@ -46,6 +46,7 @@
+             WriteIndented       = true,
+             ReadCommentHandling = JsonCommentHandling.Skip,
+             AllowTrailingCommas = true,
++            TypeInfoResolver    = ChimeraJsonContext.Default,
+         };
+     }
+ }
+diff -ruN --strip-trailing-cr -x bin -x obj -x '*.uid' /d/Projects/Project_Chimera/godot/src/Core/Definitions/WidgetBaseJsonConverter.cs trial2/godot/src/Core/Definitions/WidgetBaseJsonConverter.cs
+--- /d/Projects/Project_Chimera/godot/src/Core/Definitions/WidgetBaseJsonConverter.cs	2026-07-17 20:38:26.835057800 -0400
++++ trial2/godot/src/Core/Definitions/WidgetBaseJsonConverter.cs	2026-10-01 01:16:04.246031300 -0400
+@@ -114,7 +114,7 @@
+                 writer.WritePropertyName("children");
+                 writer.WriteStartArray();
+                 foreach (WidgetBase child in children)
+-                    JsonSerializer.Serialize(writer, child, options); // → this converter (recursive, closed)
++                    ProjectChimera.Core.Definitions.AotJson.Serialize(writer, child, options); // → this converter (recursive, closed)
+                 writer.WriteEndArray();
+             }
+ 
+diff -ruN --strip-trailing-cr -x bin -x obj -x '*.uid' /d/Projects/Project_Chimera/godot/src/Core/Skirmish/SkirmishCatalog.cs trial2/godot/src/Core/Skirmish/SkirmishCatalog.cs
+--- /d/Projects/Project_Chimera/godot/src/Core/Skirmish/SkirmishCatalog.cs	2026-08-12 19:43:13.478205900 -0400
++++ trial2/godot/src/Core/Skirmish/SkirmishCatalog.cs	2026-10-01 01:16:04.698811700 -0400
+@@ -192,7 +192,7 @@
+                 try
+                 {
+                     text = File.ReadAllText(file);
+-                    def = JsonSerializer.Deserialize<FactionDefinition>(text, FactionDefinition.JsonOptions);
++                    def = ProjectChimera.Core.Definitions.AotJson.Deserialize<FactionDefinition>(text, FactionDefinition.JsonOptions);
+                 }
+                 catch { continue; } // malformed → skip, scan continues
+ 
+diff -ruN --strip-trailing-cr -x bin -x obj -x '*.uid' /d/Projects/Project_Chimera/godot/src/Dsl/NodeBaseJsonConverter.cs trial2/godot/src/Dsl/NodeBaseJsonConverter.cs
+--- /d/Projects/Project_Chimera/godot/src/Dsl/NodeBaseJsonConverter.cs	2026-08-12 19:43:13.512564700 -0400
++++ trial2/godot/src/Dsl/NodeBaseJsonConverter.cs	2026-10-01 01:16:05.048731700 -0400
+@@ -145,7 +145,7 @@
+                     if (ea.Effect is null)
+                         throw new JsonException("Cannot serialize a run_effect node with a null embedded effect (malformed graph).");
+                     writer.WritePropertyName("effect");
+-                    JsonSerializer.Serialize(writer, ea.Effect, options);   // → EffectNodeJsonConverter (no second executor)
++                    ProjectChimera.Core.Definitions.AotJson.Serialize(writer, ea.Effect, options);   // → EffectNodeJsonConverter (no second executor)
+                     break;
+ 
+                 // ── Story 7.4 — the five expression kinds (exact inverses of the Read branches) ──
+@@ -387,7 +387,7 @@
+                 if (!s.TryGet("effect", out JsonElement effEl))
+                     throw new JsonException($"{path}: run_effect is missing its required 'effect' object.");
+                 EffectNode effect;
+-                try { effect = effEl.Deserialize<EffectNode>(options)!; }   // → EffectNodeJsonConverter (byte-faithful embed)
++                try { effect = ProjectChimera.Core.Definitions.AotJson.Deserialize<EffectNode>(effEl, options)!; }   // → EffectNodeJsonConverter (byte-faithful embed)
+                 catch (JsonException ex) { throw new JsonException($"{path}.effect: {ex.Message}"); }
+                 return new EffectActionNode { Id = ReadId(s, path), Effect = effect };
+             }
+@@ -853,7 +853,7 @@
+         {
+             if (!s.TryGet(prop, out JsonElement el)) return fallback;
+             // The one quantizer (FixedJsonConverter) via its element entry point — same rulebook as
+-            // el.Deserialize<Fixed>(options), without per-field JsonSerializer machinery (Story 7.7 perf review:
++            // ProjectChimera.Core.Definitions.AotJson.Deserialize<Fixed>(el, options), without per-field JsonSerializer machinery (Story 7.7 perf review:
+             // that overhead dominated the max-caps graph parse inside the cold handshake-hash budget).
+             try { return ProjectChimera.Core.Definitions.FixedJsonConverter.ReadElement(el); }
+             catch (JsonException ex) { throw new JsonException($"{path}.{prop}: {ex.Message}"); }
+@@ -961,7 +961,7 @@
+         private static void WriteFixed(Utf8JsonWriter writer, string name, Fixed value, JsonSerializerOptions options)
+         {
+             writer.WritePropertyName(name);
+-            JsonSerializer.Serialize(writer, value, options);   // → FixedJsonConverter (number); never a hand-rolled ToFloat
++            ProjectChimera.Core.Definitions.AotJson.Serialize(writer, value, options);   // → FixedJsonConverter (number); never a hand-rolled ToFloat
+         }
+ 
+         private static void WriteOptString(Utf8JsonWriter writer, string name, string? value)
+diff -ruN --strip-trailing-cr -x bin -x obj -x '*.uid' /d/Projects/Project_Chimera/godot/src/Dsl/TriggerGraph.cs trial2/godot/src/Dsl/TriggerGraph.cs
+--- /d/Projects/Project_Chimera/godot/src/Dsl/TriggerGraph.cs	2026-08-12 19:43:13.512564700 -0400
++++ trial2/godot/src/Dsl/TriggerGraph.cs	2026-10-01 01:16:05.883814600 -0400
+@@ -1059,7 +1059,7 @@
+                 ExecEdges = ExecEdges.OrderBy(e => e).ToList(),
+                 DataEdges = DataEdges.OrderBy(e => e).ToList(),
+             };
+-            return JsonSerializer.Serialize(shape, DslJson.Options);
++            return ProjectChimera.Core.Definitions.AotJson.Serialize(shape, DslJson.Options);
+         }
+ 
+         /// <summary>Deserialize a graph from canonical (or any) JSON via <see cref="DslJson.Options"/>.
+@@ -1069,7 +1069,7 @@
+         /// node after offsetting and silently drop/rewire a trigger.</summary>
+         public static TriggerGraph FromJson(string json)
+         {
+-            GraphJsonShape shape = JsonSerializer.Deserialize<GraphJsonShape>(json, DslJson.Options)
++            GraphJsonShape shape = ProjectChimera.Core.Definitions.AotJson.Deserialize<GraphJsonShape>(json, DslJson.Options)
+                 ?? throw new JsonException("Graph JSON deserialized to null.");
+             var graph = new TriggerGraph();
+             if (shape.Nodes is not null)     graph.Nodes.AddRange(shape.Nodes);
+@@ -1083,7 +1083,7 @@
+ 
+         /// <summary>The on-the-wire JSON shape: the three canonical lists. Nodes (de)serialize through the registered
+         /// <see cref="NodeBaseJsonConverter"/>; edges through their JSON-property layout.</summary>
+-        private sealed class GraphJsonShape
++        internal sealed class GraphJsonShape
+         {
+             [JsonPropertyName("nodes")]      public List<NodeBase> Nodes     { get; set; } = new();
+             [JsonPropertyName("exec_edges")] public List<ExecEdge> ExecEdges { get; set; } = new();

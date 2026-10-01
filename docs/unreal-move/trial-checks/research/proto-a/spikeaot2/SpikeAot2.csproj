@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <NoWarn>$(NoWarn);CS8618;CS8604;CS8625;CS8765;CS0618;CS0436</NoWarn>
+    <LangVersion>latest</LangVersion>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(AotMode)' == 'true'">
+    <PublishAot>true</PublishAot>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(NoReflJit)' == 'true'">
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+  </PropertyGroup>
+  <Import Project="C:\Users\MD_Ki\AppData\Local\Temp\claude\D--Projects-Project-Chimera\6de76155-94ab-440a-84fd-59aa5580f954\scratchpad\trial2\godot\SimSources.props" />
+  <ItemGroup>
+    <Compile Include="*.cs" />
+    <Compile Include="C:\Users\MD_Ki\AppData\Local\Temp\claude\D--Projects-Project-Chimera\6de76155-94ab-440a-84fd-59aa5580f954\scratchpad\trial2\godot\ProjectChimera.Sim.Tests\Golden\*Scenario.cs" />
+    <Compile Include="C:\Users\MD_Ki\AppData\Local\Temp\claude\D--Projects-Project-Chimera\6de76155-94ab-440a-84fd-59aa5580f954\scratchpad\trial2\godot\ProjectChimera.Sim.Tests\Golden\GoldenChecksumReplay.cs" />
+    <Compile Remove="C:\Users\MD_Ki\AppData\Local\Temp\claude\D--Projects-Project-Chimera\6de76155-94ab-440a-84fd-59aa5580f954\scratchpad\trial2\godot\ProjectChimera.Sim.Tests\Golden\AbilityCastScenario.cs" />
+    <Compile Remove="C:\Users\MD_Ki\AppData\Local\Temp\claude\D--Projects-Project-Chimera\6de76155-94ab-440a-84fd-59aa5580f954\scratchpad\trial2\godot\ProjectChimera.Sim.Tests\Golden\CombatResetScenario.cs" />
+    <Compile Remove="C:\Users\MD_Ki\AppData\Local\Temp\claude\D--Projects-Project-Chimera\6de76155-94ab-440a-84fd-59aa5580f954\scratchpad\trial2\godot\ProjectChimera.Sim.Tests\Golden\EqualExchangeScenario.cs" />
+    <Compile Remove="C:\Users\MD_Ki\AppData\Local\Temp\claude\D--Projects-Project-Chimera\6de76155-94ab-440a-84fd-59aa5580f954\scratchpad\trial2\godot\ProjectChimera.Sim.Tests\Golden\HeroRevivalScenario.cs" />
+    <Compile Remove="C:\Users\MD_Ki\AppData\Local\Temp\claude\D--Projects-Project-Chimera\6de76155-94ab-440a-84fd-59aa5580f954\scratchpad\trial2\godot\ProjectChimera.Sim.Tests\Golden\ItemScenario.cs" />
+    <Compile Remove="C:\Users\MD_Ki\AppData\Local\Temp\claude\D--Projects-Project-Chimera\6de76155-94ab-440a-84fd-59aa5580f954\scratchpad\trial2\godot\ProjectChimera.Sim.Tests\Golden\MidMatchDropScenario.cs" />
+    <Compile Remove="C:\Users\MD_Ki\AppData\Local\Temp\claude\D--Projects-Project-Chimera\6de76155-94ab-440a-84fd-59aa5580f954\scratchpad\trial2\godot\ProjectChimera.Sim.Tests\Golden\PassiveScenario.cs" />
+    <Compile Remove="C:\Users\MD_Ki\AppData\Local\Temp\claude\D--Projects-Project-Chimera\6de76155-94ab-440a-84fd-59aa5580f954\scratchpad\trial2\godot\ProjectChimera.Sim.Tests\Golden\ResearchScenario.cs" />
+    <Compile Remove="C:\Users\MD_Ki\AppData\Local\Temp\claude\D--Projects-Project-Chimera\6de76155-94ab-440a-84fd-59aa5580f954\scratchpad\trial2\godot\ProjectChimera.Sim.Tests\Golden\ShopPurchaseScenario.cs" />
+    <Compile Remove="C:\Users\MD_Ki\AppData\Local\Temp\claude\D--Projects-Project-Chimera\6de76155-94ab-440a-84fd-59aa5580f954\scratchpad\trial2\godot\ProjectChimera.Sim.Tests\Golden\WorkerCastCrystalCostScenario.cs" />
+  </ItemGroup>
+</Project>

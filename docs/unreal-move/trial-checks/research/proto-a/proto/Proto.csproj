@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Scratch prototype for the R2 report: compiles the REAL sim source set (godot/SimSources.props) plus the one
+       Godot-free file the Godot nav phase needs (UI/BuildingNavFootprint.cs) and runs a scripted 1,000-unit match.
+       Lives in the session scratchpad; nothing here is part of the repo. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>proto</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <NoWarn>CS8600;CS8601;CS8602;CS8603;CS8604;CS8618;CS8625;CS8765;IL2026;IL3050;IL2087;IL2067;IL2070;IL2072;IL2075;IL2111;IL2057;IL2055;IL2062;IL2091</NoWarn>
+    <TrimmerSingleWarn>true</TrimmerSingleWarn>
+  </PropertyGroup>
+  <Import Project="D:\Projects\Project_Chimera\godot\SimSources.props" />
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="D:\Projects\Project_Chimera\godot\src\UI\BuildingNavFootprint.cs" LinkBase="Sim\UI" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(PublishAot)'=='true'"><RdXmlFile Include="rd.xml" /></ItemGroup>
+</Project>

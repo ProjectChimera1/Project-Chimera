@@ -34,3 +34,11 @@ Thumbs.db
 # BMAD Book Builder test sandbox (alpha-era BMAD install, ~1.2k files) — throwaway, never commit
 Story test/
 __pycache__/
+
+# Unreal trial (2026-10-01): third-party (Manor Lords) pixels in the HUD references and every check-(b) image stay out of git
+docs/unreal-move/trial-checks/research/hud-ref/*.png
+docs/unreal-move/trial-checks/research/hud-ref/*.jpg
+docs/unreal-move/trial-checks/evidence/b/**/*.png
+docs/unreal-move/trial-checks/evidence/b/**/*.jpg
+docs/unreal-move/trial-checks/evidence/b/**/*.gif
+docs/unreal-move/trial-checks/evidence/b/**/*.mp4

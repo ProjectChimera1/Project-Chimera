@@ -1,0 +1,60 @@
+runtime: .NET 8.0.25 reflectionEnabledSTJ=True dynamicCode=True
+AbilityDomainFilterScenario samples=300 last=2942859205 fnv=EEC1DED848E0463B
+AiActiveScenario samples=300 last=4054782152 fnv=3FDEEF17DF445691
+AntiBuildingScenario samples=300 last=1045473365 fnv=92C4FDE3724BC31A
+CombatAirGroundScenario samples=300 last=2380473258 fnv=D3347F91109DF202
+CommandVocabularyScenario samples=300 last=1766678677 fnv=E99683981A715120
+CritDodgeScenario samples=300 last=3665178689 fnv=4B6062DFEE69CCDA
+DeliveryScenario samples=300 last=3143521087 fnv=10BF9FF316CF6AF9
+FormationSeparationScenario samples=300 last=3502251213 fnv=A8932E1904EE546C
+GoldenApplierScenario samples=300 last=3962067651 fnv=619AA4F15AD6818A
+GoldenScenario samples=300 last=1027531705 fnv=D39E94FFB890A7E3
+GroundCastScenario samples=300 last=3220347283 fnv=2AA353C0FD4D19E5
+HeroXpScenario samples=300 last=1120330021 fnv=57CBFF4825BF8465
+ModifierScenario samples=300 last=1623111645 fnv=4645AADF155AD91D
+MultiFaction3Scenario samples=300 last=1789032840 fnv=BF1755145E39894C
+MultiFaction8Scenario samples=300 last=1639056517 fnv=19CFC2486EFB7E50
+MultiFactionScenario samples=300 last=547685690 fnv=0EB0A97535CE0F52
+PathabilityBlockScenario samples=120 last=2937174633 fnv=32210BAD467150F7
+ProjectileSnapScenario samples=300 last=4229182625 fnv=97A014A7B62AAA73
+SameTickTieBreakScenario samples=300 last=1232870877 fnv=2DAE1B703DDAAB1B
+ShiftQueueScenario samples=300 last=752063160 fnv=290CB32DE35B7A59
+StatPipelineScenario samples=300 last=4100911474 fnv=B3CC4D6E73ED7B81
+TagFilterScenario samples=300 last=3421692020 fnv=9585C703C798D0DF
+registries: abilities=13 items=2 behaviors=2 factions=2 skipped=0
+ContentHash(all)=0x55BB83D5F0A14C4B
+ability aura_guard.json ok=True
+ability battle_fury.json ok=True
+ability blink_strike.json ok=True
+ability fireball.json ok=True
+ability furnace_pour.json ok=True
+ability furnace_trickle.json ok=True
+ability ground_nuke.json ok=True
+ability matter_infusion.json ok=True
+ability mend_ally.json ok=True
+ability mend_matter.json ok=True
+ability minor_heal.json ok=True
+ability onhit_searing.json ok=True
+ability spike_transmutation.json ok=True
+ability bad enum: ability 'x'.effect.damage_type: The JSON value could not be converted to ProjectChimera.Combat.DamageType.
+ability unknown key: ability 'x'.The JSON property 'cooldwn' could not be mapped to any .NET member contained in type 'ProjectChimera.Core.Definitions.AbilityDefinition'.
+item load: True
+item writer: 9908E33509A0A39B
+damage table bad key: JsonException: The JSON value could not be converted to ProjectChimera.Combat.DamageType. Path: $.multipliers.Zed | LineNumber: 0 | BytePositionInLine: 22.
+match alpha_map_01.json canonical=0x87ED9AFEF9508C8D reserializeFnv=3372590142 samples=200 fnv=91EB201C05A44C85
+match map_02_iron_crossing.json canonical=0x87207DF39DF234E3 reserializeFnv=4038609601 samples=200 fnv=638DE583B435A867
+match map_03_the_narrows.json canonical=0xEC2AE900D1E6D21C reserializeFnv=2882484616 samples=200 fnv=FF0D17A40DA95E90
+match map_04_scorched_plains.json canonical=0x9C63042F021FFD11 reserializeFnv=1466334748 samples=200 fnv=251538B7BC67B0B3
+match map_05_crossroads.json canonical=0x87450218000204A4 reserializeFnv=2007307296 samples=200 fnv=E04801E292D76DEF
+match map_06_contested_peaks.json canonical=0xA6700ED8EC05B75A reserializeFnv=3696862402 samples=200 fnv=FC3C64BB55708E2D
+match map_10_mirror_lake.json canonical=0xD9DEB024187EF558 reserializeFnv=2271775611 samples=200 fnv=5DFCF35D89100E2F
+match map_11_blitz.json canonical=0x6BC0E08A91C0D9AF reserializeFnv=2127733424 samples=200 fnv=99B4A7DEDEDA3101
+match map_12_the_frontier.json canonical=0x7BCD80A2E7F84414 reserializeFnv=2127948576 samples=200 fnv=4E2F17157C948243
+match quad_map_01.json canonical=0x6AF757661200A3F6 reserializeFnv=3794872090 samples=200 fnv=59E89A15E4C9031B
+ProceduralMapGenerator golden hash=3387691366 expected=3387691366 match=True
+graph canonical len=2612 fnv64=AC290CC88BB9B6DB roundtripEqual=True
+FactionWriter.SerializeUnitClean fnv64=8BCE342F843038A2
+clone via serialize/deserialize id=worker
+AotJson default serialize CombatFeedbackProfile: {"hit_flash":null,"impact_sound":"x.ogg","shake":null,"hit_freeze_frames":2,"death_flash":null,"death_sound":null,"ack_sound":null}
+profile roundtrip: 1 bytes-fnv=00C5869CD92C7E90
+settings: 48417359E9833359

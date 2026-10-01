@@ -1,0 +1,18 @@
+Fonts used by the Round 2 Match HUD (docs/ui-redesign/Match.dc.html line 15). All three families are open-licensed under the
+SIL Open Font License 1.1 (embedding, bundling in a shipped game and modification allowed; the fonts may not be sold on their own).
+Licence URLs are taken from each file's `name` table (nameID 14): Cinzel and JetBrains Mono -> https://scripts.sil.org/OFL ;
+Inter -> https://openfontlicense.org . Downloaded 2026-10-01 from Google Fonts (static per-weight TTF instances, no fvar table):
+
+Cinzel-Medium.ttf        https://fonts.gstatic.com/s/cinzel/v26/8vIU7ww63mVu7gtR-kwKxNvkNOjw-uTnTYo.ttf
+Cinzel-SemiBold.ttf      https://fonts.gstatic.com/s/cinzel/v26/8vIU7ww63mVu7gtR-kwKxNvkNOjw-gjgTYo.ttf
+Cinzel-Bold.ttf          https://fonts.gstatic.com/s/cinzel/v26/8vIU7ww63mVu7gtR-kwKxNvkNOjw-jHgTYo.ttf
+Inter-Regular.ttf        https://fonts.gstatic.com/s/inter/v20/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuLyfMZg.ttf
+Inter-Medium.ttf         https://fonts.gstatic.com/s/inter/v20/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuI6fMZg.ttf
+Inter-SemiBold.ttf       https://fonts.gstatic.com/s/inter/v20/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuGKYMZg.ttf
+Inter-Bold.ttf           https://fonts.gstatic.com/s/inter/v20/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuFuYMZg.ttf
+JetBrainsMono-Regular.ttf  https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbY2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKxjPQ.ttf
+JetBrainsMono-Medium.ttf   https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbY2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8-qxjPQ.ttf
+JetBrainsMono-SemiBold.ttf https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbY2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8FqtjPQ.ttf
+
+The full OFL text and copyright lines should be added to the shipped game's credits (copyright strings are in each TTF name table, nameID 0).
+The Google Fonts licence page for each family (fonts.google.com/specimen/<Family>) states OFL 1.1: this was not re-fetched; the name-table URLs above were read from the files.
