@@ -36,6 +36,8 @@ struct FChimeraTerrainOptions
 	bool bGreyMaterial = false;
 	/** -ChimeraTerrainGround=Name=Value,Name=Value: scalar overrides on the ground material's MID (look tuning without a recompile). */
 	FString GroundParams;
+	/** -ChimeraTerrainSynthMouse: C8's fallback drives the mouse strokes through FSlateApplication::ProcessMouse*Event; strokes log source=slate. */
+	bool bSynthMouse = false;
 
 	static FChimeraTerrainOptions FromCommandLine(const TCHAR* CommandLine);
 };

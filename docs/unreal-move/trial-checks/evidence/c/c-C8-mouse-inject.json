@@ -1,0 +1,141 @@
+{
+ "pid": 7544,
+ "started": "2026-10-01T18:21:34",
+ "strokes": [
+  {
+   "index": 0,
+   "from_screen": [
+    1226,
+    404
+   ],
+   "to_screen": [
+    1049,
+    404
+   ],
+   "cursor_at_start": [
+    1226,
+    404
+   ],
+   "cursor_at_end": [
+    1049,
+    404
+   ],
+   "move_steps": 206,
+   "ctrl_z_mid_drag": false,
+   "lmb_held_s": 1.9850003719329834
+  },
+  {
+   "index": 1,
+   "from_screen": [
+    960,
+    404
+   ],
+   "to_screen": [
+    783,
+    404
+   ],
+   "cursor_at_start": [
+    960,
+    404
+   ],
+   "cursor_at_end": [
+    783,
+    404
+   ],
+   "move_steps": 206,
+   "ctrl_z_mid_drag": false,
+   "lmb_held_s": 1.9840216636657715
+  },
+  {
+   "index": 2,
+   "from_screen": [
+    694,
+    404
+   ],
+   "to_screen": [
+    517,
+    404
+   ],
+   "cursor_at_start": [
+    694,
+    404
+   ],
+   "cursor_at_end": [
+    517,
+    404
+   ],
+   "move_steps": 183,
+   "ctrl_z_mid_drag": true,
+   "lmb_held_s": 1.9854347705841064
+  }
+ ],
+ "precheck": {
+  "LogonUI_running": false,
+  "input_desktop_openable": true,
+  "parsecd_running": false,
+  "virtual_screen": [
+   0,
+   0,
+   3840,
+   1080
+  ]
+ },
+ "window": {
+  "class": "UnrealWindow",
+  "title": "ChimeraTerrain (64-bit Development PCD3D_SM6) ",
+  "client": [
+   1600,
+   900
+  ]
+ },
+ "viewport_targets": [
+  1600,
+  900
+ ],
+ "foreground": true,
+ "client_origin": [
+  160,
+  90
+ ],
+ "client_size": [
+  1600,
+  900
+ ],
+ "cursor_probe": {
+  "sent": [
+   960,
+   540
+  ],
+  "got": [
+   960,
+   540
+  ]
+ },
+ "brush_keys_injected": 12,
+ "tail_keys": [
+  "ctrl+z",
+  "ctrl+y",
+  "[",
+  "-",
+  "]",
+  "=",
+  "3",
+  "4",
+  "5",
+  "shift+2"
+ ],
+ "exit": 0,
+ "reason": "3 strokes and 10 tail keys sent through SendInput",
+ "log": [
+  "   0.16 precheck {\"LogonUI_running\": false, \"input_desktop_openable\": true, \"parsecd_running\": false, \"virtual_screen\": [0, 0, 3840, 1080]}",
+  "  13.33 window UnrealWindow 'ChimeraTerrain (64-bit Development PCD3D_SM6) ' client 1600x900",
+  "  21.35 targets: 3 strokes, viewport [1600, 900]",
+  "  22.36 foreground=True",
+  "  22.49 client origin (160,90) size 1600x900",
+  "  22.84 cursor probe sent (960,540) got (960,540)",
+  "  27.36 stroke 0 sent: {\"index\": 0, \"from_screen\": [1226, 404], \"to_screen\": [1049, 404], \"cursor_at_start\": [1226, 404], \"cursor_at_end\": [1049, 404], \"move_steps\": 206, \"ctrl_z_mid_drag\": false, \"lmb_held_s\": 1.9850003719329834}",
+  "  30.67 stroke 1 sent: {\"index\": 1, \"from_screen\": [960, 404], \"to_screen\": [783, 404], \"cursor_at_start\": [960, 404], \"cursor_at_end\": [783, 404], \"move_steps\": 206, \"ctrl_z_mid_drag\": false, \"lmb_held_s\": 1.9840216636657715}",
+  "  33.96 stroke 2 sent: {\"index\": 2, \"from_screen\": [694, 404], \"to_screen\": [517, 404], \"cursor_at_start\": [694, 404], \"cursor_at_end\": [517, 404], \"move_steps\": 183, \"ctrl_z_mid_drag\": true, \"lmb_held_s\": 1.9854347705841064}",
+  "  39.08 tail keys sent: ctrl+z ctrl+y [ - ] = 3 4 5 shift+2"
+ ]
+}

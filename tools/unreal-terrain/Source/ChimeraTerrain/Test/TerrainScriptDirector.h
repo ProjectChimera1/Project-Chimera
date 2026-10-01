@@ -45,7 +45,11 @@
 //                                         projected footprint (results: depthchecks[].footprint), so a small stale region cannot hide (P11); results.json depthchecks[]
 //   project_footprint {pose, name, as}    project the named stroke-footprint set to screen pixels at the pose into footprints.json[pose][as]
 //                                         (as defaults to name; the same set can be projected in several terrain states)
-//   await_mouse {n, pose=rts80}           writes mouse_targets.json, then waits (120 s) until the controller recorded n mouse strokes (C8)
+//   await_mouse {n, pose=rts80, tail=0, hitch_ms=0, hitch_stroke=0}
+//                                         writes mouse_targets.json, arms the mouse controller, then waits (120 s) until it recorded n mouse
+//                                         strokes and `tail` applied key actions after them, and disarms it (C8). Outside this op a scripted
+//                                         run's controller ignores the mouse and the keys. hitch_ms: one game-thread sleep inside stroke
+//                                         hitch_stroke after 20 of its ticks (the 15-tick catch-up cap, ticks_dropped).
 // Ops (C5, plan C 3.6 / 3.8):
 //   wait_collision {name}                 (30 s) every collision future resolved, and every chunk's body has TriMeshGeometries > 0, is the
 //                                         body its component's physics state uses, and a vertical probe ray at the chunk centre hits it
@@ -161,6 +165,7 @@ private:
 	FDateTime MovieStartUtc;
 	// await_mouse
 	int32 MouseTargetCount = 0;
+	bool bMouseHitched = false;
 	// memory sampling every 2 s of wall time for every run (UsedPhysical only; the UBodySetup walk runs only inside soak, at forced
 	// samples and at gc, so measured C1/C1U runs carry no periodic object walk)
 	double NextMemSampleSeconds = 0.0;

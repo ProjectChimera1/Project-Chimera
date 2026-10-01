@@ -530,5 +530,141 @@
     "unreal_build_id": "",
     "committed": true,
     "sent_to_alec": null
+  },
+  {
+    "file": "c-C8-mouse.jpg",
+    "path": "c/c-C8-mouse.jpg",
+    "sha256": "ff6af0199ae110a6af2d52b3dbce9b866aa51e0e568839d615e6503118172513",
+    "bytes": 123694,
+    "w_h": [
+      1920,
+      606
+    ],
+    "task": "C8",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/mouse/mouse.jpg",
+    "r_commit": "d52b4418",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-C8-mouse-results.json",
+    "path": "c/c-C8-mouse-results.json",
+    "sha256": "89f22a6a712d438e1432395608a6ab485387d1489ba7808e2f7bf0057ee44d42",
+    "bytes": 21732,
+    "w_h": null,
+    "task": "C8",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/mouse/results.json",
+    "r_commit": "d52b4418",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-C8-mouse-bars.txt",
+    "path": "c/c-C8-mouse-bars.txt",
+    "sha256": "f7dfbf7a91eccfec867ba76e9d876c71183e055cb61e05a288881a23a7ace639",
+    "bytes": 3126,
+    "w_h": null,
+    "task": "C8",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/mouse/p10-bars.txt",
+    "r_commit": "d52b4418",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-C8-mouse-inject.json",
+    "path": "c/c-C8-mouse-inject.json",
+    "sha256": "93135c729b1356dbe70bf67ba125f5b5a18162f8ccd3ed29c5c45a721183f550",
+    "bytes": 3067,
+    "w_h": null,
+    "task": "C8",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/mouse/inject.json",
+    "r_commit": "d52b4418",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-C8-mouse-targets.json",
+    "path": "c/c-C8-mouse-targets.json",
+    "sha256": "7f4931bb1734c92c5ffce9de1decadeec475fc1cee825a09c0defbf2c58bc88c",
+    "bytes": 582,
+    "w_h": null,
+    "task": "C8",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/mouse/mouse_targets.json",
+    "r_commit": "d52b4418",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-C8-mouse-hud.jpg",
+    "path": "c/c-C8-mouse-hud.jpg",
+    "sha256": "59377be5fc9247fd57d33ab5223f260cf3dbfa702b162d97ac87806cca6729b1",
+    "bytes": 63704,
+    "w_h": [
+      960,
+      540
+    ],
+    "task": "C8",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/mouse/hud.jpg",
+    "r_commit": "d52b4418",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-C8-mouse-slate-results.json",
+    "path": "c/c-C8-mouse-slate-results.json",
+    "sha256": "7c67c4ba86a8c5bc9ce1d42b5251586816bf58c7fddf53a39e2fa14a0978787d",
+    "bytes": 21178,
+    "w_h": null,
+    "task": "C8",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/mouse_slate/results.json",
+    "r_commit": "d52b4418",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-C8-mouse-slate-bars.txt",
+    "path": "c/c-C8-mouse-slate-bars.txt",
+    "sha256": "d477ae719352b5b574c6f0ee2c12515f1485194ff0e5a9ff746719537d3a2799",
+    "bytes": 2983,
+    "w_h": null,
+    "task": "C8",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/mouse_slate/p10-bars.txt",
+    "r_commit": "d52b4418",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-C8-mouse-hitch-results.json",
+    "path": "c/c-C8-mouse-hitch-results.json",
+    "sha256": "159d94c822691fd06d2c72fdd840ffe13f04fd084eae3ceaa0d19d9f69468cb4",
+    "bytes": 12204,
+    "w_h": null,
+    "task": "C8",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/mouse_hitch/results.json",
+    "r_commit": "d52b4418",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-C8-mouse-hitch-bars.txt",
+    "path": "c/c-C8-mouse-hitch-bars.txt",
+    "sha256": "d81ee4e840172d6bd622d2f5d564734200ed6438c3f29e1fefd6399b02b2bf1f",
+    "bytes": 675,
+    "w_h": null,
+    "task": "C8",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/mouse_hitch/hitch-bars.txt",
+    "r_commit": "d52b4418",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
   }
 ]

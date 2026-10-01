@@ -1,0 +1,22 @@
+{
+  "name": "MOUSE",
+  "about": "Plan C 3.4 / C8 / P10: real OS mouse sculpting in -game (and packaged). Compare mode, pose rts80. before + before_aa 1 s apart (the A/A noise floor), then await_mouse n=3 tail=10 writes mouse_targets.json (three 30 m drags along +X at y=30 m, d 30, s 30, 60 ticks), arms the controller and waits (120 s) while Tools/inject_mouse.py (launched by run_terrain.ps1 -Inject) drives the real cursor with SendInput: keys ] ] = = = = (d 20->30, s 10->30), stroke 1 raise, key 2 then stroke 2 lower, key 1 then stroke 3 raise with Ctrl+Z pressed mid-drag (ignored while LMB is held, DW-144), then the tail: Ctrl+Z (undo stroke 3), Ctrl+Y (redo), [ - ] = (d 25, s 25, back to 30/30), 3 4 5 (smooth, flatten, paint) and Shift+2 (paint layer 1); the op ends when the 10 tail actions are recorded and disarms the controller. Outside await_mouse a scripted run ignores the mouse and keys. The controller logs source=os|slate, centre, pick error and the height hash before/after per stroke (results.json mouse_strokes) and every key action (mouse_keys). The footprint set `mouse` (discs of the stroke radius along the three planned drags) is projected after the strokes; P10's image bar is imgdiff --mask footprint --key rts80/mouse, before vs after, minus the same measure for before vs before_aa. look full at the end shows the HUD (logged 'hud: ...'). Gate: python Tools/mouse_gate.py <run dir>.",
+  "ops": [
+    {"op": "look", "mode": "compare"},
+    {"op": "camera", "pose": "rts80"},
+    {"op": "settle", "frames": 30},
+    {"op": "shot", "name": "before"},
+    {"op": "idle", "seconds": 1},
+    {"op": "shot", "name": "before_aa"},
+    {"op": "await_mouse", "n": 3, "pose": "rts80", "tail": 10},
+    {"op": "settle", "frames": 30},
+    {"op": "hash", "name": "after"},
+    {"op": "shot", "name": "after"},
+    {"op": "project_footprint", "pose": "rts80", "name": "mouse", "as": "mouse"},
+    {"op": "wait_collision", "name": "after"},
+    {"op": "verify_collision", "name": "after"},
+    {"op": "look", "mode": "full"},
+    {"op": "settle", "frames": 30},
+    {"op": "shot", "name": "hud"}
+  ]
+}

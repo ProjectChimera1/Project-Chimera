@@ -5,6 +5,7 @@
 #include "ChimeraTerrain.h"
 #include "Engine/World.h"
 #include "HAL/IConsoleManager.h"
+#include "Game/ChimeraTerrainPlayerController.h"
 #include "Game/RtsCameraPawn.h"
 #include "Game/TerrainActor.h"
 #include "Game/TerrainHud.h"
@@ -49,6 +50,7 @@ FChimeraTerrainOptions FChimeraTerrainOptions::FromCommandLine(const TCHAR* Cmd)
 		O.bGreyMaterial = Material.Equals(TEXT("grey"), ESearchCase::IgnoreCase);
 	}
 	FParse::Value(Cmd, TEXT("ChimeraTerrainGround="), O.GroundParams, false);
+	O.bSynthMouse = FParse::Param(Cmd, TEXT("ChimeraTerrainSynthMouse"));
 	return O;
 }
 
@@ -56,6 +58,7 @@ AChimeraTerrainGameMode::AChimeraTerrainGameMode()
 {
 	DefaultPawnClass = ARtsCameraPawn::StaticClass();
 	HUDClass = ATerrainHud::StaticClass();
+	PlayerControllerClass = AChimeraTerrainPlayerController::StaticClass();
 }
 
 void AChimeraTerrainGameMode::RestartPlayer(AController* NewPlayer)

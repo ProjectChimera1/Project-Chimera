@@ -1,0 +1,16 @@
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=16/16 rule=completed=true and ops_done == ops_total
+BAR strokes_os                     FAIL   value=n=3 sources=['slate', 'slate', 'slate'] rule=>= 3 strokes, every source=os
+BAR pick_error                     PASS   value=start pick err m=[0.137, 0.345, 0.14] start px=[0.86, 2.02, 0.31] rule=<= 1.0 m against the logged start targets, every stroke
+BAR pick_error_end_px              PASS   value=end px err=[0.46, 0.33, 0.25] rule=<= 9 px against the logged end targets (1 m at 80 m), every stroke
+BAR end_pick_drift                 REPORT value={'end_pick_drift_xy_m': [6.45, 6.23, 9.13], 'centre_m': [[-28.412942229892565, 25.4461007599228], [16.279767357350003, 34.464774372313], [56.12750821851209, 24.899166322044163]]} rule=reported: the pick follows the surface the stroke edits (raise climbs toward the camera, lower runs away)
+BAR footprint_changed              PASS   value=changed=0.6373 floor(A/A)=0.0000 above=0.6373 mask_px=119967 rule=before vs after inside the three planned drags: changed_frac above the A/A floor >= 0.30
+BAR brush_keys                     PASS   value=modes=['raise', 'lower', 'raise'] d=[30, 30, 30] s=[30, 30, 30] rule=raise, lower, raise at d 30 / s 30 (keys ] ] = = = = 2 1 arrived)
+BAR keys_ignored_while_lmb         PASS   value=ignored per stroke=[0, 0, 1] ctrl+z ignored records=1 undo applied during strokes=0 rule=Ctrl+Z mid-drag on stroke 3 ignored (DW-144), no undo applied before the strokes ended
+BAR undo_redo                      PASS   value=stroke3 start=0x2bc1cdf2 end=0xd88391e6 undo=0x2bc1cdf2 redo=0xd88391e6 after=0xd88391e6 rule=Ctrl+Z restores stroke 3's start hash, Ctrl+Y its end hash, the `after` hash equals it
+BAR tail_keys                      PASS   value=got=[('ctrl+z', 'undo', 'raise', 30, 30, 0), ('ctrl+y', 'redo', 'raise', 30, 30, 0), ('[', 'size', 'raise', 25, 30, 0), ('-', 'strength', 'raise', 25, 25, 0), (']', 'size', 'raise', 30, 25, 0), ('=', 'strength', 'raise', 30, 30, 0), ('3', 'mode', 'smooth', 30, 30, 0), ('4', 'mode', 'flatten', 30, 30, 0), ('5', 'mode', 'paint', 30, 30, 0), ('shift+2', 'paint_layer', 'paint', 30, 30, 1)] rule=after the strokes: ctrl+z ctrl+y [ - ] = 3 4 5 shift+2
+BAR hud                            PASS   value=final HUD line logged=True rule=the HUD drew the final brush: 'hud: Terrain  mode Paint  size 30 m  strength 30  layer Dirt'
+BAR ticks                          REPORT value={'ticks_applied': [60, 60, 60], 'plan_ticks': 60, 'ticks_dropped': [0, 0, 0], 'max_frame_gap_ms': [10.2, 9.4, 23.6], 'platform_cursor_err_px': [708.37, 971.71, 1233.63], 'input_while_disarmed': 0} rule=reported
+BAR injector                       REPORT value={'exit': None, 'reason': None, 'precheck': None, 'foreground': None} rule=inject.json (reported; the strokes bar is the gate)
+C8 INPUT PASS
+P10 FAIL

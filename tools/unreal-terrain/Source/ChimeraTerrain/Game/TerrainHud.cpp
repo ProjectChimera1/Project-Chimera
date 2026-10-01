@@ -5,6 +5,7 @@
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
 #include "EngineUtils.h"
+#include "ChimeraTerrain.h"
 #include "Game/TerrainActor.h"
 
 void ATerrainHud::DrawHUD()
@@ -29,7 +30,13 @@ void ATerrainHud::DrawHUD()
 	const ChimeraTerrain::FTerrainBrushParams& P = Terrain->GetBrushParams();
 	const int32 ModeIdx = FMath::Clamp(static_cast<int32>(P.Mode), 0, 4);
 	const int32 LayerIdx = FMath::Clamp(P.PaintLayer, 0, 3);
-	const FString Line = FString::Printf(TEXT("Terrain  mode %s  size %.0f m  strength %.0f  layer %s  last tick %.2f ms"),
-		ModeNames[ModeIdx], P.DiameterM, P.Strength, LayerNames[LayerIdx], Terrain->GetLastTickMs());
+	const FString BrushPart = FString::Printf(TEXT("Terrain  mode %s  size %.0f m  strength %.0f  layer %s"),
+		ModeNames[ModeIdx], P.DiameterM, P.Strength, LayerNames[LayerIdx]);
+	const FString Line = FString::Printf(TEXT("%s  last tick %.2f ms"), *BrushPart, Terrain->GetLastTickMs());
+	if (BrushPart != LastLoggedBrush)
+	{
+		LastLoggedBrush = BrushPart;
+		UE_LOG(LogChimeraTerrain, Display, TEXT("hud: %s"), *Line);
+	}
 	DrawText(Line, FLinearColor::White, 24.0f, 24.0f, GEngine->GetSmallFont(), 1.25f);
 }

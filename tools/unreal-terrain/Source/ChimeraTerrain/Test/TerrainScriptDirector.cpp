@@ -12,6 +12,7 @@
 #include "Engine/GameViewportClient.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "Engine/World.h"
+#include "Game/ChimeraTerrainPlayerController.h"
 #include "Game/RtsCameraPawn.h"
 #include "Game/TerrainActor.h"
 #include "Game/TerrainLighting.h"
@@ -1925,6 +1926,15 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepAwaitMouse(const FJson
 				OpError = FString::Printf(TEXT("mouse target %d does not project to the screen"), I);
 				return EStep::Failed;
 			}
+			// P10's footprint mask: discs of the stroke radius (d 30) every 7.5 m along each planned drag, set `mouse`
+			// (project_footprint {name: mouse} after the strokes; imgdiff --mask footprint --key rts80/mouse).
+			{
+				TArray<FVector>& MouseSet = FootprintSets.FindOrAdd(TEXT("mouse"));
+				for (int32 K = 0; K <= 4; ++K)
+				{
+					MouseSet.Add(FVector(X0 + (X1 - X0) * K / 4.0, Y0, 15.0));
+				}
+			}
 			TSharedRef<FJsonObject> T = MakeShared<FJsonObject>();
 			T->SetNumberField(TEXT("index"), I);
 			T->SetField(TEXT("from_world_m"), VecToJson(A));
@@ -1945,15 +1955,52 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepAwaitMouse(const FJson
 			OpError = TEXT("cannot write mouse_targets.json");
 			return EStep::Failed;
 		}
-		UE_LOG(LogChimeraTerrain, Display, TEXT("await_mouse: %d targets written, waiting for the controller"), N);
+		// The controller takes mouse strokes and keys only while this op runs (disarmed again below), so no other op of a scripted run
+		// can be edited by a stray click or key.
+		if (AChimeraTerrainPlayerController* ArmPC = Cast<AChimeraTerrainPlayerController>(PC))
+		{
+			ArmPC->SetInputArmed(true);
+		}
+		UE_LOG(LogChimeraTerrain, Display, TEXT("await_mouse: %d targets written, controller armed, waiting for the strokes"), N);
 		OpPhase = 1;
 		return EStep::Running;
+	}
+	AChimeraTerrainPlayerController* MousePC = Cast<AChimeraTerrainPlayerController>(GetPC());
+	// hitch_ms (with hitch_stroke = index): sleep the game thread once inside that mouse stroke, after 20 of its ticks, to prove the
+	// 15-tick catch-up cap and ticks_dropped (plan C 3.4).
+	const int32 HitchMsOp = FMath::Clamp(static_cast<int32>(NumField(Op, TEXT("hitch_ms"), 0.0)), 0, 10000);
+	if (HitchMsOp > 0 && MousePC && !bMouseHitched && MousePC->IsMouseStrokeOpen()
+		&& Terrain->GetMouseStrokeRecords().Num() == static_cast<int32>(NumField(Op, TEXT("hitch_stroke"), 0.0)) && MousePC->GetStrokeTicksApplied() >= 20)
+	{
+		bMouseHitched = true;
+		const double T0 = FPlatformTime::Seconds();
+		FPlatformProcess::Sleep(static_cast<float>(HitchMsOp) / 1000.0f);
+		TSharedRef<FJsonObject> Hj = MakeShared<FJsonObject>();
+		Hj->SetStringField(TEXT("source"), TEXT("await_mouse"));
+		Hj->SetNumberField(TEXT("op_index"), OpIndex + 1);
+		Hj->SetNumberField(TEXT("ms_requested"), HitchMsOp);
+		Hj->SetNumberField(TEXT("ms_slept"), (FPlatformTime::Seconds() - T0) * 1000.0);
+		Hj->SetNumberField(TEXT("stroke"), Terrain->GetMouseStrokeRecords().Num());
+		Hj->SetNumberField(TEXT("at_stroke_tick"), MousePC->GetStrokeTicksApplied());
+		Hitches.Add(MakeShared<FJsonValueObject>(Hj));
+		UE_LOG(LogChimeraTerrain, Display, TEXT("hitch %d ms inside mouse stroke %d at tick %d"), HitchMsOp, Terrain->GetMouseStrokeRecords().Num(), MousePC->GetStrokeTicksApplied());
 	}
 	if (Terrain->GetMouseStrokeRecords().Num() < N)
 	{
 		return EStep::Running;
 	}
-	UE_LOG(LogChimeraTerrain, Display, TEXT("await_mouse: %d mouse strokes recorded"), Terrain->GetMouseStrokeRecords().Num());
+	// tail = number of applied key actions expected after the last stroke (undo, redo, brush keys): wait for them too.
+	const int32 Tail = FMath::Max(0, static_cast<int32>(NumField(Op, TEXT("tail"), 0.0)));
+	if (Tail > 0 && (!MousePC || MousePC->CountKeyActionsAfterStroke(N) < Tail))
+	{
+		return EStep::Running;
+	}
+	if (MousePC)
+	{
+		MousePC->SetInputArmed(false);
+	}
+	UE_LOG(LogChimeraTerrain, Display, TEXT("await_mouse: %d mouse strokes and %d key actions after them recorded; controller disarmed"),
+		Terrain->GetMouseStrokeRecords().Num(), MousePC ? MousePC->CountKeyActionsAfterStroke(N) : 0);
 	return EStep::Done;
 }
 
@@ -2520,6 +2567,11 @@ void ATerrainScriptDirector::Finish(uint8 Code, const FString& Reason)
 			Mouse.Add(MakeShared<FJsonValueObject>(M));
 		}
 		Results->SetArrayField(TEXT("mouse_strokes"), Mouse);
+	}
+	if (const AChimeraTerrainPlayerController* ResultPC = Cast<AChimeraTerrainPlayerController>(GetPC()))
+	{
+		Results->SetArrayField(TEXT("mouse_keys"), ResultPC->GetKeyRecords());
+		Results->SetObjectField(TEXT("mouse_controller"), ResultPC->ControllerSummaryJson());
 	}
 	FIntPoint Viewport(0, 0);
 	if (GEngine && GEngine->GameViewport && GEngine->GameViewport->Viewport)

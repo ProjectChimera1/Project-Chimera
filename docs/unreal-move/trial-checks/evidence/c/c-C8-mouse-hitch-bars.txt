@@ -1,0 +1,5 @@
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=5/5 rule=completed=true and ops_done == ops_total
+BAR hitch_slept                    PASS   value=hitches=[{'source': 'await_mouse', 'op_index': 4, 'ms_requested': 1000, 'ms_slept': 1000.3529004752636, 'stroke': 0, 'at_stroke_tick': 20}] rule=one await_mouse hitch of >= 1000 ms inside the stroke
+BAR ticks_dropped                  PASS   value=ticks_applied=63 ticks_dropped=15 max_frame_gap_ms=1002.7785003185272 rule=the >= 1 s frame applies 15 ticks and counts the rest: ticks_dropped >= 15
+HITCH PASS

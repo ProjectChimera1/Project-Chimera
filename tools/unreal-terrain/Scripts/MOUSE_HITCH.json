@@ -1,0 +1,11 @@
+{
+  "name": "MOUSE_HITCH",
+  "about": "Plan C 3.4 / C8: the mouse accumulator's 15-tick catch-up cap. One synthetic stroke (run with -ChimeraTerrainSynthMouse; source=slate, not a P10 run); await_mouse hitch_ms=1000 sleeps the game thread once inside it after 20 ticks, so the next frame owes >= 30 ticks, applies 15 and counts the rest in ticks_dropped. Gate: python Tools/mouse_gate.py <run dir> --hitch.",
+  "ops": [
+    {"op": "look", "mode": "compare"},
+    {"op": "camera", "pose": "rts80"},
+    {"op": "settle", "frames": 30},
+    {"op": "await_mouse", "n": 1, "pose": "rts80", "hitch_ms": 1000, "hitch_stroke": 0},
+    {"op": "hash", "name": "after"}
+  ]
+}

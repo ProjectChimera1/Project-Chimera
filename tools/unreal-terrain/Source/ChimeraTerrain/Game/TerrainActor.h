@@ -123,6 +123,8 @@ public:
 
 	/** HUD state. */
 	const ChimeraTerrain::FTerrainBrushParams& GetBrushParams() const { return Params; }
+	/** The mouse controller's keys (C8) set the brush the HUD shows; BeginStroke copies the same values into the stroke. */
+	void SetBrushParams(const ChimeraTerrain::FTerrainBrushParams& InParams) { Params = InParams; Params.Clamp(); }
 	double GetLastTickMs() const { return LastTickMs; }
 
 	/** Ticks applied over the actor's life. */
