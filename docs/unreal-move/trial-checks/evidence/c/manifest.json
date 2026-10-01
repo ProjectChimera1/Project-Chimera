@@ -666,5 +666,47 @@
     "unreal_build_id": "",
     "committed": true,
     "sent_to_alec": null
+  },
+  {
+    "file": "c-G0-compare.md",
+    "path": "c/c-G0-compare.md",
+    "sha256": "9e248dc6d9f47773e64f8d0b3aa547519ec19e5da50ee7b4102db0055c8d54cd",
+    "bytes": 21399,
+    "w_h": null,
+    "task": "G0",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/refs/manor_lords/compare_c7.md",
+    "r_commit": "23b835c3",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-G0-candidates.json",
+    "path": "c/c-G0-candidates.json",
+    "sha256": "56e36dbd23303dcc545fc849fcec86918652ff1ae2e28b9034b469835bac468f",
+    "bytes": 238421,
+    "w_h": null,
+    "task": "G0",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/refs/manor_lords/candidates.json",
+    "r_commit": "23b835c3",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-G0-candidates-montage.jpg",
+    "path": "c/c-G0-candidates-montage.jpg",
+    "sha256": "16b5b877d5f05eec59d674568b389e47724e41dc6c5cca572cf0622526b9726b",
+    "bytes": 1131999,
+    "w_h": [
+      1920,
+      2340
+    ],
+    "task": "G0",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/refs/manor_lords/cand_montage.jpg",
+    "r_commit": "23b835c3",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
   }
 ]
