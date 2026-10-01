@@ -8,6 +8,7 @@
 #include "Core/RealtimeMeshDataStream.h"
 #include "Core/RealtimeMeshKeys.h"
 #include "RealtimeMeshCore.h"
+#include "Core/RealtimeMeshCollision.h"
 
 class UTerrainChunkComponent;
 class URealtimeMeshSimple;
@@ -36,6 +37,12 @@ namespace ChimeraTerrain
 
 		/** The single buffer-set key every chunk mesh uses. */
 		FRealtimeMeshBufferSetKey ChunkBufferSetKey();
+
+		/**
+		 * The chunk's physics collision mesh (plan C 3.6): the same vertices (Unreal cm, render-rect order, written by the same position
+		 * function) and the same triangles as the render streams, so collision and render geometry are identical.
+		 */
+		void BuildCollisionMesh(const FTerrainHeightfield& HF, int32 Id, FRealtimeMeshCollisionMesh& Out);
 	}
 
 	class FRmcTerrainRenderer : public ITerrainChunkRenderer
@@ -58,6 +65,14 @@ namespace ChimeraTerrain
 		virtual void GetComponents(TArray<UPrimitiveComponent*>& Out) const override;
 		virtual const TCHAR* GetName() const override { return TEXT("rmc"); }
 
+		virtual void SetCollisionOptions(const FTerrainCollisionOptions& InOptions) override { CollisionOptions = InOptions; }
+		virtual FTerrainCollisionOptions GetCollisionOptions() const override { return CollisionOptions; }
+		virtual int32 UpdateCollision(const FTerrainHeightfield& HF, const FTerrainRect& VertexRect, ETerrainCollisionReason Reason) override;
+		virtual bool HasPendingCollision() const override;
+		virtual void GetChunkCollisionStates(TArray<FTerrainChunkCollisionState>& Out) const override;
+		virtual const TArray<FTerrainCollisionCook>& GetCollisionCooks() const override { return CollisionCooks; }
+		virtual const TArray<FTerrainCollisionBatch>& GetCollisionBatches() const override { return CollisionBatches; }
+
 		/** Chunk component by id (tests). */
 		UTerrainChunkComponent* GetChunkComponent(int32 Id) const;
 		/** The chunk's mesh (tests read its streams back with ProcessMesh). */
@@ -77,15 +92,47 @@ namespace ChimeraTerrain
 			bool IsDone() const { return !Future.IsValid() || Future.IsReady(); }
 		};
 
+		/** Filled by the collision future's continuation, which runs on the game thread (RealtimeMeshManaged.cpp ProcessEndOfFrameUpdates). */
+		struct FCollisionOutcome
+		{
+			bool bDone = false;
+			uint8 Result = 0;
+			double DoneSeconds = 0.0;
+			uint64 DoneFrame = 0;
+			/** The component's physics-state seconds read inside the continuation, right after ApplyCollisionUpdate's broadcast. */
+			double PhysicsSecondsAtDone = -1.0;
+		};
+
+		/** A submitted per-chunk collision update. */
+		struct FPendingCollision
+		{
+			TSharedRef<FCollisionOutcome> Outcome = MakeShared<FCollisionOutcome>();
+			double SubmitSeconds = 0.0;
+			uint64 SubmitFrame = 0;
+			ETerrainCollisionReason Reason = ETerrainCollisionReason::Init;
+			int32 BatchIndex = INDEX_NONE;
+			/** The component's physics-state seconds at submit; the batch's GT apply is the growth until the update resolves. */
+			double PhysicsSecondsAtSubmit = 0.0;
+		};
+
 		struct FChunk
 		{
 			TWeakObjectPtr<UTerrainChunkComponent> Component;
 			TWeakObjectPtr<URealtimeMeshSimple> Mesh;
 			TArray<FPendingUpdate> Pending;
+			TArray<FPendingCollision> PendingCollision;
+			int64 CollisionSubmits = 0;
+			uint8 LastCollisionResult = 0;
+			/**
+			 * Physics-state seconds already charged to a batch. Each resolve is charged only the time after this, so two overlapping updates
+			 * of one chunk (merged in one frame, or mid-stroke then stroke end) never count the same recreate twice.
+			 */
+			double PhysicsSecondsCharged = 0.0;
 		};
 
 		void BuildChunkMesh(const FTerrainHeightfield& HF, int32 Id, bool bCreate);
 		void PrunePending();
+		void PruneCollision();
 
 		TArray<FChunk> ChunkData;
 		ETerrainDrawType Draw = ETerrainDrawType::Dynamic;
@@ -93,5 +140,10 @@ namespace ChimeraTerrain
 		TWeakObjectPtr<UMaterialInterface> CurrentMaterial;
 		FTerrainUpdateTiming LastTiming;
 		TArray<FTerrainEditLatency> EditLatencies;
+		FTerrainCollisionOptions CollisionOptions;
+		TArray<FTerrainCollisionCook> CollisionCooks;
+		TArray<FTerrainCollisionBatch> CollisionBatches;
+		/** Unresolved chunk updates per batch (index = batch index). */
+		TArray<int32> BatchOpen;
 	};
 }

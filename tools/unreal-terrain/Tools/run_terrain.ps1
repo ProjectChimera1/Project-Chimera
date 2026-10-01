@@ -20,7 +20,8 @@ param(
   [switch]$Inject,
   [switch]$Measure,
   [int]$TimeoutMin = 15,
-  [string]$Extra = ''
+  [string]$Extra = '',
+  [string]$ExecExtra = ''   # more console commands appended to -ExecCmds (comma-separated; a non-standard cvar is its own configuration)
 )
 $ErrorActionPreference = 'Stop'
 $T = (Split-Path $PSScriptRoot -Parent) -replace '\\', '/'
@@ -86,7 +87,9 @@ $a.Add("-ResX=$ResX"); $a.Add("-ResY=$ResY")
 foreach ($x in @('-novsync', '-nosound', '-unattended', '-nosplash')) { $a.Add($x) }
 $a.Add("-ABSLOG=`"$Log`"")
 $a.Add('-LogCmds="LogViewport Verbose"')
-$a.Add("-ExecCmds=`"t.MaxFPS $MaxFps,r.VSync 0,r.ScreenPercentage 100,r.HighResScreenshotDelay 64`"")
+$ExecCmds = "t.MaxFPS $MaxFps,r.VSync 0,r.ScreenPercentage 100,r.HighResScreenshotDelay 64"
+if ($ExecExtra -ne '') { $ExecCmds = "$ExecCmds,$ExecExtra" }
+$a.Add("-ExecCmds=`"$ExecCmds`"")
 if ($FixedFps -gt 0) { $a.Add('-UseFixedTimeStep'); $a.Add("-FPS=$FixedFps") }
 $a.Add("-ChimeraTerrainScript=`"$ScriptPath`"")
 $a.Add("-ChimeraTerrainOut=`"$Out`"")

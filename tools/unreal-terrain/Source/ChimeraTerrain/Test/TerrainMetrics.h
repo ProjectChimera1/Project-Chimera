@@ -33,6 +33,8 @@ struct FTerrainMemorySample
 	int32 BodiesRmc = -1;
 	/** Game-thread cost of taking this sample (the UBodySetup walk dominates when bodies are counted). */
 	double SampleMs = 0.0;
+	/** Undo/redo history held at the sample (MB; -1 = not recorded): retained editing state, not a leak, reported beside the growth. */
+	double UndoMB = -1.0;
 };
 
 class FTerrainMetrics
@@ -49,10 +51,19 @@ public:
 	 * Memory sample now (FPlatformMemory UsedPhysical, GenericPlatformMemory.h:141). With bCountBodies the live UBodySetup objects are
 	 * counted too: total, and those whose outer is a URealtimeMesh (owner per RealtimeMesh.cpp:377). The sample times itself (SampleMs).
 	 */
-	void SampleMemory(double TimeSeconds, bool bCountBodies);
+	void SampleMemory(double TimeSeconds, bool bCountBodies, double UndoMB = -1.0);
 	const TArray<FTerrainMemorySample>& GetMemory() const { return Memory; }
 	/** Growth figures count from the latest sample (the soak's start), not from the process start (shaders, assets). */
 	void MarkMemoryBaseline() { MemoryBaseline = Memory.Num() - 1; }
+	/** The latest sample is the one taken right after the soak's blocking GC: P6's after-GC figures read it, not Memory.Last(). */
+	void MarkAfterGc() { AfterGcIndex = Memory.Num() - 1; }
+	/**
+	 * The latest sample is the reported residue sample: taken after the gated samples, once the undo history was cleared, a second
+	 * blocking GC ran and the allocator was trimmed (FMemory::Trim). Never gated; it measures what is left without the retained history.
+	 */
+	void MarkResidue() { ResidueIndex = Memory.Num() - 1; }
+	/** The latest sample is the reported one taken at least 12 s after the soak's GC (Mimalloc's page-reset delay has passed). Never gated. */
+	void MarkDelayed() { DelayedIndex = Memory.Num() - 1; }
 
 	FTerrainSeries FrameMs;
 	FTerrainSeries GameThreadMs;
@@ -85,4 +96,7 @@ private:
 	int32 Current = 0;
 	TArray<FTerrainMemorySample> Memory;
 	int32 MemoryBaseline = 0;
+	int32 AfterGcIndex = INDEX_NONE;
+	int32 ResidueIndex = INDEX_NONE;
+	int32 DelayedIndex = INDEX_NONE;
 };

@@ -55,6 +55,15 @@ public:
 	/** Build the flat heightfield (half extent, chunk size), the splat texture, the default material and the renderer. */
 	bool InitTerrain(int32 HalfExtentM, int32 ChunkQuads, ChimeraTerrain::ETerrainDrawType DrawType);
 
+	/** Collision settings for the renderer InitTerrain creates (plan C 3.6); call before InitTerrain. */
+	void SetCollisionOptions(const ChimeraTerrain::FTerrainCollisionOptions& InOptions) { CollisionOptions = InOptions; }
+
+	/**
+	 * Vertex rects whose physics collision was rewritten since the last call (stroke end, mid-stroke, undo, redo, load; not the initial
+	 * build), oldest first. verify_collision casts its vertex rays inside them (plan C 3.8).
+	 */
+	TArray<ChimeraTerrain::FTerrainRect> ConsumeCollisionRects();
+
 	/** Open a stroke (flatten target fixed at the height under StartM; plan C 3.4). */
 	void BeginStroke(const ChimeraTerrain::FTerrainBrushParams& Params, const FVector2D& StartM);
 	/** One stroke tick centred on terrain-space metres (= Unreal cm / 100). Uploads the changed rect at once. */
@@ -102,6 +111,11 @@ public:
 	/** Ticks applied over the actor's life. */
 	int64 GetTicksApplied() const { return TicksApplied; }
 
+	/** Bytes held by the undo and redo history (plan C 3.7: capped at 512 MiB / 1000 entries). The soak reports it beside UsedPhysical. */
+	int64 GetUndoBytes() const { return Undo.TotalBytes(); }
+	/** Drops the whole undo/redo history (the soak's reported residue sample only; no editor path calls it). */
+	void ClearUndoHistory() { Undo.Clear(); }
+
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 private:
@@ -122,6 +136,11 @@ private:
 	bool bVisibleNow = true;
 	ChimeraTerrain::FTerrainRect StrokeHeightRect;
 	ChimeraTerrain::FTerrainRect StrokeSplatRect;
+	/** Heights changed since the last mid-stroke collision update (chimera.terrain.CollisionDuringStroke > 0). */
+	ChimeraTerrain::FTerrainRect MidStrokeCollisionRect;
+	double LastMidStrokeCollisionSeconds = 0.0;
+	ChimeraTerrain::FTerrainCollisionOptions CollisionOptions;
+	TArray<ChimeraTerrain::FTerrainRect> CollisionRects;
 	double LastTickMs = 0.0;
 	int64 TicksApplied = 0;
 	TArray<FString> PhaseNames = { TEXT("default") };
@@ -129,6 +148,7 @@ private:
 	TArray<FTerrainTickSample> TickSamples;
 	TArray<TSharedRef<FJsonObject>> MouseStrokeRecords;
 
-	void ApplyDelta(const ChimeraTerrain::FTerrainEditDelta& Delta);
+	void ApplyDelta(const ChimeraTerrain::FTerrainEditDelta& Delta, ChimeraTerrain::ETerrainCollisionReason Reason);
+	void SubmitCollision(const ChimeraTerrain::FTerrainRect& Rect, ChimeraTerrain::ETerrainCollisionReason Reason);
 	UMaterialInterface* MakeDefaultMaterial();
 };

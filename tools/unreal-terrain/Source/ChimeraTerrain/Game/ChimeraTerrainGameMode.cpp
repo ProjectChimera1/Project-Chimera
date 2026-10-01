@@ -4,6 +4,7 @@
 
 #include "ChimeraTerrain.h"
 #include "Engine/World.h"
+#include "HAL/IConsoleManager.h"
 #include "Game/RtsCameraPawn.h"
 #include "Game/TerrainActor.h"
 #include "Game/TerrainHud.h"
@@ -33,6 +34,15 @@ FChimeraTerrainOptions FChimeraTerrainOptions::FromCommandLine(const TCHAR* Cmd)
 	FParse::Value(Cmd, TEXT("ChimeraTerrainHitchMs="), O.HitchMs);
 	O.HitchMs = FMath::Clamp(O.HitchMs, 0, 10000);
 	FParse::Value(Cmd, TEXT("ChimeraTerrainLoad="), O.LoadDir, false);
+	int32 FastCook = 1;
+	if (FParse::Value(Cmd, TEXT("ChimeraTerrainFastCook="), FastCook))
+	{
+		O.bFastCook = FastCook != 0;
+	}
+	if (FParse::Value(Cmd, TEXT("ChimeraTerrainCollisionDuringStroke="), O.CollisionDuringStrokeMs))
+	{
+		O.CollisionDuringStrokeMs = FMath::Clamp(O.CollisionDuringStrokeMs, 0, 60000);
+	}
 	return O;
 }
 
@@ -60,14 +70,27 @@ void AChimeraTerrainGameMode::RestartPlayer(AController* NewPlayer)
 void AChimeraTerrainGameMode::StartPlay()
 {
 	Options = FChimeraTerrainOptions::FromCommandLine(FCommandLine::Get());
-	UE_LOG(LogChimeraTerrain, Display, TEXT("ChimeraTerrain start: half=%d chunk=%d draw=%s script='%s' out='%s' compare=%d ev100=%.2f"),
+	UE_LOG(LogChimeraTerrain, Display, TEXT("ChimeraTerrain start: half=%d chunk=%d draw=%s script='%s' out='%s' compare=%d ev100=%.2f fast_cook=%d collision_during_stroke_ms=%d"),
 		Options.HalfExtentM, Options.ChunkQuads, Options.DrawType == ChimeraTerrain::ETerrainDrawType::Dynamic ? TEXT("Dynamic") : TEXT("Static"),
-		*Options.ScriptPath, *Options.OutDir, Options.bCompareAtStart ? 1 : 0, Options.CompareEV100);
+		*Options.ScriptPath, *Options.OutDir, Options.bCompareAtStart ? 1 : 0, Options.CompareEV100, Options.bFastCook ? 1 : 0, Options.CollisionDuringStrokeMs);
 
 	FActorSpawnParameters SP;
 	SP.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	Lighting = GetWorld()->SpawnActor<ATerrainLighting>(ATerrainLighting::StaticClass(), FTransform::Identity, SP);
 	Terrain = GetWorld()->SpawnActor<ATerrainActor>(ATerrainActor::StaticClass(), FTransform::Identity, SP);
+	if (Options.CollisionDuringStrokeMs >= 0)
+	{
+		if (IConsoleVariable* Cv = IConsoleManager::Get().FindConsoleVariable(TEXT("chimera.terrain.CollisionDuringStroke")))
+		{
+			Cv->Set(Options.CollisionDuringStrokeMs, ECVF_SetByCommandline);
+		}
+	}
+	if (Terrain)
+	{
+		ChimeraTerrain::FTerrainCollisionOptions Col;
+		Col.bFastCook = Options.bFastCook;
+		Terrain->SetCollisionOptions(Col);
+	}
 	const bool bTerrainOk = Terrain && Terrain->InitTerrain(Options.HalfExtentM, Options.ChunkQuads, Options.DrawType);
 	if (!bTerrainOk)
 	{

@@ -1,0 +1,185 @@
+== runs
+tag                  script completed ops      unit  measured  log   configuration
+s1_col               S1     True      59/59    0     no        0     half=160 chunk=64 draw=Dynamic
+s1_col_r2            S1     True      59/59    0     no        0     half=160 chunk=64 draw=Dynamic
+s1_col_r3            S1     True      59/59    0     no        0     half=160 chunk=64 draw=Dynamic
+s1_col_nofast        S1     True      59/59    0     no        0     half=160 chunk=64 draw=Dynamic FastCook=0
+soak0                SOAK   True      8/8      0     no        0     half=160 chunk=64 draw=Dynamic
+soak250              SOAK   True      8/8      0     no        0     half=160 chunk=64 draw=Dynamic CollisionDuringStroke=250
+soak0_mi0            SOAK   True      8/8      0     no        0     half=160 chunk=64 draw=Dynamic mi.MemoryResetDelay 0
+GATE PASS         runs_completed             7 run(s); completed=true and ops_done == ops_total for each
+GATE PASS         log_scan                   findings per run: {'s1_col': 0, 's1_col_r2': 0, 's1_col_r3': 0, 's1_col_nofast': 0, 'soak0': 0, 'soak250': 0, 'soak0_mi0': 0}
+gate configuration: half=160 chunk=64 draw=Dynamic (default)
+
+== frame metrics per phase (director samples, ms; fps = 1000 / frame ms)
+tag              phase               n  fps p50 fps 1%lo    frame  GPU p50   GT p50   RT p50  GPU p99  >33ms
+s1_col           default           179    119.4      1.4     8.38     8.05     1.18     8.38    17.85      4
+s1_col           sculpt            260    119.2    107.9     8.39     8.09     1.27     8.38     8.63      1
+s1_col           paint             119    118.4      1.4     8.44     8.09     1.25     8.44     8.94      5
+s1_col           last2             273     88.0      0.8    11.36    11.12     1.26    11.31    16.63     13
+s1_col_r2        default           180    119.9      1.4     8.34     8.03     1.11     8.34    17.61      4
+s1_col_r2        sculpt            260    119.5    109.7     8.37     8.07     1.28     8.36     8.64      1
+s1_col_r2        paint             119    119.6      1.4     8.36     8.07     1.25     8.36     8.93      4
+s1_col_r2        last2             273     88.4      0.8    11.31    11.08     1.27    11.28    16.79     12
+s1_col_r3        default           180    119.6      1.4     8.36     8.03     1.19     8.39    17.91      4
+s1_col_r3        sculpt            260    119.3    105.7     8.38     8.07     1.26     8.37     8.66      1
+s1_col_r3        paint             119    119.3      1.4     8.39     8.07     1.21     8.38     8.61      4
+s1_col_r3        last2             273     88.5      0.8    11.30    11.10     1.24    11.25    16.80     12
+s1_col_nofast    default           179    119.3      1.4     8.39     8.03     1.16     8.39    17.75      4
+s1_col_nofast    sculpt            260    119.6    107.9     8.36     8.08     1.28     8.37     8.60      1
+s1_col_nofast    paint             119    119.2      1.4     8.39     8.06     1.30     8.39     8.56      4
+s1_col_nofast    last2             273     89.4      0.8    11.19    11.12     1.39    11.14    17.04     12
+soak0            default            38    115.2     11.3     8.68     8.50     1.28     8.77    17.74      1
+soak0            soak            38638    119.3    111.5     8.38     8.16     1.12     8.37     8.61      0
+soak250          default            38    118.1     10.3     8.47     8.09     1.35     8.51    17.69      1
+soak250          soak            38606    119.3    110.2     8.38     8.16     1.23     8.38     8.60      0
+soak0_mi0        default            38    115.6     11.3     8.65     8.52     1.37     8.75    17.80      1
+soak0_mi0        soak            38641    119.4    109.6     8.38     8.16     1.16     8.37     8.60      0
+
+== CSV profiler per phase (frames of terrain.csv tagged by the director's phase events; ms)
+tag              phase               n  fps p50 fps 1%lo  GPU p50   GT p50   RT p50   max ms  prims p50
+
+== brush ticks by diameter (ms; gate configuration, pooled over its runs, none measured: ['s1_col', 's1_col_r2', 's1_col_r3', 'soak0'])
+    d      n   tot p50   tot p99   tot max   apply50    norm50     upl50   splat50
+    5   2279     0.067     0.170     0.300     0.004     0.003     0.059     0.000
+    6    180     0.010     0.183     0.206     0.006     0.000     0.000     0.004
+   14    120     0.017     0.244     0.325     0.014     0.000     0.000     0.004
+   16    180     0.076     0.166     0.241     0.006     0.017     0.051     0.000
+   20   2265     0.106     0.254     0.504     0.010     0.022     0.070     0.000
+   24     90     0.035     0.450     0.450     0.031     0.000     0.000     0.004
+   30    300     0.148     0.269     0.316     0.013     0.047     0.092     0.000
+   36    120     0.142     0.294     0.387     0.017     0.063     0.053     0.000
+   40    210     0.202     0.352     0.354     0.025     0.077     0.089     0.000
+   60   2280     0.337     0.567     0.729     0.046     0.138     0.132     0.000
+  100   2220     0.720     1.191     1.512     0.110     0.364     0.200     0.000
+by mode: flatten n=1890 p50=0.188 p99=1.061, lower n=1965 p50=0.185 p99=0.983, paint n=2190 p50=0.043 p99=0.761, raise n=2309 p50=0.157 p99=0.945, smooth n=1890 p50=0.240 p99=1.113
+
+== brush ticks by diameter (ms; REPORTED, configuration half=160 chunk=64 draw=Dynamic CollisionDuringStroke=250: ['soak250'])
+    d      n   tot p50   tot p99   tot max   apply50    norm50     upl50   splat50
+    5   2279     0.064     0.157     0.226     0.004     0.003     0.056     0.000
+   20   2220     0.102     0.250     0.564     0.010     0.021     0.066     0.000
+   60   2280     0.333     0.576     0.740     0.046     0.137     0.130     0.000
+  100   2220     0.706     1.184     1.559     0.110     0.363     0.194     0.000
+by mode: flatten n=1800 p50=0.247 p99=0.985, lower n=1800 p50=0.250 p99=0.989, paint n=1800 p50=0.112 p99=0.806, raise n=1799 p50=0.248 p99=1.057, smooth n=1800 p50=0.289 p99=1.129
+
+== brush ticks by diameter (ms; REPORTED, configuration half=160 chunk=64 draw=Dynamic FastCook=0: ['s1_col_nofast'])
+    d      n   tot p50   tot p99   tot max   apply50    norm50     upl50   splat50
+    6     60     0.010     0.213     0.213     0.006     0.000     0.000     0.004
+   14     40     0.018     0.398     0.398     0.013     0.000     0.000     0.004
+   16     60     0.076     0.132     0.132     0.005     0.017     0.053     0.000
+   20     15     0.165     0.209     0.209     0.007     0.029     0.127     0.000
+   24     30     0.032     0.418     0.418     0.027     0.000     0.000     0.004
+   30    100     0.146     0.259     0.281     0.012     0.046     0.097     0.000
+   36     40     0.135     0.202     0.202     0.017     0.059     0.052     0.000
+   40     70     0.197     0.389     0.389     0.021     0.069     0.084     0.000
+by mode: flatten n=30 p50=0.111 p99=0.191, lower n=55 p50=0.147 p99=0.209, paint n=130 p50=0.015 p99=0.398, raise n=170 p50=0.136 p99=0.281, smooth n=30 p50=0.239 p99=0.389
+
+== brush ticks by diameter (ms; REPORTED, configuration half=160 chunk=64 draw=Dynamic mi.MemoryResetDelay 0: ['soak0_mi0'])
+    d      n   tot p50   tot p99   tot max   apply50    norm50     upl50   splat50
+    5   2279     0.068     0.176     0.483     0.004     0.004     0.059     0.000
+   20   2220     0.108     0.276     0.516     0.010     0.022     0.070     0.000
+   60   2280     0.346     0.609     0.782     0.047     0.140     0.136     0.000
+  100   2220     0.733     1.219     1.792     0.111     0.364     0.206     0.000
+by mode: flatten n=1800 p50=0.251 p99=1.053, lower n=1800 p50=0.286 p99=1.072, paint n=1800 p50=0.116 p99=0.876, raise n=1799 p50=0.247 p99=1.000, smooth n=1800 p50=0.296 p99=1.163
+
+== render-thread acceptance latency of ranged edits
+s1_col           edits=644 finished=644 frames p50=1 p95=1 p99=1 max=1 hist(0..4+)=[0, 644, 0, 0, 0] ms p50=8.24 proxy_recreates_during_strokes=0 proxy_recreates=75
+s1_col_r2        edits=644 finished=644 frames p50=1 p95=1 p99=1 max=1 hist(0..4+)=[0, 644, 0, 0, 0] ms p50=8.19 proxy_recreates_during_strokes=0 proxy_recreates=75
+s1_col_r3        edits=644 finished=644 frames p50=1 p95=1 p99=1 max=1 hist(0..4+)=[0, 644, 0, 0, 0] ms p50=8.23 proxy_recreates_during_strokes=0 proxy_recreates=75
+s1_col_nofast    edits=644 finished=644 frames p50=1 p95=1 p99=1 max=1 hist(0..4+)=[0, 644, 0, 0, 0] ms p50=8.21 proxy_recreates_during_strokes=0 proxy_recreates=75
+soak0            edits=24956 finished=24956 frames p50=1 p95=1 p99=1 max=1 hist(0..4+)=[0, 24956, 0, 0, 0] ms p50=8.09 proxy_recreates_during_strokes=0 proxy_recreates=50
+soak250          edits=24956 finished=24956 frames p50=1 p95=1 p99=1 max=1 hist(0..4+)=[0, 24956, 0, 0, 0] ms p50=8.14 proxy_recreates_during_strokes=0 proxy_recreates=50
+soak0_mi0        edits=24956 finished=24956 frames p50=1 p95=1 p99=1 max=2 hist(0..4+)=[0, 24953, 3, 0, 0] ms p50=8.07 proxy_recreates_during_strokes=0 proxy_recreates=100
+
+== memory (UsedPhysical MB) and bodies
+s1_col           n=10 start=2542 end=2929 peak=2929 growth_peak=386 growth_end=386 bodies total/rmc peak=-1/-1 end=-1/-1 vram_peak_mib=2396
+s1_col_r2        n=10 start=2509 end=3003 peak=3003 growth_peak=494 growth_end=494 bodies total/rmc peak=-1/-1 end=-1/-1 vram_peak_mib=2412
+s1_col_r3        n=10 start=2496 end=3055 peak=3055 growth_peak=558 growth_end=558 bodies total/rmc peak=-1/-1 end=-1/-1 vram_peak_mib=2417
+s1_col_nofast    n=10 start=2539 end=3060 peak=3063 growth_peak=524 growth_end=521 bodies total/rmc peak=-1/-1 end=-1/-1 vram_peak_mib=2424
+soak0            n=167 start=2548 end=2628 peak=2628 growth_peak=79 growth_end=79 bodies total/rmc peak=213/178 end=60/25 vram_peak_mib=2317
+                 after gc (sample 152): growth 79.4961 MB, bodies total/rmc 60/25, undo 40.6360 MB, excl. undo 38.8601 MB; delayed (12.0062 s after gc, reported): growth 78.8594 MB, undo 40.6360 MB; residue (undo cleared + gc + trim, reported): growth 79.4844 MB, bodies rmc 25
+soak250          n=167 start=2553 end=2932 peak=2932 growth_peak=380 growth_end=380 bodies total/rmc peak=775/740 end=60/25 vram_peak_mib=2359
+                 after gc (sample 152): growth 379.6367 MB, bodies total/rmc 60/25, undo 40.6360 MB, excl. undo 339.0007 MB; delayed (12.0028 s after gc, reported): growth 378.5312 MB, undo 40.6360 MB; residue (undo cleared + gc + trim, reported): growth 379.2461 MB, bodies rmc 25
+soak0_mi0        n=167 start=2497 end=2560 peak=2560 growth_peak=64 growth_end=64 bodies total/rmc peak=213/178 end=60/25 vram_peak_mib=2359
+                 after gc (sample 152): growth 63.8906 MB, bodies total/rmc 60/25, undo 40.6360 MB, excl. undo 23.2546 MB; delayed (12.0004 s after gc, reported): growth 27.2539 MB, undo 40.6360 MB; residue (undo cleared + gc + trim, reported): growth -6.4062 MB, bodies rmc 25
+
+== hashes
+s1_col           after        height=0xff563549 splat=0xd264ddc9 sim_grid=0x53a3de06 ticks=415
+s1_col           pre_last2    height=0x47f2ef9b splat=0x124af687 sim_grid=0x906d76c9 ticks=355
+s1_col           redo         height=0xff563549 splat=0xd264ddc9 sim_grid=0x53a3de06 ticks=415
+s1_col           undo         height=0x47f2ef9b splat=0x124af687 sim_grid=0x906d76c9 ticks=415
+s1_col           final        height=0xff563549 splat=0xd264ddc9
+s1_col_r2        after        height=0xff563549 splat=0xd264ddc9 sim_grid=0x53a3de06 ticks=415
+s1_col_r2        pre_last2    height=0x47f2ef9b splat=0x124af687 sim_grid=0x906d76c9 ticks=355
+s1_col_r2        redo         height=0xff563549 splat=0xd264ddc9 sim_grid=0x53a3de06 ticks=415
+s1_col_r2        undo         height=0x47f2ef9b splat=0x124af687 sim_grid=0x906d76c9 ticks=415
+s1_col_r2        final        height=0xff563549 splat=0xd264ddc9
+s1_col_r3        after        height=0xff563549 splat=0xd264ddc9 sim_grid=0x53a3de06 ticks=415
+s1_col_r3        pre_last2    height=0x47f2ef9b splat=0x124af687 sim_grid=0x906d76c9 ticks=355
+s1_col_r3        redo         height=0xff563549 splat=0xd264ddc9 sim_grid=0x53a3de06 ticks=415
+s1_col_r3        undo         height=0x47f2ef9b splat=0x124af687 sim_grid=0x906d76c9 ticks=415
+s1_col_r3        final        height=0xff563549 splat=0xd264ddc9
+s1_col_nofast    after        height=0xff563549 splat=0xd264ddc9 sim_grid=0x53a3de06 ticks=415
+s1_col_nofast    pre_last2    height=0x47f2ef9b splat=0x124af687 sim_grid=0x906d76c9 ticks=355
+s1_col_nofast    redo         height=0xff563549 splat=0xd264ddc9 sim_grid=0x53a3de06 ticks=415
+s1_col_nofast    undo         height=0x47f2ef9b splat=0x124af687 sim_grid=0x906d76c9 ticks=415
+s1_col_nofast    final        height=0xff563549 splat=0xd264ddc9
+soak0            final        height=0x446845ca splat=0x24a895c7
+soak250          final        height=0x446845ca splat=0x24a895c7
+soak0_mi0        final        height=0x446845ca splat=0x24a895c7
+
+== reported (not gated): triangles / chunks / hitches / dropped ticks / walks / settle
+s1_col           triangles=204800 chunks=25 walks=[] hitches=0 settle_ms=[270, 1418, 169, 172]
+s1_col_r2        triangles=204800 chunks=25 walks=[] hitches=0 settle_ms=[269, 1401, 173, 171]
+s1_col_r3        triangles=204800 chunks=25 walks=[] hitches=0 settle_ms=[274, 1401, 174, 171]
+s1_col_nofast    triangles=204800 chunks=25 walks=[] hitches=0 settle_ms=[272, 1403, 171, 170]
+soak0            triangles=204800 chunks=25 walks=[(8999, 0)] hitches=0 settle_ms=[269]
+soak250          triangles=204800 chunks=25 walks=[(8999, 0)] hitches=0 settle_ms=[266]
+soak0_mi0        triangles=204800 chunks=25 walks=[(8999, 0)] hitches=0 settle_ms=[271]
+
+== rep spread (reps of one configuration; > 5 % is flagged)
+half=160 chunk=64 draw=Dynamic | S1 units=0  tick total p50 ms  reps=3 spread=9.3 % FLAG
+
+== plan C 5 metrics (NO measured run: timings are REPORTED, not gated (EXECUTION 3 C9))
+GATE REPORTED-pass P1 tick p50 d20            0.106 ms <= 1.0 (n=2265)
+GATE REPORTED-pass P1 tick p50 d100           0.720 ms <= 2.0 (n=2220)
+GATE REPORTED-pass P1 tick p99                1.024 ms <= 4.0 (n=10244)
+GATE REPORTED-pass P2 latency median          1.0 frames <= 2 (26888 edits)
+GATE REPORTED-pass P2 in-place use            proxy_recreates_during_strokes 0 of 26888 ranged edits (<= 5 %)
+GATE FAIL         P3 fps with 1000 units     no samples (no C1U run with -ChimeraTerrainUnits=1000)
+GATE FAIL         P4 terrain GPU ms          no samples (no C1 run with idle_visible and idle_hidden phases)
+GATE PASS         P5 s1_col correctness      P5 collision pre_last2 PASS; P5 collision after PASS; P5 collision undo PASS; P5 collision redo PASS; P5_cooks_valid PASS
+GATE PASS         P5 s1_col_r2 correctness   P5 collision pre_last2 PASS; P5 collision after PASS; P5 collision undo PASS; P5 collision redo PASS; P5_cooks_valid PASS
+GATE PASS         P5 s1_col_r3 correctness   P5 collision pre_last2 PASS; P5 collision after PASS; P5 collision undo PASS; P5 collision redo PASS; P5_cooks_valid PASS
+GATE PASS         P5 s1_col_nofast correctness P5 collision pre_last2 PASS; P5 collision after PASS; P5 collision undo PASS; P5 collision redo PASS; P5_cooks_valid PASS
+GATE PASS         P5 soak0 correctness       P5 collision end PASS; P5_cooks_valid PASS
+GATE PASS         P5 soak250 correctness     P5 collision end PASS; P5_cooks_valid PASS
+GATE PASS         P5 soak0_mi0 correctness   P5 collision end PASS; P5_cooks_valid PASS
+
+== collision cooks and GT apply (ms; per run)
+tag              fast_cook during   cooks cook p50 cook p95 cook max   gt n   gt p95   gt max
+s1_col           True      0           43     3.59    10.43    10.70     11    1.307    1.307
+s1_col_r2        True      0           43     3.78     9.19    10.91     11    1.030    1.030
+s1_col_r3        True      0           43     3.97     9.65    10.59     11    1.167    1.167
+s1_col_nofast    False     0           43     3.38     9.94    10.85     11    1.151    1.151
+soak0            True      0          711     3.38     4.56     5.67    192    0.961    1.137
+soak250          True      250       3354     3.17     4.46     6.90    192    0.970    1.121
+soak0_mi0        True      0          711     3.60     5.42     6.67    192    1.019    1.827
+GATE REPORTED-pass P5 cook p95                8.42 ms <= 50 (n=840 pooled)
+GATE REPORTED-pass P5 GT apply p95            0.985 ms <= 4 (n=225 pooled)
+GATE PASS         P6 soak0                   peak growth 79 MB <= 300, after gc 79 MB <= 100, RMC bodies after gc 25 <= 50; reported: peak bodies RMC 178 / total 213, bodies created 711 in 300 s = 2.37/s (mid-stroke 0); undo history at the gc sample 41 MB (growth excl. undo, by subtraction: 39 MB at the gc sample, 42 MB peak); delayed sample 12 s after gc growth 79 MB (undo 41 MB); residue (undo cleared, gc, trim, 24 s after gc) growth 79 MB, RMC bodies 25
+GATE REPORTED-fail P6 soak250                 peak growth 380 MB <= 300, after gc 380 MB <= 100, RMC bodies after gc 25 <= 50; reported: peak bodies RMC 740 / total 775, bodies created 3354 in 300 s = 11.18/s (mid-stroke 2643); undo history at the gc sample 41 MB (growth excl. undo, by subtraction: 339 MB at the gc sample, 341 MB peak); delayed sample 12 s after gc growth 379 MB (undo 41 MB); residue (undo cleared, gc, trim, 24 s after gc) growth 379 MB, RMC bodies 25
+GATE REPORTED-pass P6 soak0_mi0               peak growth 64 MB <= 300, after gc 64 MB <= 100, RMC bodies after gc 25 <= 50; reported: peak bodies RMC 178 / total 213, bodies created 711 in 300 s = 2.37/s (mid-stroke 0); undo history at the gc sample 41 MB (growth excl. undo, by subtraction: 23 MB at the gc sample, 32 MB peak); delayed sample 12 s after gc growth 27 MB (undo 41 MB); residue (undo cleared, gc, trim, 24 s after gc) growth -6 MB, RMC bodies 25
+GATE PASS         P7 s1_col                  hashes undo=pre_last2, redo=after, local image statistic, A/A floor and control (7 bars)
+GATE PASS         P11 s1_col                 depth bars at after/undo/pre_last2 x rts80/oblique, full frame and footprint (10 bars)
+GATE PASS         P7 s1_col_r2               hashes undo=pre_last2, redo=after, local image statistic, A/A floor and control (7 bars)
+GATE PASS         P11 s1_col_r2              depth bars at after/undo/pre_last2 x rts80/oblique, full frame and footprint (10 bars)
+GATE PASS         P7 s1_col_r3               hashes undo=pre_last2, redo=after, local image statistic, A/A floor and control (7 bars)
+GATE PASS         P11 s1_col_r3              depth bars at after/undo/pre_last2 x rts80/oblique, full frame and footprint (10 bars)
+GATE PASS         P7 s1_col_nofast           hashes undo=pre_last2, redo=after, local image statistic, A/A floor and control (7 bars)
+GATE PASS         P11 s1_col_nofast          depth bars at after/undo/pre_last2 x rts80/oblique, full frame and footprint (10 bars)
+GATE PASS         P8 determinism             final hashes of ['s1_col', 's1_col_r2', 's1_col_r3', 's1_col_nofast'] equal (full check: --same-hash A B)
+GATE FAIL         P9 sim grid                no samples here: `--simgrid RUN` (python mirror) and C10's elevhash (C#) decide it
+GATE FAIL         P10 mouse                  no samples (no MOUSE run)
+
+GATES: pass=19 fail=4 reported=9 flags=1

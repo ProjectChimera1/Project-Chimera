@@ -57,6 +57,74 @@ namespace ChimeraTerrain
 		double Ms = 0.0;
 	};
 
+	/** Why a chunk's physics collision was rewritten (plan C 3.6: stroke end, undo and redo; the cvar's throttled mid-stroke updates). */
+	enum class ETerrainCollisionReason : uint8
+	{
+		Init,
+		StrokeEnd,
+		MidStroke,
+		Undo,
+		Redo,
+		Load,
+		Count
+	};
+
+	const TCHAR* CollisionReasonName(ETerrainCollisionReason Reason);
+
+	/** Collision settings (plan C 3.6). Set before Initialize. */
+	struct FTerrainCollisionOptions
+	{
+		/** FRealtimeMeshCollisionConfiguration::bShouldFastCookMeshes (measured both ways in C5). */
+		bool bFastCook = true;
+	};
+
+	/** One finished per-chunk collision update: submit to the resolved future (plan C 3.6 "cook time"). */
+	struct FTerrainCollisionCook
+	{
+		int32 Chunk = INDEX_NONE;
+		ETerrainCollisionReason Reason = ETerrainCollisionReason::Init;
+		/** Milliseconds and frames from SetCustomComplexMeshGeometry to the future's value. */
+		double Ms = 0.0;
+		int32 Frames = 0;
+		/** ERealtimeMeshCollisionUpdateResult as an int (0 Unknown, 1 Updated, 2 Ignored, 3 Error). */
+		uint8 Result = 0;
+		/** TriMeshGeometries.Num() of the mesh's body when the future resolved (a cook counts only when > 0). */
+		int32 TriMeshes = 0;
+	};
+
+	/** One collision batch (all chunks of one stroke end, undo, redo, ...): the game-thread cost of applying it (P5 "GT apply"). */
+	struct FTerrainCollisionBatch
+	{
+		int32 Id = 0;
+		ETerrainCollisionReason Reason = ETerrainCollisionReason::Init;
+		int32 Chunks = 0;
+		/** Game-thread ms to build the chunks' collision geometry and submit it. */
+		double SubmitMs = 0.0;
+		/** Game-thread ms the chunks spent recreating their physics state for this batch's new bodies (Destroy + Create). */
+		double PhysicsStateMs = 0.0;
+		bool bComplete = false;
+		double GtApplyMs() const { return SubmitMs + PhysicsStateMs; }
+	};
+
+	/** A chunk's collision as the director's wait_collision sees it. */
+	struct FTerrainChunkCollisionState
+	{
+		int32 Chunk = INDEX_NONE;
+		/** A submitted update whose future has not resolved yet. */
+		bool bPending = false;
+		int64 Submits = 0;
+		/** Result of the newest resolved update (ERealtimeMeshCollisionUpdateResult as an int). */
+		uint8 LastResult = 0;
+		/** TriMeshGeometries.Num() of the mesh's current body (0 = no body or no trimesh). */
+		int32 TriMeshes = 0;
+		/** The component's body instance is valid and uses the mesh's current body setup. */
+		bool bPhysicsCurrent = false;
+		/** Chunk centre in terrain metres (XY of the render rect's centre). */
+		FVector2D CenterM = FVector2D::ZeroVector;
+		/** The chunk's component (valid for the frame it was read in): the centre probe must hit this chunk, not a neighbour. */
+		const UPrimitiveComponent* Component = nullptr;
+	};
+
 	/**
 	 * Draws an FTerrainHeightfield as a grid of chunk components. Owns no height data: every call reads the caller's arrays.
 	 * Threading: game thread only.
@@ -99,6 +167,23 @@ namespace ChimeraTerrain
 
 		virtual FTerrainRenderStats GetStats() const = 0;
 		virtual void GetComponents(TArray<UPrimitiveComponent*>& Out) const = 0;
+
+		// ---- physics collision (plan C 3.6) ----------------------------------------------------------------------
+		/** Collision settings; call before Initialize. */
+		virtual void SetCollisionOptions(const FTerrainCollisionOptions& InOptions) = 0;
+		virtual FTerrainCollisionOptions GetCollisionOptions() const = 0;
+		/**
+		 * Rewrite the physics collision of every chunk whose render rect meets VertexRect from the CPU heights (render sections stay
+		 * collision-free). Returns the number of chunks submitted.
+		 */
+		virtual int32 UpdateCollision(const FTerrainHeightfield& HF, const FTerrainRect& VertexRect, ETerrainCollisionReason Reason) = 0;
+		/** True while any submitted collision update has not resolved. */
+		virtual bool HasPendingCollision() const = 0;
+		virtual void GetChunkCollisionStates(TArray<FTerrainChunkCollisionState>& Out) const = 0;
+		/** Every resolved per-chunk update since construction (oldest first). */
+		virtual const TArray<FTerrainCollisionCook>& GetCollisionCooks() const = 0;
+		/** Every collision batch since construction (oldest first); bComplete once all its chunks resolved. */
+		virtual const TArray<FTerrainCollisionBatch>& GetCollisionBatches() const = 0;
 		virtual const TCHAR* GetName() const = 0;
 	};
 }

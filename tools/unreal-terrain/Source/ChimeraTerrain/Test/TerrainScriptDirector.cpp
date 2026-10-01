@@ -15,6 +15,10 @@
 #include "Game/RtsCameraPawn.h"
 #include "Game/TerrainActor.h"
 #include "Game/TerrainLighting.h"
+#include "Render/TerrainChunkComponent.h"
+#include "Core/RealtimeMeshCollision.h"
+#include "CollisionQueryParams.h"
+#include "Engine/HitResult.h"
 #include "GameFramework/HUD.h"
 #include "GameFramework/PlayerController.h"
 #include "Camera/PlayerCameraManager.h"
@@ -354,7 +358,7 @@ void ATerrainScriptDirector::SampleMemoryIfDue(bool bForce)
 	NextMemSampleSeconds = Now + 2.0;
 	// Bodies are counted only where plan C 3.8 asks for them (soak) and at forced samples; other runs record UsedPhysical only.
 	const bool bCountBodies = bForce || (Walk.bActive && Walk.bSoak);
-	Metrics.SampleMemory(Now - RunStartSeconds, bCountBodies);
+	Metrics.SampleMemory(Now - RunStartSeconds, bCountBodies, Terrain ? static_cast<double>(Terrain->GetUndoBytes()) / (1024.0 * 1024.0) : -1.0);
 }
 
 APlayerController* ATerrainScriptDirector::GetPC() const
@@ -423,6 +427,14 @@ double ATerrainScriptDirector::OpTimeoutSeconds(const FString& Name, const FJson
 	{
 		return NumField(Op, TEXT("minutes"), 5.0) * 60.0 * 1.5 + 180.0;
 	}
+	if (Name == TEXT("residue"))
+	{
+		return 2.0 * NumField(Op, TEXT("delay_s"), 12.0) + 120.0;
+	}
+	if (Name == TEXT("wait_collision"))
+	{
+		return 30.0 + 5.0;   // the op fails itself with the chunk list at 30 s (plan C 3.8); this is the backstop
+	}
 	return 120.0;
 }
 
@@ -461,7 +473,7 @@ void ATerrainScriptDirector::Tick(float DeltaSeconds)
 		const double Now = FPlatformTime::Seconds();
 		if (OpFrame == 0 && OpPhase == 0)
 		{
-			UE_LOG(LogChimeraTerrain, Display, TEXT("op %d/%d %s"), OpIndex + 1, Ops.Num(), *Name);
+			UE_LOG(LogChimeraTerrain, Display, TEXT("op %d/%d %s frame=%llu"), OpIndex + 1, Ops.Num(), *Name, static_cast<unsigned long long>(GFrameCounter));
 			const FString PhaseName = StrField(Op, TEXT("phase"));
 			if (!PhaseName.IsEmpty())
 			{
@@ -534,12 +546,14 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepOp(const FJsonObject& 
 	if (Name == TEXT("random_walk")) return StepRandomWalk(Op, false);
 	if (Name == TEXT("soak")) return StepRandomWalk(Op, true);
 	if (Name == TEXT("gc")) return StepGc(Op);
+	if (Name == TEXT("residue")) return StepResidue(Op);
 	if (Name == TEXT("csv")) return StepCsv(Op);
 	if (Name == TEXT("movie")) return StepMovie(Op);
 	if (Name == TEXT("depthcheck")) return StepDepthCheck(Op);
 	if (Name == TEXT("project_footprint")) return StepProjectFootprint(Op);
 	if (Name == TEXT("await_mouse")) return StepAwaitMouse(Op);
-	if (Name == TEXT("wait_collision") || Name == TEXT("verify_collision")) return StepSkippedCollision(Name);
+	if (Name == TEXT("wait_collision")) return StepWaitCollision(Op);
+	if (Name == TEXT("verify_collision")) return StepVerifyCollision(Op);
 	if (Name == TEXT("fail"))
 	{
 		OpError = TEXT("fail op (exit-code contract test)");
@@ -1235,8 +1249,70 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepRandomWalk(const FJson
 	{
 		// One blocking gc and a final sample (plan C 3.8); the samples before it were taken with no forced GC.
 		SampleMemoryIfDue(true);
-		return StepGc(Op);
+		const EStep R = StepGc(Op);
+		// P6 reads its after-GC figures from this sample by index; sampling continues every 2 s after the soak.
+		Metrics.MarkAfterGc();
+		AfterGcSeconds = FPlatformTime::Seconds();
+		return R;
 	}
+	return EStep::Done;
+}
+
+ATerrainScriptDirector::EStep ATerrainScriptDirector::StepResidue(const FJsonObject& Op)
+{
+	// Reported only, after every gated sample (C5 rework). UE's Mimalloc keeps freed pages in the process for mi.MemoryResetDelay ms
+	// (MallocMimalloc.cpp:33, default 10000) and UsedPhysical is the working set (WindowsPlatformMemory.cpp:342), so a sample taken
+	// milliseconds after a free cannot show the release. Phase 0: wait delay_s (default 12) after the soak's GC, then a DELAYED sample
+	// with the undo history still held. Phase 1: clear the history (FTerrainUndo::Clear), a second blocking GC (UObjectGlobals.h
+	// CollectGarbage), FMemory::Trim (UnrealMemory.h:229), an immediate sample, then wait delay_s again. Phase 2: the RESIDUE sample.
+	// Never feeds P6's gated figures (TerrainMetrics.cpp MemoryToJson's window ends at the after-GC sample).
+	const double DelayS = FMath::Max(0.0, NumField(Op, TEXT("delay_s"), 12.0));
+	const double Now = FPlatformTime::Seconds();
+	auto UndoMb = [this]() { return Terrain ? static_cast<double>(Terrain->GetUndoBytes()) / (1024.0 * 1024.0) : -1.0; };
+	if (OpFrame == 0)
+	{
+		OpPhase = 0;
+		OpPhaseSeconds = AfterGcSeconds > 0.0 ? AfterGcSeconds : Now;
+	}
+	if (Now - OpPhaseSeconds < DelayS)
+	{
+		return EStep::Running;
+	}
+	if (OpPhase == 0)
+	{
+		Metrics.SampleMemory(Now - RunStartSeconds, true, UndoMb());
+		Metrics.MarkDelayed();
+		UE_LOG(LogChimeraTerrain, Display, TEXT("residue: delayed sample %.1f s after the soak gc: used %.0f MB, undo %.1f MB"), Now - OpPhaseSeconds, UsedPhysicalMB(), UndoMb());
+		ResidueUsedBeforeMb = UsedPhysicalMB();
+		ResidueUndoClearedMb = UndoMb();
+		if (Terrain)
+		{
+			Terrain->ClearUndoHistory();
+		}
+		const double T0 = FPlatformTime::Seconds();
+		CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS, true);
+		FMemory::Trim(true);
+		ResidueGcMs = (FPlatformTime::Seconds() - T0) * 1000.0;
+		Metrics.SampleMemory(FPlatformTime::Seconds() - RunStartSeconds, true, UndoMb());
+		ResidueUsedImmediateMb = UsedPhysicalMB();
+		OpPhase = 1;
+		OpPhaseSeconds = FPlatformTime::Seconds();
+		return EStep::Running;
+	}
+	Metrics.SampleMemory(Now - RunStartSeconds, true, UndoMb());
+	Metrics.MarkResidue();
+	NextMemSampleSeconds = FPlatformTime::Seconds() + 2.0;
+	TSharedRef<FJsonObject> G = MakeShared<FJsonObject>();
+	G->SetStringField(TEXT("kind"), TEXT("residue"));
+	G->SetNumberField(TEXT("ms"), ResidueGcMs);
+	G->SetNumberField(TEXT("delay_s"), DelayS);
+	G->SetNumberField(TEXT("used_mb_before"), ResidueUsedBeforeMb);
+	G->SetNumberField(TEXT("used_mb_immediate"), ResidueUsedImmediateMb);
+	G->SetNumberField(TEXT("used_mb_after"), UsedPhysicalMB());
+	G->SetNumberField(TEXT("undo_mb_cleared"), ResidueUndoClearedMb);
+	Gcs.Add(MakeShared<FJsonValueObject>(G));
+	UE_LOG(LogChimeraTerrain, Display, TEXT("residue: undo %.1f MB cleared, gc+trim %.1f ms, used %.0f -> %.0f MB at once -> %.0f MB after %.0f s"),
+		ResidueUndoClearedMb, ResidueGcMs, ResidueUsedBeforeMb, ResidueUsedImmediateMb, UsedPhysicalMB(), DelayS);
 	return EStep::Done;
 }
 
@@ -1246,7 +1322,7 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepGc(const FJsonObject& 
 	const double T0 = FPlatformTime::Seconds();
 	CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS, true);
 	const double Ms = (FPlatformTime::Seconds() - T0) * 1000.0;
-	Metrics.SampleMemory(FPlatformTime::Seconds() - RunStartSeconds, true);
+	Metrics.SampleMemory(FPlatformTime::Seconds() - RunStartSeconds, true, Terrain ? static_cast<double>(Terrain->GetUndoBytes()) / (1024.0 * 1024.0) : -1.0);
 	NextMemSampleSeconds = FPlatformTime::Seconds() + 2.0;
 	TSharedRef<FJsonObject> G = MakeShared<FJsonObject>();
 	G->SetNumberField(TEXT("ms"), Ms);
@@ -1879,16 +1955,463 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepAwaitMouse(const FJson
 	return EStep::Done;
 }
 
-ATerrainScriptDirector::EStep ATerrainScriptDirector::StepSkippedCollision(const FString& Name)
+bool ATerrainScriptDirector::PhysicsRay(const FVector& OriginM, const FVector& DirM, double MaxM, FVector& OutHitM, bool& OutTerrain,
+	const UPrimitiveComponent** OutComponent) const
 {
-	// C5 builds the collision path; until then these ops log and record that they did nothing, and parse_terrain.py fails every gate that needs them.
-	TSharedRef<FJsonObject> S = MakeShared<FJsonObject>();
-	S->SetStringField(TEXT("op"), Name);
-	S->SetNumberField(TEXT("op_index"), OpIndex + 1);
-	S->SetStringField(TEXT("reason"), TEXT("skipped:C5"));
-	Skipped.Add(MakeShared<FJsonValueObject>(S));
-	UE_LOG(LogChimeraTerrain, Display, TEXT("op %s skipped:C5"), *Name);
+	OutTerrain = false;
+	if (OutComponent)
+	{
+		*OutComponent = nullptr;
+	}
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return false;
+	}
+	// Complex trace on the Visibility channel, the one channel the chunks block (plan C 3.6; World.h:2161).
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(ChimeraTerrainCollision), true);
+	if (APlayerController* PC = GetPC())
+	{
+		if (APawn* Pawn = PC->GetPawn())
+		{
+			Params.AddIgnoredActor(Pawn);
+		}
+	}
+	FHitResult Hit;
+	const FVector Start = OriginM * 100.0;
+	const FVector End = (OriginM + DirM * MaxM) * 100.0;
+	if (!World->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility, Params))
+	{
+		return false;
+	}
+	OutHitM = Hit.ImpactPoint / 100.0;
+	OutTerrain = Cast<UTerrainChunkComponent>(Hit.GetComponent()) != nullptr;
+	if (OutComponent)
+	{
+		*OutComponent = Hit.GetComponent();
+	}
+	return true;
+}
+
+ATerrainScriptDirector::EStep ATerrainScriptDirector::StepWaitCollision(const FJsonObject& Op)
+{
+	// Plan C 3.8 wait_collision (30 s): all collision futures resolved AND every chunk's body has a trimesh (BodySetup.h:278) AND the
+	// component's physics state uses that body AND a vertical probe ray at the chunk centre hits the terrain.
+	constexpr double TimeoutS = 30.0;
+	const FString Name = StrField(Op, TEXT("name"), FString::Printf(TEXT("wait%d"), OpIndex + 1));
+	ITerrainChunkRenderer* R = Terrain->GetRenderer();
+	if (!R)
+	{
+		OpError = TEXT("no renderer");
+		return EStep::Failed;
+	}
+	R->PollCompletions();
+	TArray<FTerrainChunkCollisionState> States;
+	R->GetChunkCollisionStates(States);
+	if (CollisionSubmitsAtLastWait.Num() != States.Num())
+	{
+		// First wait of the run: everything submitted since the start counts as touched.
+		CollisionSubmitsAtLastWait.Init(0, States.Num());
+	}
+	const double Top = static_cast<double>(MaxHeightM) + 20.0;
+	int32 Pending = 0;
+	int32 BadResult = 0;
+	int32 NoTrimesh = 0;
+	int32 NotCurrent = 0;
+	int32 ProbeMiss = 0;
+	int32 Touched = 0;
+	int32 MinTri = TNumericLimits<int32>::Max();
+	TArray<int32> Bad;
+	for (const FTerrainChunkCollisionState& S : States)
+	{
+		if (S.Submits != CollisionSubmitsAtLastWait[S.Chunk])
+		{
+			++Touched;
+		}
+		MinTri = FMath::Min(MinTri, S.TriMeshes);
+		bool bOk = true;
+		if (S.bPending)
+		{
+			++Pending;
+			bOk = false;
+		}
+		else if (S.LastResult != static_cast<uint8>(ERealtimeMeshCollisionUpdateResult::Updated)
+			&& S.LastResult != static_cast<uint8>(ERealtimeMeshCollisionUpdateResult::Ignored))
+		{
+			// Ignored = an older async cook finishing after a newer one (RealtimeMeshData.cpp:131-135); the body check below decides.
+			++BadResult;
+			bOk = false;
+		}
+		if (S.TriMeshes <= 0)
+		{
+			++NoTrimesh;
+			bOk = false;
+		}
+		if (!S.bPhysicsCurrent)
+		{
+			++NotCurrent;
+			bOk = false;
+		}
+		if (bOk)
+		{
+			FVector HitM;
+			bool bTerrain = false;
+			// The probe must hit THIS chunk's body, not a neighbour's (a stale or missing body would otherwise hide behind one).
+			const UPrimitiveComponent* HitComp = nullptr;
+			if (!PhysicsRay(FVector(S.CenterM.X, S.CenterM.Y, Top), FVector(0.0, 0.0, -1.0), 2.0 * Top, HitM, bTerrain, &HitComp) || !bTerrain
+				|| HitComp != S.Component)
+			{
+				++ProbeMiss;
+				bOk = false;
+			}
+		}
+		if (!bOk)
+		{
+			Bad.Add(S.Chunk);
+		}
+	}
+	const double Elapsed = FPlatformTime::Seconds() - OpStartSeconds;
+	if (Bad.Num() > 0 && Elapsed < TimeoutS)
+	{
+		return EStep::Running;
+	}
+	TSharedRef<FJsonObject> W = MakeShared<FJsonObject>();
+	W->SetStringField(TEXT("name"), Name);
+	W->SetNumberField(TEXT("ms"), Elapsed * 1000.0);
+	W->SetNumberField(TEXT("frames"), OpFrame + 1);
+	W->SetNumberField(TEXT("chunks"), States.Num());
+	W->SetNumberField(TEXT("touched"), Touched);
+	W->SetNumberField(TEXT("min_trimeshes"), States.Num() > 0 ? MinTri : 0);
+	W->SetNumberField(TEXT("probes_hit"), States.Num() - Bad.Num());
+	W->SetNumberField(TEXT("pending"), Pending);
+	W->SetNumberField(TEXT("bad_result"), BadResult);
+	W->SetNumberField(TEXT("no_trimesh"), NoTrimesh);
+	W->SetNumberField(TEXT("not_current"), NotCurrent);
+	W->SetNumberField(TEXT("probe_miss"), ProbeMiss);
+	W->SetBoolField(TEXT("ok"), Bad.Num() == 0 && States.Num() > 0);
+	CollisionWaits.Add(MakeShared<FJsonValueObject>(W));
+	FString BadList;
+	for (const int32 Id : Bad)
+	{
+		BadList += FString::Printf(TEXT("%s%d"), BadList.IsEmpty() ? TEXT("") : TEXT(","), Id);
+	}
+	UE_LOG(LogChimeraTerrain, Display, TEXT("wait_collision %s: %.0f ms chunks=%d touched=%d min_trimeshes=%d pending=%d bad_result=%d no_trimesh=%d not_current=%d probe_miss=%d"),
+		*Name, Elapsed * 1000.0, States.Num(), Touched, States.Num() > 0 ? MinTri : 0, Pending, BadResult, NoTrimesh, NotCurrent, ProbeMiss);
+	if (Bad.Num() > 0 || States.Num() == 0)
+	{
+		OpError = FString::Printf(TEXT("collision not current after %.0f s: pending=%d bad_result=%d no_trimesh=%d not_current=%d probe_miss=%d chunks=[%s]"),
+			Elapsed, Pending, BadResult, NoTrimesh, NotCurrent, ProbeMiss, *BadList);
+		return EStep::TimedOut;
+	}
+	for (const FTerrainChunkCollisionState& S : States)
+	{
+		CollisionSubmitsAtLastWait[S.Chunk] = S.Submits;
+	}
 	return EStep::Done;
+}
+
+ATerrainScriptDirector::EStep ATerrainScriptDirector::StepVerifyCollision(const FJsonObject& Op)
+{
+	// Plan C 3.8 verify_collision: seeded frustum rays plus vertical rays at the vertices of the last dirty rects, each cast through
+	// physics (LineTraceSingleByChannel ECC_Visibility) and the analytic pick; disagreements both ways and |dz| of the hit points.
+	const double T0 = FPlatformTime::Seconds();
+	const FString Name = StrField(Op, TEXT("name"), FString::Printf(TEXT("verify%d"), OpIndex + 1));
+	const FString PoseName = StrField(Op, TEXT("pose"), TEXT("rts80"));
+	FTerrainCameraPose Pose;
+	if (!FTerrainCameraPose::Find(PoseName, Pose))
+	{
+		OpError = FString::Printf(TEXT("unknown pose '%s'"), *PoseName);
+		return EStep::Failed;
+	}
+	const int32 N = FMath::Max(0, static_cast<int32>(NumField(Op, TEXT("n"), 2000.0)));
+	const int32 VertexCap = FMath::Max(0, static_cast<int32>(NumField(Op, TEXT("vertex_cap"), 4000.0)));
+	FRandomStream Rng(static_cast<int32>(NumField(Op, TEXT("seed"), 4242.0)));
+	const FTerrainHeightfield& HF = Terrain->GetHeightfield();
+
+	struct FAcc
+	{
+		int32 N = 0;
+		int32 BothHit = 0;
+		int32 BothMiss = 0;
+		int32 PhysicsOnly = 0;
+		int32 PickOnly = 0;
+		int32 Foreign = 0;
+		FTerrainSeries DzCm;
+		FTerrainSeries DistCm;
+		TArray<TSharedPtr<FJsonValue>> Examples;
+
+		int32 Disagreements() const { return PhysicsOnly + PickOnly + Foreign; }
+
+		void Write(FJsonObject& O) const
+		{
+			O.SetNumberField(TEXT("n"), N);
+			O.SetNumberField(TEXT("both_hit"), BothHit);
+			O.SetNumberField(TEXT("both_miss"), BothMiss);
+			O.SetNumberField(TEXT("physics_only_hit"), PhysicsOnly);
+			O.SetNumberField(TEXT("pick_only_hit"), PickOnly);
+			O.SetNumberField(TEXT("foreign_hit"), Foreign);
+			O.SetNumberField(TEXT("disagreements"), Disagreements());
+			O.SetNumberField(TEXT("max_dz_cm"), DzCm.Num() > 0 ? DzCm.Max() : 0.0);
+			O.SetObjectField(TEXT("dz_cm"), DzCm.ToJson());
+			O.SetObjectField(TEXT("dist_cm"), DistCm.ToJson());
+			O.SetArrayField(TEXT("disagreement_examples"), Examples);
+		}
+	};
+	auto CastBoth = [&](const FVector& Origin, const FVector& Dir, double MaxM, FAcc& A, const TCHAR* Kind)
+	{
+		++A.N;
+		FTerrainHit Pick;
+		const bool bPick = TerrainPick::RayCast(HF, Origin, Dir, MaxM, Pick);
+		FVector PhysM = FVector::ZeroVector;
+		bool bTerrain = false;
+		const bool bPhys = PhysicsRay(Origin, Dir, MaxM, PhysM, bTerrain);
+		FString Why;
+		if (bPhys && !bTerrain)
+		{
+			++A.Foreign;
+			Why = TEXT("foreign");
+		}
+		else if (bPhys && bPick)
+		{
+			++A.BothHit;
+			A.DzCm.Add(FMath::Abs(PhysM.Z - Pick.Position.Z) * 100.0);
+			A.DistCm.Add(FMath::Abs(FVector::Distance(Origin, PhysM) - Pick.Distance) * 100.0);
+		}
+		else if (!bPhys && !bPick)
+		{
+			++A.BothMiss;
+		}
+		else if (bPhys)
+		{
+			++A.PhysicsOnly;
+			Why = TEXT("physics_only");
+		}
+		else
+		{
+			++A.PickOnly;
+			Why = TEXT("pick_only");
+		}
+		if (!Why.IsEmpty() && A.Examples.Num() < 10)
+		{
+			TSharedRef<FJsonObject> E = MakeShared<FJsonObject>();
+			E->SetStringField(TEXT("kind"), Kind);
+			E->SetStringField(TEXT("why"), Why);
+			E->SetField(TEXT("origin_m"), VecToJson(Origin));
+			E->SetField(TEXT("dir"), VecToJson(Dir));
+			if (bPick)
+			{
+				E->SetField(TEXT("pick_m"), VecToJson(Pick.Position));
+			}
+			if (bPhys)
+			{
+				E->SetField(TEXT("physics_m"), VecToJson(PhysM));
+			}
+			A.Examples.Add(MakeShared<FJsonValueObject>(E));
+		}
+	};
+
+	// Frustum rays: seeded pixels of a 1920x1080 view at the pose (the depthcheck's camera model).
+	constexpr double ViewW = 1920.0;
+	constexpr double ViewH = 1080.0;
+	const FRotationMatrix RM(Pose.Rotation);
+	const FVector Fwd = RM.GetUnitAxis(EAxis::X);
+	const FVector Right = RM.GetUnitAxis(EAxis::Y);
+	const FVector Up = RM.GetUnitAxis(EAxis::Z);
+	const double TanH = FMath::Tan(FMath::DegreesToRadians(ARtsCameraPawn::HFovFromVFov(Pose.VFovDeg, static_cast<float>(ViewW / ViewH))) * 0.5);
+	const double TanV = TanH * ViewH / ViewW;
+	const FVector CamM = Pose.LocationCm / 100.0;
+	FAcc Frustum;
+	for (int32 I = 0; I < N; ++I)
+	{
+		const double Nx = Rng.FRandRange(-1.0, 1.0);
+		const double Ny = Rng.FRandRange(-1.0, 1.0);
+		const FVector Dir = (Fwd + Right * (Nx * TanH) + Up * (Ny * TanV)).GetSafeNormal();
+		CastBoth(CamM, Dir, 5000.0, Frustum, TEXT("frustum"));
+	}
+
+	// Vertex rays: every vertex inside the rects rewritten since the last verify, strided evenly down to the cap.
+	const TArray<FTerrainRect> Rects = Terrain->ConsumeCollisionRects();
+	TBitArray<> Mark(false, HF.Width() * HF.Width());
+	FTerrainRect Bounds;
+	for (const FTerrainRect& Rc : Rects)
+	{
+		const FTerrainRect C = Rc.Intersect(FTerrainRect(0, 0, HF.Width(), HF.Width()));
+		Bounds.Union(C);
+		for (int32 Y = C.Y0; Y < C.Y1; ++Y)
+		{
+			for (int32 X = C.X0; X < C.X1; ++X)
+			{
+				Mark[Y * HF.Width() + X] = true;
+			}
+		}
+	}
+	TArray<int32> Verts;
+	for (TConstSetBitIterator<> It(Mark); It; ++It)
+	{
+		Verts.Add(It.GetIndex());
+	}
+	const int32 Stride = (VertexCap > 0 && Verts.Num() > VertexCap) ? FMath::DivideAndRoundUp(Verts.Num(), VertexCap) : 1;
+	const double Top = static_cast<double>(MaxHeightM) + 20.0;
+	FAcc Vertex;
+	for (int32 I = 0; I < Verts.Num() && (VertexCap <= 0 || Vertex.N < VertexCap); I += Stride)
+	{
+		const int32 X = Verts[I] % HF.Width();
+		const int32 Y = Verts[I] / HF.Width();
+		CastBoth(FVector(HF.VertexToWorld(X), HF.VertexToWorld(Y), Top), FVector(0.0, 0.0, -1.0), 2.0 * Top, Vertex, TEXT("vertex"));
+	}
+
+	TSharedRef<FJsonObject> V = MakeShared<FJsonObject>();
+	V->SetStringField(TEXT("name"), Name);
+	V->SetStringField(TEXT("pose"), PoseName);
+	V->SetNumberField(TEXT("seed"), NumField(Op, TEXT("seed"), 4242.0));
+	TSharedRef<FJsonObject> Fj = MakeShared<FJsonObject>();
+	Frustum.Write(*Fj);
+	V->SetObjectField(TEXT("frustum"), Fj);
+	TSharedRef<FJsonObject> Vj = MakeShared<FJsonObject>();
+	Vertex.Write(*Vj);
+	Vj->SetNumberField(TEXT("rects"), Rects.Num());
+	Vj->SetNumberField(TEXT("vertices_in_rects"), Verts.Num());
+	Vj->SetNumberField(TEXT("stride"), Stride);
+	TArray<TSharedPtr<FJsonValue>> B;
+	B.Add(MakeShared<FJsonValueNumber>(Bounds.X0));
+	B.Add(MakeShared<FJsonValueNumber>(Bounds.Y0));
+	B.Add(MakeShared<FJsonValueNumber>(Bounds.X1));
+	B.Add(MakeShared<FJsonValueNumber>(Bounds.Y1));
+	Vj->SetArrayField(TEXT("rect_bounds"), B);
+	V->SetObjectField(TEXT("vertex"), Vj);
+	const int32 Dis = Frustum.Disagreements() + Vertex.Disagreements();
+	const double MaxDz = FMath::Max(Frustum.DzCm.Num() > 0 ? Frustum.DzCm.Max() : 0.0, Vertex.DzCm.Num() > 0 ? Vertex.DzCm.Max() : 0.0);
+	V->SetNumberField(TEXT("rays"), Frustum.N + Vertex.N);
+	V->SetNumberField(TEXT("disagreements"), Dis);
+	V->SetNumberField(TEXT("max_dz_cm"), MaxDz);
+	V->SetNumberField(TEXT("ms"), (FPlatformTime::Seconds() - T0) * 1000.0);
+	CollisionVerifies.Add(MakeShared<FJsonValueObject>(V));
+	UE_LOG(LogChimeraTerrain, Display, TEXT("verify_collision %s: frustum n=%d both_hit=%d phys_only=%d pick_only=%d foreign=%d; vertex n=%d (of %d in %d rects) both_hit=%d phys_only=%d pick_only=%d foreign=%d; disagreements=%d max_dz=%.4f cm"),
+		*Name, Frustum.N, Frustum.BothHit, Frustum.PhysicsOnly, Frustum.PickOnly, Frustum.Foreign, Vertex.N, Verts.Num(), Rects.Num(), Vertex.BothHit,
+		Vertex.PhysicsOnly, Vertex.PickOnly, Vertex.Foreign, Dis, MaxDz);
+	return EStep::Done;
+}
+
+TSharedRef<FJsonObject> ATerrainScriptDirector::CollisionToJson() const
+{
+	TSharedRef<FJsonObject> O = MakeShared<FJsonObject>();
+	TSharedRef<FJsonObject> Opt = MakeShared<FJsonObject>();
+	Opt->SetBoolField(TEXT("fast_cook"), Options.bFastCook);
+	int32 DuringMs = 0;
+	if (const IConsoleVariable* Cv = IConsoleManager::Get().FindConsoleVariable(TEXT("chimera.terrain.CollisionDuringStroke")))
+	{
+		DuringMs = Cv->GetInt();
+	}
+	Opt->SetNumberField(TEXT("during_stroke_ms"), DuringMs);
+	O->SetObjectField(TEXT("options"), Opt);
+	O->SetArrayField(TEXT("waits"), CollisionWaits);
+	O->SetArrayField(TEXT("verifies"), CollisionVerifies);
+	const ITerrainChunkRenderer* R = Terrain ? Terrain->GetRenderer() : nullptr;
+	if (!R)
+	{
+		return O;
+	}
+	const uint8 Updated = static_cast<uint8>(ERealtimeMeshCollisionUpdateResult::Updated);
+	const uint8 Ignored = static_cast<uint8>(ERealtimeMeshCollisionUpdateResult::Ignored);
+	const uint8 Error = static_cast<uint8>(ERealtimeMeshCollisionUpdateResult::Error);
+	// Cook = submit -> future value, valid only for an Updated body with a trimesh (plan C 3.6). Edit cooks exclude the initial build.
+	FTerrainSeries CookMs;
+	FTerrainSeries CookFrames;
+	FTerrainSeries InitCookMs;
+	TMap<FString, FTerrainSeries> CookByReason;
+	int32 NUpdated = 0;
+	int32 NIgnored = 0;
+	int32 NError = 0;
+	int32 NUnknown = 0;
+	int32 NoTrimesh = 0;
+	TArray<TSharedPtr<FJsonValue>> CookValues;
+	for (const FTerrainCollisionCook& C : R->GetCollisionCooks())
+	{
+		NUpdated += C.Result == Updated ? 1 : 0;
+		NIgnored += C.Result == Ignored ? 1 : 0;
+		NError += C.Result == Error ? 1 : 0;
+		NUnknown += (C.Result != Updated && C.Result != Ignored && C.Result != Error) ? 1 : 0;
+		if (C.Result != Updated)
+		{
+			continue;
+		}
+		if (C.TriMeshes <= 0)
+		{
+			++NoTrimesh;
+			continue;
+		}
+		CookByReason.FindOrAdd(CollisionReasonName(C.Reason)).Add(C.Ms);
+		if (C.Reason == ETerrainCollisionReason::Init)
+		{
+			InitCookMs.Add(C.Ms);
+			continue;
+		}
+		CookMs.Add(C.Ms);
+		CookFrames.Add(C.Frames);
+		CookValues.Add(MakeShared<FJsonValueNumber>(FMath::RoundToDouble(C.Ms * 1000.0) / 1000.0));
+	}
+	O->SetNumberField(TEXT("cooks"), R->GetCollisionCooks().Num());
+	O->SetNumberField(TEXT("updated"), NUpdated);
+	O->SetNumberField(TEXT("ignored"), NIgnored);
+	O->SetNumberField(TEXT("errors"), NError);
+	O->SetNumberField(TEXT("unknown"), NUnknown);
+	O->SetNumberField(TEXT("updated_without_trimesh"), NoTrimesh);
+	O->SetObjectField(TEXT("cook_ms"), CookMs.ToJson());
+	O->SetObjectField(TEXT("cook_frames"), CookFrames.ToJson());
+	O->SetObjectField(TEXT("init_cook_ms"), InitCookMs.ToJson());
+	TSharedRef<FJsonObject> ByR = MakeShared<FJsonObject>();
+	for (const TPair<FString, FTerrainSeries>& P : CookByReason)
+	{
+		ByR->SetObjectField(P.Key, P.Value.ToJson());
+	}
+	O->SetObjectField(TEXT("cook_ms_by_reason"), ByR);
+	O->SetArrayField(TEXT("cook_ms_values"), CookValues);
+
+	// GT apply per stroke end (plan C 5 P5): geometry build + submit + the chunks' physics-state recreation, for stroke end, undo, redo.
+	FTerrainSeries GtApply;
+	FTerrainSeries Submit;
+	FTerrainSeries Physics;
+	TMap<FString, FTerrainSeries> GtByReason;
+	int32 Incomplete = 0;
+	TArray<TSharedPtr<FJsonValue>> GtValues;
+	for (const FTerrainCollisionBatch& B : R->GetCollisionBatches())
+	{
+		if (!B.bComplete)
+		{
+			++Incomplete;
+			continue;
+		}
+		if (B.Chunks == 0)
+		{
+			continue;
+		}
+		GtByReason.FindOrAdd(CollisionReasonName(B.Reason)).Add(B.GtApplyMs());
+		if (B.Reason == ETerrainCollisionReason::StrokeEnd || B.Reason == ETerrainCollisionReason::Undo || B.Reason == ETerrainCollisionReason::Redo)
+		{
+			GtApply.Add(B.GtApplyMs());
+			Submit.Add(B.SubmitMs);
+			Physics.Add(B.PhysicsStateMs);
+			GtValues.Add(MakeShared<FJsonValueNumber>(FMath::RoundToDouble(B.GtApplyMs() * 1000.0) / 1000.0));
+		}
+	}
+	O->SetNumberField(TEXT("batches"), R->GetCollisionBatches().Num());
+	O->SetNumberField(TEXT("batches_incomplete"), Incomplete);
+	O->SetObjectField(TEXT("gt_apply_ms"), GtApply.ToJson());
+	O->SetObjectField(TEXT("submit_ms"), Submit.ToJson());
+	O->SetObjectField(TEXT("physics_state_ms"), Physics.ToJson());
+	TSharedRef<FJsonObject> GtR = MakeShared<FJsonObject>();
+	for (const TPair<FString, FTerrainSeries>& P : GtByReason)
+	{
+		GtR->SetObjectField(P.Key, P.Value.ToJson());
+	}
+	O->SetObjectField(TEXT("gt_apply_ms_by_reason"), GtR);
+	O->SetStringField(TEXT("gt_apply_definition"), TEXT("per batch: collision geometry build + SetCustomComplexMeshGeometry submit on the GT, plus each chunk's ")
+		TEXT("Destroy/CreatePhysicsState seconds (UTerrainChunkComponent) up to the resolve. Not timed: the rest of RMC's GT continuation ")
+		TEXT("(URealtimeMesh::ApplyCollisionUpdate, RealtimeMesh.cpp:373-421: NewObject<UBodySetup>, CopyComplexGeometryToBodySetup, UV copy)."));
+	O->SetStringField(TEXT("cook_definition"), TEXT("cook_ms: edit cooks only (stroke_end, mid_stroke, undo, redo, load), submit to resolve; ")
+		TEXT("the startup cooks (reason init) are in init_cook_ms, reported separately."));
+	O->SetArrayField(TEXT("gt_apply_ms_values"), GtValues);
+	return O;
 }
 
 bool ATerrainScriptDirector::WriteJsonFile(const FString& FileName, const TSharedRef<FJsonObject>& Obj) const
@@ -1966,6 +2489,7 @@ void ATerrainScriptDirector::Finish(uint8 Code, const FString& Reason)
 	Results->SetArrayField(TEXT("gcs"), Gcs);
 	Results->SetArrayField(TEXT("movies"), Movies);
 	Results->SetArrayField(TEXT("undo_redo"), UndoRedos);
+	Results->SetObjectField(TEXT("collision"), CollisionToJson());
 	if (Saved.IsValid())
 	{
 		Results->SetObjectField(TEXT("saved"), Saved.ToSharedRef());

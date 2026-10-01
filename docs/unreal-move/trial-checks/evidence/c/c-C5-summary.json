@@ -1,0 +1,562 @@
+{
+ "runs": {
+  "s1_col": {
+   "script": "S1",
+   "completed": true,
+   "ops": [
+    59,
+    59
+   ],
+   "measured": false,
+   "units": 0,
+   "options": {
+    "half": 160,
+    "chunk": 64,
+    "draw_type": "Dynamic",
+    "compare_ev100": 2,
+    "hitch_ms": 0,
+    "load_dir": ""
+   },
+   "config": "half=160 chunk=64 draw=Dynamic",
+   "final_hashes": [
+    "0xff563549",
+    "0xd264ddc9"
+   ]
+  },
+  "s1_col_r2": {
+   "script": "S1",
+   "completed": true,
+   "ops": [
+    59,
+    59
+   ],
+   "measured": false,
+   "units": 0,
+   "options": {
+    "half": 160,
+    "chunk": 64,
+    "draw_type": "Dynamic",
+    "compare_ev100": 2,
+    "hitch_ms": 0,
+    "load_dir": ""
+   },
+   "config": "half=160 chunk=64 draw=Dynamic",
+   "final_hashes": [
+    "0xff563549",
+    "0xd264ddc9"
+   ]
+  },
+  "s1_col_r3": {
+   "script": "S1",
+   "completed": true,
+   "ops": [
+    59,
+    59
+   ],
+   "measured": false,
+   "units": 0,
+   "options": {
+    "half": 160,
+    "chunk": 64,
+    "draw_type": "Dynamic",
+    "compare_ev100": 2,
+    "hitch_ms": 0,
+    "load_dir": ""
+   },
+   "config": "half=160 chunk=64 draw=Dynamic",
+   "final_hashes": [
+    "0xff563549",
+    "0xd264ddc9"
+   ]
+  },
+  "s1_col_nofast": {
+   "script": "S1",
+   "completed": true,
+   "ops": [
+    59,
+    59
+   ],
+   "measured": false,
+   "units": 0,
+   "options": {
+    "half": 160,
+    "chunk": 64,
+    "draw_type": "Dynamic",
+    "compare_ev100": 2,
+    "hitch_ms": 0,
+    "load_dir": ""
+   },
+   "config": "half=160 chunk=64 draw=Dynamic FastCook=0",
+   "final_hashes": [
+    "0xff563549",
+    "0xd264ddc9"
+   ]
+  },
+  "soak0": {
+   "script": "SOAK",
+   "completed": true,
+   "ops": [
+    8,
+    8
+   ],
+   "measured": false,
+   "units": 0,
+   "options": {
+    "half": 160,
+    "chunk": 64,
+    "draw_type": "Dynamic",
+    "compare_ev100": 2,
+    "hitch_ms": 0,
+    "load_dir": ""
+   },
+   "config": "half=160 chunk=64 draw=Dynamic",
+   "final_hashes": [
+    "0x446845ca",
+    "0x24a895c7"
+   ]
+  },
+  "soak250": {
+   "script": "SOAK",
+   "completed": true,
+   "ops": [
+    8,
+    8
+   ],
+   "measured": false,
+   "units": 0,
+   "options": {
+    "half": 160,
+    "chunk": 64,
+    "draw_type": "Dynamic",
+    "compare_ev100": 2,
+    "hitch_ms": 0,
+    "load_dir": ""
+   },
+   "config": "half=160 chunk=64 draw=Dynamic CollisionDuringStroke=250",
+   "final_hashes": [
+    "0x446845ca",
+    "0x24a895c7"
+   ]
+  },
+  "soak0_mi0": {
+   "script": "SOAK",
+   "completed": true,
+   "ops": [
+    8,
+    8
+   ],
+   "measured": false,
+   "units": 0,
+   "options": {
+    "half": 160,
+    "chunk": 64,
+    "draw_type": "Dynamic",
+    "compare_ev100": 2,
+    "hitch_ms": 0,
+    "load_dir": ""
+   },
+   "config": "half=160 chunk=64 draw=Dynamic mi.MemoryResetDelay 0",
+   "final_hashes": [
+    "0x446845ca",
+    "0x24a895c7"
+   ]
+  }
+ },
+ "gates": [
+  {
+   "metric": "runs_completed",
+   "status": "PASS",
+   "detail": "7 run(s); completed=true and ops_done == ops_total for each"
+  },
+  {
+   "metric": "log_scan",
+   "status": "PASS",
+   "detail": "findings per run: {'s1_col': 0, 's1_col_r2': 0, 's1_col_r3': 0, 's1_col_nofast': 0, 'soak0': 0, 'soak250': 0, 'soak0_mi0': 0}"
+  },
+  {
+   "metric": "P1 tick p50 d20",
+   "status": "REPORTED-pass",
+   "detail": "0.106 ms <= 1.0 (n=2265)"
+  },
+  {
+   "metric": "P1 tick p50 d100",
+   "status": "REPORTED-pass",
+   "detail": "0.720 ms <= 2.0 (n=2220)"
+  },
+  {
+   "metric": "P1 tick p99",
+   "status": "REPORTED-pass",
+   "detail": "1.024 ms <= 4.0 (n=10244)"
+  },
+  {
+   "metric": "P2 latency median",
+   "status": "REPORTED-pass",
+   "detail": "1.0 frames <= 2 (26888 edits)"
+  },
+  {
+   "metric": "P2 in-place use",
+   "status": "REPORTED-pass",
+   "detail": "proxy_recreates_during_strokes 0 of 26888 ranged edits (<= 5 %)"
+  },
+  {
+   "metric": "P3 fps with 1000 units",
+   "status": "FAIL",
+   "detail": "no samples (no C1U run with -ChimeraTerrainUnits=1000)"
+  },
+  {
+   "metric": "P4 terrain GPU ms",
+   "status": "FAIL",
+   "detail": "no samples (no C1 run with idle_visible and idle_hidden phases)"
+  },
+  {
+   "metric": "P5 s1_col correctness",
+   "status": "PASS",
+   "detail": "P5 collision pre_last2 PASS; P5 collision after PASS; P5 collision undo PASS; P5 collision redo PASS; P5_cooks_valid PASS"
+  },
+  {
+   "metric": "P5 s1_col_r2 correctness",
+   "status": "PASS",
+   "detail": "P5 collision pre_last2 PASS; P5 collision after PASS; P5 collision undo PASS; P5 collision redo PASS; P5_cooks_valid PASS"
+  },
+  {
+   "metric": "P5 s1_col_r3 correctness",
+   "status": "PASS",
+   "detail": "P5 collision pre_last2 PASS; P5 collision after PASS; P5 collision undo PASS; P5 collision redo PASS; P5_cooks_valid PASS"
+  },
+  {
+   "metric": "P5 s1_col_nofast correctness",
+   "status": "PASS",
+   "detail": "P5 collision pre_last2 PASS; P5 collision after PASS; P5 collision undo PASS; P5 collision redo PASS; P5_cooks_valid PASS"
+  },
+  {
+   "metric": "P5 soak0 correctness",
+   "status": "PASS",
+   "detail": "P5 collision end PASS; P5_cooks_valid PASS"
+  },
+  {
+   "metric": "P5 soak250 correctness",
+   "status": "PASS",
+   "detail": "P5 collision end PASS; P5_cooks_valid PASS"
+  },
+  {
+   "metric": "P5 soak0_mi0 correctness",
+   "status": "PASS",
+   "detail": "P5 collision end PASS; P5_cooks_valid PASS"
+  },
+  {
+   "metric": "P5 cook p95",
+   "status": "REPORTED-pass",
+   "detail": "8.42 ms <= 50 (n=840 pooled)"
+  },
+  {
+   "metric": "P5 GT apply p95",
+   "status": "REPORTED-pass",
+   "detail": "0.985 ms <= 4 (n=225 pooled)"
+  },
+  {
+   "metric": "P6 soak0",
+   "status": "PASS",
+   "detail": "peak growth 79 MB <= 300, after gc 79 MB <= 100, RMC bodies after gc 25 <= 50; reported: peak bodies RMC 178 / total 213, bodies created 711 in 300 s = 2.37/s (mid-stroke 0); undo history at the gc sample 41 MB (growth excl. undo, by subtraction: 39 MB at the gc sample, 42 MB peak); delayed sample 12 s after gc growth 79 MB (undo 41 MB); residue (undo cleared, gc, trim, 24 s after gc) growth 79 MB, RMC bodies 25"
+  },
+  {
+   "metric": "P6 soak250",
+   "status": "REPORTED-fail",
+   "detail": "peak growth 380 MB <= 300, after gc 380 MB <= 100, RMC bodies after gc 25 <= 50; reported: peak bodies RMC 740 / total 775, bodies created 3354 in 300 s = 11.18/s (mid-stroke 2643); undo history at the gc sample 41 MB (growth excl. undo, by subtraction: 339 MB at the gc sample, 341 MB peak); delayed sample 12 s after gc growth 379 MB (undo 41 MB); residue (undo cleared, gc, trim, 24 s after gc) growth 379 MB, RMC bodies 25"
+  },
+  {
+   "metric": "P6 soak0_mi0",
+   "status": "REPORTED-pass",
+   "detail": "peak growth 64 MB <= 300, after gc 64 MB <= 100, RMC bodies after gc 25 <= 50; reported: peak bodies RMC 178 / total 213, bodies created 711 in 300 s = 2.37/s (mid-stroke 0); undo history at the gc sample 41 MB (growth excl. undo, by subtraction: 23 MB at the gc sample, 32 MB peak); delayed sample 12 s after gc growth 27 MB (undo 41 MB); residue (undo cleared, gc, trim, 24 s after gc) growth -6 MB, RMC bodies 25"
+  },
+  {
+   "metric": "P7 s1_col",
+   "status": "PASS",
+   "detail": "hashes undo=pre_last2, redo=after, local image statistic, A/A floor and control (7 bars)"
+  },
+  {
+   "metric": "P11 s1_col",
+   "status": "PASS",
+   "detail": "depth bars at after/undo/pre_last2 x rts80/oblique, full frame and footprint (10 bars)"
+  },
+  {
+   "metric": "P7 s1_col_r2",
+   "status": "PASS",
+   "detail": "hashes undo=pre_last2, redo=after, local image statistic, A/A floor and control (7 bars)"
+  },
+  {
+   "metric": "P11 s1_col_r2",
+   "status": "PASS",
+   "detail": "depth bars at after/undo/pre_last2 x rts80/oblique, full frame and footprint (10 bars)"
+  },
+  {
+   "metric": "P7 s1_col_r3",
+   "status": "PASS",
+   "detail": "hashes undo=pre_last2, redo=after, local image statistic, A/A floor and control (7 bars)"
+  },
+  {
+   "metric": "P11 s1_col_r3",
+   "status": "PASS",
+   "detail": "depth bars at after/undo/pre_last2 x rts80/oblique, full frame and footprint (10 bars)"
+  },
+  {
+   "metric": "P7 s1_col_nofast",
+   "status": "PASS",
+   "detail": "hashes undo=pre_last2, redo=after, local image statistic, A/A floor and control (7 bars)"
+  },
+  {
+   "metric": "P11 s1_col_nofast",
+   "status": "PASS",
+   "detail": "depth bars at after/undo/pre_last2 x rts80/oblique, full frame and footprint (10 bars)"
+  },
+  {
+   "metric": "P8 determinism",
+   "status": "PASS",
+   "detail": "final hashes of ['s1_col', 's1_col_r2', 's1_col_r3', 's1_col_nofast'] equal (full check: --same-hash A B)"
+  },
+  {
+   "metric": "P9 sim grid",
+   "status": "FAIL",
+   "detail": "no samples here: `--simgrid RUN` (python mirror) and C10's elevhash (C#) decide it"
+  },
+  {
+   "metric": "P10 mouse",
+   "status": "FAIL",
+   "detail": "no samples (no MOUSE run)"
+  }
+ ],
+ "gate_config": "half=160 chunk=64 draw=Dynamic",
+ "gated_runs": [
+  "s1_col",
+  "s1_col_r2",
+  "s1_col_r3",
+  "soak0"
+ ],
+ "ticks_by_diameter": {
+  "40": {
+   "n": 210,
+   "total_p50": 0.2018,
+   "total_p99": 0.3519
+  },
+  "16": {
+   "n": 180,
+   "total_p50": 0.0757,
+   "total_p99": 0.1657
+  },
+  "36": {
+   "n": 120,
+   "total_p50": 0.1418,
+   "total_p99": 0.2941
+  },
+  "30": {
+   "n": 300,
+   "total_p50": 0.1483,
+   "total_p99": 0.2694
+  },
+  "20": {
+   "n": 2265,
+   "total_p50": 0.1059,
+   "total_p99": 0.2538
+  },
+  "6": {
+   "n": 180,
+   "total_p50": 0.0097,
+   "total_p99": 0.1833
+  },
+  "14": {
+   "n": 120,
+   "total_p50": 0.0173,
+   "total_p99": 0.2444
+  },
+  "24": {
+   "n": 90,
+   "total_p50": 0.035,
+   "total_p99": 0.4501
+  },
+  "5": {
+   "n": 2279,
+   "total_p50": 0.0666,
+   "total_p99": 0.1696
+  },
+  "60": {
+   "n": 2280,
+   "total_p50": 0.3369,
+   "total_p99": 0.567
+  },
+  "100": {
+   "n": 2220,
+   "total_p50": 0.7203,
+   "total_p99": 1.1908
+  }
+ },
+ "ticks_by_config": {
+  "half=160 chunk=64 draw=Dynamic CollisionDuringStroke=250": {
+   "5": {
+    "n": 2279,
+    "total_p50": 0.0637,
+    "total_p99": 0.1566
+   },
+   "20": {
+    "n": 2220,
+    "total_p50": 0.1024,
+    "total_p99": 0.2503
+   },
+   "60": {
+    "n": 2280,
+    "total_p50": 0.3331,
+    "total_p99": 0.5758
+   },
+   "100": {
+    "n": 2220,
+    "total_p50": 0.7058,
+    "total_p99": 1.1844
+   }
+  },
+  "half=160 chunk=64 draw=Dynamic FastCook=0": {
+   "40": {
+    "n": 70,
+    "total_p50": 0.1973,
+    "total_p99": 0.3893
+   },
+   "16": {
+    "n": 60,
+    "total_p50": 0.0765,
+    "total_p99": 0.1324
+   },
+   "36": {
+    "n": 40,
+    "total_p50": 0.1346,
+    "total_p99": 0.2024
+   },
+   "30": {
+    "n": 100,
+    "total_p50": 0.146,
+    "total_p99": 0.2593
+   },
+   "20": {
+    "n": 15,
+    "total_p50": 0.1647,
+    "total_p99": 0.2092
+   },
+   "6": {
+    "n": 60,
+    "total_p50": 0.0096,
+    "total_p99": 0.213
+   },
+   "14": {
+    "n": 40,
+    "total_p50": 0.0175,
+    "total_p99": 0.3984
+   },
+   "24": {
+    "n": 30,
+    "total_p50": 0.0315,
+    "total_p99": 0.4176
+   }
+  },
+  "half=160 chunk=64 draw=Dynamic mi.MemoryResetDelay 0": {
+   "5": {
+    "n": 2279,
+    "total_p50": 0.0675,
+    "total_p99": 0.176
+   },
+   "20": {
+    "n": 2220,
+    "total_p50": 0.108,
+    "total_p99": 0.2755
+   },
+   "60": {
+    "n": 2280,
+    "total_p50": 0.3463,
+    "total_p99": 0.6085
+   },
+   "100": {
+    "n": 2220,
+    "total_p50": 0.7329,
+    "total_p99": 1.2192
+   }
+  }
+ },
+ "rep_spread_flags": [
+  "half=160 chunk=64 draw=Dynamic | S1 units=0 tick total p50 ms 9.3 %"
+ ],
+ "p6": {
+  "soak0": {
+   "chunks": 25,
+   "growth_peak_mb": 79.49609375,
+   "growth_after_gc_mb": 79.49609375,
+   "bodies_rmc_after_gc": 25,
+   "after_gc_excl_undo_mb": 38.86011505126953,
+   "peak_excl_undo_mb": 42.034088134765625,
+   "growth_delayed_mb": 78.859375,
+   "delayed_after_gc_s": 12.006194099783897,
+   "undo_mb_delayed": 40.63597869873047,
+   "residue_after_gc_s": 24.036969799548388,
+   "peak_bodies_rmc": 178,
+   "peak_bodies_total": 213,
+   "soak_s": 300.0033617988229,
+   "bodies_created": 711,
+   "bodies_created_per_s": 2.369973442086907,
+   "mid_stroke_bodies_created": 0,
+   "undo_mb_after_gc": 40.63597869873047,
+   "growth_residue_mb": 79.484375,
+   "bodies_rmc_residue": 25,
+   "undo_mb_residue": 0,
+   "missing": [],
+   "gated": true
+  },
+  "soak250": {
+   "chunks": 25,
+   "growth_peak_mb": 379.63671875,
+   "growth_after_gc_mb": 379.63671875,
+   "bodies_rmc_after_gc": 25,
+   "after_gc_excl_undo_mb": 339.00074005126953,
+   "peak_excl_undo_mb": 341.4325256347656,
+   "growth_delayed_mb": 378.53125,
+   "delayed_after_gc_s": 12.002787999808788,
+   "undo_mb_delayed": 40.63597869873047,
+   "residue_after_gc_s": 24.0267420001328,
+   "peak_bodies_rmc": 740,
+   "peak_bodies_total": 775,
+   "soak_s": 300.00491239875555,
+   "bodies_created": 3354,
+   "bodies_created_per_s": 11.179816934270683,
+   "mid_stroke_bodies_created": 2643,
+   "undo_mb_after_gc": 40.63597869873047,
+   "growth_residue_mb": 379.24609375,
+   "bodies_rmc_residue": 25,
+   "undo_mb_residue": 0,
+   "missing": [],
+   "gated": false
+  },
+  "soak0_mi0": {
+   "chunks": 25,
+   "growth_peak_mb": 63.890625,
+   "growth_after_gc_mb": 63.890625,
+   "bodies_rmc_after_gc": 25,
+   "after_gc_excl_undo_mb": 23.25464630126953,
+   "peak_excl_undo_mb": 31.771888732910156,
+   "growth_delayed_mb": 27.25390625,
+   "delayed_after_gc_s": 12.000390697270632,
+   "undo_mb_delayed": 40.63597869873047,
+   "residue_after_gc_s": 24.032262597233057,
+   "peak_bodies_rmc": 178,
+   "peak_bodies_total": 213,
+   "soak_s": 300.00291980057955,
+   "bodies_created": 711,
+   "bodies_created_per_s": 2.3699769337999173,
+   "mid_stroke_bodies_created": 0,
+   "undo_mb_after_gc": 40.63597869873047,
+   "growth_residue_mb": -6.40625,
+   "bodies_rmc_residue": 25,
+   "undo_mb_residue": 0,
+   "missing": [],
+   "gated": false
+  }
+ },
+ "counts": {
+  "pass": 19,
+  "fail": 4,
+  "reported": 9,
+  "flags": 1
+ }
+}

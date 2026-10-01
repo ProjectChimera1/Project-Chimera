@@ -17,9 +17,10 @@ namespace ChimeraTerrain
 	};
 
 	/**
-	 * Per chunk per stroke: the first touch snapshots the chunk's OWNED block of heights and splat texels (owned blocks are disjoint, so
-	 * restoring one chunk never overwrites another's border vertex). EndStroke keeps only chunks whose bytes really changed and pushes
-	 * {chunks, before, after}; a stroke that changed no byte pushes nothing (DW-143). Caps: 512 MiB or 1000 entries, oldest dropped
+	 * Per chunk per stroke: the first touch that writes heights snapshots the chunk's OWNED block of heights, the first that writes splat
+	 * its owned splat texels (owned blocks are disjoint, so restoring one chunk never overwrites another's border vertex). EndStroke keeps,
+	 * per chunk, only the arrays whose bytes really changed and pushes {chunks, before, after}; a stroke that changed no byte pushes
+	 * nothing (DW-143). Caps: 512 MiB or 1000 entries, oldest dropped
 	 * (EditorHistory.cs:25-28). A new push clears the redo stack.
 	 */
 	class FTerrainUndo
@@ -60,6 +61,10 @@ namespace ChimeraTerrain
 		struct FChunkBlock
 		{
 			int32 ChunkId = 0;
+			/** Heights were snapshotted (and, after EndStroke, changed): HeightsBefore/After are present. */
+			bool bHeights = false;
+			/** Splat texels were snapshotted (and, after EndStroke, changed): SplatBefore/After are present. */
+			bool bSplat = false;
 			TArray<float> HeightsBefore;
 			TArray<float> HeightsAfter;
 			TArray<uint8> SplatBefore;
@@ -77,6 +82,8 @@ namespace ChimeraTerrain
 			int64 Bytes() const;
 		};
 
+		/** The open stroke's block for chunk Id (created empty on first use). */
+		FChunkBlock& OpenBlock(int32 Id);
 		static void CaptureHeights(const FTerrainHeightfield& HF, const FTerrainRect& R, TArray<float>& Out);
 		static void CaptureSplat(const FTerrainHeightfield& HF, const FTerrainRect& R, TArray<uint8>& Out);
 		static void RestoreHeights(FTerrainHeightfield& HF, const FTerrainRect& R, const TArray<float>& In);

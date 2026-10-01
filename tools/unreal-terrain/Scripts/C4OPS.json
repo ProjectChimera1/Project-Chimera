@@ -1,6 +1,6 @@
 {
   "name": "C4OPS",
-  "about": "C4 smoke for the ops S1, S1L and C1 do not use: csv start/stop, random_walk (five modes, one diameter per segment, phases), hitch, gc, movie, soak (short, with its gc and final memory sample), save then load (the run loads its own folder: pass -ChimeraTerrainLoad=<this run's out dir>), and the collision ops that log skipped:C5. Not a gate; its results.json shows each op's record.",
+  "about": "C4 smoke for the ops S1, S1L and C1 do not use: csv start/stop, random_walk (five modes, one diameter per segment, phases), hitch, gc, movie, soak (short, with its gc and final memory sample), save then load (the run loads its own folder: pass -ChimeraTerrainLoad=<this run's out dir>), and the collision ops wait_collision / verify_collision (real since C5: a stale or missing body fails the run). Not a gate; its results.json shows each op's record.",
   "ops": [
     {"op": "look", "mode": "compare"},
     {"op": "camera", "pose": "rts80"},

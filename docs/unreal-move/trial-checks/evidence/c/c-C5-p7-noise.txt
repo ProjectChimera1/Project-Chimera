@@ -1,0 +1,51 @@
+C5 rework 2: C4's P7 bars in the S1 runs on the 15:08:35 DLL (sparse undo; paint-only undo/redo no longer rewrites collision).
+Bar: worst 16x16 block mean |d| <= 2/255 = 0.00784, changed <= 0.5 %.
+
+s1_col         P7_aa_floor              PASS  changed_frac=0.00000 worst16=0.00114
+s1_col         P7_undo_vs_pre_last2     PASS  changed_frac=0.00002 worst16=0.00614
+s1_col         P7_redo_vs_after         PASS  changed_frac=0.00000 worst16=0.00395
+s1_col_r2      P7_aa_floor              PASS  changed_frac=0.00000 worst16=0.00131
+s1_col_r2      P7_undo_vs_pre_last2     PASS  changed_frac=0.00002 worst16=0.00757
+s1_col_r2      P7_redo_vs_after         PASS  changed_frac=0.00000 worst16=0.00364
+s1_col_r3      P7_aa_floor              PASS  changed_frac=0.00000 worst16=0.00131
+s1_col_r3      P7_undo_vs_pre_last2     PASS  changed_frac=0.00002 worst16=0.00757
+s1_col_r3      P7_redo_vs_after         PASS  changed_frac=0.00000 worst16=0.00367
+s1_col_nofast  P7_aa_floor              PASS  changed_frac=0.00000 worst16=0.00137
+s1_col_nofast  P7_undo_vs_pre_last2     PASS  changed_frac=0.00002 worst16=0.00614
+s1_col_nofast  P7_redo_vs_after         PASS  changed_frac=0.00000 worst16=0.00395
+s1_settle_p7   P7_aa_floor              PASS  changed_frac=0.00000 worst16=0.00137
+s1_settle_p7   P7_undo_vs_pre_last2     PASS  changed_frac=0.00000 worst16=0.00287
+s1_settle_p7   P7_redo_vs_after         PASS  changed_frac=0.00009 worst16=0.00320
+
+s1_settle_p7 = a scratch copy of S1 (not a repo script) with a 30-frame settle before the pre_last2, undo and redo shots.
+Its P7_undo_vs_pre_last2 worst16 is 0.00287, the level of C4's s1_a/s1_b (0.0030-0.0037 in the same 2-pixel block), against
+0.0061-0.0076 without the settles. So the shift after C5's wait/verify ops is temporal (frames between the edit and the shot),
+not geometry: the hashes are equal in every run. Exact mechanism (TSR history, exposure or shadow-cache settling): UNVERIFIED.
+
+==== previous rework (runs now in Out/c5_v2), kept for comparison ====
+C5 rework: C4's P7_undo_vs_pre_last2 bar across C4 and C5 S1 runs (worst 16x16 blocks of |blur3(undo)-blur3(pre_last2)| inside the P7 mask; value, x, y, masked px).
+Bar: worst block mean <= 2/255 = 0.00784. Runs: C4 s1_a, s1_b; C5 v1 (first implementer, Out/c5_v1/*); C5 rework s1_col, s1_col_r2, s1_col_r3, s1_col_nofast.
+s1_a top3 [(np.float64(0.0056), 640, 288, 7), (np.float64(0.003), 640, 256, 2), (np.float64(0.002), 656, 288, 34)] whole-frame mean|d| undo-pre 0.00043 max 0.022 frame px |d|>0.02: 1
+s1_b top3 [(np.float64(0.0048), 640, 288, 7), (np.float64(0.0037), 640, 256, 2), (np.float64(0.0019), 656, 288, 34)] whole-frame mean|d| undo-pre 0.00044 max 0.017 frame px |d|>0.02: 0
+c5_v1/s1_col top3 [(np.float64(0.0054), 640, 288, 7), (np.float64(0.0052), 640, 256, 2), (np.float64(0.0024), 656, 304, 241)] whole-frame mean|d| undo-pre 0.00044 max 0.022 frame px |d|>0.02: 1
+c5_v1/s1_col_r1 top3 [(np.float64(0.0092), 640, 288, 7), (np.float64(0.0016), 656, 240, 52), (np.float64(0.0016), 656, 304, 241)] whole-frame mean|d| undo-pre 0.00043 max 0.020 frame px |d|>0.02: 1
+c5_v1/s1_col_nofast top3 [(np.float64(0.0061), 640, 256, 2), (np.float64(0.0053), 640, 288, 7), (np.float64(0.0022), 656, 304, 241)] whole-frame mean|d| undo-pre 0.00044 max 0.016 frame px |d|>0.02: 0
+s1_col top3 [(np.float64(0.0084), 640, 256, 2), (np.float64(0.0059), 640, 288, 7), (np.float64(0.0021), 656, 304, 241)] whole-frame mean|d| undo-pre 0.00045 max 0.018 frame px |d|>0.02: 0
+s1_col_r2 top3 [(np.float64(0.0084), 640, 256, 2), (np.float64(0.0059), 640, 288, 7), (np.float64(0.002), 656, 304, 241)] whole-frame mean|d| undo-pre 0.00045 max 0.017 frame px |d|>0.02: 0
+s1_col_r3 top3 [(np.float64(0.0055), 640, 256, 2), (np.float64(0.0054), 640, 288, 7), (np.float64(0.0024), 656, 304, 241)] whole-frame mean|d| undo-pre 0.00044 max 0.021 frame px |d|>0.02: 1
+s1_col_nofast top3 [(np.float64(0.0084), 640, 256, 2), (np.float64(0.0059), 640, 288, 7), (np.float64(0.002), 656, 304, 241)] whole-frame mean|d| undo-pre 0.00045 max 0.017 frame px |d|>0.02: 0
+
+Run-to-run luma difference of the same shot (reference s1_col_r3):
+pre_last2 vs s1_col_r3 s1_col blk256=0.0006 blk288=0.0006 frame=0.00038 | s1_col_r2 blk256=0.0006 blk288=0.0006 frame=0.00038 | s1_a blk256=0.0012 blk288=0.0012 frame=0.00041
+undo vs s1_col_r3 s1_col blk256=0.0008 blk288=0.0007 frame=0.00041 | s1_col_r2 blk256=0.0008 blk288=0.0007 frame=0.00041 | s1_a blk256=0.0013 blk288=0.0011 frame=0.00042
+after vs s1_col_r3 s1_col blk256=0.0009 blk288=0.0007 frame=0.00038 | s1_col_r2 blk256=0.0009 blk288=0.0007 frame=0.00038 | s1_a blk256=0.0016 blk288=0.0011 frame=0.00041
+redo vs s1_col_r3 s1_col blk256=0.0010 blk288=0.0008 frame=0.00041 | s1_col_r2 blk256=0.0008 blk288=0.0007 frame=0.00038 | s1_a blk256=0.0017 blk288=0.0012 frame=0.00044
+before vs s1_col_r3 s1_col blk256=0.0000 blk288=0.0000 frame=0.00000 | s1_col_r2 blk256=0.0000 blk288=0.0000 frame=0.00001 | s1_a blk256=0.0000 blk288=0.0000 frame=0.00017
+
+Proxy recreations (logged per chunk with frame since the rework): every run recreates only at startup (frames 0-4) and at the 'visible' op (frame 372), before the first stroke; none after frame 372. s1_col: bursts at frames 0, 2, 4, 372 (100); s1_col_r2/r3/nofast: 0, 2, 372 (75). r2 and nofast FAIL P7 with 75, so the recreation count does not decide P7.
+s1_col: 100 recreate lines, max frame 372
+s1_col_r2: 75 recreate lines, max frame 372
+s1_col_r3: 75 recreate lines, max frame 371
+s1_col_nofast: 75 recreate lines, max frame 372
+
+Reading: the failing block holds 2 masked pixels (x=640,y=256; in v1 the 7-pixel block at 640,288). Whole-frame undo-vs-pre_last2 mean |d| is 0.00043-0.00045 in every C4 and C5 run, so the frame-wide noise is unchanged; a 2-pixel block takes one of two values (~0.003-0.006 or 0.0084) run to run. Cause of the bimodal 2-pixel value: UNVERIFIED (candidate: C5's real wait/verify ops change the frame count between undo and its shot, and the block sits on a VSM shadow-streak edge). Collision does not render.

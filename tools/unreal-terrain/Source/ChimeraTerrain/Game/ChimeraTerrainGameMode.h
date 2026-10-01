@@ -28,6 +28,10 @@ struct FChimeraTerrainOptions
 	int32 HitchMs = 0;
 	/** -ChimeraTerrainLoad=<absolute dir>: the directory a `load` op without its own "dir" reads (S1L). */
 	FString LoadDir;
+	/** -ChimeraTerrainFastCook=0|1: FRealtimeMeshCollisionConfiguration::bShouldFastCookMeshes (plan C 3.6; default on, measured both ways). */
+	bool bFastCook = true;
+	/** -ChimeraTerrainCollisionDuringStroke=<ms>: sets chimera.terrain.CollisionDuringStroke (0 = stroke end only; -1 = leave the cvar). */
+	int32 CollisionDuringStrokeMs = -1;
 
 	static FChimeraTerrainOptions FromCommandLine(const TCHAR* CommandLine);
 };

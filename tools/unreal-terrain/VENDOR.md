@@ -59,3 +59,16 @@ None needed: RMC b8669a0 compiled unmodified beyond the two C0 patches on 5.8.3 
 - `Tools/build.ps1 -Target Editor`: first attempt hit the 30 min watchdog at 24/83 actions (machine shared with other checks' jobs; no errors, log `Saved/c1_editor_try1.log`); rerun with `-WatchdogMin 90`: `Result: Succeeded`, 928 s UBT time, 4 warnings.
 - `Tools/build.ps1 -Target Game`: `Result: Succeeded`, 352 s UBT time, 11 warning lines (all in RMC, deprecations), `Saved/c1_game.log`.
 - Warnings are all deprecations in RMC (C4996 `UseGPUScene` x4 in RealtimeMeshComponentProxy/DebugVertexFactory; `FRayTracingGeometry::Initializer`, `GetProjectionMatrix` in the proxy), plus CS0618 `Log.TraceInformation` in RealtimeMeshComponent.Build.cs. No compile patches were needed.
+
+## C5 proof of patch 2 (2026-10-01)
+- `Tests/TerrainCollisionTests.cpp`, `Chimera.Terrain.Collision.CustomOnly` (run_tests.ps1 -Filter Chimera.Terrain.Collision: `TESTS pass=1 fail=0`):
+  collision-free render sections + `SetCollisionConfig` alone -> `Updated, trimeshes=0`; then `SetCustomComplexMeshGeometry` alone ->
+  `Updated, trimeshes=1`, the component's body instance uses the new body, and a vertical Visibility trace hits at z=91.7500 cm (expected 91.7500).
+  On unpatched b8669a0 the second step should resolve Updated with 0 trimeshes (the bug in "Patch 2"), so the test would fail there:
+  UNVERIFIED, read from the code path (`RealtimeMeshManaged.cpp:462-471, 719-722`), not run against an unpatched plugin.
+- In the game (S1 with collision, `Out/s1_col`): 86/86 updates Updated with a trimesh, 0 disagreements between physics traces and the analytic
+  pick over 2,000 frustum rays + 2,025-3,953 vertex rays at each of pre_last2/after/undo/redo, max |dz| 0.0002 cm.
+- `FRealtimeMeshCollisionConfiguration::bShouldFastCookMeshes` is never read by RMC b8669a0's cook (only serialized,
+  `Private/RealtimeMeshSerialization.cpp:206`; `URealtimeMeshCollisionTools::CookComplexMesh` builds the Chaos trimesh directly,
+  `Private/RealtimeMeshCollisionLibrary.cpp:76-`), so fast cook on/off cannot differ; C5 measured both anyway.
+- Risk 2's hidden collision-only buffer set was not needed.

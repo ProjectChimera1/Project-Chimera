@@ -10,11 +10,26 @@
 #include "GameFramework/Actor.h"
 #include "HAL/PlatformTime.h"
 #include "Materials/MaterialInterface.h"
+#include "PhysicsEngine/BodySetup.h"
 
 using namespace RealtimeMesh;
 
 namespace ChimeraTerrain
 {
+	const TCHAR* CollisionReasonName(ETerrainCollisionReason Reason)
+	{
+		switch (Reason)
+		{
+		case ETerrainCollisionReason::Init: return TEXT("init");
+		case ETerrainCollisionReason::StrokeEnd: return TEXT("stroke_end");
+		case ETerrainCollisionReason::MidStroke: return TEXT("mid_stroke");
+		case ETerrainCollisionReason::Undo: return TEXT("undo");
+		case ETerrainCollisionReason::Redo: return TEXT("redo");
+		case ETerrainCollisionReason::Load: return TEXT("load");
+		default: return TEXT("unknown");
+		}
+	}
+
 	namespace
 	{
 		/** Plan C 3.3: FVector2f texcoords (FVector2DHalf would put the splat 0.3 texel off near u = 1). */
@@ -84,6 +99,41 @@ namespace ChimeraTerrain
 			OutMinZ = MinZ;
 			OutMaxZ = MaxZ;
 			return true;
+		}
+
+		void BuildCollisionMesh(const FTerrainHeightfield& HF, int32 Id, FRealtimeMeshCollisionMesh& Out)
+		{
+			// Same vertex order, positions and triangles as BuildChunk (the render streams), so a trace hits exactly the drawn surface.
+			// Winding needs no care: RMC builds every body double-sided (RealtimeMesh.cpp:381 bDoubleSidedGeometry = true).
+			const FTerrainRect R = HF.ChunkRenderRect(Id);
+			const int32 W = R.Width();
+			const int32 H = R.Height();
+			TArray<FVector3f> Vertices;
+			Vertices.Reserve(W * H);
+			for (int32 Y = R.Y0; Y < R.Y1; ++Y)
+			{
+				for (int32 X = R.X0; X < R.X1; ++X)
+				{
+					Vertices.Add(VertexPositionCm(HF, X, Y));
+				}
+			}
+			TArray<TIndex3<int32>> Triangles;
+			Triangles.Reserve((W - 1) * (H - 1) * 2);
+			for (int32 Ly = 0; Ly < H - 1; ++Ly)
+			{
+				for (int32 Lx = 0; Lx < W - 1; ++Lx)
+				{
+					const int32 BottomLeft = Ly * W + Lx;
+					const int32 BottomRight = BottomLeft + 1;
+					const int32 TopLeft = BottomLeft + W;
+					const int32 TopRight = TopLeft + 1;
+					Triangles.Add(TIndex3<int32>(BottomLeft, TopLeft, TopRight));
+					Triangles.Add(TIndex3<int32>(BottomLeft, TopRight, BottomRight));
+				}
+			}
+			Out.Name = FName(*FString::Printf(TEXT("TerrainChunk_%03d_Collision"), Id));
+			Out.SetVertices(MoveTemp(Vertices));
+			Out.SetTriangles(MoveTemp(Triangles));
 		}
 
 		void BuildChunk(const FTerrainHeightfield& HF, int32 Id, FRealtimeMeshStreamSet& Out)
@@ -175,9 +225,20 @@ namespace ChimeraTerrain
 			ChunkData[Id].Component = Comp;
 			ChunkData[Id].Mesh = Mesh;
 			BuildChunkMesh(HF, Id, true);
+
+			// Plan C 3.6: collision lives in custom complex geometry only (render sections stay collision-free; the vendored patch keeps
+			// custom geometry, VENDOR.md patch 2). SetCollisionConfig is a mesh method (RealtimeMeshManaged.h:388-393; struct
+			// RealtimeMeshCollision.h:26-57).
+			FRealtimeMeshCollisionConfiguration Cfg;
+			Cfg.bUseComplexAsSimpleCollision = true;
+			Cfg.bUseAsyncCook = true;
+			Cfg.bShouldFastCookMeshes = CollisionOptions.bFastCook;
+			Mesh->SetCollisionConfig(Cfg);
 		}
-		UE_LOG(LogChimeraTerrain, Display, TEXT("renderer=rmc chunks=%d chunk_quads=%d triangles=%lld draw_type=%s"),
-			Stats.Chunks, HF.ChunkQuads(), Stats.Triangles, Draw == ETerrainDrawType::Dynamic ? TEXT("Dynamic") : TEXT("Static"));
+		// Every chunk starts with a body, so traces hit unedited ground too.
+		UpdateCollision(HF, FTerrainRect(0, 0, HF.Width(), HF.Width()), ETerrainCollisionReason::Init);
+		UE_LOG(LogChimeraTerrain, Display, TEXT("renderer=rmc chunks=%d chunk_quads=%d triangles=%lld draw_type=%s collision=custom_complex fast_cook=%d"),
+			Stats.Chunks, HF.ChunkQuads(), Stats.Triangles, Draw == ETerrainDrawType::Dynamic ? TEXT("Dynamic") : TEXT("Static"), CollisionOptions.bFastCook ? 1 : 0);
 		return true;
 	}
 
@@ -348,6 +409,7 @@ namespace ChimeraTerrain
 	void FRmcTerrainRenderer::PollCompletions()
 	{
 		PrunePending();
+		PruneCollision();
 	}
 
 	bool FRmcTerrainRenderer::HasPendingWork() const
@@ -362,7 +424,172 @@ namespace ChimeraTerrain
 				}
 			}
 		}
+		// Plan C 3.8 `shot`: every outstanding mesh AND collision future has completed.
+		return HasPendingCollision();
+	}
+
+	int32 FRmcTerrainRenderer::UpdateCollision(const FTerrainHeightfield& HF, const FTerrainRect& VertexRect, ETerrainCollisionReason Reason)
+	{
+		check(IsInGameThread());
+		const FTerrainRect Clipped = VertexRect.Intersect(FTerrainRect(0, 0, HF.Width(), HF.Width()));
+		if (Clipped.IsEmpty())
+		{
+			return 0;
+		}
+		// Resolved updates are pruned here too, so a session no director polls (C8's editor) does not grow PendingCollision without bound.
+		PruneCollision();
+		const double T0 = FPlatformTime::Seconds();
+		TArray<int32> Ids;
+		HF.ChunksRenderOverlappingRect(Clipped, Ids);
+		const int32 BatchIndex = CollisionBatches.Num();
+		FTerrainCollisionBatch Batch;
+		Batch.Id = BatchIndex;
+		Batch.Reason = Reason;
+		int32 Submitted = 0;
+		for (const int32 Id : Ids)
+		{
+			FChunk& C = ChunkData[Id];
+			URealtimeMeshSimple* Mesh = C.Mesh.Get();
+			UTerrainChunkComponent* Comp = C.Component.Get();
+			if (!Mesh || !Comp)
+			{
+				continue;
+			}
+			FRealtimeMeshCollisionMesh CollisionMesh;
+			RmcTerrainGeometry::BuildCollisionMesh(HF, Id, CollisionMesh);
+			FRealtimeMeshComplexGeometry Geometry;
+			Geometry.Add(MoveTemp(CollisionMesh));
+			FPendingCollision P;
+			P.SubmitSeconds = FPlatformTime::Seconds();
+			P.SubmitFrame = GFrameCounter;
+			P.Reason = Reason;
+			P.BatchIndex = BatchIndex;
+			P.PhysicsSecondsAtSubmit = Comp->GetPhysicsStateSeconds();
+			TSharedRef<FCollisionOutcome> Outcome = P.Outcome;
+			TWeakObjectPtr<UTerrainChunkComponent> WeakComp(Comp);
+			// RealtimeMeshManaged.h:382 (rvalue overload). The future resolves on the game thread after the async cook
+			// (RealtimeMeshData.cpp:98-140) and URealtimeMesh::ApplyCollisionUpdate (RealtimeMesh.cpp:373-421), whose broadcast has
+			// already recreated the component's physics state (RealtimeMeshComponent.cpp:387-403).
+			Mesh->SetCustomComplexMeshGeometry(MoveTemp(Geometry)).Next([Outcome, WeakComp](ERealtimeMeshCollisionUpdateResult Result)
+			{
+				Outcome->Result = static_cast<uint8>(Result);
+				if (const UTerrainChunkComponent* Live = WeakComp.Get())
+				{
+					Outcome->PhysicsSecondsAtDone = Live->GetPhysicsStateSeconds();
+				}
+				Outcome->DoneSeconds = FPlatformTime::Seconds();
+				Outcome->DoneFrame = GFrameCounter;
+				Outcome->bDone = true;
+			});
+			C.PendingCollision.Add(MoveTemp(P));
+			++C.CollisionSubmits;
+			++Submitted;
+		}
+		Batch.Chunks = Submitted;
+		Batch.SubmitMs = (FPlatformTime::Seconds() - T0) * 1000.0;
+		Batch.bComplete = Submitted == 0;
+		CollisionBatches.Add(Batch);
+		BatchOpen.Add(Submitted);
+		return Submitted;
+	}
+
+	void FRmcTerrainRenderer::PruneCollision()
+	{
+		for (int32 Id = 0; Id < ChunkData.Num(); ++Id)
+		{
+			FChunk& C = ChunkData[Id];
+			const UTerrainChunkComponent* Comp = C.Component.Get();
+			const URealtimeMeshSimple* Mesh = C.Mesh.Get();
+			C.PendingCollision.RemoveAll([&](const FPendingCollision& P)
+			{
+				if (!P.Outcome->bDone)
+				{
+					return false;
+				}
+				FTerrainCollisionCook Cook;
+				Cook.Chunk = Id;
+				Cook.Reason = P.Reason;
+				Cook.Ms = (P.Outcome->DoneSeconds - P.SubmitSeconds) * 1000.0;
+				Cook.Frames = static_cast<int32>(P.Outcome->DoneFrame - P.SubmitFrame);
+				Cook.Result = P.Outcome->Result;
+				const UBodySetup* Body = Mesh ? Mesh->GetBodySetup() : nullptr;
+				Cook.TriMeshes = Body ? Body->TriMeshGeometries.Num() : 0;
+				CollisionCooks.Add(Cook);
+				C.LastCollisionResult = P.Outcome->Result;
+				if (CollisionBatches.IsValidIndex(P.BatchIndex))
+				{
+					FTerrainCollisionBatch& B = CollisionBatches[P.BatchIndex];
+					// Charge the physics-state time between this update's submit (or the chunk's previous charged resolve, if later) and the
+					// reading taken in the continuation; a merged or overlapping update of the same chunk then adds ~0, not the same time twice.
+					const double AtDone = P.Outcome->PhysicsSecondsAtDone >= 0.0 ? P.Outcome->PhysicsSecondsAtDone
+						: (Comp ? Comp->GetPhysicsStateSeconds() : -1.0);
+					if (AtDone >= 0.0)
+					{
+						const double From = FMath::Max(P.PhysicsSecondsAtSubmit, C.PhysicsSecondsCharged);
+						B.PhysicsStateMs += FMath::Max(0.0, AtDone - From) * 1000.0;
+						C.PhysicsSecondsCharged = FMath::Max(C.PhysicsSecondsCharged, AtDone);
+					}
+					if (--BatchOpen[P.BatchIndex] <= 0)
+					{
+						B.bComplete = true;
+					}
+				}
+				return true;
+			});
+		}
+	}
+
+	bool FRmcTerrainRenderer::HasPendingCollision() const
+	{
+		for (const FChunk& C : ChunkData)
+		{
+			for (const FPendingCollision& P : C.PendingCollision)
+			{
+				if (!P.Outcome->bDone)
+				{
+					return true;
+				}
+			}
+		}
 		return false;
+	}
+
+	void FRmcTerrainRenderer::GetChunkCollisionStates(TArray<FTerrainChunkCollisionState>& Out) const
+	{
+		Out.Reset();
+		for (int32 Id = 0; Id < ChunkData.Num(); ++Id)
+		{
+			const FChunk& C = ChunkData[Id];
+			FTerrainChunkCollisionState S;
+			S.Chunk = Id;
+			S.Submits = C.CollisionSubmits;
+			S.LastResult = C.LastCollisionResult;
+			for (const FPendingCollision& P : C.PendingCollision)
+			{
+				// A resolved update that is not pruned yet still counts as resolved; the newest one's result wins.
+				if (!P.Outcome->bDone)
+				{
+					S.bPending = true;
+				}
+				else
+				{
+					S.LastResult = P.Outcome->Result;
+				}
+			}
+			const URealtimeMeshSimple* Mesh = C.Mesh.Get();
+			const UTerrainChunkComponent* Comp = C.Component.Get();
+			UBodySetup* Body = Mesh ? Mesh->GetBodySetup() : nullptr;
+			S.TriMeshes = Body ? Body->TriMeshGeometries.Num() : 0;
+			// BodyInstance.h:709 GetBodySetup, :1184 IsValidBodyInstance: the scene body really uses the newest cooked body.
+			S.bPhysicsCurrent = Comp && Body && Comp->BodyInstance.IsValidBodyInstance() && Comp->BodyInstance.GetBodySetup() == Body;
+			if (Comp)
+			{
+				const FVector CenterCm = Comp->GetFootprintCenterCm();
+				S.CenterM = FVector2D(CenterCm.X / 100.0, CenterCm.Y / 100.0);
+				S.Component = Comp;
+			}
+			Out.Add(S);
+		}
 	}
 
 	FTerrainRenderStats FRmcTerrainRenderer::GetStats() const

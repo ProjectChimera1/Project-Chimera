@@ -80,39 +80,48 @@ namespace ChimeraTerrain
 		bStrokeOpen = true;
 	}
 
+	FTerrainUndo::FChunkBlock& FTerrainUndo::OpenBlock(int32 Id)
+	{
+		for (FChunkBlock& B : Open)
+		{
+			if (B.ChunkId == Id)
+			{
+				return B;
+			}
+		}
+		FChunkBlock& Block = Open.AddDefaulted_GetRef();
+		Block.ChunkId = Id;
+		return Block;
+	}
+
 	void FTerrainUndo::Touch(const FTerrainHeightfield& HF, const FTerrainRect& HeightRect, const FTerrainRect& SplatRect)
 	{
 		if (!bStrokeOpen)
 		{
 			BeginStroke();
 		}
+		// Snapshot only the data a tick is about to write (C5 rework, P6): a height tick captures its chunks' heights, a paint tick their
+		// splat texels. A chunk keeps one block per stroke; each array is captured once, on the first touch that writes it.
 		TArray<int32> ChunkIds;
 		HF.ChunksOwningRect(HeightRect, ChunkIds);
-		TArray<int32> SplatChunkIds;
-		HF.ChunksOwningSplatRect(SplatRect, SplatChunkIds);
-		for (const int32 Id : SplatChunkIds)
-		{
-			ChunkIds.AddUnique(Id);
-		}
 		for (const int32 Id : ChunkIds)
 		{
-			bool bKnown = false;
-			for (const FChunkBlock& B : Open)
+			FChunkBlock& Block = OpenBlock(Id);
+			if (!Block.bHeights)
 			{
-				if (B.ChunkId == Id)
-				{
-					bKnown = true;
-					break;
-				}
+				CaptureHeights(HF, HF.ChunkOwnedRect(Id), Block.HeightsBefore);
+				Block.bHeights = true;
 			}
-			if (bKnown)
+		}
+		HF.ChunksOwningSplatRect(SplatRect, ChunkIds);
+		for (const int32 Id : ChunkIds)
+		{
+			FChunkBlock& Block = OpenBlock(Id);
+			if (!Block.bSplat)
 			{
-				continue;
+				CaptureSplat(HF, HF.ChunkOwnedSplatRect(Id), Block.SplatBefore);
+				Block.bSplat = true;
 			}
-			FChunkBlock& Block = Open.AddDefaulted_GetRef();
-			Block.ChunkId = Id;
-			CaptureHeights(HF, HF.ChunkOwnedRect(Id), Block.HeightsBefore);
-			CaptureSplat(HF, HF.ChunkOwnedSplatRect(Id), Block.SplatBefore);
 		}
 	}
 
@@ -127,20 +136,50 @@ namespace ChimeraTerrain
 		FEntry Entry;
 		for (FChunkBlock& Block : Open)
 		{
-			TArray<float> HeightsNow;
-			TArray<uint8> SplatNow;
-			CaptureHeights(HF, HF.ChunkOwnedRect(Block.ChunkId), HeightsNow);
-			CaptureSplat(HF, HF.ChunkOwnedSplatRect(Block.ChunkId), SplatNow);
-			// Compare bytes, not float values, so -0.0 vs 0.0 or NaN payloads count as changes (undo is exact to the bit).
-			const bool bHeightsSame = HeightsNow.Num() == Block.HeightsBefore.Num()
-				&& FMemory::Memcmp(HeightsNow.GetData(), Block.HeightsBefore.GetData(), HeightsNow.Num() * sizeof(float)) == 0;
-			const bool bSplatSame = SplatNow == Block.SplatBefore;
-			if (bHeightsSame && bSplatSame)
+			// Keep only the arrays whose bytes changed (C5 rework, P6: a height stroke used to keep two unchanged 64 KB splat copies per
+			// chunk). Compare bytes, not float values, so -0.0 vs 0.0 or NaN payloads count as changes (undo is exact to the bit).
+			bool bHeightsChanged = false;
+			if (Block.bHeights)
+			{
+				TArray<float> HeightsNow;
+				CaptureHeights(HF, HF.ChunkOwnedRect(Block.ChunkId), HeightsNow);
+				bHeightsChanged = HeightsNow.Num() != Block.HeightsBefore.Num()
+					|| FMemory::Memcmp(HeightsNow.GetData(), Block.HeightsBefore.GetData(), HeightsNow.Num() * sizeof(float)) != 0;
+				if (bHeightsChanged)
+				{
+					Block.HeightsAfter = MoveTemp(HeightsNow);
+				}
+				else
+				{
+					Block.HeightsBefore.Empty();
+					Block.bHeights = false;
+				}
+			}
+			bool bSplatChanged = false;
+			if (Block.bSplat)
+			{
+				TArray<uint8> SplatNow;
+				CaptureSplat(HF, HF.ChunkOwnedSplatRect(Block.ChunkId), SplatNow);
+				bSplatChanged = SplatNow != Block.SplatBefore;
+				if (bSplatChanged)
+				{
+					Block.SplatAfter = MoveTemp(SplatNow);
+				}
+				else
+				{
+					Block.SplatBefore.Empty();
+					Block.bSplat = false;
+				}
+			}
+			if (!bHeightsChanged && !bSplatChanged)
 			{
 				continue;
 			}
-			Block.HeightsAfter = MoveTemp(HeightsNow);
-			Block.SplatAfter = MoveTemp(SplatNow);
+			// Exact-size storage: the history holds no slack.
+			Block.HeightsBefore.Shrink();
+			Block.HeightsAfter.Shrink();
+			Block.SplatBefore.Shrink();
+			Block.SplatAfter.Shrink();
 			Entry.Blocks.Add(MoveTemp(Block));
 		}
 		Open.Reset();
@@ -179,13 +218,21 @@ namespace ChimeraTerrain
 		OutDelta = FTerrainEditDelta();
 		for (const FChunkBlock& Block : Entry.Blocks)
 		{
-			const FTerrainRect HR = HF.ChunkOwnedRect(Block.ChunkId);
-			const FTerrainRect SR = HF.ChunkOwnedSplatRect(Block.ChunkId);
-			RestoreHeights(HF, HR, bUseAfter ? Block.HeightsAfter : Block.HeightsBefore);
-			RestoreSplat(HF, SR, bUseAfter ? Block.SplatAfter : Block.SplatBefore);
+			// Restore only the arrays the block kept; the delta's rects cover exactly what was rewritten (heights drive the mesh and
+			// collision re-upload, splat the texture re-upload).
 			OutDelta.Chunks.Add(Block.ChunkId);
-			OutDelta.HeightRect.Union(HR);
-			OutDelta.SplatRect.Union(SR);
+			if (Block.bHeights)
+			{
+				const FTerrainRect HR = HF.ChunkOwnedRect(Block.ChunkId);
+				RestoreHeights(HF, HR, bUseAfter ? Block.HeightsAfter : Block.HeightsBefore);
+				OutDelta.HeightRect.Union(HR);
+			}
+			if (Block.bSplat)
+			{
+				const FTerrainRect SR = HF.ChunkOwnedSplatRect(Block.ChunkId);
+				RestoreSplat(HF, SR, bUseAfter ? Block.SplatAfter : Block.SplatBefore);
+				OutDelta.SplatRect.Union(SR);
+			}
 		}
 		return true;
 	}

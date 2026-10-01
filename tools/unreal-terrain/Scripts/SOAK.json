@@ -1,0 +1,14 @@
+{
+  "name": "SOAK",
+  "about": "Plan C 3.8 script SOAK (C5): RMC #290 memory soak. Compare mode, pose rts80. A wait_collision first (the initial bodies), then a 5 min seeded random walk (the C1 walk: five modes every 5 s at d 5/20/60/100, 30 Hz) whose every stroke end rewrites its chunks' collision; the soak op samples UsedPhysical and the live UBodySetup count (total and RMC-owned) every 2 s with no forced GC, then runs one blocking gc and a final sample. Run with chimera.terrain.CollisionDuringStroke=0 (soak0, gated by P6) and with -ChimeraTerrainCollisionDuringStroke=250 (soak250, reported). The closing wait/verify prove the collision is still current after the soak. Last, a REPORTED-only residue op (after every gated sample; P6's window ends at the after-GC sample): a delayed sample delay_s after the soak's gc (past Mimalloc's 10 s page-reset delay, undo history still held), then clear the undo history, a second blocking gc, FMemory::Trim, wait delay_s and a residue sample, so the memory left without the retained history is measured, not subtracted.",
+  "ops": [
+    {"op": "look", "mode": "compare"},
+    {"op": "camera", "pose": "rts80"},
+    {"op": "settle", "frames": 30},
+    {"op": "wait_collision", "name": "init"},
+    {"op": "soak", "minutes": 5, "seed": 11, "cycle_s": 5, "diameters": [5, 20, 60, 100], "s": 10, "phase": "soak"},
+    {"op": "wait_collision", "name": "end"},
+    {"op": "verify_collision", "name": "end"},
+    {"op": "residue", "delay_s": 12}
+  ]
+}

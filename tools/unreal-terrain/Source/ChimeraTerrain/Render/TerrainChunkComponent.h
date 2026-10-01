@@ -45,7 +45,13 @@ public:
 
 	/** Scene proxies created by this component so far. */
 	int32 GetProxyCreates() const { return ProxyCreates; }
-	/** Seconds spent in OnCreatePhysicsState (game-thread collision apply, plan C 3.3, measured in C5). */
+	/** XY centre of the footprint (cm, Z = 0). */
+	FVector GetFootprintCenterCm() const { return FVector(0.5 * (FootMinCm.X + FootMaxCm.X), 0.5 * (FootMinCm.Y + FootMaxCm.Y), 0.0); }
+
+	/**
+	 * Seconds spent in OnDestroyPhysicsState + OnCreatePhysicsState: the game-thread part of applying a new collision body (plan C 3.3;
+	 * RMC's body broadcast calls RecreatePhysicsState, RealtimeMeshComponent.cpp:392-403). Measured in C5.
+	 */
 	double GetPhysicsStateSeconds() const { return PhysicsStateSeconds; }
 	int32 GetPhysicsStateCreates() const { return PhysicsStateCreates; }
 
@@ -58,8 +64,9 @@ public:
 	static int64 ProxyCreatesDuringStrokes;
 	static bool bStrokeOpen;
 
-	//~ UActorComponent (public in UPrimitiveComponent, PrimitiveComponent.h:2553)
+	//~ UActorComponent (public in UPrimitiveComponent, PrimitiveComponent.h:2553-2554)
 	virtual void OnCreatePhysicsState() override;
+	virtual void OnDestroyPhysicsState() override;
 
 private:
 	int32 ChunkId = INDEX_NONE;

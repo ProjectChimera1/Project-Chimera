@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
-"""parse_terrain.py - log scan, gates and tables for the terrain trial runs (plan C 3.8, 5). C3 + C4.
+"""parse_terrain.py - log scan, gates and tables for the terrain trial runs (plan C 3.8, 5). C3 + C4 + C5.
 
 Every run dir (T/Out/<tag>) holds game.log, results.json, ticks.csv, cmdline.txt and the director's PNGs/JSON. Rules (plan C 3.8;
 EXECUTION 3 C4):
   * the log scan is the shared KIT rule set (tools/unreal-trial/logscan.py): RealtimeMesh errors/warnings, ensures, Fatal,
     `Failed to load` other than the 4 profiler DLLs, `UpdateTextureRegions called for`, LogChimera*: Error ... any match fails;
   * results.json must say completed=true with ops_done == ops_total;
-  * a gate whose op or file is missing FAILS (never skipped); ops the director skipped (skipped:C5) fail every gate that needs them.
+  * a gate whose op or file is missing FAILS (never skipped); an op the director lists in results.json skipped[] fails every gate
+    that needs it.
 
 Usage:
   parse_terrain.py --g1 RUN_DIR                  gate G1 (plan C 5): one BAR line per bar, `G1 PASS` or `G1 FAIL`; writes RUN_DIR/g1.json
   parse_terrain.py --scan RUN_DIR...             log scan + completion check only
-  parse_terrain.py --s1 RUN_DIR [--expect-skipped]
-                                                 S1 bars: hashes (undo = pre_last2, redo = after), P7 images (+ the gated A/A floor and
+  parse_terrain.py --s1 RUN_DIR                  S1 bars: hashes (undo = pre_last2, redo = after), P7 images (+ the gated A/A floor and
                                                  positive control), P11 depth (full frame + last-two-strokes footprint), probes, splat
-                                                 counters, P2 in-place use, P5. P5 always FAILs here: while the collision ops log
-                                                 skipped:C5, and also once they run, because this parser has no collision bars yet (C5
-                                                 adds them). --expect-skipped excuses P5 from the exit code ONLY while collision ops are
-                                                 listed as skipped; C5's acceptance must not pass it.
+                                                 counters, P2 in-place use, P5 collision at pre_last2/after/undo/redo (wait: every body
+                                                 has a trimesh and is the one in use, probe rays hit; verify: 0 disagreements either way,
+                                                 max |dz| <= 1 cm over frustum and vertex rays), cook validity; cook p95 and GT apply p95
+                                                 are REPORTED (gated timings come from the measured campaign, EXECUTION 3 C9).
   parse_terrain.py --s1l RUN_DIR --ref S1_RUN    S1L: hashes equal the reference run's final, `redo` image vs the reference `redo` inside
                                                  the reference's stroke footprints and over its terrain mask, with the reference A/A floor
   parse_terrain.py --same-hash A_DIR B_DIR       P8: equal height/splat FNV at every shared hash, ticks_applied == ticks, B had the hitch
@@ -77,6 +77,9 @@ P4_TERRAIN_GPU_MS = 3.0
 P5_COOK_P95_MS = 50.0
 P5_GT_APPLY_P95_MS = 4.0
 P5_MAX_DZ_CM = 1.0
+P5_CHECKPOINTS = ("pre_last2", "after", "undo", "redo")
+P5_MIN_FRUSTUM_BOTH_HIT = 1500   # of the 2,000 rts80 frustum rays ~90 % meet the terrain (C4 depthcheck frame_gpu_hit_fraction 0.903)
+P5_MIN_VERTEX_RAYS = 100         # every checkpoint follows a collision rewrite, so its dirty rects hold vertices
 P6_PEAK_GROWTH_MB = 300.0
 P6_FINAL_GROWTH_MB = 100.0
 P11_P99_CM = 2.0
@@ -89,6 +92,9 @@ DEPTH_FP_CHECKS = ("after_rts80", "after_oblique", "undo_rts80", "undo_oblique")
 DEFAULT_CONFIG = "half=160 chunk=64 draw=Dynamic"
 STANDARD_EXEC = {"t.MaxFPS 0", "r.VSync 0", "r.ScreenPercentage 100", "r.HighResScreenshotDelay 64"}
 NON_CONFIG_OPTS = {"Script", "Out", "Load", "Units"}   # where to read/write and the unit workload; not a terrain configuration
+# -ChimeraTerrain<K>=<v> spelled at its default value is the default configuration (ChimeraTerrainGameMode.cpp: FastCook defaults to 1,
+# CollisionDuringStroke to the cvar's 0 in TerrainActor.cpp), so "run at CollisionDuringStroke=0" stays in the gate configuration.
+DEFAULT_OPTS = {"FastCook": "1", "CollisionDuringStroke": "0"}
 DEPTH_POSES = ("rts80", "oblique")
 COLLISION_OPS = ("wait_collision", "verify_collision")
 S1_SHOTS = ("before", "before_aa", "bg", "sculpt", "paint", "pre_last2", "after", "undo", "redo", "closeup", "oblique")
@@ -335,7 +341,55 @@ def check_probes(g, run):
         "16 probes, >= %d negative non-exact heights, >= %d at cell boundaries" % (PROBE_MIN_NEG_NONEXACT, PROBE_MIN_BOUNDARY))
 
 
-def s1(run, expect_skipped):
+def collision_bars(g, res, checkpoints, label):
+    """P5 correctness bars (plan C 5): one per checkpoint, each needing its wait_collision AND verify_collision record."""
+    col = res.get("collision") or {}
+    waits = {w.get("name"): w for w in (col.get("waits") or [])}
+    vers = {v.get("name"): v for v in (col.get("verifies") or [])}
+    rule = ("wait: ok, every chunk's body has a trimesh, is in use and its probe ray hits; verify: 0 disagreements either way, "
+            "max |dz| <= %.1f cm, frustum both-hit >= %d, vertex rays >= %d (%s)" % (P5_MAX_DZ_CM, P5_MIN_FRUSTUM_BOTH_HIT, P5_MIN_VERTEX_RAYS, label))
+    for cp in checkpoints:
+        w, v = waits.get(cp), vers.get(cp)
+        if not w or not v:
+            g.bar("P5 collision %s" % cp, False, "no samples (wait %s, verify %s)" % ("ok" if w else "missing", "ok" if v else "missing"), rule)
+            continue
+        fr, vx = v.get("frustum") or {}, v.get("vertex") or {}
+        wait_ok = bool(w.get("ok")) and w.get("chunks", 0) > 0 and w.get("min_trimeshes", 0) > 0 and w.get("probes_hit") == w.get("chunks")
+        ok = (wait_ok and v.get("disagreements", 1) == 0 and v.get("max_dz_cm", 1e9) <= P5_MAX_DZ_CM
+              and fr.get("both_hit", 0) >= P5_MIN_FRUSTUM_BOTH_HIT and vx.get("n", 0) >= P5_MIN_VERTEX_RAYS)
+        g.bar("P5 collision %s" % cp, ok,
+              "wait %s %.0f ms touched=%s min_tri=%s probes %s/%s; frustum n=%s hit=%s phys_only=%s pick_only=%s foreign=%s max_dz=%.4f; "
+              "vertex n=%s (rects %s) hit=%s phys_only=%s pick_only=%s foreign=%s max_dz=%.4f cm" % (
+                  "ok" if w.get("ok") else "FAIL", w.get("ms", 0), w.get("touched"), w.get("min_trimeshes"), w.get("probes_hit"), w.get("chunks"),
+                  fr.get("n"), fr.get("both_hit"), fr.get("physics_only_hit"), fr.get("pick_only_hit"), fr.get("foreign_hit"), fr.get("max_dz_cm", 0),
+                  vx.get("n"), vx.get("rects"), vx.get("both_hit"), vx.get("physics_only_hit"), vx.get("pick_only_hit"), vx.get("foreign_hit"),
+                  vx.get("max_dz_cm", 0)), rule)
+
+
+def cook_bars(g, res):
+    """Collision cook validity (gated) and the P5 timings (reported here; EXECUTION 3 C9)."""
+    col = res.get("collision") or {}
+    if not col.get("cooks"):
+        g.bar("P5_cooks_valid", False, "no samples (results.json has no collision cooks)", "every collision update resolves Updated with a trimesh")
+        return
+    ok = col.get("errors", 1) == 0 and col.get("unknown", 1) == 0 and col.get("updated_without_trimesh", 1) == 0
+    g.bar("P5_cooks_valid", ok, "cooks=%s updated=%s ignored=%s errors=%s unknown=%s updated_without_trimesh=%s batches=%s incomplete=%s" % (
+        col.get("cooks"), col.get("updated"), col.get("ignored"), col.get("errors"), col.get("unknown"), col.get("updated_without_trimesh"),
+        col.get("batches"), col.get("batches_incomplete")), "0 errors, 0 unknown, 0 Updated bodies without a trimesh")
+    ck, gt = col.get("cook_ms") or {}, col.get("gt_apply_ms") or {}
+    fast = (col.get("options") or {}).get("fast_cook")
+    g.bar("P5_cook_p95", ck.get("n", 0) > 0 and ck.get("p95", 1e9) <= P5_COOK_P95_MS,
+          "n=%s p50=%.2f p95=%.2f max=%.2f ms (edit cooks; fast_cook=%s; init cooks p95 %.2f ms)" % (
+              ck.get("n"), ck.get("p50", 0), ck.get("p95", 0), ck.get("max", 0), fast, (col.get("init_cook_ms") or {}).get("p95", 0)),
+          "p95 <= %.0f ms (reported; gated from the measured campaign)" % P5_COOK_P95_MS, informational=True)
+    g.bar("P5_gt_apply_p95", gt.get("n", 0) > 0 and gt.get("p95", 1e9) <= P5_GT_APPLY_P95_MS,
+          "n=%s p50=%.3f p95=%.3f max=%.3f ms (submit p95 %.3f, physics state p95 %.3f)" % (
+              gt.get("n"), gt.get("p50", 0), gt.get("p95", 0), gt.get("max", 0), (col.get("submit_ms") or {}).get("p95", 0),
+              (col.get("physics_state_ms") or {}).get("p95", 0)),
+          "per stroke end / undo / redo p95 <= %.0f ms (reported; gated from the measured campaign)" % P5_GT_APPLY_P95_MS, informational=True)
+
+
+def s1(run):
     g = Gates()
     res = scan_run(run, g)
     if res is None:
@@ -413,22 +467,14 @@ def s1(run, expect_skipped):
     # probes
     check_probes(g, run)
 
-    # P5: collision ops (C5). This parser reads no collision result, so P5 never passes here: skipped ops fail it, and ops that ran fail it
-    # as "not evaluated" until C5 replaces this bar with the real ones (disagreements, max |dz|, trimesh, cook p95, GT apply p95).
+    # P5: collision (C5). A skipped collision op fails P5 outright; otherwise the four checkpoints and the cook validity gate it.
     sk = skipped_collision(res)
-    rule = "wait_collision and verify_collision at pre_last2/after/undo/redo with 0 disagreements (C5's bars)"
     if sk:
-        g.bar("P5_collision", False, "skipped:C5 x%d (%s)" % (len(sk), ", ".join(sorted({s["op"] for s in sk}))), rule)
-    else:
-        g.bar("P5_collision", False, "not evaluated: the collision ops ran but C5 has not added the P5 bars (disagreements, max |dz|, trimesh, "
-              "cook p95, GT apply p95)", rule)
-    core_ok = all(r_["pass"] for r_ in g.rows if r_["bar"] != "P5_collision") and bool(g.rows)
-    # --expect-skipped excuses P5 only while the director really skipped the collision ops; with ops that ran it excuses nothing.
-    excused = expect_skipped and bool(sk)
-    ok = core_ok if excused else g.ok
-    if expect_skipped and not sk:
-        print("  --expect-skipped given but no collision op was skipped: P5 is not excused")
-    print("S1 %s%s" % ("PASS" if ok else "FAIL", " (P5 skipped:C5 expected)" if excused else ""))
+        g.bar("P5_collision_skipped", False, "skipped x%d (%s)" % (len(sk), ", ".join(sorted({s["op"] for s in sk}))), "no collision op skipped")
+    collision_bars(g, res, P5_CHECKPOINTS, "S1 checkpoints")
+    cook_bars(g, res)
+    ok = g.ok
+    print("S1 %s" % ("PASS" if ok else "FAIL"))
     return g, res, ok
 
 
@@ -676,7 +722,10 @@ def config_key(res, cmd):
     for k, v in re.findall(r"-ChimeraTerrain([A-Za-z]+)=(\"[^\"]*\"|\S+)", cmd):
         if k in NON_CONFIG_OPTS or k in ("Chunk", "Half"):
             continue
-        extra.append("%s=%s" % (k, v.strip('"')))
+        v = v.strip('"')
+        if DEFAULT_OPTS.get(k) == v:
+            continue
+        extra.append("%s=%s" % (k, v))
     for flag in ("-windowed", "-Windowed"):
         if flag in cmd.split():
             extra.append("windowed")
@@ -703,6 +752,71 @@ def phase_stat(run, phase, series, stat="p50"):
 
 def fps_from_ms(ms):
     return 1000.0 / ms if ms and ms > 0 else 0.0
+
+
+def p6_check(res):
+    """P6 bars for one SOAK results.json: (ok, detail, record). After-GC figures come from the sample the soak marked right after its
+    blocking GC (memory.after_gc_index); a missing or negative figure fails the bar instead of passing it without data. Peak bodies, the
+    body creation rate and the residue sample (undo cleared + gc + FMemory::Trim) are reported beside it, never gated."""
+    m = res.get("memory") or {}
+    chunks = (res.get("render") or {}).get("chunks", 0)
+    col = res.get("collision") or {}
+    peak = m.get("growth_peak_mb")
+    after = m.get("growth_after_gc_mb")
+    bodies = m.get("bodies_rmc_after_gc")
+    missing = [k for k, v in (("growth_peak_mb", peak), ("growth_after_gc_mb", after), ("bodies_rmc_after_gc", bodies)) if v is None]
+    if bodies is not None and bodies < 0:
+        missing.append("bodies_rmc_after_gc<0")
+    if not chunks:
+        missing.append("render.chunks")
+    ok = not missing and peak <= P6_PEAK_GROWTH_MB and after <= P6_FINAL_GROWTH_MB and bodies <= 2 * chunks
+    soak_s = sum(w.get("seconds", 0) for w in (res.get("walks") or []) if w.get("op") == "soak")
+    by = col.get("cook_ms_by_reason") or {}
+    edit_cooks = sum((by.get(k) or {}).get("n", 0) for k in ("stroke_end", "mid_stroke", "undo", "redo"))
+    mid = (by.get("mid_stroke") or {}).get("n", 0)
+    rate = edit_cooks / soak_s if soak_s > 0 else None
+    win = gc_window_excl_undo(m)
+    rec = {"chunks": chunks, "growth_peak_mb": peak, "growth_after_gc_mb": after, "bodies_rmc_after_gc": bodies,
+           "after_gc_excl_undo_mb": win[0], "peak_excl_undo_mb": win[1],
+           "growth_delayed_mb": m.get("growth_delayed_mb"), "delayed_after_gc_s": m.get("delayed_after_gc_s"),
+           "undo_mb_delayed": m.get("undo_mb_delayed"), "residue_after_gc_s": m.get("residue_after_gc_s"),
+           "peak_bodies_rmc": m.get("peak_bodies_rmc"), "peak_bodies_total": m.get("peak_bodies_total"), "soak_s": soak_s,
+           "bodies_created": edit_cooks, "bodies_created_per_s": rate, "mid_stroke_bodies_created": mid,
+           "undo_mb_after_gc": m.get("undo_mb_after_gc"), "growth_residue_mb": m.get("growth_residue_mb"),
+           "bodies_rmc_residue": m.get("bodies_rmc_residue"), "undo_mb_residue": m.get("undo_mb_residue"), "missing": missing}
+    f = lambda v, fmt="%.0f": "missing" if v is None else fmt % v
+    detail = "peak growth %s MB <= %.0f, after gc %s MB <= %.0f, RMC bodies after gc %s <= %d" % (
+        f(peak), P6_PEAK_GROWTH_MB, f(after), P6_FINAL_GROWTH_MB, f(bodies, "%d"), 2 * chunks)
+    if missing:
+        detail += " (MISSING: %s)" % ", ".join(missing)
+    detail += "; reported: peak bodies RMC %s / total %s, bodies created %d in %.0f s = %s/s (mid-stroke %d)" % (
+        m.get("peak_bodies_rmc"), m.get("peak_bodies_total"), edit_cooks, soak_s, f(rate, "%.2f"), mid)
+    if m.get("undo_mb_after_gc") is not None:
+        detail += "; undo history at the gc sample %.0f MB" % m["undo_mb_after_gc"]
+    if win[0] is not None:
+        detail += " (growth excl. undo, by subtraction: %.0f MB at the gc sample, %.0f MB peak)" % win
+    if m.get("growth_delayed_mb") is not None:
+        detail += "; delayed sample %.0f s after gc growth %.0f MB (undo %.0f MB)" % (
+            m.get("delayed_after_gc_s", -1), m["growth_delayed_mb"], m.get("undo_mb_delayed", -1))
+    if m.get("growth_residue_mb") is not None:
+        later = ", %.0f s after gc" % m["residue_after_gc_s"] if m.get("residue_after_gc_s") is not None else ""
+        detail += "; residue (undo cleared, gc, trim%s) growth %.0f MB, RMC bodies %s" % (later, m["growth_residue_mb"], m.get("bodies_rmc_residue"))
+    return ok, detail, rec
+
+
+def gc_window_excl_undo(m):
+    """Growth minus the undo history's own growth, recomputed from memory.samples over the gated window [baseline_index, after_gc_index]
+    only (reported, never gated; a subtraction, not a measurement). Returns (at the gc sample, peak) or (None, None) without the data.
+    Older results.json wrote growth_*_excl_undo_mb over every sample, the residue sample included; this does not read them."""
+    samples = m.get("samples") or []
+    b, g = m.get("baseline_index"), m.get("after_gc_index")
+    if b is None or g is None or g < 0 or not (0 <= b <= g < len(samples)):
+        return (None, None)
+    s0 = samples[b]
+    if s0.get("undo_mb", -1) < 0 or samples[g].get("undo_mb", -1) < 0:
+        return (None, None)
+    ex = lambda x: (x["mb"] - s0["mb"]) - (x["undo_mb"] - s0["undo_mb"])
+    return (ex(samples[g]), max(ex(x) for x in samples[b:g + 1] if x.get("undo_mb", -1) >= 0))
 
 
 def summary(paths, out_json, gate_config=None):
@@ -831,6 +945,11 @@ def summary(paths, out_json, gate_config=None):
         print("%-16s n=%s start=%.0f end=%.0f peak=%.0f growth_peak=%.0f growth_end=%.0f bodies total/rmc peak=%s/%s end=%s/%s vram_peak_mib=%s" % (
             r["tag"], m.get("n"), m.get("start_mb", 0), m.get("end_mb", 0), m.get("peak_mb", 0), m.get("growth_peak_mb", 0), m.get("growth_end_mb", 0),
             m.get("peak_bodies_total"), m.get("peak_bodies_rmc"), m.get("end_bodies_total"), m.get("end_bodies_rmc"), r["vram_peak_mib"]))
+        if m.get("growth_after_gc_mb") is not None or m.get("growth_residue_mb") is not None:
+            print("%-16s after gc (sample %s): growth %s MB, bodies total/rmc %s/%s, undo %s MB, excl. undo %s MB; delayed (%s s after gc, reported): growth %s MB, undo %s MB; residue (undo cleared + gc + trim, reported): growth %s MB, bodies rmc %s" % (
+                "", m.get("after_gc_index"), _fmt(m.get("growth_after_gc_mb")), m.get("bodies_total_after_gc"), m.get("bodies_rmc_after_gc"),
+                _fmt(m.get("undo_mb_after_gc")), _fmt(gc_window_excl_undo(m)[0]), _fmt(m.get("delayed_after_gc_s")), _fmt(m.get("growth_delayed_mb")),
+                _fmt(m.get("undo_mb_delayed")), _fmt(m.get("growth_residue_mb")), m.get("bodies_rmc_residue")))
     print("\n== hashes")
     for r in runs:
         for n, h in sorted((r["res"].get("hashes") or {}).items()):
@@ -936,33 +1055,66 @@ def summary(paths, out_json, gate_config=None):
     else:
         v = float(np.median(gpus))
         add("P4 terrain GPU ms", v <= P4_TERRAIN_GPU_MS, "%.3f ms <= %.1f (median of %d run(s))" % (v, P4_TERRAIN_GPU_MS, len(gpus)), mt, any_measured)
-    # P5
+    # P5: correctness from every S1 run (the four checkpoints) and every SOAK run (collision still current at the end); the timings pool
+    # the gate configuration's S1, C1 and SOAK runs (plan C 5: cook samples from S1, C1, SOAK) and are measured_only (EXECUTION 3 C9).
     s1r = [r for r in runs if r["script"] == "S1"]
-    sk = [r for r in runs if skipped_collision(r["res"])]
     if not s1r:
         add("P5 collision", False, "no samples (no S1 run)")
-    elif sk:
-        add("P5 collision", False, "skipped:C5 in %s" % [r["tag"] for r in sk])
+    for r in s1r + [r for r in runs if r["script"] == "SOAK"]:
+        buf = io.StringIO()
+        cg = Gates()
+        with contextlib.redirect_stdout(buf):
+            sk = skipped_collision(r["res"])
+            if sk:
+                cg.bar("P5_collision_skipped", False, "skipped x%d" % len(sk), "no collision op skipped")
+            collision_bars(cg, r["res"], P5_CHECKPOINTS if r["script"] == "S1" else ("end",), r["tag"])
+            cook_bars(cg, r["res"])
+        gated = [x for x in cg.rows if x["status"] != "REPORT"]
+        add("P5 %s correctness" % r["tag"], bool(gated) and all(x["pass"] for x in gated),
+            "; ".join("%s %s" % (x["bar"], x["status"]) for x in gated))
+    print("\n== collision cooks and GT apply (ms; per run)")
+    print("%-16s %-9s %-7s %6s %8s %8s %8s %6s %8s %8s" % ("tag", "fast_cook", "during", "cooks", "cook p50", "cook p95", "cook max", "gt n", "gt p95", "gt max"))
+    pool_cook, pool_gt = [], []
+    for r in runs:
+        col = r["res"].get("collision") or {}
+        if not col.get("cooks"):
+            continue
+        ck, gt = col.get("cook_ms") or {}, col.get("gt_apply_ms") or {}
+        opt = col.get("options") or {}
+        print("%-16s %-9s %-7s %6s %8.2f %8.2f %8.2f %6s %8.3f %8.3f" % (r["tag"], opt.get("fast_cook"), opt.get("during_stroke_ms"), ck.get("n", 0),
+              ck.get("p50", 0), ck.get("p95", 0), ck.get("max", 0), gt.get("n", 0), gt.get("p95", 0), gt.get("max", 0)))
+        if r in gated_runs and r["script"] in ("S1", "C1", "SOAK"):
+            pool_cook += col.get("cook_ms_values") or []
+            pool_gt += col.get("gt_apply_ms_values") or []
+    if not pool_cook:
+        add("P5 cook p95", False, "no samples (no cook in the gate configuration's S1/C1/SOAK runs)", mt, any_measured)
     else:
-        add("P5 collision", False, "collision gating is C5's: this parser has no collision results to evaluate")
-    # P6
-    soaks = [r for r in gated_runs if r["script"] == "SOAK"]
+        v = pctl(pool_cook, 95)
+        add("P5 cook p95", v <= P5_COOK_P95_MS, "%.2f ms <= %.0f (n=%d pooled)" % (v, P5_COOK_P95_MS, len(pool_cook)), mt, any_measured)
+    if not pool_gt:
+        add("P5 GT apply p95", False, "no samples (no stroke-end/undo/redo batch in the gate configuration's S1/C1/SOAK runs)", mt, any_measured)
+    else:
+        v = pctl(pool_gt, 95)
+        add("P5 GT apply p95", v <= P5_GT_APPLY_P95_MS, "%.3f ms <= %.0f (n=%d pooled)" % (v, P5_GT_APPLY_P95_MS, len(pool_gt)), mt, any_measured)
+    # P6: memory, not a timing, so it gates on EVERY SOAK run of the gate configuration, measured or not (C5 task note; EXECUTION 3 C9
+    # moves only timings to Phase 4). A stale soak is kept out by the folders passed, never demoted here. A SOAK in another configuration
+    # (soak250, mi.MemoryResetDelay 0) is always REPORTED.
+    soaks = [r for r in cfg_runs if r["script"] == "SOAK"]
+    other_soaks = [r for r in runs if r["script"] == "SOAK" and r not in soaks]
     if not soaks:
-        add("P6 soak growth", False, "no samples (no SOAK run)", mt, any_measured)
-    else:
-        for r in soaks:
-            m = r["res"].get("memory") or {}
-            chunks = (r["res"].get("render") or {}).get("chunks", 0)
-            ok = m.get("growth_peak_mb", 1e9) <= P6_PEAK_GROWTH_MB and m.get("growth_end_mb", 1e9) <= P6_FINAL_GROWTH_MB and m.get("end_bodies_rmc", 1e9) <= 2 * chunks
-            add("P6 %s" % r["tag"], ok, "peak growth %.0f MB <= %.0f, after gc %.0f MB <= %.0f, RMC bodies %s <= %d (peak %s, total peak %s)" % (
-                m.get("growth_peak_mb", 0), P6_PEAK_GROWTH_MB, m.get("growth_end_mb", 0), P6_FINAL_GROWTH_MB, m.get("end_bodies_rmc"), 2 * chunks,
-                m.get("peak_bodies_rmc"), m.get("peak_bodies_total")), mt, any_measured)
+        add("P6 soak growth", False, "no samples (no SOAK run)")
+    summ["p6"] = {}
+    for r in soaks + other_soaks:
+        gated_soak = r in soaks
+        ok, detail, rec = p6_check(r["res"])
+        summ["p6"][r["tag"]] = dict(rec, gated=gated_soak)
+        add("P6 %s" % r["tag"], ok, detail, not gated_soak, gated_soak)
     # P7, P11 from S1 runs (their own bars via --s1)
     if s1r:
         for r in s1r:
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf):
-                sg, _r, _ok = s1(r["dir"], True)
+                sg, _r, _ok = s1(r["dir"])
             # A run that did not complete, lost hash ops or mis-applied ticks cannot pass P7/P11 on the bars it did produce.
             base = ("log_scan", "completed", "results", "log_present", "ticks_applied_eq_ticks", "shots_present")
             ok_base = all(x["pass"] for x in sg.rows if x["bar"] in base) and any(x["bar"] == "completed" for x in sg.rows)
@@ -1012,7 +1164,6 @@ def main(argv=None):
     ap.add_argument("--simgrid", metavar="RUN_DIR")
     ap.add_argument("--summary", nargs="+", metavar="RUN_DIR")
     ap.add_argument("--json", metavar="OUT")
-    ap.add_argument("--expect-skipped", action="store_true")
     ap.add_argument("--gate-config", metavar="KEY", help="configuration key (as printed in the summary's runs table) that P1-P4 gate")
     a = ap.parse_args(argv)
 
@@ -1040,7 +1191,7 @@ def main(argv=None):
             bad += 0 if g.ok else 1
         return 1 if bad else 0
     if a.s1:
-        g, _res, ok = s1(a.s1, a.expect_skipped)
+        g, _res, ok = s1(a.s1)
         with open(os.path.join(a.s1, "s1.json"), "w", encoding="utf-8") as f:
             json.dump({"gate": "S1", "pass": ok, "bars": g.rows}, f, indent=1)
         return 0 if ok else 1

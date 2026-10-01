@@ -1,0 +1,40 @@
+C5 rework 2 automation tests (Editor target, UnrealEditor-ChimeraTerrain.dll built 2026-10-01 15:08:35)
+== run_tests.ps1 -Filter Chimera.Terrain.Collision -Tag c5r2_col (c5r2_col_20261001_150852.log)
+TESTS pass=1 fail=0
+found=1
+LogAutomationController: Display: Test Completed. Result={Success} Name={CustomOnly} Path={Chimera.Terrain.Collision.CustomOnly}
+LogAutomationController: config-only update: Updated, trimeshes=0 after 1 frames
+LogAutomationController: custom-geometry update: Updated, trimeshes=1 after 3 frames
+LogAutomationController: trace hit z=91.7500 cm, expected 91.7500 cm
+== run_tests.ps1 -Filter Chimera.Terrain -Tag c5r2_all (c5r2_all_20261001_150934.log)
+TESTS pass=26 fail=0
+found=26
+LogAutomationController: Display: Test Completed. Result={Success} Name={CustomOnly} Path={Chimera.Terrain.Collision.CustomOnly}
+LogAutomationController: config-only update: Updated, trimeshes=0 after 1 frames
+LogAutomationController: custom-geometry update: Updated, trimeshes=1 after 2 frames
+LogAutomationController: trace hit z=91.7500 cm, expected 91.7500 cm
+LogAutomationController: Display: Test Completed. Result={Success} Name={BorderNormalsExactOnTiltedPlane} Path={Chimera.Terrain.Data.BorderNormalsExactOnTiltedPlane}
+LogAutomationController: Display: Test Completed. Result={Success} Name={BothDiagonalsAgreeWithTheTriangulation} Path={Chimera.Terrain.Data.BothDiagonalsAgreeWithTheTriangulation}
+LogAutomationController: Display: Test Completed. Result={Success} Name={CellToVertexMapping} Path={Chimera.Terrain.Data.CellToVertexMapping}
+LogAutomationController: Display: Test Completed. Result={Success} Name={ChunkPartitionTilesTheGrid} Path={Chimera.Terrain.Data.ChunkPartitionTilesTheGrid}
+LogAutomationController: Display: Test Completed. Result={Success} Name={FixedTruncationTowardZero} Path={Chimera.Terrain.Data.FixedTruncationTowardZero}
+LogAutomationController: Display: Test Completed. Result={Success} Name={FlattenConvergesToStrokeStartTarget} Path={Chimera.Terrain.Data.FlattenConvergesToStrokeStartTarget}
+LogAutomationController: Display: Test Completed. Result={Success} Name={FootprintAndMapEdges} Path={Chimera.Terrain.Data.FootprintAndMapEdges}
+LogAutomationController: Display: Test Completed. Result={Success} Name={HeightClamp} Path={Chimera.Terrain.Data.HeightClamp}
+LogAutomationController: Display: Test Completed. Result={Success} Name={IoRejectsDamagedFiles} Path={Chimera.Terrain.Data.IoRejectsDamagedFiles}
+LogAutomationController: Display: Test Completed. Result={Success} Name={IoRoundTripByteIdentical} Path={Chimera.Terrain.Data.IoRoundTripByteIdentical}
+LogAutomationController: Display: Test Completed. Result={Success} Name={LowerSymmetric} Path={Chimera.Terrain.Data.LowerSymmetric}
+LogAutomationController: Display: Test Completed. Result={Success} Name={NoChangeStrokePushesNothing} Path={Chimera.Terrain.Data.NoChangeStrokePushesNothing}
+LogAutomationController: Display: Test Completed. Result={Success} Name={PaintRemainderRule} Path={Chimera.Terrain.Data.PaintRemainderRule}
+LogAutomationController: Display: Test Completed. Result={Success} Name={PaintSumNeverWraps} Path={Chimera.Terrain.Data.PaintSumNeverWraps}
+LogAutomationController: Display: Test Completed. Result={Success} Name={PickMissesAboveTheMap} Path={Chimera.Terrain.Data.PickMissesAboveTheMap}
+LogAutomationController: Display: Test Completed. Result={Success} Name={PickOnSlopeWithin1mm} Path={Chimera.Terrain.Data.PickOnSlopeWithin1mm}
+LogAutomationController: Display: Test Completed. Result={Success} Name={RaiseParity} Path={Chimera.Terrain.Data.RaiseParity}
+LogAutomationController: Display: Test Completed. Result={Success} Name={SameTickListTwiceSameHash} Path={Chimera.Terrain.Data.SameTickListTwiceSameHash}
+LogAutomationController: Display: Test Completed. Result={Success} Name={SimGridSampleMatchesElevationGrid} Path={Chimera.Terrain.Data.SimGridSampleMatchesElevationGrid}
+LogAutomationController: Display: Test Completed. Result={Success} Name={SimToUeAxes} Path={Chimera.Terrain.Data.SimToUeAxes}
+LogAutomationController: Display: Test Completed. Result={Success} Name={SmoothReducesSpike} Path={Chimera.Terrain.Data.SmoothReducesSpike}
+LogAutomationController: Display: Test Completed. Result={Success} Name={UndoCapEvictsOldest} Path={Chimera.Terrain.Data.UndoCapEvictsOldest}
+LogAutomationController: Display: Test Completed. Result={Success} Name={UndoRedoExactHashes} Path={Chimera.Terrain.Data.UndoRedoExactHashes}
+LogAutomationController: Display: Test Completed. Result={Success} Name={RmcSeamsAndBounds} Path={Chimera.Terrain.Render.RmcSeamsAndBounds}
+LogAutomationController: Display: Test Completed. Result={Success} Name={SeamsBitEqualAfterCornerStroke} Path={Chimera.Terrain.Render.SeamsBitEqualAfterCornerStroke}

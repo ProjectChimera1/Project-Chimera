@@ -98,11 +98,12 @@ void FTerrainMetrics::SampleFrame(double DeltaSeconds)
 	P.Seconds += DeltaSeconds;
 }
 
-void FTerrainMetrics::SampleMemory(double TimeSeconds, bool bCountBodies)
+void FTerrainMetrics::SampleMemory(double TimeSeconds, bool bCountBodies, double UndoMB)
 {
 	const double T0 = FPlatformTime::Seconds();
 	FTerrainMemorySample S;
 	S.TimeSeconds = TimeSeconds;
+	S.UndoMB = UndoMB;
 	S.UsedPhysicalMB = static_cast<double>(FPlatformMemory::GetStats().UsedPhysical) / (1024.0 * 1024.0);
 	if (bCountBodies)
 	{
@@ -282,6 +283,10 @@ TSharedRef<FJsonObject> FTerrainMetrics::MemoryToJson() const
 		return O;
 	}
 	const int32 Base = FMath::Clamp(MemoryBaseline, 0, Memory.Num() - 1);
+	// The gated window (C5 rework): baseline .. the after-GC sample when the soak marked one, else every sample. Samples after it (the
+	// closing wait/verify, the delayed and residue samples) are reported only and never move peak, end or the undo-excluded figures.
+	const bool bHasGc = Memory.IsValidIndex(AfterGcIndex) && AfterGcIndex >= Base;
+	const int32 WindowEnd = bHasGc ? AfterGcIndex : Memory.Num() - 1;
 	double Peak = 0.0;
 	int32 PeakBodies = -1;
 	int32 PeakRmc = -1;
@@ -298,7 +303,7 @@ TSharedRef<FJsonObject> FTerrainMetrics::MemoryToJson() const
 			++BodySamples;
 			SampleMsBodies.Add(S.SampleMs);
 		}
-		if (I >= Base)
+		if (I >= Base && I <= WindowEnd)
 		{
 			Peak = FMath::Max(Peak, S.UsedPhysicalMB);
 			PeakBodies = FMath::Max(PeakBodies, S.BodiesTotal);
@@ -310,11 +315,13 @@ TSharedRef<FJsonObject> FTerrainMetrics::MemoryToJson() const
 		One->SetNumberField(TEXT("bodies"), S.BodiesTotal);
 		One->SetNumberField(TEXT("bodies_rmc"), S.BodiesRmc);
 		One->SetNumberField(TEXT("ms"), S.SampleMs);
+		One->SetNumberField(TEXT("undo_mb"), S.UndoMB);
 		Arr.Add(MakeShared<FJsonValueObject>(One));
 	}
 	const double Start = Memory[Base].UsedPhysicalMB;
-	const double End = Memory.Last().UsedPhysicalMB;
+	const double End = Memory[WindowEnd].UsedPhysicalMB;
 	O->SetNumberField(TEXT("baseline_index"), Base);
+	O->SetNumberField(TEXT("window_end_index"), WindowEnd);
 	O->SetNumberField(TEXT("start_mb"), Start);
 	O->SetNumberField(TEXT("end_mb"), End);
 	O->SetNumberField(TEXT("peak_mb"), Peak);
@@ -322,9 +329,64 @@ TSharedRef<FJsonObject> FTerrainMetrics::MemoryToJson() const
 	O->SetNumberField(TEXT("growth_end_mb"), End - Start);
 	O->SetNumberField(TEXT("peak_bodies_total"), PeakBodies);
 	O->SetNumberField(TEXT("peak_bodies_rmc"), PeakRmc);
-	O->SetNumberField(TEXT("end_bodies_total"), Memory.Last().BodiesTotal);
-	O->SetNumberField(TEXT("end_bodies_rmc"), Memory.Last().BodiesRmc);
+	O->SetNumberField(TEXT("end_bodies_total"), Memory[WindowEnd].BodiesTotal);
+	O->SetNumberField(TEXT("end_bodies_rmc"), Memory[WindowEnd].BodiesRmc);
 	O->SetNumberField(TEXT("body_samples"), BodySamples);
+	// P6's after-GC figures: the sample the soak marked right after its blocking GC (-1 / absent when no GC sample was marked, which the
+	// parser treats as missing data). Memory.Last() is not used: sampling continues every 2 s after the soak.
+	O->SetNumberField(TEXT("after_gc_index"), AfterGcIndex);
+	if (bHasGc)
+	{
+		const FTerrainMemorySample& G = Memory[AfterGcIndex];
+		O->SetNumberField(TEXT("after_gc_mb"), G.UsedPhysicalMB);
+		O->SetNumberField(TEXT("growth_after_gc_mb"), G.UsedPhysicalMB - Start);
+		O->SetNumberField(TEXT("bodies_total_after_gc"), G.BodiesTotal);
+		O->SetNumberField(TEXT("bodies_rmc_after_gc"), G.BodiesRmc);
+		O->SetNumberField(TEXT("undo_mb_after_gc"), G.UndoMB);
+	}
+	// Reported (never gated): the first sample at least 12 s after the soak's GC, past UE Mimalloc's 10 s page-reset delay
+	// (MallocMimalloc.cpp:33 GMiMallocMemoryResetDelay), with the undo history still held.
+	O->SetNumberField(TEXT("delayed_index"), DelayedIndex);
+	if (Memory.IsValidIndex(DelayedIndex) && DelayedIndex >= Base)
+	{
+		const FTerrainMemorySample& D = Memory[DelayedIndex];
+		O->SetNumberField(TEXT("delayed_mb"), D.UsedPhysicalMB);
+		O->SetNumberField(TEXT("growth_delayed_mb"), D.UsedPhysicalMB - Start);
+		O->SetNumberField(TEXT("delayed_after_gc_s"), bHasGc ? D.TimeSeconds - Memory[AfterGcIndex].TimeSeconds : -1.0);
+		O->SetNumberField(TEXT("bodies_rmc_delayed"), D.BodiesRmc);
+		O->SetNumberField(TEXT("undo_mb_delayed"), D.UndoMB);
+	}
+	// Reported residue (never gated): after the gated samples, undo history cleared, a second blocking GC and FMemory::Trim.
+	O->SetNumberField(TEXT("residue_index"), ResidueIndex);
+	if (Memory.IsValidIndex(ResidueIndex) && ResidueIndex >= Base)
+	{
+		const FTerrainMemorySample& R = Memory[ResidueIndex];
+		O->SetNumberField(TEXT("residue_mb"), R.UsedPhysicalMB);
+		O->SetNumberField(TEXT("growth_residue_mb"), R.UsedPhysicalMB - Start);
+		O->SetNumberField(TEXT("bodies_total_residue"), R.BodiesTotal);
+		O->SetNumberField(TEXT("bodies_rmc_residue"), R.BodiesRmc);
+		O->SetNumberField(TEXT("undo_mb_residue"), R.UndoMB);
+		O->SetNumberField(TEXT("residue_after_gc_s"), bHasGc ? R.TimeSeconds - Memory[AfterGcIndex].TimeSeconds : -1.0);
+	}
+	// Undo history beside the growth (reported, never gated here): growth minus the history's own growth over the same span, inside the
+	// gated window only (the residue sample clears the history, so including it would report the residue growth as "excluding undo").
+	const double StartUndo = Memory[Base].UndoMB;
+	const double EndUndo = Memory[WindowEnd].UndoMB;
+	if (StartUndo >= 0.0 && EndUndo >= 0.0)
+	{
+		double PeakExcl = 0.0;
+		for (int32 I = Base; I <= WindowEnd; ++I)
+		{
+			if (Memory[I].UndoMB >= 0.0)
+			{
+				PeakExcl = FMath::Max(PeakExcl, (Memory[I].UsedPhysicalMB - Start) - (Memory[I].UndoMB - StartUndo));
+			}
+		}
+		O->SetNumberField(TEXT("start_undo_mb"), StartUndo);
+		O->SetNumberField(TEXT("end_undo_mb"), EndUndo);
+		O->SetNumberField(TEXT("growth_end_excl_undo_mb"), (End - Start) - (EndUndo - StartUndo));
+		O->SetNumberField(TEXT("growth_peak_excl_undo_mb"), PeakExcl);
+	}
 	O->SetObjectField(TEXT("sample_ms"), SampleMsAll.ToJson());
 	O->SetObjectField(TEXT("sample_ms_with_bodies"), SampleMsBodies.ToJson());
 	O->SetArrayField(TEXT("samples"), Arr);

@@ -3,6 +3,7 @@
 #include "Render/TerrainChunkComponent.h"
 
 #include "HAL/PlatformTime.h"
+#include "ChimeraTerrain.h"
 
 int64 UTerrainChunkComponent::ProxyCreatesDuringStrokes = 0;
 bool UTerrainChunkComponent::bStrokeOpen = false;
@@ -15,8 +16,12 @@ UTerrainChunkComponent::UTerrainChunkComponent()
 	// Trial terrain is a local presentation object: never replicate it (the RMC component defaults to replicated).
 	SetIsReplicatedByDefault(false);
 	SetReplicateMeshData(false);
-	// Collision is added by C5 (custom complex geometry at stroke end); the render sections carry none.
-	SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	// Plan C 3.6: physics collision for engine traces only. The body comes from custom complex geometry rewritten at stroke end, undo and
+	// redo (the render sections carry none); query-only, every channel ignored except ECC_Visibility, no navigation.
+	SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	SetCollisionObjectType(ECC_WorldStatic);
+	SetCollisionResponseToAllChannels(ECR_Ignore);
+	SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 	SetCanEverAffectNavigation(false);
 	bUpdateNavigationOnCollisionUpdate = false;
 }
@@ -93,6 +98,13 @@ FPrimitiveSceneProxy* UTerrainChunkComponent::CreateSceneProxy()
 		{
 			++ProxyCreatesDuringStrokes;
 		}
+		if (ProxyCreates > 1)
+		{
+			// C5 rework: every recreation is logged with its frame, so a run's extra whole-terrain recreations can be placed between the
+			// director's "op i/n" lines (the C4 runs all had 75, the first C5 S1 runs 75/100/125).
+			UE_LOG(LogChimeraTerrain, Display, TEXT("proxy recreate chunk=%d create=%d frame=%llu stroke_open=%d"), ChunkId, ProxyCreates,
+				static_cast<unsigned long long>(GFrameCounter), bStrokeOpen ? 1 : 0);
+		}
 	}
 	return Proxy;
 }
@@ -103,4 +115,11 @@ void UTerrainChunkComponent::OnCreatePhysicsState()
 	Super::OnCreatePhysicsState();
 	PhysicsStateSeconds += FPlatformTime::Seconds() - T0;
 	++PhysicsStateCreates;
+}
+
+void UTerrainChunkComponent::OnDestroyPhysicsState()
+{
+	const double T0 = FPlatformTime::Seconds();
+	Super::OnDestroyPhysicsState();
+	PhysicsStateSeconds += FPlatformTime::Seconds() - T0;
 }

@@ -5,6 +5,7 @@
 #include "ChimeraTerrain.h"
 #include "Data/TerrainIO.h"
 #include "Dom/JsonObject.h"
+#include "HAL/IConsoleManager.h"
 #include "HAL/PlatformTime.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
@@ -18,6 +19,13 @@ namespace
 	const TCHAR* const DefaultMaterialPath = TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial");
 	/** Linear albedo of the grey ground. */
 	const FLinearColor DefaultGrey(0.30f, 0.30f, 0.30f, 1.0f);
+
+	/** Plan C 3.6: 0 = collision is rewritten at stroke end only (the default); N > 0 = also at most every N ms while a stroke is open. */
+	TAutoConsoleVariable<int32> CVarCollisionDuringStroke(
+		TEXT("chimera.terrain.CollisionDuringStroke"),
+		0,
+		TEXT("Terrain physics collision during strokes: 0 = rewrite at stroke end only; N > 0 = also every N ms of an open stroke (the soak's worst case)."),
+		ECVF_Default);
 }
 
 ATerrainActor::ATerrainActor()
@@ -56,6 +64,7 @@ bool ATerrainActor::InitTerrain(int32 HalfExtentM, int32 ChunkQuads, ETerrainDra
 	}
 	UMaterialInterface* Mat = MakeDefaultMaterial();
 	Renderer = MakeUnique<FRmcTerrainRenderer>();
+	Renderer->SetCollisionOptions(CollisionOptions);
 	if (!Renderer->Initialize(this, HF, Mat, DrawType))
 	{
 		return false;
@@ -80,6 +89,8 @@ void ATerrainActor::BeginStroke(const FTerrainBrushParams& InParams, const FVect
 	Undo.BeginStroke();
 	StrokeHeightRect = FTerrainRect();
 	StrokeSplatRect = FTerrainRect();
+	MidStrokeCollisionRect = FTerrainRect();
+	LastMidStrokeCollisionSeconds = FPlatformTime::Seconds();
 	bStrokeOpen = true;
 	if (Renderer)
 	{
@@ -110,6 +121,19 @@ FTerrainTickResult ATerrainActor::ApplyTick(const FVector2D& CenterM, FTerrainTi
 	const double T3 = FPlatformTime::Seconds();
 	StrokeHeightRect.Union(R.HeightRect);
 	StrokeSplatRect.Union(R.SplatRect);
+	// Throttled mid-stroke collision (plan C 3.6 cvar; off by default). Not part of the tick timing: it is the collision path's cost.
+	const int32 DuringMs = CVarCollisionDuringStroke.GetValueOnGameThread();
+	if (bStrokeOpen && DuringMs > 0 && !R.HeightRect.IsEmpty())
+	{
+		MidStrokeCollisionRect.Union(R.HeightRect);
+		const double Now = FPlatformTime::Seconds();
+		if ((Now - LastMidStrokeCollisionSeconds) * 1000.0 >= DuringMs)
+		{
+			SubmitCollision(MidStrokeCollisionRect, ETerrainCollisionReason::MidStroke);
+			MidStrokeCollisionRect = FTerrainRect();
+			LastMidStrokeCollisionSeconds = Now;
+		}
+	}
 	T.ApplyMs = (T1 - T0) * 1000.0;
 	// The height path's wall time is normals + submit; any residue (a few timer reads) stays in upload.
 	if (!R.HeightRect.IsEmpty())
@@ -152,16 +176,35 @@ bool ATerrainActor::EndStroke()
 		Renderer->RecomputeBounds(HF, StrokeHeightRect);
 		Renderer->SetStrokeOpen(false);
 	}
+	// Plan C 3.6: each touched chunk's collision is rewritten from the final heights of the whole stroke.
+	SubmitCollision(StrokeHeightRect, ETerrainCollisionReason::StrokeEnd);
+	MidStrokeCollisionRect = FTerrainRect();
 	return Undo.EndStroke(HF);
 }
 
-void ATerrainActor::ApplyDelta(const FTerrainEditDelta& Delta)
+void ATerrainActor::SubmitCollision(const FTerrainRect& Rect, ETerrainCollisionReason Reason)
+{
+	if (Renderer && !Rect.IsEmpty() && Renderer->UpdateCollision(HF, Rect, Reason) > 0)
+	{
+		CollisionRects.Add(Rect);
+	}
+}
+
+TArray<FTerrainRect> ATerrainActor::ConsumeCollisionRects()
+{
+	TArray<FTerrainRect> Out = MoveTemp(CollisionRects);
+	CollisionRects.Reset();
+	return Out;
+}
+
+void ATerrainActor::ApplyDelta(const FTerrainEditDelta& Delta, ETerrainCollisionReason Reason)
 {
 	if (Renderer && !Delta.HeightRect.IsEmpty())
 	{
 		Renderer->UpdateHeights(HF, Delta.HeightRect);
 		Renderer->RecomputeBounds(HF, Delta.HeightRect);
 	}
+	SubmitCollision(Delta.HeightRect, Reason);
 	if (!Delta.SplatRect.IsEmpty())
 	{
 		Splat.UpdateRect(HF, Delta.SplatRect);
@@ -175,7 +218,7 @@ bool ATerrainActor::UndoLast()
 	{
 		return false;
 	}
-	ApplyDelta(Delta);
+	ApplyDelta(Delta, ETerrainCollisionReason::Undo);
 	return true;
 }
 
@@ -186,7 +229,7 @@ bool ATerrainActor::RedoLast()
 	{
 		return false;
 	}
-	ApplyDelta(Delta);
+	ApplyDelta(Delta, ETerrainCollisionReason::Redo);
 	return true;
 }
 
@@ -221,6 +264,7 @@ bool ATerrainActor::LoadFrom(const FString& Dir, FString& OutError)
 	{
 		Renderer->RebuildAll(HF);
 	}
+	SubmitCollision(FTerrainRect(0, 0, HF.Width(), HF.Width()), ETerrainCollisionReason::Load);
 	Splat.UpdateAll(HF);
 	return true;
 }

@@ -34,7 +34,7 @@
 //                                         (cycle_s / N each), painting layers 1..3; ticks beyond 15 per frame are dropped and counted
 //                                         (plan C 3.4 mouse rule)
 //   soak {minutes, ...random_walk args}   random_walk for minutes*60 s sampling UsedPhysical and live UBodySetups (total, RMC-owned) every 2 s,
-//                                         then one blocking gc and a final sample
+//                                         then one blocking gc and a final sample (memory.after_gc_index; P6 reads its after-GC figures there)
 //   gc                                    blocking garbage collection, logs ms and memory before/after
 //   csv {mode: start|stop}                CsvProfiler capture into the out dir (stop waits for the file)
 //   movie {frames}                        GIsDumpingMovie = frames; waits for the MovieFrame PNGs (UI excluded); results.json movies[] lists
@@ -46,7 +46,16 @@
 //   project_footprint {pose, name, as}    project the named stroke-footprint set to screen pixels at the pose into footprints.json[pose][as]
 //                                         (as defaults to name; the same set can be projected in several terrain states)
 //   await_mouse {n, pose=rts80}           writes mouse_targets.json, then waits (120 s) until the controller recorded n mouse strokes (C8)
-//   wait_collision | verify_collision     skipped:C5 (logged and listed in results.json skipped[]; gates that need them fail)
+// Ops (C5, plan C 3.6 / 3.8):
+//   wait_collision {name}                 (30 s) every collision future resolved, and every chunk's body has TriMeshGeometries > 0, is the
+//                                         body its component's physics state uses, and a vertical probe ray at the chunk centre hits it
+//   verify_collision {name, pose=rts80, n=2000, seed=4242, vertex_cap=4000}
+//                                         n seeded rays from the pose's frustum plus a vertical ray at every vertex inside the vertex rects
+//                                         whose collision was rewritten since the last verify (cap: evenly strided), each cast twice:
+//                                         LineTraceSingleByChannel(ECC_Visibility) (World.h:2161) and the analytic pick; disagreements
+//                                         counted both ways, |dz| (cm) of the two hit points over the rays both hit (results collision.verifies[])
+//   residue                               REPORTED only, after the gated soak samples: clear the undo history, blocking gc, FMemory::Trim, then
+//                                         a sample with bodies (results memory.residue_*); P6's gated after-GC figures never read it
 #pragma once
 
 #include "CoreMinimal.h"
@@ -60,6 +69,7 @@
 #include "TerrainScriptDirector.generated.h"
 
 class ATerrainActor;
+class UPrimitiveComponent;
 class ATerrainLighting;
 class APlayerController;
 class USceneCaptureComponent2D;
@@ -155,6 +165,12 @@ private:
 	// samples and at gc, so measured C1/C1U runs carry no periodic object walk)
 	double NextMemSampleSeconds = 0.0;
 	double RunStartSeconds = 0.0;
+	// residue (reported): when the soak's GC ran, and what the clear + GC + trim saw
+	double AfterGcSeconds = 0.0;
+	double ResidueUsedBeforeMb = 0.0;
+	double ResidueUsedImmediateMb = 0.0;
+	double ResidueUndoClearedMb = 0.0;
+	double ResidueGcMs = 0.0;
 
 	FTerrainMetrics Metrics;
 	FString CurrentPose = TEXT("rts80");
@@ -172,6 +188,10 @@ private:
 	TArray<TSharedPtr<FJsonValue>> Gcs;
 	TArray<TSharedPtr<FJsonValue>> Movies;
 	TArray<TSharedPtr<FJsonValue>> UndoRedos;
+	TArray<TSharedPtr<FJsonValue>> CollisionWaits;
+	TArray<TSharedPtr<FJsonValue>> CollisionVerifies;
+	/** Per-chunk collision submit counts at the end of the previous wait_collision (what was touched since). */
+	TArray<int64> CollisionSubmitsAtLastWait;
 	TSharedPtr<FJsonObject> Saved;
 	TSharedPtr<FJsonObject> Loaded;
 	TSharedPtr<FJsonObject> CsvInfo;
@@ -200,12 +220,20 @@ private:
 	EStep StepLoad(const FJsonObject& Op);
 	EStep StepRandomWalk(const FJsonObject& Op, bool bSoak);
 	EStep StepGc(const FJsonObject& Op);
+	/** Reported-only residue sample after the soak (undo cleared, GC, FMemory::Trim); see TerrainMetrics MarkResidue. */
+	EStep StepResidue(const FJsonObject& Op);
 	EStep StepCsv(const FJsonObject& Op);
 	EStep StepMovie(const FJsonObject& Op);
 	EStep StepDepthCheck(const FJsonObject& Op);
 	EStep StepProjectFootprint(const FJsonObject& Op);
 	EStep StepAwaitMouse(const FJsonObject& Op);
-	EStep StepSkippedCollision(const FString& Name);
+	EStep StepWaitCollision(const FJsonObject& Op);
+	EStep StepVerifyCollision(const FJsonObject& Op);
+	/** Physics trace (ECC_Visibility, complex) of a terrain-metre ray; true on a blocking hit, OutTerrain = the hit was a terrain chunk. */
+	bool PhysicsRay(const FVector& OriginM, const FVector& DirM, double MaxM, FVector& OutHitM, bool& OutTerrain,
+		const UPrimitiveComponent** OutComponent = nullptr) const;
+	/** results.json "collision": options, cook and GT-apply series, waits, verifies (plan C 5 P5). */
+	TSharedRef<FJsonObject> CollisionToJson() const;
 
 	static bool CompileQueuesIdle();
 	bool ApplyPose(const FString& Pose);
