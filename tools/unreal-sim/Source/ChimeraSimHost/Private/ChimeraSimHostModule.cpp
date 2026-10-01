@@ -1,14 +1,19 @@
-// Copyright Chimera. X1 smoke: with -ChimeraAotSmoke=<abs dll>, a core ticker loads a NativeAOT test library
-// 60 frames after start, calls its exports, logs the result and exits (forced, EXECUTION 2.2).
+// Copyright Chimera. ChimeraSimHost module (plan A 3.7). In a -game process StartupModule loads ChimeraSim.dll once (never freed),
+// logs "LogChimeraSim: loaded path=...", runs the runtime self tests and exits forced with 3 on a load or ABI failure
+// (EXECUTION 2.2). The X1 diagnostic stays: with -ChimeraAotSmoke=<abs dll>, a core ticker loads a NativeAOT test library 60 frames
+// after start, calls its exports, logs the result and exits forced (0 if all pass, 6 otherwise); the sim DLL is not loaded then.
 #include "CoreMinimal.h"
+#include "ChimeraSimLibrary.h"
+#include "ChimeraSimLog.h"
 #include "Containers/Ticker.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/PlatformMisc.h"
 #include "Misc/CommandLine.h"
+#include "Misc/CoreMisc.h"
 #include "Misc/Parse.h"
 #include "Modules/ModuleManager.h"
 
-DEFINE_LOG_CATEGORY_STATIC(LogChimeraSim, Log, All);
+DEFINE_LOG_CATEGORY(LogChimeraSim);
 
 namespace
 {
@@ -17,7 +22,7 @@ namespace
 	typedef int32 (*FSmokeRuntime)(char* Buf, int32 Cap, int32* Len);
 	typedef int32 (*FSmokeSelfTest)(int32 Kind);
 
-	/** Loads the library (never freed: NativeAOT libraries cannot be unloaded), runs the checks, exits. */
+	/** X1: loads the library (never freed: NativeAOT libraries cannot be unloaded), runs the checks, exits. */
 	void RunAotSmoke(const FString& DllPath)
 	{
 		UE_LOG(LogChimeraSim, Display, TEXT("aot smoke: loading %s"), *DllPath);
@@ -60,17 +65,52 @@ namespace
 	}
 }
 
-/** Module skeleton for the sim host (plan A 3.7). The smoke hook lives here until A10 adds the real library loader. */
 class FChimeraSimHostModule : public IModuleInterface
 {
 public:
 	virtual void StartupModule() override
 	{
-		FString DllPath;
-		if (!FParse::Value(FCommandLine::Get(), TEXT("-ChimeraAotSmoke="), DllPath, /*bShouldStopOnSeparator*/ false))
+		FString SmokeDll;
+		if (FParse::Value(FCommandLine::Get(), TEXT("-ChimeraAotSmoke="), SmokeDll, /*bShouldStopOnSeparator*/ false))
+		{
+			StartAotSmoke(SmokeDll);
+			return;
+		}
+		// Only a process launched as a game loads the sim here (not the editor, not commandlets); the director loads it
+		// lazily in any other world (Load() is idempotent, one "loaded path=" line per process).
+		// A -game run of another map (the look test's run_fps.ps1) does not ask for the sim: only a command line that names the
+		// sim game mode or any -ChimeraSim* option loads it at start-up.
+		if (!IsRunningGame() || IsRunningCommandlet() || FCString::Stristr(FCommandLine::Get(), TEXT("ChimeraSim")) == nullptr)
 		{
 			return;
 		}
+		FChimeraSimLibrary& Lib = FChimeraSimLibrary::Get();
+		FString Err;
+		if (!Lib.Load(Err))
+		{
+			UE_LOG(LogChimeraSim, Error, TEXT("load failed: %s (exit 3)"), *Err);
+			GLog->Flush();
+			FPlatformMisc::RequestExitWithStatus(true, 3);
+			return;
+		}
+		const int32 Passed = Lib.RunSelfTests();
+		if (Passed != 3)
+		{
+			UE_LOG(LogChimeraSim, Error, TEXT("runtime self tests %d/3 inside Unreal (exit 3)"), Passed);
+			GLog->Flush();
+			FPlatformMisc::RequestExitWithStatus(true, 3);
+		}
+	}
+
+	virtual void ShutdownModule() override
+	{
+		if (TickHandle.IsValid()) { FTSTicker::GetCoreTicker().RemoveTicker(TickHandle); }
+		// The sim DLL is never freed (R3 3.2).
+	}
+
+private:
+	void StartAotSmoke(const FString& DllPath)
+	{
 		UE_LOG(LogChimeraSim, Display, TEXT("aot smoke requested: %s (runs after 60 frames)"), *DllPath);
 		FrameCount = 0;
 		TickHandle = FTSTicker::GetCoreTicker().AddTicker(TEXT("ChimeraAotSmoke"), 0.0f, [this, DllPath](float)
@@ -81,13 +121,6 @@ public:
 		});
 	}
 
-	virtual void ShutdownModule() override
-	{
-		if (TickHandle.IsValid()) { FTSTicker::GetCoreTicker().RemoveTicker(TickHandle); }
-		// The sim DLL is never freed.
-	}
-
-private:
 	FTSTicker::FDelegateHandle TickHandle;
 	int32 FrameCount = 0;
 };

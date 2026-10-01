@@ -1,0 +1,80 @@
+# A10 acceptance (plan A 4 A10), 2026-10-01. R commit at publish c88a724e (dirty=1: other tasks' untracked files), U HEAD 4d43892 at runs.
+## publish (ILC, LOCK a/A10; first try from a U cwd picked SDK 10 -> runtime pack 8.0.31 -> exit 3; rerun from R cwd, global.json SDK 8.0.419)
+publish: commit=c88a724e1aa8ff1ab774309375b850bd83256912 dirty=1 config=Release -> D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\bin\publish
+publish: dotnet exit 0 in 12 s; log D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\publish.log
+publish: 5941760 bytes sha256=647404a0062491069f9659a7ed3b1ea39d59223f49f9544d079fbce53662bde1 il_warnings=0 native_compile=1
+publish: header sha256=60bf45f14facd9744b3aaa9f00aecc2a637395881d996922b5dd31bbd0c1566a
+publish: swapped into D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\bin\publish
+[ue_lock] released (exit 0, held 13 s)
+python count warning IL in publish.log = 0
+## -StageOnly (LOCK)
+staged D:\Projects\Chimera-Unreal\ProjectChimera\Binaries\ThirdParty\ChimeraSim\Win64\ChimeraSim.dll sha256=647404a0062491069f9659a7ed3b1ea39d59223f49f9544d079fbce53662bde1
+staged D:\Projects\Chimera-Unreal\ProjectChimera\Source\ChimeraSimHost\Private\ThirdParty\chimera_sim.h sha256=60bf45f14facd9744b3aaa9f00aecc2a637395881d996922b5dd31bbd0c1566a
+staged D:\Projects\Chimera-Unreal\ProjectChimera\Binaries\ThirdParty\ChimeraSim\Win64\ChimeraSim.pdb sha256=f6f694fbf62fa0e8746c9dc0380744fbc72776aaaeccc281d72ac1857d7607da
+[ue_lock] released (exit 0, held 1 s)
+## build (LOCK)
+build: ProjectChimeraEditor Win64 Development -> D:/Projects/Chimera-Unreal/TrialOut/a/a10/build.log
+Result: Succeeded
+build: exit 0 in 710 s; Result: Succeeded present = True
+build: D:/Projects/Chimera-Unreal/ProjectChimera/Binaries/Win64/UnrealEditor-ChimeraSimHost.dll sha256=6cd9dc5326230a18ebd1716b5a4c8978fc12f3a07bb79e4ce370833cee39b35a
+[ue_lock] released (exit 0, held 711 s)
+## run main
+exit 0 elapsed_s 89.0 pass True
+checks {'exit_0': True, 'no_abort': True, 'loaded_once': True, 'loaded_full_path': True, 'result_once': True, 'no_error': True, 'seed_echo': True, 'shots_echo': True, 'trace_exists': True, 'csv_written': True}
+loaded ['[2026.10.01-18.10.44:147][  0]LogChimeraSim: Display: loaded path=D:/Projects/Chimera-Unreal/ProjectChimera/Binaries/ThirdParty/ChimeraSim/Win64/ChimeraSim.dll abi=0x00010000 structs=56/28 build=abi=1.0;algo=29;commit=c88a724e1aa8ff1ab774309375b850bd83256912;dirty=1;runtime=.NET 8.0.25;aot=1']
+seed_echo ['0xC0FFEE1234567890'] shots_echo ['0:overview,0:wide,60:close,300:wide,300:close,900:wide,1440:wide']
+result [2026.10.01-18.11.52:073][663]LogChimeraSim: Display: RESULT ticks=1440 final=0x2CFCF09E fps_median=172.5 sim_p95_ms=2.697 sim_max_ms=13.342 max_steps_per_frame=4 frames=8255 hitches=0 orders_applied=2077 orders_dropped=0 alive_end=121 verdict=0 mxcsr_nondefault=0 abi_calls=13237 warmup_wait_s=17.2 run_s=48.0
+first_error None
+## run main_24fps
+exit 0 elapsed_s 72.3 pass True
+checks {'exit_0': True, 'no_abort': True, 'loaded_once': True, 'loaded_full_path': True, 'result_once': True, 'no_error': True, 'seed_echo': True, 'shots_echo': True, 'trace_exists': True}
+loaded ['[2026.10.01-18.12.55:446][  0]LogChimeraSim: Display: loaded path=D:/Projects/Chimera-Unreal/ProjectChimera/Binaries/ThirdParty/ChimeraSim/Win64/ChimeraSim.dll abi=0x00010000 structs=56/28 build=abi=1.0;algo=29;commit=c88a724e1aa8ff1ab774309375b850bd83256912;dirty=1;runtime=.NET 8.0.25;aot=1']
+seed_echo ['0xC0FFEE1234567890'] shots_echo ['0:overview,0:wide,60:close,300:wide,300:close,900:wide,1440:wide']
+result [2026.10.01-18.13.57:889][404]LogChimeraSim: Display: RESULT ticks=1440 final=0x2CFCF09E fps_median=24.0 sim_p95_ms=2.137 sim_max_ms=11.080 max_steps_per_frame=2 frames=1152 hitches=0 orders_applied=2077 orders_dropped=0 alive_end=121 verdict=0 mxcsr_nondefault=0 abi_calls=6134 warmup_wait_s=13.1 run_s=48.0
+first_error None
+## run hitch
+exit 0 elapsed_s 72.4 pass True
+checks {'exit_0': True, 'no_abort': True, 'loaded_once': True, 'loaded_full_path': True, 'result_once': True, 'no_error': True, 'seed_echo': True, 'shots_echo': True, 'trace_exists': True}
+loaded ['[2026.10.01-18.14.20:544][  0]LogChimeraSim: Display: loaded path=D:/Projects/Chimera-Unreal/ProjectChimera/Binaries/ThirdParty/ChimeraSim/Win64/ChimeraSim.dll abi=0x00010000 structs=56/28 build=abi=1.0;algo=29;commit=c88a724e1aa8ff1ab774309375b850bd83256912;dirty=1;runtime=.NET 8.0.25;aot=1']
+seed_echo ['0xC0FFEE1234567890'] shots_echo ['0:overview,0:wide,60:close,300:wide,300:close,900:wide,1440:wide']
+result [2026.10.01-18.15.22:963][256]LogChimeraSim: Display: RESULT ticks=1440 final=0x2CFCF09E fps_median=174.0 sim_p95_ms=2.643 sim_max_ms=13.071 max_steps_per_frame=8 frames=5821 hitches=60 orders_applied=2077 orders_dropped=0 alive_end=121 verdict=0 mxcsr_nondefault=0 abi_calls=10803 warmup_wait_s=9.8 run_s=51.3
+first_error None
+## run ai
+exit 0 elapsed_s 69.6 pass True
+checks {'exit_0': True, 'no_abort': True, 'loaded_once': True, 'loaded_full_path': True, 'result_once': True, 'no_error': True, 'seed_echo': True, 'shots_echo': True, 'trace_exists': True, 'csv_written': True}
+loaded ['[2026.10.01-18.27.36:417][  0]LogChimeraSim: Display: loaded path=D:/Projects/Chimera-Unreal/ProjectChimera/Binaries/ThirdParty/ChimeraSim/Win64/ChimeraSim.dll abi=0x00010000 structs=56/28 build=abi=1.0;algo=29;commit=c88a724e1aa8ff1ab774309375b850bd83256912;dirty=1;runtime=.NET 8.0.25;aot=1']
+seed_echo ['0xC0FFEE1234567890'] shots_echo ['0:overview,0:wide,60:close,300:wide,300:close,900:wide,1440:wide']
+result [2026.10.01-18.28.35:704][659]LogChimeraSim: Display: RESULT ticks=1440 final=0xBA13D580 fps_median=171.8 sim_p95_ms=2.820 sim_max_ms=13.786 max_steps_per_frame=2 frames=8235 hitches=0 orders_applied=2064 orders_dropped=13 alive_end=124 verdict=0 mxcsr_nondefault=0 abi_calls=13217 warmup_wait_s=9.7 run_s=48.0
+first_error None
+## run error_bad_scenario
+exit 5 elapsed_s 11.1 pass True
+checks {'exit_nonzero': True, 'error_logged': True, 'no_result': True, 'no_trace': True, 'self_exit': True, 'within_120s': True}
+loaded ['[2026.10.01-18.37.20:832][  0]LogChimeraSim: Display: loaded path=D:/Projects/Chimera-Unreal/ProjectChimera/Binaries/ThirdParty/ChimeraSim/Win64/ChimeraSim.dll abi=0x00010000 structs=56/28 build=abi=1.0;algo=29;commit=c88a724e1aa8ff1ab774309375b850bd83256912;dirty=1;runtime=.NET 8.0.25;aot=1']
+seed_echo ['0xC0FFEE1234567890'] shots_echo ['0:overview,0:wide,60:close,300:wide,300:close,900:wide,1440:wide']
+result None
+first_error [2026.10.01-18.37.22:419][  0]LogChimeraSim: Error: session_create rc=-3 (content load failed) after 8 ms; chimera_last_error: scenario 'D:/Projects/Chimera-Unreal/TrialOut/a/a10/bad_scenario.json' missing or unparseable: D:\Projects\Chimera-Unreal\TrialOut\a\a10\bad_scenario.json: 'not a scenario ' is an invalid JSON literal. Expected the literal 'null'. Path: $['this is'] | LineNumber: 0 | BytePositionInLine: 14. (exit 5)
+## selftests + MXCSR inside UE (main run log)
+LogChimeraSim: Display: selftest kind=1 rc=0
+LogChimeraSim: Display: selftest kind=2 rc=0
+LogChimeraSim: Display: selftest kind=3 rc=0
+LogChimeraSim: Display: selftest 3/3
+LogChimeraSim: Display: RESULT ticks=1440 final=0x2CFCF09E fps_median=172.5 sim_p95_ms=2.697 sim_max_ms=13.342 max_steps_per_frame=4 frames=8255 hitches=0 orders_applied=2077 orders_dropped=0 alive_en
+## compare main set
+set=main golden=trial-1000.golden.txt meta=trial-1000.meta.txt trailer=trial-1000.trailer.txt
+  meta           1440/1440 (reference: golden + meta + trailer)
+  unreal         1440/1440 H0=6/6 header=ok digests=ok orders=ok
+  unreal_24fps   1440/1440 H0=6/6 header=ok digests=ok orders=ok
+  unreal_hitch   1440/1440 H0=6/6 header=ok digests=ok orders=ok
+RESULT set=main legs=4 ticks=1440 all_equal=yes PASS
+rc=0
+## compare ai set
+set=ai golden=trial-1000-ai.golden.txt meta=trial-1000-ai.meta.txt trailer=trial-1000-ai.trailer.txt
+  meta           1440/1440 (reference: golden + meta + trailer)
+  unreal_ai      1440/1440 H0=6/6 header=ok digests=ok orders=ok
+RESULT set=ai legs=2 ticks=1440 all_equal=yes PASS
+rc=0
+## steps per frame histogram (frames.csv)
+main {0: 6818, 1: 1436, 4: 1}
+main_24fps {1: 864, 2: 288}
+hitch {0: 4766, 1: 995, 4: 1, 7: 31, 8: 28}
+ai {0: 6796, 1: 1438, 2: 1}

@@ -329,5 +329,128 @@
     "unreal_build_id": "",
     "committed": true,
     "sent_to_alec": null
+  },
+  {
+    "file": "a-A10-acceptance.txt",
+    "path": "a/a-A10-acceptance.txt",
+    "sha256": "0d08dd37ae227f1b434d9d666bd15140147be3bfc31c7d1bc54d8e1214c44b80",
+    "bytes": 8328,
+    "w_h": null,
+    "task": "A10",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/a10/a10_acceptance.txt",
+    "r_commit": "e19eeb73",
+    "unreal_build_id": "6cd9dc53",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A10-trace-unreal-main.txt",
+    "path": "a/a-A10-trace-unreal-main.txt",
+    "sha256": "dfb30c1fede8886349627fd3321489e4f459ef624c76e4f24d72d03d5288caa6",
+    "bytes": 20814,
+    "w_h": null,
+    "task": "A10",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/main/trace.txt",
+    "r_commit": "e19eeb73",
+    "unreal_build_id": "6cd9dc53",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A10-trace-unreal-ai.txt",
+    "path": "a/a-A10-trace-unreal-ai.txt",
+    "sha256": "ccf5b13cd2a4efa1b3b38b8b5ee02baadc2d831842c42fd3bfe69f8ab76458f7",
+    "bytes": 20812,
+    "w_h": null,
+    "task": "A10",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/ai/trace.txt",
+    "r_commit": "e19eeb73",
+    "unreal_build_id": "6cd9dc53",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A10-compare-main.json",
+    "path": "a/a-A10-compare-main.json",
+    "sha256": "3325059aeb7867d3fa45152762cb7cde7ed132d3ec2ee5987c76bc8c9113c131",
+    "bytes": 1657,
+    "w_h": null,
+    "task": "A10",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/a10/compare_main/compare.json",
+    "r_commit": "e19eeb73",
+    "unreal_build_id": "6cd9dc53",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A10-compare-ai.json",
+    "path": "a/a-A10-compare-ai.json",
+    "sha256": "b234792f605a4ac96ce25ce22717a71759394333cbc355a297b2585bd0dbe719",
+    "bytes": 1010,
+    "w_h": null,
+    "task": "A10",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/a10/compare_ai/compare.json",
+    "r_commit": "e19eeb73",
+    "unreal_build_id": "6cd9dc53",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A10-parity-main.png",
+    "path": "a/a-A10-parity-main.png",
+    "sha256": "31abb2867f6a6f386cd0851264a71c9bca2154804ce2e6b1939dde65b4e7c43d",
+    "bytes": 44753,
+    "w_h": [
+      1400,
+      540
+    ],
+    "task": "A10",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/a10/compare_main/parity.png",
+    "r_commit": "e19eeb73",
+    "unreal_build_id": "6cd9dc53",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A10-parity-ai.png",
+    "path": "a/a-A10-parity-ai.png",
+    "sha256": "0f8cbe1bb67b155fe68cf70a0480c006bcf441856bcbcc7c0cc5deeb2303cf11",
+    "bytes": 29682,
+    "w_h": [
+      1400,
+      390
+    ],
+    "task": "A10",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/a10/compare_ai/parity.png",
+    "r_commit": "e19eeb73",
+    "unreal_build_id": "6cd9dc53",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A8b-acceptance.txt",
+    "path": "a/a-A8b-acceptance.txt",
+    "sha256": "2b7c5ffa22e4ecd408155a7654ae64aeec60f7142a113ddfe30ad142038fd655",
+    "bytes": 3659,
+    "w_h": null,
+    "task": "A8b",
+    "source": "C:/Users/MD_Ki/AppData/Local/Temp/claude/D--Projects-Project-Chimera/fd02aab1-1ba4-4649-9db9-6cf73fdc69c1/scratchpad/a-A8b-acceptance.txt",
+    "r_commit": "e19eeb73",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A8b-probe.txt",
+    "path": "a/a-A8b-probe.txt",
+    "sha256": "e23b1a9a5d78508540187e7a56dc627ea1bb0b69c5b54b5ec149225d00db6f4d",
+    "bytes": 839,
+    "w_h": null,
+    "task": "A8b",
+    "source": "C:/Users/MD_Ki/AppData/Local/Temp/claude/D--Projects-Project-Chimera/fd02aab1-1ba4-4649-9db9-6cf73fdc69c1/scratchpad/a-A8b-probe.txt",
+    "r_commit": "e19eeb73",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
   }
 ]

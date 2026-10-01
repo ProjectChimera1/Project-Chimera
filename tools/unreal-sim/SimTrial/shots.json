@@ -1,0 +1,9 @@
+[
+  {"tick": 0, "camera": "overview"},
+  {"tick": 0, "camera": "wide"},
+  {"tick": 60, "camera": "close"},
+  {"tick": 300, "camera": "wide"},
+  {"tick": 300, "camera": "close"},
+  {"tick": 900, "camera": "wide"},
+  {"tick": 1440, "camera": "wide"}
+]
