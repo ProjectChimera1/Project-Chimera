@@ -1,0 +1,71 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ============================================================================================
+       Unreal trial A6 (plan A section 4 A6, fact F34): the AOT golden replay gate. A NativeAOT executable that compiles
+       the REAL sim set (godot/SimSources.props, the set Tier-1 tests, the analyzer gate, the CLI and ChimeraSim.dll
+       compile) plus the committed golden builders, and replays every golden it can:
+         (a) its AOT sequences equal the JIT sequences of the SAME exe source (run with `dotnet run`),
+         (b) they equal the committed *.golden.txt files, sample by sample (GoldenChecksumReplay.ParseGolden),
+         plus the trial golden via SimSession + the frozen orders CSV, and the fail-closed unknown effect kind.
+       GOLDENS.md (this folder) lists every committed golden, its builder and driver, and every exclusion with its reason.
+
+       Compiled IN PLACE from godot/ProjectChimera.Sim.Tests/Golden (nothing is copied, no test or scenario file is
+       modified): every Golden/*Scenario.cs that needs no xUnit, GoldenChecksumReplay.cs, and two xUnit-free helper files
+       from Effects/ that some builders call. Not part of godot.sln; godot.csproj removes this folder from the game's
+       compile glob (Compile Remove="ProjectChimera.Sim.Native\**\*.cs") and the folder has a .gdignore through NAT.
+
+       The ILC publish is a heavy job: run_gate.ps1 does it; take the UE lock first (tag a/A6).
+       ============================================================================================ -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <OutputType>Exe</OutputType>
+    <!-- JitMode=true (run_gate.ps1 passes it for the `dotnet run` JIT leg) leaves PublishAot off, so that leg is a plain JIT program:
+         dynamic code supported, reflection STJ on, the DW-449 reflection fold reachable. With PublishAot=true even the JIT-run
+         build sets those runtime feature switches to their AOT values (found in A6), which would not be the Godot-like JIT leg. -->
+    <PublishAot Condition="'$(JitMode)' != 'true'">true</PublishAot>
+    <SelfContained>true</SelfContained>
+    <AssemblyName>SimAotGoldens</AssemblyName>
+    <RootNamespace>ProjectChimera.AotGoldens</RootNamespace>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <IsPackable>false</IsPackable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- No globbing: the folder holds GOLDENS.md and out/; only the listed sources compile. -->
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- Per-site trim/AOT warnings instead of the IL2104 rollup, so the publish log counts real sites. -->
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+    <!-- The scenario files are compiled as the Tier-1 project compiles them (no Nullable context of its own). -->
+    <NoWarn>$(NoWarn);CS8618;CS8604;CS8625;CS8765;CS0618;CS0436</NoWarn>
+  </PropertyGroup>
+
+  <!-- The single sim-source source-of-truth (same import as ProjectChimera.Sim.Tests, .Analysis, Cli and Native). -->
+  <Import Project="..\..\SimSources.props" />
+
+  <PropertyGroup>
+    <TestsDir>$(MSBuildThisFileDirectory)..\..\ProjectChimera.Sim.Tests\</TestsDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="*.cs" />
+
+    <!-- Every golden builder that compiles without xUnit, in place. -->
+    <Compile Include="$(TestsDir)Golden\*Scenario.cs" LinkBase="Golden" />
+    <Compile Include="$(TestsDir)Golden\GoldenChecksumReplay.cs" LinkBase="Golden" />
+    <!-- Excluded: the scenario file has `using Xunit;` and calls Assert.* inside Build (GOLDENS.md, excluded table). -->
+    <Compile Remove="$(TestsDir)Golden\HeroRevivalScenario.cs" />
+    <Compile Remove="$(TestsDir)Golden\ItemScenario.cs" />
+    <Compile Remove="$(TestsDir)Golden\ResearchScenario.cs" />
+    <Compile Remove="$(TestsDir)Golden\ShopPurchaseScenario.cs" />
+
+    <!-- xUnit-free helpers the AbilityCast / EqualExchange / WorkerCast / Passive builders call. -->
+    <Compile Include="$(TestsDir)Effects\AbilityTestSupport.cs" LinkBase="Effects" />
+    <Compile Include="$(TestsDir)Effects\PassiveTestAbilities.cs" LinkBase="Effects" />
+
+    <!-- The pinned ILC packs (plan A F8), an exact NuGet pin, as ProjectChimera.Sim.Native.csproj does. -->
+    <PackageReference Include="Microsoft.DotNet.ILCompiler" Version="[8.0.25]" />
+  </ItemGroup>
+
+</Project>

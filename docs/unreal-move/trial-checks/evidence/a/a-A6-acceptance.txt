@@ -1,0 +1,15 @@
+A6 acceptance (Unreal trial, AOT golden replay gate), 2026-10-01
+
+1. GOLDENS.md written first; covers all 37 committed *.golden.txt (33 compared in the exe: 30 per-tick + 1 value + 2 trial; 4 excluded for xUnit with reasons).
+2. JIT leg (pwsh -File run_gate.ps1 -Step jit; plain JIT, aot=0): golden_equal=31/31 trial=1440/1440 RESULT pass; writes out/jit_reference.txt sha256=97b4e2ade274df812024dbdf2aa1a7b4016d5a8dae83c3421333e3abcb630b0b
+3. ILC publish (UE_LOCK_TAG=a/A6 ue_lock.sh pwsh -File run_gate.ps1 -Step publish): lock log lines:
+   2026-10-01T13:53:03,acquire,a/A6,run,617,,
+   2026-10-01T13:53:20,release,a/A6,run,617,17,0
+   publish: warning IL count in publish.log = 0 ; 'Generating native code' = 1 ; exe sha256=48bce27b48fd64720236696e07949f02b411b283d65585abbfee56e77bac7bab bytes=6537728
+4. NativeAOT exe (pwsh -File run_gate.ps1 -Step run), exit 0:
+   jit_equal=37/37 golden_equal=31/31 trial=1440/1440 unknown_effect=fail_closed runtime=.NET 8.0.25 aot=1
+   breakdown: golden_exact=15/15 golden_driver_or_value=16/16 perturb_located=3/3 trial_ai=1440/1440 trial_jit_equal=ok trial_ai_jit_equal=ok known_effect_jit_equal=ok
+5. Teeth: the same exe against a JIT reference with one delivery hash flipped (--jit-ref tampered):
+   jit_equal=36/37 golden_equal=31/31 trial=1440/1440 unknown_effect=fail_closed runtime=.NET 8.0.25 aot=1 ; RESULT FAIL ; exit 1
+   (row: delivery | exact | 300 | ... | FAIL | ok | ... | jit_divergence=tick 3 expected 0x022777C7 actual 0x022777C6)
+6. Cross-check with R1's spike (docs/.../proto-a/spikeaot2/aot_out.txt): the fnv of the 14 RunAndRecord rows the spike also ran equals this run's fnv (14/14).

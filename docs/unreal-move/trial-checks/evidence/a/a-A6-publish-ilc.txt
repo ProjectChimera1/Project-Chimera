@@ -1,0 +1,6 @@
+  Determining projects to restore...
+  Restored D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\AotGoldens\SimAotGoldens.csproj (in 271 ms).
+  SimAotGoldens -> D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\AotGoldens\bin\Release\net8.0\win-x64\SimAotGoldens.dll
+C:\Users\MD_Ki\.nuget\packages\microsoft.dotnet.ilcompiler\8.0.25\build\Microsoft.DotNet.ILCompiler.SingleEntry.targets(45,5): warning : Delete explicit 'Microsoft.DotNet.ILCompiler' package reference in your project file to avoid versioning problems. [D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\AotGoldens\SimAotGoldens.csproj]
+  Generating native code
+  SimAotGoldens -> D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\AotGoldens\bin\publish\

@@ -1,0 +1,53 @@
+runtime: .NET 8.0.25 aot=1 stj_reflection=0 dynamic_code=0 algo=29
+godot: D:\Projects\Project_Chimera\godot
+jit_reference read: D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\AotGoldens\out\jit_reference.txt sha256=97b4e2ade274df812024dbdf2aa1a7b4016d5a8dae83c3421333e3abcb630b0b
+
+row | kind | ticks | fnv | jit | golden | golden_sha256 | detail
+golden-scenario | exact | 300 | D39E94FFB890A7E3 | ok | ok | fed196f66efadc145f8222cdda238a58c7873809520c7f1e3a157a5134e8d1fb |
+golden-applier | exact | 300 | 619AA4F15AD6818A | ok | ok | 64c86ec9f6d958103066b7c5490027a8e9f1c325cf39cb59e19ea85f9d1351e7 |
+same-tick-tie-break | exact | 300 | 2DAE1B703DDAAB1B | ok | ok | 717c6591d833a20cca8fcc318932ef6050144342804ca8777bdf7888bba563dd |
+ai-active | exact | 300 | 3FDEEF17DF445691 | ok | ok | d9cb1b307e0320a8f228b97f3c51c06cc64a677f95b7fd3658a719cb5973acc3 |
+command-vocabulary | exact | 300 | E99683981A715120 | ok | ok | 780a7da77b76d76ba7ce543802fc5634dc98e434683e761e109137492fa71f04 |
+formation-separation | exact | 300 | A8932E1904EE546C | ok | ok | 15f73ecffacb507024c8b74871533ef33d91c0447c962548d91d9d73259da64e |
+formation-separation-frozen-v22 | exact | 300 | A8932E1904EE546C | ok | ok | 426558af35de68833571c2491d58e3e67326fb5777e150f961942022d5d280f7 |
+multifaction | exact | 300 | 0EB0A97535CE0F52 | ok | ok | 6a6c176f052b19e33799ca3c88f9e119f3fcb3bfebeaf81b3e5659b60e004bae |
+multifaction8 | exact | 300 | 19CFC2486EFB7E50 | ok | ok | 254e56d7833de5be6c0a29f23519a30ba052547d8dc14d5ec25f7fa427d54693 |
+pathability-block | exact | 120 | 32210BAD467150F7 | ok | ok | db21463df6ad23d1413ae310dc5858204a5560dc558540cee6af8f9b84b029ed |
+projectile-snap | exact | 300 | 97A014A7B62AAA73 | ok | ok | e7531128c1349a778df061b27fe60644beaa605050379c079c3ad8d870df5e90 |
+combat-air-ground | exact | 300 | D3347F91109DF202 | ok | ok | 2c82737ab70f8df16698502406e85ca2820248e863c49fd3e6ff9318f801aa5f |
+anti-building | exact | 300 | 92C4FDE3724BC31A | ok | ok | dd7c795bc6a88e1caada7f5f071b50f56fcfa278c3a6f62a653b26be04b41df4 |
+delivery | exact | 300 | 10BF9FF316CF6AF9 | ok | ok | 8ec8c78021d13a70a3c4af4913057c7f82c2cd81f610d835136262f8b803bc52 |
+hero-xp | exact | 300 | 57CBFF4825BF8465 | ok | ok | 8267e58e896c71ce877f078717df6ab08ee28b0401d8a431c86cbbe45c123410 |
+ability-domain-filter | driver | 300 | 2B83D96A819C3F52 | ok | ok | 4c5b2aa00170577cdf4e342b99fd91d75cdc80649b3964f9bc5bc29b832a07f5 |
+crit-dodge | driver | 300 | 71DAC26413142E46 | ok | ok | 2031a2f572edebe32cf26f1a7f5685db9ef352d35211e0fd23ff189f8fdddf97 |
+ground-cast | driver | 300 | D5FDEEA3DC6CE5A1 | ok | ok | 2fdc00db53b39ce28692b0fc764f5902de5798f8ad39d9e339e246b56952a969 |
+modifier | driver | 300 | 4E3732A30D8B15E7 | ok | ok | e60b5a0dfbacd56e035ea6efb72995ded74872741cd807b1d846c5cddf17ced5 |
+shift-queue | driver | 300 | 7B198645E46703E0 | ok | ok | a59014efb3a16318c9234657eb11fa5a1a5e2ee06461b536c693d900772cf7fb |
+stat-pipeline | driver | 300 | CDE6F19498C1C220 | ok | ok | 2388ac4ba0b9c254dad6c5ff0ea27c869835246ebfc555d0e48358e9de52ee32 |
+tag-filter | driver | 300 | 955150AE041C825E | ok | ok | cda279eca03bec4861fffbee90a0eaf3cacfb58d36aabf441351048a1318c171 |
+ability-cast | driver | 300 | C9C67BE6D538022E | ok | ok | c3a1803c1921a2440406328a4995b31fe1c7d3e1f8ba901725a65e11bad848f5 |
+equal-exchange | driver | 300 | 6D2EEB455DEAF5C5 | ok | ok | 77d8bed006a7252b8cd69c91ee6b1404a6b1051d3d76d9e38ebe4fb730d42a36 |
+worker-cast-crystal-cost | driver | 300 | 3FAED47116988E79 | ok | ok | 621e175c4b79925fcbea3ac4722e6186e8dc308af44c2723352909f8a7abf44c |
+passive | driver | 300 | 9CBF47D5B5C74D78 | ok | ok | 327e2822a48a904c5a3135bd4febde432ce5f22f6fd08aa6fd3b0b4c20b7558f |
+energy-regen | driver | 40 | 36F053561A928F63 | ok | ok | 5ac6197c4328cc3dffbfa03c18c76883a9183c43a2189f777d5f444f61560cf1 |
+merged-n2 | driver | 300 | 38863948C3DF28F5 | ok | ok | 5f81ab22f750bf439fe548e3fcc99a725ec6148f0ecd82853c7f7686cc09456b |
+merged-n3 | driver | 300 | 3DD0076B9A351C40 | ok | ok | eb48a623571042338ac087df255ca0048213b1cb564332496781d0cbdd5e1613 |
+merged-n4 | driver | 300 | 6D059CD4595FB947 | ok | ok | 1d42e8423da13959e649a283aeb9b3b72bee9e82c5de58ae6da901a175db7f0c |
+multifaction3 | nogolden | 300 | BF1755145E39894C | ok | n/a | - |
+data-driven-building | nogolden | 120 | A2AA4DD38540996D | ok | n/a | - |
+mid-match-drop | nogolden | 400 | 90F66E2617C859CC | ok | n/a | - |
+mid-match-drop-no-inject | nogolden | 400 | DB9E5E8AF4B6D54B | ok | n/a | - |
+mid-match-drop-idle-control | nogolden | 400 | 90F66E2617C859CC | ok | n/a | - |
+mid-match-no-drop | nogolden | 400 | 760CA3D214B77DB4 | ok | n/a | - |
+hero-start-state | value | 1 | 10192677911691E0 | ok | ok | d58d40af9206ed0cb00efd5d8f02c4b5d0591f7e2782d450d59257e99aa296b6 |
+perturb golden-scenario k=100: ok located=tick 101
+perturb multifaction k=100: ok located=tick 101
+perturb multifaction8 k=100: ok located=tick 101
+trial-1000 | 1440/1440 samples equal the committed golden | fnv=DDD48317B569E0A2 jit=ok
+trial-1000-ai | 1440/1440 samples equal the committed golden | fnv=EDBED1CCC91892A3 jit=ok
+known_effect_fold=012C0F8D49B4DF0A jit_equal=ok
+unknown_effect_detail=fail_closed (expected under NativeAOT: fail_closed)
+
+breakdown: golden_exact=15/15 golden_driver_or_value=16/16 perturb_located=3/3 trial_ai=1440/1440 trial_jit_equal=ok trial_ai_jit_equal=ok known_effect_jit_equal=ok
+jit_equal=37/37 golden_equal=31/31 trial=1440/1440 unknown_effect=fail_closed runtime=.NET 8.0.25 aot=1
+RESULT pass
