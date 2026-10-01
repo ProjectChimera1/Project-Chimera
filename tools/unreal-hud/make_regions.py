@@ -15,7 +15,7 @@ named regions, then the panels. Pixels of the mask that no rectangle claims (sha
 claimed pixel's region.
 
 Pixel classes (one per pixel, painter's order, later wins): flat (default) < vector bakes (plate drop shadow, vat glow)
-< placeholder (map photo, figure box) < text (glyph rect +1) < vector (icons +1, keycap corners, nodes, ring, dashes,
+< placeholder (map photo, figure box) < text (glyph rect +1, inside the run's own region only) < vector (icons +1, keycap corners, nodes, ring, dashes,
 minimap dots, camera rect) < ornament bands (all vector). Decision: shadow and radial-gradient bakes are classed vector,
 not flat, because flat pixels carry the exact gates (MAD 1.0, 1% over 8) which no blurred bake can promise.
 """
@@ -286,12 +286,14 @@ def paint_classes(E, d, masks, runs, slots):
     mx0, my0, mx1, my1 = snapped_box(E[203]["box"])
     fill((mx0 + 1, my0 + 1, mx1 - 1, my1 - 1), PLACEHOLDER)
     fill(snapped_box(E[266]["box"]), PLACEHOLDER)
-    # 3. text: glyph rect +1 within the run's clip
+    # 3. text: glyph rect +1 within the run's clip, and only inside the run's own region (T2 ruling R5, EXECUTION section 7:
+    #    the +1 px margin left of the sel.* runs reached column x=417, y 939-1041 of sel.panel, 87 px of plain panel fill
+    #    #1C1F25 with no run and no ink, which then escaped the flat gate; they stay flat)
     for r in runs:
         gx0, gy0, gx1, gy1 = r["glyph"]
         x0, y0, x1, y1 = int(np.floor(gx0)) - 1, int(np.floor(gy0)) - 1, int(np.ceil(gx1)) + 1, int(np.ceil(gy1)) + 1
         cx0, cy0, cx1, cy1 = r["clip"]
-        fill((max(x0, cx0), max(y0, cy0), min(x1, cx1), min(y1, cy1)), TEXT)
+        fill((max(x0, cx0), max(y0, cy0), min(x1, cx1), min(y1, cy1)), TEXT, only=masks[r["region"]])
     # 4. vector: icons +1, keycap corners, nodes, ring, dashes, minimap dots, camera rect
     for ic in d["iconsUsed"]:
         fill(_pad(snapped_box(ic["box"]), 1, 1, 1, 1), VECTOR)
@@ -538,7 +540,6 @@ def build_spec(ref, alpha, ref_sha="", alpha_sha=""):
     masks = build_masks(rects, alpha)
     lab, cnt = labels_from_masks(masks)
     runs = collect_runs(E, d)
-    cls = paint_classes(E, d, masks, runs, slots)
     for r in runs:
         cx, cy = (r["window"][0] + r["window"][2]) // 2, (r["window"][1] + r["window"][3]) // 2
         r["region"] = REGION_NAMES[int(lab[cy, cx])]
@@ -546,6 +547,7 @@ def build_spec(ref, alpha, ref_sha="", alpha_sha=""):
         for k, fr in enumerate(flow_rects.get(r["region"], [])):
             if fr[0] <= cx < fr[2] and fr[1] <= cy < fr[3]:
                 r["flow"] = k
+    cls = paint_classes(E, d, masks, runs, slots)
     lines, dropped = collect_lines(E, d, lab, cls, ref)
     probes = collect_probes(E, d, lab, cls, ref)
     regions = []

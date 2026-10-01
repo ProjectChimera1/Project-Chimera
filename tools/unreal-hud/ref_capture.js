@@ -11,7 +11,10 @@
 //   world            'show' | 'hide' (nodes 1-3 hidden) | 'only' (everything but nodes 1-3 hidden)
 //   bg               null | '#000' | '#fff'  board background (the alpha matte is computed from a black and a white render)
 //   textOff          true: every glyph transparent (-webkit-text-fill-color), icons and boxes stay
-//   mods             list of: 'minimap' | 'figure' | 'lasers_off' | 'P2' | 'P3' | 'N1' ... 'N8'
+//   mods             list of: 'minimap' | 'figure' | 'lasers_off' | 'P3' | 'N1' ... 'N8'
+//   dsf              device scale factor (default 1). P6's input renders use 4: a fresh browser context with
+//                    deviceScaleFactor 4 and the same 2200x1300 CSS viewport, so the page, fonts, routes and the 3000 ms
+//                    freeze are identical and only the rasterisation density changes (EXECUTION section 7, T2 ruling R4)
 // Node ids are the pre-order DOM index inside the board, identical to `elements[].id` in board-3.1-elements.json
 // (checked: 485/485 boxes equal).
 async (page) => {
@@ -21,7 +24,9 @@ async (page) => {
   const browserVersion = ctx.browser() ? ctx.browser().version() : null;
 
   for (const job of JOB.jobs) {
-    const p = await ctx.newPage();
+    const dsf = job.dsf || 1;
+    const jobCtx = dsf === 1 ? ctx : await ctx.browser().newContext({ deviceScaleFactor: dsf, viewport: { width: 2200, height: 1300 } });
+    const p = await jobCtx.newPage();
     const served = [], unmapped = [], failed = [];
     try {
       await p.setViewportSize({ width: 2200, height: 1300 });
@@ -117,8 +122,6 @@ async (page) => {
           els[266].querySelectorAll('*').forEach((e) => { e.style.visibility = 'visible'; });
         } else if (m === 'lasers_off') {
           out.lasers.forEach((l) => { els[l.id].style.visibility = 'hidden'; });
-        } else if (m === 'P2') {
-          style('*{font-kerning:none !important}');
         } else if (m === 'P3') {
           // every element moves exactly once: an element inside an already-offset element moves with it (els is in
           // pre-order, so ancestors are marked first). Offsetting nested ones again moved them by (.8,.6) px, past the
@@ -190,7 +193,7 @@ async (page) => {
       // ---- platform fonts per text node (is the glyph source really the web font?)
       let platform = [];
       try {
-        const cdp = await ctx.newCDPSession(p);
+        const cdp = await jobCtx.newCDPSession(p);
         await cdp.send('DOM.enable'); await cdp.send('CSS.enable');
         const doc = await cdp.send('DOM.getDocument', { depth: 0 });
         for (const i of info.textEls) {
@@ -209,14 +212,16 @@ async (page) => {
         } catch (e) { return 'none'; }
       });
       const ua = await p.evaluate(() => navigator.userAgent);
+      const devicePixelRatio = await p.evaluate(() => window.devicePixelRatio);
 
       await p.locator('[data-screen-label="3.1a"]').screenshot({ path: job.out });
       results.push({ name: job.name, out: job.out, fonts: job.fonts, world: job.world, bg: job.bg, textOff: !!job.textOff,
-                     mods: job.mods || [], info, after, platform, served, unmapped, failed, browserVersion, ua, webgl: gl });
+                     mods: job.mods || [], dsf, devicePixelRatio, info, after, platform, served, unmapped, failed, browserVersion, ua, webgl: gl });
     } catch (e) {
       results.push({ name: job.name, error: String(e && e.stack || e) });
     } finally {
       await p.close();
+      if (jobCtx !== ctx) await jobCtx.close();
     }
   }
   return JSON.stringify(results);

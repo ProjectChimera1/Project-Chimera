@@ -12,7 +12,9 @@ Gates (hard = fixed physics, soft = calibrated per pair by calibrate.py into thr
                     flow regions <= 1 px per axis. G1 auto probes, G2, G4, G5 of a flow region use that shift
   G4 class error    flat MAD <= 1.0 and bad px (> 8) <= 1%; placeholder MAD <= 2; vector/text MAD and SSIM (soft)
   G5 text runs      ink box (local background = median of the window rim, threshold 24): left/top/bottom +-1 px,
-                    right +-max(1 px, 0.5% of width); ink mass relative error (soft 'G5.mass')
+                    right +-max(1 px, 0.5% of width); ink no heavier than the reference: signed ink mass
+                    (test - ref) / ref <= +0.05 (hard, T2: catches a weight step that leaves the ink box unchanged);
+                    ink mass relative error |test - ref| / ref (soft 'G5.mass')
   G6 pipeline       world.open MAD <= 0.5, max <= 2
   G7 summary        MAD and SSIM (luma, Gaussian sigma 1.5) over the selected HUD pixels; soft 'G7.mad' / 'G7.ssim'
 Soft metric names in thresholds.json ({"A": {"default": {metric: value}, "regions": {region: {metric: value}}}, "B": {...}}):
@@ -50,7 +52,15 @@ SHIFTS = range(-3, 4)
 TIE = 0.05
 HARD = {"g1_tol": 2, "g2_tol": 8, "g2_ratio": 0.95, "flat_mad": 1.0, "flat_bad_frac": 0.01, "bad_px": 8,
         "placeholder_mad": 2.0, "g6_mad": 0.5, "g6_max": 2, "flow_shift": 1, "edge_tol": 1, "right_frac": 0.005,
-        "ink_thr": 24}
+        "ink_thr": 24, "mass_heavy": 0.05}
+# mass_heavy (hard, added by T2 for negative N3, plan B 4.4 "a new hard metric for that defect class"; ratified by the main
+# session as T2 ruling R1, EXECUTION section 7, with these numbers: positives at most +0.028, P5's heaviest run -0.0545, N3
+# +0.115; results/calibration.json "rulings" and "heaviest_run" record them per pair): Slate's grayscale font
+# path multiplies the vertex colour by the raw A8 glyph coverage with no gamma or contrast step (UE 5.8
+# Engine/Shaders/Private/SlateElementPixelShader.usf:387-406, ST_GrayscaleFont), so correctly weighted Slate text is never
+# heavier than Chromium's: the Slate model P5 is lighter in all 36 runs at hinting None, Default and AutoLight (heaviest run
+# -0.055; calibrate.py re-measures this and records it in results/calibration.json "p5_hinting_probe"). Sub-pixel placement moves a run's ink mass by at most +0.028 (P3/P4, tab.3 '8'; P1 +0.017), while one weight step
+# adds +0.115 (N3, Cinzel 600 -> 700, whose ink box is unchanged because the advances move only 0.36 px). +0.05 sits between.
 ALL_GATES = ["G1", "G2", "G3", "G4", "G5", "G6", "G7"]
 EPS = 1e-9
 
@@ -173,16 +183,18 @@ def score_text_run(ctx, run, shift):
     out = {"id": run["id"], "text": run["text"], "ref_box": rbox, "test_box": tbox, "mass_ref": rmass, "mass_test": tmass,
            "peak_ratio": (tpeak / rpeak) if rpeak else None}
     if rbox is None:
-        out.update(note="no ink in the reference window", bad=0.0, mass_rel=0.0)
+        out.update(note="no ink in the reference window", bad=0.0, mass_rel=0.0, mass_signed=0.0)
         return out
     if tbox is None:
-        out.update(note="no ink in the capture", bad=float("inf"), mass_rel=1.0)
+        out.update(note="no ink in the capture", bad=float("inf"), mass_rel=1.0, mass_signed=-1.0)
         return out
     wref = rbox[2] - rbox[0]
     dl, dt, db, dr = tbox[0] - rbox[0], tbox[1] - rbox[1], tbox[3] - rbox[3], tbox[2] - rbox[2]
     right_tol = max(1.0, HARD["right_frac"] * wref)
-    out.update(dl=dl, dt=dt, db=db, dr=dr, right_tol=right_tol, mass_rel=abs(tmass - rmass) / rmass if rmass else 0.0)
-    out["bad"] = max(abs(dl) / HARD["edge_tol"], abs(dt) / HARD["edge_tol"], abs(db) / HARD["edge_tol"], abs(dr) / right_tol)
+    signed = (tmass - rmass) / rmass if rmass else 0.0
+    out.update(dl=dl, dt=dt, db=db, dr=dr, right_tol=right_tol, mass_rel=abs(signed), mass_signed=signed)
+    out["bad"] = max(abs(dl) / HARD["edge_tol"], abs(dt) / HARD["edge_tol"], abs(db) / HARD["edge_tol"], abs(dr) / right_tol,
+                     max(signed, 0.0) / HARD["mass_heavy"])
     return out
 
 
@@ -194,12 +206,20 @@ def class_stats(ctx, ys, xs, shift):
 
 
 def unit_ssim(ctx, box, mask_c, shift):
-    """SSIM map over a unit's bbox (+6 px so the 11-tap window is exact inside) of ref vs the shifted capture."""
+    """SSIM map over a unit's bbox (+6 px so the 11-tap window is exact inside) of ref vs the shifted capture.
+    Capture pixels outside the unit's mask are replaced by the reference's before the map is computed, so a change in a
+    neighbouring region (or unit) cannot reach this unit through the 11-tap window: each change is scored only where it is
+    (T2: negative N5's 108 mm.buttons pixels otherwise failed mm.plate's vector SSIM across the region border)."""
     x0, y0, x1, y1 = box
     e = 6
     sl_r = (slice(y0 - e + PAD, y1 + e + PAD), slice(x0 - e + PAD, x1 + e + PAD))
     sl_t = (slice(y0 - e + PAD + shift[1], y1 + e + PAD + shift[1]), slice(x0 - e + PAD + shift[0], x1 + e + PAD + shift[0]))
-    m = ssim_map(ctx.lref[sl_r], ctx.ltest[sl_t])
+    lr = ctx.lref[sl_r]
+    lt = ctx.ltest[sl_t].copy()
+    keep = np.zeros(lr.shape, bool)
+    keep[e:-e, e:-e] = mask_c
+    lt[~keep] = lr[~keep]
+    m = ssim_map(lr, lt)
     return m[e:-e, e:-e]
 
 
@@ -290,7 +310,7 @@ def score_region(ctx, reg, ctxd):
             if not sel.any():
                 continue
             mad, bad = class_stats(ctx, ys[sel], xs[sel], scored)
-            e = {"px": int(sel.sum()), "mad": round(mad, 4), "bad_frac": round(bad, 5)}
+            e = {"px": int(sel.sum()), "mad": round(mad, 4), "bad_frac": round(bad, 5), "mad_raw": mad}
             if cid == FLAT:
                 e["badness"] = max(badness(mad, HARD["flat_mad"]), badness(bad, HARD["flat_bad_frac"]))
             elif cid == PLACEHOLDER:
@@ -301,6 +321,7 @@ def score_region(ctx, reg, ctxd):
                 smap = smap_cache[0]
                 ssim_v = float(smap[uy[sel], ux[sel]].mean())
                 e["ssim"] = round(ssim_v, 5)
+                e["ssim_raw"] = ssim_v
                 b = []
                 tm, ts = thr.get(name, f"G4.{cname}.mad"), thr.get(name, f"G4.{cname}.ssim")
                 if tm is None:
@@ -379,8 +400,11 @@ def check_alignment(ctx, selected_names):
     return out
 
 
-def compare(ref, test, spec, thr=None, pair="A", only=None, gates=None):
-    """Score one capture. ref/test are uint8 (1080, 1920, 3). Returns the report dict."""
+def compare(ref, test, spec, thr=None, pair="A", only=None, gates=None, score_misaligned=False):
+    """Score one capture. ref/test are uint8 (1080, 1920, 3). Returns the report dict.
+    An anchor found at a non-zero offset sets alignment_fail and stops before the regions are scored, unless
+    score_misaligned (calibrate.py only: negative N1 moves the command card by 1 px on purpose and still needs its region
+    metrics); the result is FAIL either way."""
     thr = thr or Thr({}, pair)
     gates = [g for g in (gates or ALL_GATES)]
     t0 = time.time()
@@ -393,7 +417,8 @@ def compare(ref, test, spec, thr=None, pair="A", only=None, gates=None):
     report["alignment"] = check_alignment(ctx, names)
     if any(not a["ok"] for a in report["alignment"]):
         report["alignment_fail"] = True
-        return report
+        if not score_misaligned:
+            return report
     for n in names:
         if n == "world.open":
             report["regions"][n] = score_g6(ctx)
@@ -437,7 +462,7 @@ def compare(ref, test, spec, thr=None, pair="A", only=None, gates=None):
     worst = max(report["regions"].items(), key=lambda kv: kv[1]["badness"]) if report["regions"] else None
     report["worst"] = ({"region": worst[0], "badness": worst[1]["badness"], "gate": worst[1]["worst_gate"] or "-"}
                        if worst and worst[1]["badness"] > 0 else {"region": "-", "badness": 0.0, "gate": "-"})
-    report["result"] = "PASS" if not failing and not report.get("g7_fail") else "FAIL"
+    report["result"] = "PASS" if not failing and not report.get("g7_fail") and not report.get("alignment_fail") else "FAIL"
     report["seconds"] = round(time.time() - t0, 2)
     return report
 
@@ -462,9 +487,9 @@ def soft_metrics(report):
         for u in r["units"]:
             for cname in ("text", "vector"):
                 c = u.get("classes", {}).get(cname)
-                if c:
-                    m[f"G4.{cname}.mad"] = max(m.get(f"G4.{cname}.mad", 0.0), c["mad"])
-                    m[f"G4.{cname}.ssim"] = min(m.get(f"G4.{cname}.ssim", 1.0), c["ssim"])
+                if c:   # unrounded values: the gates compare these, so thresholds must be derived from them too
+                    m[f"G4.{cname}.mad"] = max(m.get(f"G4.{cname}.mad", 0.0), c.get("mad_raw", c["mad"]))
+                    m[f"G4.{cname}.ssim"] = min(m.get(f"G4.{cname}.ssim", 1.0), c.get("ssim_raw", c["ssim"]))
             for t in u.get("runs", []):
                 m["G5.mass"] = max(m.get("G5.mass", 0.0), t["mass_rel"])
             for p in u.get("probes", []):

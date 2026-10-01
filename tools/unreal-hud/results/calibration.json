@@ -1,0 +1,6772 @@
+{
+ "code_sha256": {
+  "hud_common.py": "b2bc3e5743d4d02f06623ac18dce5070c109120d77f4283c6c122e0af4465ca2",
+  "hud_compare.py": "dbafe75415deb69e701136fc7ee94911391e36880dd72eab1a53388e8dc778d1",
+  "make_p5.py": "2822e3d787db7ea5e9807cbb7927793bf1b371a0630b0cd3aff13c70ba0ecb0b",
+  "make_p6.py": "99cab308702be08fa59775d5d06aff2d188f6011ad0374d3492c0cf20023e12c",
+  "ssim.py": "4d17181d9ab28ba43c3a2771709d42de54eae203558c4e93e8872a9bb650d9af"
+ },
+ "controls_sha256": {
+  "A/N1": "31c20de18afda082959e723fdb6bf82d607f777c6973bb0448642f5cab64538e",
+  "A/N2": "c60315ba9fc06d9af8862529279dfd8d831d96cf40eb83e528bb5af3ff8c309a",
+  "A/N3": "2f5077bce683208ce65d6eec78210c00a06ff622fb0d0629ef76d14a92e58989",
+  "A/N4": "bdcde0f79603db43a245119a19726b4fe6c27b24584501adf9494e5edd0da28c",
+  "A/N5": "d47c9f1326bd951f5ae0c675e1e311272bc0172dc3132e392f821236e494d152",
+  "A/N6": "7970112ed705b2e00e2a4b6d7506dbf82430bc944fc06cc3ef4745060227a240",
+  "A/N7": "c737c9bd45110608e3029d50169514bc81a82cf425aec7cdf11ac209c744ffb9",
+  "A/N8": "6589985ffa6104b72efc7ded812c343a57062d31820bf7e8ddf5ae9d4fbddcc1",
+  "A/P1": "0499065803fe415c2d924c09a78376bc74de25079bd473669838b3177421e401",
+  "A/P3": "7786d0683f840c6808c42bf6487ee17141896699c2ac54680fc2aaa87a639db6",
+  "A/P4": "2f1c5c191436aebc531f7e57222ed43ede512037ca9590db830ad7af72596dad",
+  "A/P5": "a08356dac008c045dc5fa1e6b87af97d0ebed659a9ece93e981db11fc9ccfab4",
+  "A/P6": "9b6cd0c5a4288f75fe6448fd23634479ae3f97b906774d3fa255fa1fb6142b6d",
+  "B/N1": "f4d988e0ae4f53605ebf443b6f8f63190b490e089b7f462d0c6db9f78ee07f8a",
+  "B/N2": "bb9ecf9fba1ddab1bb28a16baf39d5945614a0955441b7fb1fb0ec24df1bcfef",
+  "B/N3": "85057d4e012b20582565ded3aede9df0cca9570e91c9217f5fa5dd90ff2901ad",
+  "B/N4": "26eff7bb46d26ab1bcbd41343eed85e8c6261230e905329909fd9b0f98bea206",
+  "B/N5": "9a2d7b833d22731c0b12db2c98e6f412c259cacc7c1509e3f712a0dfd61c17db",
+  "B/N6": "0cf30603be66c420912ff6b7f351dca48110d7698754c3f2505ab6a5ae3ce90c",
+  "B/N7": "c1220147e6237988425416c0ca1752cb5ce94ccb255b8d368c5b127087f3da56",
+  "B/N8": "3046ba3466844f74aa6d8e2c250e0c5c0b275ea40d1612015bc8099fc118fddf",
+  "B/P1": "0e4e5dc3c276e05b226d20b5f7fddf65ca73998789f7b3f2913310b7e45748c3",
+  "B/P3": "045c18c151839982662962729d1531fad458bfeca09c6711b37d4e1d736f67e7",
+  "B/P4": "47752cd0b3cb685f3ff71ac503c5f3832fabc98b72bb1dcdcced9a36ebfeea1e",
+  "B/P5": "fcc2688b06913b109121c539ac0aaf2824e5bea6d5794ab69d7e8e66ff225534",
+  "B/P6": "9442f594417c310247b301293b7dc4a013fce7c598775adc1dcd3b9f2a2d2d94"
+ },
+ "controls_spec_sha256": "aed5819ed1b79f8457ae735a1383a3c522508aeabafb173fd0bc533a72061564",
+ "date": "2026-10-01",
+ "dropped_controls": [
+  "P2"
+ ],
+ "freetype_py": "2.5.1",
+ "g7_derivation": {
+  "A": {
+   "G7.mad": {
+    "candidate_threshold": 1.27319,
+    "negatives_passing_every_hard_gate": {
+     "N6": 0.06362786584273689
+    },
+    "positives": {
+     "P1": 0.003373102498656636,
+     "P3": 0.8446084934175174,
+     "P4": 0.848793211535017,
+     "P5": 0.6402010008060183,
+     "P6": 0.30256260634963283
+    },
+    "required_below": {
+     "N6": 0.053023221535614076
+    },
+    "threshold": null,
+    "worst_positive": 0.848793211535017
+   },
+   "G7.ssim": {
+    "candidate_threshold": 0.985036,
+    "negatives_passing_every_hard_gate": {
+     "N6": 0.9983615735484372
+    },
+    "positives": {
+     "P1": 0.9999922149161141,
+     "P3": 0.9900746511191557,
+     "P4": 0.9900245852523969,
+     "P5": 0.9931534434111802,
+     "P6": 0.9978755188011116
+    },
+    "required_below": {
+     "N6": 0.9986346446236977
+    },
+    "threshold": null,
+    "worst_positive": 0.9900245852523969
+   }
+  },
+  "B": {
+   "G7.mad": {
+    "candidate_threshold": 1.269779,
+    "negatives_passing_every_hard_gate": {
+     "N6": 0.06362786584273689
+    },
+    "positives": {
+     "P1": 0.003381498522299839,
+     "P3": 0.8423303723356619,
+     "P4": 0.846519288464983,
+     "P5": 0.6401541230073438,
+     "P6": 0.2817502630754075
+    },
+    "required_below": {
+     "N6": 0.053023221535614076
+    },
+    "threshold": null,
+    "worst_positive": 0.846519288464983
+   },
+   "G7.ssim": {
+    "candidate_threshold": 0.985119,
+    "negatives_passing_every_hard_gate": {
+     "N6": 0.9983615735484372
+    },
+    "positives": {
+     "P1": 0.9999921639926199,
+     "P3": 0.9901298896490505,
+     "P4": 0.9900797035538874,
+     "P5": 0.9931573383172492,
+     "P6": 0.9979423219018485
+    },
+    "required_below": {
+     "N6": 0.9986346446236977
+    },
+    "threshold": null,
+    "worst_positive": 0.9900797035538874
+   }
+  }
+ },
+ "hinting": "None",
+ "hud_alpha_sha256": "74b81cdf0c26ee639d1c7874c103ee4891fa86af5ba9d5dea8c396a94f034d32",
+ "libfreetype": "2.13.2",
+ "p5_hinting_probe": {
+  "AutoLight": {
+   "A": {
+    "hard_failures": 0,
+    "heaviest_run": -0.07581245068154532
+   },
+   "B": {
+    "hard_failures": 0,
+    "heaviest_run": -0.07581245068154532
+   }
+  },
+  "Default": {
+   "A": {
+    "hard_failures": 0,
+    "heaviest_run": -0.0544845519424931
+   },
+   "B": {
+    "hard_failures": 0,
+    "heaviest_run": -0.0544845519424931
+   }
+  },
+  "None": {
+   "A": {
+    "hard_failures": 0,
+    "heaviest_run": -0.0544845519424931
+   },
+   "B": {
+    "hard_failures": 0,
+    "heaviest_run": -0.0544845519424931
+   }
+  }
+ },
+ "p6": {
+  "inputs_sha256": {
+   "A": "da14706342999fcff9e696307a614d3952020eea3935291d076ef7d619445c6b",
+   "black": "a391be4b489d7e2ed75342aa761ad3279a5dd593c899a08f97d0d5d3a5221e0a",
+   "white": "ab0da806e12934e369a010ef8274280c0d185866d0ccc4ae65a1c7784b8e5cd1"
+  },
+  "layout_check_pair_A": {
+   "flat_mad": 0.00026978732050819053,
+   "flat_max": 6,
+   "flat_px": 1952155,
+   "flat_px_over_2": 144,
+   "flat_px_over_8": 0,
+   "matte_vs_direct_vector_mad": 0.0026053215077605323,
+   "matte_vs_direct_vector_max": 1
+  },
+  "model": "the board at deviceScaleFactor 4 (same Chromium, page, fonts, 3000 ms freeze), 4x4 box filter in sRGB bytes; pair A from p6_A_4x, pair B from the black/white matte composited over the 1x world_layer.png; vector-class pixels only, the base everywhere else (make_p6.py)"
+ },
+ "pairs": {
+  "A": {
+   "changed": {
+    "N1": {
+     "changed": 9148,
+     "changed_in_hud_mask": 9148,
+     "inside": 9148,
+     "ok": true,
+     "outside": 0,
+     "photo_noise": 0
+    },
+    "N2": {
+     "changed": 9281,
+     "changed_in_hud_mask": 9281,
+     "inside": 9281,
+     "ok": true,
+     "outside": 0,
+     "photo_noise": 0
+    },
+    "N3": {
+     "changed": 1252,
+     "changed_in_hud_mask": 1252,
+     "inside": 1252,
+     "ok": true,
+     "outside": 0,
+     "photo_noise": 0
+    },
+    "N4": {
+     "changed": 1654,
+     "changed_in_hud_mask": 1654,
+     "inside": 1654,
+     "ok": true,
+     "outside": 0,
+     "photo_noise": 0
+    },
+    "N5": {
+     "changed": 108,
+     "changed_in_hud_mask": 108,
+     "inside": 108,
+     "ok": true,
+     "outside": 0,
+     "photo_noise": 0
+    },
+    "N6": {
+     "changed": 288,
+     "changed_in_hud_mask": 288,
+     "inside": 288,
+     "ok": true,
+     "outside": 0,
+     "photo_noise": 0
+    },
+    "N7": {
+     "changed": 2246,
+     "changed_in_hud_mask": 2246,
+     "inside": 2246,
+     "ok": true,
+     "outside": 0,
+     "photo_noise": 0
+    },
+    "N8": {
+     "changed": 898,
+     "changed_in_hud_mask": 898,
+     "inside": 898,
+     "ok": true,
+     "outside": 0,
+     "photo_noise": 0
+    },
+    "P1": {
+     "changed": 285,
+     "changed_in_hud_mask": 285,
+     "ok": true
+    },
+    "P3": {
+     "changed": 13021,
+     "changed_in_hud_mask": 13021,
+     "ok": true
+    },
+    "P4": {
+     "changed": 13116,
+     "changed_in_hud_mask": 13116,
+     "ok": true
+    },
+    "P5": {
+     "changed": 8727,
+     "changed_in_hud_mask": 8727,
+     "ok": true
+    },
+    "P6": {
+     "changed": 21347,
+     "changed_in_hud_mask": 21347,
+     "ok": true
+    }
+   },
+   "escalate": [],
+   "hard_failures_pass1": {
+    "N1": {
+     "card.A": {
+      "badness": 19.999999999999982,
+      "gates": [
+       "G2",
+       "G3",
+       "G4",
+       "G5",
+       "alignment"
+      ]
+     },
+     "card.C": {
+      "badness": 19.999999999999982,
+      "gates": [
+       "G2",
+       "G3",
+       "G4",
+       "G5",
+       "alignment"
+      ]
+     },
+     "card.D": {
+      "badness": 19.999999999999982,
+      "gates": [
+       "G2",
+       "G3",
+       "G4",
+       "G5",
+       "alignment"
+      ]
+     },
+     "card.E": {
+      "badness": 19.999999999999982,
+      "gates": [
+       "G2",
+       "G3",
+       "G4",
+       "G5",
+       "alignment"
+      ]
+     },
+     "card.F": {
+      "badness": 19.999999999999982,
+      "gates": [
+       "G2",
+       "G3",
+       "G4",
+       "G5",
+       "alignment"
+      ]
+     },
+     "card.Q": {
+      "badness": 19.999999999999982,
+      "gates": [
+       "G2",
+       "G3",
+       "G4",
+       "G5",
+       "alignment"
+      ]
+     },
+     "card.R": {
+      "badness": 19.999999999999982,
+      "gates": [
+       "G2",
+       "G3",
+       "G4",
+       "G5",
+       "alignment"
+      ]
+     },
+     "card.S": {
+      "badness": 19.999999999999982,
+      "gates": [
+       "G2",
+       "G3",
+       "G4",
+       "G5",
+       "alignment"
+      ]
+     },
+     "card.V": {
+      "badness": 19.999999999999982,
+      "gates": [
+       "G2",
+       "G3",
+       "G4",
+       "G5",
+       "alignment"
+      ]
+     },
+     "card.W": {
+      "badness": 19.999999999999982,
+      "gates": [
+       "G2",
+       "G3",
+       "G4",
+       "G5",
+       "alignment"
+      ]
+     },
+     "card.X": {
+      "badness": 19.999999999999982,
+      "gates": [
+       "G2",
+       "G3",
+       "G4",
+       "G5",
+       "alignment"
+      ]
+     },
+     "card.Z": {
+      "badness": 19.999999999999982,
+      "gates": [
+       "G2",
+       "G3",
+       "G4",
+       "G5",
+       "alignment"
+      ]
+     },
+     "card.panel": {
+      "badness": 4.929618597044565,
+      "gates": [
+       "G3",
+       "G4",
+       "alignment"
+      ]
+     },
+     "orn.card": {
+      "badness": 2.0,
+      "gates": [
+       "G3",
+       "alignment"
+      ]
+     }
+    },
+    "N2": {
+     "top.chip.aether": {
+      "badness": 61.079219288174514,
+      "gates": [
+       "G1",
+       "G4"
+      ]
+     },
+     "top.chip.gold": {
+      "badness": 60.948536831483345,
+      "gates": [
+       "G1",
+       "G4"
+      ]
+     },
+     "top.chip.iron": {
+      "badness": 60.718424101969866,
+      "gates": [
+       "G1",
+       "G4"
+      ]
+     },
+     "top.chip.supply": {
+      "badness": 57.98146240988672,
+      "gates": [
+       "G1",
+       "G4"
+      ]
+     }
+    },
+    "N3": {
+     "sel.name": {
+      "badness": 2.3068851573926374,
+      "gates": [
+       "G5"
+      ]
+     }
+    },
+    "N4": {
+     "toast": {
+      "badness": 3.0,
+      "gates": [
+       "G5"
+      ]
+     }
+    },
+    "N5": {
+     "mm.buttons": {
+      "badness": 23.0,
+      "gates": [
+       "G1",
+       "G2",
+       "G4"
+      ]
+     }
+    },
+    "N6": {},
+    "N7": {
+     "sel.stats": {
+      "badness": 36.85800604229607,
+      "gates": [
+       "G5"
+      ]
+     }
+    },
+    "N8": {
+     "sel.role": {
+      "badness": 17.792520356617647,
+      "gates": [
+       "G5"
+      ]
+     }
+    }
+   },
+   "heaviest_run": {
+    "N1": 0.15605152015080412,
+    "N2": 0.0,
+    "N3": 0.11534425786963189,
+    "N4": 0.10848443712925092,
+    "N5": 0.0,
+    "N6": 0.0,
+    "N7": 0.0289760533619361,
+    "N8": 0.8896260178308825,
+    "P1": 0.017015965584821796,
+    "P3": 0.02769233292243285,
+    "P4": 0.02769233292243285,
+    "P5": -0.0544845519424931,
+    "P6": 0.0
+   },
+   "report_only": [
+    "*:G7.mad",
+    "*:G7.ssim"
+   ],
+   "report_only_no_positive": [
+    "world.ring:G1.vector"
+   ],
+   "soft_values": {
+    "N1": {
+     "*": {
+      "G7.mad": 0.9029202769568332,
+      "G7.ssim": 0.9595346833141173
+     },
+     "card.A": {
+      "G4.text.mad": 29.41025641025641,
+      "G4.text.ssim": 0.5884138350574426,
+      "G4.vector.mad": 12.409496944052655,
+      "G4.vector.ssim": 0.6841238572771697,
+      "G5.mass": 0.13439733285941716
+     },
+     "card.C": {
+      "G4.text.mad": 37.916666666666664,
+      "G4.text.ssim": 0.4193163260653077,
+      "G4.vector.mad": 14.189468735307946,
+      "G4.vector.ssim": 0.629195904486542,
+      "G5.mass": 0.14495875224204086
+     },
+     "card.D": {
+      "G4.text.mad": 31.794871794871796,
+      "G4.text.ssim": 0.5182786678597148,
+      "G4.vector.mad": 17.571697226140103,
+      "G4.vector.ssim": 0.6232517439032769,
+      "G5.mass": 0.11546889566674459
+     },
+     "card.E": {
+      "G4.text.mad": 12.171212121212122,
+      "G4.text.ssim": 0.5082378889250653,
+      "G4.vector.mad": 6.089502762430939,
+      "G4.vector.ssim": 0.7398605374666252,
+      "G5.mass": 0.13613380796484673
+     },
+     "card.F": {
+      "G4.text.mad": 38.1025641025641,
+      "G4.text.ssim": 0.394182594297263,
+      "G4.vector.mad": 9.549130230371414,
+      "G4.vector.ssim": 0.7348299045979415,
+      "G5.mass": 0.14240052536421796
+     },
+     "card.Q": {
+      "G4.text.mad": 18.608585858585858,
+      "G4.text.ssim": 0.4969679236214171,
+      "G4.vector.mad": 15.77574047954866,
+      "G4.vector.ssim": 0.6400389228653245,
+      "G5.mass": 0.1030150150150151
+     },
+     "card.R": {
+      "G4.text.mad": 11.237373737373737,
+      "G4.text.ssim": 0.5209912175991649,
+      "G4.vector.mad": 12.71123388581952,
+      "G4.vector.ssim": 0.565748414542759,
+      "G5.mass": 0.11240310077519379
+     },
+     "card.S": {
+      "G4.text.mad": 49.3525641025641,
+      "G4.text.ssim": 0.32687075882775246,
+      "G4.vector.mad": 8.59755524212506,
+      "G4.vector.ssim": 0.7135260699218854,
+      "G5.mass": 0.12897171525162698
+     },
+     "card.V": {
+      "G4.text.mad": 26.141025641025642,
+      "G4.text.ssim": 0.6347452380667366,
+      "G4.vector.mad": 10.233333333333333,
+      "G4.vector.ssim": 0.6525178783183399,
+      "G5.mass": 0.1401701993564758
+     },
+     "card.W": {
+      "G4.text.mad": 16.595959595959595,
+      "G4.text.ssim": 0.5258738570715853,
+      "G4.vector.mad": 13.72402444757875,
+      "G4.vector.ssim": 0.695903919200824,
+      "G5.mass": 0.10055575773679098
+     },
+     "card.X": {
+      "G4.text.mad": 36.62820512820513,
+      "G4.text.ssim": 0.5239656955378849,
+      "G4.vector.mad": 11.963798777621063,
+      "G4.vector.ssim": 0.6413403969832102,
+      "G5.mass": 0.1360040701419451
+     },
+     "card.Z": {
+      "G4.text.mad": 47.243589743589745,
+      "G4.text.ssim": 0.32057535364138273,
+      "G4.vector.mad": 10.283497884344147,
+      "G4.vector.ssim": 0.713119774538326,
+      "G5.mass": 0.15605152015080412
+     },
+     "mm.buttons": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.map": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.plate": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.card": {
+      "G4.vector.mad": 33.71759986045701,
+      "G4.vector.ssim": 0.2567823156835342
+     },
+     "orn.minimap": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.selection": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.hp": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.name": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.portrait": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.role": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.stats": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "tab.3": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "toast": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.alertlog": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.aether": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.gold": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.iron": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.supply": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.clock": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.menu": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "world.ring": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     }
+    },
+    "N2": {
+     "*": {
+      "G7.mad": 0.16782531792942862,
+      "G7.ssim": 0.9990187467618142
+     },
+     "card.A": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.C": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.D": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.E": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.F": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Q": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.R": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.S": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.V": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.W": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.X": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Z": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "mm.buttons": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.map": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.plate": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.card": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.minimap": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.selection": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.hp": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.name": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.portrait": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.role": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.stats": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "tab.3": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "toast": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.alertlog": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.aether": {
+      "G4.text.mad": 7.581708449396472,
+      "G4.text.ssim": 0.9748230355456685,
+      "G4.vector.mad": 6.505144032921811,
+      "G4.vector.ssim": 0.9835635597815827,
+      "G5.mass": 0.07313748049064847
+     },
+     "top.chip.gold": {
+      "G4.text.mad": 7.453198653198653,
+      "G4.text.ssim": 0.9760329550169544,
+      "G4.vector.mad": 8.243827160493828,
+      "G4.vector.ssim": 0.9689435877297045,
+      "G5.mass": 0.07415047885115916
+     },
+     "top.chip.iron": {
+      "G4.text.mad": 7.564032697547684,
+      "G4.text.ssim": 0.9731525523676107,
+      "G4.vector.mad": 8.29320987654321,
+      "G4.vector.ssim": 0.9682043764213205,
+      "G5.mass": 0.0739538421158975
+     },
+     "top.chip.supply": {
+      "G4.text.mad": 7.945507708665604,
+      "G4.text.ssim": 0.9684231492681751,
+      "G4.vector.mad": 8.194444444444445,
+      "G4.vector.ssim": 0.969770432983078,
+      "G5.mass": 0.045291786622317115
+     },
+     "top.clock": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.menu": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "world.ring": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     }
+    },
+    "N3": {
+     "*": {
+      "G7.mad": 0.06941272613290346,
+      "G7.ssim": 0.9995568886749288
+     },
+     "card.A": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.C": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.D": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.E": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.F": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Q": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.R": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.S": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.V": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.W": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.X": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Z": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "mm.buttons": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.map": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.plate": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.card": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.minimap": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.selection": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.hp": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.name": {
+      "G4.text.mad": 5.351024811218986,
+      "G4.text.ssim": 0.9676094256257507,
+      "G5.mass": 0.11534425786963189
+     },
+     "sel.portrait": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.role": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.stats": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "tab.3": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "toast": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.alertlog": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.aether": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.gold": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.iron": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.supply": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.clock": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.menu": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "world.ring": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     }
+    },
+    "N4": {
+     "*": {
+      "G7.mad": 0.34217224722371486,
+      "G7.ssim": 0.9945282654081696
+     },
+     "card.A": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.C": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.D": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.E": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.F": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Q": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.R": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.S": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.V": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.W": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.X": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Z": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "mm.buttons": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.map": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.plate": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.card": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.minimap": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.selection": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.hp": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.name": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.portrait": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.role": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.stats": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "tab.3": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "toast": {
+      "G4.text.mad": 43.46179656792254,
+      "G4.text.ssim": 0.3380990838772805,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.10848443712925092
+     },
+     "top.alertlog": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.aether": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.gold": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.iron": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.supply": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.clock": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.menu": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "world.ring": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     }
+    },
+    "N5": {
+     "*": {
+      "G7.mad": 0.0094455265986029,
+      "G7.ssim": 0.9987399724780849
+     },
+     "card.A": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.C": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.D": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.E": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.F": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Q": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.R": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.S": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.V": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.W": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.X": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Z": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "mm.buttons": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9989385158276164
+     },
+     "mm.map": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.plate": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.card": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.minimap": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.selection": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.hp": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.name": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.portrait": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.role": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.stats": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "tab.3": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "toast": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.alertlog": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.aether": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.gold": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.iron": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.supply": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.clock": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.menu": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "world.ring": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     }
+    },
+    "N6": {
+     "*": {
+      "G7.mad": 0.06362786584273689,
+      "G7.ssim": 0.9983615735484372
+     },
+     "card.A": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.C": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.D": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.E": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.F": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Q": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.R": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.S": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 42.75505406676069,
+      "G4.vector.ssim": -0.00794338974215583,
+      "G5.mass": 0.0
+     },
+     "card.V": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.W": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.X": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Z": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "mm.buttons": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.map": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.plate": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.card": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.minimap": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.selection": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.hp": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.name": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.portrait": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.role": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.stats": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "tab.3": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "toast": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.alertlog": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.aether": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.gold": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.iron": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.supply": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.clock": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.menu": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "world.ring": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     }
+    },
+    "N7": {
+     "*": {
+      "G7.mad": 0.5010047241626365,
+      "G7.ssim": 0.9896963402018838
+     },
+     "card.A": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.C": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.D": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.E": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.F": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Q": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.R": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.S": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.V": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.W": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.X": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Z": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "mm.buttons": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.map": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.plate": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.card": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.minimap": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.selection": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.hp": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.name": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.portrait": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.role": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.stats": {
+      "G4.text.mad": 37.7250935145672,
+      "G4.text.ssim": 0.2555083863061109,
+      "G5.mass": 0.0289760533619361
+     },
+     "tab.3": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "toast": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.alertlog": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.aether": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.gold": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.iron": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.supply": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.clock": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.menu": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "world.ring": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     }
+    },
+    "N8": {
+     "*": {
+      "G7.mad": 0.1232879108454236,
+      "G7.ssim": 0.9986730995725978
+     },
+     "card.A": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.C": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.D": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.E": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.F": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Q": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.R": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.S": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.V": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.W": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.X": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Z": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "mm.buttons": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.map": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.plate": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.card": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.minimap": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.selection": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.hp": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.name": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.portrait": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.role": {
+      "G4.text.mad": 19.816576698155647,
+      "G4.text.ssim": 0.801509539084835,
+      "G5.mass": 0.8896260178308825
+     },
+     "sel.stats": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "tab.3": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "toast": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.alertlog": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.aether": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.gold": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.iron": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.supply": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.clock": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.menu": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "world.ring": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     }
+    },
+    "P1": {
+     "*": {
+      "G7.mad": 0.003373102498656636,
+      "G7.ssim": 0.9999922149161141
+     },
+     "card.A": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.C": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.D": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.E": {
+      "G4.text.mad": 0.10757575757575757,
+      "G4.text.ssim": 0.9996262301726988,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9999989393061048,
+      "G5.mass": 0.017015965584821796
+     },
+     "card.F": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Q": {
+      "G4.text.mad": 0.008838383838383838,
+      "G4.text.ssim": 0.9999866510094765,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0005845412351659231
+     },
+     "card.R": {
+      "G4.text.mad": 0.005050505050505051,
+      "G4.text.ssim": 0.9999856258079262,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0005983216861480829
+     },
+     "card.S": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.V": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.W": {
+      "G4.text.mad": 0.018308080808080808,
+      "G4.text.ssim": 0.9999772080299995,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0011711800831275478
+     },
+     "card.X": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Z": {
+      "G4.text.mad": 0.13141025641025642,
+      "G4.text.ssim": 0.9998258613133166,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9999981163513848,
+      "G5.mass": 0.0030456145289749744
+     },
+     "mm.buttons": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.map": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.plate": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.card": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.minimap": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.selection": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.hp": {
+      "G4.text.mad": 0.03455608718766613,
+      "G4.text.ssim": 0.9999764998939774,
+      "G5.mass": 0.0010325656881321798
+     },
+     "sel.name": {
+      "G4.text.mad": 0.0697411003236246,
+      "G4.text.ssim": 0.9998500543918103,
+      "G5.mass": 0.002350798833933068
+     },
+     "sel.portrait": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.role": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.stats": {
+      "G4.text.mad": 0.017701912438754543,
+      "G4.text.ssim": 0.9999870269590442,
+      "G5.mass": 0.0002983423529971933
+     },
+     "tab.3": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "toast": {
+      "G4.text.mad": 0.15722366024350493,
+      "G4.text.ssim": 0.9996220937612625,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0004702835986752023
+     },
+     "top.alertlog": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.aether": {
+      "G4.text.mad": 0.08542246982358404,
+      "G4.text.ssim": 0.9998545745857568,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.01165851640320464
+     },
+     "top.chip.gold": {
+      "G4.text.mad": 0.061952861952861954,
+      "G4.text.ssim": 0.9998932097217703,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.006716980373634533
+     },
+     "top.chip.iron": {
+      "G4.text.mad": 0.13896457765667575,
+      "G4.text.ssim": 0.9997313964959749,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.01107595892631678
+     },
+     "top.chip.supply": {
+      "G4.text.mad": 0.024189261031366295,
+      "G4.text.ssim": 0.9999903432370071,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0007978256922927801
+     },
+     "top.clock": {
+      "G4.text.mad": 0.039844899050675224,
+      "G4.text.ssim": 0.999850973854549,
+      "G5.mass": 0.002521783068627356
+     },
+     "top.menu": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "world.ring": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     }
+    },
+    "P3": {
+     "*": {
+      "G7.mad": 0.8446084934175174,
+      "G7.ssim": 0.9900746511191557
+     },
+     "card.A": {
+      "G4.text.mad": 19.044871794871796,
+      "G4.text.ssim": 0.8815369582242869,
+      "G4.vector.mad": 5.011753643629525,
+      "G4.vector.ssim": 0.9060595585476322,
+      "G5.mass": 0.005361898752440502
+     },
+     "card.C": {
+      "G4.text.mad": 19.682692307692307,
+      "G4.text.ssim": 0.8728571219905957,
+      "G4.vector.mad": 7.185237423601317,
+      "G4.vector.ssim": 0.8796369105688596,
+      "G5.mass": 0.06135441004743441
+     },
+     "card.D": {
+      "G4.text.mad": 26.23076923076923,
+      "G4.text.ssim": 0.8371543578118594,
+      "G4.vector.mad": 9.618241654913023,
+      "G4.vector.ssim": 0.8676722077259904,
+      "G5.mass": 0.05627197286316303
+     },
+     "card.E": {
+      "G4.text.mad": 4.251515151515152,
+      "G4.text.ssim": 0.9255737306845641,
+      "G4.vector.mad": 3.3996316758747698,
+      "G4.vector.ssim": 0.9113420375015187,
+      "G5.mass": 0.06185181317416752
+     },
+     "card.F": {
+      "G4.text.mad": 16.310897435897434,
+      "G4.text.ssim": 0.8787607574921098,
+      "G4.vector.mad": 6.0672308415608835,
+      "G4.vector.ssim": 0.9151813838841846,
+      "G5.mass": 0.0644540798995613
+     },
+     "card.Q": {
+      "G4.text.mad": 11.642045454545455,
+      "G4.text.ssim": 0.8730398568026991,
+      "G4.vector.mad": 8.662905500705218,
+      "G4.vector.ssim": 0.9075203089247105,
+      "G5.mass": 0.014284684684684473
+     },
+     "card.R": {
+      "G4.text.mad": 6.236742424242424,
+      "G4.text.ssim": 0.8817137965885565,
+      "G4.vector.mad": 6.61804788213628,
+      "G4.vector.ssim": 0.8682709380355516,
+      "G5.mass": 0.04978904013260326
+     },
+     "card.S": {
+      "G4.text.mad": 19.272435897435898,
+      "G4.text.ssim": 0.896985670348928,
+      "G4.vector.mad": 5.58862247296662,
+      "G4.vector.ssim": 0.9323527191796912,
+      "G5.mass": 0.02945375505800925
+     },
+     "card.V": {
+      "G4.text.mad": 20.84294871794872,
+      "G4.text.ssim": 0.8580216844654752,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9994057780154476,
+      "G5.mass": 0.019853068202950862
+     },
+     "card.W": {
+      "G4.text.mad": 10.417929292929292,
+      "G4.text.ssim": 0.8747389896490592,
+      "G4.vector.mad": 6.937470615890926,
+      "G4.vector.ssim": 0.9017866264659504,
+      "G5.mass": 0.005563024310662793
+     },
+     "card.X": {
+      "G4.text.mad": 20.33974358974359,
+      "G4.text.ssim": 0.8738496299371261,
+      "G4.vector.mad": 4.91114245416079,
+      "G4.vector.ssim": 0.9072336738772623,
+      "G5.mass": 0.01607026032159402
+     },
+     "card.Z": {
+      "G4.text.mad": 14.320512820512821,
+      "G4.text.ssim": 0.9017039124156485,
+      "G4.vector.mad": 5.110954395862717,
+      "G4.vector.ssim": 0.9074858093805522,
+      "G5.mass": 0.029136884986307208
+     },
+     "mm.buttons": {
+      "G4.vector.mad": 12.953360768175584,
+      "G4.vector.ssim": 0.8164912682119674
+     },
+     "mm.map": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.plate": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.card": {
+      "G4.vector.mad": 4.384964242107099,
+      "G4.vector.ssim": 0.9288565908824786
+     },
+     "orn.minimap": {
+      "G1.vector": 0,
+      "G4.vector.mad": 4.970405918816237,
+      "G4.vector.ssim": 0.9234585993403838
+     },
+     "orn.selection": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.hp": {
+      "G4.text.mad": 8.793460925039872,
+      "G4.text.ssim": 0.9346985017855991,
+      "G5.mass": 0.007146852668099002
+     },
+     "sel.name": {
+      "G4.text.mad": 7.221521035598705,
+      "G4.text.ssim": 0.9510804595301395,
+      "G5.mass": 0.002233288589976188
+     },
+     "sel.portrait": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.role": {
+      "G4.text.mad": 7.118645973909132,
+      "G4.text.ssim": 0.9016356421921656,
+      "G5.mass": 0.0002766976967164263
+     },
+     "sel.stats": {
+      "G4.text.mad": 8.510879300352984,
+      "G4.text.ssim": 0.9267530127205302,
+      "G5.mass": 0.0008189179765441774
+     },
+     "tab.3": {
+      "G4.text.mad": 10.256487025948104,
+      "G4.text.ssim": 0.9125700231655632,
+      "G4.vector.mad": 8.778645833333334,
+      "G4.vector.ssim": 0.8129915328580812,
+      "G5.mass": 0.02769233292243285
+     },
+     "toast": {
+      "G4.text.mad": 17.430803571428573,
+      "G4.text.ssim": 0.8890767911977763,
+      "G4.vector.mad": 11.669753086419753,
+      "G4.vector.ssim": 0.7870357181876917,
+      "G5.mass": 0.03685571251303496
+     },
+     "top.alertlog": {
+      "G4.text.mad": 6.5311004784688995,
+      "G4.text.ssim": 0.9200146127285727,
+      "G4.vector.mad": 9.406378600823045,
+      "G4.vector.ssim": 0.8442847287434908,
+      "G5.mass": 0.0011023974575866042
+     },
+     "top.chip.aether": {
+      "G4.text.mad": 11.1313834726091,
+      "G4.text.ssim": 0.9111682651864564,
+      "G4.vector.mad": 15.233539094650206,
+      "G4.vector.ssim": 0.8026701901064707,
+      "G5.mass": 0.00470601722872678
+     },
+     "top.chip.gold": {
+      "G4.text.mad": 11.288552188552188,
+      "G4.text.ssim": 0.917259542523418,
+      "G4.vector.mad": 8.302469135802468,
+      "G4.vector.ssim": 0.8460701177908747,
+      "G5.mass": 0.002712218105460582
+     },
+     "top.chip.iron": {
+      "G4.text.mad": 11.747048138056313,
+      "G4.text.ssim": 0.9067363472068124,
+      "G4.vector.mad": 8.108024691358025,
+      "G4.vector.ssim": 0.852325193627914,
+      "G5.mass": 0.012211266879373767
+     },
+     "top.chip.supply": {
+      "G4.text.mad": 2.9994683678894205,
+      "G4.text.ssim": 0.9903679132416149,
+      "G4.vector.mad": 7.843621399176954,
+      "G4.vector.ssim": 0.8522032529407748,
+      "G5.mass": 0.0015006091074240813
+     },
+     "top.clock": {
+      "G4.text.mad": 6.796496857868699,
+      "G4.text.ssim": 0.925299974691179,
+      "G5.mass": 0.0091801763421802
+     },
+     "top.menu": {
+      "G4.text.mad": 16.60879120879121,
+      "G4.text.ssim": 0.874438900410397,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9965558417686605,
+      "G5.mass": 0.041674243010194005
+     },
+     "world.ring": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     }
+    },
+    "P4": {
+     "*": {
+      "G7.mad": 0.848793211535017,
+      "G7.ssim": 0.9900245852523969
+     },
+     "card.A": {
+      "G4.text.mad": 19.044871794871796,
+      "G4.text.ssim": 0.8815369582242869,
+      "G4.vector.mad": 5.011753643629525,
+      "G4.vector.ssim": 0.9060595585476322,
+      "G5.mass": 0.005361898752440502
+     },
+     "card.C": {
+      "G4.text.mad": 19.682692307692307,
+      "G4.text.ssim": 0.8728571219905957,
+      "G4.vector.mad": 7.185237423601317,
+      "G4.vector.ssim": 0.8796369105688596,
+      "G5.mass": 0.06135441004743441
+     },
+     "card.D": {
+      "G4.text.mad": 26.23076923076923,
+      "G4.text.ssim": 0.8371543578118594,
+      "G4.vector.mad": 9.618241654913023,
+      "G4.vector.ssim": 0.8676722077259904,
+      "G5.mass": 0.05627197286316303
+     },
+     "card.E": {
+      "G4.text.mad": 4.192424242424242,
+      "G4.text.ssim": 0.9262567449485157,
+      "G4.vector.mad": 3.3996316758747698,
+      "G4.vector.ssim": 0.9113423325374931,
+      "G5.mass": 0.05250180217355818
+     },
+     "card.F": {
+      "G4.text.mad": 16.310897435897434,
+      "G4.text.ssim": 0.8787607574921098,
+      "G4.vector.mad": 6.0672308415608835,
+      "G4.vector.ssim": 0.9151813838841846,
+      "G5.mass": 0.0644540798995613
+     },
+     "card.Q": {
+      "G4.text.mad": 11.650252525252526,
+      "G4.text.ssim": 0.8730521565463388,
+      "G4.vector.mad": 8.662905500705218,
+      "G4.vector.ssim": 0.9075203089247105,
+      "G5.mass": 0.014284684684684473
+     },
+     "card.R": {
+      "G4.text.mad": 6.241792929292929,
+      "G4.text.ssim": 0.8817310638674712,
+      "G4.vector.mad": 6.61804788213628,
+      "G4.vector.ssim": 0.8682709380355516,
+      "G5.mass": 0.04978904013260326
+     },
+     "card.S": {
+      "G4.text.mad": 19.272435897435898,
+      "G4.text.ssim": 0.896985670348928,
+      "G4.vector.mad": 5.58862247296662,
+      "G4.vector.ssim": 0.9323527191796912,
+      "G5.mass": 0.02945375505800925
+     },
+     "card.V": {
+      "G4.text.mad": 20.84294871794872,
+      "G4.text.ssim": 0.8580216844654752,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9994057780154476,
+      "G5.mass": 0.019853068202950862
+     },
+     "card.W": {
+      "G4.text.mad": 10.41729797979798,
+      "G4.text.ssim": 0.8748429457665633,
+      "G4.vector.mad": 6.937470615890926,
+      "G4.vector.ssim": 0.9017866264659504,
+      "G5.mass": 0.006649552496338972
+     },
+     "card.X": {
+      "G4.text.mad": 20.33974358974359,
+      "G4.text.ssim": 0.8738496299371261,
+      "G4.vector.mad": 4.91114245416079,
+      "G4.vector.ssim": 0.9072336738772623,
+      "G5.mass": 0.01607026032159402
+     },
+     "card.Z": {
+      "G4.text.mad": 14.39423076923077,
+      "G4.text.ssim": 0.9011291042317622,
+      "G4.vector.mad": 5.110954395862717,
+      "G4.vector.ssim": 0.9074790979124224,
+      "G5.mass": 0.02743192044142771
+     },
+     "mm.buttons": {
+      "G4.vector.mad": 12.953360768175584,
+      "G4.vector.ssim": 0.8164912682119674
+     },
+     "mm.map": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.plate": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.card": {
+      "G4.vector.mad": 4.384964242107099,
+      "G4.vector.ssim": 0.9288565908824786
+     },
+     "orn.minimap": {
+      "G1.vector": 0,
+      "G4.vector.mad": 4.970405918816237,
+      "G4.vector.ssim": 0.9234585993403838
+     },
+     "orn.selection": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.hp": {
+      "G4.text.mad": 8.798777246145667,
+      "G4.text.ssim": 0.9346844265803903,
+      "G5.mass": 0.008014344769817107
+     },
+     "sel.name": {
+      "G4.text.mad": 7.061111111111111,
+      "G4.text.ssim": 0.9528151498689827,
+      "G5.mass": 3.8922600154500875e-05
+     },
+     "sel.portrait": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.role": {
+      "G4.text.mad": 7.118645973909132,
+      "G4.text.ssim": 0.9016356421921656,
+      "G5.mass": 0.0002766976967164263
+     },
+     "sel.stats": {
+      "G4.text.mad": 8.507296770454666,
+      "G4.text.ssim": 0.9267661571897824,
+      "G5.mass": 0.0006343079811678302
+     },
+     "tab.3": {
+      "G4.text.mad": 10.256487025948104,
+      "G4.text.ssim": 0.9125700231655632,
+      "G4.vector.mad": 8.778645833333334,
+      "G4.vector.ssim": 0.8129915328580812,
+      "G5.mass": 0.02769233292243285
+     },
+     "toast": {
+      "G4.text.mad": 17.409970238095237,
+      "G4.text.ssim": 0.8891635237158952,
+      "G4.vector.mad": 11.669753086419753,
+      "G4.vector.ssim": 0.7870357181876917,
+      "G5.mass": 0.0363697110656019
+     },
+     "top.alertlog": {
+      "G4.text.mad": 6.5311004784688995,
+      "G4.text.ssim": 0.9200146127285727,
+      "G4.vector.mad": 9.406378600823045,
+      "G4.vector.ssim": 0.8442847287434908,
+      "G5.mass": 0.0011023974575866042
+     },
+     "top.chip.aether": {
+      "G4.text.mad": 11.161095636025998,
+      "G4.text.ssim": 0.9108937239696792,
+      "G4.vector.mad": 15.233539094650206,
+      "G4.vector.ssim": 0.8026701901064707,
+      "G5.mass": 0.011085009492167211
+     },
+     "top.chip.gold": {
+      "G4.text.mad": 11.31010101010101,
+      "G4.text.ssim": 0.9170693666333712,
+      "G4.vector.mad": 8.302469135802468,
+      "G4.vector.ssim": 0.8460701177908747,
+      "G5.mass": 0.005969711282396497
+     },
+     "top.chip.iron": {
+      "G4.text.mad": 11.787011807447774,
+      "G4.text.ssim": 0.9065184983444633,
+      "G4.vector.mad": 8.108024691358025,
+      "G4.vector.ssim": 0.852325193627914,
+      "G5.mass": 0.010715486808532978
+     },
+     "top.chip.supply": {
+      "G4.text.mad": 2.992822966507177,
+      "G4.text.ssim": 0.9903761821285882,
+      "G4.vector.mad": 7.843621399176954,
+      "G4.vector.ssim": 0.8522032529407748,
+      "G5.mass": 0.0023502682788157756
+     },
+     "top.clock": {
+      "G4.text.mad": 6.827115924588849,
+      "G4.text.ssim": 0.9250018900606168,
+      "G5.mass": 0.007239542795077964
+     },
+     "top.menu": {
+      "G4.text.mad": 16.60879120879121,
+      "G4.text.ssim": 0.874438900410397,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9965558417686605,
+      "G5.mass": 0.041674243010194005
+     },
+     "world.ring": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     }
+    },
+    "P5": {
+     "*": {
+      "G7.mad": 0.6402010008060183,
+      "G7.ssim": 0.9931534434111802
+     },
+     "card.A": {
+      "G4.text.mad": 14.134615384615385,
+      "G4.text.ssim": 0.9245513406573941,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9999737815083343,
+      "G5.mass": 0.27616379334366603
+     },
+     "card.C": {
+      "G4.text.mad": 16.064102564102566,
+      "G4.text.ssim": 0.8982582121342234,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9999090190882185,
+      "G5.mass": 0.3247408955671741
+     },
+     "card.D": {
+      "G4.text.mad": 18.266025641025642,
+      "G4.text.ssim": 0.9100221388851382,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9999173354883107,
+      "G5.mass": 0.29238037521455934
+     },
+     "card.E": {
+      "G4.text.mad": 4.828787878787879,
+      "G4.text.ssim": 0.9147350625229828,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9997632798319807,
+      "G5.mass": 0.24730789235422157
+     },
+     "card.F": {
+      "G4.text.mad": 17.307692307692307,
+      "G4.text.ssim": 0.8823924581329602,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9997983809241513,
+      "G5.mass": 0.32960812073051066
+     },
+     "card.Q": {
+      "G4.text.mad": 10.657196969696969,
+      "G4.text.ssim": 0.8721322258482513,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9990684251363211,
+      "G5.mass": 0.3239026455026454
+     },
+     "card.R": {
+      "G4.text.mad": 5.411616161616162,
+      "G4.text.ssim": 0.8864746073370701,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9996056131667672,
+      "G5.mass": 0.281181040400489
+     },
+     "card.S": {
+      "G4.text.mad": 16.631410256410255,
+      "G4.text.ssim": 0.9071886346636743,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9998970019459602,
+      "G5.mass": 0.30867877896234835
+     },
+     "card.V": {
+      "G4.text.mad": 15.349358974358974,
+      "G4.text.ssim": 0.9084576814567871,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9997941248350218,
+      "G5.mass": 0.31046369629823173
+     },
+     "card.W": {
+      "G4.text.mad": 10.994318181818182,
+      "G4.text.ssim": 0.8493567736311998,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9985105423709882,
+      "G5.mass": 0.2947774617779013
+     },
+     "card.X": {
+      "G4.text.mad": 14.788461538461538,
+      "G4.text.ssim": 0.9143517163843721,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9999114662798763,
+      "G5.mass": 0.29291799079558556
+     },
+     "card.Z": {
+      "G4.text.mad": 11.455128205128204,
+      "G4.text.ssim": 0.9307377196095205,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9998819133763108,
+      "G5.mass": 0.2396016827468766
+     },
+     "mm.buttons": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.map": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.plate": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.card": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.minimap": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.selection": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.hp": {
+      "G4.text.mad": 12.091706539074961,
+      "G4.text.ssim": 0.8794321407791917,
+      "G5.mass": 0.2716364595561659
+     },
+     "sel.name": {
+      "G4.text.mad": 7.806796116504854,
+      "G4.text.ssim": 0.9337536503758468,
+      "G5.mass": 0.20399555617871315
+     },
+     "sel.portrait": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.role": {
+      "G4.text.mad": 5.990328385065228,
+      "G4.text.ssim": 0.9213737464377194,
+      "G5.mass": 0.09739422877408853
+     },
+     "sel.stats": {
+      "G4.text.mad": 10.366050260787103,
+      "G4.text.ssim": 0.8893177247761384,
+      "G5.mass": 0.28002457128943586
+     },
+     "tab.3": {
+      "G4.text.mad": 9.71057884231537,
+      "G4.text.ssim": 0.8961202749920797,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.23201334925914874
+     },
+     "toast": {
+      "G4.text.mad": 17.086309523809526,
+      "G4.text.ssim": 0.8843956013012394,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9935052559425865,
+      "G5.mass": 0.3104268174875394
+     },
+     "top.alertlog": {
+      "G4.text.mad": 2.20414673046252,
+      "G4.text.ssim": 0.9837339563029892,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.06445795733531003
+     },
+     "top.chip.aether": {
+      "G4.text.mad": 8.489786443825441,
+      "G4.text.ssim": 0.9396779686372785,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.21762701784762525
+     },
+     "top.chip.gold": {
+      "G4.text.mad": 9.053535353535354,
+      "G4.text.ssim": 0.9416430421772681,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.22221597959165953
+     },
+     "top.chip.iron": {
+      "G4.text.mad": 9.60172570390554,
+      "G4.text.ssim": 0.9190344459251324,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.23365997264854538
+     },
+     "top.chip.supply": {
+      "G4.text.mad": 8.3160552897395,
+      "G4.text.ssim": 0.9129919012066616,
+      "G4.vector.mad": 0.00205761316872428,
+      "G4.vector.ssim": 0.9999999843176745,
+      "G5.mass": 0.2201569384534222
+     },
+     "top.clock": {
+      "G4.text.mad": 8.18946383206311,
+      "G4.text.ssim": 0.8742767676731176,
+      "G5.mass": 0.19351536438873757
+     },
+     "top.menu": {
+      "G4.text.mad": 18.093040293040293,
+      "G4.text.ssim": 0.8398131101920239,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9974978595237498,
+      "G5.mass": 0.31281122206941403
+     },
+     "world.ring": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     }
+    },
+    "P6": {
+     "*": {
+      "G7.mad": 0.30256260634963283,
+      "G7.ssim": 0.9978755188011116
+     },
+     "card.A": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 0.9999994113357152,
+      "G4.vector.mad": 0.6436295251527974,
+      "G4.vector.ssim": 0.9978379513095894,
+      "G5.mass": 0.0
+     },
+     "card.C": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 0.999999510231243,
+      "G4.vector.mad": 2.24776680771039,
+      "G4.vector.ssim": 0.983675921767227,
+      "G5.mass": 0.0
+     },
+     "card.D": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 0.9999995206874008,
+      "G4.vector.mad": 0.6605547719793136,
+      "G4.vector.ssim": 0.9986511695341302,
+      "G5.mass": 0.0
+     },
+     "card.E": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 0.9999767332364898,
+      "G4.vector.mad": 0.5388581952117864,
+      "G4.vector.ssim": 0.9953350248406099,
+      "G5.mass": 0.0
+     },
+     "card.F": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 0.9999995225494764,
+      "G4.vector.mad": 0.4503996238834039,
+      "G4.vector.ssim": 0.9980270958491332,
+      "G5.mass": 0.0
+     },
+     "card.Q": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 0.9999772180223032,
+      "G4.vector.mad": 1.0479548660084625,
+      "G4.vector.ssim": 0.9964744691115908,
+      "G5.mass": 0.0
+     },
+     "card.R": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 0.9999962524381284,
+      "G4.vector.mad": 0.9550644567219153,
+      "G4.vector.ssim": 0.9948438503239025,
+      "G5.mass": 0.0
+     },
+     "card.S": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 0.9999995175400109,
+      "G4.vector.mad": 0.11612599905970851,
+      "G4.vector.ssim": 0.999590864936349,
+      "G5.mass": 0.0
+     },
+     "card.V": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 0.9999996178191547,
+      "G4.vector.mad": 0.13333333333333333,
+      "G4.vector.ssim": 0.9998880480122035,
+      "G5.mass": 0.0
+     },
+     "card.W": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 0.9999255178608265,
+      "G4.vector.mad": 1.319699106723084,
+      "G4.vector.ssim": 0.9943831986702302,
+      "G5.mass": 0.0
+     },
+     "card.X": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 0.9999995079179421,
+      "G4.vector.mad": 0.9275975552421251,
+      "G4.vector.ssim": 0.9947746724027079,
+      "G5.mass": 0.0
+     },
+     "card.Z": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 0.9999997227913787,
+      "G4.vector.mad": 0.9929478138222849,
+      "G4.vector.ssim": 0.9948019396032795,
+      "G5.mass": 0.0
+     },
+     "mm.buttons": {
+      "G4.vector.mad": 1.5521262002743483,
+      "G4.vector.ssim": 0.9898110768928746
+     },
+     "mm.map": {
+      "G4.vector.mad": 5.093584177520501,
+      "G4.vector.ssim": 0.9653285588398038
+     },
+     "mm.plate": {
+      "G4.vector.mad": 0.15784008307372793,
+      "G4.vector.ssim": 0.9996565517027073
+     },
+     "orn.card": {
+      "G4.vector.mad": 6.103785103785103,
+      "G4.vector.ssim": 0.9637780055130897
+     },
+     "orn.minimap": {
+      "G1.vector": 15,
+      "G4.vector.mad": 6.022895420915817,
+      "G4.vector.ssim": 0.964370425094347
+     },
+     "orn.selection": {
+      "G4.vector.mad": 5.422627901735407,
+      "G4.vector.ssim": 0.972162484630681
+     },
+     "sel.hp": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.name": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.portrait": {
+      "G4.vector.mad": 0.19102251541660692,
+      "G4.vector.ssim": 0.9982933491293724
+     },
+     "sel.role": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.stats": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "tab.3": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 2.1380208333333335,
+      "G4.vector.ssim": 0.9822357505210109,
+      "G5.mass": 0.0
+     },
+     "toast": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 0.9999789402255305,
+      "G4.vector.mad": 1.2604166666666667,
+      "G4.vector.ssim": 0.9977509869890033,
+      "G5.mass": 0.0
+     },
+     "top.alertlog": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.970164609053498,
+      "G4.vector.ssim": 0.9966121075495389,
+      "G5.mass": 0.0
+     },
+     "top.chip.aether": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 2.2839506172839505,
+      "G4.vector.ssim": 0.9941039448767504,
+      "G5.mass": 0.0
+     },
+     "top.chip.gold": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 1.1111111111111112,
+      "G4.vector.ssim": 0.9963175208583136,
+      "G5.mass": 0.0
+     },
+     "top.chip.iron": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.8333333333333334,
+      "G4.vector.ssim": 0.9962548943550114,
+      "G5.mass": 0.0
+     },
+     "top.chip.supply": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 2.14917695473251,
+      "G4.vector.ssim": 0.9864474701531744,
+      "G5.mass": 0.0
+     },
+     "top.clock": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.menu": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 0.9999933629615096,
+      "G4.vector.mad": 1.3762886597938144,
+      "G4.vector.ssim": 0.9901208036998119,
+      "G5.mass": 0.0
+     },
+     "world.ring": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.9563994374120957,
+      "G4.vector.ssim": 0.9965584130721635
+     }
+    }
+   },
+   "unvalidated_by_a_negative": [
+    "card.A:G4.text.mad",
+    "card.A:G4.text.ssim",
+    "card.A:G4.vector.mad",
+    "card.A:G4.vector.ssim",
+    "card.A:G5.mass",
+    "card.C:G4.text.mad",
+    "card.C:G4.text.ssim",
+    "card.C:G4.vector.mad",
+    "card.C:G4.vector.ssim",
+    "card.C:G5.mass",
+    "card.D:G4.text.mad",
+    "card.D:G4.text.ssim",
+    "card.D:G4.vector.mad",
+    "card.D:G4.vector.ssim",
+    "card.D:G5.mass",
+    "card.E:G4.text.mad",
+    "card.E:G4.text.ssim",
+    "card.E:G4.vector.mad",
+    "card.E:G4.vector.ssim",
+    "card.E:G5.mass",
+    "card.F:G4.text.mad",
+    "card.F:G4.text.ssim",
+    "card.F:G4.vector.mad",
+    "card.F:G4.vector.ssim",
+    "card.F:G5.mass",
+    "card.Q:G4.text.mad",
+    "card.Q:G4.text.ssim",
+    "card.Q:G4.vector.mad",
+    "card.Q:G4.vector.ssim",
+    "card.Q:G5.mass",
+    "card.R:G4.text.mad",
+    "card.R:G4.text.ssim",
+    "card.R:G4.vector.mad",
+    "card.R:G4.vector.ssim",
+    "card.R:G5.mass",
+    "card.S:G4.text.mad",
+    "card.S:G4.text.ssim",
+    "card.S:G5.mass",
+    "card.V:G4.text.mad",
+    "card.V:G4.text.ssim",
+    "card.V:G4.vector.mad",
+    "card.V:G4.vector.ssim",
+    "card.V:G5.mass",
+    "card.W:G4.text.mad",
+    "card.W:G4.text.ssim",
+    "card.W:G4.vector.mad",
+    "card.W:G4.vector.ssim",
+    "card.W:G5.mass",
+    "card.X:G4.text.mad",
+    "card.X:G4.text.ssim",
+    "card.X:G4.vector.mad",
+    "card.X:G4.vector.ssim",
+    "card.X:G5.mass",
+    "card.Z:G4.text.mad",
+    "card.Z:G4.text.ssim",
+    "card.Z:G4.vector.mad",
+    "card.Z:G4.vector.ssim",
+    "card.Z:G5.mass",
+    "mm.buttons:G4.vector.mad",
+    "mm.buttons:G4.vector.ssim",
+    "mm.map:G4.vector.mad",
+    "mm.map:G4.vector.ssim",
+    "mm.plate:G4.vector.mad",
+    "mm.plate:G4.vector.ssim",
+    "orn.card:G4.vector.mad",
+    "orn.card:G4.vector.ssim",
+    "orn.minimap:G1.vector",
+    "orn.minimap:G4.vector.mad",
+    "orn.minimap:G4.vector.ssim",
+    "orn.selection:G4.vector.mad",
+    "orn.selection:G4.vector.ssim",
+    "sel.hp:G4.text.mad",
+    "sel.hp:G4.text.ssim",
+    "sel.hp:G5.mass",
+    "sel.name:G4.text.mad",
+    "sel.name:G4.text.ssim",
+    "sel.name:G5.mass",
+    "sel.portrait:G4.vector.mad",
+    "sel.portrait:G4.vector.ssim",
+    "sel.role:G4.text.mad",
+    "sel.role:G4.text.ssim",
+    "sel.role:G5.mass",
+    "sel.stats:G4.text.mad",
+    "sel.stats:G4.text.ssim",
+    "sel.stats:G5.mass",
+    "tab.3:G4.text.mad",
+    "tab.3:G4.text.ssim",
+    "tab.3:G4.vector.mad",
+    "tab.3:G4.vector.ssim",
+    "tab.3:G5.mass",
+    "toast:G4.text.mad",
+    "toast:G4.text.ssim",
+    "toast:G4.vector.mad",
+    "toast:G4.vector.ssim",
+    "toast:G5.mass",
+    "top.alertlog:G4.text.mad",
+    "top.alertlog:G4.text.ssim",
+    "top.alertlog:G4.vector.mad",
+    "top.alertlog:G4.vector.ssim",
+    "top.alertlog:G5.mass",
+    "top.chip.aether:G4.text.mad",
+    "top.chip.aether:G4.text.ssim",
+    "top.chip.aether:G4.vector.mad",
+    "top.chip.aether:G4.vector.ssim",
+    "top.chip.aether:G5.mass",
+    "top.chip.gold:G4.text.mad",
+    "top.chip.gold:G4.text.ssim",
+    "top.chip.gold:G4.vector.mad",
+    "top.chip.gold:G4.vector.ssim",
+    "top.chip.gold:G5.mass",
+    "top.chip.iron:G4.text.mad",
+    "top.chip.iron:G4.text.ssim",
+    "top.chip.iron:G4.vector.mad",
+    "top.chip.iron:G4.vector.ssim",
+    "top.chip.iron:G5.mass",
+    "top.chip.supply:G4.text.mad",
+    "top.chip.supply:G4.text.ssim",
+    "top.chip.supply:G4.vector.mad",
+    "top.chip.supply:G4.vector.ssim",
+    "top.chip.supply:G5.mass",
+    "top.clock:G4.text.mad",
+    "top.clock:G4.text.ssim",
+    "top.clock:G5.mass",
+    "top.menu:G4.text.mad",
+    "top.menu:G4.text.ssim",
+    "top.menu:G4.vector.mad",
+    "top.menu:G4.vector.ssim",
+    "top.menu:G5.mass",
+    "world.ring:G4.vector.mad",
+    "world.ring:G4.vector.ssim"
+   ],
+   "verdict": {
+    "N1": {
+     "failing_intended": [
+      "card.A",
+      "card.C",
+      "card.D",
+      "card.E",
+      "card.F",
+      "card.Q",
+      "card.R",
+      "card.S",
+      "card.V",
+      "card.W",
+      "card.X",
+      "card.Z",
+      "card.panel",
+      "orn.card"
+     ],
+     "failing_outside": [],
+     "failing_regions": [
+      "card.A",
+      "card.C",
+      "card.D",
+      "card.E",
+      "card.F",
+      "card.Q",
+      "card.R",
+      "card.S",
+      "card.V",
+      "card.W",
+      "card.X",
+      "card.Z",
+      "card.panel",
+      "orn.card"
+     ],
+     "g7_fail": false,
+     "ok": true,
+     "passes_every_gate": false
+    },
+    "N2": {
+     "failing_intended": [
+      "top.chip.aether",
+      "top.chip.gold",
+      "top.chip.iron",
+      "top.chip.supply"
+     ],
+     "failing_outside": [],
+     "failing_regions": [
+      "top.chip.aether",
+      "top.chip.gold",
+      "top.chip.iron",
+      "top.chip.supply"
+     ],
+     "g7_fail": false,
+     "ok": true,
+     "passes_every_gate": false
+    },
+    "N3": {
+     "failing_intended": [
+      "sel.name"
+     ],
+     "failing_outside": [],
+     "failing_regions": [
+      "sel.name"
+     ],
+     "g7_fail": false,
+     "ok": true,
+     "passes_every_gate": false
+    },
+    "N4": {
+     "failing_intended": [
+      "toast"
+     ],
+     "failing_outside": [],
+     "failing_regions": [
+      "toast"
+     ],
+     "g7_fail": false,
+     "ok": true,
+     "passes_every_gate": false
+    },
+    "N5": {
+     "failing_intended": [
+      "mm.buttons"
+     ],
+     "failing_outside": [],
+     "failing_regions": [
+      "mm.buttons"
+     ],
+     "g7_fail": false,
+     "ok": true,
+     "passes_every_gate": false
+    },
+    "N6": {
+     "failing_intended": [
+      "card.S"
+     ],
+     "failing_outside": [],
+     "failing_regions": [
+      "card.S"
+     ],
+     "g7_fail": false,
+     "ok": true,
+     "passes_every_gate": false
+    },
+    "N7": {
+     "failing_intended": [
+      "sel.stats"
+     ],
+     "failing_outside": [],
+     "failing_regions": [
+      "sel.stats"
+     ],
+     "g7_fail": false,
+     "ok": true,
+     "passes_every_gate": false
+    },
+    "N8": {
+     "failing_intended": [
+      "sel.role"
+     ],
+     "failing_outside": [],
+     "failing_regions": [
+      "sel.role"
+     ],
+     "g7_fail": false,
+     "ok": true,
+     "passes_every_gate": false
+    },
+    "P1": {
+     "failing_regions": [],
+     "g7_fail": false,
+     "ok": true
+    },
+    "P3": {
+     "failing_regions": [],
+     "g7_fail": false,
+     "ok": true
+    },
+    "P4": {
+     "failing_regions": [],
+     "g7_fail": false,
+     "ok": true
+    },
+    "P5": {
+     "failing_regions": [],
+     "g7_fail": false,
+     "ok": true
+    },
+    "P6": {
+     "failing_regions": [],
+     "g7_fail": false,
+     "ok": true
+    }
+   }
+  },
+  "B": {
+   "changed": {
+    "N1": {
+     "changed": 9156,
+     "changed_in_hud_mask": 9156,
+     "inside": 9156,
+     "ok": true,
+     "outside": 0,
+     "photo_noise": 0
+    },
+    "N2": {
+     "changed": 9281,
+     "changed_in_hud_mask": 9281,
+     "inside": 9281,
+     "ok": true,
+     "outside": 0,
+     "photo_noise": 0
+    },
+    "N3": {
+     "changed": 1252,
+     "changed_in_hud_mask": 1252,
+     "inside": 1252,
+     "ok": true,
+     "outside": 0,
+     "photo_noise": 0
+    },
+    "N4": {
+     "changed": 1654,
+     "changed_in_hud_mask": 1654,
+     "inside": 1654,
+     "ok": true,
+     "outside": 0,
+     "photo_noise": 0
+    },
+    "N5": {
+     "changed": 108,
+     "changed_in_hud_mask": 108,
+     "inside": 108,
+     "ok": true,
+     "outside": 0,
+     "photo_noise": 0
+    },
+    "N6": {
+     "changed": 288,
+     "changed_in_hud_mask": 288,
+     "inside": 288,
+     "ok": true,
+     "outside": 0,
+     "photo_noise": 0
+    },
+    "N7": {
+     "changed": 2246,
+     "changed_in_hud_mask": 2246,
+     "inside": 2246,
+     "ok": true,
+     "outside": 0,
+     "photo_noise": 0
+    },
+    "N8": {
+     "changed": 898,
+     "changed_in_hud_mask": 898,
+     "inside": 898,
+     "ok": true,
+     "outside": 0,
+     "photo_noise": 0
+    },
+    "P1": {
+     "changed": 285,
+     "changed_in_hud_mask": 285,
+     "ok": true
+    },
+    "P3": {
+     "changed": 13021,
+     "changed_in_hud_mask": 13021,
+     "ok": true
+    },
+    "P4": {
+     "changed": 13116,
+     "changed_in_hud_mask": 13116,
+     "ok": true
+    },
+    "P5": {
+     "changed": 8727,
+     "changed_in_hud_mask": 8727,
+     "ok": true
+    },
+    "P6": {
+     "changed": 21352,
+     "changed_in_hud_mask": 21352,
+     "ok": true
+    }
+   },
+   "escalate": [],
+   "hard_failures_pass1": {
+    "N1": {
+     "card.A": {
+      "badness": 19.999999999999982,
+      "gates": [
+       "G2",
+       "G3",
+       "G4",
+       "G5",
+       "alignment"
+      ]
+     },
+     "card.C": {
+      "badness": 19.999999999999982,
+      "gates": [
+       "G2",
+       "G3",
+       "G4",
+       "G5",
+       "alignment"
+      ]
+     },
+     "card.D": {
+      "badness": 19.999999999999982,
+      "gates": [
+       "G2",
+       "G3",
+       "G4",
+       "G5",
+       "alignment"
+      ]
+     },
+     "card.E": {
+      "badness": 19.999999999999982,
+      "gates": [
+       "G2",
+       "G3",
+       "G4",
+       "G5",
+       "alignment"
+      ]
+     },
+     "card.F": {
+      "badness": 19.999999999999982,
+      "gates": [
+       "G2",
+       "G3",
+       "G4",
+       "G5",
+       "alignment"
+      ]
+     },
+     "card.Q": {
+      "badness": 19.999999999999982,
+      "gates": [
+       "G2",
+       "G3",
+       "G4",
+       "G5",
+       "alignment"
+      ]
+     },
+     "card.R": {
+      "badness": 19.999999999999982,
+      "gates": [
+       "G2",
+       "G3",
+       "G4",
+       "G5",
+       "alignment"
+      ]
+     },
+     "card.S": {
+      "badness": 19.999999999999982,
+      "gates": [
+       "G2",
+       "G3",
+       "G4",
+       "G5",
+       "alignment"
+      ]
+     },
+     "card.V": {
+      "badness": 19.999999999999982,
+      "gates": [
+       "G2",
+       "G3",
+       "G4",
+       "G5",
+       "alignment"
+      ]
+     },
+     "card.W": {
+      "badness": 19.999999999999982,
+      "gates": [
+       "G2",
+       "G3",
+       "G4",
+       "G5",
+       "alignment"
+      ]
+     },
+     "card.X": {
+      "badness": 19.999999999999982,
+      "gates": [
+       "G2",
+       "G3",
+       "G4",
+       "G5",
+       "alignment"
+      ]
+     },
+     "card.Z": {
+      "badness": 19.999999999999982,
+      "gates": [
+       "G2",
+       "G3",
+       "G4",
+       "G5",
+       "alignment"
+      ]
+     },
+     "card.panel": {
+      "badness": 4.929618597044565,
+      "gates": [
+       "G3",
+       "G4",
+       "alignment"
+      ]
+     },
+     "orn.card": {
+      "badness": 2.0,
+      "gates": [
+       "G3",
+       "alignment"
+      ]
+     }
+    },
+    "N2": {
+     "top.chip.aether": {
+      "badness": 61.079219288174514,
+      "gates": [
+       "G1",
+       "G4"
+      ]
+     },
+     "top.chip.gold": {
+      "badness": 60.948536831483345,
+      "gates": [
+       "G1",
+       "G4"
+      ]
+     },
+     "top.chip.iron": {
+      "badness": 60.718424101969866,
+      "gates": [
+       "G1",
+       "G4"
+      ]
+     },
+     "top.chip.supply": {
+      "badness": 57.98146240988672,
+      "gates": [
+       "G1",
+       "G4"
+      ]
+     }
+    },
+    "N3": {
+     "sel.name": {
+      "badness": 2.3068851573926374,
+      "gates": [
+       "G5"
+      ]
+     }
+    },
+    "N4": {
+     "toast": {
+      "badness": 3.0,
+      "gates": [
+       "G5"
+      ]
+     }
+    },
+    "N5": {
+     "mm.buttons": {
+      "badness": 23.0,
+      "gates": [
+       "G1",
+       "G2",
+       "G4"
+      ]
+     }
+    },
+    "N6": {},
+    "N7": {
+     "sel.stats": {
+      "badness": 36.85800604229607,
+      "gates": [
+       "G5"
+      ]
+     }
+    },
+    "N8": {
+     "sel.role": {
+      "badness": 17.792520356617647,
+      "gates": [
+       "G5"
+      ]
+     }
+    }
+   },
+   "heaviest_run": {
+    "N1": 0.15605152015080412,
+    "N2": 0.0,
+    "N3": 0.11534425786963189,
+    "N4": 0.107509969628743,
+    "N5": 0.0,
+    "N6": 0.0,
+    "N7": 0.0289760533619361,
+    "N8": 0.8896260178308825,
+    "P1": 0.017015965584821796,
+    "P3": 0.02769233292243285,
+    "P4": 0.02769233292243285,
+    "P5": -0.0544845519424931,
+    "P6": 0.0
+   },
+   "report_only": [
+    "*:G7.mad",
+    "*:G7.ssim"
+   ],
+   "report_only_no_positive": [
+    "world.ring:G1.vector"
+   ],
+   "soft_values": {
+    "N1": {
+     "*": {
+      "G7.mad": 0.8679515381515315,
+      "G7.ssim": 0.9602567210866745
+     },
+     "card.A": {
+      "G4.text.mad": 29.41025641025641,
+      "G4.text.ssim": 0.5884138350574426,
+      "G4.vector.mad": 12.409496944052655,
+      "G4.vector.ssim": 0.6841238572771697,
+      "G5.mass": 0.13439733285941716
+     },
+     "card.C": {
+      "G4.text.mad": 37.916666666666664,
+      "G4.text.ssim": 0.4193163260653077,
+      "G4.vector.mad": 14.189468735307946,
+      "G4.vector.ssim": 0.629195904486542,
+      "G5.mass": 0.14495875224204086
+     },
+     "card.D": {
+      "G4.text.mad": 31.794871794871796,
+      "G4.text.ssim": 0.5182786678597148,
+      "G4.vector.mad": 17.571697226140103,
+      "G4.vector.ssim": 0.6232517439032769,
+      "G5.mass": 0.11546889566674459
+     },
+     "card.E": {
+      "G4.text.mad": 12.171212121212122,
+      "G4.text.ssim": 0.5082378889250653,
+      "G4.vector.mad": 6.089502762430939,
+      "G4.vector.ssim": 0.7398605374666252,
+      "G5.mass": 0.13613380796484673
+     },
+     "card.F": {
+      "G4.text.mad": 38.1025641025641,
+      "G4.text.ssim": 0.394182594297263,
+      "G4.vector.mad": 9.549130230371414,
+      "G4.vector.ssim": 0.7348299045979415,
+      "G5.mass": 0.14240052536421796
+     },
+     "card.Q": {
+      "G4.text.mad": 18.608585858585858,
+      "G4.text.ssim": 0.4969679236214171,
+      "G4.vector.mad": 15.77574047954866,
+      "G4.vector.ssim": 0.6400389228653245,
+      "G5.mass": 0.1030150150150151
+     },
+     "card.R": {
+      "G4.text.mad": 11.237373737373737,
+      "G4.text.ssim": 0.5209912175991649,
+      "G4.vector.mad": 12.71123388581952,
+      "G4.vector.ssim": 0.565748414542759,
+      "G5.mass": 0.11240310077519379
+     },
+     "card.S": {
+      "G4.text.mad": 49.3525641025641,
+      "G4.text.ssim": 0.32687075882775246,
+      "G4.vector.mad": 8.59755524212506,
+      "G4.vector.ssim": 0.7135260699218854,
+      "G5.mass": 0.12897171525162698
+     },
+     "card.V": {
+      "G4.text.mad": 26.141025641025642,
+      "G4.text.ssim": 0.6347452380667366,
+      "G4.vector.mad": 10.233333333333333,
+      "G4.vector.ssim": 0.6525178783183399,
+      "G5.mass": 0.1401701993564758
+     },
+     "card.W": {
+      "G4.text.mad": 16.595959595959595,
+      "G4.text.ssim": 0.5258738570715853,
+      "G4.vector.mad": 13.72402444757875,
+      "G4.vector.ssim": 0.695903919200824,
+      "G5.mass": 0.10055575773679098
+     },
+     "card.X": {
+      "G4.text.mad": 36.62820512820513,
+      "G4.text.ssim": 0.5239656955378849,
+      "G4.vector.mad": 11.963798777621063,
+      "G4.vector.ssim": 0.6413403969832102,
+      "G5.mass": 0.1360040701419451
+     },
+     "card.Z": {
+      "G4.text.mad": 47.243589743589745,
+      "G4.text.ssim": 0.32057535364138273,
+      "G4.vector.mad": 10.283497884344147,
+      "G4.vector.ssim": 0.713119774538326,
+      "G5.mass": 0.15605152015080412
+     },
+     "mm.buttons": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.map": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.plate": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.card": {
+      "G4.vector.mad": 29.358712715855575,
+      "G4.vector.ssim": 0.3465140862218461
+     },
+     "orn.minimap": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.selection": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.hp": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.name": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.portrait": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.role": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.stats": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "tab.3": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "toast": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.alertlog": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.aether": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.gold": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.iron": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.supply": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.clock": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.menu": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "world.ring": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     }
+    },
+    "N2": {
+     "*": {
+      "G7.mad": 0.16782531792942862,
+      "G7.ssim": 0.9990187620259185
+     },
+     "card.A": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.C": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.D": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.E": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.F": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Q": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.R": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.S": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.V": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.W": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.X": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Z": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "mm.buttons": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.map": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.plate": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.card": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.minimap": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.selection": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.hp": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.name": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.portrait": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.role": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.stats": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "tab.3": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "toast": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.alertlog": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.aether": {
+      "G4.text.mad": 7.581708449396472,
+      "G4.text.ssim": 0.9748230355456685,
+      "G4.vector.mad": 6.505144032921811,
+      "G4.vector.ssim": 0.9835635597815827,
+      "G5.mass": 0.07313748049064847
+     },
+     "top.chip.gold": {
+      "G4.text.mad": 7.453198653198653,
+      "G4.text.ssim": 0.9760329550169544,
+      "G4.vector.mad": 8.243827160493828,
+      "G4.vector.ssim": 0.9689435877297045,
+      "G5.mass": 0.07415047885115916
+     },
+     "top.chip.iron": {
+      "G4.text.mad": 7.564032697547684,
+      "G4.text.ssim": 0.9731525523676107,
+      "G4.vector.mad": 8.29320987654321,
+      "G4.vector.ssim": 0.9682043764213205,
+      "G5.mass": 0.0739538421158975
+     },
+     "top.chip.supply": {
+      "G4.text.mad": 7.945507708665604,
+      "G4.text.ssim": 0.9684231492681751,
+      "G4.vector.mad": 8.194444444444445,
+      "G4.vector.ssim": 0.969770432983078,
+      "G5.mass": 0.045291786622317115
+     },
+     "top.clock": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.menu": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "world.ring": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     }
+    },
+    "N3": {
+     "*": {
+      "G7.mad": 0.06941272613290346,
+      "G7.ssim": 0.9995568886749288
+     },
+     "card.A": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.C": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.D": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.E": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.F": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Q": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.R": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.S": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.V": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.W": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.X": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Z": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "mm.buttons": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.map": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.plate": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.card": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.minimap": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.selection": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.hp": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.name": {
+      "G4.text.mad": 5.351024811218986,
+      "G4.text.ssim": 0.9676094256257507,
+      "G5.mass": 0.11534425786963189
+     },
+     "sel.portrait": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.role": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.stats": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "tab.3": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "toast": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.alertlog": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.aether": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.gold": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.iron": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.supply": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.clock": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.menu": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "world.ring": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     }
+    },
+    "N4": {
+     "*": {
+      "G7.mad": 0.3421316664427727,
+      "G7.ssim": 0.9945312367961784
+     },
+     "card.A": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.C": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.D": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.E": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.F": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Q": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.R": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.S": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.V": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.W": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.X": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Z": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "mm.buttons": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.map": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.plate": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.card": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.minimap": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.selection": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.hp": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.name": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.portrait": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.role": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.stats": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "tab.3": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "toast": {
+      "G4.text.mad": 43.478956955229606,
+      "G4.text.ssim": 0.3382749379353907,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.107509969628743
+     },
+     "top.alertlog": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.aether": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.gold": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.iron": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.supply": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.clock": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.menu": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "world.ring": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     }
+    },
+    "N5": {
+     "*": {
+      "G7.mad": 0.0094455265986029,
+      "G7.ssim": 0.9987399724780849
+     },
+     "card.A": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.C": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.D": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.E": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.F": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Q": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.R": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.S": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.V": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.W": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.X": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Z": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "mm.buttons": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9989385158276164
+     },
+     "mm.map": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.plate": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.card": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.minimap": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.selection": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.hp": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.name": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.portrait": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.role": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.stats": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "tab.3": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "toast": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.alertlog": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.aether": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.gold": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.iron": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.supply": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.clock": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.menu": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "world.ring": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     }
+    },
+    "N6": {
+     "*": {
+      "G7.mad": 0.06362786584273689,
+      "G7.ssim": 0.9983615735484372
+     },
+     "card.A": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.C": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.D": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.E": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.F": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Q": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.R": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.S": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 42.75505406676069,
+      "G4.vector.ssim": -0.00794338974215583,
+      "G5.mass": 0.0
+     },
+     "card.V": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.W": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.X": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Z": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "mm.buttons": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.map": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.plate": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.card": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.minimap": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.selection": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.hp": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.name": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.portrait": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.role": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.stats": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "tab.3": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "toast": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.alertlog": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.aether": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.gold": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.iron": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.supply": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.clock": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.menu": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "world.ring": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     }
+    },
+    "N7": {
+     "*": {
+      "G7.mad": 0.5010047241626365,
+      "G7.ssim": 0.9896963402018838
+     },
+     "card.A": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.C": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.D": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.E": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.F": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Q": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.R": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.S": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.V": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.W": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.X": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Z": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "mm.buttons": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.map": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.plate": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.card": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.minimap": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.selection": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.hp": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.name": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.portrait": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.role": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.stats": {
+      "G4.text.mad": 37.7250935145672,
+      "G4.text.ssim": 0.2555083863061109,
+      "G5.mass": 0.0289760533619361
+     },
+     "tab.3": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "toast": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.alertlog": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.aether": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.gold": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.iron": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.supply": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.clock": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.menu": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "world.ring": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     }
+    },
+    "N8": {
+     "*": {
+      "G7.mad": 0.1232879108454236,
+      "G7.ssim": 0.9986730995725978
+     },
+     "card.A": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.C": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.D": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.E": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.F": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Q": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.R": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.S": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.V": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.W": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.X": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Z": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "mm.buttons": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.map": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.plate": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.card": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.minimap": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.selection": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.hp": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.name": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.portrait": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.role": {
+      "G4.text.mad": 19.816576698155647,
+      "G4.text.ssim": 0.801509539084835,
+      "G5.mass": 0.8896260178308825
+     },
+     "sel.stats": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "tab.3": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "toast": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.alertlog": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.aether": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.gold": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.iron": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.supply": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.clock": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.menu": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "world.ring": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     }
+    },
+    "P1": {
+     "*": {
+      "G7.mad": 0.003381498522299839,
+      "G7.ssim": 0.9999921639926199
+     },
+     "card.A": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.C": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.D": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.E": {
+      "G4.text.mad": 0.10757575757575757,
+      "G4.text.ssim": 0.9996262301726988,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9999989393061048,
+      "G5.mass": 0.017015965584821796
+     },
+     "card.F": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Q": {
+      "G4.text.mad": 0.008838383838383838,
+      "G4.text.ssim": 0.9999866510094765,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0005845412351659231
+     },
+     "card.R": {
+      "G4.text.mad": 0.005050505050505051,
+      "G4.text.ssim": 0.9999856258079262,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0005983216861480829
+     },
+     "card.S": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.V": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.W": {
+      "G4.text.mad": 0.018308080808080808,
+      "G4.text.ssim": 0.9999772080299995,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0011711800831275478
+     },
+     "card.X": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "card.Z": {
+      "G4.text.mad": 0.13141025641025642,
+      "G4.text.ssim": 0.9998258613133166,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9999981163513848,
+      "G5.mass": 0.0030456145289749744
+     },
+     "mm.buttons": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.map": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.plate": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.card": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.minimap": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.selection": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.hp": {
+      "G4.text.mad": 0.03455608718766613,
+      "G4.text.ssim": 0.9999764998939774,
+      "G5.mass": 0.0010325656881321798
+     },
+     "sel.name": {
+      "G4.text.mad": 0.0697411003236246,
+      "G4.text.ssim": 0.9998500543918103,
+      "G5.mass": 0.002350798833933068
+     },
+     "sel.portrait": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.role": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.stats": {
+      "G4.text.mad": 0.017701912438754543,
+      "G4.text.ssim": 0.9999870269590442,
+      "G5.mass": 0.0002983423529971933
+     },
+     "tab.3": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "toast": {
+      "G4.text.mad": 0.15837407726967692,
+      "G4.text.ssim": 0.9996152140565956,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0004702835986752023
+     },
+     "top.alertlog": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.chip.aether": {
+      "G4.text.mad": 0.08542246982358404,
+      "G4.text.ssim": 0.9998545745857568,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.01165851640320464
+     },
+     "top.chip.gold": {
+      "G4.text.mad": 0.061952861952861954,
+      "G4.text.ssim": 0.9998932097217703,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.006716980373634533
+     },
+     "top.chip.iron": {
+      "G4.text.mad": 0.13896457765667575,
+      "G4.text.ssim": 0.9997313964959749,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.01107595892631678
+     },
+     "top.chip.supply": {
+      "G4.text.mad": 0.024189261031366295,
+      "G4.text.ssim": 0.9999903432370071,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0007978256922927801
+     },
+     "top.clock": {
+      "G4.text.mad": 0.039844899050675224,
+      "G4.text.ssim": 0.999850973854549,
+      "G5.mass": 0.002521783068627356
+     },
+     "top.menu": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "world.ring": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     }
+    },
+    "P3": {
+     "*": {
+      "G7.mad": 0.8423303723356619,
+      "G7.ssim": 0.9901298896490505
+     },
+     "card.A": {
+      "G4.text.mad": 19.044871794871796,
+      "G4.text.ssim": 0.8815369582242869,
+      "G4.vector.mad": 5.011753643629525,
+      "G4.vector.ssim": 0.9060595585476322,
+      "G5.mass": 0.005361898752440502
+     },
+     "card.C": {
+      "G4.text.mad": 19.682692307692307,
+      "G4.text.ssim": 0.8728571219905957,
+      "G4.vector.mad": 7.185237423601317,
+      "G4.vector.ssim": 0.8796369105688596,
+      "G5.mass": 0.06135441004743441
+     },
+     "card.D": {
+      "G4.text.mad": 26.23076923076923,
+      "G4.text.ssim": 0.8371543578118594,
+      "G4.vector.mad": 9.618241654913023,
+      "G4.vector.ssim": 0.8676722077259904,
+      "G5.mass": 0.05627197286316303
+     },
+     "card.E": {
+      "G4.text.mad": 4.251515151515152,
+      "G4.text.ssim": 0.9255737306845641,
+      "G4.vector.mad": 3.3996316758747698,
+      "G4.vector.ssim": 0.9113420375015187,
+      "G5.mass": 0.06185181317416752
+     },
+     "card.F": {
+      "G4.text.mad": 16.310897435897434,
+      "G4.text.ssim": 0.8787607574921098,
+      "G4.vector.mad": 6.0672308415608835,
+      "G4.vector.ssim": 0.9151813838841846,
+      "G5.mass": 0.0644540798995613
+     },
+     "card.Q": {
+      "G4.text.mad": 11.642045454545455,
+      "G4.text.ssim": 0.8730398568026991,
+      "G4.vector.mad": 8.662905500705218,
+      "G4.vector.ssim": 0.9075203089247105,
+      "G5.mass": 0.014284684684684473
+     },
+     "card.R": {
+      "G4.text.mad": 6.236742424242424,
+      "G4.text.ssim": 0.8817137965885565,
+      "G4.vector.mad": 6.61804788213628,
+      "G4.vector.ssim": 0.8682709380355516,
+      "G5.mass": 0.04978904013260326
+     },
+     "card.S": {
+      "G4.text.mad": 19.272435897435898,
+      "G4.text.ssim": 0.896985670348928,
+      "G4.vector.mad": 5.58862247296662,
+      "G4.vector.ssim": 0.9323527191796912,
+      "G5.mass": 0.02945375505800925
+     },
+     "card.V": {
+      "G4.text.mad": 20.84294871794872,
+      "G4.text.ssim": 0.8580216844654752,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9994057780154476,
+      "G5.mass": 0.019853068202950862
+     },
+     "card.W": {
+      "G4.text.mad": 10.417929292929292,
+      "G4.text.ssim": 0.8747389896490592,
+      "G4.vector.mad": 6.937470615890926,
+      "G4.vector.ssim": 0.9017866264659504,
+      "G5.mass": 0.005563024310662793
+     },
+     "card.X": {
+      "G4.text.mad": 20.33974358974359,
+      "G4.text.ssim": 0.8738496299371261,
+      "G4.vector.mad": 4.91114245416079,
+      "G4.vector.ssim": 0.9072336738772623,
+      "G5.mass": 0.01607026032159402
+     },
+     "card.Z": {
+      "G4.text.mad": 14.320512820512821,
+      "G4.text.ssim": 0.9017039124156485,
+      "G4.vector.mad": 5.110954395862717,
+      "G4.vector.ssim": 0.9074858093805522,
+      "G5.mass": 0.029136884986307208
+     },
+     "mm.buttons": {
+      "G4.vector.mad": 12.953360768175584,
+      "G4.vector.ssim": 0.8164912682119674
+     },
+     "mm.map": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.plate": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.card": {
+      "G4.vector.mad": 4.171550671550672,
+      "G4.vector.ssim": 0.9314858666821009
+     },
+     "orn.minimap": {
+      "G1.vector": 0,
+      "G4.vector.mad": 4.8875224955009,
+      "G4.vector.ssim": 0.9278241360912678
+     },
+     "orn.selection": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.hp": {
+      "G4.text.mad": 8.793460925039872,
+      "G4.text.ssim": 0.9346985017855991,
+      "G5.mass": 0.007146852668099002
+     },
+     "sel.name": {
+      "G4.text.mad": 7.221521035598705,
+      "G4.text.ssim": 0.9510804595301395,
+      "G5.mass": 0.002233288589976188
+     },
+     "sel.portrait": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.role": {
+      "G4.text.mad": 7.118645973909132,
+      "G4.text.ssim": 0.9016356421921656,
+      "G5.mass": 0.0002766976967164263
+     },
+     "sel.stats": {
+      "G4.text.mad": 8.510879300352984,
+      "G4.text.ssim": 0.9267530127205302,
+      "G5.mass": 0.0008189179765441774
+     },
+     "tab.3": {
+      "G4.text.mad": 10.256487025948104,
+      "G4.text.ssim": 0.9125700231655632,
+      "G4.vector.mad": 8.778645833333334,
+      "G4.vector.ssim": 0.8129915328580812,
+      "G5.mass": 0.02769233292243285
+     },
+     "toast": {
+      "G4.text.mad": 17.430803571428573,
+      "G4.text.ssim": 0.889061403875764,
+      "G4.vector.mad": 11.748971193415638,
+      "G4.vector.ssim": 0.7858271979496134,
+      "G5.mass": 0.03685571251303496
+     },
+     "top.alertlog": {
+      "G4.text.mad": 6.5311004784688995,
+      "G4.text.ssim": 0.9200146127285727,
+      "G4.vector.mad": 9.406378600823045,
+      "G4.vector.ssim": 0.8442847287434908,
+      "G5.mass": 0.0011023974575866042
+     },
+     "top.chip.aether": {
+      "G4.text.mad": 11.1313834726091,
+      "G4.text.ssim": 0.9111682651864564,
+      "G4.vector.mad": 15.233539094650206,
+      "G4.vector.ssim": 0.8026701901064707,
+      "G5.mass": 0.00470601722872678
+     },
+     "top.chip.gold": {
+      "G4.text.mad": 11.288552188552188,
+      "G4.text.ssim": 0.917259542523418,
+      "G4.vector.mad": 8.302469135802468,
+      "G4.vector.ssim": 0.8460701177908747,
+      "G5.mass": 0.002712218105460582
+     },
+     "top.chip.iron": {
+      "G4.text.mad": 11.747048138056313,
+      "G4.text.ssim": 0.9067363472068124,
+      "G4.vector.mad": 8.108024691358025,
+      "G4.vector.ssim": 0.852325193627914,
+      "G5.mass": 0.012211266879373767
+     },
+     "top.chip.supply": {
+      "G4.text.mad": 2.9994683678894205,
+      "G4.text.ssim": 0.9903679132416149,
+      "G4.vector.mad": 7.843621399176954,
+      "G4.vector.ssim": 0.8522032529407748,
+      "G5.mass": 0.0015006091074240813
+     },
+     "top.clock": {
+      "G4.text.mad": 6.796496857868699,
+      "G4.text.ssim": 0.925299974691179,
+      "G5.mass": 0.0091801763421802
+     },
+     "top.menu": {
+      "G4.text.mad": 16.60879120879121,
+      "G4.text.ssim": 0.874438900410397,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9965558417686605,
+      "G5.mass": 0.041674243010194005
+     },
+     "world.ring": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     }
+    },
+    "P4": {
+     "*": {
+      "G7.mad": 0.846519288464983,
+      "G7.ssim": 0.9900797035538874
+     },
+     "card.A": {
+      "G4.text.mad": 19.044871794871796,
+      "G4.text.ssim": 0.8815369582242869,
+      "G4.vector.mad": 5.011753643629525,
+      "G4.vector.ssim": 0.9060595585476322,
+      "G5.mass": 0.005361898752440502
+     },
+     "card.C": {
+      "G4.text.mad": 19.682692307692307,
+      "G4.text.ssim": 0.8728571219905957,
+      "G4.vector.mad": 7.185237423601317,
+      "G4.vector.ssim": 0.8796369105688596,
+      "G5.mass": 0.06135441004743441
+     },
+     "card.D": {
+      "G4.text.mad": 26.23076923076923,
+      "G4.text.ssim": 0.8371543578118594,
+      "G4.vector.mad": 9.618241654913023,
+      "G4.vector.ssim": 0.8676722077259904,
+      "G5.mass": 0.05627197286316303
+     },
+     "card.E": {
+      "G4.text.mad": 4.192424242424242,
+      "G4.text.ssim": 0.9262567449485157,
+      "G4.vector.mad": 3.3996316758747698,
+      "G4.vector.ssim": 0.9113423325374931,
+      "G5.mass": 0.05250180217355818
+     },
+     "card.F": {
+      "G4.text.mad": 16.310897435897434,
+      "G4.text.ssim": 0.8787607574921098,
+      "G4.vector.mad": 6.0672308415608835,
+      "G4.vector.ssim": 0.9151813838841846,
+      "G5.mass": 0.0644540798995613
+     },
+     "card.Q": {
+      "G4.text.mad": 11.650252525252526,
+      "G4.text.ssim": 0.8730521565463388,
+      "G4.vector.mad": 8.662905500705218,
+      "G4.vector.ssim": 0.9075203089247105,
+      "G5.mass": 0.014284684684684473
+     },
+     "card.R": {
+      "G4.text.mad": 6.241792929292929,
+      "G4.text.ssim": 0.8817310638674712,
+      "G4.vector.mad": 6.61804788213628,
+      "G4.vector.ssim": 0.8682709380355516,
+      "G5.mass": 0.04978904013260326
+     },
+     "card.S": {
+      "G4.text.mad": 19.272435897435898,
+      "G4.text.ssim": 0.896985670348928,
+      "G4.vector.mad": 5.58862247296662,
+      "G4.vector.ssim": 0.9323527191796912,
+      "G5.mass": 0.02945375505800925
+     },
+     "card.V": {
+      "G4.text.mad": 20.84294871794872,
+      "G4.text.ssim": 0.8580216844654752,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9994057780154476,
+      "G5.mass": 0.019853068202950862
+     },
+     "card.W": {
+      "G4.text.mad": 10.41729797979798,
+      "G4.text.ssim": 0.8748429457665633,
+      "G4.vector.mad": 6.937470615890926,
+      "G4.vector.ssim": 0.9017866264659504,
+      "G5.mass": 0.006649552496338972
+     },
+     "card.X": {
+      "G4.text.mad": 20.33974358974359,
+      "G4.text.ssim": 0.8738496299371261,
+      "G4.vector.mad": 4.91114245416079,
+      "G4.vector.ssim": 0.9072336738772623,
+      "G5.mass": 0.01607026032159402
+     },
+     "card.Z": {
+      "G4.text.mad": 14.39423076923077,
+      "G4.text.ssim": 0.9011291042317622,
+      "G4.vector.mad": 5.110954395862717,
+      "G4.vector.ssim": 0.9074790979124224,
+      "G5.mass": 0.02743192044142771
+     },
+     "mm.buttons": {
+      "G4.vector.mad": 12.953360768175584,
+      "G4.vector.ssim": 0.8164912682119674
+     },
+     "mm.map": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.plate": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.card": {
+      "G4.vector.mad": 4.171550671550672,
+      "G4.vector.ssim": 0.9314858666821009
+     },
+     "orn.minimap": {
+      "G1.vector": 0,
+      "G4.vector.mad": 4.8875224955009,
+      "G4.vector.ssim": 0.9278241360912678
+     },
+     "orn.selection": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.hp": {
+      "G4.text.mad": 8.798777246145667,
+      "G4.text.ssim": 0.9346844265803903,
+      "G5.mass": 0.008014344769817107
+     },
+     "sel.name": {
+      "G4.text.mad": 7.061111111111111,
+      "G4.text.ssim": 0.9528151498689827,
+      "G5.mass": 3.8922600154500875e-05
+     },
+     "sel.portrait": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.role": {
+      "G4.text.mad": 7.118645973909132,
+      "G4.text.ssim": 0.9016356421921656,
+      "G5.mass": 0.0002766976967164263
+     },
+     "sel.stats": {
+      "G4.text.mad": 8.507296770454666,
+      "G4.text.ssim": 0.9267661571897824,
+      "G5.mass": 0.0006343079811678302
+     },
+     "tab.3": {
+      "G4.text.mad": 10.256487025948104,
+      "G4.text.ssim": 0.9125700231655632,
+      "G4.vector.mad": 8.778645833333334,
+      "G4.vector.ssim": 0.8129915328580812,
+      "G5.mass": 0.02769233292243285
+     },
+     "toast": {
+      "G4.text.mad": 17.409970238095237,
+      "G4.text.ssim": 0.8891481400850747,
+      "G4.vector.mad": 11.748971193415638,
+      "G4.vector.ssim": 0.7858271979496134,
+      "G5.mass": 0.0363697110656019
+     },
+     "top.alertlog": {
+      "G4.text.mad": 6.5311004784688995,
+      "G4.text.ssim": 0.9200146127285727,
+      "G4.vector.mad": 9.406378600823045,
+      "G4.vector.ssim": 0.8442847287434908,
+      "G5.mass": 0.0011023974575866042
+     },
+     "top.chip.aether": {
+      "G4.text.mad": 11.161095636025998,
+      "G4.text.ssim": 0.9108937239696792,
+      "G4.vector.mad": 15.233539094650206,
+      "G4.vector.ssim": 0.8026701901064707,
+      "G5.mass": 0.011085009492167211
+     },
+     "top.chip.gold": {
+      "G4.text.mad": 11.31010101010101,
+      "G4.text.ssim": 0.9170693666333712,
+      "G4.vector.mad": 8.302469135802468,
+      "G4.vector.ssim": 0.8460701177908747,
+      "G5.mass": 0.005969711282396497
+     },
+     "top.chip.iron": {
+      "G4.text.mad": 11.787011807447774,
+      "G4.text.ssim": 0.9065184983444633,
+      "G4.vector.mad": 8.108024691358025,
+      "G4.vector.ssim": 0.852325193627914,
+      "G5.mass": 0.010715486808532978
+     },
+     "top.chip.supply": {
+      "G4.text.mad": 2.992822966507177,
+      "G4.text.ssim": 0.9903761821285882,
+      "G4.vector.mad": 7.843621399176954,
+      "G4.vector.ssim": 0.8522032529407748,
+      "G5.mass": 0.0023502682788157756
+     },
+     "top.clock": {
+      "G4.text.mad": 6.827115924588849,
+      "G4.text.ssim": 0.9250018900606168,
+      "G5.mass": 0.007239542795077964
+     },
+     "top.menu": {
+      "G4.text.mad": 16.60879120879121,
+      "G4.text.ssim": 0.874438900410397,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9965558417686605,
+      "G5.mass": 0.041674243010194005
+     },
+     "world.ring": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     }
+    },
+    "P5": {
+     "*": {
+      "G7.mad": 0.6401541230073438,
+      "G7.ssim": 0.9931573383172492
+     },
+     "card.A": {
+      "G4.text.mad": 14.134615384615385,
+      "G4.text.ssim": 0.9245513406573941,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9999737815083343,
+      "G5.mass": 0.27616379334366603
+     },
+     "card.C": {
+      "G4.text.mad": 16.064102564102566,
+      "G4.text.ssim": 0.8982582121342234,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9999090190882185,
+      "G5.mass": 0.3247408955671741
+     },
+     "card.D": {
+      "G4.text.mad": 18.266025641025642,
+      "G4.text.ssim": 0.9100221388851382,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9999173354883107,
+      "G5.mass": 0.29238037521455934
+     },
+     "card.E": {
+      "G4.text.mad": 4.828787878787879,
+      "G4.text.ssim": 0.9147350625229828,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9997632798319807,
+      "G5.mass": 0.24730789235422157
+     },
+     "card.F": {
+      "G4.text.mad": 17.307692307692307,
+      "G4.text.ssim": 0.8823924581329602,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9997983809241513,
+      "G5.mass": 0.32960812073051066
+     },
+     "card.Q": {
+      "G4.text.mad": 10.657196969696969,
+      "G4.text.ssim": 0.8721322258482513,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9990684251363211,
+      "G5.mass": 0.3239026455026454
+     },
+     "card.R": {
+      "G4.text.mad": 5.411616161616162,
+      "G4.text.ssim": 0.8864746073370701,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9996056131667672,
+      "G5.mass": 0.281181040400489
+     },
+     "card.S": {
+      "G4.text.mad": 16.631410256410255,
+      "G4.text.ssim": 0.9071886346636743,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9998970019459602,
+      "G5.mass": 0.30867877896234835
+     },
+     "card.V": {
+      "G4.text.mad": 15.349358974358974,
+      "G4.text.ssim": 0.9084576814567871,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9997941248350218,
+      "G5.mass": 0.31046369629823173
+     },
+     "card.W": {
+      "G4.text.mad": 10.994318181818182,
+      "G4.text.ssim": 0.8493567736311998,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9985105423709882,
+      "G5.mass": 0.2947774617779013
+     },
+     "card.X": {
+      "G4.text.mad": 14.788461538461538,
+      "G4.text.ssim": 0.9143517163843721,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9999114662798763,
+      "G5.mass": 0.29291799079558556
+     },
+     "card.Z": {
+      "G4.text.mad": 11.455128205128204,
+      "G4.text.ssim": 0.9307377196095205,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9998819133763108,
+      "G5.mass": 0.2396016827468766
+     },
+     "mm.buttons": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.map": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "mm.plate": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.card": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.minimap": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "orn.selection": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.hp": {
+      "G4.text.mad": 12.091706539074961,
+      "G4.text.ssim": 0.8794321407791917,
+      "G5.mass": 0.2716364595561659
+     },
+     "sel.name": {
+      "G4.text.mad": 7.806796116504854,
+      "G4.text.ssim": 0.9337536503758468,
+      "G5.mass": 0.20399555617871315
+     },
+     "sel.portrait": {
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     },
+     "sel.role": {
+      "G4.text.mad": 5.990328385065228,
+      "G4.text.ssim": 0.9213737464377194,
+      "G5.mass": 0.09739422877408853
+     },
+     "sel.stats": {
+      "G4.text.mad": 10.366050260787103,
+      "G4.text.ssim": 0.8893177247761384,
+      "G5.mass": 0.28002457128943586
+     },
+     "tab.3": {
+      "G4.text.mad": 9.71057884231537,
+      "G4.text.ssim": 0.8961202749920797,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.23201334925914874
+     },
+     "toast": {
+      "G4.text.mad": 17.086309523809526,
+      "G4.text.ssim": 0.8848804065546476,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9934967664940086,
+      "G5.mass": 0.3104268174875394
+     },
+     "top.alertlog": {
+      "G4.text.mad": 2.20414673046252,
+      "G4.text.ssim": 0.9837339563029892,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.06445795733531003
+     },
+     "top.chip.aether": {
+      "G4.text.mad": 8.489786443825441,
+      "G4.text.ssim": 0.9396779686372785,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.21762701784762525
+     },
+     "top.chip.gold": {
+      "G4.text.mad": 9.053535353535354,
+      "G4.text.ssim": 0.9416430421772681,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.22221597959165953
+     },
+     "top.chip.iron": {
+      "G4.text.mad": 9.60172570390554,
+      "G4.text.ssim": 0.9190344459251324,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0,
+      "G5.mass": 0.23365997264854538
+     },
+     "top.chip.supply": {
+      "G4.text.mad": 8.3160552897395,
+      "G4.text.ssim": 0.9129919012066616,
+      "G4.vector.mad": 0.00205761316872428,
+      "G4.vector.ssim": 0.9999999843176745,
+      "G5.mass": 0.2201569384534222
+     },
+     "top.clock": {
+      "G4.text.mad": 8.18946383206311,
+      "G4.text.ssim": 0.8742767676731176,
+      "G5.mass": 0.19351536438873757
+     },
+     "top.menu": {
+      "G4.text.mad": 18.093040293040293,
+      "G4.text.ssim": 0.8398131101920239,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 0.9974978595237498,
+      "G5.mass": 0.31281122206941403
+     },
+     "world.ring": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.0,
+      "G4.vector.ssim": 1.0
+     }
+    },
+    "P6": {
+     "*": {
+      "G7.mad": 0.2817502630754075,
+      "G7.ssim": 0.9979423219018485
+     },
+     "card.A": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 0.9999994113357152,
+      "G4.vector.mad": 0.6436295251527974,
+      "G4.vector.ssim": 0.9978379513095894,
+      "G5.mass": 0.0
+     },
+     "card.C": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 0.999999510231243,
+      "G4.vector.mad": 2.24776680771039,
+      "G4.vector.ssim": 0.983675921767227,
+      "G5.mass": 0.0
+     },
+     "card.D": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 0.9999995206874008,
+      "G4.vector.mad": 0.6605547719793136,
+      "G4.vector.ssim": 0.9986511695341302,
+      "G5.mass": 0.0
+     },
+     "card.E": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 0.9999767332364898,
+      "G4.vector.mad": 0.5388581952117864,
+      "G4.vector.ssim": 0.9953350248406099,
+      "G5.mass": 0.0
+     },
+     "card.F": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 0.9999995225494764,
+      "G4.vector.mad": 0.4503996238834039,
+      "G4.vector.ssim": 0.9980270958491332,
+      "G5.mass": 0.0
+     },
+     "card.Q": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 0.9999772180223032,
+      "G4.vector.mad": 1.0479548660084625,
+      "G4.vector.ssim": 0.9964744691115908,
+      "G5.mass": 0.0
+     },
+     "card.R": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 0.9999962524381284,
+      "G4.vector.mad": 0.9550644567219153,
+      "G4.vector.ssim": 0.9948438503239025,
+      "G5.mass": 0.0
+     },
+     "card.S": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 0.9999995175400109,
+      "G4.vector.mad": 0.11612599905970851,
+      "G4.vector.ssim": 0.999590864936349,
+      "G5.mass": 0.0
+     },
+     "card.V": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 0.9999996178191547,
+      "G4.vector.mad": 0.13333333333333333,
+      "G4.vector.ssim": 0.9998880480122035,
+      "G5.mass": 0.0
+     },
+     "card.W": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 0.9999255178608265,
+      "G4.vector.mad": 1.319699106723084,
+      "G4.vector.ssim": 0.9943831986702302,
+      "G5.mass": 0.0
+     },
+     "card.X": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 0.9999995079179421,
+      "G4.vector.mad": 0.9275975552421251,
+      "G4.vector.ssim": 0.9947746724027079,
+      "G5.mass": 0.0
+     },
+     "card.Z": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 0.9999997227913787,
+      "G4.vector.mad": 0.9929478138222849,
+      "G4.vector.ssim": 0.9948019396032795,
+      "G5.mass": 0.0
+     },
+     "mm.buttons": {
+      "G4.vector.mad": 1.5521262002743483,
+      "G4.vector.ssim": 0.9898110768928746
+     },
+     "mm.map": {
+      "G4.vector.mad": 5.093584177520501,
+      "G4.vector.ssim": 0.9653285588398038
+     },
+     "mm.plate": {
+      "G4.vector.mad": 0.15784008307372793,
+      "G4.vector.ssim": 0.9996565517027073
+     },
+     "orn.card": {
+      "G4.vector.mad": 5.555729984301413,
+      "G4.vector.ssim": 0.9646265320925502
+     },
+     "orn.minimap": {
+      "G1.vector": 15,
+      "G4.vector.mad": 5.951809638072386,
+      "G4.vector.ssim": 0.963956573275501
+     },
+     "orn.selection": {
+      "G4.vector.mad": 4.9086544962812715,
+      "G4.vector.ssim": 0.9741612574888108
+     },
+     "sel.hp": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.name": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.portrait": {
+      "G4.vector.mad": 0.19102251541660692,
+      "G4.vector.ssim": 0.9982933491293724
+     },
+     "sel.role": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "sel.stats": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "tab.3": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 2.1380208333333335,
+      "G4.vector.ssim": 0.9822357505210109,
+      "G5.mass": 0.0
+     },
+     "toast": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 0.9999788707047761,
+      "G4.vector.mad": 1.3125,
+      "G4.vector.ssim": 0.9980383826532879,
+      "G5.mass": 0.0
+     },
+     "top.alertlog": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.970164609053498,
+      "G4.vector.ssim": 0.9966121075495389,
+      "G5.mass": 0.0
+     },
+     "top.chip.aether": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 2.2839506172839505,
+      "G4.vector.ssim": 0.9941039448767504,
+      "G5.mass": 0.0
+     },
+     "top.chip.gold": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 1.1111111111111112,
+      "G4.vector.ssim": 0.9963175208583136,
+      "G5.mass": 0.0
+     },
+     "top.chip.iron": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 0.8333333333333334,
+      "G4.vector.ssim": 0.9962548943550114,
+      "G5.mass": 0.0
+     },
+     "top.chip.supply": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G4.vector.mad": 2.14917695473251,
+      "G4.vector.ssim": 0.9864474701531744,
+      "G5.mass": 0.0
+     },
+     "top.clock": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 1.0,
+      "G5.mass": 0.0
+     },
+     "top.menu": {
+      "G4.text.mad": 0.0,
+      "G4.text.ssim": 0.9999933629615096,
+      "G4.vector.mad": 1.3762886597938144,
+      "G4.vector.ssim": 0.9901208036998119,
+      "G5.mass": 0.0
+     },
+     "world.ring": {
+      "G1.vector": 0,
+      "G4.vector.mad": 0.999648382559775,
+      "G4.vector.ssim": 0.9967080771926864
+     }
+    }
+   },
+   "unvalidated_by_a_negative": [
+    "card.A:G4.text.mad",
+    "card.A:G4.text.ssim",
+    "card.A:G4.vector.mad",
+    "card.A:G4.vector.ssim",
+    "card.A:G5.mass",
+    "card.C:G4.text.mad",
+    "card.C:G4.text.ssim",
+    "card.C:G4.vector.mad",
+    "card.C:G4.vector.ssim",
+    "card.C:G5.mass",
+    "card.D:G4.text.mad",
+    "card.D:G4.text.ssim",
+    "card.D:G4.vector.mad",
+    "card.D:G4.vector.ssim",
+    "card.D:G5.mass",
+    "card.E:G4.text.mad",
+    "card.E:G4.text.ssim",
+    "card.E:G4.vector.mad",
+    "card.E:G4.vector.ssim",
+    "card.E:G5.mass",
+    "card.F:G4.text.mad",
+    "card.F:G4.text.ssim",
+    "card.F:G4.vector.mad",
+    "card.F:G4.vector.ssim",
+    "card.F:G5.mass",
+    "card.Q:G4.text.mad",
+    "card.Q:G4.text.ssim",
+    "card.Q:G4.vector.mad",
+    "card.Q:G4.vector.ssim",
+    "card.Q:G5.mass",
+    "card.R:G4.text.mad",
+    "card.R:G4.text.ssim",
+    "card.R:G4.vector.mad",
+    "card.R:G4.vector.ssim",
+    "card.R:G5.mass",
+    "card.S:G4.text.mad",
+    "card.S:G4.text.ssim",
+    "card.S:G5.mass",
+    "card.V:G4.text.mad",
+    "card.V:G4.text.ssim",
+    "card.V:G4.vector.mad",
+    "card.V:G4.vector.ssim",
+    "card.V:G5.mass",
+    "card.W:G4.text.mad",
+    "card.W:G4.text.ssim",
+    "card.W:G4.vector.mad",
+    "card.W:G4.vector.ssim",
+    "card.W:G5.mass",
+    "card.X:G4.text.mad",
+    "card.X:G4.text.ssim",
+    "card.X:G4.vector.mad",
+    "card.X:G4.vector.ssim",
+    "card.X:G5.mass",
+    "card.Z:G4.text.mad",
+    "card.Z:G4.text.ssim",
+    "card.Z:G4.vector.mad",
+    "card.Z:G4.vector.ssim",
+    "card.Z:G5.mass",
+    "mm.buttons:G4.vector.mad",
+    "mm.buttons:G4.vector.ssim",
+    "mm.map:G4.vector.mad",
+    "mm.map:G4.vector.ssim",
+    "mm.plate:G4.vector.mad",
+    "mm.plate:G4.vector.ssim",
+    "orn.card:G4.vector.mad",
+    "orn.card:G4.vector.ssim",
+    "orn.minimap:G1.vector",
+    "orn.minimap:G4.vector.mad",
+    "orn.minimap:G4.vector.ssim",
+    "orn.selection:G4.vector.mad",
+    "orn.selection:G4.vector.ssim",
+    "sel.hp:G4.text.mad",
+    "sel.hp:G4.text.ssim",
+    "sel.hp:G5.mass",
+    "sel.name:G4.text.mad",
+    "sel.name:G4.text.ssim",
+    "sel.name:G5.mass",
+    "sel.portrait:G4.vector.mad",
+    "sel.portrait:G4.vector.ssim",
+    "sel.role:G4.text.mad",
+    "sel.role:G4.text.ssim",
+    "sel.role:G5.mass",
+    "sel.stats:G4.text.mad",
+    "sel.stats:G4.text.ssim",
+    "sel.stats:G5.mass",
+    "tab.3:G4.text.mad",
+    "tab.3:G4.text.ssim",
+    "tab.3:G4.vector.mad",
+    "tab.3:G4.vector.ssim",
+    "tab.3:G5.mass",
+    "toast:G4.text.mad",
+    "toast:G4.text.ssim",
+    "toast:G4.vector.mad",
+    "toast:G4.vector.ssim",
+    "toast:G5.mass",
+    "top.alertlog:G4.text.mad",
+    "top.alertlog:G4.text.ssim",
+    "top.alertlog:G4.vector.mad",
+    "top.alertlog:G4.vector.ssim",
+    "top.alertlog:G5.mass",
+    "top.chip.aether:G4.text.mad",
+    "top.chip.aether:G4.text.ssim",
+    "top.chip.aether:G4.vector.mad",
+    "top.chip.aether:G4.vector.ssim",
+    "top.chip.aether:G5.mass",
+    "top.chip.gold:G4.text.mad",
+    "top.chip.gold:G4.text.ssim",
+    "top.chip.gold:G4.vector.mad",
+    "top.chip.gold:G4.vector.ssim",
+    "top.chip.gold:G5.mass",
+    "top.chip.iron:G4.text.mad",
+    "top.chip.iron:G4.text.ssim",
+    "top.chip.iron:G4.vector.mad",
+    "top.chip.iron:G4.vector.ssim",
+    "top.chip.iron:G5.mass",
+    "top.chip.supply:G4.text.mad",
+    "top.chip.supply:G4.text.ssim",
+    "top.chip.supply:G4.vector.mad",
+    "top.chip.supply:G4.vector.ssim",
+    "top.chip.supply:G5.mass",
+    "top.clock:G4.text.mad",
+    "top.clock:G4.text.ssim",
+    "top.clock:G5.mass",
+    "top.menu:G4.text.mad",
+    "top.menu:G4.text.ssim",
+    "top.menu:G4.vector.mad",
+    "top.menu:G4.vector.ssim",
+    "top.menu:G5.mass",
+    "world.ring:G4.vector.mad",
+    "world.ring:G4.vector.ssim"
+   ],
+   "verdict": {
+    "N1": {
+     "failing_intended": [
+      "card.A",
+      "card.C",
+      "card.D",
+      "card.E",
+      "card.F",
+      "card.Q",
+      "card.R",
+      "card.S",
+      "card.V",
+      "card.W",
+      "card.X",
+      "card.Z",
+      "card.panel",
+      "orn.card"
+     ],
+     "failing_outside": [],
+     "failing_regions": [
+      "card.A",
+      "card.C",
+      "card.D",
+      "card.E",
+      "card.F",
+      "card.Q",
+      "card.R",
+      "card.S",
+      "card.V",
+      "card.W",
+      "card.X",
+      "card.Z",
+      "card.panel",
+      "orn.card"
+     ],
+     "g7_fail": false,
+     "ok": true,
+     "passes_every_gate": false
+    },
+    "N2": {
+     "failing_intended": [
+      "top.chip.aether",
+      "top.chip.gold",
+      "top.chip.iron",
+      "top.chip.supply"
+     ],
+     "failing_outside": [],
+     "failing_regions": [
+      "top.chip.aether",
+      "top.chip.gold",
+      "top.chip.iron",
+      "top.chip.supply"
+     ],
+     "g7_fail": false,
+     "ok": true,
+     "passes_every_gate": false
+    },
+    "N3": {
+     "failing_intended": [
+      "sel.name"
+     ],
+     "failing_outside": [],
+     "failing_regions": [
+      "sel.name"
+     ],
+     "g7_fail": false,
+     "ok": true,
+     "passes_every_gate": false
+    },
+    "N4": {
+     "failing_intended": [
+      "toast"
+     ],
+     "failing_outside": [],
+     "failing_regions": [
+      "toast"
+     ],
+     "g7_fail": false,
+     "ok": true,
+     "passes_every_gate": false
+    },
+    "N5": {
+     "failing_intended": [
+      "mm.buttons"
+     ],
+     "failing_outside": [],
+     "failing_regions": [
+      "mm.buttons"
+     ],
+     "g7_fail": false,
+     "ok": true,
+     "passes_every_gate": false
+    },
+    "N6": {
+     "failing_intended": [
+      "card.S"
+     ],
+     "failing_outside": [],
+     "failing_regions": [
+      "card.S"
+     ],
+     "g7_fail": false,
+     "ok": true,
+     "passes_every_gate": false
+    },
+    "N7": {
+     "failing_intended": [
+      "sel.stats"
+     ],
+     "failing_outside": [],
+     "failing_regions": [
+      "sel.stats"
+     ],
+     "g7_fail": false,
+     "ok": true,
+     "passes_every_gate": false
+    },
+    "N8": {
+     "failing_intended": [
+      "sel.role"
+     ],
+     "failing_outside": [],
+     "failing_regions": [
+      "sel.role"
+     ],
+     "g7_fail": false,
+     "ok": true,
+     "passes_every_gate": false
+    },
+    "P1": {
+     "failing_regions": [],
+     "g7_fail": false,
+     "ok": true
+    },
+    "P3": {
+     "failing_regions": [],
+     "g7_fail": false,
+     "ok": true
+    },
+    "P4": {
+     "failing_regions": [],
+     "g7_fail": false,
+     "ok": true
+    },
+    "P5": {
+     "failing_regions": [],
+     "g7_fail": false,
+     "ok": true
+    },
+    "P6": {
+     "failing_regions": [],
+     "g7_fail": false,
+     "ok": true
+    }
+   }
+  }
+ },
+ "refs_sha256": {
+  "A": "64029b26d083a6d77fb75cc1cc04797416c545880b682ee54f541a0c27cea012",
+  "B": "226fc05c755fffaef247bb001029f8d0d66f374fd3f8c323e27319b1044087b4"
+ },
+ "regions_sha256": "1155f2e45e81622cfcbe5f475476727ec91a6581cc0dc369ddf0597c8ccf2223",
+ "rules": {
+  "eligible_negatives": "intended in the region, passing every hard gate there in pass 1, and moving the metric (T2)",
+  "hard_mass_heavy": 0.05,
+  "n1": "N1 trips anchor card.Q_top by design; scored with score_misaligned, the anchor failure counts in every guarded region",
+  "no_positive": "a metric every positive measures exactly 0 is report-only (T2)",
+  "thr": "1.5 x worst positive, below best negative / 1.2 (plan B 4.4)"
+ },
+ "rulings": {
+  "R1": "hard G5 heavy-ink gate: signed ink mass (test - ref) / ref <= +0.05 (hud_compare.HARD['mass_heavy']) is plan 4.4's 'new hard metric for that defect class' for N3: positives reach at most +0.028 (P3/P4 tab.3; P1 +0.017), P5's heaviest run -0.0545 (None/Default; AutoLight -0.0758), N3 +0.115 (heaviest_run below)",
+  "R2": "unit_ssim is masked to its unit (capture pixels outside the unit take the reference's), so N5 no longer bleeds into mm.plate",
+  "R3": "only eligible negatives bound a region's thresholds (rules.eligible_negatives); negatives fail only in their listed regions",
+  "R4": "P6 vector AA model added; positives are P1, P3, P4, P5, P6; no_positive report-only is a last resort (pairs.*.report_only_no_positive)",
+  "R5": "sel.panel's 87 text-class pixels at x=417, y 939-1041 (panel fill, no run) are flat: make_regions paints text only inside the run's own region",
+  "R6": "G7.mad / G7.ssim are report-only when no negative that passes every hard gate moves the HUD summary by 1.2 x the 1.5 x worst-positive candidate (g7_derivation): a localised defect moves a 476k-px average less than the positives' anti-aliasing does, so the summary cannot be validated; it is reported, and the region gates decide",
+  "R7": "P5 stays raw coverage at hinting None; its lighter ink is T4a's to measure on the real Slate render; no light-side hard gate",
+  "R8": "B/N6's photo-noise rebyte after the P4 re-render is accepted as disclosed (equals an earlier T0 render, ref_check 0 noise)"
+ },
+ "status": "OK",
+ "text_off_sha256": {
+  "A": "1ac32f51d48f33e26077b2664dd8d94ab3888ead984ce13dd24a0b6803db7c79",
+  "B": "9d11a4581d5e2ea544958f723a29906d0f042eb4f6d262738386962a855cc2bf"
+ },
+ "thresholds_sha256": "bc82e341af1c6b7dfadce40fa26e31e01030a11e55e51edada9f689eb5a29db7",
+ "vector_gaps": {
+  "A": [],
+  "B": []
+ },
+ "version": 2
+}

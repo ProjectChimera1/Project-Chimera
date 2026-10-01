@@ -256,6 +256,26 @@ def test_calibration_hash_mismatch_refuses(tmp_path, ref):
     assert hc.check_calibration(thr, reg, {"A": refp}, tmp_path / "none.json")[0] == "UNCALIBRATED"
 
 
+def test_calibration_code_hash_mismatch_refuses(tmp_path, ref):
+    """T2: the frozen thresholds depend on the comparator code; a changed hud_compare.py hash is a MISMATCH, while a CRLF
+    checkout of the same code is not."""
+    thr, reg = tmp_path / "thresholds.json", tmp_path / "regions.json"
+    thr.write_text("{}")
+    reg.write_text("{}")
+    base = {"thresholds_sha256": hc.sha256_file(thr), "regions_sha256": hc.sha256_file(reg)}
+    cal = tmp_path / "calibration.json"
+    good = hc.calibrated_code_hashes()
+    cal.write_text(json.dumps({**base, "code_sha256": good}))
+    assert hc.check_calibration(thr, reg, None, cal)[0] == "OK"
+    src = hc.T / "hud_compare.py"
+    crlf = tmp_path / "crlf.py"
+    crlf.write_bytes(src.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+    assert hc.code_sha256(crlf) == good["hud_compare.py"]
+    cal.write_text(json.dumps({**base, "code_sha256": {**good, "hud_compare.py": "0" * 64}}))
+    status, problems = hc.check_calibration(thr, reg, None, cal)
+    assert status == "MISMATCH" and problems == [f"code hud_compare.py: calibration 000000000000 vs file {good['hud_compare.py'][:12]}"]
+
+
 # ------------------------------------------------------------------ text drift model
 def test_text_drift_chip_x_and_kerning(tmp_path):
     csv_path = tmp_path / "drift.csv"
@@ -426,3 +446,105 @@ def test_outputs_no_worst_gate_or_crops_when_clean(tmp_path, ref, spec):
     d2 = tmp_path / "bad"
     cmp_.write_outputs(rep, ref, out, spec, d2, "bad")
     assert [p.name for p in (d2 / "crops").iterdir()] == ["top.chip.iron.png"]
+
+
+# ------------------------------------------------------------------ T2 additions
+def _scale_ink(ref, spec, run_region, factor, min_dist):
+    """Scale the ink of one region's text runs away from (factor > 1) or toward (< 1) the local background, only on
+    pixels already farther than min_dist from it, so the ink box (threshold 24) cannot change."""
+    out = ref.copy()
+    for r in spec.d["runs"]:
+        if r["region"] != run_region:
+            continue
+        x0, y0, x1, y1 = r["window"]
+        win = ref[y0:y1, x0:x1].astype(float)
+        bg = cmp_.rim_median(win)
+        far = np.abs(win - bg).max(axis=2) > min_dist
+        new = np.clip(bg + (win - bg) * factor, 0, 255)
+        out[y0:y1, x0:x1][far] = np.floor(new[far] + 0.5).astype(np.uint8)
+    return out
+
+
+def test_heavier_text_with_unchanged_ink_box_fails_g5_hard(ref, spec):
+    """N3's defect class: a heavier weight that leaves the ink box where it was is caught by the hard heavy-ink limit."""
+    out = _scale_ink(ref, spec, "sel.name", 1.25, 24)
+    rep = cmp_.compare(ref, out, spec, None, "A", only=r"^sel\.name$")      # no soft thresholds: hard gates only
+    run_ = rep["regions"]["sel.name"]["units"][0]["runs"][0]
+    assert (run_["dl"], run_["dt"], run_["dr"], run_["db"]) == (0, 0, 0, 0)
+    assert run_["mass_signed"] > cmp_.HARD["mass_heavy"]
+    assert failing_gates(rep, "sel.name") == ["G5"]
+
+
+def test_lighter_text_passes_the_heavy_limit(ref, spec):
+    """Slate draws lighter than Chromium (raw A8 coverage); lighter ink is not a hard failure (the soft G5.mass judges it)."""
+    out = _scale_ink(ref, spec, "sel.name", 0.85, 40)
+    rep = cmp_.compare(ref, out, spec, None, "A", only=r"^sel\.name$")
+    run_ = rep["regions"]["sel.name"]["units"][0]["runs"][0]
+    assert run_["mass_signed"] < -0.05
+    assert rep["regions"]["sel.name"]["pass"]
+
+
+def test_change_confined_to_one_region_leaves_neighbour_ssim_exact(ref, spec):
+    """unit_ssim masks the capture to the unit: a change inside mm.buttons, on the column next to mm.plate, must not
+    move mm.plate's (or any other region's) SSIM through the 11-tap window."""
+    out = ref.copy()
+    lab = spec.lab
+    rid = spec.regions["mm.buttons"]["id"]
+    x0, y0, x1, y1 = spec.regions["mm.buttons"]["bbox"]
+    m = np.zeros(lab.shape, bool)
+    m[y0:y1, x1 - 3:x1] = True
+    m &= lab == rid
+    out[m] = 255 - out[m]
+    rep = cmp_.compare(ref, out, spec, None, "A")
+    assert not rep["regions"]["mm.buttons"]["pass"]
+    for n, r in rep["regions"].items():
+        if n in ("mm.buttons", "world.open"):
+            continue
+        for u in r["units"]:
+            for c in u.get("classes", {}).values():
+                if "ssim_raw" in c:
+                    assert c["ssim_raw"] == 1.0, (n, c)
+        assert r["pass"], n
+
+
+def test_score_misaligned_scores_regions_and_still_fails(ref, spec):
+    out = shift_block(ref, (1612, 856, 1920, 1079), 0, 1, (11, 12, 14))
+    rep = cmp_.compare(ref, out, spec, None, "A")
+    assert rep.get("alignment_fail") and not rep["regions"]
+    rep2 = cmp_.compare(ref, out, spec, None, "A", score_misaligned=True)
+    assert rep2.get("alignment_fail") and rep2["regions"] and rep2["result"] == "FAIL"
+
+
+# ------------------------------------------------------------------ T2b (EXECUTION section 7, rulings R4 and R5)
+def test_text_class_only_inside_the_runs_own_region(built):
+    """R5: text-class pixels lie only in regions that own a text run, inside that run's glyph rect +1 (sel.panel's x=417
+    column of plain panel fill is flat)."""
+    spec = built[0]
+    lab, cls = mr.spec_arrays(spec)
+    own = np.zeros(lab.shape, bool)
+    for r in spec["runs"]:
+        gx0, gy0, gx1, gy1 = r["glyph"]
+        box = np.zeros(lab.shape, bool)
+        box[int(np.floor(gy0)) - 1:int(np.ceil(gy1)) + 1, int(np.floor(gx0)) - 1:int(np.ceil(gx1)) + 1] = True
+        own |= box & (lab == mr.RID[r["region"]])
+    assert int(((cls == hc.TEXT) & ~own).sum()) == 0
+    sel_panel = next(r for r in spec["regions"] if r["name"] == "sel.panel")
+    assert sel_panel["class_px"]["text"] == 0
+
+
+def test_p6_box_filter_and_matte_composite_are_exact():
+    """make_p6: the 4x4 box mean of a block-constant image is that image, and the black/white matte composite reproduces
+    a straight sRGB-byte alpha blend over any 1x backdrop."""
+    import make_p6
+    rng = np.random.default_rng(7)
+    small = rng.integers(0, 256, (6, 5, 3)).astype(np.uint8)
+    big = np.repeat(np.repeat(small, make_p6.DSF, axis=0), make_p6.DSF, axis=1)
+    assert np.array_equal(make_p6.to_u8(make_p6.box_mean(big)), small)
+    fg = rng.uniform(0, 255, (24, 20, 3))
+    a = rng.uniform(0, 1, (24, 20, 1))
+    world = rng.uniform(0, 255, (6, 5, 3))
+    over = lambda bg: fg * a + bg * (1 - a)
+    kb, kw = make_p6.box_mean(over(np.zeros(3))), make_p6.box_mean(over(np.full(3, 255.0)))
+    world4 = np.repeat(np.repeat(world, make_p6.DSF, axis=0), make_p6.DSF, axis=1)
+    want = make_p6.box_mean(over(world4))
+    assert np.abs(kb + (kw - kb) / 255.0 * world - want).max() < 1e-9

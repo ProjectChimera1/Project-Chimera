@@ -135,12 +135,26 @@ def file_sha_or_none(p):
         return None
 
 
+# Code the frozen thresholds depend on (the hard gates, the soft metrics and the Slate text model). calibrate.py records
+# their hashes in calibration.json "code_sha256"; check_calibration reports MISMATCH when one has changed since.
+CALIBRATED_CODE = ("hud_common.py", "hud_compare.py", "ssim.py", "make_p5.py", "make_p6.py")
+
+
+def code_sha256(p) -> str:
+    """sha256 of a source file with CRLF normalised to LF, so a git checkout under core.autocrlf does not change it."""
+    return hashlib.sha256(Path(p).read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+
+
+def calibrated_code_hashes(root=T) -> dict:
+    return {n: code_sha256(Path(root) / n) for n in CALIBRATED_CODE}
+
+
 def check_calibration(thresholds_path=THRESHOLDS_JSON, regions_path=REGIONS_JSON, refs=None,
                       calibration_path=CALIBRATION_JSON):
     """Compare the hashes frozen by T2's calibration (results/calibration.json) with the files in use.
 
     calibration.json schema (written by calibrate.py): {"thresholds_sha256": hex, "regions_sha256": hex,
-    "refs_sha256": {"A": hex, "B": hex}, ...}. Returns (status, problems): status is "UNCALIBRATED" (no
+    "refs_sha256": {"A": hex, "B": hex}, "code_sha256": {file: hex} (optional), ...}. Returns (status, problems): status is "UNCALIBRATED" (no
     calibration.json), "OK" or "MISMATCH". refs maps pair -> reference PNG path (only the pairs in use).
     """
     if not Path(calibration_path).is_file():
@@ -155,4 +169,11 @@ def check_calibration(thresholds_path=THRESHOLDS_JSON, regions_path=REGIONS_JSON
         want, got = (cal.get("refs_sha256") or {}).get(pair), file_sha_or_none(p)
         if want != got:
             problems.append(f"ref {pair}: calibration {str(want)[:12]} vs file {str(got)[:12]}")
+    for name, want in (cal.get("code_sha256") or {}).items():
+        try:
+            got = code_sha256(T / name)
+        except OSError:
+            got = None
+        if want != got:
+            problems.append(f"code {name}: calibration {str(want)[:12]} vs file {str(got)[:12]}")
     return ("MISMATCH" if problems else "OK"), problems

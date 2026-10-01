@@ -6,7 +6,11 @@ through `playwright-cli run-code` in three groups (bases; controls over pair A; 
 the raw renders into the files of section 3:
   ref_hudonly.png (pair A), ref_backdrop.png (pair B), world_layer.png, hud_alpha.png, minimap_photo.png, portrait_figure.png,
   text_off_{A,B}.png, controls/{A,B}/*.png, lcd_vs_gray_text_4x.png, ref_meta.json  (all under H/HudRef/ref/)
-Raw renders (the repeat pass, the laser probe, the black/white matte pairs) stay in H/HudRef/ref/raw/.
+Raw renders (the repeat pass, the laser probe, the black/white matte pairs, P6's 4x inputs) stay in H/HudRef/ref/raw/.
+
+    python ref_render.py              # everything (render_reference.sh)
+    python ref_render.py --only p6    # only P6's three deviceScaleFactor-4 input renders (raw/p6_*_4x.png); every other
+                                      # file is left untouched and their ref_meta.json entries are merged in place
 """
 import hashlib, json, os, shutil, socket, subprocess, sys, time, urllib.request
 from pathlib import Path
@@ -36,8 +40,18 @@ STATIC_FACES = [  # family, weight, file  (the 10 static OFL TTFs of hud-ref/fon
     ("JetBrains Mono", 600, "JetBrainsMono-SemiBold.ttf"),
 ]
 CONTROLS = [  # name, fonts, mods
-    ("P1", "static", []), ("P2", "google", ["P2"]), ("P3", "google", ["P3"]), ("P4", "static", ["P2", "P3"]),
+    # P2 (font-kerning:none) is dropped (EXECUTION section 7, B/T2 decision) and P4 = P1 + P3 (static fonts + the .4/.3 px offset).
+    ("P1", "static", []), ("P3", "google", ["P3"]), ("P4", "static", ["P3"]),
 ] + [(f"N{i}", "google", [f"N{i}"]) for i in range(1, 9)]
+# Inputs of positive control P6 "vector AA model" (EXECUTION section 7, T2 ruling R4): the unmodified board rendered by the same
+# Chromium, page, fonts and 3000 ms freeze at deviceScaleFactor 4 (7680x4320). make_p6.py box-filters them to 1920x1080 and
+# takes their vector-class pixels; like P5, P6.png itself is not a T0 output and stays outside the frozen set.
+#   p6_A_4x      world hidden (pair A, over the board's own #14161A)
+#   p6_black_4x / p6_white_4x   world hidden over #000 / #fff: the 4x HUD matte, composited by make_p6.py over the 1x world
+#                (pair B). A 4x render with the world shown would also resample the world photo (measured: world.open MAD
+#                1.25, max 24 against ref_backdrop), a backdrop difference Slate never has (it blits the 1x world 1:1, T3)
+P6_DSF = 4
+P6_JOBS = {"A": "p6_A_4x", "black": "p6_black_4x", "white": "p6_white_4x"}
 
 
 def sha_file(p) -> str:
@@ -114,6 +128,12 @@ def control_jobs(pair):
              "bg": None, "textOff": False, "mods": mods} for n, fonts, mods in CONTROLS]
 
 
+def p6_jobs():
+    bg = {"A": None, "black": "#000", "white": "#fff"}
+    return [{"name": P6_JOBS[k], "out": str(RAW / f"{P6_JOBS[k]}.png"), "fonts": "google", "world": "hide", "bg": bg[k],
+             "textOff": False, "mods": [], "dsf": P6_DSF} for k in P6_JOBS]
+
+
 def alpha_from_pair(black: Path, white: Path):
     """Straight RGBA from a render on #000 and on #fff: alpha = 1 - (W-B)/255, colour = B / alpha."""
     B = np.asarray(Image.open(black).convert("RGB"), dtype=np.float64)
@@ -160,7 +180,28 @@ def lcd_vs_gray():
     img.save(REF / "lcd_vs_gray_text_4x.png")
 
 
-def main():
+def render_meta(r):
+    plat = [p for p in r["platform"] if "fonts" in p]
+    return {
+        "name": r["name"], "file": str(Path(r["out"]).relative_to(H / "HudRef")).replace("\\", "/"),
+        "sha256": sha_file(r["out"]), "fonts": r["fonts"], "world": r["world"], "bg": r["bg"], "textOff": r["textOff"],
+        "mods": r["mods"], "deviceScaleFactor": r.get("dsf", 1), "devicePixelRatio": r.get("devicePixelRatio"),
+        "chromium": r["browserVersion"], "userAgent": r["ua"], "webgl": r["webgl"],
+        "nodes": r["info"]["nodes"], "textElements": len(r["info"]["textEls"]),
+        # fonts as rendered: asserted after the job's mods and the second document.fonts.ready
+        "fontsUsed": f'{sum(f["ok"] for f in r["after"]["fontsUsed"])}/{len(r["after"]["fontsUsed"])}',
+        "fontsUsedDetail": r["after"]["fontsUsed"], "fontsUsedBeforeMods": r["info"]["fontsUsed"],
+        "fontsStatus": r["after"]["fontsStatus"], "modInfo": r["info"]["mod"],
+        "platformFontsCustom": f'{sum(all(x["custom"] for x in p["fonts"]) and len(p["fonts"]) > 0 for p in plat)}/{len(plat)}',
+        "platformFonts": plat,
+        "servedFontFiles": sorted(set(r["served"])), "unmappedRequests": r["unmapped"], "failedRequests": r["failed"],
+        "allAnimationsPausedAt3000": r["after"]["allPaused"], "animationCount": r["after"]["nAnim"],
+        "lasers": r["info"]["lasers"] if r["name"] in ("hudonly", "backdrop") else None,
+    }
+
+
+def render_groups(groups):
+    """Serve the scratch site and run each (tag, jobs) group through playwright-cli; returns the job results."""
     os.chdir(HERE)
     subprocess.run([sys.executable, str(HERE / "fetch_webfonts.py")], check=True)
     for d in (REF, RAW, REF / "controls" / "A", REF / "controls" / "B", H / "HudData" / "Placeholders"):
@@ -183,13 +224,42 @@ def main():
         cli("close", check=False)
         cli("open", "about:blank", f"--config={CONFIG}")
         results = []
-        for tag, jobs in (("base", base_jobs()), ("ctlA", control_jobs("A")), ("ctlB", control_jobs("B"))):
+        for tag, jobs in groups:
             t = time.time()
             results += run_group(site_url, jobs, tag)
             print(f"group {tag}: {len(jobs)} renders in {time.time() - t:.0f}s", flush=True)
     finally:
         cli("close", check=False)
         server.terminate()
+    return results
+
+
+def main_only_p6():
+    """Render only P6's inputs and merge their entries into the existing ref_meta.json (no other file is touched)."""
+    meta_p = REF / "ref_meta.json"
+    meta = json.loads(meta_p.read_text())
+    before = {k: sha_file(H / "HudRef" / k) for k in meta["outputs"]}
+    results = render_groups([("p6", p6_jobs())])
+    new = {r["name"]: render_meta(r) for r in results}
+    meta["renders"] = [r for r in meta["renders"] if not r["name"].startswith("p6_")] + [new[n] for n in sorted(new)]
+    meta["p6"] = {"deviceScaleFactor": P6_DSF, "inputs": {k: new[P6_JOBS[k]]["file"] for k in P6_JOBS}}
+    after = {k: sha_file(H / "HudRef" / k) for k in meta["outputs"]}
+    assert before == after, "a frozen output changed during --only p6"
+    meta_p.write_text(json.dumps(meta, indent=1))
+    for r in results:
+        m = new[r["name"]]
+        print(f"{r['name']}: {Image.open(r['out']).size} devicePixelRatio {m['devicePixelRatio']} fonts {m['fontsUsed']} sha256 {m['sha256'][:16]}")
+    print(f"rendered {len(results)} P6 input images; ref_meta.json renders merged; {len(after)} frozen outputs unchanged")
+
+
+def main():
+    if sys.argv[1:] == ["--only", "p6"]:
+        return main_only_p6()
+    if sys.argv[1:]:
+        sys.exit("usage: ref_render.py [--only p6]")
+    os.chdir(HERE)
+    groups = [("base", base_jobs()), ("ctlA", control_jobs("A")), ("ctlB", control_jobs("B")), ("p6", p6_jobs())]
+    results = render_groups(groups)
 
     # ---- post-process
     cp = lambda s, d: shutil.copy2(RAW / s, REF / d)
@@ -207,33 +277,20 @@ def main():
     shutil.copy2(REF / "portrait_figure.png", H / "HudData" / "Placeholders" / "portrait_figure.png")
     # P5 (Slate model) is not a Chromium render: its input is text_off_{A,B}.png and T2's make_p5.py writes
     # controls/{A,B}/P5.png (regenerated once more if T4a picks a hinting other than None), so T0 writes no P5.png and
-    # P5.png is outside the frozen output set. A stale copy from an earlier T0 run is removed.
+    # P5.png is outside the frozen output set. A stale copy from an earlier T0 run is removed. P6 (vector AA model) is not a
+    # 1x render either: its inputs are raw/p6_*_4x.png and make_p6.py re-composes controls/{A,B}/P6.png (outside the
+    # frozen set too) deterministically from them.
     for pair in "AB":
         (REF / "controls" / pair / "P5.png").unlink(missing_ok=True)
+        (REF / "controls" / pair / "P2.png").unlink(missing_ok=True)  # dropped control (EXECUTION section 7): no stale file
     lcd_vs_gray()
 
     # ---- meta
     lock = json.loads((HERE / "webfonts.lock.json").read_text())
     first = results[0]
-    renders = []
-    for r in results:
-        plat = [p for p in r["platform"] if "fonts" in p]
-        renders.append({
-            "name": r["name"], "file": str(Path(r["out"]).relative_to(H / "HudRef")).replace("\\", "/"),
-            "sha256": sha_file(r["out"]), "fonts": r["fonts"], "world": r["world"], "bg": r["bg"], "textOff": r["textOff"],
-            "mods": r["mods"], "chromium": r["browserVersion"], "userAgent": r["ua"], "webgl": r["webgl"],
-            "nodes": r["info"]["nodes"], "textElements": len(r["info"]["textEls"]),
-            # fonts as rendered: asserted after the job's mods and the second document.fonts.ready
-            "fontsUsed": f'{sum(f["ok"] for f in r["after"]["fontsUsed"])}/{len(r["after"]["fontsUsed"])}',
-            "fontsUsedDetail": r["after"]["fontsUsed"], "fontsUsedBeforeMods": r["info"]["fontsUsed"],
-            "fontsStatus": r["after"]["fontsStatus"], "modInfo": r["info"]["mod"],
-            "platformFontsCustom": f'{sum(all(x["custom"] for x in p["fonts"]) and len(p["fonts"]) > 0 for p in plat)}/{len(plat)}',
-            "platformFonts": plat,
-            "servedFontFiles": sorted(set(r["served"])), "unmappedRequests": r["unmapped"], "failedRequests": r["failed"],
-            "allAnimationsPausedAt3000": r["after"]["allPaused"], "animationCount": r["after"]["nAnim"],
-            "lasers": r["info"]["lasers"] if r["name"] in ("hudonly", "backdrop") else None,
-        })
+    renders = [render_meta(r) for r in results]
     meta = {
+        "p6": {"deviceScaleFactor": P6_DSF, "inputs": {k: f"ref/raw/{P6_JOBS[k]}.png" for k in P6_JOBS}},
         "board": "3.1a", "chromium": first["browserVersion"], "userAgent": first["ua"], "webglRenderer": first["webgl"],
         "playwrightCli": subprocess.run([CLI, "--version"], capture_output=True, text=True, shell=(os.name == "nt")).stdout.strip(),
         "launchArgs": LAUNCH_ARGS, "viewport": [2200, 1300], "deviceScaleFactor": 1, "animationsPausedAtMs": 3000,
@@ -243,7 +300,7 @@ def main():
         "alphaMatte": {"maxChannelDisagreement_of_255": round(disagree, 3)},
         "figureMatte": {"maxChannelDisagreement_of_255": round(fig_dis, 3), "box": [fx, fy, fw, fh]},
         "renders": renders,
-        "outputs": {str(p.relative_to(H / "HudRef")).replace("\\", "/"): sha_file(p) for p in sorted(REF.rglob("*.png")) if "raw" not in p.parts and p.name != "P5.png"},
+        "outputs": {str(p.relative_to(H / "HudRef")).replace("\\", "/"): sha_file(p) for p in sorted(REF.rglob("*.png")) if "raw" not in p.parts and p.name not in ("P5.png", "P6.png")},
     }
     (REF / "ref_meta.json").write_text(json.dumps(meta, indent=1))
     print(f"rendered {len(results)} images; ref_meta.json written; alpha matte disagreement {disagree:.2f}/255")

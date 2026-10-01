@@ -1,0 +1,408 @@
+{
+ "A": {
+  "default": {},
+  "regions": {
+   "card.A": {
+    "G4.text.mad": 28.567308,
+    "G4.text.ssim": 0.822305,
+    "G4.vector.mad": 7.517631,
+    "G4.vector.ssim": 0.859089,
+    "G5.mass": 0.414246
+   },
+   "card.C": {
+    "G4.text.mad": 29.524039,
+    "G4.text.ssim": 0.809285,
+    "G4.vector.mad": 10.777857,
+    "G4.vector.ssim": 0.819455,
+    "G5.mass": 0.487112
+   },
+   "card.D": {
+    "G4.text.mad": 39.346154,
+    "G4.text.ssim": 0.755731,
+    "G4.vector.mad": 14.427363,
+    "G4.vector.ssim": 0.801508,
+    "G5.mass": 0.438571
+   },
+   "card.E": {
+    "G4.text.mad": 7.243182,
+    "G4.text.ssim": 0.872102,
+    "G4.vector.mad": 5.099448,
+    "G4.vector.ssim": 0.867013,
+    "G5.mass": 0.370962
+   },
+   "card.F": {
+    "G4.text.mad": 25.961539,
+    "G4.text.ssim": 0.818141,
+    "G4.vector.mad": 9.100847,
+    "G4.vector.ssim": 0.872772,
+    "G5.mass": 0.494413
+   },
+   "card.Q": {
+    "G4.text.mad": 17.475379,
+    "G4.text.ssim": 0.808198,
+    "G4.vector.mad": 12.994359,
+    "G4.vector.ssim": 0.86128,
+    "G5.mass": 0.485854
+   },
+   "card.R": {
+    "G4.text.mad": 9.36269,
+    "G4.text.ssim": 0.82257,
+    "G4.vector.mad": 9.927072,
+    "G4.vector.ssim": 0.802406,
+    "G5.mass": 0.421772
+   },
+   "card.S": {
+    "G4.text.mad": 28.908654,
+    "G4.text.ssim": 0.845478,
+    "G4.vector.mad": 8.382934,
+    "G4.vector.ssim": 0.898529,
+    "G5.mass": 0.463019
+   },
+   "card.V": {
+    "G4.text.mad": 31.264424,
+    "G4.text.ssim": 0.787032,
+    "G4.vector.mad": 0.2,
+    "G4.vector.ssim": 0.999108,
+    "G5.mass": 0.465696
+   },
+   "card.W": {
+    "G4.text.mad": 16.491478,
+    "G4.text.ssim": 0.774035,
+    "G4.vector.mad": 10.406206,
+    "G4.vector.ssim": 0.852679,
+    "G5.mass": 0.442167
+   },
+   "card.X": {
+    "G4.text.mad": 30.509616,
+    "G4.text.ssim": 0.810774,
+    "G4.vector.mad": 7.366714,
+    "G4.vector.ssim": 0.86085,
+    "G5.mass": 0.439377
+   },
+   "card.Z": {
+    "G4.text.mad": 21.591347,
+    "G4.text.ssim": 0.851693,
+    "G4.vector.mad": 7.666432,
+    "G4.vector.ssim": 0.861218,
+    "G5.mass": 0.359403
+   },
+   "mm.buttons": {
+    "G4.vector.mad": 19.430042,
+    "G4.vector.ssim": 0.724736
+   },
+   "mm.map": {
+    "G4.vector.mad": 7.640377,
+    "G4.vector.ssim": 0.947992
+   },
+   "mm.plate": {
+    "G4.vector.mad": 0.236761,
+    "G4.vector.ssim": 0.999484
+   },
+   "orn.card": {
+    "G4.vector.mad": 9.155678,
+    "G4.vector.ssim": 0.893284
+   },
+   "orn.minimap": {
+    "G1.vector": 22.5,
+    "G4.vector.mad": 9.034344,
+    "G4.vector.ssim": 0.885187
+   },
+   "orn.selection": {
+    "G4.vector.mad": 8.133942,
+    "G4.vector.ssim": 0.958243
+   },
+   "sel.hp": {
+    "G4.text.mad": 18.13756,
+    "G4.text.ssim": 0.819148,
+    "G5.mass": 0.407455
+   },
+   "sel.name": {
+    "G4.text.mad": 11.710195,
+    "G4.text.ssim": 0.90063,
+    "G5.mass": 0.305994
+   },
+   "sel.portrait": {
+    "G4.vector.mad": 0.286534,
+    "G4.vector.ssim": 0.99744
+   },
+   "sel.role": {
+    "G4.text.mad": 10.677969,
+    "G4.text.ssim": 0.852453,
+    "G5.mass": 0.146092
+   },
+   "sel.stats": {
+    "G4.text.mad": 15.549076,
+    "G4.text.ssim": 0.833976,
+    "G5.mass": 0.420037
+   },
+   "tab.3": {
+    "G4.text.mad": 15.384731,
+    "G4.text.ssim": 0.84418,
+    "G4.vector.mad": 13.167969,
+    "G4.vector.ssim": 0.719487,
+    "G5.mass": 0.348021
+   },
+   "toast": {
+    "G4.text.mad": 26.146206,
+    "G4.text.ssim": 0.826593,
+    "G4.vector.mad": 17.50463,
+    "G4.vector.ssim": 0.680553,
+    "G5.mass": 0.465641
+   },
+   "top.alertlog": {
+    "G4.text.mad": 9.796651,
+    "G4.text.ssim": 0.880021,
+    "G4.vector.mad": 14.109568,
+    "G4.vector.ssim": 0.766427,
+    "G5.mass": 0.096687
+   },
+   "top.chip.aether": {
+    "G4.text.mad": 16.741644,
+    "G4.text.ssim": 0.86634,
+    "G4.vector.mad": 22.850309,
+    "G4.vector.ssim": 0.704005,
+    "G5.mass": 0.326441
+   },
+   "top.chip.gold": {
+    "G4.text.mad": 16.965152,
+    "G4.text.ssim": 0.875604,
+    "G4.vector.mad": 12.453704,
+    "G4.vector.ssim": 0.769105,
+    "G5.mass": 0.333324
+   },
+   "top.chip.iron": {
+    "G4.text.mad": 17.680518,
+    "G4.text.ssim": 0.859777,
+    "G4.vector.mad": 12.162038,
+    "G4.vector.ssim": 0.778487,
+    "G5.mass": 0.35049
+   },
+   "top.chip.supply": {
+    "G4.text.mad": 12.474083,
+    "G4.text.ssim": 0.869487,
+    "G4.vector.mad": 11.765433,
+    "G4.vector.ssim": 0.778304,
+    "G5.mass": 0.330236
+   },
+   "top.clock": {
+    "G4.text.mad": 12.284196,
+    "G4.text.ssim": 0.811415,
+    "G5.mass": 0.290274
+   },
+   "top.menu": {
+    "G4.text.mad": 27.139561,
+    "G4.text.ssim": 0.759719,
+    "G4.vector.mad": 2.064433,
+    "G4.vector.ssim": 0.985181,
+    "G5.mass": 0.469217
+   },
+   "world.ring": {
+    "G4.vector.mad": 1.4346,
+    "G4.vector.ssim": 0.994837
+   }
+  }
+ },
+ "B": {
+  "default": {},
+  "regions": {
+   "card.A": {
+    "G4.text.mad": 28.567308,
+    "G4.text.ssim": 0.822305,
+    "G4.vector.mad": 7.517631,
+    "G4.vector.ssim": 0.859089,
+    "G5.mass": 0.414246
+   },
+   "card.C": {
+    "G4.text.mad": 29.524039,
+    "G4.text.ssim": 0.809285,
+    "G4.vector.mad": 10.777857,
+    "G4.vector.ssim": 0.819455,
+    "G5.mass": 0.487112
+   },
+   "card.D": {
+    "G4.text.mad": 39.346154,
+    "G4.text.ssim": 0.755731,
+    "G4.vector.mad": 14.427363,
+    "G4.vector.ssim": 0.801508,
+    "G5.mass": 0.438571
+   },
+   "card.E": {
+    "G4.text.mad": 7.243182,
+    "G4.text.ssim": 0.872102,
+    "G4.vector.mad": 5.099448,
+    "G4.vector.ssim": 0.867013,
+    "G5.mass": 0.370962
+   },
+   "card.F": {
+    "G4.text.mad": 25.961539,
+    "G4.text.ssim": 0.818141,
+    "G4.vector.mad": 9.100847,
+    "G4.vector.ssim": 0.872772,
+    "G5.mass": 0.494413
+   },
+   "card.Q": {
+    "G4.text.mad": 17.475379,
+    "G4.text.ssim": 0.808198,
+    "G4.vector.mad": 12.994359,
+    "G4.vector.ssim": 0.86128,
+    "G5.mass": 0.485854
+   },
+   "card.R": {
+    "G4.text.mad": 9.36269,
+    "G4.text.ssim": 0.82257,
+    "G4.vector.mad": 9.927072,
+    "G4.vector.ssim": 0.802406,
+    "G5.mass": 0.421772
+   },
+   "card.S": {
+    "G4.text.mad": 28.908654,
+    "G4.text.ssim": 0.845478,
+    "G4.vector.mad": 8.382934,
+    "G4.vector.ssim": 0.898529,
+    "G5.mass": 0.463019
+   },
+   "card.V": {
+    "G4.text.mad": 31.264424,
+    "G4.text.ssim": 0.787032,
+    "G4.vector.mad": 0.2,
+    "G4.vector.ssim": 0.999108,
+    "G5.mass": 0.465696
+   },
+   "card.W": {
+    "G4.text.mad": 16.491478,
+    "G4.text.ssim": 0.774035,
+    "G4.vector.mad": 10.406206,
+    "G4.vector.ssim": 0.852679,
+    "G5.mass": 0.442167
+   },
+   "card.X": {
+    "G4.text.mad": 30.509616,
+    "G4.text.ssim": 0.810774,
+    "G4.vector.mad": 7.366714,
+    "G4.vector.ssim": 0.86085,
+    "G5.mass": 0.439377
+   },
+   "card.Z": {
+    "G4.text.mad": 21.591347,
+    "G4.text.ssim": 0.851693,
+    "G4.vector.mad": 7.666432,
+    "G4.vector.ssim": 0.861218,
+    "G5.mass": 0.359403
+   },
+   "mm.buttons": {
+    "G4.vector.mad": 19.430042,
+    "G4.vector.ssim": 0.724736
+   },
+   "mm.map": {
+    "G4.vector.mad": 7.640377,
+    "G4.vector.ssim": 0.947992
+   },
+   "mm.plate": {
+    "G4.vector.mad": 0.236761,
+    "G4.vector.ssim": 0.999484
+   },
+   "orn.card": {
+    "G4.vector.mad": 8.333595,
+    "G4.vector.ssim": 0.897228
+   },
+   "orn.minimap": {
+    "G1.vector": 22.5,
+    "G4.vector.mad": 8.927715,
+    "G4.vector.ssim": 0.891736
+   },
+   "orn.selection": {
+    "G4.vector.mad": 7.362982,
+    "G4.vector.ssim": 0.961241
+   },
+   "sel.hp": {
+    "G4.text.mad": 18.13756,
+    "G4.text.ssim": 0.819148,
+    "G5.mass": 0.407455
+   },
+   "sel.name": {
+    "G4.text.mad": 11.710195,
+    "G4.text.ssim": 0.90063,
+    "G5.mass": 0.305994
+   },
+   "sel.portrait": {
+    "G4.vector.mad": 0.286534,
+    "G4.vector.ssim": 0.99744
+   },
+   "sel.role": {
+    "G4.text.mad": 10.677969,
+    "G4.text.ssim": 0.852453,
+    "G5.mass": 0.146092
+   },
+   "sel.stats": {
+    "G4.text.mad": 15.549076,
+    "G4.text.ssim": 0.833976,
+    "G5.mass": 0.420037
+   },
+   "tab.3": {
+    "G4.text.mad": 15.384731,
+    "G4.text.ssim": 0.84418,
+    "G4.vector.mad": 13.167969,
+    "G4.vector.ssim": 0.719487,
+    "G5.mass": 0.348021
+   },
+   "toast": {
+    "G4.text.mad": 26.146206,
+    "G4.text.ssim": 0.82732,
+    "G4.vector.mad": 17.623457,
+    "G4.vector.ssim": 0.67874,
+    "G5.mass": 0.465641
+   },
+   "top.alertlog": {
+    "G4.text.mad": 9.796651,
+    "G4.text.ssim": 0.880021,
+    "G4.vector.mad": 14.109568,
+    "G4.vector.ssim": 0.766427,
+    "G5.mass": 0.096687
+   },
+   "top.chip.aether": {
+    "G4.text.mad": 16.741644,
+    "G4.text.ssim": 0.86634,
+    "G4.vector.mad": 22.850309,
+    "G4.vector.ssim": 0.704005,
+    "G5.mass": 0.326441
+   },
+   "top.chip.gold": {
+    "G4.text.mad": 16.965152,
+    "G4.text.ssim": 0.875604,
+    "G4.vector.mad": 12.453704,
+    "G4.vector.ssim": 0.769105,
+    "G5.mass": 0.333324
+   },
+   "top.chip.iron": {
+    "G4.text.mad": 17.680518,
+    "G4.text.ssim": 0.859777,
+    "G4.vector.mad": 12.162038,
+    "G4.vector.ssim": 0.778487,
+    "G5.mass": 0.35049
+   },
+   "top.chip.supply": {
+    "G4.text.mad": 12.474083,
+    "G4.text.ssim": 0.869487,
+    "G4.vector.mad": 11.765433,
+    "G4.vector.ssim": 0.778304,
+    "G5.mass": 0.330236
+   },
+   "top.clock": {
+    "G4.text.mad": 12.284196,
+    "G4.text.ssim": 0.811415,
+    "G5.mass": 0.290274
+   },
+   "top.menu": {
+    "G4.text.mad": 27.139561,
+    "G4.text.ssim": 0.759719,
+    "G4.vector.mad": 2.064433,
+    "G4.vector.ssim": 0.985181,
+    "G5.mass": 0.469217
+   },
+   "world.ring": {
+    "G4.vector.mad": 1.499473,
+    "G4.vector.ssim": 0.995062
+   }
+  }
+ }
+}

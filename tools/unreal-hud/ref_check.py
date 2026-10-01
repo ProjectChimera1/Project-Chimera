@@ -161,15 +161,50 @@ def border_mask(base):
     return m & ~vec
 
 
-def check_controls(pair, base, openm):
-    """Every Chromium control (12 per pair) must differ from its base; a negative must change pixels inside its
+P6_DSF = 4
+
+
+def check_p6_inputs(meta):
+    """P6's inputs (EXECUTION section 7, T2 ruling R4): each raw 4x render exists, is 7680x4320, hashes as recorded in
+    ref_meta.json and was rendered at devicePixelRatio 4. Returns (ok, detail)."""
+    spec = json.loads((HERE / "ref_controls.json").read_text())["controls"]["P6"]
+    by_file = {r["file"]: r for r in meta["renders"]}
+    bad, n = [], 0
+    for f in spec["inputs"]:
+        p = REF / f
+        r = by_file.get("ref/" + f)
+        if not p.exists() or r is None:
+            bad.append(f"{f} missing" + ("" if r else " from ref_meta.json")); continue
+        size = Image.open(p).size
+        good = size == (1920 * P6_DSF, 1080 * P6_DSF) and sha(p) == r["sha256"] and r.get("devicePixelRatio") == P6_DSF
+        n += good
+        if not good:
+            bad.append(f"{f} size {size} dpr {r.get('devicePixelRatio')} sha {'ok' if sha(p) == r['sha256'] else 'MISMATCH'}")
+    return not bad, f"{n}/{len(spec['inputs'])} 4x inputs ok" + (f" ({'; '.join(bad)})" if bad else "")
+
+
+def check_controls(pair, base, openm, meta):
+    """Every Chromium control (11 per pair) must differ from its base; a negative must change pixels inside its
     intended boxes and NOTHING outside them (exact: no noise tolerance); a positive P1-P4 must leave every solid
-    box-border pixel unchanged (a sub-pixel positive that moves a border would fail hard gate G2). P5 is not a Chromium
-    render: its input text_off_{pair}.png must exist and differ from the base; P5.png itself is T2's make_p5.py."""
+    box-border pixel unchanged (a sub-pixel positive that moves a border would fail hard gate G2). P5 and P6 are not 1x
+    Chromium renders: P5's input text_off_{pair}.png must exist and differ from the base (P5.png itself is T2's
+    make_p5.py); P6's inputs are the 4x renders of check_p6_inputs (P6.png itself is make_p6.py)."""
     spec = json.loads((HERE / "ref_controls.json").read_text())["controls"]
     borders = border_mask(base)
     rows, n_ok, n_tot = [], 0, 0
+    inputs_ok = True
     for name, c in spec.items():
+        if c.get("dropped"):  # P2: dropped by EXECUTION section 7; no file is rendered or checked
+            continue
+        if c.get("t0_file_is_input_only") and c.get("inputs"):
+            good, detail = check_p6_inputs(meta)
+            if not good:
+                failures.append(f"control {pair}/{name} inputs: {detail}")
+            p6 = REF / "controls" / pair / f"{name}.png"
+            rows.append(f"  {name:3s} {c['kind']:8s} inputs {detail}  {'ok' if good else 'FAIL'}"
+                        f"  (P6.png {'present, written by make_p6.py' if p6.exists() else 'not yet written: make_p6.py'})")
+            inputs_ok = inputs_ok and good
+            continue
         if c.get("t0_file_is_input_only"):
             src = REF / f"text_off_{pair}.png"
             img = load(src)
@@ -180,7 +215,7 @@ def check_controls(pair, base, openm):
             p5 = REF / "controls" / pair / f"{name}.png"
             rows.append(f"  {name:3s} {c['kind']:8s} input {src.name}: changed px {changed:6d}  {'ok' if good else 'FAIL'}"
                         f"  (P5.png {'present, written by T2' if p5.exists() else 'not yet written: T2 make_p5.py'})")
-            p5_input_ok = good
+            inputs_ok = inputs_ok and good
             continue
         n_tot += 1
         p = REF / "controls" / pair / f"{name}.png"
@@ -211,7 +246,7 @@ def check_controls(pair, base, openm):
         if not good:
             failures.append(f"control {pair}/{name}: changed={changed} inside={n_in} outside={outside} size={img.shape}{extra}")
         rows.append(f"  {name:3s} {c['kind']:8s} changed px {changed:6d}{extra}  {'ok' if good else 'FAIL'}")
-    return n_ok, n_tot, p5_input_ok, rows
+    return n_ok, n_tot, inputs_ok, rows
 
 
 # ---------------------------------------------------------------- main
@@ -238,7 +273,7 @@ def main():
     stale = [k for k, h in meta["outputs"].items() if sha(HREF / k) != h]
     ok(not stale, f"outputs changed since ref_meta.json: {stale}")
     ctl_out = [k for k in meta["outputs"] if k.startswith("ref/controls/")]
-    ok(len(ctl_out) == 24 and not any(k.endswith("/P5.png") for k in ctl_out), f"frozen control set: {len(ctl_out)} files (want 24, no P5.png)")
+    ok(len(ctl_out) == 22 and not any(k.endswith(("/P5.png", "/P6.png", "/P2.png")) for k in ctl_out), f"frozen control set: {len(ctl_out)} files (want 22: 11 per pair, no P2.png, P5.png or P6.png)")
 
     for pair, fname in PAIRS.items():
         print(f"== pair {pair} ({fname}) ==")
@@ -248,7 +283,7 @@ def main():
         size_ok = img.shape == (1080, 1920, 3)
         off = load(REF / f"text_off_{pair}.png")
         fr, ink = lcd_fringed(img, off, runs)
-        ctl_dirs = [REF / "controls" / pair / f"{n}.png" for n in json.loads((HERE / "ref_controls.json").read_text())["controls"]]
+        ctl_dirs = [REF / "controls" / pair / f"{n}.png" for n, c in json.loads((HERE / "ref_controls.json").read_text())["controls"].items() if not c.get("dropped")]
         all_imgs_ok = size_ok and all(Image.open(p).size == (1920, 1080) for p in ctl_dirs if p.exists())
         ok(all_imgs_ok, f"pair {pair}: an image is not 1920x1080")
         ok(fr == 0, f"pair {pair}: lcd_fringed {fr} of {ink}")
@@ -273,9 +308,9 @@ def main():
         ok(n == len(PROBES), f"pair {pair}: probes {n}/{len(PROBES)}: {bad}")
         print(f"r4 §13 non-text values {n}/{len(PROBES)}" + "".join(f"\n  MISMATCH {b}" for b in bad))
         # 5. controls
-        n_c, tot, p5_ok, rows = check_controls(pair, img, openm)
-        ok(n_c == tot == 12 and p5_ok, f"pair {pair}: controls {n_c}/{tot}, P5 input ok {p5_ok}")
-        print(f"controls {n_c}/{tot} rendered + P5 input {'ok' if p5_ok else 'FAIL'} (13 per pair), each differs from base")
+        n_c, tot, in_ok, rows = check_controls(pair, img, openm, meta)
+        ok(n_c == tot == 11 and in_ok, f"pair {pair}: controls {n_c}/{tot}, P5/P6 inputs ok {in_ok}")
+        print(f"controls {n_c}/{tot} rendered + P5 and P6 inputs {'ok' if in_ok else 'FAIL'} (13 per pair: 11 Chromium + P5 + P6; P2 dropped), each differs from base")
         print("\n".join(rows))
 
     # fonts on EVERY render (plan §3: every control carries the same assertion), as rendered: fontsUsed is taken after
