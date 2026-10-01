@@ -1,0 +1,28 @@
+# leg: mainscene_probe
+# host: godot 4.6.3
+# runtime: .NET 8.0.25
+# config: Debug
+# dotnet_roll_forward_env: LatestMinor
+# seed_env: 0xC0FFEE1234567890
+# algo: 29
+# scenario: D:/Projects/Project_Chimera/godot/ProjectChimera.Sim.Tests/Trial/trial_1000.json
+# scenario_sha256: 0fce9a52291377f35307cbff0f88397a9853879d681b0bbc63acc504ada0b044
+# seed: 0xC0FFEE1234567890
+# rng_state: 0xC0FFEE1234567890
+# ai: 1
+# ai_plan_mask: 0x04
+# ai_level: Normal
+# mode: Play
+# tick: 0
+# hash.start_state: 0xA68FAB39663A44E2
+# hash.canonical_model: 0x26C0BDB524284D74
+# hash.content: 0x55BB83D5F0A14C4B
+# hash.ruleset: 0x1EB102FD18C50DDD
+# hash.agreement: 0x27CFD0074992E886
+# hash.tick0: 0x69843E0A
+# units_at_start: 1000
+# initial_delay: 4
+# item_registry: 2
+# ability_registry_same_as_ctx: 1
+# digest.0: 0x0991BB0534C1676D
+# wide.0: 0x6EB658269F48A28D

@@ -1,0 +1,40 @@
+# A8b MainScene composition probe - acceptance (2026-10-01)
+## final acceptance run: UE_LOCK_TAG=a/A8b bash U/ue_lock.sh pwsh -NoProfile -ExecutionPolicy Bypass -File tools/sim-trial/run_mainscene_probe.ps1
+[ue_lock] acquired after 1 s (run, tag a/A8b): pwsh -NoProfile -ExecutionPolicy Bypass -File D:/Projects/Project_Chimera/tools/sim-trial/run_mainscene_probe.ps1
+== dotnet build godot.csproj (Debug)
+== godot --path D:/Projects/Project_Chimera/godot --windowed --resolution 1280x720 -- --sim-trial-probe D:/Projects/Project_Chimera/godot/ProjectChimera.Sim.Tests/Trial/trial_1000.json --probe-out D:/Projects/Chimera-Unreal/TrialOut/a/probe/probe.txt  (CHIMERA_MATCH_SEED=0xC0FFEE1234567890, DOTNET_ROLL_FORWARD=LatestMinor)
+godot_exit=0 elapsed_s=6.3
+hash.start_state       probe=0xA68FAB39663A44E2   meta=0xA68FAB39663A44E2   ok
+hash.canonical_model   probe=0x26C0BDB524284D74   meta=0x26C0BDB524284D74   ok
+hash.content           probe=0x55BB83D5F0A14C4B   meta=0x55BB83D5F0A14C4B   ok
+hash.ruleset           probe=0x1EB102FD18C50DDD   meta=0x1EB102FD18C50DDD   ok
+hash.agreement         probe=0x27CFD0074992E886   meta=0x27CFD0074992E886   ok
+hash.tick0             probe=0x69843E0A           meta=0x69843E0A           ok
+probe_match=6/6
+seed                   probe=0xC0FFEE1234567890   meta=0xC0FFEE1234567890   ok
+ai                     probe=1                    meta=1                    ok
+scenario_sha256        probe=0fce9a52291377f35307cbff0f88397a9853879d681b0bbc63acc504ada0b044 meta=0fce9a52291377f35307cbff0f88397a9853879d681b0bbc63acc504ada0b044 ok
+algo                   probe=29                   meta=29                   ok
+units_at_start         probe=1000                 meta=1000                 ok
+initial_delay          probe=4                    meta=4                    ok
+item_registry          probe=2                    meta=2                    ok
+digest.0               probe=0x0991BB0534C1676D   trailer=0x0991BB0534C1676D ok (reported, not gated)
+wide.0                 probe=0x6EB658269F48A28D   trailer=0x6EB658269F48A28D ok (reported, not gated)
+runtime=.NET 8.0.25 host=godot 4.6.3 mode=Play tick=0 ai_plan_mask=0x04 rng_state=0xC0FFEE1234567890
+OK probe=D:/Projects/Chimera-Unreal/TrialOut/a/probe/probe.txt
+[ue_lock] released (exit 0, held 14 s)
+EXIT(script)=0
+
+## repetitions (same script; first run hung AFTER writing a 6/6 probe file and was killed at 180 s, exit 3)
+r1 net8: godot wrote probe (6/6 by later re-read, identical values), process did not exit, TIMEOUT 180 s, exit 3
+r2 net8 --verbose (diag): godot_exit=0 elapsed_s=29.3 probe_match=6/6 
+r3 net8: godot_exit=0 elapsed_s=5.9 probe_match=6/6 
+rep_host: godot_exit=0 elapsed_s=5.5 probe_match=6/6 runtime=.NET 10.0.12 host=godot 4.6.3 mode=Play tick=0 ai_plan_mask=0x04 rng_state=0xC0FFEE1234567890 
+rep_net8b: godot_exit=0 elapsed_s=5.6 probe_match=6/6 runtime=.NET 8.0.25 host=godot 4.6.3 mode=Play tick=0 ai_plan_mask=0x04 rng_state=0xC0FFEE1234567890 
+rep_net8c: godot_exit=0 elapsed_s=6.3 probe_match=6/6 runtime=.NET 8.0.25 host=godot 4.6.3 mode=Play tick=0 ai_plan_mask=0x04 rng_state=0xC0FFEE1234567890 
+
+## normal launch (no --sim-trial-probe), windowed, killed after 45 s by the check script
+[ue_lock] acquired after 301 s (run, tag a/A8b): pwsh -NoProfile -ExecutionPolicy Bypass -File C:/Users/MD_Ki/AppData/Local/Temp/claude/D--Projects-Project-Chimera/fd02aab1-1ba4-4649-9db9-6cf73fdc69c1/scratchpad/normal_boot_check.ps1
+exited_by_itself=False ready_lines=1 main_menu=1 probe_lines=0 play_entries=0 exception_lines=0
+loaded: [MainScene] Loaded scenario: "Iron Crossing" (map_02_iron_crossing)
+[ue_lock] released (exit 0, held 45 s)

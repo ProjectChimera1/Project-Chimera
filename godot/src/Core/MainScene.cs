@@ -399,6 +399,12 @@ namespace ProjectChimera.Core
                 return; // skip all visual / client setup
             }
 
+#if DEBUG
+            // Unreal trial A8b (DEBUG-only): `-- --sim-trial-probe <abs json> --probe-out <file>` points ScenarioPath at
+            // the trial scenario before anything below reads it; inert without the flag (src/Trial/MainSceneSimTrialProbe.cs).
+            bool simTrialProbe = ArmSimTrialProbe();
+#endif
+
             // Load faction definitions — P1 (alpha) and P2 (beta/Iron Pact)
             string factionAbs = ProjectSettings.GlobalizePath(P1_FACTION_JSON);
             _factionDef = System.IO.File.Exists(factionAbs)
@@ -829,6 +835,11 @@ namespace ProjectChimera.Core
             // Review patch: the presentation handles (_ctx.GameState etc.) are now built — the per-frame callbacks may
             // run. On the fail-safe path we returned above with _bootAborted set, so this line is not reached there.
             _bootPending = false;
+
+#if DEBUG
+            // Unreal trial A8b: enter Play as F5 does, write the pre-tick hashes, quit (before any frame steps the sim).
+            if (simTrialProbe) { RunSimTrialProbe(); return; }
+#endif
 
             // DW-896: dropped the trailing N-to-multiplayer-lobby claim — Story 9.7 removed that binding; the lobby is reached from the
             // main menu's Multiplayer destination.
