@@ -1,0 +1,11 @@
+Pinned Google Fonts web files used to render the plan B grayscale references (task T0).
+
+These are the exact google.css and woff2 files that fetch_webfonts.py saved on 2026-10-01 from the Google Fonts URL in
+docs/ui-redesign/Match.dc.html:13 (Cinzel, Inter, JetBrains Mono). Their sha256 values are pinned in
+../webfonts.lock.json. This folder is the versioned mirror of D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/webfonts/
+(that folder is git-ignored in U, which has no remote); fetch_webfonts.py restores the working copy from here when it is
+missing, so the frozen references can be regenerated bit-exact without the live Google service.
+
+Licence: all three families are under the SIL Open Font License 1.1 (redistribution allowed; the fonts may not be sold
+on their own). Licence URLs from the fonts' name tables: Cinzel and JetBrains Mono -> https://scripts.sil.org/OFL ;
+Inter -> https://openfontlicense.org . See also docs/unreal-move/trial-checks/research/hud-ref/fonts/LICENSES.txt.

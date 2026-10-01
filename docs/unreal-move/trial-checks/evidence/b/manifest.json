@@ -1,0 +1,18 @@
+[
+  {
+    "file": "b-T0-lcd-vs-gray-4x.png",
+    "path": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/ref/lcd_vs_gray_text_4x.png",
+    "sha256": "901215221c073c91d0df61e2689564d9da09fce625c483adb98ac47e3dd480e3",
+    "bytes": 70444,
+    "w_h": [
+      904,
+      1178
+    ],
+    "task": "T0",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/ref/lcd_vs_gray_text_4x.png",
+    "r_commit": "896525f6",
+    "unreal_build_id": "",
+    "committed": false,
+    "sent_to_alec": null
+  }
+]
