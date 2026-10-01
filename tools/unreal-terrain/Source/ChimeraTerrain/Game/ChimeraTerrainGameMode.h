@@ -32,6 +32,10 @@ struct FChimeraTerrainOptions
 	bool bFastCook = true;
 	/** -ChimeraTerrainCollisionDuringStroke=<ms>: sets chimera.terrain.CollisionDuringStroke (0 = stroke end only; -1 = leave the cvar). */
 	int32 CollisionDuringStrokeMs = -1;
+	/** -ChimeraTerrainMaterial=ground|grey: the C7 ground material M_ChimeraGround (default) or C3's lit grey (cost comparisons). */
+	bool bGreyMaterial = false;
+	/** -ChimeraTerrainGround=Name=Value,Name=Value: scalar overrides on the ground material's MID (look tuning without a recompile). */
+	FString GroundParams;
 
 	static FChimeraTerrainOptions FromCommandLine(const TCHAR* CommandLine);
 };

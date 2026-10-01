@@ -9,6 +9,7 @@
 #include "HAL/PlatformTime.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
+#include "Engine/Texture2D.h"
 #include "Render/RmcTerrainRenderer.h"
 
 using namespace ChimeraTerrain;
@@ -19,6 +20,13 @@ namespace
 	const TCHAR* const DefaultMaterialPath = TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial");
 	/** Linear albedo of the grey ground. */
 	const FLinearColor DefaultGrey(0.30f, 0.30f, 0.30f, 1.0f);
+	/** C7's ground material, built by Scripts/make_ground_material.py (plan C 3.5); cooked through DirectoriesToAlwaysCook /Game/Terrain. */
+	const TCHAR* const GroundMaterialPath = TEXT("/Game/Terrain/M_ChimeraGround.M_ChimeraGround");
+	const FName SplatParam(TEXT("Splat"));
+	const FName HalfExtentParam(TEXT("HalfExtentM"));
+	const FName BrushXParam(TEXT("BrushX"));
+	const FName BrushYParam(TEXT("BrushY"));
+	const FName BrushRadiusParam(TEXT("BrushRadius"));
 
 	/** Plan C 3.6: 0 = collision is rewritten at stroke end only (the default); N > 0 = also at most every N ms while a stroke is open. */
 	TAutoConsoleVariable<int32> CVarCollisionDuringStroke(
@@ -44,6 +52,8 @@ UMaterialInterface* ATerrainActor::MakeDefaultMaterial()
 		UE_LOG(LogChimeraTerrain, Error, TEXT("terrain: could not load %s"), DefaultMaterialPath);
 		return nullptr;
 	}
+	MaterialPath = DefaultMaterialPath;
+	bGroundMaterial = false;
 	GroundMid = UMaterialInstanceDynamic::Create(Base, this, FName(TEXT("MID_TerrainGrey")));
 	GroundMid->SetVectorParameterValue(FName(TEXT("Color")), DefaultGrey);
 	FLinearColor Read = FLinearColor::Black;
@@ -51,6 +61,111 @@ UMaterialInterface* ATerrainActor::MakeDefaultMaterial()
 	UE_LOG(LogChimeraTerrain, Display, TEXT("terrain: material %s Color param %s (%.2f %.2f %.2f)"), DefaultMaterialPath,
 		bHasColor ? TEXT("found") : TEXT("MISSING"), Read.R, Read.G, Read.B);
 	return GroundMid;
+}
+
+UMaterialInterface* ATerrainActor::MakeGroundMaterial()
+{
+	if (bGreyMaterial)
+	{
+		return MakeDefaultMaterial();
+	}
+	UMaterialInterface* Base = LoadObject<UMaterialInterface>(nullptr, GroundMaterialPath);
+	if (!Base)
+	{
+		MaterialError = FString::Printf(TEXT("ground material %s missing (run Tools/run_commandlet.ps1 -Script Scripts/make_ground_material.py)"), GroundMaterialPath);
+		UE_LOG(LogChimeraTerrain, Error, TEXT("terrain: %s; using grey"), *MaterialError);
+		return MakeDefaultMaterial();
+	}
+	GroundMid = UMaterialInstanceDynamic::Create(Base, this, FName(TEXT("MID_ChimeraGround")));
+	MaterialPath = GroundMaterialPath;
+	bGroundMaterial = true;
+	GroundMid->SetTextureParameterValue(SplatParam, Splat.GetTexture());
+	GroundMid->SetScalarParameterValue(HalfExtentParam, static_cast<float>(HF.HalfExtentM()));
+
+	// -ChimeraTerrainGround=Name=Value,... (look tuning without a shader recompile). Every name must be a scalar of the material.
+	GroundOverrides.Reset();
+	TArray<FString> Items;
+	GroundParamsSpec.ParseIntoArray(Items, TEXT(","), true);
+	for (const FString& Item : Items)
+	{
+		FString Key, Value;
+		float Current = 0.0f;
+		const bool bSplit = Item.Split(TEXT("="), &Key, &Value);
+		Key.TrimStartAndEndInline();
+		Value.TrimStartAndEndInline();
+		if (!bSplit || Key.IsEmpty() || !Value.IsNumeric() || !GroundMid->GetScalarParameterValue(FHashedMaterialParameterInfo(FName(*Key)), Current))
+		{
+			MaterialError = FString::Printf(TEXT("bad -ChimeraTerrainGround item '%s' (Name=Value with a scalar parameter of M_ChimeraGround)"), *Item);
+			UE_LOG(LogChimeraTerrain, Error, TEXT("terrain: %s"), *MaterialError);
+			continue;
+		}
+		const FName Name(*Key);
+		const float V = FCString::Atof(*Value);
+		GroundMid->SetScalarParameterValue(Name, V);
+		GroundOverrides.Add(TPair<FName, float>(Name, V));
+	}
+	PushBrushRing();
+	float ReadE = 0.0f;
+	GroundMid->GetScalarParameterValue(FHashedMaterialParameterInfo(HalfExtentParam), ReadE);
+	UE_LOG(LogChimeraTerrain, Display, TEXT("terrain: material %s (MID, splat %s, HalfExtentM %.0f, %d override(s) '%s')"), GroundMaterialPath,
+		Splat.GetTexture() ? *Splat.GetTexture()->GetName() : TEXT("none"), ReadE, GroundOverrides.Num(), *GroundParamsSpec);
+	return GroundMid;
+}
+
+void ATerrainActor::SetBrushRingEnabled(bool bEnabled)
+{
+	bRingEnabled = bEnabled;
+	PushBrushRing();
+}
+
+void ATerrainActor::SetBrushRing(const FVector2D& CenterM, float RadiusM)
+{
+	RingCenterM = CenterM;
+	RingRadiusM = FMath::Max(0.0f, RadiusM);
+	PushBrushRing();
+}
+
+void ATerrainActor::PushBrushRing()
+{
+	if (!bGroundMaterial || !GroundMid)
+	{
+		return;
+	}
+	GroundMid->SetScalarParameterValue(BrushXParam, static_cast<float>(RingCenterM.X));
+	GroundMid->SetScalarParameterValue(BrushYParam, static_cast<float>(RingCenterM.Y));
+	GroundMid->SetScalarParameterValue(BrushRadiusParam, bRingEnabled ? RingRadiusM : 0.0f);
+}
+
+TSharedRef<FJsonObject> ATerrainActor::DescribeMaterial() const
+{
+	TSharedRef<FJsonObject> J = MakeShared<FJsonObject>();
+	J->SetStringField(TEXT("path"), MaterialPath);
+	J->SetBoolField(TEXT("ground"), bGroundMaterial);
+	J->SetStringField(TEXT("error"), MaterialError);
+	J->SetBoolField(TEXT("ring_enabled"), bRingEnabled);
+	TSharedRef<FJsonObject> Ov = MakeShared<FJsonObject>();
+	for (const TPair<FName, float>& P : GroundOverrides)
+	{
+		Ov->SetNumberField(P.Key.ToString(), P.Value);
+	}
+	J->SetObjectField(TEXT("overrides"), Ov);
+	if (bGroundMaterial && GroundMid)
+	{
+		TArray<FMaterialParameterInfo> Infos;
+		TArray<FGuid> Ids;
+		GroundMid->GetAllScalarParameterInfo(Infos, Ids);
+		TSharedRef<FJsonObject> Sc = MakeShared<FJsonObject>();
+		for (const FMaterialParameterInfo& Info : Infos)
+		{
+			float V = 0.0f;
+			if (GroundMid->GetScalarParameterValue(FHashedMaterialParameterInfo(Info), V))
+			{
+				Sc->SetNumberField(Info.Name.ToString(), V);
+			}
+		}
+		J->SetObjectField(TEXT("scalars"), Sc);
+	}
+	return J;
 }
 
 bool ATerrainActor::InitTerrain(int32 HalfExtentM, int32 ChunkQuads, ETerrainDrawType InDrawType)
@@ -62,7 +177,7 @@ bool ATerrainActor::InitTerrain(int32 HalfExtentM, int32 ChunkQuads, ETerrainDra
 	{
 		return false;
 	}
-	UMaterialInterface* Mat = MakeDefaultMaterial();
+	UMaterialInterface* Mat = MakeGroundMaterial();
 	Renderer = MakeUnique<FRmcTerrainRenderer>();
 	Renderer->SetCollisionOptions(CollisionOptions);
 	if (!Renderer->Initialize(this, HF, Mat, DrawType))
@@ -134,6 +249,8 @@ FTerrainTickResult ATerrainActor::ApplyTick(const FVector2D& CenterM, FTerrainTi
 			LastMidStrokeCollisionSeconds = Now;
 		}
 	}
+	// Plan C 3.5: the ring follows the brush (XY distance in the material, so it lies on the surface). Outside the tick timing.
+	SetBrushRing(CenterM, Params.DiameterM * 0.5f);
 	T.ApplyMs = (T1 - T0) * 1000.0;
 	// The height path's wall time is normals + submit; any residue (a few timer reads) stays in upload.
 	if (!R.HeightRect.IsEmpty())

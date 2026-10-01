@@ -55,6 +55,23 @@ public:
 	/** Build the flat heightfield (half extent, chunk size), the splat texture, the default material and the renderer. */
 	bool InitTerrain(int32 HalfExtentM, int32 ChunkQuads, ChimeraTerrain::ETerrainDrawType DrawType);
 
+	/**
+	 * Ground material for InitTerrain (plan C 3.5, C7); call before InitTerrain. bGrey = C3's lit grey instead of M_ChimeraGround;
+	 * GroundParams = "Name=Value,Name=Value" scalar overrides applied to the ground MID (an unknown name is logged as an error).
+	 */
+	void SetMaterialOptions(bool bGrey, const FString& GroundParams) { bGreyMaterial = bGrey; GroundParamsSpec = GroundParams; }
+
+	/** Brush ring of the ground material (plan C 3.5: BrushX/BrushY/BrushRadius on the MID). Disabled = radius 0 (compare mode). */
+	void SetBrushRingEnabled(bool bEnabled);
+	/** Ring centre (terrain metres) and radius (m); shown only while enabled. ApplyTick calls it with the tick centre and the brush radius. */
+	void SetBrushRing(const FVector2D& CenterM, float RadiusM);
+	bool IsBrushRingEnabled() const { return bRingEnabled; }
+
+	/** Material in use: path, whether it is the ground material, the MID scalar values (results.json "material"). */
+	TSharedRef<FJsonObject> DescribeMaterial() const;
+	/** Non-empty when the ground material is missing or a -ChimeraTerrainGround item named no scalar parameter. */
+	const FString& GetMaterialError() const { return MaterialError; }
+
 	/** Collision settings for the renderer InitTerrain creates (plan C 3.6); call before InitTerrain. */
 	void SetCollisionOptions(const ChimeraTerrain::FTerrainCollisionOptions& InOptions) { CollisionOptions = InOptions; }
 
@@ -151,4 +168,17 @@ private:
 	void ApplyDelta(const ChimeraTerrain::FTerrainEditDelta& Delta, ChimeraTerrain::ETerrainCollisionReason Reason);
 	void SubmitCollision(const ChimeraTerrain::FTerrainRect& Rect, ChimeraTerrain::ETerrainCollisionReason Reason);
 	UMaterialInterface* MakeDefaultMaterial();
+	/** M_ChimeraGround as a MID (splat texture, HalfExtentM, overrides); the grey material when bGreyMaterial is set or it is missing. */
+	UMaterialInterface* MakeGroundMaterial();
+	void PushBrushRing();
+
+	bool bGreyMaterial = false;
+	bool bGroundMaterial = false;
+	FString GroundParamsSpec;
+	FString MaterialPath;
+	FString MaterialError;
+	TArray<TPair<FName, float>> GroundOverrides;
+	bool bRingEnabled = true;
+	FVector2D RingCenterM = FVector2D::ZeroVector;
+	float RingRadiusM = 0.0f;
 };

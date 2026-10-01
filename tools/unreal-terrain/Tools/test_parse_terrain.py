@@ -250,5 +250,28 @@ class ParseTests(unittest.TestCase):
             self.assertTrue(cap["complete"])
 
 
+    def test_c7_paint_bar(self):
+        """C7: the paint bar counts changed pixels inside rts80/paint only; a grey-like unchanged paint shot fails it."""
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as t:
+            write_run(t, {}, ("0x0", "0x0"))
+            r = json.load(open(os.path.join(t, "results.json")))
+            r["material"] = {"path": pt.C7_GROUND_PATH, "ground": True, "error": ""}
+            json.dump(r, open(os.path.join(t, "results.json"), "w"))
+            base = np.full((90, 160, 3), 120, dtype=np.uint8)
+            painted = base.copy()
+            painted[20:60, 40:100] = 60          # the painted disc changed
+            pts = [[x, y] for y in range(20, 60) for x in range(40, 100)]
+            json.dump({"rts80": {"viewport": [160, 90], "paint": pts}}, open(os.path.join(t, "footprints.json"), "w"))
+            for name, im in (("sculpt", base), ("paint", painted), ("before", base), ("before_aa", base)):
+                Image.fromarray(im).save(os.path.join(t, name + ".png"))
+            g, vals = quiet(pt.c7, t)
+            self.assertTrue(g.ok, g.rows)
+            self.assertGreater(vals["paint_changed_frac"], 0.9)
+            Image.fromarray(base).save(os.path.join(t, "paint.png"))
+            g, vals = quiet(pt.c7, t)
+            self.assertFalse(g.ok)
+            self.assertEqual(vals["paint_changed_frac"], 0.0)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -1,0 +1,87 @@
+{
+ "gate": "C7",
+ "pass": true,
+ "bars": [
+  {
+   "bar": "log_scan",
+   "pass": true,
+   "status": "PASS",
+   "value": "0 finding(s)",
+   "rule": "KIT logscan game profile clean"
+  },
+  {
+   "bar": "completed",
+   "pass": true,
+   "status": "PASS",
+   "value": "completed=True ops=66/66",
+   "rule": "completed=true and ops_done == ops_total"
+  },
+  {
+   "bar": "c7_material",
+   "pass": true,
+   "status": "PASS",
+   "value": "/Game/Terrain/M_ChimeraGround.M_ChimeraGround ground=True error=''",
+   "rule": "results.json material = M_ChimeraGround, no error"
+  },
+  {
+   "bar": "c7_compile_errors",
+   "pass": true,
+   "status": "PASS",
+   "value": 0,
+   "rule": "0 material/shader compile error lines in game.log"
+  },
+  {
+   "bar": "c7_paint_mask_px",
+   "pass": true,
+   "status": "PASS",
+   "value": 50346,
+   "rule": ">= 50 footprint pixels at rts80/paint"
+  },
+  {
+   "bar": "c7_paint_changed_frac",
+   "pass": true,
+   "status": "PASS",
+   "value": 0.5107853652723156,
+   "rule": "paint vs sculpt inside rts80/paint >= 0.30"
+  },
+  {
+   "bar": "c7_paint_aa_floor",
+   "pass": true,
+   "status": "REPORT",
+   "value": 0.0,
+   "rule": "before vs before_aa inside the same mask (A/A noise floor)"
+  }
+ ],
+ "values": {
+  "paint_changed_frac": 0.5107853652723156,
+  "aa_floor": 0.0,
+  "mask_px": 50346,
+  "material": {
+   "path": "/Game/Terrain/M_ChimeraGround.M_ChimeraGround",
+   "ground": true,
+   "error": "",
+   "ring_enabled": true,
+   "overrides": {},
+   "scalars": {
+    "HalfExtentM": 160,
+    "TileGrass": 4,
+    "TileDirt": 3.5,
+    "TileRock": 6,
+    "TileSnow": 5,
+    "Scale2": 0.20999999344348907,
+    "BlendDepth": 0.20000000298023224,
+    "RockCos": 0.8191999793052673,
+    "RockBand": 0.05999999865889549,
+    "MacroM": 72,
+    "MacroStrength": 0.25,
+    "NormalStrength": 1,
+    "AOStrength": 1,
+    "BrushX": 38,
+    "BrushY": 34,
+    "BrushRadius": 12,
+    "RingWidthM": 0.30000001192092896,
+    "RingIntensity": 3
+   }
+  }
+ }
+}

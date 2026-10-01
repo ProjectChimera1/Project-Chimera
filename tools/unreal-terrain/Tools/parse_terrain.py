@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""parse_terrain.py - log scan, gates and tables for the terrain trial runs (plan C 3.8, 5). C3 + C4 + C5.
+"""parse_terrain.py - log scan, gates and tables for the terrain trial runs (plan C 3.8, 5). C3 + C4 + C5 + C7.
 
 Every run dir (T/Out/<tag>) holds game.log, results.json, ticks.csv, cmdline.txt and the director's PNGs/JSON. Rules (plan C 3.8;
 EXECUTION 3 C4):
@@ -20,6 +20,10 @@ Usage:
                                                  are REPORTED (gated timings come from the measured campaign, EXECUTION 3 C9).
   parse_terrain.py --s1l RUN_DIR --ref S1_RUN    S1L: hashes equal the reference run's final, `redo` image vs the reference `redo` inside
                                                  the reference's stroke footprints and over its terrain mask, with the reference A/A floor
+  parse_terrain.py --c7 RUN_DIR                  C7 (an S1 run with the ground material): log scan + completion, results.json material is
+                                                 M_ChimeraGround with no error, no shader/material compile error in game.log, and the paint
+                                                 bar: `paint` vs `sculpt` changed_frac >= 0.30 inside the paint-stroke footprint (imgdiff
+                                                 --mask paint), the A/A floor (before vs before_aa, same mask) reported; writes RUN_DIR/c7.json
   parse_terrain.py --same-hash A_DIR B_DIR       P8: equal height/splat FNV at every shared hash, ticks_applied == ticks, B had the hitch
   parse_terrain.py --simgrid RUN_DIR             independent re-computation of sim_grid_fnv and the 16 probes from height.r32 (python
                                                  mirror of ScenarioLoadPhase.cs:252-270 / ElevationGrid.Sample; C10 does the C# check)
@@ -99,6 +103,9 @@ DEPTH_POSES = ("rts80", "oblique")
 COLLISION_OPS = ("wait_collision", "verify_collision")
 S1_SHOTS = ("before", "before_aa", "bg", "sculpt", "paint", "pre_last2", "after", "undo", "redo", "closeup", "oblique")
 PROBE_MIN_NEG_NONEXACT = 4
+C7_PAINT_CHANGED_MIN = 0.30    # plan C 4 C7: imgdiff --mask paint, `paint` vs `sculpt`
+C7_GROUND_PATH = "/Game/Terrain/M_ChimeraGround.M_ChimeraGround"
+C7_COMPILE_ERROR = re.compile(r"Failed to compile Material|LogShaderCompilers: Error|LogMaterial: Error|Shader compile error")
 PROBE_MIN_BOUNDARY = 2
 
 
@@ -1153,12 +1160,49 @@ def summary(paths, out_json, gate_config=None):
 
 
 # ---------------------------------------------------------------------------------------------------------------- main
+def c7(run):
+    """C7 bars on an S1 run made with M_ChimeraGround (plan C 4 C7)."""
+    g = Gates()
+    scan_run(run, g)
+    res = load_results(run) or {}
+    mat = res.get("material") or {}
+    g.bar("c7_material", mat.get("path") == C7_GROUND_PATH and bool(mat.get("ground")) and not mat.get("error"),
+          "%s ground=%s error=%r" % (mat.get("path"), mat.get("ground"), mat.get("error")), "results.json material = M_ChimeraGround, no error")
+    log = os.path.join(run, "game.log")
+    bad = []
+    if os.path.isfile(log):
+        with open(log, "r", encoding="utf-8", errors="replace") as f:
+            bad = [ln.rstrip() for ln in f if C7_COMPILE_ERROR.search(ln)]
+    g.bar("c7_compile_errors", os.path.isfile(log) and not bad, len(bad), "0 material/shader compile error lines in game.log")
+    for ln in bad[:10]:
+        print("  " + ln)
+    fp_path = os.path.join(run, "footprints.json")
+    shots = {k: os.path.join(run, k + ".png") for k in ("paint", "sculpt", "before", "before_aa")}
+    missing = [k for k, v in shots.items() if not os.path.isfile(v)]
+    if missing or not os.path.isfile(fp_path):
+        g.bar("c7_paint_changed_frac", False, "missing %s" % (missing or ["footprints.json"]), ">= %.2f" % C7_PAINT_CHANGED_MIN)
+        return g, {}
+    with open(fp_path, encoding="utf-8") as f:
+        fps = json.load(f)
+    A = imgdiff.load_luma(shots["paint"])
+    mask = imgdiff.footprint_mask(fps, imgdiff.PAINT_FOOTPRINT, A.shape) if "paint" in fps.get("rts80", {}) else np.zeros(A.shape, dtype=bool)
+    n = int(mask.sum())
+    frac = imgdiff.changed_frac(A, imgdiff.load_luma(shots["sculpt"]), mask) if n else 0.0
+    aa = imgdiff.changed_frac(imgdiff.load_luma(shots["before"]), imgdiff.load_luma(shots["before_aa"]), mask) if n else 0.0
+    g.bar("c7_paint_mask_px", n >= MIN_MASK_PX, n, ">= %d footprint pixels at rts80/paint" % MIN_MASK_PX)
+    g.bar("c7_paint_changed_frac", n >= MIN_MASK_PX and frac >= C7_PAINT_CHANGED_MIN, frac, "paint vs sculpt inside rts80/paint >= %.2f" % C7_PAINT_CHANGED_MIN)
+    g.bar("c7_paint_aa_floor", True, aa, "before vs before_aa inside the same mask (A/A noise floor)", informational=True)
+    print("C7 %s" % ("PASS" if g.ok else "FAIL"))
+    return g, {"paint_changed_frac": frac, "aa_floor": aa, "mask_px": n, "material": mat}
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--g1", metavar="RUN_DIR")
     ap.add_argument("--scan", nargs="+", metavar="RUN_DIR")
     ap.add_argument("--s1", metavar="RUN_DIR")
     ap.add_argument("--s1l", metavar="RUN_DIR")
+    ap.add_argument("--c7", metavar="RUN_DIR")
     ap.add_argument("--ref", metavar="S1_RUN_DIR")
     ap.add_argument("--same-hash", nargs=2, metavar=("A_DIR", "B_DIR"))
     ap.add_argument("--simgrid", metavar="RUN_DIR")
@@ -1195,6 +1239,14 @@ def main(argv=None):
         with open(os.path.join(a.s1, "s1.json"), "w", encoding="utf-8") as f:
             json.dump({"gate": "S1", "pass": ok, "bars": g.rows}, f, indent=1)
         return 0 if ok else 1
+    if a.c7:
+        if not os.path.isdir(a.c7):
+            print("no such run dir: %s" % a.c7)
+            return 2
+        g, vals = c7(a.c7)
+        with open(os.path.join(a.c7, "c7.json"), "w", encoding="utf-8") as f:
+            json.dump({"gate": "C7", "pass": g.ok, "bars": g.rows, "values": vals}, f, indent=1)
+        return 0 if g.ok else 1
     if a.s1l:
         if not a.ref:
             ap.error("--s1l needs --ref")

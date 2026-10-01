@@ -595,6 +595,8 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepLook(const FJsonObject
 			return EStep::Failed;
 		}
 		Lighting->SetCompareMode(bCompare, Options.CompareEV100);
+		// Plan C 3.5 compare mode: BrushRadius = 0 (no ring in numeric shots).
+		Terrain->SetBrushRingEnabled(!bCompare);
 		if (APlayerController* PC = GetPC())
 		{
 			if (PC->MyHUD)
@@ -2448,7 +2450,12 @@ void ATerrainScriptDirector::Finish(uint8 Code, const FString& Reason)
 	Opt->SetNumberField(TEXT("compare_ev100"), Options.CompareEV100);
 	Opt->SetNumberField(TEXT("hitch_ms"), Options.HitchMs);
 	Opt->SetStringField(TEXT("load_dir"), Options.LoadDir);
+	Opt->SetStringField(TEXT("ground_params"), Options.GroundParams);
 	Results->SetObjectField(TEXT("options"), Opt);
+	if (Terrain)
+	{
+		Results->SetObjectField(TEXT("material"), Terrain->DescribeMaterial());
+	}
 
 	if (Terrain)
 	{

@@ -407,5 +407,128 @@
     "unreal_build_id": "",
     "committed": true,
     "sent_to_alec": null
+  },
+  {
+    "file": "c-C7-composite.jpg",
+    "path": "c/c-C7-composite.jpg",
+    "sha256": "09f4c7b870fcb170e439f8e6f597abb667eab20053f94eab65673398630417ba",
+    "bytes": 1333387,
+    "w_h": [
+      3840,
+      2442
+    ],
+    "task": "C7",
+    "source": "D:/Projects/Project_Chimera/docs/unreal-move/trial-checks/evidence/c/c-C7-composite.jpg",
+    "r_commit": "15331752",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-C7-composite-phone.jpg",
+    "path": "c/c-C7-composite-phone.jpg",
+    "sha256": "e25e9762ab4d1d17cc26e55ff72dcbca0346c7194b5a09d3103b89e9aec96852",
+    "bytes": 374954,
+    "w_h": [
+      1600,
+      1018
+    ],
+    "task": "C7",
+    "source": "D:/Projects/Project_Chimera/docs/unreal-move/trial-checks/evidence/c/c-C7-composite-phone.jpg",
+    "r_commit": "15331752",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-C7-s1-mat-c7-bars.json",
+    "path": "c/c-C7-s1-mat-c7-bars.json",
+    "sha256": "d0050f278c8b73e35b13406d70a103e6052fbae118d882c67cd4b850613d02e0",
+    "bytes": 2038,
+    "w_h": null,
+    "task": "C7",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/s1_mat/c7.json",
+    "r_commit": "15331752",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-C7-s1-mat-bars.txt",
+    "path": "c/c-C7-s1-mat-bars.txt",
+    "sha256": "d5bd2332f74e35c4dd9a14a7db592d557f5ed45610d3721d88c4de44cccb21c2",
+    "bytes": 7444,
+    "w_h": null,
+    "task": "C7",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/c7logs/s1mat_parse.txt",
+    "r_commit": "15331752",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-C7-c1-mat-summary.txt",
+    "path": "c/c-C7-c1-mat-summary.txt",
+    "sha256": "cd7d2130144b427f47648f95929ab901277697020342dd5648b6613ffd052c4e",
+    "bytes": 5467,
+    "w_h": null,
+    "task": "C7",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/c7logs/c1mat_summary.txt",
+    "r_commit": "15331752",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-C7-material-report.json",
+    "path": "c/c-C7-material-report.json",
+    "sha256": "0b1f5a2fdb36a067f8eec79dda22383b4204b2bb1fb585f0246ebaef4e8eb277",
+    "bytes": 1782,
+    "w_h": null,
+    "task": "C7",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/c7_material/report.json",
+    "r_commit": "15331752",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-C7-s1-mat-results.json",
+    "path": "c/c-C7-s1-mat-results.json",
+    "sha256": "142cc07553a79e5a2588b5966d41d0d8b194427adb1a8a85181e90dc84cc5f44",
+    "bytes": 46919,
+    "w_h": null,
+    "task": "C7",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/s1_mat/results.json",
+    "r_commit": "15331752",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-C7-composite-sources.json",
+    "path": "c/c-C7-composite-sources.json",
+    "sha256": "ec4ecf07f454155f9a1ec7b99a951b3916f02e3ba262805c1ce561aaabbbbd29",
+    "bytes": 1896,
+    "w_h": null,
+    "task": "C7",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/c7_composite/composite_hashes.json",
+    "r_commit": "15331752",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-C7-c1-mat-results.json",
+    "path": "c/c-C7-c1-mat-results.json",
+    "sha256": "3000198b88f3137e6a1ec6016d99119e9a1f782b2f4f709fbf121861e8642450",
+    "bytes": 30302,
+    "w_h": null,
+    "task": "C7",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/c1_mat/results.json",
+    "r_commit": "15331752",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
   }
 ]

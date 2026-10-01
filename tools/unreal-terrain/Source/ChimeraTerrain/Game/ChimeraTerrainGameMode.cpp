@@ -43,6 +43,12 @@ FChimeraTerrainOptions FChimeraTerrainOptions::FromCommandLine(const TCHAR* Cmd)
 	{
 		O.CollisionDuringStrokeMs = FMath::Clamp(O.CollisionDuringStrokeMs, 0, 60000);
 	}
+	FString Material;
+	if (FParse::Value(Cmd, TEXT("ChimeraTerrainMaterial="), Material, false))
+	{
+		O.bGreyMaterial = Material.Equals(TEXT("grey"), ESearchCase::IgnoreCase);
+	}
+	FParse::Value(Cmd, TEXT("ChimeraTerrainGround="), O.GroundParams, false);
 	return O;
 }
 
@@ -70,9 +76,10 @@ void AChimeraTerrainGameMode::RestartPlayer(AController* NewPlayer)
 void AChimeraTerrainGameMode::StartPlay()
 {
 	Options = FChimeraTerrainOptions::FromCommandLine(FCommandLine::Get());
-	UE_LOG(LogChimeraTerrain, Display, TEXT("ChimeraTerrain start: half=%d chunk=%d draw=%s script='%s' out='%s' compare=%d ev100=%.2f fast_cook=%d collision_during_stroke_ms=%d"),
+	UE_LOG(LogChimeraTerrain, Display, TEXT("ChimeraTerrain start: half=%d chunk=%d draw=%s script='%s' out='%s' compare=%d ev100=%.2f fast_cook=%d collision_during_stroke_ms=%d material=%s ground='%s'"),
 		Options.HalfExtentM, Options.ChunkQuads, Options.DrawType == ChimeraTerrain::ETerrainDrawType::Dynamic ? TEXT("Dynamic") : TEXT("Static"),
-		*Options.ScriptPath, *Options.OutDir, Options.bCompareAtStart ? 1 : 0, Options.CompareEV100, Options.bFastCook ? 1 : 0, Options.CollisionDuringStrokeMs);
+		*Options.ScriptPath, *Options.OutDir, Options.bCompareAtStart ? 1 : 0, Options.CompareEV100, Options.bFastCook ? 1 : 0, Options.CollisionDuringStrokeMs,
+		Options.bGreyMaterial ? TEXT("grey") : TEXT("ground"), *Options.GroundParams);
 
 	FActorSpawnParameters SP;
 	SP.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
@@ -90,6 +97,9 @@ void AChimeraTerrainGameMode::StartPlay()
 		ChimeraTerrain::FTerrainCollisionOptions Col;
 		Col.bFastCook = Options.bFastCook;
 		Terrain->SetCollisionOptions(Col);
+		Terrain->SetMaterialOptions(Options.bGreyMaterial, Options.GroundParams);
+		// Plan C 3.5 compare mode: no brush ring.
+		Terrain->SetBrushRingEnabled(!Options.bCompareAtStart);
 	}
 	const bool bTerrainOk = Terrain && Terrain->InitTerrain(Options.HalfExtentM, Options.ChunkQuads, Options.DrawType);
 	if (!bTerrainOk)

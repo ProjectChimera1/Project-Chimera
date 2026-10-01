@@ -6,17 +6,20 @@ Definitions (plan C 3.8):
   changed     a pixel whose |delta luma| > 4/255 after a 3x3 box blur of both images.
   terrain     mask = pixels changed between a shot and a `visible 0` shot at the same pose.
   footprint   mask = pixel sets the director projected to screen (footprints.json, `<pose>/<key>`).
+  paint       mask = the footprint of S1's two paint strokes (footprint set `paint`, projected at the `paint` shot as `rts80/paint`;
+              C7's bar: `paint` vs `sculpt` changed_frac >= 0.30). --footprints defaults to footprints.json beside A, --key to rts80/paint.
   local undo statistic: inside the mask, changed fraction <= 0.5 % AND worst 16x16 block mean |delta| <= 2/255 (mean_abs reported too).
 
 Library use: load_luma, blur3, changed, changed_frac, mean_abs, local_stat, footprint_mask, terrain_mask, morph helpers.
 CLI:
-  imgdiff.py A.png B.png [--mask terrain --hidden H.png | --mask footprint --footprints F.json --key pose/name | --mask paint --hidden H.png]
+  imgdiff.py A.png B.png [--mask terrain --hidden H.png | --mask footprint --footprints F.json --key pose/name | --mask paint [--footprints F.json] [--key pose/name]]
              [--local] [--band LO HI]
   prints one JSON line: {"changed_frac", "mean_abs", "mask_px", ...}. Exit 0 always on success (bars are applied by parse_terrain.py),
   except --local / --band, which exit 1 when the statistic fails.
 """
 import argparse
 import json
+import os
 import sys
 
 import numpy as np
@@ -25,6 +28,7 @@ from PIL import Image
 THRESH = 4.0 / 255.0
 LOCAL_FRAC = 0.005
 LOCAL_BLOCK = 2.0 / 255.0
+PAINT_FOOTPRINT = "rts80/paint"
 
 
 def load_luma(path):
@@ -131,7 +135,7 @@ def main(argv=None):
     ap.add_argument("a")
     ap.add_argument("b")
     ap.add_argument("--mask", choices=("terrain", "paint", "footprint"))
-    ap.add_argument("--hidden", help="the `visible 0` shot for --mask terrain|paint")
+    ap.add_argument("--hidden", help="the `visible 0` shot for --mask terrain")
     ap.add_argument("--footprints")
     ap.add_argument("--key", help="pose/name in footprints.json")
     ap.add_argument("--local", action="store_true", help="apply the local undo statistic inside the mask")
@@ -143,10 +147,14 @@ def main(argv=None):
         print(json.dumps({"error": "size mismatch %s vs %s" % (A.shape, B.shape)}))
         return 2
     mask = None
-    if a.mask in ("terrain", "paint"):
+    if a.mask == "terrain":
         if not a.hidden:
-            ap.error("--mask %s needs --hidden" % a.mask)
+            ap.error("--mask terrain needs --hidden")
         mask = terrain_mask(A, load_luma(a.hidden))
+    elif a.mask == "paint":
+        fp = a.footprints or os.path.join(os.path.dirname(os.path.abspath(a.a)), "footprints.json")
+        with open(fp, encoding="utf-8") as f:
+            mask = footprint_mask(json.load(f), a.key or PAINT_FOOTPRINT, A.shape)
     elif a.mask == "footprint":
         if not (a.footprints and a.key):
             ap.error("--mask footprint needs --footprints and --key")

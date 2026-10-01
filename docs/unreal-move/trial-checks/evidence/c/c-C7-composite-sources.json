@@ -1,0 +1,42 @@
+{
+ "panels": [
+  {
+   "file": "../ProjectChimera/LookTest/out/game_A_noLumen_r1.png",
+   "caption": "Reference: look test LT_A_noLumen (flat plane, moss + cracked-dirt texture), CAM_Gameplay = our rts80 pose",
+   "sha256": "a3a538488369acb73ba78880252155b15f9ba4faafb0b160262b40a627096a55"
+  },
+  {
+   "file": "Out/s1_mat/rts80_full.png",
+   "caption": "ChimeraTerrain rts80, look full: sculpted hills, plateau, ridge, valley; painted dirt path, rock, snow (debug HUD + brush ring on)",
+   "sha256": "699707543ce55f6cbdb021a71d301d269dc1fefb2d13031333f2b07ac0aaba74"
+  },
+  {
+   "file": "Out/s1_mat/closeup.png",
+   "caption": "closeup: 3.5 m above the dirt path, look full (auto-rock cone right, plateau cliff behind)",
+   "sha256": "a09a4510b9b3af07cf95ffff52f6397e5a097959a3d3c94c17d719190498f5b0"
+  },
+  {
+   "file": "Out/s1_mat/oblique.png",
+   "caption": "oblique, look full: rock on steep faces (3-axis projection), snow on the corner raise, ring following the surface",
+   "sha256": "71c5d3f9fd2fe24c5959f16da12a3659f36e6064653c324377c23f80b8c9d855"
+  }
+ ],
+ "output": {
+  "file": "Out/c7_composite/composite.png",
+  "sha256": "e2932a47f06472ea5656c2e8788c3068c348b33ac23cdcfd765b260f08ff8d49",
+  "size": [
+   3840,
+   2442
+  ]
+ },
+ "jpg": {
+  "file": "D:/Projects/Project_Chimera/docs/unreal-move/trial-checks/evidence/c/c-C7-composite.jpg",
+  "quality": 80,
+  "bytes": 1333387
+ },
+ "numbers": [
+  "Paint bar (S1 s1_mat): paint vs sculpt changed_frac 0.511 inside the paint-stroke footprint (50,346 px) >= 0.30 PASS; A/A floor 0.000",
+  "Terrain GPU (C1 c1_mat, visible - hidden at idle, measured only): 2.96 ms with M_ChimeraGround vs 2.66 ms grey (C4 c1_smoke); Phase-4 bar 3.0 ms",
+  "Material: MATERIAL_OK errors=0, 491 PS instructions, 15 samplers; S1 bars all PASS (P7 undo worst16 0.0051, redo 0.0037 <= 0.0078); hashes equal C4 s1_a"
+ ]
+}
