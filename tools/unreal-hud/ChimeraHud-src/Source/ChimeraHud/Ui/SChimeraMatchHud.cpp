@@ -4,13 +4,17 @@
 #include "Ui/ChimeraUi.h"
 #include "ChimeraHud.h"
 #include "Brushes/SlateColorBrush.h"
-#include "Brushes/SlateDynamicImageBrush.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "Misc/Paths.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/SCanvas.h"
 #include "Widgets/SOverlay.h"
+#include "Widgets/Layout/SConstraintCanvas.h"
+#include "Ui/ChimeraHudState.h"
+#include "Ui/Panels/SChimeraTopStrip.h"
 
 void SChimeraMatchHud::Construct(const FArguments& InArgs)
 {
@@ -31,7 +35,7 @@ void SChimeraMatchHud::Construct(const FArguments& InArgs)
 	}
 	else
 	{
-		TSharedPtr<FSlateDynamicImageBrush> Photo = ChimeraUi::LoadPngBrush(Backdrop, FName(*FString::Printf(TEXT("ChimeraHudBackdrop_%s"), *FPaths::GetBaseFilename(Backdrop))));
+		TSharedPtr<FSlateBrush> Photo = ChimeraUi::LoadPngBrush(Backdrop, FName(*FString::Printf(TEXT("ChimeraHudBackdrop_%s"), *FPaths::GetBaseFilename(Backdrop))));
 		if (Photo.IsValid())
 		{
 			Brushes.Add(Photo);
@@ -57,6 +61,28 @@ void SChimeraMatchHud::Construct(const FArguments& InArgs)
 		}
 		Overlay->AddSlot()[Canvas];
 	}
+
+	// HUD panels (plan B 2.6), screen-anchored on a constraint canvas; T4a adds the top strip (first cut).
+	// -HudPanels=0 (and any test pattern) draws the backdrop alone, so T3's 1:1 pipeline proof stays reproducible.
+	int32 Panels = 1;
+	FParse::Value(FCommandLine::Get(), TEXT("-HudPanels="), Panels);
+	if (Panels == 0 || !InArgs._TestPattern.IsEmpty())
+	{
+		UE_LOG(LogChimeraHud, Display, TEXT("panels off"));
+		ChildSlot[Overlay];
+		return;
+	}
+	ChimeraUi::LogRouteAndKernCheck();
+	const FChimeraHudState State = MakeBoard31aState();
+	TSharedRef<SConstraintCanvas> Canvas = SNew(SConstraintCanvas);
+	Canvas->AddSlot()
+		.Anchors(FAnchors(0.f, 0.f, 1.f, 0.f))		// stretch in X, point in Y
+		.Offset(FMargin(0.f, 0.f, 0.f, 40.f))		// left, top, right margin, height
+		.Alignment(FVector2D(0.f, 0.f))
+		[
+			SNew(SChimeraTopStrip).State(State)
+		];
+	Overlay->AddSlot()[Canvas];
 
 	ChildSlot[Overlay];
 }

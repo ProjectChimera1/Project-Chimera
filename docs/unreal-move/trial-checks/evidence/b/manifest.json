@@ -14,5 +14,34 @@
     "unreal_build_id": "",
     "committed": false,
     "sent_to_alec": null
+  },
+  {
+    "file": "b-T4a-routes.csv",
+    "path": "b/b-T4a-routes.csv",
+    "sha256": "b79ff6cc2f543b960a8441554ccecf3f96f72054bb0eba4db9ba280f981eb96c",
+    "bytes": 4824,
+    "w_h": null,
+    "task": "T4a",
+    "source": "D:/Projects/Project_Chimera/tools/unreal-hud/results/t4_routes.csv",
+    "r_commit": "10a1165f",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "b-T4a-chosen-clock-crop.png",
+    "path": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/t4r_png_best_on/A/crops/top.clock.png",
+    "sha256": "c4c07c6091d3bec4365a9c16f16e649b24b380235e4ebbd5fe2c55d3579931a7",
+    "bytes": 13007,
+    "w_h": [
+      1800,
+      134
+    ],
+    "task": "T4a",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/t4r_png_best_on/A/crops/top.clock.png",
+    "r_commit": "10a1165f",
+    "unreal_build_id": "",
+    "committed": false,
+    "sent_to_alec": null
   }
 ]

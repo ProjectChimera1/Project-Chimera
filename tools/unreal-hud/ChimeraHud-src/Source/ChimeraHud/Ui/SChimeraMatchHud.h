@@ -9,7 +9,8 @@ struct FSlateBrush;
 
 /**
  * Root widget of the Match HUD. T3 content: the backdrop layer (flat colour, 1:1 PNG, or none), the optional
- * blend test pattern, and the one-time geometry log that proves 1 Slate unit = 1 px. Panels are added by later tasks.
+ * blend test pattern, the one-time geometry log that proves 1 Slate unit = 1 px, and the HUD panels on a constraint canvas
+ * (T4a: the top strip; later tasks add the rest).
  */
 class SChimeraMatchHud : public SCompoundWidget
 {
