@@ -1,0 +1,28 @@
+{
+ "set": "main",
+ "ticks": 1440,
+ "passed": true,
+ "final": null,
+ "summary": "RESULT set=main legs=2 ticks=1440 all_equal=yes PASS",
+ "golden": "D:\\Projects\\Project_Chimera\\godot\\ProjectChimera.Sim.Tests\\Golden\\trial-1000.golden.txt",
+ "meta": "D:\\Projects\\Project_Chimera\\godot\\ProjectChimera.Sim.Tests\\Golden\\trial-1000.meta.txt",
+ "trailer": "D:\\Projects\\Project_Chimera\\godot\\ProjectChimera.Sim.Tests\\Golden\\trial-1000.trailer.txt",
+ "orders": "D:\\Projects\\Project_Chimera\\godot\\ProjectChimera.Sim.Tests\\Trial\\trial_1000.orders.csv",
+ "reference": "committed golden + meta + trailer; every leg is compared with them, never with another leg",
+ "legs": [
+  {
+   "name": "cli",
+   "path": "D:/Projects/Chimera-Unreal/TrialOut/a/a4/run_main.txt",
+   "ok": true,
+   "messages": [],
+   "equal_ticks": 1440,
+   "total_ticks": 1440,
+   "first_divergence": null,
+   "h0_equal": 6,
+   "h0_total": 6,
+   "header_ok": true,
+   "digests_ok": true,
+   "orders_ok": true
+  }
+ ]
+}

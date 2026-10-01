@@ -278,6 +278,26 @@
          AlgoVersion unchanged). -->
     <None Remove="Golden\golden-multifaction8.golden.txt" />
     <EmbeddedResource Include="Golden\golden-multifaction8.golden.txt" />
+
+    <!-- Unreal trial A4 (plan A section 3.3): the trial_1000 scenario + its frozen order list (inputs, embedded so the
+         test extracts them byte-for-byte, no path or line-ending fragility) and the two NEW goldens with their meta
+         and trailer sidecars. The ai golden is Windows-gated (float AI path); no existing golden is touched. -->
+    <None Remove="Trial\trial_1000.json" />
+    <EmbeddedResource Include="Trial\trial_1000.json" />
+    <None Remove="Trial\trial_1000.orders.csv" />
+    <EmbeddedResource Include="Trial\trial_1000.orders.csv" />
+    <None Remove="Golden\trial-1000.golden.txt" />
+    <EmbeddedResource Include="Golden\trial-1000.golden.txt" />
+    <None Remove="Golden\trial-1000-ai.golden.txt" />
+    <EmbeddedResource Include="Golden\trial-1000-ai.golden.txt" />
+    <None Remove="Golden\trial-1000.meta.txt" />
+    <EmbeddedResource Include="Golden\trial-1000.meta.txt" />
+    <None Remove="Golden\trial-1000-ai.meta.txt" />
+    <EmbeddedResource Include="Golden\trial-1000-ai.meta.txt" />
+    <None Remove="Golden\trial-1000.trailer.txt" />
+    <EmbeddedResource Include="Golden\trial-1000.trailer.txt" />
+    <None Remove="Golden\trial-1000-ai.trailer.txt" />
+    <EmbeddedResource Include="Golden\trial-1000-ai.trailer.txt" />
   </ItemGroup>
 
   <ItemGroup>

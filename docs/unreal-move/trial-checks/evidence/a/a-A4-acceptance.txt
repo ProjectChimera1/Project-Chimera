@@ -1,0 +1,73 @@
+== orders csv before gen: md5 3e0d91f8ae5187db7ba2fd751ec0ede1 mtime 1790869679 ==
+== gen (main), --orders = the committed csv ==
+units=1000 orders=2077 verdict=0
+tick 1 0E7082D2
+tick 60 71BA9D54
+tick 300 3A69E1EB
+tick 1440 2CFCF09E
+applied=2077 dropped=0 alive_end=121
+rc=0
+== orders csv after gen: md5 3e0d91f8ae5187db7ba2fd751ec0ede1 mtime 1790869679 (unchanged: gen leaves an identical file untouched) ==
+== run (main) ==
+units=1000 orders=2077 verdict=0
+tick 1 0E7082D2
+tick 60 71BA9D54
+tick 300 3A69E1EB
+tick 1440 2CFCF09E
+applied=2077 dropped=0 alive_end=121
+rc=0
+cmp gen_main.txt run_main.txt: IDENTICAL
+== run (ai) ==
+units=1000 orders=2077 verdict=0
+tick 1 1A2563C1
+tick 60 594EAA13
+tick 300 A5323C73
+tick 1440 BA13D580
+applied=2064 dropped=13 alive_end=124
+rc=0
+== gen into a differing existing csv (scratch copy, --ai) must refuse with 65 ==
+rc=65
+error: C:\Users\MD_Ki\AppData\Local\Temp\claude\D--Projects-Project-Chimera\fd02aab1-1ba4-4649-9db9-6cf73fdc69c1\scratch
+== plain diff of the two meta files (whole files) ==
+9c9
+< ai: 0
+---
+> ai: 1
+14c14
+< hash.agreement: 0x5D0605462E565A22
+---
+> hash.agreement: 0x27CFD0074992E886
+== trailer sidecars equal the CLI traces' trailers ==
+main: trailer == run_main.txt trailer
+ai: trailer == run_ai.txt trailer
+== compare_traces --set main cli= ==
+set=main golden=trial-1000.golden.txt meta=trial-1000.meta.txt trailer=trial-1000.trailer.txt
+  meta           1440/1440 (reference: golden + meta + trailer)
+  cli            1440/1440 H0=6/6 header=ok digests=ok orders=ok
+RESULT set=main legs=2 ticks=1440 all_equal=yes PASS
+rc=0
+== compare_traces --set ai cli_ai= ==
+set=ai golden=trial-1000-ai.golden.txt meta=trial-1000-ai.meta.txt trailer=trial-1000-ai.trailer.txt
+  meta           1440/1440 (reference: golden + meta + trailer)
+  cli_ai         1440/1440 H0=6/6 header=ok digests=ok orders=ok
+RESULT set=ai legs=2 ticks=1440 all_equal=yes PASS
+rc=0
+== verifier repros on real traces (single leg, malformed ints, missing header, BOM, UTF-16, blame order) ==
+[ok] malformed_ints rc=1 (expect 1)
+[ok] single_leg_digest rc=1 (expect 1)
+[ok] single_godot_digest300 rc=1 (expect 1)
+[ok] blame_order rc=1 (expect 1)
+[ok] no_runtime rc=1 (expect 1)
+[ok] bom_ok rc=0 (expect 0)
+[ok] utf16 rc=1 (expect 1)
+[ok] ai_vs_main rc=1 (expect 1)
+ALL_PROBES_OK
+== pytest tools/sim-trial/tests ==
+37 passed in 0.99s
+== git diff --diff-filter=MD on existing goldens (must be empty) ==
+(end)
+== AlgoVersion assignment lines changed in godot/src (must be 0) ==
+0
+== line endings of the touched csproj files ==
+i/lf    w/lf    attr/text=auto eol=lf 	godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj
+i/lf    w/lf    attr/text=auto eol=lf 	godot/godot.csproj

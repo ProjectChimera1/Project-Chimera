@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ============================================================================================
+       Unreal trial A4 (plan A section 3.6, "Managed (reference)" leg): the .NET command-line driver of the trial
+       scenario. `gen` plays the scripted 1,000-unit battle and freezes the order list it issued (CSV); `run`
+       replays a frozen CSV; both write the one trace format every leg writes (plan A section 3.5). It compiles the
+       REAL sim source set (godot/SimSources.props, the same set the Tier-1 suite and the NativeAOT library use)
+       and nothing else: no Godot, no native code.
+
+       It lives under godot/ProjectChimera.Sim.Native/, which godot.csproj removes from the game's compile glob
+       (Compile Remove="ProjectChimera.Sim.Native\**\*.cs") and which carries a .gdignore so the Godot editor
+       never imports it. Built by direct path; not part of godot.sln.
+       ============================================================================================ -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>SimTrialCli</AssemblyName>
+    <RootNamespace>ProjectChimera.SimTrial</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <!-- The single sim-source source-of-truth (same import as ProjectChimera.Sim.Tests and .Analysis). -->
+  <Import Project="..\..\SimSources.props" />
+
+</Project>

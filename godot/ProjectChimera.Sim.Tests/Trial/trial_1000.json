@@ -1,0 +1,6094 @@
+{
+ "id": "trial_1000",
+ "display_name": "Trial 1000",
+ "terrain_ref": "",
+ "map_bounds": 120,
+ "win_condition": "DestroyAllBuildings",
+ "player_slots": [
+  {
+   "slot": 0,
+   "faction_json": "res://resources/data/factions/alpha_faction.json",
+   "start_ore": 1000,
+   "start_crystal": 500,
+   "base_x": -100,
+   "base_z": 0
+  },
+  {
+   "slot": 1,
+   "faction_json": "res://resources/data/factions/beta_faction.json",
+   "start_ore": 1000,
+   "start_crystal": 500,
+   "base_x": 100,
+   "base_z": 0
+  }
+ ],
+ "resource_nodes": [
+  {
+   "x": -104,
+   "z": -14,
+   "supply": 600,
+   "rate": 5,
+   "max_gatherers": 4,
+   "collection_model": "Gather",
+   "resource_type": "Ore",
+   "requires_structure_radius": 15,
+   "owner_slot": -1,
+   "income_period_ticks": 30
+  },
+  {
+   "x": -104,
+   "z": 14,
+   "supply": 600,
+   "rate": 5,
+   "max_gatherers": 4,
+   "collection_model": "Gather",
+   "resource_type": "Ore",
+   "requires_structure_radius": 15,
+   "owner_slot": -1,
+   "income_period_ticks": 30
+  },
+  {
+   "x": 104,
+   "z": -14,
+   "supply": 600,
+   "rate": 5,
+   "max_gatherers": 4,
+   "collection_model": "Gather",
+   "resource_type": "Ore",
+   "requires_structure_radius": 15,
+   "owner_slot": -1,
+   "income_period_ticks": 30
+  },
+  {
+   "x": 104,
+   "z": 14,
+   "supply": 600,
+   "rate": 5,
+   "max_gatherers": 4,
+   "collection_model": "Gather",
+   "resource_type": "Ore",
+   "requires_structure_radius": 15,
+   "owner_slot": -1,
+   "income_period_ticks": 30
+  }
+ ],
+ "buildings": [
+  {
+   "type": "CommandCenter",
+   "slot": 0,
+   "x": -100,
+   "z": 0,
+   "pre_built": true
+  },
+  {
+   "type": "CommandCenter",
+   "slot": 1,
+   "x": 100,
+   "z": 0,
+   "pre_built": true
+  }
+ ],
+ "units": [
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -20,
+   "z": -24
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -20,
+   "z": -22
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -20,
+   "z": -20
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -20,
+   "z": -18
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -20,
+   "z": -16
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -20,
+   "z": -14
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -20,
+   "z": -12
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -20,
+   "z": -10
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -20,
+   "z": -8
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -20,
+   "z": -6
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -20,
+   "z": -4
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -20,
+   "z": -2
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -20,
+   "z": 0
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -20,
+   "z": 2
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -20,
+   "z": 4
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -20,
+   "z": 6
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -20,
+   "z": 8
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -20,
+   "z": 10
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -20,
+   "z": 12
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -20,
+   "z": 14
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -20,
+   "z": 16
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -20,
+   "z": 18
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -20,
+   "z": 20
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -20,
+   "z": 22
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -20,
+   "z": 24
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -22,
+   "z": -24
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -22,
+   "z": -22
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -22,
+   "z": -20
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -22,
+   "z": -18
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -22,
+   "z": -16
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -22,
+   "z": -14
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -22,
+   "z": -12
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -22,
+   "z": -10
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -22,
+   "z": -8
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -22,
+   "z": -6
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -22,
+   "z": -4
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -22,
+   "z": -2
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -22,
+   "z": 0
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -22,
+   "z": 2
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -22,
+   "z": 4
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -22,
+   "z": 6
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -22,
+   "z": 8
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -22,
+   "z": 10
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -22,
+   "z": 12
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -22,
+   "z": 14
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -22,
+   "z": 16
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -22,
+   "z": 18
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -22,
+   "z": 20
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -22,
+   "z": 22
+  },
+  {
+   "unit_id": "heavy_infantry",
+   "slot": 0,
+   "x": -22,
+   "z": 24
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -24,
+   "z": -24
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -24,
+   "z": -22
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -24,
+   "z": -20
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -24,
+   "z": -18
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -24,
+   "z": -16
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -24,
+   "z": -14
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -24,
+   "z": -12
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -24,
+   "z": -10
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -24,
+   "z": -8
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -24,
+   "z": -6
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -24,
+   "z": -4
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -24,
+   "z": -2
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -24,
+   "z": 0
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -24,
+   "z": 2
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -24,
+   "z": 4
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -24,
+   "z": 6
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -24,
+   "z": 8
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -24,
+   "z": 10
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -24,
+   "z": 12
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -24,
+   "z": 14
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -24,
+   "z": 16
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -24,
+   "z": 18
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -24,
+   "z": 20
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -24,
+   "z": 22
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -24,
+   "z": 24
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -26,
+   "z": -24
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -26,
+   "z": -22
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -26,
+   "z": -20
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -26,
+   "z": -18
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -26,
+   "z": -16
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -26,
+   "z": -14
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -26,
+   "z": -12
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -26,
+   "z": -10
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -26,
+   "z": -8
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -26,
+   "z": -6
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -26,
+   "z": -4
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -26,
+   "z": -2
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -26,
+   "z": 0
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -26,
+   "z": 2
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -26,
+   "z": 4
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -26,
+   "z": 6
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -26,
+   "z": 8
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -26,
+   "z": 10
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -26,
+   "z": 12
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -26,
+   "z": 14
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -26,
+   "z": 16
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -26,
+   "z": 18
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -26,
+   "z": 20
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -26,
+   "z": 22
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -26,
+   "z": 24
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -28,
+   "z": -24
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -28,
+   "z": -22
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -28,
+   "z": -20
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -28,
+   "z": -18
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -28,
+   "z": -16
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -28,
+   "z": -14
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -28,
+   "z": -12
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -28,
+   "z": -10
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -28,
+   "z": -8
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -28,
+   "z": -6
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -28,
+   "z": -4
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -28,
+   "z": -2
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -28,
+   "z": 0
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -28,
+   "z": 2
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -28,
+   "z": 4
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -28,
+   "z": 6
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -28,
+   "z": 8
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -28,
+   "z": 10
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -28,
+   "z": 12
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -28,
+   "z": 14
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -28,
+   "z": 16
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -28,
+   "z": 18
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -28,
+   "z": 20
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -28,
+   "z": 22
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -28,
+   "z": 24
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -30,
+   "z": -24
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -30,
+   "z": -22
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -30,
+   "z": -20
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -30,
+   "z": -18
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -30,
+   "z": -16
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -30,
+   "z": -14
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -30,
+   "z": -12
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -30,
+   "z": -10
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -30,
+   "z": -8
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -30,
+   "z": -6
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -30,
+   "z": -4
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -30,
+   "z": -2
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -30,
+   "z": 0
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -30,
+   "z": 2
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -30,
+   "z": 4
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -30,
+   "z": 6
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -30,
+   "z": 8
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -30,
+   "z": 10
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -30,
+   "z": 12
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -30,
+   "z": 14
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -30,
+   "z": 16
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -30,
+   "z": 18
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -30,
+   "z": 20
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -30,
+   "z": 22
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -30,
+   "z": 24
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -32,
+   "z": -24
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -32,
+   "z": -22
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -32,
+   "z": -20
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -32,
+   "z": -18
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -32,
+   "z": -16
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -32,
+   "z": -14
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -32,
+   "z": -12
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -32,
+   "z": -10
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -32,
+   "z": -8
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -32,
+   "z": -6
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -32,
+   "z": -4
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -32,
+   "z": -2
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -32,
+   "z": 0
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -32,
+   "z": 2
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -32,
+   "z": 4
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -32,
+   "z": 6
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -32,
+   "z": 8
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -32,
+   "z": 10
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -32,
+   "z": 12
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -32,
+   "z": 14
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -32,
+   "z": 16
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -32,
+   "z": 18
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -32,
+   "z": 20
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -32,
+   "z": 22
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -32,
+   "z": 24
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -34,
+   "z": -24
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -34,
+   "z": -22
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -34,
+   "z": -20
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -34,
+   "z": -18
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -34,
+   "z": -16
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -34,
+   "z": -14
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -34,
+   "z": -12
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -34,
+   "z": -10
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -34,
+   "z": -8
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -34,
+   "z": -6
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -34,
+   "z": -4
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -34,
+   "z": -2
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -34,
+   "z": 0
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -34,
+   "z": 2
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -34,
+   "z": 4
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -34,
+   "z": 6
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -34,
+   "z": 8
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -34,
+   "z": 10
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -34,
+   "z": 12
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -34,
+   "z": 14
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -34,
+   "z": 16
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -34,
+   "z": 18
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -34,
+   "z": 20
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -34,
+   "z": 22
+  },
+  {
+   "unit_id": "infantry",
+   "slot": 0,
+   "x": -34,
+   "z": 24
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -36,
+   "z": -24
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -36,
+   "z": -22
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -36,
+   "z": -20
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -36,
+   "z": -18
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -36,
+   "z": -16
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -36,
+   "z": -14
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -36,
+   "z": -12
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -36,
+   "z": -10
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -36,
+   "z": -8
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -36,
+   "z": -6
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -36,
+   "z": -4
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -36,
+   "z": -2
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -36,
+   "z": 0
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -36,
+   "z": 2
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -36,
+   "z": 4
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -36,
+   "z": 6
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -36,
+   "z": 8
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -36,
+   "z": 10
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -36,
+   "z": 12
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -36,
+   "z": 14
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -36,
+   "z": 16
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -36,
+   "z": 18
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -36,
+   "z": 20
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -36,
+   "z": 22
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -36,
+   "z": 24
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -38,
+   "z": -24
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -38,
+   "z": -22
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -38,
+   "z": -20
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -38,
+   "z": -18
+  },
+  {
+   "unit_id": "scout",
+   "slot": 0,
+   "x": -38,
+   "z": -16
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -38,
+   "z": -14
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -38,
+   "z": -12
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -38,
+   "z": -10
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -38,
+   "z": -8
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -38,
+   "z": -6
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -38,
+   "z": -4
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -38,
+   "z": -2
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -38,
+   "z": 0
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -38,
+   "z": 2
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -38,
+   "z": 4
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -38,
+   "z": 6
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -38,
+   "z": 8
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -38,
+   "z": 10
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -38,
+   "z": 12
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -38,
+   "z": 14
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -38,
+   "z": 16
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -38,
+   "z": 18
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -38,
+   "z": 20
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -38,
+   "z": 22
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -38,
+   "z": 24
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -40,
+   "z": -24
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -40,
+   "z": -22
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -40,
+   "z": -20
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -40,
+   "z": -18
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -40,
+   "z": -16
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -40,
+   "z": -14
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -40,
+   "z": -12
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -40,
+   "z": -10
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -40,
+   "z": -8
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -40,
+   "z": -6
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -40,
+   "z": -4
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -40,
+   "z": -2
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -40,
+   "z": 0
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -40,
+   "z": 2
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -40,
+   "z": 4
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -40,
+   "z": 6
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -40,
+   "z": 8
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -40,
+   "z": 10
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -40,
+   "z": 12
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -40,
+   "z": 14
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -40,
+   "z": 16
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -40,
+   "z": 18
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -40,
+   "z": 20
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -40,
+   "z": 22
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -40,
+   "z": 24
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -42,
+   "z": -24
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -42,
+   "z": -22
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -42,
+   "z": -20
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -42,
+   "z": -18
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -42,
+   "z": -16
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -42,
+   "z": -14
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -42,
+   "z": -12
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -42,
+   "z": -10
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -42,
+   "z": -8
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -42,
+   "z": -6
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -42,
+   "z": -4
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -42,
+   "z": -2
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -42,
+   "z": 0
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -42,
+   "z": 2
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -42,
+   "z": 4
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -42,
+   "z": 6
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -42,
+   "z": 8
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -42,
+   "z": 10
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -42,
+   "z": 12
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -42,
+   "z": 14
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -42,
+   "z": 16
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -42,
+   "z": 18
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -42,
+   "z": 20
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -42,
+   "z": 22
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -42,
+   "z": 24
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -44,
+   "z": -24
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -44,
+   "z": -22
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -44,
+   "z": -20
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -44,
+   "z": -18
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -44,
+   "z": -16
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -44,
+   "z": -14
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -44,
+   "z": -12
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -44,
+   "z": -10
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -44,
+   "z": -8
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -44,
+   "z": -6
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -44,
+   "z": -4
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -44,
+   "z": -2
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -44,
+   "z": 0
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -44,
+   "z": 2
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -44,
+   "z": 4
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -44,
+   "z": 6
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -44,
+   "z": 8
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -44,
+   "z": 10
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -44,
+   "z": 12
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -44,
+   "z": 14
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -44,
+   "z": 16
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -44,
+   "z": 18
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -44,
+   "z": 20
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -44,
+   "z": 22
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -44,
+   "z": 24
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -46,
+   "z": -24
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -46,
+   "z": -22
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -46,
+   "z": -20
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -46,
+   "z": -18
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -46,
+   "z": -16
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -46,
+   "z": -14
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -46,
+   "z": -12
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -46,
+   "z": -10
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -46,
+   "z": -8
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -46,
+   "z": -6
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -46,
+   "z": -4
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -46,
+   "z": -2
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -46,
+   "z": 0
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -46,
+   "z": 2
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -46,
+   "z": 4
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -46,
+   "z": 6
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -46,
+   "z": 8
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -46,
+   "z": 10
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -46,
+   "z": 12
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -46,
+   "z": 14
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -46,
+   "z": 16
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -46,
+   "z": 18
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -46,
+   "z": 20
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -46,
+   "z": 22
+  },
+  {
+   "unit_id": "archer",
+   "slot": 0,
+   "x": -46,
+   "z": 24
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -48,
+   "z": -24
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -48,
+   "z": -22
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -48,
+   "z": -20
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -48,
+   "z": -18
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -48,
+   "z": -16
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -48,
+   "z": -14
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -48,
+   "z": -12
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -48,
+   "z": -10
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -48,
+   "z": -8
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -48,
+   "z": -6
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -48,
+   "z": -4
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -48,
+   "z": -2
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -48,
+   "z": 0
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -48,
+   "z": 2
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -48,
+   "z": 4
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -48,
+   "z": 6
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -48,
+   "z": 8
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -48,
+   "z": 10
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -48,
+   "z": 12
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -48,
+   "z": 14
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -48,
+   "z": 16
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -48,
+   "z": 18
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -48,
+   "z": 20
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -48,
+   "z": 22
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -48,
+   "z": 24
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -50,
+   "z": -24
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -50,
+   "z": -22
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -50,
+   "z": -20
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -50,
+   "z": -18
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -50,
+   "z": -16
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -50,
+   "z": -14
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -50,
+   "z": -12
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -50,
+   "z": -10
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -50,
+   "z": -8
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -50,
+   "z": -6
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -50,
+   "z": -4
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -50,
+   "z": -2
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -50,
+   "z": 0
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -50,
+   "z": 2
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -50,
+   "z": 4
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -50,
+   "z": 6
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -50,
+   "z": 8
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -50,
+   "z": 10
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -50,
+   "z": 12
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -50,
+   "z": 14
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -50,
+   "z": 16
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -50,
+   "z": 18
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -50,
+   "z": 20
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -50,
+   "z": 22
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -50,
+   "z": 24
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -52,
+   "z": -24
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -52,
+   "z": -22
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -52,
+   "z": -20
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -52,
+   "z": -18
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -52,
+   "z": -16
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -52,
+   "z": -14
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -52,
+   "z": -12
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -52,
+   "z": -10
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -52,
+   "z": -8
+  },
+  {
+   "unit_id": "mage",
+   "slot": 0,
+   "x": -52,
+   "z": -6
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -52,
+   "z": -4
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -52,
+   "z": -2
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -52,
+   "z": 0
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -52,
+   "z": 2
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -52,
+   "z": 4
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -52,
+   "z": 6
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -52,
+   "z": 8
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -52,
+   "z": 10
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -52,
+   "z": 12
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -52,
+   "z": 14
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -52,
+   "z": 16
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -52,
+   "z": 18
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -52,
+   "z": 20
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -52,
+   "z": 22
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -52,
+   "z": 24
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -54,
+   "z": -24
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -54,
+   "z": -22
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -54,
+   "z": -20
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -54,
+   "z": -18
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -54,
+   "z": -16
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -54,
+   "z": -14
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -54,
+   "z": -12
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -54,
+   "z": -10
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -54,
+   "z": -8
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -54,
+   "z": -6
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -54,
+   "z": -4
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -54,
+   "z": -2
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -54,
+   "z": 0
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -54,
+   "z": 2
+  },
+  {
+   "unit_id": "siege_engine",
+   "slot": 0,
+   "x": -54,
+   "z": 4
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -54,
+   "z": 6
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -54,
+   "z": 8
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -54,
+   "z": 10
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -54,
+   "z": 12
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -54,
+   "z": 14
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -54,
+   "z": 16
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -54,
+   "z": 18
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -54,
+   "z": 20
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -54,
+   "z": 22
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -54,
+   "z": 24
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -56,
+   "z": -24
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -56,
+   "z": -22
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -56,
+   "z": -20
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -56,
+   "z": -18
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -56,
+   "z": -16
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -56,
+   "z": -14
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -56,
+   "z": -12
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -56,
+   "z": -10
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -56,
+   "z": -8
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -56,
+   "z": -6
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -56,
+   "z": -4
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -56,
+   "z": -2
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -56,
+   "z": 0
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -56,
+   "z": 2
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -56,
+   "z": 4
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -56,
+   "z": 6
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -56,
+   "z": 8
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -56,
+   "z": 10
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -56,
+   "z": 12
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -56,
+   "z": 14
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -56,
+   "z": 16
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -56,
+   "z": 18
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -56,
+   "z": 20
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -56,
+   "z": 22
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -56,
+   "z": 24
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -58,
+   "z": -24
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -58,
+   "z": -22
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -58,
+   "z": -20
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -58,
+   "z": -18
+  },
+  {
+   "unit_id": "griffin",
+   "slot": 0,
+   "x": -58,
+   "z": -16
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 20,
+   "z": -24
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 20,
+   "z": -22
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 20,
+   "z": -20
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 20,
+   "z": -18
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 20,
+   "z": -16
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 20,
+   "z": -14
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 20,
+   "z": -12
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 20,
+   "z": -10
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 20,
+   "z": -8
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 20,
+   "z": -6
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 20,
+   "z": -4
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 20,
+   "z": -2
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 20,
+   "z": 0
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 20,
+   "z": 2
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 20,
+   "z": 4
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 20,
+   "z": 6
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 20,
+   "z": 8
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 20,
+   "z": 10
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 20,
+   "z": 12
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 20,
+   "z": 14
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 20,
+   "z": 16
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 20,
+   "z": 18
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 20,
+   "z": 20
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 20,
+   "z": 22
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 20,
+   "z": 24
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 22,
+   "z": -24
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 22,
+   "z": -22
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 22,
+   "z": -20
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 22,
+   "z": -18
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 22,
+   "z": -16
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 22,
+   "z": -14
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 22,
+   "z": -12
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 22,
+   "z": -10
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 22,
+   "z": -8
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 22,
+   "z": -6
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 22,
+   "z": -4
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 22,
+   "z": -2
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 22,
+   "z": 0
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 22,
+   "z": 2
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 22,
+   "z": 4
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 22,
+   "z": 6
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 22,
+   "z": 8
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 22,
+   "z": 10
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 22,
+   "z": 12
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 22,
+   "z": 14
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 22,
+   "z": 16
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 22,
+   "z": 18
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 22,
+   "z": 20
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 22,
+   "z": 22
+  },
+  {
+   "unit_id": "bulwark",
+   "slot": 1,
+   "x": 22,
+   "z": 24
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 24,
+   "z": -24
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 24,
+   "z": -22
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 24,
+   "z": -20
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 24,
+   "z": -18
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 24,
+   "z": -16
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 24,
+   "z": -14
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 24,
+   "z": -12
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 24,
+   "z": -10
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 24,
+   "z": -8
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 24,
+   "z": -6
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 24,
+   "z": -4
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 24,
+   "z": -2
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 24,
+   "z": 0
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 24,
+   "z": 2
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 24,
+   "z": 4
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 24,
+   "z": 6
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 24,
+   "z": 8
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 24,
+   "z": 10
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 24,
+   "z": 12
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 24,
+   "z": 14
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 24,
+   "z": 16
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 24,
+   "z": 18
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 24,
+   "z": 20
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 24,
+   "z": 22
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 24,
+   "z": 24
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 26,
+   "z": -24
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 26,
+   "z": -22
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 26,
+   "z": -20
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 26,
+   "z": -18
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 26,
+   "z": -16
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 26,
+   "z": -14
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 26,
+   "z": -12
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 26,
+   "z": -10
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 26,
+   "z": -8
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 26,
+   "z": -6
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 26,
+   "z": -4
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 26,
+   "z": -2
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 26,
+   "z": 0
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 26,
+   "z": 2
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 26,
+   "z": 4
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 26,
+   "z": 6
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 26,
+   "z": 8
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 26,
+   "z": 10
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 26,
+   "z": 12
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 26,
+   "z": 14
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 26,
+   "z": 16
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 26,
+   "z": 18
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 26,
+   "z": 20
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 26,
+   "z": 22
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 26,
+   "z": 24
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 28,
+   "z": -24
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 28,
+   "z": -22
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 28,
+   "z": -20
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 28,
+   "z": -18
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 28,
+   "z": -16
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 28,
+   "z": -14
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 28,
+   "z": -12
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 28,
+   "z": -10
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 28,
+   "z": -8
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 28,
+   "z": -6
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 28,
+   "z": -4
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 28,
+   "z": -2
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 28,
+   "z": 0
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 28,
+   "z": 2
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 28,
+   "z": 4
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 28,
+   "z": 6
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 28,
+   "z": 8
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 28,
+   "z": 10
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 28,
+   "z": 12
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 28,
+   "z": 14
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 28,
+   "z": 16
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 28,
+   "z": 18
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 28,
+   "z": 20
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 28,
+   "z": 22
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 28,
+   "z": 24
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 30,
+   "z": -24
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 30,
+   "z": -22
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 30,
+   "z": -20
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 30,
+   "z": -18
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 30,
+   "z": -16
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 30,
+   "z": -14
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 30,
+   "z": -12
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 30,
+   "z": -10
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 30,
+   "z": -8
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 30,
+   "z": -6
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 30,
+   "z": -4
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 30,
+   "z": -2
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 30,
+   "z": 0
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 30,
+   "z": 2
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 30,
+   "z": 4
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 30,
+   "z": 6
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 30,
+   "z": 8
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 30,
+   "z": 10
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 30,
+   "z": 12
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 30,
+   "z": 14
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 30,
+   "z": 16
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 30,
+   "z": 18
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 30,
+   "z": 20
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 30,
+   "z": 22
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 30,
+   "z": 24
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 32,
+   "z": -24
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 32,
+   "z": -22
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 32,
+   "z": -20
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 32,
+   "z": -18
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 32,
+   "z": -16
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 32,
+   "z": -14
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 32,
+   "z": -12
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 32,
+   "z": -10
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 32,
+   "z": -8
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 32,
+   "z": -6
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 32,
+   "z": -4
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 32,
+   "z": -2
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 32,
+   "z": 0
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 32,
+   "z": 2
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 32,
+   "z": 4
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 32,
+   "z": 6
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 32,
+   "z": 8
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 32,
+   "z": 10
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 32,
+   "z": 12
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 32,
+   "z": 14
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 32,
+   "z": 16
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 32,
+   "z": 18
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 32,
+   "z": 20
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 32,
+   "z": 22
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 32,
+   "z": 24
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 34,
+   "z": -24
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 34,
+   "z": -22
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 34,
+   "z": -20
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 34,
+   "z": -18
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 34,
+   "z": -16
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 34,
+   "z": -14
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 34,
+   "z": -12
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 34,
+   "z": -10
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 34,
+   "z": -8
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 34,
+   "z": -6
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 34,
+   "z": -4
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 34,
+   "z": -2
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 34,
+   "z": 0
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 34,
+   "z": 2
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 34,
+   "z": 4
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 34,
+   "z": 6
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 34,
+   "z": 8
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 34,
+   "z": 10
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 34,
+   "z": 12
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 34,
+   "z": 14
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 34,
+   "z": 16
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 34,
+   "z": 18
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 34,
+   "z": 20
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 34,
+   "z": 22
+  },
+  {
+   "unit_id": "footsoldier",
+   "slot": 1,
+   "x": 34,
+   "z": 24
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 36,
+   "z": -24
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 36,
+   "z": -22
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 36,
+   "z": -20
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 36,
+   "z": -18
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 36,
+   "z": -16
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 36,
+   "z": -14
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 36,
+   "z": -12
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 36,
+   "z": -10
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 36,
+   "z": -8
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 36,
+   "z": -6
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 36,
+   "z": -4
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 36,
+   "z": -2
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 36,
+   "z": 0
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 36,
+   "z": 2
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 36,
+   "z": 4
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 36,
+   "z": 6
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 36,
+   "z": 8
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 36,
+   "z": 10
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 36,
+   "z": 12
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 36,
+   "z": 14
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 36,
+   "z": 16
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 36,
+   "z": 18
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 36,
+   "z": 20
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 36,
+   "z": 22
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 36,
+   "z": 24
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 38,
+   "z": -24
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 38,
+   "z": -22
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 38,
+   "z": -20
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 38,
+   "z": -18
+  },
+  {
+   "unit_id": "ironclad",
+   "slot": 1,
+   "x": 38,
+   "z": -16
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 38,
+   "z": -14
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 38,
+   "z": -12
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 38,
+   "z": -10
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 38,
+   "z": -8
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 38,
+   "z": -6
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 38,
+   "z": -4
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 38,
+   "z": -2
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 38,
+   "z": 0
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 38,
+   "z": 2
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 38,
+   "z": 4
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 38,
+   "z": 6
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 38,
+   "z": 8
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 38,
+   "z": 10
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 38,
+   "z": 12
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 38,
+   "z": 14
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 38,
+   "z": 16
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 38,
+   "z": 18
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 38,
+   "z": 20
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 38,
+   "z": 22
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 38,
+   "z": 24
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 40,
+   "z": -24
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 40,
+   "z": -22
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 40,
+   "z": -20
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 40,
+   "z": -18
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 40,
+   "z": -16
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 40,
+   "z": -14
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 40,
+   "z": -12
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 40,
+   "z": -10
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 40,
+   "z": -8
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 40,
+   "z": -6
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 40,
+   "z": -4
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 40,
+   "z": -2
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 40,
+   "z": 0
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 40,
+   "z": 2
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 40,
+   "z": 4
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 40,
+   "z": 6
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 40,
+   "z": 8
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 40,
+   "z": 10
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 40,
+   "z": 12
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 40,
+   "z": 14
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 40,
+   "z": 16
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 40,
+   "z": 18
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 40,
+   "z": 20
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 40,
+   "z": 22
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 40,
+   "z": 24
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 42,
+   "z": -24
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 42,
+   "z": -22
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 42,
+   "z": -20
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 42,
+   "z": -18
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 42,
+   "z": -16
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 42,
+   "z": -14
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 42,
+   "z": -12
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 42,
+   "z": -10
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 42,
+   "z": -8
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 42,
+   "z": -6
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 42,
+   "z": -4
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 42,
+   "z": -2
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 42,
+   "z": 0
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 42,
+   "z": 2
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 42,
+   "z": 4
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 42,
+   "z": 6
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 42,
+   "z": 8
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 42,
+   "z": 10
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 42,
+   "z": 12
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 42,
+   "z": 14
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 42,
+   "z": 16
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 42,
+   "z": 18
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 42,
+   "z": 20
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 42,
+   "z": 22
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 42,
+   "z": 24
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 44,
+   "z": -24
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 44,
+   "z": -22
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 44,
+   "z": -20
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 44,
+   "z": -18
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 44,
+   "z": -16
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 44,
+   "z": -14
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 44,
+   "z": -12
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 44,
+   "z": -10
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 44,
+   "z": -8
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 44,
+   "z": -6
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 44,
+   "z": -4
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 44,
+   "z": -2
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 44,
+   "z": 0
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 44,
+   "z": 2
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 44,
+   "z": 4
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 44,
+   "z": 6
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 44,
+   "z": 8
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 44,
+   "z": 10
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 44,
+   "z": 12
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 44,
+   "z": 14
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 44,
+   "z": 16
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 44,
+   "z": 18
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 44,
+   "z": 20
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 44,
+   "z": 22
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 44,
+   "z": 24
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 46,
+   "z": -24
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 46,
+   "z": -22
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 46,
+   "z": -20
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 46,
+   "z": -18
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 46,
+   "z": -16
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 46,
+   "z": -14
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 46,
+   "z": -12
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 46,
+   "z": -10
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 46,
+   "z": -8
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 46,
+   "z": -6
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 46,
+   "z": -4
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 46,
+   "z": -2
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 46,
+   "z": 0
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 46,
+   "z": 2
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 46,
+   "z": 4
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 46,
+   "z": 6
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 46,
+   "z": 8
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 46,
+   "z": 10
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 46,
+   "z": 12
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 46,
+   "z": 14
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 46,
+   "z": 16
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 46,
+   "z": 18
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 46,
+   "z": 20
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 46,
+   "z": 22
+  },
+  {
+   "unit_id": "crossbowman",
+   "slot": 1,
+   "x": 46,
+   "z": 24
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 48,
+   "z": -24
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 48,
+   "z": -22
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 48,
+   "z": -20
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 48,
+   "z": -18
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 48,
+   "z": -16
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 48,
+   "z": -14
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 48,
+   "z": -12
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 48,
+   "z": -10
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 48,
+   "z": -8
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 48,
+   "z": -6
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 48,
+   "z": -4
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 48,
+   "z": -2
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 48,
+   "z": 0
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 48,
+   "z": 2
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 48,
+   "z": 4
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 48,
+   "z": 6
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 48,
+   "z": 8
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 48,
+   "z": 10
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 48,
+   "z": 12
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 48,
+   "z": 14
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 48,
+   "z": 16
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 48,
+   "z": 18
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 48,
+   "z": 20
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 48,
+   "z": 22
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 48,
+   "z": 24
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 50,
+   "z": -24
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 50,
+   "z": -22
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 50,
+   "z": -20
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 50,
+   "z": -18
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 50,
+   "z": -16
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 50,
+   "z": -14
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 50,
+   "z": -12
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 50,
+   "z": -10
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 50,
+   "z": -8
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 50,
+   "z": -6
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 50,
+   "z": -4
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 50,
+   "z": -2
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 50,
+   "z": 0
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 50,
+   "z": 2
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 50,
+   "z": 4
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 50,
+   "z": 6
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 50,
+   "z": 8
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 50,
+   "z": 10
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 50,
+   "z": 12
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 50,
+   "z": 14
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 50,
+   "z": 16
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 50,
+   "z": 18
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 50,
+   "z": 20
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 50,
+   "z": 22
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 50,
+   "z": 24
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 52,
+   "z": -24
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 52,
+   "z": -22
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 52,
+   "z": -20
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 52,
+   "z": -18
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 52,
+   "z": -16
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 52,
+   "z": -14
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 52,
+   "z": -12
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 52,
+   "z": -10
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 52,
+   "z": -8
+  },
+  {
+   "unit_id": "rune_caster",
+   "slot": 1,
+   "x": 52,
+   "z": -6
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 52,
+   "z": -4
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 52,
+   "z": -2
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 52,
+   "z": 0
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 52,
+   "z": 2
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 52,
+   "z": 4
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 52,
+   "z": 6
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 52,
+   "z": 8
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 52,
+   "z": 10
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 52,
+   "z": 12
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 52,
+   "z": 14
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 52,
+   "z": 16
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 52,
+   "z": 18
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 52,
+   "z": 20
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 52,
+   "z": 22
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 52,
+   "z": 24
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 54,
+   "z": -24
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 54,
+   "z": -22
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 54,
+   "z": -20
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 54,
+   "z": -18
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 54,
+   "z": -16
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 54,
+   "z": -14
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 54,
+   "z": -12
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 54,
+   "z": -10
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 54,
+   "z": -8
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 54,
+   "z": -6
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 54,
+   "z": -4
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 54,
+   "z": -2
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 54,
+   "z": 0
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 54,
+   "z": 2
+  },
+  {
+   "unit_id": "war_machine",
+   "slot": 1,
+   "x": 54,
+   "z": 4
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 54,
+   "z": 6
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 54,
+   "z": 8
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 54,
+   "z": 10
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 54,
+   "z": 12
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 54,
+   "z": 14
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 54,
+   "z": 16
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 54,
+   "z": 18
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 54,
+   "z": 20
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 54,
+   "z": 22
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 54,
+   "z": 24
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 56,
+   "z": -24
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 56,
+   "z": -22
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 56,
+   "z": -20
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 56,
+   "z": -18
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 56,
+   "z": -16
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 56,
+   "z": -14
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 56,
+   "z": -12
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 56,
+   "z": -10
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 56,
+   "z": -8
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 56,
+   "z": -6
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 56,
+   "z": -4
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 56,
+   "z": -2
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 56,
+   "z": 0
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 56,
+   "z": 2
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 56,
+   "z": 4
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 56,
+   "z": 6
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 56,
+   "z": 8
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 56,
+   "z": 10
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 56,
+   "z": 12
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 56,
+   "z": 14
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 56,
+   "z": 16
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 56,
+   "z": 18
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 56,
+   "z": 20
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 56,
+   "z": 22
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 56,
+   "z": 24
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 58,
+   "z": -24
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 58,
+   "z": -22
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 58,
+   "z": -20
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 58,
+   "z": -18
+  },
+  {
+   "unit_id": "wyvern",
+   "slot": 1,
+   "x": 58,
+   "z": -16
+  },
+  {
+   "unit_id": "worker",
+   "slot": 0,
+   "x": -94,
+   "z": -8
+  },
+  {
+   "unit_id": "forgehand",
+   "slot": 1,
+   "x": 94,
+   "z": -8
+  },
+  {
+   "unit_id": "worker",
+   "slot": 0,
+   "x": -92,
+   "z": -8
+  },
+  {
+   "unit_id": "forgehand",
+   "slot": 1,
+   "x": 92,
+   "z": -8
+  },
+  {
+   "unit_id": "worker",
+   "slot": 0,
+   "x": -90,
+   "z": -8
+  },
+  {
+   "unit_id": "forgehand",
+   "slot": 1,
+   "x": 90,
+   "z": -8
+  },
+  {
+   "unit_id": "worker",
+   "slot": 0,
+   "x": -88,
+   "z": -8
+  },
+  {
+   "unit_id": "forgehand",
+   "slot": 1,
+   "x": 88,
+   "z": -8
+  },
+  {
+   "unit_id": "worker",
+   "slot": 0,
+   "x": -86,
+   "z": -8
+  },
+  {
+   "unit_id": "forgehand",
+   "slot": 1,
+   "x": 86,
+   "z": -8
+  },
+  {
+   "unit_id": "worker",
+   "slot": 0,
+   "x": -94,
+   "z": -4
+  },
+  {
+   "unit_id": "forgehand",
+   "slot": 1,
+   "x": 94,
+   "z": -4
+  },
+  {
+   "unit_id": "worker",
+   "slot": 0,
+   "x": -92,
+   "z": -4
+  },
+  {
+   "unit_id": "forgehand",
+   "slot": 1,
+   "x": 92,
+   "z": -4
+  },
+  {
+   "unit_id": "worker",
+   "slot": 0,
+   "x": -90,
+   "z": -4
+  },
+  {
+   "unit_id": "forgehand",
+   "slot": 1,
+   "x": 90,
+   "z": -4
+  },
+  {
+   "unit_id": "worker",
+   "slot": 0,
+   "x": -88,
+   "z": -4
+  },
+  {
+   "unit_id": "forgehand",
+   "slot": 1,
+   "x": 88,
+   "z": -4
+  },
+  {
+   "unit_id": "worker",
+   "slot": 0,
+   "x": -86,
+   "z": -4
+  },
+  {
+   "unit_id": "forgehand",
+   "slot": 1,
+   "x": 86,
+   "z": -4
+  },
+  {
+   "unit_id": "worker",
+   "slot": 0,
+   "x": -94,
+   "z": 0
+  },
+  {
+   "unit_id": "forgehand",
+   "slot": 1,
+   "x": 94,
+   "z": 0
+  },
+  {
+   "unit_id": "worker",
+   "slot": 0,
+   "x": -92,
+   "z": 0
+  },
+  {
+   "unit_id": "forgehand",
+   "slot": 1,
+   "x": 92,
+   "z": 0
+  },
+  {
+   "unit_id": "worker",
+   "slot": 0,
+   "x": -90,
+   "z": 0
+  },
+  {
+   "unit_id": "forgehand",
+   "slot": 1,
+   "x": 90,
+   "z": 0
+  },
+  {
+   "unit_id": "worker",
+   "slot": 0,
+   "x": -88,
+   "z": 0
+  },
+  {
+   "unit_id": "forgehand",
+   "slot": 1,
+   "x": 88,
+   "z": 0
+  },
+  {
+   "unit_id": "worker",
+   "slot": 0,
+   "x": -86,
+   "z": 0
+  },
+  {
+   "unit_id": "forgehand",
+   "slot": 1,
+   "x": 86,
+   "z": 0
+  },
+  {
+   "unit_id": "worker",
+   "slot": 0,
+   "x": -94,
+   "z": 4
+  },
+  {
+   "unit_id": "forgehand",
+   "slot": 1,
+   "x": 94,
+   "z": 4
+  },
+  {
+   "unit_id": "worker",
+   "slot": 0,
+   "x": -92,
+   "z": 4
+  },
+  {
+   "unit_id": "forgehand",
+   "slot": 1,
+   "x": 92,
+   "z": 4
+  },
+  {
+   "unit_id": "worker",
+   "slot": 0,
+   "x": -90,
+   "z": 4
+  },
+  {
+   "unit_id": "forgehand",
+   "slot": 1,
+   "x": 90,
+   "z": 4
+  },
+  {
+   "unit_id": "worker",
+   "slot": 0,
+   "x": -88,
+   "z": 4
+  },
+  {
+   "unit_id": "forgehand",
+   "slot": 1,
+   "x": 88,
+   "z": 4
+  },
+  {
+   "unit_id": "worker",
+   "slot": 0,
+   "x": -86,
+   "z": 4
+  },
+  {
+   "unit_id": "forgehand",
+   "slot": 1,
+   "x": 86,
+   "z": 4
+  }
+ ],
+ "triggers": []
+}

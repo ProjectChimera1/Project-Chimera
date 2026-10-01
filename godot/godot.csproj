@@ -23,5 +23,9 @@
            own today, but this guards against a stray source landing there later. -->
     <Compile Remove="analyzers\**\*.cs" />
     <Compile Remove="ProjectChimera.Sim.Analysis\**\*.cs" />
+    <!-- Unreal trial A4: the NativeAOT sim library, its .NET CLI and its C++ harness live under godot/ but are
+         separate Godot-free artefacts (they import SimSources.props, which the game already compiles). Keep their
+         .cs out of the game's compile glob (a duplicate-type error otherwise); the folder also has a .gdignore. -->
+    <Compile Remove="ProjectChimera.Sim.Native\**\*.cs" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,15 @@
+T1 (dotnet test of ProjectChimera.Sim.Tests under the lock, tag a/A4, rework run after verification; ue_lock held 105 s)
+file=A4fix.trx run=Completed counters_total=7158
+total=7158 passed=7157 failed=0 skipped=1
+
+First A4 run (before the rework): total=7156 passed=7155 failed=0 skipped=1
+A3 baseline before A4: total=7147 passed=7146 failed=0 skipped=1
+A4 adds 11 test cases (9 + Trailer_EqualsTheCurrentBuild main/ai). No flakes, no rerun.
+
+Record run (CHIMERA_GOLDEN_RECORD=1, filter Trial1000, lock tag a/A4-record, held 86 s): Passed 11 of 11.
+After it, trial-1000.golden.txt and trial-1000-ai.golden.txt are cmp-identical to the first recording; the metas changed only
+in their prose line 1; the two trailer sidecars are new and equal the CLI traces' trailers.
+Non-record Trial1000 tests in Debug: Ai_IsTheSameMatchWithTheAiPlan (waits on both 1440-tick simulations) 46.2 s; every other
+Trial1000 test < 10 ms. Under the 60 s report line.
+
+pytest tools/sim-trial/tests: 37 passed

@@ -35,7 +35,7 @@ from those markers, rewrites this file and pushes.
 - (b) T2 calibration (positives 4/4 since P2 is dropped) → T4a fonts/text/icon routes → T2r recalibration only if T4a picks a
   hinting other than None.
 - (c) C4 director + S1/S1L/C1 → C5 collision + soak → C7 ground material (send composite) → C8 mouse; C10 sim-grid parity beside.
-- **Progress (passed both verifiers and committed):** A3 (SimSession, PreTickHashes, WorldDigest, OrderScript; T1 7147/7146/0/1, +11 tests; CHM0001 394→409, CHM0005 280→284, all attributed).
+- **Progress (passed both verifiers and committed):** A3 (SimSession, PreTickHashes, WorldDigest, OrderScript; T1 7147/7146/0/1, +11 tests; CHM0001 394→409, CHM0005 280→284, all attributed); A4 (trial_1000: units=1000 orders=2077 verdict=0, ticks 1/60/300/1440 = F19, body byte-identical to the prototype; two new goldens + meta + trailer sidecars; compare_traces.py with --final).
 - If this session dies mid-run: resume with `Workflow({scriptPath: <phase2.js copy in the session dir>, resumeFromRunId:
   "wf_0d1c858e-bd3"})` from the same session, or read the markers and re-run the unfinished tasks from a new one.
 

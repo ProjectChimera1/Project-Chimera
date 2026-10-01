@@ -11,5 +11,99 @@
     "unreal_build_id": "",
     "committed": true,
     "sent_to_alec": null
+  },
+  {
+    "file": "a-A4-acceptance.txt",
+    "path": "a/a-A4-acceptance.txt",
+    "sha256": "e016eab02513fa698b24b4878f8e7a7b9e7ff4ffc726f08656ef69d6f1538f63",
+    "bytes": 2735,
+    "w_h": null,
+    "task": "A4",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/a4/a4_acceptance.txt",
+    "r_commit": "b2e48c55",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A4-t1.txt",
+    "path": "a/a-A4-t1.txt",
+    "sha256": "895be23fd60e4b5355fa84f983dfd768906732703fc597b6f3a6a29fe9a6a648",
+    "bytes": 986,
+    "w_h": null,
+    "task": "A4",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/a4/a4_t1.txt",
+    "r_commit": "b2e48c55",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A4-trace-main.txt",
+    "path": "a/a-A4-trace-main.txt",
+    "sha256": "6057312ffe81e307146108d3b47b325c65a2719836c939fb62667225c49969f3",
+    "bytes": 20001,
+    "w_h": null,
+    "task": "A4",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/a4/run_main.txt",
+    "r_commit": "b2e48c55",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A4-trace-ai.txt",
+    "path": "a/a-A4-trace-ai.txt",
+    "sha256": "4015074912a4d8030fc4d40b934fff4571c0804319c83cacd4d0824d5d158e61",
+    "bytes": 20002,
+    "w_h": null,
+    "task": "A4",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/a4/run_ai.txt",
+    "r_commit": "b2e48c55",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A4-compare-main.json",
+    "path": "a/a-A4-compare-main.json",
+    "sha256": "f025ffe68b596bd59352327842ba469f39340a1606c84db439bf0cf8fa6d5a8d",
+    "bytes": 995,
+    "w_h": null,
+    "task": "A4",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/a4/cmp_main/compare.json",
+    "r_commit": "b2e48c55",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A4-compare-ai.json",
+    "path": "a/a-A4-compare-ai.json",
+    "sha256": "7c21b6e0a15a25e8d5752be8df4b07766552df441816235fb88b625a0156b0a1",
+    "bytes": 1001,
+    "w_h": null,
+    "task": "A4",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/a4/cmp_ai/compare.json",
+    "r_commit": "b2e48c55",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A4-parity-main.png",
+    "path": "a/a-A4-parity-main.png",
+    "sha256": "ba58e7e897226e237d849686f279d1024bcd239920b88f5282200ee364b56250",
+    "bytes": 29222,
+    "w_h": [
+      1400,
+      390
+    ],
+    "task": "A4",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/a4/cmp_main/parity.png",
+    "r_commit": "b2e48c55",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
   }
 ]
