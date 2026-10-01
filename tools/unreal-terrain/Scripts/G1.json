@@ -1,0 +1,27 @@
+{
+  "name": "G1",
+  "about": "Gate G1 (plan C 3.8, 5): Dynamic RMC chunks render edited terrain correctly in -game. Flat terrain, settle, then script strokes raise a 30 m hill near the top of the rts80 frustum behind a nearer 15 m hill, and a 60 m spike in a chunk that lies wholly below the spike pose's frustum. Shots with the terrain visible and hidden at both poses; g1_regions writes the analytic pixel sets parse_terrain.py --g1 measures.",
+  "ops": [
+    {"op": "look", "mode": "compare"},
+    {"op": "camera", "pose": "rts80"},
+    {"op": "settle", "frames": 30},
+    {"op": "stroke", "mode": "raise", "d": 50, "s": 100, "path": [[100, 110]], "ticks": 30},
+    {"op": "stroke", "mode": "raise", "d": 40, "s": 100, "path": [[70, 40]], "ticks": 15},
+    {"op": "stroke", "mode": "raise", "d": 20, "s": 100, "path": [[-128, -10]], "ticks": 60},
+    {"op": "settle", "frames": 30},
+    {"op": "hash", "name": "g1"},
+    {"op": "camera", "pose": "rts80"},
+    {"op": "shot", "name": "visible"},
+    {"op": "visible", "value": 0},
+    {"op": "shot", "name": "hidden"},
+    {"op": "visible", "value": 1},
+    {"op": "g1_regions", "pose": "rts80", "hill": [100, 110, 25], "ring": [5, 40]},
+    {"op": "camera", "pose": "spike"},
+    {"op": "settle", "frames": 10},
+    {"op": "shot", "name": "spike_visible"},
+    {"op": "visible", "value": 0},
+    {"op": "shot", "name": "spike_hidden"},
+    {"op": "visible", "value": 1},
+    {"op": "g1_regions", "pose": "spike", "spike": [-128, -10, 10]}
+  ]
+}

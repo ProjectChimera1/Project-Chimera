@@ -1,0 +1,8 @@
+{
+  "name": "FAIL",
+  "about": "Exit-code contract (EXECUTION 2.2, plan C 3.8): one fail op must end the run with results.json completed=false and process exit code 2.",
+  "ops": [
+    {"op": "idle", "frames": 5},
+    {"op": "fail"}
+  ]
+}

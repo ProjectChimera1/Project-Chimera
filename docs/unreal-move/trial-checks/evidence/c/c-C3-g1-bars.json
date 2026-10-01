@@ -1,0 +1,54 @@
+{
+ "gate": "G1",
+ "pass": true,
+ "bars": [
+  {
+   "bar": "log_scan",
+   "pass": true,
+   "value": "0 finding(s)",
+   "rule": "KIT logscan game profile clean"
+  },
+  {
+   "bar": "completed",
+   "pass": true,
+   "value": "completed=True ops=21/21",
+   "rule": "completed=true and ops_done == ops_total"
+  },
+  {
+   "bar": "terrain_changed_frac",
+   "pass": true,
+   "value": 0.9063884066358024,
+   "rule": ">= 0.40 vs hidden"
+  },
+  {
+   "bar": "terrain_luma_mean",
+   "pass": true,
+   "value": 0.3283297270580832,
+   "rule": "in [0.05, 0.95]"
+  },
+  {
+   "bar": "terrain_luma_std",
+   "pass": true,
+   "value": 0.04648575480380563,
+   "rule": "> 0.01"
+  },
+  {
+   "bar": "hill_sun_over_shadow",
+   "pass": true,
+   "value": 7.019919208468597,
+   "rule": ">= 1.3"
+  },
+  {
+   "bar": "cast_shadow_darker",
+   "pass": true,
+   "value": 0.7995542911261373,
+   "rule": ">= 0.20"
+  },
+  {
+   "bar": "spike_changed_frac",
+   "pass": true,
+   "value": 0.9656081335508975,
+   "rule": ">= 0.50 of the spike's projected pixels"
+  }
+ ]
+}

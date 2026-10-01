@@ -1,0 +1,31 @@
+[
+  {
+    "file": "c-C3-g1.jpg",
+    "path": "c/c-C3-g1.jpg",
+    "sha256": "6516283d8fd80949e713a13740e50fb98132dada34efaa6f1e343d98c036dee8",
+    "bytes": 35955,
+    "w_h": [
+      996,
+      672
+    ],
+    "task": "C3",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/g1_dyn/c-C3-g1.jpg",
+    "r_commit": "896525f6",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-C3-g1-bars.json",
+    "path": "c/c-C3-g1-bars.json",
+    "sha256": "c9ae5d0af9453ed1615ee42fe56856afba0494dde1c0b33cb3b8b90890a53dc7",
+    "bytes": 1077,
+    "w_h": null,
+    "task": "C3",
+    "source": "C:/Users/MD_Ki/AppData/Local/Temp/claude/c3/c-C3-g1-bars.json",
+    "r_commit": "896525f6",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  }
+]
