@@ -30,6 +30,9 @@ FChimeraTerrainOptions FChimeraTerrainOptions::FromCommandLine(const TCHAR* Cmd)
 	FParse::Value(Cmd, TEXT("ChimeraTerrainExposure="), O.CompareEV100);
 	FParse::Value(Cmd, TEXT("ChimeraTerrainSettleTimeoutS="), O.SettleTimeoutS);
 	O.SettleTimeoutS = FMath::Max(600.0, O.SettleTimeoutS);
+	FParse::Value(Cmd, TEXT("ChimeraTerrainHitchMs="), O.HitchMs);
+	O.HitchMs = FMath::Clamp(O.HitchMs, 0, 10000);
+	FParse::Value(Cmd, TEXT("ChimeraTerrainLoad="), O.LoadDir, false);
 	return O;
 }
 

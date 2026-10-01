@@ -14,14 +14,34 @@
 
 class UMaterialInterface;
 class UMaterialInstanceDynamic;
+class FJsonObject;
 
-/** Timings of one stroke tick, milliseconds (plan C 3.8 metrics). */
+/** Timings of one stroke tick, milliseconds (plan C 3.8 metrics: apply, normals, upload-submit, splat). */
 struct FTerrainTickTiming
 {
+	/** Brush maths on the CPU arrays (including the undo snapshots). */
 	double ApplyMs = 0.0;
+	/** Normals and tangents of the touched chunks. */
+	double NormalsMs = 0.0;
+	/** Position writes, stream copies and the submit to the render side. */
 	double UploadMs = 0.0;
 	double SplatMs = 0.0;
-	double TotalMs() const { return ApplyMs + UploadMs + SplatMs; }
+	double TotalMs() const { return ApplyMs + NormalsMs + UploadMs + SplatMs; }
+};
+
+/** One logged stroke tick (script or mouse): who and what it was, and what it cost. Written to ticks.csv by the director. */
+struct FTerrainTickSample
+{
+	int64 Index = 0;
+	uint64 Frame = 0;
+	int32 PhaseIndex = 0;
+	uint8 Mode = 0;
+	float DiameterM = 0.0f;
+	float Strength = 0.0f;
+	FTerrainTickTiming Timing;
+	int32 VerticesChanged = 0;
+	int32 TexelsChanged = 0;
+	int32 UploadedVertices = 0;
 };
 
 UCLASS()
@@ -45,6 +65,21 @@ public:
 
 	bool UndoLast();
 	bool RedoLast();
+
+	/** terrain.json + height.r32 + splat.rgba8 into Dir (plan C 3.2). False with a reason in OutError. */
+	bool SaveTo(const FString& Dir, FString& OutError);
+	/** Replace the terrain with the files in Dir (same half extent required), rebuild every chunk, re-upload the splat, clear undo. */
+	bool LoadFrom(const FString& Dir, FString& OutError);
+
+	/** Label stored with every tick from now on (e.g. "sculpt", "walk"). */
+	void SetPhase(const FString& Name);
+	const FString& GetPhase() const { return PhaseNames[CurrentPhase]; }
+	const TArray<FString>& GetPhaseNames() const { return PhaseNames; }
+	const TArray<FTerrainTickSample>& GetTickSamples() const { return TickSamples; }
+
+	/** Mouse strokes (C8): the controller records one JSON object per finished stroke (source os|slate, centre, pick error). */
+	void AddMouseStrokeRecord(const TSharedRef<FJsonObject>& Record);
+	const TArray<TSharedRef<FJsonObject>>& GetMouseStrokeRecords() const { return MouseStrokeRecords; }
 
 	void SetTerrainVisible(bool bVisible);
 	bool IsTerrainVisible() const { return bVisibleNow; }
@@ -89,6 +124,10 @@ private:
 	ChimeraTerrain::FTerrainRect StrokeSplatRect;
 	double LastTickMs = 0.0;
 	int64 TicksApplied = 0;
+	TArray<FString> PhaseNames = { TEXT("default") };
+	int32 CurrentPhase = 0;
+	TArray<FTerrainTickSample> TickSamples;
+	TArray<TSharedRef<FJsonObject>> MouseStrokeRecords;
 
 	void ApplyDelta(const ChimeraTerrain::FTerrainEditDelta& Delta);
 	UMaterialInterface* MakeDefaultMaterial();

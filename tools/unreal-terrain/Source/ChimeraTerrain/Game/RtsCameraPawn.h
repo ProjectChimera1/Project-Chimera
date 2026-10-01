@@ -19,6 +19,7 @@ struct FTerrainCameraPose
 	 * Built-in poses:
 	 *  rts80   look-test CAM_Gameplay (0,-5142,6128) cm, rot (-50,90,0), vFOV 75 (plan C 3.8 S1; lt_common.py:549-552).
 	 *  oblique a low three-quarter view of the map centre for look shots (C4/C7 may retune it).
+	 *  closeup a low view of S1's dirt path for the ground look (C7 may retune it).
 	 *  spike   G1's bounds check: 4 m above the ground at (-128,-155) m, pitched up 45 deg, so no flat ground is in view and the
 	 *          G1 spike's chunk lies entirely below the frustum's bottom plane until its edited bounds say otherwise.
 	 */

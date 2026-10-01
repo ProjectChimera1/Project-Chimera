@@ -1,0 +1,27 @@
+{
+  "name": "C4OPS",
+  "about": "C4 smoke for the ops S1, S1L and C1 do not use: csv start/stop, random_walk (five modes, one diameter per segment, phases), hitch, gc, movie, soak (short, with its gc and final memory sample), save then load (the run loads its own folder: pass -ChimeraTerrainLoad=<this run's out dir>), and the collision ops that log skipped:C5. Not a gate; its results.json shows each op's record.",
+  "ops": [
+    {"op": "look", "mode": "compare"},
+    {"op": "camera", "pose": "rts80"},
+    {"op": "settle", "frames": 30},
+    {"op": "csv", "mode": "start"},
+    {"op": "random_walk", "seconds": 8, "seed": 3, "cycle_s": 1.6, "diameters": [5, 20, 60, 100], "s": 10, "phase": "walk"},
+    {"op": "hitch", "ms": 120},
+    {"op": "wait_collision"},
+    {"op": "verify_collision"},
+    {"op": "hash", "name": "before_gc"},
+    {"op": "gc"},
+    {"op": "movie", "frames": 5},
+    {"op": "csv", "mode": "stop"},
+    {"op": "soak", "minutes": 0.15, "seed": 5, "cycle_s": 2, "diameters": [20, 60], "s": 10, "phase": "soak"},
+    {"op": "save"},
+    {"op": "hash", "name": "saved"},
+    {"op": "undo", "n": 3},
+    {"op": "hash", "name": "undone"},
+    {"op": "load"},
+    {"op": "hash", "name": "loaded"},
+    {"op": "settle", "frames": 20},
+    {"op": "shot", "name": "loaded"}
+  ]
+}

@@ -8,6 +8,7 @@
 #include "Core/RealtimeMeshBuilder.h"
 #include "Core/RealtimeMeshBufferSetConfig.h"
 #include "GameFramework/Actor.h"
+#include "HAL/PlatformTime.h"
 #include "Materials/MaterialInterface.h"
 
 using namespace RealtimeMesh;
@@ -34,7 +35,7 @@ namespace ChimeraTerrain
 		}
 
 		bool WriteRect(const FTerrainHeightfield& HF, int32 Id, const FTerrainRect& VertexRect, FRealtimeMeshStreamSet& Streams,
-			FInt32Range& OutRange, float& OutMinZ, float& OutMaxZ)
+			FInt32Range& OutRange, float& OutMinZ, float& OutMaxZ, double* OutTangentSeconds)
 		{
 			const FTerrainRect R = HF.ChunkRenderRect(Id);
 			const FTerrainRect I = VertexRect.Intersect(R);
@@ -50,6 +51,9 @@ namespace ChimeraTerrain
 			const int32 W = R.Width();
 			check(Pos.Num() == W * R.Height() && Tan.Num() == Pos.Num());
 
+			// Pass 1: positions and the height range. Pass 2: normals and tangents (timed on its own, plan C 3.8 "normals ms").
+			// The values written are identical to a single fused pass; one code path writes every tangent (build and update),
+			// so shared border vertices stay bit-equal across chunks.
 			float MinZ = TNumericLimits<float>::Max();
 			float MaxZ = -TNumericLimits<float>::Max();
 			for (int32 Y = I.Y0; Y < I.Y1; ++Y)
@@ -57,14 +61,24 @@ namespace ChimeraTerrain
 				const int32 Row = (Y - R.Y0) * W;
 				for (int32 X = I.X0; X < I.X1; ++X)
 				{
-					const int32 Li = Row + (X - R.X0);
 					const float H = HF.GetHeight(X, Y);
 					MinZ = FMath::Min(MinZ, H);
 					MaxZ = FMath::Max(MaxZ, H);
-					Pos[Li] = VertexPositionCm(HF, X, Y);
-					// One code path writes every tangent (build and update), so shared border vertices stay bit-equal across chunks.
-					Tan[Li] = FTangentElement(HF.GetNormal(X, Y), HF.GetTangent(X, Y));
+					Pos[Row + (X - R.X0)] = VertexPositionCm(HF, X, Y);
 				}
+			}
+			const double T0 = OutTangentSeconds ? FPlatformTime::Seconds() : 0.0;
+			for (int32 Y = I.Y0; Y < I.Y1; ++Y)
+			{
+				const int32 Row = (Y - R.Y0) * W;
+				for (int32 X = I.X0; X < I.X1; ++X)
+				{
+					Tan[Row + (X - R.X0)] = FTangentElement(HF.GetNormal(X, Y), HF.GetTangent(X, Y));
+				}
+			}
+			if (OutTangentSeconds)
+			{
+				*OutTangentSeconds += FPlatformTime::Seconds() - T0;
 			}
 			OutRange = FInt32Range((I.Y0 - R.Y0) * W, (I.Y1 - R.Y0) * W);
 			OutMinZ = MinZ;
@@ -117,6 +131,14 @@ namespace ChimeraTerrain
 	}
 
 	// ---- FRmcTerrainRenderer ----------------------------------------------------------------------------------
+
+	FRmcTerrainRenderer::FPendingUpdate::FPendingUpdate(TFuture<ERealtimeMeshProxyUpdateStatus>&& InFuture, bool bInRanged)
+		: Future(MoveTemp(InFuture))
+		, SubmitFrame(GFrameCounter)
+		, SubmitSeconds(FPlatformTime::Seconds())
+		, bRanged(bInRanged)
+	{
+	}
 
 	bool FRmcTerrainRenderer::Initialize(AActor* Owner, const FTerrainHeightfield& HF, UMaterialInterface* Material, ETerrainDrawType DrawType)
 	{
@@ -173,11 +195,11 @@ namespace ChimeraTerrain
 		const FRealtimeMeshBufferSetConfig Config(Draw == ETerrainDrawType::Dynamic ? ERealtimeMeshSectionDrawType::Dynamic : ERealtimeMeshSectionDrawType::Static);
 		if (bCreate)
 		{
-			C.Pending.Add(Mesh->CreateBufferSet(RmcTerrainGeometry::ChunkBufferSetKey(), MoveTemp(Streams), Config));
+			C.Pending.Add(FPendingUpdate(Mesh->CreateBufferSet(RmcTerrainGeometry::ChunkBufferSetKey(), MoveTemp(Streams), Config), false));
 		}
 		else
 		{
-			C.Pending.Add(Mesh->UpdateBufferSet(RmcTerrainGeometry::ChunkBufferSetKey(), MoveTemp(Streams)));
+			C.Pending.Add(FPendingUpdate(Mesh->UpdateBufferSet(RmcTerrainGeometry::ChunkBufferSetKey(), MoveTemp(Streams)), false));
 		}
 		float MinZ = 0.0f;
 		float MaxZ = 0.0f;
@@ -191,6 +213,9 @@ namespace ChimeraTerrain
 		{
 			return;
 		}
+		const double CallStart = FPlatformTime::Seconds();
+		double TangentSeconds = 0.0;
+		int32 VerticesWritten = 0;
 		PrunePending();
 		// Normals use central differences: a changed vertex alters its neighbours' normals too.
 		const FTerrainRect Rn = ChangedRect.Expanded(1).Intersect(FTerrainRect(0, 0, HF.Width(), HF.Width()));
@@ -210,11 +235,11 @@ namespace ChimeraTerrain
 			float MinZ = 0.0f;
 			float MaxZ = 0.0f;
 			int64 Elements = 0;
-			C.Pending.Add(Mesh->EditMeshInPlaceRanged(Key, [&](FRealtimeMeshStreamSet& Streams) -> TMap<FRealtimeMeshStreamKey, FInt32Range>
+			C.Pending.Add(FPendingUpdate(Mesh->EditMeshInPlaceRanged(Key, [&](FRealtimeMeshStreamSet& Streams) -> TMap<FRealtimeMeshStreamKey, FInt32Range>
 			{
 				TMap<FRealtimeMeshStreamKey, FInt32Range> Updated;
 				FInt32Range Range(0, 0);
-				if (RmcTerrainGeometry::WriteRect(HF, Id, Rn, Streams, Range, MinZ, MaxZ))
+				if (RmcTerrainGeometry::WriteRect(HF, Id, Rn, Streams, Range, MinZ, MaxZ, &TangentSeconds))
 				{
 					bWrote = true;
 					Elements = Range.GetUpperBoundValue() - Range.GetLowerBoundValue();
@@ -222,17 +247,22 @@ namespace ChimeraTerrain
 					Updated.Add(FRealtimeMeshStreams::Tangents, Range);
 				}
 				return Updated;
-			}));
+			}), true));
 			if (bWrote)
 			{
 				++Stats.RangedEdits;
 				Stats.UploadedVertices += Elements;
+				VerticesWritten += static_cast<int32>(Elements);
 				if (Comp->NotifyTickZRange(MinZ, MaxZ))
 				{
 					++Stats.BoundsWidenings;
 				}
 			}
 		}
+		const double TotalSeconds = FPlatformTime::Seconds() - CallStart;
+		LastTiming.NormalsMs = TangentSeconds * 1000.0;
+		LastTiming.SubmitMs = FMath::Max(0.0, TotalSeconds - TangentSeconds) * 1000.0;
+		LastTiming.Vertices = VerticesWritten;
 	}
 
 	void FRmcTerrainRenderer::RecomputeBounds(const FTerrainHeightfield& HF, const FTerrainRect& VertexRect)
@@ -292,19 +322,41 @@ namespace ChimeraTerrain
 
 	void FRmcTerrainRenderer::PrunePending()
 	{
+		// Every finished ranged edit is timed on the way out: frames and ms from the submit to the frame it was seen ready.
+		const uint64 NowFrame = GFrameCounter;
+		const double NowSeconds = FPlatformTime::Seconds();
 		for (FChunk& C : ChunkData)
 		{
-			C.Pending.RemoveAll([](const TFuture<ERealtimeMeshProxyUpdateStatus>& F) { return !F.IsValid() || F.IsReady(); });
+			C.Pending.RemoveAll([&](const FPendingUpdate& U)
+			{
+				if (!U.IsDone())
+				{
+					return false;
+				}
+				if (U.bRanged && U.Future.IsValid())
+				{
+					FTerrainEditLatency L;
+					L.Frames = static_cast<int32>(NowFrame - U.SubmitFrame);
+					L.Ms = (NowSeconds - U.SubmitSeconds) * 1000.0;
+					EditLatencies.Add(L);
+				}
+				return true;
+			});
 		}
+	}
+
+	void FRmcTerrainRenderer::PollCompletions()
+	{
+		PrunePending();
 	}
 
 	bool FRmcTerrainRenderer::HasPendingWork() const
 	{
 		for (const FChunk& C : ChunkData)
 		{
-			for (const TFuture<ERealtimeMeshProxyUpdateStatus>& F : C.Pending)
+			for (const FPendingUpdate& U : C.Pending)
 			{
-				if (F.IsValid() && !F.IsReady())
+				if (!U.IsDone())
 				{
 					return true;
 				}

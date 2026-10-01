@@ -32,7 +32,7 @@ namespace ChimeraTerrain
 		 * Returns false (nothing written) when the rect misses the chunk's render rect.
 		 */
 		bool WriteRect(const FTerrainHeightfield& HF, int32 Id, const FTerrainRect& VertexRect, RealtimeMesh::FRealtimeMeshStreamSet& Streams,
-			FInt32Range& OutRange, float& OutMinZ, float& OutMaxZ);
+			FInt32Range& OutRange, float& OutMinZ, float& OutMaxZ, double* OutTangentSeconds = nullptr);
 
 		/** The single buffer-set key every chunk mesh uses. */
 		FRealtimeMeshBufferSetKey ChunkBufferSetKey();
@@ -51,6 +51,9 @@ namespace ChimeraTerrain
 		virtual void SetVisible(bool bVisible) override;
 		virtual void SetMaterial(UMaterialInterface* Material) override;
 		virtual bool HasPendingWork() const override;
+		virtual void PollCompletions() override;
+		virtual FTerrainUpdateTiming GetLastUpdateTiming() const override { return LastTiming; }
+		virtual const TArray<FTerrainEditLatency>& GetEditLatencies() const override { return EditLatencies; }
 		virtual FTerrainRenderStats GetStats() const override;
 		virtual void GetComponents(TArray<UPrimitiveComponent*>& Out) const override;
 		virtual const TCHAR* GetName() const override { return TEXT("rmc"); }
@@ -61,11 +64,24 @@ namespace ChimeraTerrain
 		URealtimeMeshSimple* GetChunkMesh(int32 Id) const;
 
 	private:
+		/** A submitted mesh update. Ranged edits are timed from submit to the frame the future is seen ready (P2). */
+		struct FPendingUpdate
+		{
+			TFuture<ERealtimeMeshProxyUpdateStatus> Future;
+			uint64 SubmitFrame = 0;
+			double SubmitSeconds = 0.0;
+			bool bRanged = false;
+
+			FPendingUpdate() = default;
+			FPendingUpdate(TFuture<ERealtimeMeshProxyUpdateStatus>&& InFuture, bool bInRanged);
+			bool IsDone() const { return !Future.IsValid() || Future.IsReady(); }
+		};
+
 		struct FChunk
 		{
 			TWeakObjectPtr<UTerrainChunkComponent> Component;
 			TWeakObjectPtr<URealtimeMeshSimple> Mesh;
-			TArray<TFuture<ERealtimeMeshProxyUpdateStatus>> Pending;
+			TArray<FPendingUpdate> Pending;
 		};
 
 		void BuildChunkMesh(const FTerrainHeightfield& HF, int32 Id, bool bCreate);
@@ -75,5 +91,7 @@ namespace ChimeraTerrain
 		ETerrainDrawType Draw = ETerrainDrawType::Dynamic;
 		FTerrainRenderStats Stats;
 		TWeakObjectPtr<UMaterialInterface> CurrentMaterial;
+		FTerrainUpdateTiming LastTiming;
+		TArray<FTerrainEditLatency> EditLatencies;
 	};
 }

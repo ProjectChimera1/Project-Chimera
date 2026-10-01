@@ -4,10 +4,13 @@
 
 #include "AssetCompilingManager.h"
 #include "ChimeraTerrain.h"
+#include "Components/SceneCaptureComponent2D.h"
 #include "Data/TerrainIO.h"
 #include "Data/TerrainPick.h"
+#include "Data/TerrainSimExport.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
+#include "Engine/TextureRenderTarget2D.h"
 #include "Engine/World.h"
 #include "Game/RtsCameraPawn.h"
 #include "Game/TerrainActor.h"
@@ -16,10 +19,17 @@
 #include "GameFramework/PlayerController.h"
 #include "Camera/PlayerCameraManager.h"
 #include "HAL/FileManager.h"
+#include "HAL/IConsoleManager.h"
+#include "HAL/PlatformMemory.h"
 #include "HAL/PlatformMisc.h"
+#include "HAL/PlatformProcess.h"
 #include "Misc/App.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "ProfilingDebugging/CsvProfiler.h"
+#include "RenderingThread.h"
+#include "TextureResource.h"
+#include "UObject/UObjectGlobals.h"
 #include "Policies/CondensedJsonPrintPolicy.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
@@ -177,6 +187,66 @@ namespace
 		A.Add(MakeShared<FJsonValueNumber>(V.Z));
 		return MakeShared<FJsonValueArray>(A);
 	}
+
+	TSharedPtr<FJsonValue> PairToJson(double A, double B)
+	{
+		TArray<TSharedPtr<FJsonValue>> Arr;
+		Arr.Add(MakeShared<FJsonValueNumber>(A));
+		Arr.Add(MakeShared<FJsonValueNumber>(B));
+		return MakeShared<FJsonValueArray>(Arr);
+	}
+
+	double UsedPhysicalMB()
+	{
+		return static_cast<double>(FPlatformMemory::GetStats().UsedPhysical) / (1024.0 * 1024.0);
+	}
+
+	FIntPoint ViewportSize()
+	{
+		if (GEngine && GEngine->GameViewport && GEngine->GameViewport->Viewport)
+		{
+			return GEngine->GameViewport->Viewport->GetSizeXY();
+		}
+		return FIntPoint(0, 0);
+	}
+
+	/** Terrain-space ray visibility and screen projection for a camera (the G1 lambdas, shared by the footprint ops). */
+	struct FScreenProjector
+	{
+		const FTerrainHeightfield& HF;
+		APlayerController* PC;
+		FVector Cam;
+		FIntPoint Viewport;
+
+		FScreenProjector(const FTerrainHeightfield& InHF, APlayerController* InPC, const FVector& InCam, const FIntPoint& InViewport)
+			: HF(InHF), PC(InPC), Cam(InCam), Viewport(InViewport)
+		{
+		}
+
+		/** True when nothing of the terrain lies between the camera and P (0.25 m tolerance). */
+		bool Visible(const FVector& P) const
+		{
+			const FVector D = P - Cam;
+			const double Dist = D.Size();
+			FTerrainHit Hit;
+			if (!TerrainPick::RayCast(HF, Cam, D / Dist, Dist + 1.0, Hit))
+			{
+				return true;
+			}
+			return Hit.Distance >= Dist - 0.25;
+		}
+
+		bool Project(const FVector& P, FIntPoint& Out) const
+		{
+			FVector2D S;
+			if (!PC->ProjectWorldLocationToScreen(P * 100.0, S, false))
+			{
+				return false;
+			}
+			Out = FIntPoint(FMath::FloorToInt(S.X), FMath::FloorToInt(S.Y));
+			return Out.X >= 0 && Out.Y >= 0 && Out.X < Viewport.X && Out.Y < Viewport.Y;
+		}
+	};
 }
 
 ATerrainScriptDirector::ATerrainScriptDirector()
@@ -249,6 +319,42 @@ void ATerrainScriptDirector::Start(const FChimeraTerrainOptions& InOptions, ATer
 	bStarted = true;
 	OpStartSeconds = FPlatformTime::Seconds();
 	OpPhaseSeconds = OpStartSeconds;
+	RunStartSeconds = OpStartSeconds;
+	NextMemSampleSeconds = OpStartSeconds;
+}
+
+void ATerrainScriptDirector::SetPhase(const FString& Name)
+{
+	Metrics.SetPhase(Name);
+	if (Terrain)
+	{
+		Terrain->SetPhase(Name);
+	}
+	RecordPhaseEvent();
+}
+
+void ATerrainScriptDirector::RecordPhaseEvent() const
+{
+#if CSV_PROFILER
+	// parse_terrain.py tags the CSV frames with the phase from these events (the EVENTS column).
+	if (FCsvProfiler::IsCapturing())
+	{
+		FCsvProfiler::RecordEvent(CSV_CATEGORY_INDEX_GLOBAL, FString::Printf(TEXT("phase_%s"), *Metrics.GetPhase()), false);
+	}
+#endif
+}
+
+void ATerrainScriptDirector::SampleMemoryIfDue(bool bForce)
+{
+	const double Now = FPlatformTime::Seconds();
+	if (!bForce && Now < NextMemSampleSeconds)
+	{
+		return;
+	}
+	NextMemSampleSeconds = Now + 2.0;
+	// Bodies are counted only where plan C 3.8 asks for them (soak) and at forced samples; other runs record UsedPhysical only.
+	const bool bCountBodies = bForce || (Walk.bActive && Walk.bSoak);
+	Metrics.SampleMemory(Now - RunStartSeconds, bCountBodies);
 }
 
 APlayerController* ATerrainScriptDirector::GetPC() const
@@ -305,9 +411,17 @@ double ATerrainScriptDirector::OpTimeoutSeconds(const FString& Name, const FJson
 	{
 		return NumField(Op, TEXT("seconds"), 0.0) + 120.0;
 	}
-	if (Name == TEXT("stroke"))
+	if (Name == TEXT("stroke") || Name == TEXT("paint"))
 	{
 		return 120.0 + NumField(Op, TEXT("ticks"), 1.0) * 0.5;
+	}
+	if (Name == TEXT("random_walk"))
+	{
+		return NumField(Op, TEXT("seconds"), 60.0) * 1.5 + 120.0;
+	}
+	if (Name == TEXT("soak"))
+	{
+		return NumField(Op, TEXT("minutes"), 5.0) * 60.0 * 1.5 + 180.0;
 	}
 	return 120.0;
 }
@@ -325,6 +439,14 @@ void ATerrainScriptDirector::Tick(float DeltaSeconds)
 		return;
 	}
 	Metrics.SampleFrame(FApp::GetDeltaTime());
+	if (Terrain)
+	{
+		if (ChimeraTerrain::ITerrainChunkRenderer* R = Terrain->GetRenderer())
+		{
+			R->PollCompletions();
+		}
+	}
+	SampleMemoryIfDue(false);
 
 	// One op may finish and the next start in the same frame only for instantaneous ops; frame-spanning ops yield.
 	for (int32 Guard = 0; Guard < 64 && !bFinished; ++Guard)
@@ -340,6 +462,11 @@ void ATerrainScriptDirector::Tick(float DeltaSeconds)
 		if (OpFrame == 0 && OpPhase == 0)
 		{
 			UE_LOG(LogChimeraTerrain, Display, TEXT("op %d/%d %s"), OpIndex + 1, Ops.Num(), *Name);
+			const FString PhaseName = StrField(Op, TEXT("phase"));
+			if (!PhaseName.IsEmpty())
+			{
+				SetPhase(PhaseName);
+			}
 		}
 		if (Now - OpStartSeconds > OpTimeoutSeconds(Name, Op))
 		{
@@ -394,10 +521,25 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepOp(const FJsonObject& 
 	if (Name == TEXT("visible")) return StepVisible(Op);
 	if (Name == TEXT("settle")) return StepSettle(Op);
 	if (Name == TEXT("idle")) return StepIdle(Op);
-	if (Name == TEXT("stroke")) return StepStroke(Op);
+	if (Name == TEXT("stroke")) return StepStroke(Op, false);
+	if (Name == TEXT("paint")) return StepStroke(Op, true);
 	if (Name == TEXT("hash")) return StepHash(Op);
 	if (Name == TEXT("shot")) return StepShot(Op);
 	if (Name == TEXT("g1_regions")) return StepG1Regions(Op);
+	if (Name == TEXT("undo")) return StepUndoRedo(Op, true);
+	if (Name == TEXT("redo")) return StepUndoRedo(Op, false);
+	if (Name == TEXT("hitch")) return StepHitch(Op);
+	if (Name == TEXT("save")) return StepSave(Op);
+	if (Name == TEXT("load")) return StepLoad(Op);
+	if (Name == TEXT("random_walk")) return StepRandomWalk(Op, false);
+	if (Name == TEXT("soak")) return StepRandomWalk(Op, true);
+	if (Name == TEXT("gc")) return StepGc(Op);
+	if (Name == TEXT("csv")) return StepCsv(Op);
+	if (Name == TEXT("movie")) return StepMovie(Op);
+	if (Name == TEXT("depthcheck")) return StepDepthCheck(Op);
+	if (Name == TEXT("project_footprint")) return StepProjectFootprint(Op);
+	if (Name == TEXT("await_mouse")) return StepAwaitMouse(Op);
+	if (Name == TEXT("wait_collision") || Name == TEXT("verify_collision")) return StepSkippedCollision(Name);
 	if (Name == TEXT("fail"))
 	{
 		OpError = TEXT("fail op (exit-code contract test)");
@@ -497,32 +639,59 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepIdle(const FJsonObject
 	return OpFrame >= Frames ? EStep::Done : EStep::Running;
 }
 
-ATerrainScriptDirector::EStep ATerrainScriptDirector::StepStroke(const FJsonObject& Op)
+ATerrainScriptDirector::EStep ATerrainScriptDirector::StepStroke(const FJsonObject& Op, bool bForcePaint)
 {
 	TArray<FVector2D> Path;
 	FTerrainBrushParams P;
-	if (!ParseMode(StrField(Op, TEXT("mode")), P.Mode) || !ParsePath(Op, Path))
+	bool bModeOk = true;
+	if (bForcePaint)
+	{
+		P.Mode = ETerrainBrushMode::Paint;
+	}
+	else
+	{
+		bModeOk = ParseMode(StrField(Op, TEXT("mode")), P.Mode);
+	}
+	if (!bModeOk || !ParsePath(Op, Path))
 	{
 		OpError = TEXT("stroke needs mode (raise|lower|smooth|flatten|paint) and path [[x,y],...]");
 		return EStep::Failed;
 	}
+	const FString ModeName = bForcePaint ? FString(TEXT("paint")) : StrField(Op, TEXT("mode"));
 	P.DiameterM = static_cast<float>(NumField(Op, TEXT("d"), 20.0));
 	P.Strength = static_cast<float>(NumField(Op, TEXT("s"), 10.0));
 	P.PaintLayer = static_cast<int32>(NumField(Op, TEXT("layer"), 0.0));
 	const int32 Ticks = FMath::Max(1, static_cast<int32>(NumField(Op, TEXT("ticks"), 1.0)));
 	const int32 PerFrame = FMath::Max(1, static_cast<int32>(NumField(Op, TEXT("per_frame"), 1.0)));
+	bool bHitchOp = false;
+	Op.TryGetBoolField(TEXT("hitch"), bHitchOp);
 
 	if (OpFrame == 0)
 	{
 		Terrain->BeginStroke(P, Path[0]);
 		StrokeTicksDone = 0;
+		bStrokeHitched = false;
 	}
 	for (int32 K = 0; K < PerFrame && StrokeTicksDone < Ticks; ++K)
 	{
+		if (bHitchOp && Options.HitchMs > 0 && !bStrokeHitched && StrokeTicksDone >= Ticks / 2)
+		{
+			// P8: a game-thread stall in the middle of a stroke; the tick list must not change (ticks never depend on DeltaTime).
+			bStrokeHitched = true;
+			const double H0 = FPlatformTime::Seconds();
+			FPlatformProcess::Sleep(static_cast<float>(Options.HitchMs) / 1000.0f);
+			TSharedRef<FJsonObject> Hj = MakeShared<FJsonObject>();
+			Hj->SetStringField(TEXT("source"), TEXT("stroke"));
+			Hj->SetNumberField(TEXT("op_index"), OpIndex + 1);
+			Hj->SetNumberField(TEXT("tick"), StrokeTicksDone);
+			Hj->SetNumberField(TEXT("ms_requested"), Options.HitchMs);
+			Hj->SetNumberField(TEXT("ms_slept"), (FPlatformTime::Seconds() - H0) * 1000.0);
+			Hitches.Add(MakeShared<FJsonValueObject>(Hj));
+			UE_LOG(LogChimeraTerrain, Display, TEXT("hitch %d ms inside stroke op %d at tick %d"), Options.HitchMs, OpIndex + 1, StrokeTicksDone);
+		}
 		const double T = Ticks > 1 ? static_cast<double>(StrokeTicksDone) / static_cast<double>(Ticks - 1) : 0.0;
 		FTerrainTickTiming Timing;
 		Terrain->ApplyTick(PathPoint(Path, T), &Timing);
-		Metrics.AddTick(Timing.ApplyMs, Timing.UploadMs, Timing.SplatMs);
 		++StrokeTicksDone;
 	}
 	if (StrokeTicksDone < Ticks)
@@ -531,7 +700,7 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepStroke(const FJsonObje
 	}
 	const bool bPushed = Terrain->EndStroke();
 	TSharedRef<FJsonObject> S = MakeShared<FJsonObject>();
-	S->SetStringField(TEXT("mode"), StrField(Op, TEXT("mode")));
+	S->SetStringField(TEXT("mode"), ModeName);
 	S->SetNumberField(TEXT("d"), P.DiameterM);
 	S->SetNumberField(TEXT("s"), P.Strength);
 	S->SetNumberField(TEXT("layer"), P.PaintLayer);
@@ -541,8 +710,45 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepStroke(const FJsonObje
 	S->SetNumberField(TEXT("per_frame"), PerFrame);
 	S->SetNumberField(TEXT("frames"), OpFrame + 1);
 	S->SetBoolField(TEXT("undo_pushed"), bPushed);
+	S->SetBoolField(TEXT("hitched"), bStrokeHitched);
+	S->SetStringField(TEXT("phase"), Terrain->GetPhase());
 	Strokes.Add(MakeShared<FJsonValueObject>(S));
-	UE_LOG(LogChimeraTerrain, Display, TEXT("stroke %s d=%.0f s=%.0f ticks=%d ticks_applied=%d undo_pushed=%d"), *StrField(Op, TEXT("mode")),
+
+	// Footprint discs for project_footprint: centres every R/2 metres along the path.
+	TArray<FString> FpNames;
+	FString FpOne;
+	const TArray<TSharedPtr<FJsonValue>>* FpArr = nullptr;
+	if (Op.TryGetStringField(TEXT("fp"), FpOne) && !FpOne.IsEmpty())
+	{
+		FpNames.Add(FpOne);
+	}
+	else if (Op.TryGetArrayField(TEXT("fp"), FpArr))
+	{
+		for (const TSharedPtr<FJsonValue>& V : *FpArr)
+		{
+			FpNames.Add(V->AsString());
+		}
+	}
+	if (FpNames.Num() > 0)
+	{
+		double Len = 0.0;
+		for (int32 I = 1; I < Path.Num(); ++I)
+		{
+			Len += FVector2D::Distance(Path[I - 1], Path[I]);
+		}
+		const double R = P.DiameterM * 0.5;
+		const int32 N = FMath::Max(1, FMath::CeilToInt(Len / FMath::Max(0.5, R * 0.5)));
+		for (const FString& SetName : FpNames)
+		{
+			TArray<FVector>& Set = FootprintSets.FindOrAdd(SetName);
+			for (int32 I = 0; I <= N; ++I)
+			{
+				const FVector2D C = PathPoint(Path, static_cast<double>(I) / N);
+				Set.Add(FVector(C.X, C.Y, R));
+			}
+		}
+	}
+	UE_LOG(LogChimeraTerrain, Display, TEXT("stroke %s d=%.0f s=%.0f ticks=%d ticks_applied=%d undo_pushed=%d"), *ModeName,
 		P.DiameterM, P.Strength, Ticks, StrokeTicksDone, bPushed ? 1 : 0);
 	return EStep::Done;
 }
@@ -554,6 +760,12 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepHash(const FJsonObject
 	H->SetStringField(TEXT("height_fnv"), TerrainIO::HashToString(Terrain->HeightFnv()));
 	H->SetStringField(TEXT("splat_fnv"), TerrainIO::HashToString(Terrain->SplatFnv()));
 	H->SetNumberField(TEXT("ticks_applied_total"), static_cast<double>(Terrain->GetTicksApplied()));
+	if (Terrain->GetHeightfield().HalfExtentM() >= TerrainSimExport::SimGridHalfM)
+	{
+		TArray<int32> SimRaw;
+		TerrainSimExport::BuildSimGrid(Terrain->GetHeightfield(), SimRaw);
+		H->SetStringField(TEXT("sim_grid_fnv"), TerrainIO::HashToString(TerrainSimExport::SimGridFnv(SimRaw)));
+	}
 	Hashes->SetObjectField(Name, H);
 	UE_LOG(LogChimeraTerrain, Display, TEXT("hash %s height_fnv=%s splat_fnv=%s"), *Name, *H->GetStringField(TEXT("height_fnv")), *H->GetStringField(TEXT("splat_fnv")));
 	return EStep::Done;
@@ -813,6 +1025,872 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepG1Regions(const FJsonO
 	return EStep::Done;
 }
 
+ATerrainScriptDirector::EStep ATerrainScriptDirector::StepUndoRedo(const FJsonObject& Op, bool bUndo)
+{
+	const int32 N = FMath::Max(1, static_cast<int32>(NumField(Op, TEXT("n"), 1.0)));
+	const TCHAR* const What = bUndo ? TEXT("undo") : TEXT("redo");
+	for (int32 I = 0; I < N; ++I)
+	{
+		const bool bOk = bUndo ? Terrain->UndoLast() : Terrain->RedoLast();
+		if (!bOk)
+		{
+			OpError = FString::Printf(TEXT("%s %d of %d: nothing to %s, or a stroke is open"), What, I + 1, N, What);
+			return EStep::Failed;
+		}
+	}
+	TSharedRef<FJsonObject> J = MakeShared<FJsonObject>();
+	J->SetStringField(TEXT("op"), What);
+	J->SetNumberField(TEXT("n"), N);
+	J->SetStringField(TEXT("height_fnv"), TerrainIO::HashToString(Terrain->HeightFnv()));
+	J->SetStringField(TEXT("splat_fnv"), TerrainIO::HashToString(Terrain->SplatFnv()));
+	UndoRedos.Add(MakeShared<FJsonValueObject>(J));
+	UE_LOG(LogChimeraTerrain, Display, TEXT("%s x%d height_fnv=%s splat_fnv=%s"), What, N, *J->GetStringField(TEXT("height_fnv")), *J->GetStringField(TEXT("splat_fnv")));
+	return EStep::Done;
+}
+
+ATerrainScriptDirector::EStep ATerrainScriptDirector::StepHitch(const FJsonObject& Op)
+{
+	const int32 Ms = FMath::Clamp(static_cast<int32>(NumField(Op, TEXT("ms"), 100.0)), 0, 10000);
+	const double T0 = FPlatformTime::Seconds();
+	FPlatformProcess::Sleep(static_cast<float>(Ms) / 1000.0f);
+	TSharedRef<FJsonObject> Hj = MakeShared<FJsonObject>();
+	Hj->SetStringField(TEXT("source"), TEXT("op"));
+	Hj->SetNumberField(TEXT("op_index"), OpIndex + 1);
+	Hj->SetNumberField(TEXT("ms_requested"), Ms);
+	Hj->SetNumberField(TEXT("ms_slept"), (FPlatformTime::Seconds() - T0) * 1000.0);
+	Hitches.Add(MakeShared<FJsonValueObject>(Hj));
+	UE_LOG(LogChimeraTerrain, Display, TEXT("hitch %d ms"), Ms);
+	return EStep::Done;
+}
+
+ATerrainScriptDirector::EStep ATerrainScriptDirector::StepSave(const FJsonObject& Op)
+{
+	FString Err;
+	if (!Terrain->SaveTo(Options.OutDir, Err))
+	{
+		OpError = Err;
+		return EStep::Failed;
+	}
+	Saved = MakeShared<FJsonObject>();
+	Saved->SetStringField(TEXT("dir"), Options.OutDir);
+	Saved->SetStringField(TEXT("height_fnv"), TerrainIO::HashToString(Terrain->HeightFnv()));
+	Saved->SetStringField(TEXT("splat_fnv"), TerrainIO::HashToString(Terrain->SplatFnv()));
+	FString SimText = TEXT("n/a");
+	if (Terrain->GetHeightfield().HalfExtentM() >= TerrainSimExport::SimGridHalfM)
+	{
+		TArray<int32> Raw;
+		TerrainSimExport::BuildSimGrid(Terrain->GetHeightfield(), Raw);
+		SimText = TerrainIO::HashToString(TerrainSimExport::SimGridFnv(Raw));
+		Saved->SetStringField(TEXT("sim_grid_fnv"), SimText);
+	}
+	UE_LOG(LogChimeraTerrain, Display, TEXT("save %s height_fnv=%s splat_fnv=%s sim_grid_fnv=%s"), *Options.OutDir, *Saved->GetStringField(TEXT("height_fnv")),
+		*Saved->GetStringField(TEXT("splat_fnv")), *SimText);
+	return EStep::Done;
+}
+
+ATerrainScriptDirector::EStep ATerrainScriptDirector::StepLoad(const FJsonObject& Op)
+{
+	FString Dir = StrField(Op, TEXT("dir"));
+	if (Dir.IsEmpty())
+	{
+		Dir = Options.LoadDir;
+	}
+	if (Dir.IsEmpty())
+	{
+		OpError = TEXT("load needs \"dir\" or -ChimeraTerrainLoad=<absolute dir>");
+		return EStep::Failed;
+	}
+	FString Err;
+	if (!Terrain->LoadFrom(Dir, Err))
+	{
+		OpError = FString::Printf(TEXT("load %s: %s"), *Dir, *Err);
+		return EStep::Failed;
+	}
+	Loaded = MakeShared<FJsonObject>();
+	Loaded->SetStringField(TEXT("dir"), Dir);
+	Loaded->SetStringField(TEXT("height_fnv"), TerrainIO::HashToString(Terrain->HeightFnv()));
+	Loaded->SetStringField(TEXT("splat_fnv"), TerrainIO::HashToString(Terrain->SplatFnv()));
+	UE_LOG(LogChimeraTerrain, Display, TEXT("load %s height_fnv=%s splat_fnv=%s"), *Dir, *Loaded->GetStringField(TEXT("height_fnv")), *Loaded->GetStringField(TEXT("splat_fnv")));
+	return EStep::Done;
+}
+
+ATerrainScriptDirector::EStep ATerrainScriptDirector::StepRandomWalk(const FJsonObject& Op, bool bSoak)
+{
+	constexpr int32 MaxCatchUpTicks = 15; // plan C 3.4: at most 0.5 s of ticks per frame; a longer hitch drops ticks
+	if (OpFrame == 0)
+	{
+		Walk = FWalkState();
+		Walk.bActive = true;
+		Walk.bSoak = bSoak;
+		Walk.Rng.Initialize(static_cast<int32>(NumField(Op, TEXT("seed"), 1.0)));
+		Walk.DurationS = bSoak ? NumField(Op, TEXT("minutes"), 5.0) * 60.0 : NumField(Op, TEXT("seconds"), 60.0);
+		Walk.CycleS = FMath::Max(0.5, NumField(Op, TEXT("cycle_s"), 5.0));
+		Walk.SpeedMps = NumField(Op, TEXT("speed"), 8.0);
+		Walk.BoundsM = FMath::Clamp(NumField(Op, TEXT("bounds"), 100.0), 5.0, static_cast<double>(Terrain->GetHeightfield().HalfExtentM()) - 5.0);
+		Walk.Hz = FMath::Clamp(static_cast<int32>(NumField(Op, TEXT("hz"), 30.0)), 1, 240);
+		Walk.Strength = static_cast<float>(NumField(Op, TEXT("s"), 10.0));
+		const TArray<TSharedPtr<FJsonValue>>* D = nullptr;
+		if (Op.TryGetArrayField(TEXT("diameters"), D) && D->Num() > 0)
+		{
+			for (const TSharedPtr<FJsonValue>& V : *D)
+			{
+				Walk.Diameters.Add(static_cast<float>(V->AsNumber()));
+			}
+		}
+		else
+		{
+			Walk.Diameters = { 5.0f, 20.0f, 60.0f, 100.0f };
+		}
+		Walk.Pos = FVector2D(Walk.Rng.FRandRange(-Walk.BoundsM, Walk.BoundsM), Walk.Rng.FRandRange(-Walk.BoundsM, Walk.BoundsM));
+		Walk.Heading = Walk.Rng.FRandRange(0.0, 2.0 * PI);
+		if (bSoak)
+		{
+			SampleMemoryIfDue(true);
+			Metrics.MarkMemoryBaseline();
+		}
+		UE_LOG(LogChimeraTerrain, Display, TEXT("%s: %.0f s seed=%d cycle=%.1f s hz=%d strength=%.0f bounds=%.0f m"), bSoak ? TEXT("soak") : TEXT("random_walk"),
+			Walk.DurationS, static_cast<int32>(NumField(Op, TEXT("seed"), 1.0)), Walk.CycleS, Walk.Hz, Walk.Strength, Walk.BoundsM);
+		return EStep::Running;
+	}
+
+	const double Dt = FApp::GetDeltaTime();
+	Walk.ElapsedS += Dt;
+	const bool bDone = Walk.ElapsedS >= Walk.DurationS;
+	if (!bDone)
+	{
+		// One mode per cycle_s; inside it every diameter in turn (cycle_s / N each), so every diameter meets every mode in a 60 s walk
+		// (plan C 3.8: the five modes every 5 s at d 5/20/60/100). A new stroke (and undo entry) starts at each slot.
+		const int32 NumD = Walk.Diameters.Num();
+		const double SlotS = Walk.CycleS / NumD;
+		const int32 Slot = FMath::FloorToInt(Walk.ElapsedS / SlotS);
+		if (Slot != Walk.Segment)
+		{
+			if (Terrain->IsStrokeOpen())
+			{
+				Terrain->EndStroke();
+			}
+			Walk.Segment = Slot;
+			++Walk.Segments;
+			FTerrainBrushParams P;
+			P.Mode = static_cast<ETerrainBrushMode>((Slot / NumD) % 5);
+			P.DiameterM = Walk.Diameters[Slot % NumD];
+			P.Strength = Walk.Strength;
+			if (P.Mode == ETerrainBrushMode::Paint)
+			{
+				// Layers 1..3: painting layer 0 over the all-grass start changes no byte, so it would exercise no splat upload.
+				P.PaintLayer = 1 + (Walk.PaintSegments++ % (SplatLayerCount - 1));
+			}
+			Terrain->BeginStroke(P, Walk.Pos);
+		}
+		Walk.Accumulator += Dt;
+		int32 Due = FMath::FloorToInt(Walk.Accumulator * Walk.Hz);
+		if (Due > MaxCatchUpTicks)
+		{
+			Walk.Dropped += Due - MaxCatchUpTicks;
+			Due = MaxCatchUpTicks;
+			Walk.Accumulator = 0.0;
+		}
+		else
+		{
+			Walk.Accumulator -= static_cast<double>(Due) / Walk.Hz;
+		}
+		for (int32 I = 0; I < Due; ++I)
+		{
+			Walk.Heading += Walk.Rng.FRandRange(-0.35, 0.35);
+			Walk.Pos.X += FMath::Cos(Walk.Heading) * Walk.SpeedMps / Walk.Hz;
+			Walk.Pos.Y += FMath::Sin(Walk.Heading) * Walk.SpeedMps / Walk.Hz;
+			if (FMath::Abs(Walk.Pos.X) > Walk.BoundsM)
+			{
+				Walk.Pos.X = FMath::Clamp(Walk.Pos.X, -Walk.BoundsM, Walk.BoundsM);
+				Walk.Heading = PI - Walk.Heading;
+			}
+			if (FMath::Abs(Walk.Pos.Y) > Walk.BoundsM)
+			{
+				Walk.Pos.Y = FMath::Clamp(Walk.Pos.Y, -Walk.BoundsM, Walk.BoundsM);
+				Walk.Heading = -Walk.Heading;
+			}
+			FTerrainTickTiming Timing;
+			Terrain->ApplyTick(Walk.Pos, &Timing);
+			++Walk.Ticks;
+		}
+		return EStep::Running;
+	}
+
+	if (Terrain->IsStrokeOpen())
+	{
+		Terrain->EndStroke();
+	}
+	TSharedRef<FJsonObject> W = MakeShared<FJsonObject>();
+	W->SetStringField(TEXT("op"), bSoak ? TEXT("soak") : TEXT("random_walk"));
+	W->SetNumberField(TEXT("seconds"), Walk.ElapsedS);
+	W->SetNumberField(TEXT("ticks_applied"), static_cast<double>(Walk.Ticks));
+	W->SetNumberField(TEXT("ticks_dropped"), static_cast<double>(Walk.Dropped));
+	W->SetNumberField(TEXT("segments"), Walk.Segments);
+	W->SetNumberField(TEXT("hz"), Walk.Hz);
+	W->SetStringField(TEXT("phase"), Terrain->GetPhase());
+	Walks.Add(MakeShared<FJsonValueObject>(W));
+	UE_LOG(LogChimeraTerrain, Display, TEXT("%s done: %.1f s ticks=%lld dropped=%lld segments=%d"), bSoak ? TEXT("soak") : TEXT("random_walk"), Walk.ElapsedS, Walk.Ticks, Walk.Dropped, Walk.Segments);
+	Walk.bActive = false;
+	if (bSoak)
+	{
+		// One blocking gc and a final sample (plan C 3.8); the samples before it were taken with no forced GC.
+		SampleMemoryIfDue(true);
+		return StepGc(Op);
+	}
+	return EStep::Done;
+}
+
+ATerrainScriptDirector::EStep ATerrainScriptDirector::StepGc(const FJsonObject& Op)
+{
+	const double BeforeMb = UsedPhysicalMB();
+	const double T0 = FPlatformTime::Seconds();
+	CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS, true);
+	const double Ms = (FPlatformTime::Seconds() - T0) * 1000.0;
+	Metrics.SampleMemory(FPlatformTime::Seconds() - RunStartSeconds, true);
+	NextMemSampleSeconds = FPlatformTime::Seconds() + 2.0;
+	TSharedRef<FJsonObject> G = MakeShared<FJsonObject>();
+	G->SetNumberField(TEXT("ms"), Ms);
+	G->SetNumberField(TEXT("used_mb_before"), BeforeMb);
+	G->SetNumberField(TEXT("used_mb_after"), UsedPhysicalMB());
+	Gcs.Add(MakeShared<FJsonValueObject>(G));
+	UE_LOG(LogChimeraTerrain, Display, TEXT("gc %.1f ms used %.0f -> %.0f MB"), Ms, BeforeMb, UsedPhysicalMB());
+	return EStep::Done;
+}
+
+ATerrainScriptDirector::EStep ATerrainScriptDirector::StepCsv(const FJsonObject& Op)
+{
+	const FString Mode = StrField(Op, TEXT("mode"));
+#if CSV_PROFILER
+	if (Mode.Equals(TEXT("start"), ESearchCase::IgnoreCase))
+	{
+		if (OpFrame == 0)
+		{
+			if (FCsvProfiler::IsCapturing())
+			{
+				OpError = TEXT("a CSV capture is already running");
+				return EStep::Failed;
+			}
+			// Uncompressed, straight into the out dir (BeginCapture takes a destination folder; CsvProfiler.cpp:3973-3976).
+			if (IConsoleVariable* Cv = IConsoleManager::Get().FindConsoleVariable(TEXT("csv.CompressionMode")))
+			{
+				Cv->Set(0);
+			}
+			CsvStartedPath = FPaths::Combine(Options.OutDir, TEXT("terrain.csv"));
+			IFileManager::Get().Delete(*CsvStartedPath, false, true, true);
+			FCsvProfiler::Get()->BeginCapture(-1, Options.OutDir, TEXT("terrain.csv"));
+			return EStep::Running;
+		}
+		if (!FCsvProfiler::IsCapturing())
+		{
+			if (OpFrame > 30)
+			{
+				OpError = TEXT("CSV capture did not start within 30 frames");
+				return EStep::Failed;
+			}
+			return EStep::Running;
+		}
+		bCsvActive = true;
+		RecordPhaseEvent();
+		UE_LOG(LogChimeraTerrain, Display, TEXT("csv start -> %s"), *CsvStartedPath);
+		return EStep::Done;
+	}
+	if (Mode.Equals(TEXT("stop"), ESearchCase::IgnoreCase))
+	{
+		if (OpFrame == 0)
+		{
+			if (!FCsvProfiler::IsCapturing())
+			{
+				OpError = TEXT("csv stop: no capture is running");
+				return EStep::Failed;
+			}
+			CsvFuture = MakeShared<TSharedFuture<FString>>(FCsvProfiler::Get()->EndCapture());
+			return EStep::Running;
+		}
+		if (!CsvFuture.IsValid() || !CsvFuture->IsValid())
+		{
+			OpError = TEXT("csv stop: EndCapture returned no future");
+			return EStep::Failed;
+		}
+		if (!CsvFuture->IsReady())
+		{
+			return EStep::Running;
+		}
+		FString Written = CsvFuture->Get();
+		bCsvActive = false;
+		FString Final = FPaths::Combine(Options.OutDir, TEXT("terrain.csv"));
+		FPaths::NormalizeFilename(Written);
+		if (!IFileManager::Get().FileExists(*Final) && IFileManager::Get().FileExists(*Written))
+		{
+			IFileManager::Get().Move(*Final, *Written, true);
+		}
+		const int64 Bytes = IFileManager::Get().FileSize(*Final);
+		if (Bytes <= 0)
+		{
+			OpError = FString::Printf(TEXT("csv stop: no CSV at %s (profiler wrote '%s')"), *Final, *Written);
+			return EStep::Failed;
+		}
+		CsvInfo = MakeShared<FJsonObject>();
+		CsvInfo->SetStringField(TEXT("path"), Final);
+		CsvInfo->SetStringField(TEXT("profiler_path"), Written);
+		CsvInfo->SetNumberField(TEXT("bytes"), static_cast<double>(Bytes));
+		UE_LOG(LogChimeraTerrain, Display, TEXT("csv stop -> %s (%lld bytes)"), *Final, Bytes);
+		return EStep::Done;
+	}
+	OpError = TEXT("csv needs mode start | stop");
+	return EStep::Failed;
+#else
+	OpError = FString::Printf(TEXT("csv %s: CSV_PROFILER is not compiled into this build"), *Mode);
+	return EStep::Failed;
+#endif
+}
+
+ATerrainScriptDirector::EStep ATerrainScriptDirector::StepMovie(const FJsonObject& Op)
+{
+	// GIsDumpingMovie > 0 dumps that many frames as MovieFrame*.png (UnrealClient.cpp:281-289); UI is excluded (GameViewportClient.cpp:2281-2286).
+	const int32 Frames = FMath::Max(1, static_cast<int32>(NumField(Op, TEXT("frames"), 30.0)));
+	const FString Dir = FPaths::ConvertRelativePathToFull(FPaths::ScreenShotDir());
+	if (OpFrame == 0)
+	{
+		MovieRequested = Frames;
+		MovieStartUtc = FDateTime::UtcNow();
+		GIsDumpingMovie = Frames;
+		UE_LOG(LogChimeraTerrain, Display, TEXT("movie %d frames -> %s"), Frames, *Dir);
+		return EStep::Running;
+	}
+	if (GIsDumpingMovie != 0)
+	{
+		return EStep::Running;
+	}
+	TArray<FString> Files;
+	IFileManager::Get().FindFiles(Files, *FPaths::Combine(Dir, TEXT("MovieFrame*.*")), true, false);
+	int32 Fresh = 0;
+	FString Ext;
+	TArray<FString> FreshFiles;
+	for (const FString& F : Files)
+	{
+		// A file is this op's when it was written after the op started; older MovieFrame files in the folder belong to earlier runs and
+		// are listed nowhere, so consumers (C9's video) take exactly movies[].files.
+		const FDateTime Stamp = IFileManager::Get().GetTimeStamp(*FPaths::Combine(Dir, F));
+		if (Stamp >= MovieStartUtc - FTimespan::FromSeconds(2.0) && IFileManager::Get().FileSize(*FPaths::Combine(Dir, F)) > 0)
+		{
+			++Fresh;
+			Ext = FPaths::GetExtension(F);
+			FreshFiles.Add(F);
+		}
+	}
+	FreshFiles.Sort();
+	if (Fresh < MovieRequested)
+	{
+		return EStep::Running; // files are written asynchronously; the op timeout (120 s) fails a run that never gets them
+	}
+	TSharedRef<FJsonObject> M = MakeShared<FJsonObject>();
+	M->SetNumberField(TEXT("frames_requested"), MovieRequested);
+	M->SetNumberField(TEXT("files_written"), Fresh);
+	M->SetStringField(TEXT("dir"), Dir);
+	M->SetStringField(TEXT("extension"), Ext);
+	TArray<TSharedPtr<FJsonValue>> FileArr;
+	for (const FString& F : FreshFiles)
+	{
+		FileArr.Add(MakeShared<FJsonValueString>(F));
+	}
+	M->SetArrayField(TEXT("files"), FileArr);
+	Movies.Add(MakeShared<FJsonValueObject>(M));
+	UE_LOG(LogChimeraTerrain, Display, TEXT("movie done: %d files .%s in %s"), Fresh, *Ext, *Dir);
+	return EStep::Done;
+}
+
+ATerrainScriptDirector::EStep ATerrainScriptDirector::StepDepthCheck(const FJsonObject& Op)
+{
+	// P11: the GPU mesh equals the CPU heightfield. SceneCapture2D SCS_SceneDepth (EngineTypes.h:540, depth in R, view-space cm) into an
+	// RTF_R32f target, read back with ReadLinearColorPixels (UnrealClient.h:162, RCM_MinMax = values unscaled), against the analytic ray's
+	// view depth at n seeded pixels.
+	constexpr int32 W = 1920;
+	constexpr int32 H = 1080;
+	const FString PoseName = StrField(Op, TEXT("pose"), TEXT("rts80"));
+	const FString Name = StrField(Op, TEXT("name"), PoseName);
+	FTerrainCameraPose Pose;
+	if (!FTerrainCameraPose::Find(PoseName, Pose))
+	{
+		OpError = FString::Printf(TEXT("unknown pose '%s'"), *PoseName);
+		return EStep::Failed;
+	}
+	if (OpFrame == 0)
+	{
+		if (!Capture)
+		{
+			CaptureTarget = NewObject<UTextureRenderTarget2D>(this, TEXT("DepthCheckTarget"));
+			CaptureTarget->RenderTargetFormat = RTF_R32f;
+			CaptureTarget->InitAutoFormat(W, H);
+			CaptureTarget->UpdateResourceImmediate(true);
+			Capture = NewObject<USceneCaptureComponent2D>(this, TEXT("DepthCheckCapture"));
+			Capture->TextureTarget = CaptureTarget;
+			Capture->CaptureSource = SCS_SceneDepth;
+			Capture->bCaptureEveryFrame = false;
+			Capture->bCaptureOnMovement = false;
+			Capture->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_UseShowOnlyList;
+			Capture->ShowOnlyActors.Add(Terrain.Get());
+			Capture->RegisterComponent();
+		}
+		Capture->SetWorldLocationAndRotation(Pose.LocationCm, Pose.Rotation);
+		Capture->FOVAngle = ARtsCameraPawn::HFovFromVFov(Pose.VFovDeg, static_cast<float>(W) / static_cast<float>(H));
+		return EStep::Running;
+	}
+	if (OpFrame < 3 || !CompileQueuesIdle() || Terrain->HasPendingWork())
+	{
+		return EStep::Running;
+	}
+	// The first capture of a fresh view can come back empty while its pipeline states build: capture twice, read the second.
+	Capture->CaptureScene();
+	FlushRenderingCommands();
+	Capture->CaptureScene();
+	FTextureRenderTargetResource* Res = CaptureTarget->GameThread_GetRenderTargetResource();
+	TArray<FLinearColor> Px;
+	if (!Res || !Res->ReadLinearColorPixels(Px, FReadSurfaceDataFlags(RCM_MinMax, CubeFace_MAX)) || Px.Num() != W * H)
+	{
+		OpError = FString::Printf(TEXT("depth readback failed (%d pixels)"), Px.Num());
+		return EStep::Failed;
+	}
+	auto GpuHit = [&](int32 X, int32 Y, float& OutDepth) -> bool
+	{
+		const float D = Px[Y * W + X].R;
+		OutDepth = D;
+		return FMath::IsFinite(D) && D > 0.0f && D < 1.0e6f;
+	};
+	int64 FrameHits = 0;
+	float MinHit = TNumericLimits<float>::Max();
+	float MaxHit = 0.0f;
+	for (int32 I = 0; I < W * H; ++I)
+	{
+		const float D = Px[I].R;
+		if (FMath::IsFinite(D) && D > 0.0f && D < 1.0e6f)
+		{
+			++FrameHits;
+			MinHit = FMath::Min(MinHit, D);
+			MaxHit = FMath::Max(MaxHit, D);
+		}
+	}
+
+	const FTerrainHeightfield& HF = Terrain->GetHeightfield();
+	const FRotationMatrix RM(Pose.Rotation);
+	const FVector Fwd = RM.GetUnitAxis(EAxis::X);
+	const FVector Right = RM.GetUnitAxis(EAxis::Y);
+	const FVector Up = RM.GetUnitAxis(EAxis::Z);
+	const double HFov = FMath::DegreesToRadians(Capture->FOVAngle);
+	const double TanH = FMath::Tan(HFov * 0.5);
+	const double TanV = TanH * static_cast<double>(H) / static_cast<double>(W);
+	const FVector CamM = Pose.LocationCm / 100.0;
+	const int32 N = FMath::Max(100, static_cast<int32>(NumField(Op, TEXT("n"), 10000.0)));
+	FRandomStream Rng(static_cast<int32>(NumField(Op, TEXT("seed"), 1234.0)));
+
+	// One accumulator per pixel set: the uniform full-frame set (the plan's 10k bar) and, with "fp", a seeded set drawn from the projected
+	// footprint of that stroke set, so a stale region the size of one chunk quadrant cannot hide under the full-frame p99.
+	struct FDepthAcc
+	{
+		FTerrainSeries Delta;
+		FTerrainSeries DeltaNoBand;
+		int32 N = 0;
+		int32 BothHit = 0;
+		int32 BothMiss = 0;
+		int32 GpuOnly = 0;
+		int32 AnalyticOnly = 0;
+		int32 InBand = 0;
+		int32 OutBand = 0;
+		TArray<TSharedPtr<FJsonValue>> Examples;
+
+		void Write(FJsonObject& O) const
+		{
+			O.SetNumberField(TEXT("n"), N);
+			O.SetNumberField(TEXT("both_hit"), BothHit);
+			O.SetNumberField(TEXT("both_miss"), BothMiss);
+			O.SetNumberField(TEXT("gpu_only_hit"), GpuOnly);
+			O.SetNumberField(TEXT("analytic_only_hit"), AnalyticOnly);
+			O.SetNumberField(TEXT("hit_miss_disagree_in_band"), InBand);
+			O.SetNumberField(TEXT("hit_miss_disagree_outside_band"), OutBand);
+			O.SetObjectField(TEXT("abs_delta_cm"), Delta.ToJson());
+			O.SetObjectField(TEXT("abs_delta_cm_outside_band"), DeltaNoBand.ToJson());
+			O.SetArrayField(TEXT("disagreement_examples"), Examples);
+		}
+	};
+	auto Evaluate = [&](int32 X, int32 Y, FDepthAcc& A)
+	{
+		++A.N;
+		float GpuD = 0.0f;
+		const bool bGpu = GpuHit(X, Y, GpuD);
+		const double Nx = (static_cast<double>(X) + 0.5) / W * 2.0 - 1.0;
+		const double Ny = 1.0 - (static_cast<double>(Y) + 0.5) / H * 2.0;
+		const FVector Dir = (Fwd + Right * (Nx * TanH) + Up * (Ny * TanV)).GetSafeNormal();
+		FTerrainHit Hit;
+		const bool bAnalytic = TerrainPick::RayCast(HF, CamM, Dir, 5000.0, Hit);
+		// Silhouette band: a GPU pixel within 2 px whose hit state differs from this pixel's.
+		bool bBand = false;
+		for (int32 Dy = -2; Dy <= 2 && !bBand; ++Dy)
+		{
+			for (int32 Dx = -2; Dx <= 2; ++Dx)
+			{
+				const int32 Qx = X + Dx;
+				const int32 Qy = Y + Dy;
+				if (Qx < 0 || Qy < 0 || Qx >= W || Qy >= H)
+				{
+					continue;
+				}
+				float Dummy = 0.0f;
+				if (GpuHit(Qx, Qy, Dummy) != bGpu)
+				{
+					bBand = true;
+					break;
+				}
+			}
+		}
+		if (bGpu && bAnalytic)
+		{
+			++A.BothHit;
+			const double AnalyticCm = Hit.Distance * FVector::DotProduct(Dir, Fwd) * 100.0;
+			const double Dd = FMath::Abs(AnalyticCm - static_cast<double>(GpuD));
+			A.Delta.Add(Dd);
+			if (!bBand)
+			{
+				A.DeltaNoBand.Add(Dd);
+			}
+		}
+		else if (!bGpu && !bAnalytic)
+		{
+			++A.BothMiss;
+		}
+		else
+		{
+			if (bGpu)
+			{
+				++A.GpuOnly;
+			}
+			else
+			{
+				++A.AnalyticOnly;
+			}
+			if (bBand)
+			{
+				++A.InBand;
+			}
+			else
+			{
+				++A.OutBand;
+			}
+			if (A.Examples.Num() < 12)
+			{
+				TSharedRef<FJsonObject> E = MakeShared<FJsonObject>();
+				E->SetNumberField(TEXT("x"), X);
+				E->SetNumberField(TEXT("y"), Y);
+				E->SetNumberField(TEXT("gpu_cm"), GpuD);
+				E->SetBoolField(TEXT("gpu_hit"), bGpu);
+				E->SetBoolField(TEXT("analytic_hit"), bAnalytic);
+				E->SetBoolField(TEXT("in_band"), bBand);
+				A.Examples.Add(MakeShared<FJsonValueObject>(E));
+			}
+		}
+	};
+
+	FDepthAcc Full;
+	for (int32 I = 0; I < N; ++I)
+	{
+		const int32 X = Rng.RandRange(0, W - 1);
+		const int32 Y = Rng.RandRange(0, H - 1);
+		Evaluate(X, Y, Full);
+	}
+
+	TSharedRef<FJsonObject> D = MakeShared<FJsonObject>();
+	D->SetStringField(TEXT("name"), Name);
+	D->SetStringField(TEXT("pose"), PoseName);
+	D->SetStringField(TEXT("height_fnv"), TerrainIO::HashToString(Terrain->HeightFnv()));
+	D->SetNumberField(TEXT("width"), W);
+	D->SetNumberField(TEXT("height"), H);
+	D->SetNumberField(TEXT("frame_gpu_hit_fraction"), static_cast<double>(FrameHits) / (static_cast<double>(W) * H));
+	D->SetNumberField(TEXT("frame_gpu_depth_min_cm"), FrameHits > 0 ? MinHit : 0.0);
+	D->SetNumberField(TEXT("frame_gpu_depth_max_cm"), MaxHit);
+	Full.Write(*D);
+
+	// Footprint-targeted samples: the named stroke set's discs, ground points every `fp_step` m, kept where the terrain does not hide them
+	// from the capture camera, projected with the capture's own pinhole (the inverse of the ray maths above), then fp_n seeded draws.
+	const FString FpSet = StrField(Op, TEXT("fp"));
+	FString FpLog;
+	if (!FpSet.IsEmpty())
+	{
+		const TArray<FVector>* Discs = FootprintSets.Find(FpSet);
+		if (!Discs || Discs->Num() == 0)
+		{
+			OpError = FString::Printf(TEXT("depthcheck: no footprint set '%s' (strokes need \"fp\": \"%s\")"), *FpSet, *FpSet);
+			return EStep::Failed;
+		}
+		const FScreenProjector Vis(HF, nullptr, CamM, FIntPoint(W, H));
+		const double Step = FMath::Max(0.05, NumField(Op, TEXT("fp_step"), 0.25));
+		double MinX = TNumericLimits<double>::Max();
+		double MinY = MinX;
+		double MaxX = -MinX;
+		double MaxY = -MinX;
+		for (const FVector& Disc : *Discs)
+		{
+			MinX = FMath::Min(MinX, Disc.X - Disc.Z);
+			MaxX = FMath::Max(MaxX, Disc.X + Disc.Z);
+			MinY = FMath::Min(MinY, Disc.Y - Disc.Z);
+			MaxY = FMath::Max(MaxY, Disc.Y + Disc.Z);
+		}
+		TSet<FIntPoint> PixelSet;
+		for (double Yw = MinY; Yw <= MaxY; Yw += Step)
+		{
+			for (double Xw = MinX; Xw <= MaxX; Xw += Step)
+			{
+				bool bInside = false;
+				for (const FVector& Disc : *Discs)
+				{
+					const double Dx = Xw - Disc.X;
+					const double Dy = Yw - Disc.Y;
+					if (Dx * Dx + Dy * Dy <= Disc.Z * Disc.Z)
+					{
+						bInside = true;
+						break;
+					}
+				}
+				if (!bInside)
+				{
+					continue;
+				}
+				const FVector P(Xw, Yw, HF.SampleSurface(Xw, Yw));
+				const FVector V = P - CamM;
+				const double Z = FVector::DotProduct(V, Fwd);
+				if (Z <= 0.01)
+				{
+					continue;
+				}
+				const double Sx = FVector::DotProduct(V, Right) / (Z * TanH);
+				const double Sy = FVector::DotProduct(V, Up) / (Z * TanV);
+				const int32 PixX = FMath::FloorToInt((Sx + 1.0) * 0.5 * W);
+				const int32 PixY = FMath::FloorToInt((1.0 - Sy) * 0.5 * H);
+				if (PixX < 0 || PixY < 0 || PixX >= W || PixY >= H || !Vis.Visible(P))
+				{
+					continue;
+				}
+				PixelSet.Add(FIntPoint(PixX, PixY));
+			}
+		}
+		TArray<FIntPoint> Pixels = PixelSet.Array();
+		Pixels.Sort([](const FIntPoint& A, const FIntPoint& B) { return A.Y != B.Y ? A.Y < B.Y : A.X < B.X; });
+		const int32 FpN = FMath::Max(100, static_cast<int32>(NumField(Op, TEXT("fp_n"), 2000.0)));
+		FRandomStream FpRng(static_cast<int32>(NumField(Op, TEXT("fp_seed"), 4321.0)));
+		FDepthAcc Fp;
+		if (Pixels.Num() > 0)
+		{
+			for (int32 I = 0; I < FpN; ++I)
+			{
+				const FIntPoint& Q = Pixels[FpRng.RandRange(0, Pixels.Num() - 1)];
+				Evaluate(Q.X, Q.Y, Fp);
+			}
+		}
+		TSharedRef<FJsonObject> F = MakeShared<FJsonObject>();
+		F->SetStringField(TEXT("set"), FpSet);
+		F->SetNumberField(TEXT("discs"), Discs->Num());
+		F->SetNumberField(TEXT("pixels"), Pixels.Num());
+		Fp.Write(*F);
+		D->SetObjectField(TEXT("footprint"), F);
+		FpLog = FString::Printf(TEXT("; footprint %s: %d px, n=%d both_hit=%d p99=%.3f max=%.3f cm, disagree in band %d outside %d"), *FpSet, Pixels.Num(),
+			Fp.N, Fp.BothHit, Fp.Delta.Percentile(99.0), Fp.Delta.Max(), Fp.InBand, Fp.OutBand);
+	}
+	DepthChecks.Add(MakeShared<FJsonValueObject>(D));
+	UE_LOG(LogChimeraTerrain, Display, TEXT("depthcheck %s pose=%s n=%d both_hit=%d p50=%.3f p99=%.3f max=%.3f cm, hit/miss disagree in band %d outside %d (frame hit %.1f %%)%s"),
+		*Name, *PoseName, N, Full.BothHit, Full.Delta.Percentile(50.0), Full.Delta.Percentile(99.0), Full.Delta.Max(), Full.InBand, Full.OutBand,
+		100.0 * FrameHits / (static_cast<double>(W) * H), *FpLog);
+	return EStep::Done;
+}
+
+ATerrainScriptDirector::EStep ATerrainScriptDirector::StepProjectFootprint(const FJsonObject& Op)
+{
+	const FString PoseName = StrField(Op, TEXT("pose"), TEXT("rts80"));
+	const FString SetName = StrField(Op, TEXT("name"));
+	const FString OutName = StrField(Op, TEXT("as"), SetName);
+	if (OpFrame == 0)
+	{
+		if (!ApplyPose(PoseName))
+		{
+			OpError = FString::Printf(TEXT("unknown pose '%s'"), *PoseName);
+			return EStep::Failed;
+		}
+		return EStep::Running;
+	}
+	if (OpFrame < 3)
+	{
+		return EStep::Running;
+	}
+	const TArray<FVector>* Discs = FootprintSets.Find(SetName);
+	if (!Discs || Discs->Num() == 0)
+	{
+		OpError = FString::Printf(TEXT("no footprint set '%s' (strokes need \"fp\": \"%s\")"), *SetName, *SetName);
+		return EStep::Failed;
+	}
+	APlayerController* PC = GetPC();
+	if (!PC || !PC->PlayerCameraManager)
+	{
+		OpError = TEXT("no camera manager");
+		return EStep::Failed;
+	}
+	const FTerrainHeightfield& HF = Terrain->GetHeightfield();
+	const FIntPoint Viewport = ViewportSize();
+	const FVector Cam = PC->PlayerCameraManager->GetCameraLocation() / 100.0;
+	const FScreenProjector Proj(HF, PC, Cam, Viewport);
+	const double Step = FMath::Max(0.05, NumField(Op, TEXT("step"), 0.15));
+	double MinX = TNumericLimits<double>::Max();
+	double MinY = MinX;
+	double MaxX = -MinX;
+	double MaxY = -MinX;
+	for (const FVector& Disc : *Discs)
+	{
+		MinX = FMath::Min(MinX, Disc.X - Disc.Z);
+		MaxX = FMath::Max(MaxX, Disc.X + Disc.Z);
+		MinY = FMath::Min(MinY, Disc.Y - Disc.Z);
+		MaxY = FMath::Max(MaxY, Disc.Y + Disc.Z);
+	}
+	TSet<FIntPoint> Pixels;
+	int64 Samples = 0;
+	for (double Y = MinY; Y <= MaxY; Y += Step)
+	{
+		for (double X = MinX; X <= MaxX; X += Step)
+		{
+			bool bInside = false;
+			for (const FVector& Disc : *Discs)
+			{
+				const double Dx = X - Disc.X;
+				const double Dy = Y - Disc.Y;
+				if (Dx * Dx + Dy * Dy <= Disc.Z * Disc.Z)
+				{
+					bInside = true;
+					break;
+				}
+			}
+			if (!bInside)
+			{
+				continue;
+			}
+			++Samples;
+			const FVector P(X, Y, HF.SampleSurface(X, Y));
+			FIntPoint Px;
+			if (Proj.Visible(P) && Proj.Project(P, Px))
+			{
+				Pixels.Add(Px);
+			}
+		}
+	}
+	TSharedPtr<FJsonObject> PoseObj;
+	const TSharedPtr<FJsonObject>* Existing = nullptr;
+	if (Footprints->TryGetObjectField(PoseName, Existing) && Existing && Existing->IsValid())
+	{
+		PoseObj = *Existing;
+	}
+	else
+	{
+		PoseObj = MakeShared<FJsonObject>();
+	}
+	PoseObj->SetField(TEXT("camera_m"), VecToJson(Cam));
+	TArray<TSharedPtr<FJsonValue>> VP;
+	VP.Add(MakeShared<FJsonValueNumber>(Viewport.X));
+	VP.Add(MakeShared<FJsonValueNumber>(Viewport.Y));
+	PoseObj->SetArrayField(TEXT("viewport"), VP);
+	PoseObj->SetField(OutName, PixelsToJson(Pixels));
+	Footprints->SetObjectField(PoseName, PoseObj);
+	if (!WriteJsonFile(TEXT("footprints.json"), Footprints))
+	{
+		OpError = TEXT("cannot write footprints.json");
+		return EStep::Failed;
+	}
+	UE_LOG(LogChimeraTerrain, Display, TEXT("project_footprint %s/%s (set %s): %d discs, %lld ground samples, %d visible pixels"), *PoseName, *OutName, *SetName, Discs->Num(), Samples, Pixels.Num());
+	return EStep::Done;
+}
+
+ATerrainScriptDirector::EStep ATerrainScriptDirector::StepAwaitMouse(const FJsonObject& Op)
+{
+	// C8 plugs in here: the controller records one JSON object per finished mouse stroke on the terrain actor; this op publishes where the
+	// strokes should be dragged (world targets and their viewport pixels) and waits for them.
+	const int32 N = FMath::Max(1, static_cast<int32>(NumField(Op, TEXT("n"), 3.0)));
+	const FString PoseName = StrField(Op, TEXT("pose"), TEXT("rts80"));
+	if (OpFrame == 0)
+	{
+		MouseTargetCount = N;
+		if (!ApplyPose(PoseName))
+		{
+			OpError = FString::Printf(TEXT("unknown pose '%s'"), *PoseName);
+			return EStep::Failed;
+		}
+		return EStep::Running;
+	}
+	if (OpPhase == 0)
+	{
+		if (OpFrame < 3)
+		{
+			return EStep::Running;
+		}
+		APlayerController* PC = GetPC();
+		if (!PC)
+		{
+			OpError = TEXT("no player controller");
+			return EStep::Failed;
+		}
+		const FTerrainHeightfield& HF = Terrain->GetHeightfield();
+		const FIntPoint Viewport = ViewportSize();
+		TArray<TSharedPtr<FJsonValue>> Targets;
+		for (int32 I = 0; I < N; ++I)
+		{
+			// Fixed drags (plan C 8): 30 m long along +X, one per default lane; d 30, s 30, 60 ticks are the controller's.
+			const double X0 = -45.0 + 45.0 * I;
+			const double Y0 = 30.0;
+			const double X1 = X0 + 30.0;
+			const FVector A(X0, Y0, HF.SampleSurface(X0, Y0));
+			const FVector B(X1, Y0, HF.SampleSurface(X1, Y0));
+			FVector2D Sa;
+			FVector2D Sb;
+			if (!PC->ProjectWorldLocationToScreen(A * 100.0, Sa, false) || !PC->ProjectWorldLocationToScreen(B * 100.0, Sb, false))
+			{
+				OpError = FString::Printf(TEXT("mouse target %d does not project to the screen"), I);
+				return EStep::Failed;
+			}
+			TSharedRef<FJsonObject> T = MakeShared<FJsonObject>();
+			T->SetNumberField(TEXT("index"), I);
+			T->SetField(TEXT("from_world_m"), VecToJson(A));
+			T->SetField(TEXT("to_world_m"), VecToJson(B));
+			T->SetField(TEXT("from_px"), PairToJson(Sa.X, Sa.Y));
+			T->SetField(TEXT("to_px"), PairToJson(Sb.X, Sb.Y));
+			T->SetNumberField(TEXT("d"), 30);
+			T->SetNumberField(TEXT("s"), 30);
+			T->SetNumberField(TEXT("ticks"), 60);
+			Targets.Add(MakeShared<FJsonValueObject>(T));
+		}
+		TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
+		Root->SetStringField(TEXT("pose"), PoseName);
+		Root->SetField(TEXT("viewport"), PairToJson(Viewport.X, Viewport.Y));
+		Root->SetArrayField(TEXT("strokes"), Targets);
+		if (!WriteJsonFile(TEXT("mouse_targets.json"), Root))
+		{
+			OpError = TEXT("cannot write mouse_targets.json");
+			return EStep::Failed;
+		}
+		UE_LOG(LogChimeraTerrain, Display, TEXT("await_mouse: %d targets written, waiting for the controller"), N);
+		OpPhase = 1;
+		return EStep::Running;
+	}
+	if (Terrain->GetMouseStrokeRecords().Num() < N)
+	{
+		return EStep::Running;
+	}
+	UE_LOG(LogChimeraTerrain, Display, TEXT("await_mouse: %d mouse strokes recorded"), Terrain->GetMouseStrokeRecords().Num());
+	return EStep::Done;
+}
+
+ATerrainScriptDirector::EStep ATerrainScriptDirector::StepSkippedCollision(const FString& Name)
+{
+	// C5 builds the collision path; until then these ops log and record that they did nothing, and parse_terrain.py fails every gate that needs them.
+	TSharedRef<FJsonObject> S = MakeShared<FJsonObject>();
+	S->SetStringField(TEXT("op"), Name);
+	S->SetNumberField(TEXT("op_index"), OpIndex + 1);
+	S->SetStringField(TEXT("reason"), TEXT("skipped:C5"));
+	Skipped.Add(MakeShared<FJsonValueObject>(S));
+	UE_LOG(LogChimeraTerrain, Display, TEXT("op %s skipped:C5"), *Name);
+	return EStep::Done;
+}
+
 bool ATerrainScriptDirector::WriteJsonFile(const FString& FileName, const TSharedRef<FJsonObject>& Obj) const
 {
 	FString Text;
@@ -845,6 +1923,8 @@ void ATerrainScriptDirector::Finish(uint8 Code, const FString& Reason)
 	Opt->SetNumberField(TEXT("chunk"), Options.ChunkQuads);
 	Opt->SetStringField(TEXT("draw_type"), Options.DrawType == ETerrainDrawType::Dynamic ? TEXT("Dynamic") : TEXT("Static"));
 	Opt->SetNumberField(TEXT("compare_ev100"), Options.CompareEV100);
+	Opt->SetNumberField(TEXT("hitch_ms"), Options.HitchMs);
+	Opt->SetStringField(TEXT("load_dir"), Options.LoadDir);
 	Results->SetObjectField(TEXT("options"), Opt);
 
 	if (Terrain)
@@ -862,6 +1942,7 @@ void ATerrainScriptDirector::Finish(uint8 Code, const FString& Reason)
 			RJ->SetNumberField(TEXT("proxy_recreates_during_strokes"), static_cast<double>(St.ProxyRecreatesDuringStrokes));
 			RJ->SetNumberField(TEXT("bounds_widenings"), static_cast<double>(St.BoundsWidenings));
 			RJ->SetNumberField(TEXT("bounds_exact_pushes"), static_cast<double>(St.BoundsExactPushes));
+			RJ->SetObjectField(TEXT("edit_latency"), FTerrainMetrics::LatencyToJson(R->GetEditLatencies()));
 			Results->SetObjectField(TEXT("render"), RJ);
 		}
 		TSharedRef<FJsonObject> SJ = MakeShared<FJsonObject>();
@@ -876,7 +1957,39 @@ void ATerrainScriptDirector::Finish(uint8 Code, const FString& Reason)
 	Results->SetArrayField(TEXT("strokes"), Strokes);
 	Results->SetArrayField(TEXT("settles"), Settles);
 	Results->SetArrayField(TEXT("timeline"), Timeline);
-	Results->SetObjectField(TEXT("metrics"), Metrics.ToJson());
+	Results->SetObjectField(TEXT("metrics"), Metrics.FramesToJson());
+	Results->SetObjectField(TEXT("memory"), Metrics.MemoryToJson());
+	Results->SetArrayField(TEXT("depthchecks"), DepthChecks);
+	Results->SetArrayField(TEXT("skipped"), Skipped);
+	Results->SetArrayField(TEXT("walks"), Walks);
+	Results->SetArrayField(TEXT("hitches"), Hitches);
+	Results->SetArrayField(TEXT("gcs"), Gcs);
+	Results->SetArrayField(TEXT("movies"), Movies);
+	Results->SetArrayField(TEXT("undo_redo"), UndoRedos);
+	if (Saved.IsValid())
+	{
+		Results->SetObjectField(TEXT("saved"), Saved.ToSharedRef());
+	}
+	if (Loaded.IsValid())
+	{
+		Results->SetObjectField(TEXT("loaded"), Loaded.ToSharedRef());
+	}
+	if (CsvInfo.IsValid())
+	{
+		Results->SetObjectField(TEXT("csv"), CsvInfo.ToSharedRef());
+	}
+	if (Terrain)
+	{
+		Results->SetObjectField(TEXT("ticks"), FTerrainMetrics::TicksToJson(Terrain->GetTickSamples(), Terrain->GetPhaseNames()));
+		FFileHelper::SaveStringToFile(FTerrainMetrics::TicksToCsv(Terrain->GetTickSamples(), Terrain->GetPhaseNames()), *OutPath(TEXT("ticks.csv")),
+			FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+		TArray<TSharedPtr<FJsonValue>> Mouse;
+		for (const TSharedRef<FJsonObject>& M : Terrain->GetMouseStrokeRecords())
+		{
+			Mouse.Add(MakeShared<FJsonValueObject>(M));
+		}
+		Results->SetArrayField(TEXT("mouse_strokes"), Mouse);
+	}
 	FIntPoint Viewport(0, 0);
 	if (GEngine && GEngine->GameViewport && GEngine->GameViewport->Viewport)
 	{

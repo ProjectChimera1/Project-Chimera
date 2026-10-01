@@ -1,0 +1,69 @@
+{
+ "gate": "S1L",
+ "pass": true,
+ "bars": [
+  {
+   "bar": "log_scan",
+   "pass": true,
+   "status": "PASS",
+   "value": "0 finding(s)",
+   "rule": "KIT logscan game profile clean"
+  },
+  {
+   "bar": "completed",
+   "pass": true,
+   "status": "PASS",
+   "value": "completed=True ops=8/8",
+   "rule": "completed=true and ops_done == ops_total"
+  },
+  {
+   "bar": "loaded_dir",
+   "pass": true,
+   "status": "PASS",
+   "value": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/s1_a",
+   "rule": "load read the reference run's folder"
+  },
+  {
+   "bar": "hash_eq_reference_redo",
+   "pass": true,
+   "status": "PASS",
+   "value": "('0xff563549', '0xd264ddc9') vs ('0xff563549', '0xd264ddc9')",
+   "rule": "loaded hashes = reference redo hashes"
+  },
+  {
+   "bar": "hash_eq_reference_saved",
+   "pass": true,
+   "status": "PASS",
+   "value": "('0xff563549', '0xd264ddc9') vs 0xff563549/0xd264ddc9",
+   "rule": "loaded hashes = reference saved hashes"
+  },
+  {
+   "bar": "aa_floor_reference",
+   "pass": true,
+   "status": "PASS",
+   "value": "changed_frac=0.00000 worst16=0.00134 mean_abs=0.00108 mask_px=323761 (every stroke footprint of the reference (rts80/all_after); reference before vs before_aa)",
+   "rule": "changed <= 0.5 % and worst 16x16 block mean |d| <= 2/255"
+  },
+  {
+   "bar": "image_redo_vs_reference_footprint",
+   "pass": true,
+   "status": "PASS",
+   "value": "changed_frac=0.00001 worst16=0.00610 mean_abs=0.00116 mask_px=323761 (every stroke footprint of the reference (rts80/all_after))",
+   "rule": "changed <= 0.5 % and worst 16x16 block mean |d| <= 2/255"
+  },
+  {
+   "bar": "image_redo_vs_reference",
+   "pass": true,
+   "status": "PASS",
+   "value": "changed_frac=0.00000 worst16=0.00231 mean_abs=0.00103 mask_px=1873723 (terrain mask of the reference redo vs bg)",
+   "rule": "changed <= 0.5 % and worst 16x16 block mean |d| <= 2/255"
+  },
+  {
+   "bar": "P11 loaded_rts80",
+   "pass": true,
+   "status": "PASS",
+   "value": "pairs=9039 p50=0.005 p99=0.055 max=0.382 cm; disagree in/out band 0/0; frame hit 0.90",
+   "rule": "pairs >= 1000, p99 <= 2.0 cm, outside-band disagreements 0 (GPU mesh equals the loaded heightfield)"
+  }
+ ]
+}

@@ -24,6 +24,10 @@ struct FChimeraTerrainOptions
 	float CompareEV100 = 2.0f;
 	/** settle op timeout (plan C 3.8: 600 s); run_terrain raises it for warm-ups (-TimeoutMin > 15) where shaders may compile for up to an hour. */
 	double SettleTimeoutS = 600.0;
+	/** -ChimeraTerrainHitchMs=<ms>: stroke ops marked "hitch": true sleep the game thread this long at their middle tick (P8). 0 = off. */
+	int32 HitchMs = 0;
+	/** -ChimeraTerrainLoad=<absolute dir>: the directory a `load` op without its own "dir" reads (S1L). */
+	FString LoadDir;
 
 	static FChimeraTerrainOptions FromCommandLine(const TCHAR* CommandLine);
 };

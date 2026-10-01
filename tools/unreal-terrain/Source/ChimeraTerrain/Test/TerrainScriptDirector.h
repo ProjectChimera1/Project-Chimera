@@ -3,27 +3,58 @@
 // writes everything to -ChimeraTerrainOut and exits with the EXECUTION 2.2 contract: results.json is written and closed first;
 // failure = forced exit with the code (2 op failed, 3 op timeout); success = results.json "completed": true and a normal exit 0.
 //
-// Script: {"name": "<id>", "ops": [ {"op": "<name>", ...}, ... ]}. C3 ops:
-//   camera {pose}                         rts80 | oblique | spike (FTerrainCameraPose)
+// Script: {"name": "<id>", "ops": [ {"op": "<name>", ...}, ... ]}. Any op may carry "phase": "<label>": the label is stored with every
+// frame sample and stroke tick from then on (results.json metrics.phases, ticks.csv).
+//
+// Ops (C3):
+//   camera {pose}                         rts80 | oblique | closeup | spike (FTerrainCameraPose)
 //   look {mode}                           compare | full (plan C 3.5)
 //   visible {value}                       0 | 1: hide or show every terrain chunk
 //   settle {frames=30}                    shader + asset compile queues empty and no mesh/splat work in flight, then N frames (600 s)
 //   idle {frames | seconds}
-//   stroke {mode, d, s, layer, path, ticks, per_frame=1}
+//   stroke {mode, d, s, layer, path, ticks, per_frame=1, hitch=false, fp="<set>"|["<set>",...]}
 //                                         exactly `ticks` ApplyTick calls, `per_frame` per frame, independent of DeltaTime (plan C 3.4);
-//                                         path = [[x, y], ...] terrain metres (= Unreal cm / 100); the centre moves along it by arc length
-//   hash {name}                           height and splat FNV-1a into results.json
+//                                         path = [[x, y], ...] terrain metres (= Unreal cm / 100); the centre moves along it by arc length.
+//                                         hitch=true: with -ChimeraTerrainHitchMs=<ms> the game thread sleeps that long at the middle tick (P8).
+//                                         fp: adds the stroke's footprint discs to the named set(s) for project_footprint.
+//   hash {name}                           height, splat and sim-grid FNV-1a into results.json
 //   shot {name}                           wait for in-flight work + 2 frames, HighResShot 1920x1080 to <out>/<name>.png, wait for the PNG (60 s)
 //   g1_regions {pose, hill:[x,y,r], ring:[a,b]} | {pose, spike:[x,y,r]}
-//                                         analytic pixel sets for gate G1 into footprints.json (sun and shadow sides, cast shadow, lit ground;
-//                                         the spike's projected area)
+//                                         analytic pixel sets for gate G1 into footprints.json
 //   fail                                  fail the run (exit 2): proves the exit-code contract
 //   exit                                  finish successfully now
+// Ops (C4):
+//   paint {layer, d, s, path, ticks, ...} a stroke with mode paint
+//   undo {n=1} | redo {n=1}               undo / redo n strokes (fails when there is nothing left)
+//   hitch {ms}                            sleep the game thread
+//   save                                  terrain.json (sim_grid_fnv + 16 probes), height.r32, splat.rgba8 into the out dir
+//   load {dir}                            replace the terrain with the saved files (dir, else -ChimeraTerrainLoad=), rebuild, re-upload
+//   random_walk {seconds=60, seed=1, cycle_s=5, diameters=[5,20,60,100], s=10, speed=8, bounds=100, hz=30}
+//                                         seeded 30 Hz brush walk: one mode per cycle_s (the five in turn), each diameter in turn inside it
+//                                         (cycle_s / N each), painting layers 1..3; ticks beyond 15 per frame are dropped and counted
+//                                         (plan C 3.4 mouse rule)
+//   soak {minutes, ...random_walk args}   random_walk for minutes*60 s sampling UsedPhysical and live UBodySetups (total, RMC-owned) every 2 s,
+//                                         then one blocking gc and a final sample
+//   gc                                    blocking garbage collection, logs ms and memory before/after
+//   csv {mode: start|stop}                CsvProfiler capture into the out dir (stop waits for the file)
+//   movie {frames}                        GIsDumpingMovie = frames; waits for the MovieFrame PNGs (UI excluded); results.json movies[] lists
+//                                         the exact files this op wrote (older MovieFrame files in the folder are not the run's)
+//   depthcheck {pose, name, n=10000, seed=1234}
+//                                         SceneCapture2D SCS_SceneDepth R32f of the terrain at the pose vs the analytic ray's view depth
+//                                         at n seeded pixels; with fp=<stroke set> also fp_n (2000) seeded pixels drawn from that set's
+//                                         projected footprint (results: depthchecks[].footprint), so a small stale region cannot hide (P11); results.json depthchecks[]
+//   project_footprint {pose, name, as}    project the named stroke-footprint set to screen pixels at the pose into footprints.json[pose][as]
+//                                         (as defaults to name; the same set can be projected in several terrain states)
+//   await_mouse {n, pose=rts80}           writes mouse_targets.json, then waits (120 s) until the controller recorded n mouse strokes (C8)
+//   wait_collision | verify_collision     skipped:C5 (logged and listed in results.json skipped[]; gates that need them fail)
 #pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Dom/JsonObject.h"
+#include "Misc/DateTime.h"
+#include "Math/RandomStream.h"
+#include "Async/Future.h"
 #include "Game/ChimeraTerrainGameMode.h"
 #include "Test/TerrainMetrics.h"
 #include "TerrainScriptDirector.generated.h"
@@ -31,6 +62,8 @@
 class ATerrainActor;
 class ATerrainLighting;
 class APlayerController;
+class USceneCaptureComponent2D;
+class UTextureRenderTarget2D;
 
 UCLASS()
 class CHIMERATERRAIN_API ATerrainScriptDirector : public AActor
@@ -56,6 +89,10 @@ private:
 	TObjectPtr<ATerrainActor> Terrain;
 	UPROPERTY(Transient)
 	TObjectPtr<ATerrainLighting> Lighting;
+	UPROPERTY(Transient)
+	TObjectPtr<USceneCaptureComponent2D> Capture;
+	UPROPERTY(Transient)
+	TObjectPtr<UTextureRenderTarget2D> CaptureTarget;
 
 	FChimeraTerrainOptions Options;
 	FString ScriptName;
@@ -73,10 +110,51 @@ private:
 
 	// Per-op scratch.
 	int32 StrokeTicksDone = 0;
+	bool bStrokeHitched = false;
 	int64 ShotLastSize = -1;
 	int32 ShotStableFrames = 0;
 	FDateTime ShotRequestUtc;
 	FString ShotPath;
+
+	// random_walk / soak
+	struct FWalkState
+	{
+		bool bActive = false;
+		bool bSoak = false;
+		FRandomStream Rng;
+		FVector2D Pos = FVector2D::ZeroVector;
+		double Heading = 0.0;
+		double ElapsedS = 0.0;
+		double Accumulator = 0.0;
+		double DurationS = 60.0;
+		double CycleS = 5.0;
+		double SpeedMps = 8.0;
+		double BoundsM = 100.0;
+		int32 Hz = 30;
+		float Strength = 10.0f;
+		TArray<float> Diameters;
+		int32 Segment = -1;
+		int32 PaintSegments = 0;
+		int64 Ticks = 0;
+		int64 Dropped = 0;
+		int32 Segments = 0;
+		double NextMemSampleS = 0.0;
+	};
+	FWalkState Walk;
+
+	// csv
+	bool bCsvActive = false;
+	TSharedPtr<TSharedFuture<FString>> CsvFuture;
+	FString CsvStartedPath;
+	// movie
+	int32 MovieRequested = 0;
+	FDateTime MovieStartUtc;
+	// await_mouse
+	int32 MouseTargetCount = 0;
+	// memory sampling every 2 s of wall time for every run (UsedPhysical only; the UBodySetup walk runs only inside soak, at forced
+	// samples and at gc, so measured C1/C1U runs carry no periodic object walk)
+	double NextMemSampleSeconds = 0.0;
+	double RunStartSeconds = 0.0;
 
 	FTerrainMetrics Metrics;
 	FString CurrentPose = TEXT("rts80");
@@ -87,6 +165,18 @@ private:
 	TArray<TSharedPtr<FJsonValue>> Strokes;
 	TArray<TSharedPtr<FJsonValue>> Settles;
 	TArray<TSharedPtr<FJsonValue>> Timeline;
+	TArray<TSharedPtr<FJsonValue>> DepthChecks;
+	TArray<TSharedPtr<FJsonValue>> Skipped;
+	TArray<TSharedPtr<FJsonValue>> Walks;
+	TArray<TSharedPtr<FJsonValue>> Hitches;
+	TArray<TSharedPtr<FJsonValue>> Gcs;
+	TArray<TSharedPtr<FJsonValue>> Movies;
+	TArray<TSharedPtr<FJsonValue>> UndoRedos;
+	TSharedPtr<FJsonObject> Saved;
+	TSharedPtr<FJsonObject> Loaded;
+	TSharedPtr<FJsonObject> CsvInfo;
+	/** Footprint discs (x, y, radius metres) by set name, filled by strokes with "fp". */
+	TMap<FString, TArray<FVector>> FootprintSets;
 
 	bool LoadScript(FString& OutError);
 	APlayerController* GetPC() const;
@@ -100,13 +190,29 @@ private:
 	EStep StepVisible(const FJsonObject& Op);
 	EStep StepSettle(const FJsonObject& Op);
 	EStep StepIdle(const FJsonObject& Op);
-	EStep StepStroke(const FJsonObject& Op);
+	EStep StepStroke(const FJsonObject& Op, bool bForcePaint);
 	EStep StepHash(const FJsonObject& Op);
 	EStep StepShot(const FJsonObject& Op);
 	EStep StepG1Regions(const FJsonObject& Op);
+	EStep StepUndoRedo(const FJsonObject& Op, bool bUndo);
+	EStep StepHitch(const FJsonObject& Op);
+	EStep StepSave(const FJsonObject& Op);
+	EStep StepLoad(const FJsonObject& Op);
+	EStep StepRandomWalk(const FJsonObject& Op, bool bSoak);
+	EStep StepGc(const FJsonObject& Op);
+	EStep StepCsv(const FJsonObject& Op);
+	EStep StepMovie(const FJsonObject& Op);
+	EStep StepDepthCheck(const FJsonObject& Op);
+	EStep StepProjectFootprint(const FJsonObject& Op);
+	EStep StepAwaitMouse(const FJsonObject& Op);
+	EStep StepSkippedCollision(const FString& Name);
 
 	static bool CompileQueuesIdle();
 	bool ApplyPose(const FString& Pose);
+	void SetPhase(const FString& Name);
+	/** Mark the current phase in the CSV capture (event `phase_<name>`), when one is running. */
+	void RecordPhaseEvent() const;
+	void SampleMemoryIfDue(bool bForce);
 	void Finish(uint8 Code, const FString& Reason);
 	bool WriteJsonFile(const FString& FileName, const TSharedRef<FJsonObject>& Obj) const;
 	FString OutPath(const FString& FileName) const;

@@ -3,6 +3,8 @@
 #include "Game/TerrainActor.h"
 
 #include "ChimeraTerrain.h"
+#include "Data/TerrainIO.h"
+#include "Dom/JsonObject.h"
 #include "HAL/PlatformTime.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
@@ -91,9 +93,14 @@ FTerrainTickResult ATerrainActor::ApplyTick(const FVector2D& CenterM, FTerrainTi
 	const double T0 = FPlatformTime::Seconds();
 	const FTerrainTickResult R = FTerrainBrush::ApplyTick(HF, Params, static_cast<float>(CenterM.X), static_cast<float>(CenterM.Y), bStrokeOpen ? &Undo : nullptr);
 	const double T1 = FPlatformTime::Seconds();
+	int32 Uploaded = 0;
 	if (Renderer && !R.HeightRect.IsEmpty())
 	{
 		Renderer->UpdateHeights(HF, R.HeightRect);
+		const FTerrainUpdateTiming U = Renderer->GetLastUpdateTiming();
+		T.NormalsMs = U.NormalsMs;
+		T.UploadMs = U.SubmitMs;
+		Uploaded = U.Vertices;
 	}
 	const double T2 = FPlatformTime::Seconds();
 	if (!R.SplatRect.IsEmpty())
@@ -104,9 +111,26 @@ FTerrainTickResult ATerrainActor::ApplyTick(const FVector2D& CenterM, FTerrainTi
 	StrokeHeightRect.Union(R.HeightRect);
 	StrokeSplatRect.Union(R.SplatRect);
 	T.ApplyMs = (T1 - T0) * 1000.0;
-	T.UploadMs = (T2 - T1) * 1000.0;
+	// The height path's wall time is normals + submit; any residue (a few timer reads) stays in upload.
+	if (!R.HeightRect.IsEmpty())
+	{
+		T.UploadMs = FMath::Max(T.UploadMs, (T2 - T1) * 1000.0 - T.NormalsMs);
+	}
 	T.SplatMs = (T3 - T2) * 1000.0;
 	LastTickMs = T.TotalMs();
+
+	FTerrainTickSample S;
+	S.Index = TicksApplied;
+	S.Frame = GFrameCounter;
+	S.PhaseIndex = CurrentPhase;
+	S.Mode = static_cast<uint8>(Params.Mode);
+	S.DiameterM = Params.DiameterM;
+	S.Strength = Params.Strength;
+	S.Timing = T;
+	S.VerticesChanged = R.VerticesChanged;
+	S.TexelsChanged = R.TexelsChanged;
+	S.UploadedVertices = Uploaded;
+	TickSamples.Add(S);
 	++TicksApplied;
 	if (OutTiming)
 	{
@@ -164,6 +188,56 @@ bool ATerrainActor::RedoLast()
 	}
 	ApplyDelta(Delta);
 	return true;
+}
+
+bool ATerrainActor::SaveTo(const FString& Dir, FString& OutError)
+{
+	if (bStrokeOpen)
+	{
+		EndStroke();
+	}
+	return TerrainIO::Save(HF, Dir, OutError);
+}
+
+bool ATerrainActor::LoadFrom(const FString& Dir, FString& OutError)
+{
+	if (bStrokeOpen)
+	{
+		EndStroke();
+	}
+	FTerrainHeightfield Loaded;
+	if (!TerrainIO::Load(Loaded, HF.ChunkQuads(), Dir, OutError))
+	{
+		return false;
+	}
+	if (Loaded.HalfExtentM() != HF.HalfExtentM())
+	{
+		OutError = FString::Printf(TEXT("loaded half extent %d m differs from the running terrain's %d m"), Loaded.HalfExtentM(), HF.HalfExtentM());
+		return false;
+	}
+	HF = MoveTemp(Loaded);
+	Undo.Clear();
+	if (Renderer)
+	{
+		Renderer->RebuildAll(HF);
+	}
+	Splat.UpdateAll(HF);
+	return true;
+}
+
+void ATerrainActor::SetPhase(const FString& Name)
+{
+	int32 Idx = PhaseNames.IndexOfByKey(Name);
+	if (Idx == INDEX_NONE)
+	{
+		Idx = PhaseNames.Add(Name);
+	}
+	CurrentPhase = Idx;
+}
+
+void ATerrainActor::AddMouseStrokeRecord(const TSharedRef<FJsonObject>& Record)
+{
+	MouseStrokeRecords.Add(Record);
 }
 
 void ATerrainActor::SetTerrainVisible(bool bVisible)

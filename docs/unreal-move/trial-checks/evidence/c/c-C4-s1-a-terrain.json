@@ -1,0 +1,217 @@
+{
+	"format": "chimera-terrain",
+	"version": 1,
+	"half_extent_m": 160,
+	"width": 321,
+	"height": 321,
+	"spacing_m": 1,
+	"origin_m": [
+		-160,
+		-160
+	],
+	"height_limit_m": 128,
+	"height_format": "float32-le-row-major",
+	"splat":
+	{
+		"width": 640,
+		"height": 640,
+		"texel_m": 0.5,
+		"format": "rgba8-row-major"
+	},
+	"layers": [
+		{
+			"id": 0,
+			"name": "Grass",
+			"channel": "R"
+		},
+		{
+			"id": 1,
+			"name": "Dirt",
+			"channel": "G"
+		},
+		{
+			"id": 2,
+			"name": "Rock",
+			"channel": "B"
+		},
+		{
+			"id": 3,
+			"name": "Snow",
+			"channel": "A"
+		}
+	],
+	"axes": "sim(x,z,h)->ue_cm(100x,100z,100h)",
+	"height_fnv": "0xff563549",
+	"splat_fnv": "0xd264ddc9",
+	"sim_grid_fnv": "0x53a3de06",
+	"sim_grid":
+	{
+		"cells": 256,
+		"origin_m": -128,
+		"cell_m": 1,
+		"vertex_offset": 32,
+		"fnv": "fnv1a32 over the little-endian 4 bytes of each raw Fixed, row-major"
+	},
+	"probes": [
+		{
+			"sim_x_raw": 0,
+			"sim_z_raw": 0,
+			"value_raw": -306422,
+			"ue_cm": [
+				0,
+				0,
+				-467.5628662109375
+			]
+		},
+		{
+			"sim_x_raw": -8388608,
+			"sim_z_raw": -8388608,
+			"value_raw": 0,
+			"ue_cm": [
+				-12800,
+				-12800,
+				0
+			]
+		},
+		{
+			"sim_x_raw": 8388607,
+			"sim_z_raw": 8388607,
+			"value_raw": 0,
+			"ue_cm": [
+				12799.998474121094,
+				12799.998474121094,
+				0
+			]
+		},
+		{
+			"sim_x_raw": 8388608,
+			"sim_z_raw": 8388608,
+			"value_raw": 0,
+			"ue_cm": [
+				12800,
+				12800,
+				0
+			]
+		},
+		{
+			"sim_x_raw": -8454144,
+			"sim_z_raw": -8454144,
+			"value_raw": 0,
+			"ue_cm": [
+				-12900,
+				-12900,
+				0
+			]
+		},
+		{
+			"sim_x_raw": -32768,
+			"sim_z_raw": 32768,
+			"value_raw": -305296,
+			"ue_cm": [
+				-50,
+				50,
+				-465.8447265625
+			]
+		},
+		{
+			"sim_x_raw": 65536,
+			"sim_z_raw": -65536,
+			"value_raw": -325952,
+			"ue_cm": [
+				100,
+				-100,
+				-497.36328125
+			]
+		},
+		{
+			"sim_x_raw": -65536,
+			"sim_z_raw": -65536,
+			"value_raw": -325952,
+			"ue_cm": [
+				-100,
+				-100,
+				-497.36328125
+			]
+		},
+		{
+			"sim_x_raw": -65537,
+			"sim_z_raw": -65537,
+			"value_raw": -340537,
+			"ue_cm": [
+				-100.00152587890625,
+				-100.00152587890625,
+				-519.61822509765625
+			]
+		},
+		{
+			"sim_x_raw": 688128,
+			"sim_z_raw": -212992,
+			"value_raw": -285117,
+			"ue_cm": [
+				1050,
+				-325,
+				-435.05401611328125
+			]
+		},
+		{
+			"sim_x_raw": -5095424,
+			"sim_z_raw": 2760704,
+			"value_raw": 275479,
+			"ue_cm": [
+				-7775,
+				4212.5,
+				420.34759521484375
+			]
+		},
+		{
+			"sim_x_raw": 2097151,
+			"sim_z_raw": 2097151,
+			"value_raw": 712786,
+			"ue_cm": [
+				3199.9984741210938,
+				3199.9984741210938,
+				1087.6251220703125
+			]
+		},
+		{
+			"sim_x_raw": 2097152,
+			"sim_z_raw": 2097152,
+			"value_raw": 719434,
+			"ue_cm": [
+				3200,
+				3200,
+				1097.7691650390625
+			]
+		},
+		{
+			"sim_x_raw": 4194304,
+			"sim_z_raw": -4194304,
+			"value_raw": 0,
+			"ue_cm": [
+				6400,
+				-6400,
+				0
+			]
+		},
+		{
+			"sim_x_raw": 6586368,
+			"sim_z_raw": 6586368,
+			"value_raw": 524288,
+			"ue_cm": [
+				10050,
+				10050,
+				800
+			]
+		},
+		{
+			"sim_x_raw": -6586368,
+			"sim_z_raw": -6586368,
+			"value_raw": -253205,
+			"ue_cm": [
+				-10050,
+				-10050,
+				-386.36016845703125
+			]
+		}
+	]
+}

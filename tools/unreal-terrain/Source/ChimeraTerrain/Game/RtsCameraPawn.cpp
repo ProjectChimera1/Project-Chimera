@@ -21,6 +21,15 @@ bool FTerrainCameraPose::Find(const FString& Name, FTerrainCameraPose& Out)
 		Out.VFovDeg = 50.0f;
 		return true;
 	}
+	if (Name.Equals(TEXT("closeup"), ESearchCase::IgnoreCase))
+	{
+		// Low and near S1's dirt path (path from (-60,-20) to (60,70) m): from (-66,-30) m, 3.5 m up, toward (-48,-8) m:
+		// yaw atan2(22, 18) = 50.7, pitch -atan(3.5 / 28.4) = -7.0. C7 judges the ground look from this pose and may retune it.
+		Out.LocationCm = FVector(-6600.0, -3000.0, 350.0);
+		Out.Rotation = FRotator(-7.0, 50.7, 0.0);
+		Out.VFovDeg = 60.0f;
+		return true;
+	}
 	if (Name.Equals(TEXT("spike"), ESearchCase::IgnoreCase))
 	{
 		Out.LocationCm = FVector(-12800.0, -15500.0, 400.0);

@@ -1,0 +1,14 @@
+{
+  "name": "S1L",
+  "about": "Plan C 3.8 script S1L (C4): the save/restart/load proof. Same look and pose as S1's shots: compare mode, rts80. `load` reads the terrain files of an earlier S1 run (-ChimeraTerrainLoad=<abs dir>, e.g. T/Out/s1_a), rebuilds every chunk and re-uploads the splat; the hashes must equal that run's final hashes and the `redo` shot must match that run's `redo` shot under the local statistic (parse_terrain.py --s1l).",
+  "ops": [
+    {"op": "look", "mode": "compare"},
+    {"op": "camera", "pose": "rts80"},
+    {"op": "settle", "frames": 30},
+    {"op": "load"},
+    {"op": "hash", "name": "loaded"},
+    {"op": "settle", "frames": 30},
+    {"op": "shot", "name": "redo"},
+    {"op": "depthcheck", "pose": "rts80", "name": "loaded_rts80"}
+  ]
+}

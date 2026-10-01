@@ -1,0 +1,4 @@
+BAR sim_grid_fnv                   PASS   value=python 0x53a3de06 vs terrain.json 0x53a3de06 rule=equal
+BAR probes_16                      PASS   value=16 probes, mismatches [] rule=all 16 equal
+BAR axes                           PASS   value=sim(x,z,h)->ue_cm(100x,100z,100h) rule=axes recorded
+SIMGRID PASS

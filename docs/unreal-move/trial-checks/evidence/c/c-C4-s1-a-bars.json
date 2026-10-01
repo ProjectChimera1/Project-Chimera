@@ -1,0 +1,188 @@
+{
+ "gate": "S1",
+ "pass": true,
+ "bars": [
+  {
+   "bar": "log_scan",
+   "pass": true,
+   "status": "PASS",
+   "value": "0 finding(s)",
+   "rule": "KIT logscan game profile clean"
+  },
+  {
+   "bar": "completed",
+   "pass": true,
+   "status": "PASS",
+   "value": "completed=True ops=59/59",
+   "rule": "completed=true and ops_done == ops_total"
+  },
+  {
+   "bar": "hash_undo_eq_pre_last2",
+   "pass": true,
+   "status": "PASS",
+   "value": "('0x47f2ef9b', '0x124af687') vs ('0x47f2ef9b', '0x124af687')",
+   "rule": "undo = pre_last2 (height and splat FNV)"
+  },
+  {
+   "bar": "hash_redo_eq_after",
+   "pass": true,
+   "status": "PASS",
+   "value": "('0xff563549', '0xd264ddc9') vs ('0xff563549', '0xd264ddc9')",
+   "rule": "redo = after (height and splat FNV)"
+  },
+  {
+   "bar": "hash_after_ne_pre_last2",
+   "pass": true,
+   "status": "PASS",
+   "value": "('0xff563549', '0xd264ddc9') vs ('0x47f2ef9b', '0x124af687')",
+   "rule": "the last two strokes changed height and splat"
+  },
+  {
+   "bar": "saved_eq_after",
+   "pass": true,
+   "status": "PASS",
+   "value": "saved 0xff563549/0xd264ddc9",
+   "rule": "save wrote the redo state"
+  },
+  {
+   "bar": "ticks_applied_eq_ticks",
+   "pass": true,
+   "status": "PASS",
+   "value": "12 strokes, 0 mismatched",
+   "rule": "ticks_applied == ticks for every stroke"
+  },
+  {
+   "bar": "shots_present",
+   "pass": true,
+   "status": "PASS",
+   "value": "11 shots",
+   "rule": "11 S1 shots"
+  },
+  {
+   "bar": "splat_submits_eq_cleanups",
+   "pass": true,
+   "status": "PASS",
+   "value": "submits=134 cleanups=134",
+   "rule": "equal and > 0"
+  },
+  {
+   "bar": "P2_in_place",
+   "pass": true,
+   "status": "REPORT",
+   "value": "ranged_edits=676 proxy_recreates_during_strokes=0",
+   "rule": "<= 5 %% of ranged edits (reported here; gated from the measured campaign)"
+  },
+  {
+   "bar": "P7_aa_floor",
+   "pass": true,
+   "status": "PASS",
+   "value": "changed_frac=0.00000 worst16=0.00109 mean_abs=0.00104 mask_px=43028 (footprint of the last two strokes, after + flat states; before vs before_aa)",
+   "rule": "changed <= 0.5 % and worst 16x16 block mean |d| <= 2/255"
+  },
+  {
+   "bar": "P7_undo_vs_pre_last2",
+   "pass": true,
+   "status": "PASS",
+   "value": "changed_frac=0.00000 worst16=0.00555 mean_abs=0.00127 mask_px=43028 (footprint of the last two strokes, after + flat states)",
+   "rule": "changed <= 0.5 % and worst 16x16 block mean |d| <= 2/255"
+  },
+  {
+   "bar": "P7_redo_vs_after",
+   "pass": true,
+   "status": "PASS",
+   "value": "changed_frac=0.00000 worst16=0.00350 mean_abs=0.00115 mask_px=43028 (footprint of the last two strokes, after + flat states)",
+   "rule": "changed <= 0.5 % and worst 16x16 block mean |d| <= 2/255"
+  },
+  {
+   "bar": "P7_control",
+   "pass": true,
+   "status": "PASS",
+   "value": "after vs pre_last2 changed_frac=0.8433 (A/A 0.00000)",
+   "rule": ">= 0.10 of the footprint and >= 10x the A/A changed_frac"
+  },
+  {
+   "bar": "P11 after_rts80",
+   "pass": true,
+   "status": "PASS",
+   "value": "pairs=9039 p50=0.005 p99=0.055 max=0.382 cm; disagree in/out band 0/0; frame hit 0.90",
+   "rule": "pairs >= 1000, p99 <= 2.0 cm, outside-band disagreements 0 (after and undo at rts80 and oblique)"
+  },
+  {
+   "bar": "P11 after_rts80 footprint",
+   "pass": true,
+   "status": "PASS",
+   "value": "set=last2 pixels=16968 draws=2000 pairs=2000 p50=0.007 p99=0.131 max=0.573 cm; disagree in/out band 0/0",
+   "rule": "same bar on the fp draws from the last strokes' projected footprint: pairs >= 500, p99 <= 2.0 cm, outside-band 0"
+  },
+  {
+   "bar": "P11 after_oblique",
+   "pass": true,
+   "status": "PASS",
+   "value": "pairs=6383 p50=0.007 p99=0.164 max=0.405 cm; disagree in/out band 0/0; frame hit 0.64",
+   "rule": "pairs >= 1000, p99 <= 2.0 cm, outside-band disagreements 0 (after and undo at rts80 and oblique)"
+  },
+  {
+   "bar": "P11 after_oblique footprint",
+   "pass": true,
+   "status": "PASS",
+   "value": "set=last2 pixels=11403 draws=2000 pairs=2000 p50=0.009 p99=0.159 max=1.475 cm; disagree in/out band 0/0",
+   "rule": "same bar on the fp draws from the last strokes' projected footprint: pairs >= 500, p99 <= 2.0 cm, outside-band 0"
+  },
+  {
+   "bar": "P11 undo_rts80",
+   "pass": true,
+   "status": "PASS",
+   "value": "pairs=9039 p50=0.005 p99=0.054 max=0.238 cm; disagree in/out band 0/0; frame hit 0.90",
+   "rule": "pairs >= 1000, p99 <= 2.0 cm, outside-band disagreements 0 (after and undo at rts80 and oblique)"
+  },
+  {
+   "bar": "P11 undo_rts80 footprint",
+   "pass": true,
+   "status": "PASS",
+   "value": "set=last2 pixels=21728 draws=2000 pairs=2000 p50=0.010 p99=0.030 max=0.059 cm; disagree in/out band 0/0",
+   "rule": "same bar on the fp draws from the last strokes' projected footprint: pairs >= 500, p99 <= 2.0 cm, outside-band 0"
+  },
+  {
+   "bar": "P11 undo_oblique",
+   "pass": true,
+   "status": "PASS",
+   "value": "pairs=6383 p50=0.007 p99=0.166 max=0.405 cm; disagree in/out band 0/0; frame hit 0.64",
+   "rule": "pairs >= 1000, p99 <= 2.0 cm, outside-band disagreements 0 (after and undo at rts80 and oblique)"
+  },
+  {
+   "bar": "P11 undo_oblique footprint",
+   "pass": true,
+   "status": "PASS",
+   "value": "set=last2 pixels=16346 draws=2000 pairs=2000 p50=0.024 p99=0.156 max=1.716 cm; disagree in/out band 0/0",
+   "rule": "same bar on the fp draws from the last strokes' projected footprint: pairs >= 500, p99 <= 2.0 cm, outside-band 0"
+  },
+  {
+   "bar": "P11 pre_last2_rts80",
+   "pass": true,
+   "status": "PASS",
+   "value": "pairs=9039 p50=0.005 p99=0.054 max=0.238 cm; disagree in/out band 0/0; frame hit 0.90",
+   "rule": "pairs >= 1000, p99 <= 2.0 cm, outside-band disagreements 0 (pre_last2 (reported with the same bar))"
+  },
+  {
+   "bar": "P11 pre_last2_oblique",
+   "pass": true,
+   "status": "PASS",
+   "value": "pairs=6383 p50=0.007 p99=0.166 max=0.405 cm; disagree in/out band 0/0; frame hit 0.64",
+   "rule": "pairs >= 1000, p99 <= 2.0 cm, outside-band disagreements 0 (pre_last2 (reported with the same bar))"
+  },
+  {
+   "bar": "probes",
+   "pass": true,
+   "status": "PASS",
+   "value": "n=16 negative_non_exact=7 cell_boundary=11 sim_grid_fnv=0x53a3de06 axes=sim(x,z,h)->ue_cm(100x,100z,100h)",
+   "rule": "16 probes, >= 4 negative non-exact heights, >= 2 at cell boundaries"
+  },
+  {
+   "bar": "P5_collision",
+   "pass": false,
+   "status": "FAIL",
+   "value": "skipped:C5 x8 (verify_collision, wait_collision)",
+   "rule": "wait_collision and verify_collision at pre_last2/after/undo/redo with 0 disagreements (C5's bars)"
+  }
+ ]
+}

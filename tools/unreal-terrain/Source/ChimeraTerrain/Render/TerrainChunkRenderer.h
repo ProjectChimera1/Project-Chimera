@@ -38,6 +38,25 @@ namespace ChimeraTerrain
 		int64 UploadedVertices = 0;
 	};
 
+	/** Host-side cost split of the last UpdateHeights call, milliseconds (plan C 3.8: normals vs upload-submit). */
+	struct FTerrainUpdateTiming
+	{
+		/** Time spent computing normals and tangents (the central-difference pass). */
+		double NormalsMs = 0.0;
+		/** Everything else in the call: position writes, stream copies, submit to the render side. */
+		double SubmitMs = 0.0;
+		/** Vertices rewritten (summed over the touched chunks, borders counted once per chunk). */
+		int32 Vertices = 0;
+	};
+
+	/** One finished ranged edit: how long the render side took to accept it (plan C 3.8, P2). */
+	struct FTerrainEditLatency
+	{
+		/** Frames between the submit and the frame in which the future was seen ready (0 = same frame). */
+		int32 Frames = 0;
+		double Ms = 0.0;
+	};
+
 	/**
 	 * Draws an FTerrainHeightfield as a grid of chunk components. Owns no height data: every call reads the caller's arrays.
 	 * Threading: game thread only.
@@ -70,6 +89,13 @@ namespace ChimeraTerrain
 
 		/** True while a submitted mesh update has not been accepted by the render side yet. */
 		virtual bool HasPendingWork() const = 0;
+
+		/** Observe completed futures (records edit latencies). Call once per frame, game thread. */
+		virtual void PollCompletions() = 0;
+		/** Cost split of the most recent UpdateHeights. */
+		virtual FTerrainUpdateTiming GetLastUpdateTiming() const = 0;
+		/** Latencies of every ranged edit that finished since construction (oldest first). */
+		virtual const TArray<FTerrainEditLatency>& GetEditLatencies() const = 0;
 
 		virtual FTerrainRenderStats GetStats() const = 0;
 		virtual void GetComponents(TArray<UPrimitiveComponent*>& Out) const = 0;

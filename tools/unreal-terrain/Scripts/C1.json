@@ -1,0 +1,18 @@
+{
+  "name": "C1",
+  "about": "Plan C 3.8 script C1 (C4): terrain only, look full, pose rts80, CSV on. idle_visible 30 s, then hidden / visible idle phases (P4: terrain GPU = visible minus hidden at idle; the visibility switches run in phase `transition` so the idle phases hold steady-state frames only), then a 60 s seeded random walk cycling the five modes every 5 s at d 5/20/60/100 (P1, P2, P3 phases). Stroke-end collision is C5's. The walk runs at 30 Hz, so ticks per frame follow the frame rate; ticks_dropped counts the 15-per-frame catch-up cap. The same script with -ChimeraTerrainUnits=1000 is C1U (C9).",
+  "ops": [
+    {"op": "look", "mode": "full"},
+    {"op": "camera", "pose": "rts80"},
+    {"op": "settle", "frames": 120},
+    {"op": "csv", "mode": "start"},
+    {"op": "idle", "seconds": 30, "phase": "idle_visible"},
+    {"op": "visible", "value": 0, "phase": "transition"},
+    {"op": "idle", "seconds": 10, "phase": "idle_hidden"},
+    {"op": "visible", "value": 1, "phase": "transition"},
+    {"op": "idle", "seconds": 10, "phase": "idle_visible2"},
+    {"op": "random_walk", "seconds": 60, "seed": 7, "cycle_s": 5, "diameters": [5, 20, 60, 100], "s": 10, "phase": "walk"},
+    {"op": "idle", "seconds": 5, "phase": "idle_after"},
+    {"op": "csv", "mode": "stop"}
+  ]
+}
