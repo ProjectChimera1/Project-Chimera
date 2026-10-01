@@ -1,0 +1,211 @@
+{
+ "window": [
+  2000,
+  3650
+ ],
+ "runs": [
+  {
+   "tag": "game_A_r1",
+   "file": "../out/csv/game_A_r1.csv",
+   "frames_total": 4062,
+   "window": [
+    2000,
+    3650
+   ],
+   "window_frames": 1650,
+   "median_fps": 62.88,
+   "mean_fps": 62.55,
+   "low1_fps": 58.89,
+   "median_ms": {
+    "GPUTime": 15.41,
+    "GameThreadTime": 4.392,
+    "RenderThreadTime": 15.892,
+    "RHIThreadTime": 2.833
+   },
+   "median_frame_ms": 15.904,
+   "bound": "render thread",
+   "max_frame_ms": 17.57,
+   "peak_vram_mib": 3914,
+   "commandline": null,
+   "resolution_1920x1080_in_log": true,
+   "last_viewport_resize": "1920x1080 WindowedFullscreen",
+   "capture_complete": true,
+   "flags": []
+  },
+  {
+   "tag": "game_A_r2",
+   "file": "../out/csv/game_A_r2.csv",
+   "frames_total": 4062,
+   "window": [
+    2000,
+    3650
+   ],
+   "window_frames": 1650,
+   "median_fps": 62.87,
+   "mean_fps": 62.48,
+   "low1_fps": 58.82,
+   "median_ms": {
+    "GPUTime": 15.418,
+    "GameThreadTime": 4.376,
+    "RenderThreadTime": 15.894,
+    "RHIThreadTime": 2.85
+   },
+   "median_frame_ms": 15.905,
+   "bound": "render thread",
+   "max_frame_ms": 17.27,
+   "peak_vram_mib": 3914,
+   "commandline": null,
+   "resolution_1920x1080_in_log": true,
+   "last_viewport_resize": "1920x1080 WindowedFullscreen",
+   "capture_complete": true,
+   "flags": []
+  },
+  {
+   "tag": "game_A_noLumen_r1",
+   "file": "../out/csv/game_A_noLumen_r1.csv",
+   "frames_total": 4062,
+   "window": [
+    2000,
+    3650
+   ],
+   "window_frames": 1650,
+   "median_fps": 76.51,
+   "mean_fps": 74.99,
+   "low1_fps": 66.89,
+   "median_ms": {
+    "GPUTime": 12.677,
+    "GameThreadTime": 3.96,
+    "RenderThreadTime": 13.061,
+    "RHIThreadTime": 2.437
+   },
+   "median_frame_ms": 13.069,
+   "bound": "render thread",
+   "max_frame_ms": 15.5,
+   "peak_vram_mib": 3082,
+   "commandline": null,
+   "resolution_1920x1080_in_log": true,
+   "last_viewport_resize": "1920x1080 WindowedFullscreen",
+   "capture_complete": true,
+   "flags": []
+  },
+  {
+   "tag": "game_A_noLumen_r2",
+   "file": "../out/csv/game_A_noLumen_r2.csv",
+   "frames_total": 4062,
+   "window": [
+    2000,
+    3650
+   ],
+   "window_frames": 1650,
+   "median_fps": 75.96,
+   "mean_fps": 74.1,
+   "low1_fps": 66.34,
+   "median_ms": {
+    "GPUTime": 12.695,
+    "GameThreadTime": 3.98,
+    "RenderThreadTime": 13.146,
+    "RHIThreadTime": 2.435
+   },
+   "median_frame_ms": 13.165,
+   "bound": "render thread",
+   "max_frame_ms": 15.55,
+   "peak_vram_mib": 3082,
+   "commandline": null,
+   "resolution_1920x1080_in_log": true,
+   "last_viewport_resize": "1920x1080 WindowedFullscreen",
+   "capture_complete": true,
+   "flags": []
+  },
+  {
+   "tag": "game_B_r1",
+   "file": "../out/csv/game_B_r1.csv",
+   "frames_total": 4063,
+   "window": [
+    2000,
+    3650
+   ],
+   "window_frames": 1650,
+   "median_fps": 107.91,
+   "mean_fps": 107.98,
+   "low1_fps": 102.0,
+   "median_ms": {
+    "GPUTime": 8.976,
+    "GameThreadTime": 3.675,
+    "RenderThreadTime": 9.25,
+    "RHIThreadTime": 2.133
+   },
+   "median_frame_ms": 9.267,
+   "bound": "render thread",
+   "max_frame_ms": 10.37,
+   "peak_vram_mib": 2935,
+   "commandline": null,
+   "resolution_1920x1080_in_log": true,
+   "last_viewport_resize": "1920x1080 WindowedFullscreen",
+   "capture_complete": true,
+   "flags": []
+  },
+  {
+   "tag": "game_B_r2",
+   "file": "../out/csv/game_B_r2.csv",
+   "frames_total": 4063,
+   "window": [
+    2000,
+    3650
+   ],
+   "window_frames": 1650,
+   "median_fps": 107.82,
+   "mean_fps": 107.83,
+   "low1_fps": 101.38,
+   "median_ms": {
+    "GPUTime": 8.988,
+    "GameThreadTime": 3.692,
+    "RenderThreadTime": 9.262,
+    "RHIThreadTime": 2.106
+   },
+   "median_frame_ms": 9.275,
+   "bound": "render thread",
+   "max_frame_ms": 10.16,
+   "peak_vram_mib": 2942,
+   "commandline": null,
+   "resolution_1920x1080_in_log": true,
+   "last_viewport_resize": "1920x1080 WindowedFullscreen",
+   "capture_complete": true,
+   "flags": []
+  }
+ ],
+ "looks": {
+  "A": {
+   "reps": 2,
+   "median_fps": 62.88,
+   "mean_fps": 62.52,
+   "low1_fps": 58.86,
+   "rep_spread_pct": 0.02,
+   "bound": [
+    "render thread"
+   ],
+   "flags": []
+  },
+  "A_noLumen": {
+   "reps": 2,
+   "median_fps": 76.23,
+   "mean_fps": 74.54,
+   "low1_fps": 66.62,
+   "rep_spread_pct": 0.72,
+   "bound": [
+    "render thread"
+   ],
+   "flags": []
+  },
+  "B": {
+   "reps": 2,
+   "median_fps": 107.86,
+   "mean_fps": 107.91,
+   "low1_fps": 101.69,
+   "rep_spread_pct": 0.08,
+   "bound": [
+    "render thread"
+   ],
+   "flags": []
+  }
+ }
+}

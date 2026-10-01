@@ -1,99 +1,73 @@
 # HANDOFF — Project Chimera
 
-_Updated 2026-09-30 · branch `master` · last commit `ec53e0ed` (then the UI-spec commit)_
+_Updated 2026-10-01 00:45 · branch `master` · last commit: the look-test checkpoint (see `git log -1`)_
 
 ## Where we stopped
 
-Session 13 (2026-09-29) planned the move from Godot to **Unreal Engine 5.8** and set up for it.
-No engine code, tests or goldens were touched. Done this session:
+Session 14 (2026-09-30 → 10-01) took the Unreal trial from "installed" to "look test delivered". No Godot engine
+code, tests or goldens were touched.
 
-- **Unreal Spec** (Claude Doc, the product source of truth):
-  https://claude.ai/code/artifact/5b9ecf08-3568-4a8f-833a-f21c1112b395. Alec reviewed it and
-  settled: trial first; rename the repo only after the trial passes; nothing missing; native
-  Unreal UI only; OpenAI Codex added as an AI provider; Commanders play every custom game
-  Architects publish (any genre, WC3-style); "Law of Equal Exchange" is FMA's term and can't be
-  used, so the setting name and faction styles are placeholders until Alec finishes the story.
-- **World look:** of six Steam references in the spec, Alec picked **Manor Lords** (near-photoreal,
-  UE5), with **Northgard** a close second.
-- **UI redo** with Opus 5.5: one integrated shell (Godot's separate windows were the failure), the
-  map editor first. The brief for Alec's Claude Design runs:
-  https://claude.ai/code/artifact/1a5fc17e-e70b-4d36-bf64-5226ee5e037a (shared brief + directions
-  A Arcane Workshop / B Transmutation Lab / C Modern Atelier + review checklist). Direction B's
-  reference images are in that doc and in
-  `_bmad-output/planning-artifacts/ux-designs/ux-Project_Chimera-2026-06-20/handoff-prompts/`.
-- **UI design complete (2026-09-30):** Alec approved the full Claude Design export (Round 1
-  Transmutation Lab + all five Round 2 batches, Match HUD corrected to full-bleed). It is now the
-  ONLY mockup of record, in `docs/ui-redesign/` (start with its `README.md`: tokens, shell,
-  ornament/motion levers with Unreal build notes, every screen). The Round 1 export was removed
-  (git history); the prompts that produced it are in `docs/history/ui-redesign-prompts/`. The four
-  Manor Lords `assets/bf-*.jpg` stand-ins are left out of the repo. Assessment: reproducible in
-  UMG/Common UI to the eye (designed with no blur/particles); SVG ornaments and icons become
-  textures/materials; text rendering won't be pixel-identical. Fonts are Cinzel/Inter/JetBrains
-  Mono for now; Alec may commission a custom font if they look lacklustre in engine.
-- **Cleanup:** BMAD tooling, the bmad-loop hooks and the 2026-06-05 UX run removed; the project's
-  `git push` deny rule was lifted at Alec's request.
-- **PC setup:** Visual Studio 2026 Community 18.10 installed and verified (all four Epic workloads,
-  Unreal installer/IDE/debugger components, MSVC 14.51, Windows SDK 10.0.26100 + 10.0.28000,
-  .NET 8/9/10). **UE 5.8.3 was at 86% installing** from the Epic Launcher to `D:\Epic Games`
-  with Editor symbols and Engine Source; target platforms Windows only.
+- **Trial project compiles.** `D:\Projects\Chimera-Unreal\ProjectChimera` (UE 5.8.3, Blank C++, not a git repo,
+  outside this repo until the trial passes) builds with `Build.bat` in ~2 min with UBA; the 16–32 GB page file fixed
+  the earlier failure. Ray tracing is off in its `DefaultEngine.ini` (originals kept as `*.bak-20260930`).
+- **Unreal MCP is set up.** Plugins ModelContextProtocol, ToolsetRegistry, AllToolsets, EditorToolset, Python,
+  EditorScriptingUtilities and PCGBiomeSample are enabled in the `.uproject`. Server: `http://127.0.0.1:8000/mcp`,
+  registered in Claude Code (`unreal-mcp`, local scope for this repo, ✔ Connected, 52 toolsets). It only answers while
+  the editor runs with `-ModelContextProtocolStartServer`.
+- **Look test delivered** (sent to Alec as images): Manor-Lords-style (A) vs Northgard-style (B), same Tripo roster,
+  layout and camera. A 62.9 fps with Lumen / 76.2 without (looks the same), B 107.9 fps, RTX 3060 at 1080p. Results,
+  composites and caveats: `docs/unreal-move/look-test-2026-10-01/README.md`. Tooling and plan: `tools/unreal-looktest/`.
+- **UI port rule (Alec, 2026-09-30):** Unreal builds the approved **Round 2** set in `docs/ui-redesign/`, never the Godot
+  or June UI as it looks (Unreal Spec updated to say so). The Map Editor board is Round 1 geometry plus Round 2 levers.
+- 110 Windows Firewall allow rules added for the Unreal binaries at Alec's request (group "Unreal 5.8 (Claude)";
+  remove with `Remove-NetFirewallRule -Group 'Unreal 5.8 (Claude)'`).
 
 ## Next step
 
-1. **Compile the trial project** (session 14, 2026-09-29): Alec created it from the Blank C++
-   template as `D:\Projects\Chimera-Unreal\ProjectChimera\ProjectChimera.uproject` (named for
-   keeps; outside this repo until the trial passes). UBT accepted MSVC 14.50.35717 + SDK
-   10.0.28000, but the first build died with "The paging file is too small" (UBA shared-memory
-   commit; 16 GB RAM, auto page file was 6.4 GB). Alec set a fixed page file 16–32 GB on C: and
-   rebooted. Next: with the editor CLOSED, run
-   `"D:/Epic Games/UE_5.8/Engine/Build/BatchFiles/Build.bat" ProjectChimeraEditor Win64 Development -Project="D:/Projects/Chimera-Unreal/ProjectChimera/ProjectChimera.uproject" -WaitMutex`
-   from Claude Code; if UBA still fails, add `-NoUBA`.
-2. Then Alec opens the project and enables plugins **Unreal MCP** (`ModelContextProtocol`,
-   Experimental) and **All Toolsets**, restarts, and Claude connects it to Claude Code
-   (default `http://127.0.0.1:8000/mcp` — verify). Python editor scripting is the batch fallback.
-3. **Look test first** (Alec is waiting on it): one map shot of our units/buildings rendered
-   Manor-Lords-style and Northgard-style, sent side by side as images. It judges readability of
-   armies, the asset redo cost (photoreal = regenerate all 24 models), player-import clash (idea:
-   per-map look preset) and frame rate on this PC.
-4. Then the three trial checks: (a) NativeAOT sim library drives 1,000 units in Unreal with the
-   same checksum as Godot; (b) one HUD screen in C++ matched to a mockup by screenshot: use Match HUD board 3.1 in
-   `docs/ui-redesign/Match.dc.html`;
-   (c) runtime terrain editing (RealtimeMeshComponent vs Errant Landscape runtime).
+1. Act on Alec's world-look call (below). If A: record it in the Unreal Spec ("The world's look" paragraph), drop
+   Lumen as the default (no visible gain here, −2.7 ms GPU), and plan a closer default camera.
+2. Trial check (a): the NativeAOT sim library drives 1,000 units in Unreal with the same checksum as Godot (sim
+   content loading must move from reflection System.Text.Json to source generation first).
+3. Trial check (b): Match HUD board 3.1 (`docs/ui-redesign/Match.dc.html`, Round 2) built in C++ and matched by screenshot.
+4. Trial check (c): runtime terrain editing (RealtimeMeshComponent vs Errant Landscape runtime).
 
 ## Waiting on Alec
 
-- **World look** final call after the look test.
-- **`.claude/worktrees/wf_bbdf1721-ebb-93/`**: stale leftover of a 2026-08-04 workflow run (89 files,
-  duplicates of `_bmad-output` UX files, nothing unique, untracked). Delete when he says OK.
-- **Optional RAM upgrade:** 16 GB vs Epic's 32 GB recommendation; 2 of 4 slots free.
-- Carried over: DW-1029 (Flux dev licence), HD Model triangle question, DW-1025 (`bulwark_adept`
-  palette), `cinderhand_thrall` colour. The Tripo roster may be regenerated photoreal anyway.
+- **World look** — A, B or neither, after the look test (images sent 2026-10-01; findings in the look-test README).
+- **`.claude/worktrees/wf_bbdf1721-ebb-93/`** — stale 2026-08-04 workflow leftover (untracked, nothing unique). Delete?
+- Optional RAM upgrade (16 GB; editor idles at 4.2 GB, so not blocking). Carried over: DW-1029 (Flux dev licence),
+  HD Model triangle question, DW-1025 (`bulwark_adept` palette), `cinderhand_thrall` colour, and a Tripo version of
+  `covenant_transmuter` (alpha infantry is the last Hunyuan model and renders as white blocks).
 
 ## How to run and check it
 
-- Godot build: `dotnet build godot/godot.sln`
-- Sim tests: `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj`
-  (baseline 6392 / 0 / 1 skipped; `CanonicalModelHashPerf` is a known CPU-contention flake)
-- Godot in-engine checks: `godot-verify` skill.
-- Commit and push at checkpoints (push allowed as of 2026-09-29).
+- Unreal editor + MCP + job bridge: `bash tools/unreal-looktest/start_editor.sh <logtag>` (the scripts expect to live
+  in `D:\Projects\Chimera-Unreal\ProjectChimera\LookTest\tools\`, where the working copy is). Wait for
+  `LookTest/run/bridge_ready.json`; first launch compiles shaders (~12 min), later ones ~2 min.
+- Run an editor job: `python ue_job.py <module> [func] '<json args>'`. MCP from the shell: `python mcp_call.py call
+  EditorToolset.EditorAppToolset CaptureViewport '<json>' --save-images DIR`. Close cleanly: `python ue_job.py lt_admin quit`.
+- Frame rate: `powershell -File run_fps.ps1 -Look A|A_noLumen|B -Rep n` (editor closed), then `python parse_csv.py`.
+- Godot build `dotnet build godot/godot.sln`; sim tests `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj`
+  (baseline 6392 / 0 / 1 skipped).
 
 ## In flight / known issues
 
-- Godot asset work (Epic 16) paused pending the Unreal and world-look decisions.
-- Sim content loading uses reflection-based System.Text.Json and must move to source generation for
-  NativeAOT (trial check a).
-- PC: Ryzen 5 5600 (6 cores, below Epic's 12–16 core compile baseline, so builds are slower),
-  RTX 3060 12 GB (fine, supports Lumen), 16 GB RAM, D: ~700 GB free.
+- Unreal gotchas found live (all handled in the tooling, details in `tools/unreal-looktest/PLAN_DELTA.md` D7–D9):
+  launch from Bash with `MSYS_NO_PATHCONV=1` or `/Engine/...` args get mangled; `CaptureViewport` needs
+  `captureTransform` and `annotations` and returns the PNG inside a text block; MaterialEditingLibrary setters return
+  False on success; Interchange names clips `<asset><clip>` with no separator; skeletal meshes need
+  `AlwaysTickPoseAndRefreshBones` + `set_update_animation_in_editor` or off-screen units T-pose; `-game` CSVs land in
+  `%LOCALAPPDATA%\UnrealEngine\5.8\Saved\Profiling\CSV`.
+- The first `Start-Process` launch of the editor from the PowerShell tool hung with no log; later launches through
+  `run_fps.ps1` worked. Cause not found; prefer `start_editor.sh`.
+- Godot asset work (Epic 16) paused pending the world-look decision.
 
 ## Key context
 
-- Architecture of record (in the spec): the ~75k-line engine-free sim (`godot/SimSources.props`)
-  compiles with .NET NativeAOT into a native library; Unreal is a thin C++ shell (UI in Slate or
-  UMG-from-C++, no widget Blueprints); the match server becomes a plain .NET program, so no
-  source-built Unreal. ~58k Godot-coupled lines get rebuilt; the Godot build is the behavioural
-  reference.
-- Unreal facts checked 2026-09-29 (sources in the spec): UE6 early access aimed at late 2027
-  (Verse); Landscape can't be sculpted in a shipped game; glTFRuntime loads .glb at runtime; royalty
-  5% above $1M lifetime, Epic Games Store sales exempt.
-- Work comes as one-page feature briefs (outcome + why, constraints, proof of done, out of scope).
-- History: `docs/history/Snapshot-through-2026-09-21.md`. Ledger:
-  `_bmad-output/implementation-artifacts/deferred-work.md`.
+- Architecture of record (Unreal Spec, https://claude.ai/code/artifact/5b9ecf08-3568-4a8f-833a-f21c1112b395): the
+  engine-free sim compiles with NativeAOT into a native library; Unreal is a thin C++ shell (no widget Blueprints);
+  the match server is a plain .NET program. The Godot build is the behavioural reference.
+- Tripo (`D:\tripo-out`) is the production asset route: 12 rigged units share one 41-bone rig with 6–11 clips each;
+  static Tripo GLBs carry `KHR_materials_volume`, which must be stripped before import (`prep_roster.py` does it).
+- PC: Ryzen 5 5600 (6 cores), RTX 3060 12 GB, 16 GB RAM, D: ~650 GB free.
+- History: `docs/history/Snapshot-through-2026-09-21.md`. Ledger: `_bmad-output/implementation-artifacts/deferred-work.md`.

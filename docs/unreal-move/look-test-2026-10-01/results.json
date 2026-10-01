@@ -1,0 +1,613 @@
+{
+ "date": "2026-10-01",
+ "engine": "UE 5.8.3 Launcher build, project ProjectChimera (Blank C++), r.RayTracing=False, Substrate on, VSM, Nanite, TSR",
+ "pc": "Ryzen 5 5600, RTX 3060 12 GB, 16 GB RAM, 1920x1080 WindowedFullscreen, uncooked -game",
+ "fps": {
+  "window": [
+   2000,
+   3650
+  ],
+  "runs": [
+   {
+    "tag": "game_A_r1",
+    "file": "../out/csv/game_A_r1.csv",
+    "frames_total": 4062,
+    "window": [
+     2000,
+     3650
+    ],
+    "window_frames": 1650,
+    "median_fps": 62.88,
+    "mean_fps": 62.55,
+    "low1_fps": 58.89,
+    "median_ms": {
+     "GPUTime": 15.41,
+     "GameThreadTime": 4.392,
+     "RenderThreadTime": 15.892,
+     "RHIThreadTime": 2.833
+    },
+    "median_frame_ms": 15.904,
+    "bound": "render thread",
+    "max_frame_ms": 17.57,
+    "peak_vram_mib": 3914,
+    "commandline": null,
+    "resolution_1920x1080_in_log": true,
+    "last_viewport_resize": "1920x1080 WindowedFullscreen",
+    "capture_complete": true,
+    "flags": []
+   },
+   {
+    "tag": "game_A_r2",
+    "file": "../out/csv/game_A_r2.csv",
+    "frames_total": 4062,
+    "window": [
+     2000,
+     3650
+    ],
+    "window_frames": 1650,
+    "median_fps": 62.87,
+    "mean_fps": 62.48,
+    "low1_fps": 58.82,
+    "median_ms": {
+     "GPUTime": 15.418,
+     "GameThreadTime": 4.376,
+     "RenderThreadTime": 15.894,
+     "RHIThreadTime": 2.85
+    },
+    "median_frame_ms": 15.905,
+    "bound": "render thread",
+    "max_frame_ms": 17.27,
+    "peak_vram_mib": 3914,
+    "commandline": null,
+    "resolution_1920x1080_in_log": true,
+    "last_viewport_resize": "1920x1080 WindowedFullscreen",
+    "capture_complete": true,
+    "flags": []
+   },
+   {
+    "tag": "game_A_noLumen_r1",
+    "file": "../out/csv/game_A_noLumen_r1.csv",
+    "frames_total": 4062,
+    "window": [
+     2000,
+     3650
+    ],
+    "window_frames": 1650,
+    "median_fps": 76.51,
+    "mean_fps": 74.99,
+    "low1_fps": 66.89,
+    "median_ms": {
+     "GPUTime": 12.677,
+     "GameThreadTime": 3.96,
+     "RenderThreadTime": 13.061,
+     "RHIThreadTime": 2.437
+    },
+    "median_frame_ms": 13.069,
+    "bound": "render thread",
+    "max_frame_ms": 15.5,
+    "peak_vram_mib": 3082,
+    "commandline": null,
+    "resolution_1920x1080_in_log": true,
+    "last_viewport_resize": "1920x1080 WindowedFullscreen",
+    "capture_complete": true,
+    "flags": []
+   },
+   {
+    "tag": "game_A_noLumen_r2",
+    "file": "../out/csv/game_A_noLumen_r2.csv",
+    "frames_total": 4062,
+    "window": [
+     2000,
+     3650
+    ],
+    "window_frames": 1650,
+    "median_fps": 75.96,
+    "mean_fps": 74.1,
+    "low1_fps": 66.34,
+    "median_ms": {
+     "GPUTime": 12.695,
+     "GameThreadTime": 3.98,
+     "RenderThreadTime": 13.146,
+     "RHIThreadTime": 2.435
+    },
+    "median_frame_ms": 13.165,
+    "bound": "render thread",
+    "max_frame_ms": 15.55,
+    "peak_vram_mib": 3082,
+    "commandline": null,
+    "resolution_1920x1080_in_log": true,
+    "last_viewport_resize": "1920x1080 WindowedFullscreen",
+    "capture_complete": true,
+    "flags": []
+   },
+   {
+    "tag": "game_B_r1",
+    "file": "../out/csv/game_B_r1.csv",
+    "frames_total": 4063,
+    "window": [
+     2000,
+     3650
+    ],
+    "window_frames": 1650,
+    "median_fps": 107.91,
+    "mean_fps": 107.98,
+    "low1_fps": 102.0,
+    "median_ms": {
+     "GPUTime": 8.976,
+     "GameThreadTime": 3.675,
+     "RenderThreadTime": 9.25,
+     "RHIThreadTime": 2.133
+    },
+    "median_frame_ms": 9.267,
+    "bound": "render thread",
+    "max_frame_ms": 10.37,
+    "peak_vram_mib": 2935,
+    "commandline": null,
+    "resolution_1920x1080_in_log": true,
+    "last_viewport_resize": "1920x1080 WindowedFullscreen",
+    "capture_complete": true,
+    "flags": []
+   },
+   {
+    "tag": "game_B_r2",
+    "file": "../out/csv/game_B_r2.csv",
+    "frames_total": 4063,
+    "window": [
+     2000,
+     3650
+    ],
+    "window_frames": 1650,
+    "median_fps": 107.82,
+    "mean_fps": 107.83,
+    "low1_fps": 101.38,
+    "median_ms": {
+     "GPUTime": 8.988,
+     "GameThreadTime": 3.692,
+     "RenderThreadTime": 9.262,
+     "RHIThreadTime": 2.106
+    },
+    "median_frame_ms": 9.275,
+    "bound": "render thread",
+    "max_frame_ms": 10.16,
+    "peak_vram_mib": 2942,
+    "commandline": null,
+    "resolution_1920x1080_in_log": true,
+    "last_viewport_resize": "1920x1080 WindowedFullscreen",
+    "capture_complete": true,
+    "flags": []
+   }
+  ],
+  "looks": {
+   "A": {
+    "reps": 2,
+    "median_fps": 62.88,
+    "mean_fps": 62.52,
+    "low1_fps": 58.86,
+    "rep_spread_pct": 0.02,
+    "bound": [
+     "render thread"
+    ],
+    "flags": []
+   },
+   "A_noLumen": {
+    "reps": 2,
+    "median_fps": 76.23,
+    "mean_fps": 74.54,
+    "low1_fps": 66.62,
+    "rep_spread_pct": 0.72,
+    "bound": [
+     "render thread"
+    ],
+    "flags": []
+   },
+   "B": {
+    "reps": 2,
+    "median_fps": 107.86,
+    "mean_fps": 107.91,
+    "low1_fps": 101.69,
+    "rep_spread_pct": 0.08,
+    "bound": [
+     "render thread"
+    ],
+    "flags": []
+   }
+  }
+ },
+ "lumen_visual_delta": "game_A_r2 vs game_A_noLumen_r2 mean abs pixel difference 0.87/0.88/0.67 of 255 (R/G/B); GPU 15.4 vs 12.7 ms, so the GI setting took effect but changes almost nothing visible on an open field",
+ "layout_hash_all_looks": "5e7ec198b71ced74bdef759dd72b75772d4a0678d7ad5984f3681b82be9784c0",
+ "manifests": {
+  "A": {
+   "hash": "5e7ec198b71ced74bdef759dd72b75772d4a0678d7ad5984f3681b82be9784c0",
+   "scatter_hash": "ec0d07cf0663b1c161cfd531a7a2067e42602de3d87de8d5337ae5f7fa9fb59e",
+   "recipe": {
+    "sun_pitch": -32.0,
+    "sun_yaw": 120.0,
+    "sun_lux": 10.0,
+    "sun_source_angle": 2.0,
+    "sun_temperature": 5600.0,
+    "sun_use_temperature": true,
+    "sun_atmosphere_sun_light": true,
+    "sun_cast_cloud_shadows": true,
+    "skylight_real_time_capture": true,
+    "skylight_intensity": 1.0,
+    "clouds": true,
+    "fog_density": 0.02,
+    "fog_height_falloff": 0.2,
+    "fog_volumetric": false,
+    "fog_inscattering": null,
+    "gi_method": "LUMEN",
+    "reflection_method": "LUMEN",
+    "saturation": 0.95,
+    "contrast": 1.05,
+    "bloom": 0.3,
+    "vignette": 0.4,
+    "ao": 0.5,
+    "motion_blur": 0.0,
+    "exposure_bias": 0.0
+   },
+   "overrides": {},
+   "retunes": [],
+   "counts": {
+    "units": 58,
+    "buildings": 10,
+    "tree": 450,
+    "undergrowth": 400,
+    "boulder": 40
+   }
+  },
+  "A_noLumen": {
+   "hash": "5e7ec198b71ced74bdef759dd72b75772d4a0678d7ad5984f3681b82be9784c0",
+   "scatter_hash": "ec0d07cf0663b1c161cfd531a7a2067e42602de3d87de8d5337ae5f7fa9fb59e",
+   "recipe": {
+    "sun_pitch": -32.0,
+    "sun_yaw": 120.0,
+    "sun_lux": 10.0,
+    "sun_source_angle": 2.0,
+    "sun_temperature": 5600.0,
+    "sun_use_temperature": true,
+    "sun_atmosphere_sun_light": true,
+    "sun_cast_cloud_shadows": true,
+    "skylight_real_time_capture": true,
+    "skylight_intensity": 1.0,
+    "clouds": true,
+    "fog_density": 0.02,
+    "fog_height_falloff": 0.2,
+    "fog_volumetric": false,
+    "fog_inscattering": null,
+    "gi_method": "SCREEN_SPACE",
+    "reflection_method": "SCREEN_SPACE",
+    "saturation": 0.95,
+    "contrast": 1.05,
+    "bloom": 0.3,
+    "vignette": 0.4,
+    "ao": 0.5,
+    "motion_blur": 0.0,
+    "exposure_bias": 0.0
+   },
+   "overrides": {},
+   "retunes": [],
+   "counts": {
+    "units": 58,
+    "buildings": 10,
+    "tree": 450,
+    "undergrowth": 400,
+    "boulder": 40
+   }
+  },
+  "B": {
+   "hash": "5e7ec198b71ced74bdef759dd72b75772d4a0678d7ad5984f3681b82be9784c0",
+   "scatter_hash": "ec0d07cf0663b1c161cfd531a7a2067e42602de3d87de8d5337ae5f7fa9fb59e",
+   "recipe": {
+    "sun_pitch": -55.0,
+    "sun_yaw": 120.0,
+    "sun_lux": 10.0,
+    "sun_source_angle": 4.5,
+    "sun_temperature": 6000.0,
+    "sun_use_temperature": true,
+    "sun_atmosphere_sun_light": true,
+    "sun_cast_cloud_shadows": null,
+    "skylight_real_time_capture": true,
+    "skylight_intensity": 1.6,
+    "clouds": false,
+    "fog_density": 0.004,
+    "fog_height_falloff": 0.2,
+    "fog_volumetric": false,
+    "fog_inscattering": [
+     0.45,
+     0.6,
+     0.85
+    ],
+    "gi_method": "NONE",
+    "reflection_method": "SCREEN_SPACE",
+    "saturation": 1.2,
+    "contrast": 1.1,
+    "bloom": 0.15,
+    "vignette": 0.2,
+    "ao": 0.3,
+    "motion_blur": 0.0,
+    "exposure_bias": 0.0
+   },
+   "overrides": {
+    "saturation": 1.2
+   },
+   "retunes": [
+    {
+     "overrides": {
+      "saturation": 1.2
+     },
+     "from": "B",
+     "t": 1790828347.7111733
+    }
+   ],
+   "counts": {
+    "units": 58,
+    "buildings": 10,
+    "tree": 450,
+    "undergrowth": 400,
+    "boulder": 40
+   }
+  }
+ },
+ "roster": [
+  {
+   "faction": "alpha",
+   "kind": "unit",
+   "id": "worker",
+   "name": "acolyte_alchemist",
+   "source": "tripo_rigged",
+   "scale": 1.872183,
+   "godot_height_m": 1.8713
+  },
+  {
+   "faction": "alpha",
+   "kind": "unit",
+   "id": "infantry",
+   "name": "covenant_transmuter",
+   "source": "godot_hunyuan",
+   "scale": 1.0,
+   "godot_height_m": 2.028
+  },
+  {
+   "faction": "alpha",
+   "kind": "unit",
+   "id": "scout",
+   "name": "quicksilver_runner",
+   "source": "tripo_rigged",
+   "scale": 1.81267,
+   "godot_height_m": 1.8118
+  },
+  {
+   "faction": "alpha",
+   "kind": "unit",
+   "id": "heavy_infantry",
+   "name": "bulwark_adept",
+   "source": "tripo_rigged",
+   "scale": 2.627078,
+   "godot_height_m": 2.4642
+  },
+  {
+   "faction": "alpha",
+   "kind": "unit",
+   "id": "archer",
+   "name": "pierce_marksman",
+   "source": "tripo_rigged",
+   "scale": 1.750944,
+   "godot_height_m": 1.7501
+  },
+  {
+   "faction": "alpha",
+   "kind": "unit",
+   "id": "mage",
+   "name": "circle_savant",
+   "source": "tripo_rigged",
+   "scale": 1.846148,
+   "godot_height_m": 1.8452
+  },
+  {
+   "faction": "alpha",
+   "kind": "unit",
+   "id": "siege_engine",
+   "name": "crucible_mortar",
+   "source": "tripo_static",
+   "scale": 3.612544,
+   "godot_height_m": 3.1063
+  },
+  {
+   "faction": "alpha",
+   "kind": "unit",
+   "id": "griffin",
+   "name": "greycrest_bonded",
+   "source": "tripo_rigged",
+   "scale": 2.691344,
+   "godot_height_m": 2.6191
+  },
+  {
+   "faction": "alpha",
+   "kind": "building",
+   "id": "command_center",
+   "name": "covenant_sanctum",
+   "source": "tripo_static",
+   "scale": 16.30908,
+   "godot_height_m": 5.4517
+  },
+  {
+   "faction": "alpha",
+   "kind": "building",
+   "id": "barracks",
+   "name": "crucible_hall",
+   "source": "tripo_static",
+   "scale": 12.239806,
+   "godot_height_m": 3.1562
+  },
+  {
+   "faction": "alpha",
+   "kind": "building",
+   "id": "archery_range",
+   "name": "sigil_foundry",
+   "source": "tripo_static",
+   "scale": 12.005862,
+   "godot_height_m": 3.1337
+  },
+  {
+   "faction": "alpha",
+   "kind": "building",
+   "id": "siege_workshop",
+   "name": "transmutation_forge",
+   "source": "tripo_static",
+   "scale": 12.260796,
+   "godot_height_m": 5.3224
+  },
+  {
+   "faction": "alpha",
+   "kind": "building",
+   "id": "aviary",
+   "name": "sigil_foundry",
+   "source": "tripo_static",
+   "scale": 12.005862,
+   "godot_height_m": 3.5097
+  },
+  {
+   "faction": "beta",
+   "kind": "unit",
+   "id": "forgehand",
+   "name": "cinderhand_thrall",
+   "source": "tripo_rigged",
+   "scale": 1.934897,
+   "godot_height_m": 1.934
+  },
+  {
+   "faction": "beta",
+   "kind": "unit",
+   "id": "footsoldier",
+   "name": "maul_fused_wretch",
+   "source": "tripo_rigged",
+   "scale": 1.872528,
+   "godot_height_m": 1.8716
+  },
+  {
+   "faction": "beta",
+   "kind": "unit",
+   "id": "bulwark",
+   "name": "slag_bulwark",
+   "source": "tripo_rigged",
+   "scale": 1.982173,
+   "godot_height_m": 1.9193
+  },
+  {
+   "faction": "beta",
+   "kind": "unit",
+   "id": "ironclad",
+   "name": "pride_colossus",
+   "source": "tripo_rigged",
+   "scale": 2.555965,
+   "godot_height_m": 2.5547
+  },
+  {
+   "faction": "beta",
+   "kind": "unit",
+   "id": "crossbowman",
+   "name": "bolt_penitent",
+   "source": "tripo_rigged",
+   "scale": 1.85181,
+   "godot_height_m": 1.8509
+  },
+  {
+   "faction": "beta",
+   "kind": "unit",
+   "id": "rune_caster",
+   "name": "cinder_cantor",
+   "source": "tripo_rigged",
+   "scale": 1.965743,
+   "godot_height_m": 1.9648
+  },
+  {
+   "faction": "beta",
+   "kind": "unit",
+   "id": "war_machine",
+   "name": "render_crawler",
+   "source": "tripo_static",
+   "scale": 5.650092,
+   "godot_height_m": 3.5451
+  },
+  {
+   "faction": "beta",
+   "kind": "unit",
+   "id": "wyvern",
+   "name": "envy_wraithwing",
+   "source": "tripo_static",
+   "scale": 4.099075,
+   "godot_height_m": 2.604
+  },
+  {
+   "faction": "beta",
+   "kind": "building",
+   "id": "command_center",
+   "name": "sanguine_furnace",
+   "source": "tripo_static",
+   "scale": 16.379905,
+   "godot_height_m": 4.7581
+  },
+  {
+   "faction": "beta",
+   "kind": "building",
+   "id": "barracks",
+   "name": "thrall_yards",
+   "source": "tripo_static",
+   "scale": 12.266534,
+   "godot_height_m": 4.557
+  },
+  {
+   "faction": "beta",
+   "kind": "building",
+   "id": "archery_range",
+   "name": "bolt_sanctum",
+   "source": "tripo_static",
+   "scale": 12.369562,
+   "godot_height_m": 4.4774
+  },
+  {
+   "faction": "beta",
+   "kind": "building",
+   "id": "siege_workshop",
+   "name": "render_works",
+   "source": "tripo_static",
+   "scale": 12.242093,
+   "godot_height_m": 3.3948
+  },
+  {
+   "faction": "beta",
+   "kind": "building",
+   "id": "aviary",
+   "name": "bolt_sanctum",
+   "source": "tripo_static",
+   "scale": 12.369562,
+   "godot_height_m": 5.0147
+  }
+ ],
+ "png_sha256": {
+  "composite_close.png": "aa44b0a3a460545c0a9051d6284809588c0eba7fd049c3189fbc5e34aacad9d6",
+  "composite_gameplay.png": "327848712efa3fff6eb5560be609d9f07a5018d79af9444b1bbb32860734cf7b",
+  "editor_A_CAM_Close.png": "5a2cd77b0598b41c2e22c8e411776c2d653bb9b866cc3baa60163eb1a0e0b281",
+  "editor_A_CAM_Gameplay.png": "99d34e3170bbf8725691f9a866d70b1f69c25f6b3483931bd2f8c13a81ca7ed0",
+  "editor_A_noLumen_CAM_Close.png": "c1520f1b3a449a0975a8d883c62402b77763a70cd5f75a50d9ba5649e443758c",
+  "editor_A_noLumen_CAM_Gameplay.png": "3ef0a0352f9b19b980f4a6cec4af1fe3b0a30b0993ece7587d66c2cb67826f80",
+  "editor_B_CAM_Close.png": "6caf1bd30f921802aa85b2f4b2925cbbd626e43d42b7d4de8af6252384f44e20",
+  "editor_B_CAM_Gameplay.png": "804375e7034882a14bf086c617f9c8c83f61befe7de2083a89f2a8f5ed565179",
+  "game_A_noLumen_r1.png": "a3a538488369acb73ba78880252155b15f9ba4faafb0b160262b40a627096a55",
+  "game_A_noLumen_r2.png": "996b8b2800a3fb5cfe45053e91af5d08138f04c5d6e159a92ed514d88318f11c",
+  "game_A_r1.png": "c580dfc60a94730f830ff0f749fa34f6e954b9775b76673a8a1b88485fb29ffa",
+  "game_A_r2.png": "1e8f840b88c3c61de82d7e77b1b17203a312cb55be69f370e70dd07f74e72cbf",
+  "game_B_r1.png": "d178bad4ce52924708de2ada0980e6bf85aa88f4ecfc79110815f36c73b980f2",
+  "game_B_r2.png": "11ac02151b64636e1470641613cb66c079182998606f7feab8b850ffa3b5053a"
+ },
+ "editor_memory": "editor idle 4.2 GB working set with AllToolsets: under the 9 GB kill rule, kept",
+ "caveats": [
+  "Ground: the engine sample moss photo texture is the grass layer in every look (Chimera grass.png is flat saturated green); dirt patches are Chimera dirt.png. No Megascans/Fab ground, grass blades or terrain relief.",
+  "Trees/rocks: PCGBiomeSample stylised meshes (engine sample), same in every look.",
+  "Alpha infantry covenant_transmuter is the old Hunyuan model (no Tripo version exists) - the white cloaked blocks.",
+  "Units have no weapons (DW-1024 attachments not built). Godot rim-light term not reproduced.",
+  "B is a lighting/grade approximation; real Northgard needs hand-painted textures.",
+  "Buildings sized as real buildings (longest side 12 m, command centres 16 m), units at Godot in-game heights.",
+  "Editor close-camera shots and game shots were taken at different animation times."
+ ]
+}
