@@ -170,5 +170,70 @@
     "unreal_build_id": "",
     "committed": true,
     "sent_to_alec": null
+  },
+  {
+    "file": "a-A7-acceptance.txt",
+    "path": "a/a-A7-acceptance.txt",
+    "sha256": "16552686af0532152f3ec77e341ee0f481025ef369e5253e83890e0e97ba4af4",
+    "bytes": 6085,
+    "w_h": null,
+    "task": "A7",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/a7/a7_acceptance.txt",
+    "r_commit": "3b5275de",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A7-trace-main.txt",
+    "path": "a/a-A7-trace-main.txt",
+    "sha256": "8817888bde89279168aea3fb30d62860fd97ab3fd02e08850c99ae4d561d7490",
+    "bytes": 20142,
+    "w_h": null,
+    "task": "A7",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/a7/cpp.txt",
+    "r_commit": "3b5275de",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A7-trace-ai.txt",
+    "path": "a/a-A7-trace-ai.txt",
+    "sha256": "9bad8cec22188e1892c244a2ea15c06d964a65365af20b5bea56837a59828a32",
+    "bytes": 20146,
+    "w_h": null,
+    "task": "A7",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/a7/cpp_ai.txt",
+    "r_commit": "3b5275de",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A7-compare-main.json",
+    "path": "a/a-A7-compare-main.json",
+    "sha256": "dbf38eb8109bd94b3ced4b40e5f58327970cf8e34f99091143c80c4d002274c4",
+    "bytes": 990,
+    "w_h": null,
+    "task": "A7",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/a7/cmp_main/compare.json",
+    "r_commit": "3b5275de",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A7-compare-ai.json",
+    "path": "a/a-A7-compare-ai.json",
+    "sha256": "ccca01f85da4185a21359b16f9dc372151a8358ebd3439e4644a9b62fa08478b",
+    "bytes": 1001,
+    "w_h": null,
+    "task": "A7",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/a7/cmp_ai/compare.json",
+    "r_commit": "3b5275de",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
   }
 ]

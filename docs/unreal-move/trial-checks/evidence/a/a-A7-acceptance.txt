@@ -1,0 +1,119 @@
+A7 acceptance 2026-10-01T13:37:55-04:00
+dll under test: harness/bin/ChimeraSim.dll sha256 c06a2235cd5b6b84d3927ee13552ac499903ab22dd6cb5a0b92b61bd66e4c7aa (copy of A5's NAT/bin/publish/ChimeraSim.dll)
+
+== build.ps1 ==
+chimera_harness.cpp
+cl_exit=0
+
+== main: --cycles 3 --selftest-errors (stdout) ==
+units=1000 orders=2077 verdict=0
+tick 1 0E7082D2
+tick 60 71BA9D54
+tick 300 3A69E1EB
+tick 1440 2CFCF09E
+applied=2077 dropped=0 alive_end=121
+digest.0=0x0991BB0534C1676D wide.0=0x6EB658269F48A28D
+digest.300=0x3A88C0510C4DABD0 wide.300=0x2F806525BE4079C5
+digest.900=0x05507E36CBE07BA0 wide.900=0x5D1B53111D5AACF7
+digest.1440=0x205AA87BE7511479 wide.1440=0x73959E4A50E309BE
+mxcsr mode=shim nondefault_calls=0/14961 first_nondefault=0x0000
+cycles=3 identical=yes selftest=pass sha_match=3/3
+== main stderr ==
+[ok] all 21 exports resolved
+[ok] abi_version == 0x00010000 : 0x00010000
+[ok] abi_check(56, 28) == 0
+[ok] abi_check(1, 1) == -7
+[ok] build_info : abi=1.0;algo=29;commit=10a1165f70b4d60111c6bd0503c9b30f98785355;dirty=1;runtime=.NET 8.0.25;aot=1
+build_info: abi=1.0;algo=29;commit=10a1165f70b4d60111c6bd0503c9b30f98785355;dirty=1;runtime=.NET 8.0.25;aot=1
+[ok] file_sha256 == CNG SHA-256 : D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\harness\bin\ChimeraSim.dll c06a2235cd5b6b84d3927ee13552ac499903ab22dd6cb5a0b92b61bd66e4c7aa
+[ok] file_sha256 == CNG SHA-256 : D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Tests\Trial\trial_1000.json 0fce9a52291377f35307cbff0f88397a9853879d681b0bbc63acc504ada0b044
+[ok] file_sha256 == CNG SHA-256 : D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Tests\Trial\trial_1000.orders.csv 4af3caf466655c7991206aa12b0b44690f0d1bf9db44b7676224e0d7636c469e
+[ok] cycle 1 replay 1440 ticks
+cycle 1: tick1=0E7082D2 tick1440=2CFCF09E alive_end=121 applied=2077 dropped=0 gc_gen0=1 gc_gen2=1 heap=13987960
+[ok] cycle 2 replay 1440 ticks
+cycle 2: tick1=0E7082D2 tick1440=2CFCF09E alive_end=121 applied=2077 dropped=0 gc_gen0=3 gc_gen2=3 heap=13914568
+[ok] cycle 3 replay 1440 ticks
+cycle 3: tick1=0E7082D2 tick1440=2CFCF09E alive_end=121 applied=2077 dropped=0 gc_gen0=3 gc_gen2=3 heap=28220904
+[ok] missing scenario -> -3 + message : rc=-3 msg=scenario 'C:\Users\MD_Ki\AppData\Local\Temp\no_such_chimera_scenario.json' missi
+[ok] unparseable scenario -> -3 + message : rc=-3 msg=scenario 'C:\Users\MD_Ki\AppData\Local\Temp\chimera_harness_bad_scenario.json' m
+[ok] validator-rejected scenario -> -4 + message : rc=-4 msg=scenario 'C:\Users\MD_Ki\AppData\Local\Temp\chimera_harness_rejected_scenario.json' rejected by Scen
+[ok] unknown flag bit -> -1
+[ok] step on a bad id -> -2
+[ok] last_error(0) names the bad id : unknown or destroyed session 999999
+[ok] destroy on a bad id -> -2
+[ok] last_checksum on a bad id -> -2
+[ok] session_create for the buffer checks : rc=0 id=4
+[ok] read_units short buffer -> -5 + rows needed : rc=-5 count=1000
+[ok] size query (NULL,0) -> -5 + count, last_error untouched : rc=-5 count=1000
+[ok] build_info short buffer -> -5 + length : rc=-5 len=97
+[ok] file_sha256 short buffer -> -5 + 64 : rc=-5 len=64
+[ok] file_sha256 missing file -> -3 : rc=-3
+[ok] submit_order faction 9 -> -1 : rc=-1
+[ok] session_destroy
+[ok] destroyed id -> -2 (step, destroy)
+[ok] selftest 1 -> 0
+[ok] selftest 2 -> 0
+[ok] selftest 3 -> 0
+[ok] selftest 9 -> -1
+chimera_harness: PASS 32/32 checks
+
+== ai: --ai --cycles 3 --selftest-errors (stdout) ==
+units=1000 orders=2077 verdict=0
+tick 1 1A2563C1
+tick 60 594EAA13
+tick 300 A5323C73
+tick 1440 BA13D580
+applied=2064 dropped=13 alive_end=124
+digest.0=0x0991BB0534C1676D wide.0=0x6EB658269F48A28D
+digest.300=0x95A25936D1FCF83B wide.300=0x94933D757515010A
+digest.900=0x19242026FF6C2CA3 wide.900=0x8B2F99DB800D88AF
+digest.1440=0x5F33C907826483F0 wide.1440=0xD89B817FB3EE28AE
+mxcsr mode=shim nondefault_calls=0/14961 first_nondefault=0x0000
+cycles=3 identical=yes selftest=pass sha_match=3/3
+
+== FTZ/DAZ no-shim: --ai --mxcsr 0x9FC0 --no-shim ==
+units=1000 orders=2077 verdict=0
+tick 1 1A2563C1
+tick 60 594EAA13
+tick 300 A5323C73
+tick 1440 BA13D580
+applied=2064 dropped=13 alive_end=124
+digest.0=0x0991BB0534C1676D wide.0=0x6EB658269F48A28D
+digest.300=0x95A25936D1FCF83B wide.300=0x94933D757515010A
+digest.900=0x19242026FF6C2CA3 wide.900=0x8B2F99DB800D88AF
+digest.1440=0x5F33C907826483F0 wide.1440=0xD89B817FB3EE28AE
+mxcsr mode=no-shim nondefault_calls=0/0 first_nondefault=0x0000
+cycles=1 identical=yes selftest=skipped sha_match=3/3
+
+== FTZ/DAZ with shim: --ai --mxcsr 0x9FC0 ==
+units=1000 orders=2077 verdict=0
+tick 1 1A2563C1
+tick 60 594EAA13
+tick 300 A5323C73
+tick 1440 BA13D580
+applied=2064 dropped=13 alive_end=124
+digest.0=0x0991BB0534C1676D wide.0=0x6EB658269F48A28D
+digest.300=0x95A25936D1FCF83B wide.300=0x94933D757515010A
+digest.900=0x19242026FF6C2CA3 wide.900=0x8B2F99DB800D88AF
+digest.1440=0x5F33C907826483F0 wide.1440=0xD89B817FB3EE28AE
+mxcsr mode=shim nondefault_calls=4982/4982 first_nondefault=0x9FC0
+cycles=1 identical=yes selftest=skipped sha_match=3/3
+
+== compare_traces ==
+set=main golden=trial-1000.golden.txt meta=trial-1000.meta.txt trailer=trial-1000.trailer.txt
+  meta           1440/1440 (reference: golden + meta + trailer)
+  cpp            1440/1440 H0=6/6 header=ok digests=ok orders=ok
+RESULT set=main legs=2 ticks=1440 all_equal=yes PASS
+exit=0
+set=ai golden=trial-1000-ai.golden.txt meta=trial-1000-ai.meta.txt trailer=trial-1000-ai.trailer.txt
+  meta           1440/1440 (reference: golden + meta + trailer)
+  cpp_ai         1440/1440 H0=6/6 header=ok digests=ok orders=ok
+RESULT set=ai legs=2 ticks=1440 all_equal=yes PASS
+exit=0
+set=ai golden=trial-1000-ai.golden.txt meta=trial-1000-ai.meta.txt trailer=trial-1000-ai.trailer.txt
+  meta           1440/1440 (reference: golden + meta + trailer)
+  cpp_ai         1440/1440 H0=6/6 header=ok digests=ok orders=ok
+  cpp_ai_ftzdaz  1440/1440 H0=6/6 header=ok digests=ok orders=ok
+  cpp_ai_ftzshim 1440/1440 H0=6/6 header=ok digests=ok orders=ok
+RESULT set=ai legs=4 ticks=1440 all_equal=yes PASS
+exit=0
