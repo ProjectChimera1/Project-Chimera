@@ -1,6 +1,6 @@
 # HANDOFF — Project Chimera
 
-_Updated 2026-10-01 09:00 · branch `master` · last commit: the Phase 1 checkpoint (see `git log -1`)_
+_Updated 2026-10-01 · branch `master` · Phase 2 workflow `wf_0d1c858e-bd3` running (see `git log -1`)_
 
 ## Where we stopped
 
@@ -26,18 +26,23 @@ passed an independent Opus verification (results and main-session decisions: EXE
 
 ## Next step
 
-Phase 2 (EXECUTION.md §1.2): one workflow on the `tools/unreal-trial/workflows/phase0-1.js` pattern (implement → Opus xhigh
-verify → up to 2 Opus fix rounds; agents never commit; the main session commits per check by path, rewrites this file, pushes).
-- (a) A3 SimSession (opus) → A4 scenario/CLI/goldens → A5 NativeAOT library + C ABI → {A6 AOT goldens, A7 C++ harness, A8 Godot
-  leg, A8b MainScene probe} → A10 Unreal module (stage, build, main/24fps/hitch/ai runs) → A14 (measured). Send `a-A8-parity.png`.
-- (b) T2 calibration (needs D6; Alec has the 4x image as of 2026-10-01, recommendation = grayscale) → T4a fonts/text/icon routes.
-- (c) C4 director + S1/S1L/C1 → C5 collision + soak → C7 ground material (send composite) → C8 mouse → C10 sim-grid parity.
+**Phase 2 is running** as workflow `wf_0d1c858e-bd3` (script `tools/unreal-trial/workflows/phase2.js`: implement → two Opus xhigh
+verifiers per task, one re-running results and one reviewing code and rules → up to 2 Opus fix rounds; agents never commit). Each
+finished task writes `D:/Projects/Chimera-Unreal/TrialOut/checkpoints/<task>.json`; the main session commits verified tasks by path
+from those markers, rewrites this file and pushes.
+- (a) A3 SimSession → A4 scenario/CLI/goldens → A5 NativeAOT library + C ABI → {A6 AOT goldens, A7 C++ harness, A10 Unreal module}
+  beside the Godot chain A8 → A8b MainScene probe (gating) → A14 (measured). Send `a-A8-parity.png`.
+- (b) T2 calibration (positives 4/4 since P2 is dropped) → T4a fonts/text/icon routes → T2r recalibration only if T4a picks a
+  hinting other than None.
+- (c) C4 director + S1/S1L/C1 → C5 collision + soak → C7 ground material (send composite) → C8 mouse; C10 sim-grid parity beside.
+- If this session dies mid-run: resume with `Workflow({scriptPath: <phase2.js copy in the session dir>, resumeFromRunId:
+  "wf_0d1c858e-bd3"})` from the same session, or read the markers and re-run the unfinished tasks from a new one.
 
 ## Waiting on Alec
 
-- D6 (check b): confirm the HUD is scored against the grayscale re-render (he was sent `lcd_vs_gray_text_4x.png`). Blocks T2 only.
-- Contingent only: D8 (Errant trial form), D9 (mouse injection blocked), D10 (text residual). Carried over: optional RAM upgrade;
-  DW-1029, HD Model triangle question, DW-1025, `cinderhand_thrall` colour.
+- Nothing blocks Phase 2. D6 answered 2026-10-01: grayscale re-render ("the text looks exactly the same, so it's a go").
+- Contingent only: D8 (Errant trial form), D9 (mouse injection blocked), D10 (text residual). D2 (performance bar) is needed before
+  Phase 4. Carried over: optional RAM upgrade; DW-1029, HD Model triangle question, DW-1025, `cinderhand_thrall` colour.
 
 ## How to run and check it
 
