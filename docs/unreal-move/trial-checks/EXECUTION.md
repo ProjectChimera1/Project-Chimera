@@ -199,3 +199,15 @@ desktop unlocked for C8 and C11's mouse runs and don't connect Parsec at a non-1
 - **Memory**: 2.9 GB free today without Unreal (java 1.2 GB, Chrome, Discord, several Claude Code processes). One heavy process at a time; nothing of Alec's is closed; a
   measurement taken while paging is repeated, never accepted. **Defender** (`MsMpEng`, 8,599 CPU-s cumulative) is recorded in every `--measure` snapshot; an exclusion is a
   settings change, raised with Alec only if a rep spread above 5% points to it. **One tree, three agents**: only the main session touches git (§1.4).
+
+## 7. Phase 0-1 results and main-session decisions (2026-10-01)
+All Phase 0-1 tasks passed independent Opus verification (S3, S4 after a main-session fix, A0, A1, A2, X1, A9, T0, T1, T3, C0, C1, C2, C3, C6).
+- **X1:** a NativeAOT DLL runs inside `UnrealEditor.exe -game` (throw/catch, NullReferenceException, 256 MB + blocking GC, Task.Run, Thread): `smoke 5/5 runtime=.NET 8.0.25 aot=1`, exit 0. D7 is not triggered.
+- **A0 baseline:** T1 `total=7123 passed=7122 failed=0 skipped=1` after deleting the stale BMAD guard; ~2 min per run. The LLM generation-timeout tests flake under load (flake rule applies).
+- **A1/A2:** source-generated STJ in place; Roslyn IL2026/IL3050 62/65 → 0/0 (now release-gated), CHM counts unchanged, no golden or AlgoVersion moved; `MixUnknownEffect` fails closed under AOT.
+- **C3:** RMC Dynamic chunks render in `-game` (G1 PASS). **RMC #303 reproduces on the RTX 3060: Static draw is invisible**, so plan C's idle-Static and RVT fallbacks (risks 3 and 5) are ruled out.
+- **T3:** the Slate capture is exact (MAD 0, max 0 against the backdrop; gamma-space blending max error 1).
+- **Decision (B, T2): positive control P2 (`font-kerning:none`) is dropped, and P4 becomes P1+P3.** T0 measured that P2 moves the unit name's right ink edge by 2 px, beyond G5's 1 px. Slate is configured to kern (FullShaping, F7, proven by T4a's kern check), so "kerning off" is not a state the build can produce, and a positive control must model an allowed rendering difference. Gates are unchanged.
+- **Decision (A, A0): the Godot server smoke runs `map_02_iron_crossing`** (the scenario `scenes/main.tscn` pins); A1 and later repeat the identical command.
+- **Main-session fixes:** `secret_scan.py` now also flags well-known key shapes anywhere in a line (the S4 verifier's major finding); the `AndroidFileServer` plugin (which writes a `SecurityToken` on the first editor run, found by C2) is disabled in ChimeraHud and in `new_project.py`; `ue_lock.sh` waits for 2.5 GB of free RAM (at most 20 min, then logs `lowmem-proceed`) because other sessions share this PC, and its `--measure` preflight window is 5 min of wall clock.
+- **Builds are slow under contention** (C1: 928 s; C3: 18 min for 10 actions while MsMpEng was busy): run every build with the background-and-wait pattern.

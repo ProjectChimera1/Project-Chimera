@@ -42,3 +42,6 @@ docs/unreal-move/trial-checks/evidence/b/**/*.png
 docs/unreal-move/trial-checks/evidence/b/**/*.jpg
 docs/unreal-move/trial-checks/evidence/b/**/*.gif
 docs/unreal-move/trial-checks/evidence/b/**/*.mp4
+
+# Trial check (a) test output
+tools/sim-trial/out/

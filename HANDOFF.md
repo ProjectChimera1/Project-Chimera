@@ -1,57 +1,60 @@
 # HANDOFF — Project Chimera
 
-_Updated 2026-10-01 · branch `master` · last commit: the trial plans of record (see `git log -1`)_
+_Updated 2026-10-01 09:00 · branch `master` · last commit: the Phase 1 checkpoint (see `git log -1`)_
 
 ## Where we stopped
 
-The Unreal trial's three checks are planned and the plans are committed; execution has started (ultracode workflows).
-No Godot engine code, tests or goldens have been touched yet.
+The Unreal trial is executing `docs/unreal-move/trial-checks/EXECUTION.md`. **Phases 0 and 1 are done and committed**; every task
+passed an independent Opus verification (results and main-session decisions: EXECUTION.md §7).
 
-- **Plans of record** in `docs/unreal-move/trial-checks/`: `plan-a-native-sim.md` (NativeAOT sim, 1,000 units, checksums vs Godot),
-  `plan-b-match-hud.md` (Round 2 Match HUD board 3.1a in C++ Slate, scored against the mockup), `plan-c-runtime-terrain.md`
-  (RealtimeMeshComponent terrain sculpt + paint in the running game), and `EXECUTION.md` (one schedule, the lock rules, the evidence
-  policy, 23 cross-plan conflicts resolved, the trial done-gate). Each plan went through two adversarial critiques (57-64 issues each).
-- **Research** in `docs/unreal-move/trial-checks/research/` (r1-r7) plus `proto-a/` (prototypes: the STJ source-gen migration diffs,
-  the `trial_1000` scenario generator, JIT-vs-AOT spike outputs). Key facts found: the sim's only NativeAOT blocker is reflection
-  System.Text.Json (65 sites); JIT, Release and NativeAOT already give byte-identical 1,000-unit checksums in a scratch run; the real
-  test baseline is 7,124 tests (7,122 pass, 1 stale BMAD guard fails, 1 skipped), not 6,392.
-- **Decisions D1-D5 (EXECUTION.md §5)** were adopted on their recommendations on 2026-10-01 and sent to Alec to override if he wants:
-  D1 "same checksum as Godot" = SimSession run in Godot's own runtime + a gating MainScene start-state probe (full MainScene replay is
-  measured, not gated, because DW-681 likely diverges it); D2 the fps bars; D3 terrain scope = edit in the running (packaged) game,
-  sim reads heights at F5; D4 looks gate only (b); D5 Unreal projects keep local git + text mirrors into this repo.
-- **Machine fixes:** NativeAOT publish needs `C:\Program Files (x86)\Microsoft Visual Studio\Installer` on PATH (VS 2026 vcvarsall
-  calls `vswhere` by bare name). `D:/Projects/Chimera-Unreal` is now a local git repo (no remote) with `ue_lock.sh`, the global
-  one-heavy-Unreal-job-at-a-time lock (`bash D:/Projects/Chimera-Unreal/ue_lock.sh <cmd>`; Git Bash only, from PowerShell `bash` is WSL).
+- **Check (a) NativeAOT sim:** sim content loading is source-generated System.Text.Json (A1; IL2026/IL3050 62/65 → 0, now
+  release-gated; no golden or AlgoVersion moved); `MixUnknownEffect` fails closed under AOT (A2); a NativeAOT DLL runs inside
+  `UnrealEditor -game` (X1: throw/catch, NRE, 256 MB + GC, threads all pass, so decision D7 is not triggered); 18 static unit meshes
+  imported for ISMs with `P/SimTrial/unit_meshes.json` (A9). Gate: Sim.Tests **7136 total, 7135 passed, 0 failed, 1 skipped**.
+- **Check (b) HUD:** grayscale mockup references + 13 controls per pair (T0), the 38-region comparator with self-tests (T1), and the
+  ChimeraHud project whose in-game 1920x1080 capture equals the backdrop byte for byte (T3). No HUD panels are built yet.
+- **Check (c) terrain:** ChimeraTerrain with vendored RealtimeMeshComponent `b8669a0` (+ collision patch) builds on 5.8.3 (C1),
+  data core with 23 automation tests (C2), chunk renderer passes gate G1 in `-game` (C3). RMC #303 reproduces on the 3060 (Static
+  draw invisible), so only the Dynamic path exists. CC0 ground textures fetched (C6).
+- **Decisions D1-D5 confirmed by Alec 2026-10-01** ("those sound like good decisions"; D1 explained: Unreal must equal the sim run
+  inside Godot on every tick; full-MainScene parity is measured, not gated, because of DW-681). Main-session decisions: B's positive
+  control P2 (kerning off) dropped; Godot server smoke stays on `map_02_iron_crossing`.
+- **Infrastructure:** `D:/Projects/Chimera-Unreal` (local git, no remote) holds ProjectChimera, ChimeraHud, ChimeraTerrain,
+  `ue_lock.sh` v2 (one heavy job at a time, re-entrant, waits for 2.5 GB free RAM up to 20 min, hold log `ue_lock.log`) and
+  `wait_for.sh`. Text mirrors in this repo: `tools/unreal-sim`, `tools/unreal-hud/ChimeraHud-src`, `tools/unreal-terrain`.
+  Shared kit `tools/unreal-trial` (preflight, logscan, secret_scan, evidence). Workflow templates: `tools/unreal-trial/workflows/`.
 
 ## Next step
 
-Execute `EXECUTION.md` phase by phase: Phase 0 shared pieces (lock v2, ChimeraHud/ChimeraTerrain scaffolds, `tools/unreal-trial` kit),
-then Phase 1 first light (X1 NativeAOT inside Unreal, C1/C3 RMC on 5.8.3, T3 Slate capture 1:1, A0-A2 baseline + STJ migration,
-B T0/T1 references + comparator). Only the main session commits; prefixes `SimTrial:`, `HUD:`, `Terrain:`, `Trial:`.
+Phase 2 (EXECUTION.md §1.2): one workflow on the `tools/unreal-trial/workflows/phase0-1.js` pattern (implement → Opus xhigh
+verify → up to 2 Opus fix rounds; agents never commit; the main session commits per check by path, rewrites this file, pushes).
+- (a) A3 SimSession (opus) → A4 scenario/CLI/goldens → A5 NativeAOT library + C ABI → {A6 AOT goldens, A7 C++ harness, A8 Godot
+  leg, A8b MainScene probe} → A10 Unreal module (stage, build, main/24fps/hitch/ai runs) → A14 (measured). Send `a-A8-parity.png`.
+- (b) T2 calibration (needs D6; Alec has the 4x image as of 2026-10-01, recommendation = grayscale) → T4a fonts/text/icon routes.
+- (c) C4 director + S1/S1L/C1 → C5 collision + soak → C7 ground material (send composite) → C8 mouse → C10 sim-grid parity.
 
 ## Waiting on Alec
 
-- D6 (check b, after T0): what "pixel-faithful" means for text; he gets `lcd_vs_gray_text_4x.png`. Recommendation: grayscale re-render.
-- Contingent only: D7 (NativeAOT fails in Unreal), D8 (Errant trial form), D9 (mouse injection blocked), D10 (text residual).
-- Carried over: optional RAM upgrade; DW-1029 (Flux dev licence), HD Model triangle question, DW-1025, `cinderhand_thrall` colour.
+- D6 (check b): confirm the HUD is scored against the grayscale re-render (he was sent `lcd_vs_gray_text_4x.png`). Blocks T2 only.
+- Contingent only: D8 (Errant trial form), D9 (mouse injection blocked), D10 (text residual). Carried over: optional RAM upgrade;
+  DW-1029, HD Model triangle question, DW-1025, `cinderhand_thrall` colour.
 
 ## How to run and check it
 
-- Godot build `dotnet build godot/godot.sln`; sim tests `dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj`
-  (measured baseline 7,124 total, 7,122 pass, 1 fail = the stale `ToolingGateGuardTests.BurnDownDispatcher` guard, 1 skipped).
-- Unreal: build `Build.bat <Target> Win64 Development -Project=<uproject> -WaitMutex` under the lock; look-test tools in
-  `tools/unreal-looktest/` (gotchas PLAN_DELTA.md D7-D9). Unreal MCP answers only while the editor runs with `-ModelContextProtocolStartServer`.
+- Sim tests: `UE_LOCK_TAG=x bash D:/Projects/Chimera-Unreal/ue_lock.sh dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj`
+  (~2 min; LLM generation-timeout tests flake under load: rerun them alone). `python tools/sim-trial/trx_summary.py <dir>`.
+- Any Unreal build/run: through the lock, from Git Bash only, in the background (`bash -c '<cmd> > L 2>&1; echo EXIT=$? > L.exit'`)
+  then `bash D:/Projects/Chimera-Unreal/wait_for.sh --file L.exit` in the foreground. Builds take 4-18 min under contention.
+- NativeAOT publish needs `C:\Program Files (x86)\Microsoft Visual Studio\Installer` on PATH.
 
 ## In flight / known issues
 
-- Godot terrain: the Terrain3D brush uses stale operation ints, so Paint and Smooth are no-ops (r7; root cause of backlog 10-16, not filed yet).
-- Godot `PathRequestSystem` per-frame Move→Stop writer (DW-681) is outside the sim; it is why full-MainScene checksum parity is not gated.
-- Godot asset work (Epic 16) stays paused: the roster moves to Unreal; Tripo remains the asset route.
+- Alec runs other Claude sessions on this PC: free RAM is often 3-6 GB; Windows logged memory pressure from cl.exe during builds.
+- `ProjectChimera/Config/DefaultEngine.ini` holds an AndroidFileServer `SecurityToken` (local history only; mirrors scan it out).
+- Godot: Terrain3D brush uses stale operation ints (Paint and Smooth are no-ops; r7), DW-681 frame writer, both unfiled.
 
 ## Key context
 
-- Architecture of record (Unreal Spec, https://claude.ai/code/artifact/5b9ecf08-3568-4a8f-833a-f21c1112b395): the engine-free sim
-  compiles with NativeAOT into a native library; Unreal is a thin C++ shell (no widget Blueprints); the match server is plain .NET.
-  World look decided 2026-10-01: Manor-Lords-style near-photoreal, Lumen off. UI: build the approved Round 2 set (`docs/ui-redesign/`).
-- PC: Ryzen 5 5600 (6 cores), RTX 3060 12 GB, 16 GB RAM (often under 3 GB free), D: ~650 GB free.
-- History: `docs/history/Snapshot-through-2026-09-21.md`. Ledger: `_bmad-output/implementation-artifacts/deferred-work.md`.
+- Architecture of record (Unreal Spec, https://claude.ai/code/artifact/5b9ecf08-3568-4a8f-833a-f21c1112b395): NativeAOT sim
+  library, thin C++ Unreal shell (no widget Blueprints), plain .NET match server. World look: Manor Lords style, Lumen off.
+- PC: Ryzen 5 5600, RTX 3060 12 GB, 16 GB RAM. History: `docs/history/Snapshot-through-2026-09-21.md`.
