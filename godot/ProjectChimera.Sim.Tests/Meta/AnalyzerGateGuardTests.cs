@@ -40,6 +40,15 @@ namespace ProjectChimera.Sim.Tests.Meta
         }
 
         [Fact]
+        public void NativeAotLibrary_ImportsSimSourcesProps()
+        {
+            // Unreal trial A5: ChimeraSim.dll (the NativeAOT C ABI over the sim) must compile the SAME source set the
+            // tests and the analyzer gate compile. If its project stops importing SimSources.props, the library can drift
+            // from the tested sim without any test noticing.
+            AssertImportsSimSources(NativeCsprojPath(), "ProjectChimera.Sim.Native.csproj");
+        }
+
+        [Fact]
         public void BannedSymbols_Exists_AndIsReferencedAsAdditionalFile()
         {
             string txt = Path.Combine(Path.GetDirectoryName(AnalysisCsprojPath())!, "BannedSymbols.txt");
@@ -83,6 +92,9 @@ namespace ProjectChimera.Sim.Tests.Meta
 
         private static string TestCsprojPath([CallerFilePath] string p = "") =>
             ResolveFromHere(p, "..", "ProjectChimera.Sim.Tests.csproj");
+
+        private static string NativeCsprojPath([CallerFilePath] string p = "") =>
+            ResolveFromHere(p, "..", "..", "ProjectChimera.Sim.Native", "ProjectChimera.Sim.Native.csproj");
 
         private static string AnalysisCsprojPath([CallerFilePath] string p = "") =>
             ResolveFromHere(p, "..", "..", "ProjectChimera.Sim.Analysis", "ProjectChimera.Sim.Analysis.csproj");

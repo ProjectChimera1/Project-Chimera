@@ -1,0 +1,46 @@
+PASS abi_version
+PASS abi_check 56/28
+PASS abi_check mismatch -> -7
+build_info: abi=1.0;algo=29;commit=10a1165f70b4d60111c6bd0503c9b30f98785355;dirty=1;runtime=.NET 8.0.25;aot=1
+PASS build_info
+PASS sizeof ChimeraUnit/Building
+PASS session_create rc=0 id=1
+PASS pre_tick_hashes rc
+PASS H0 + tick0 == committed meta 0xa68fab39663a44e2 0x26c0bdb524284d74 0x55bb83d5f0a14c4b 0x1eb102fd18c50ddd 0x5d0605462e565a22 0x69843e0a
+PASS set_checksum_interval
+PASS replay 1440 ticks equal golden
+PASS submit_order no errors applied=2077 dropped=0 errors=0
+PASS digest.0/wide.0 == trailer
+PASS digest.300/wide.300 == trailer
+PASS digest.900/wide.900 == trailer
+PASS digest.1440/wide.1440 == trailer
+PASS orders applied/dropped == trailer
+PASS alive_end == trailer alive=121 rows=1000
+PASS python recompute of units digest from rows
+PASS verdict == trailer verdict=0
+PASS read_units short buffer -> -5 + count rc=-5 count=1000
+PASS unit_def_id id0='archer'
+PASS unit_def_id out of range -> -1
+PASS size query -> -5 + count, last_error untouched rc=-5 count=1000 err='unit_def_id: unit id out of range'
+PASS live unit factions within 1..2 (alpha=1, beta=2) factions=[1, 2]
+PASS submit_order faction 9 -> -1
+PASS read_buildings + building_def_id count=2 def0='command_center' hp0=32768000 alive0=1
+PASS stats 14010408 1 1 1 16321736 1440 121 1000
+PASS stats process-wide (session 0)
+PASS bad session -> -2
+PASS last_error(0) names the bad session 'unknown or destroyed session 999'
+PASS selftest 1
+PASS selftest 2
+PASS selftest 3
+PASS selftest 9 -> -1
+PASS missing scenario -> -3 + message rc=-3 msg="scenario 'C:\\Users\\MD_Ki\\AppData\\Local\\Temp\\no_such_scenario.json' missing or unparseable:"
+PASS unparseable scenario -> -3 rc=-3 msg="scenario 'C:\\Users\\MD_Ki\\AppData\\Local\\Temp\\chimera_bad_scenario.json' missing or unparsea"
+PASS validator-rejected scenario -> -4 + message rc=-4 msg="scenario 'C:\\Users\\MD_Ki\\AppData\\Local\\Temp\\chimera_rejected_scenario.json' rejected by ScenarioValidator | [ServerBootstrap] scenario REJEC"
+PASS create with unknown flag bit -> -1
+PASS file_sha256 == hashlib
+PASS file_sha256 of the DLL itself
+PASS file_sha256 short buffer -> -5 + length 64
+PASS file_sha256 missing file -> -3
+PASS session_destroy
+PASS destroyed id -> -2
+native_abi_smoke: PASS 44/44

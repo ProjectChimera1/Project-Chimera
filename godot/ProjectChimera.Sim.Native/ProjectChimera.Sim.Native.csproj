@@ -1,0 +1,66 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ============================================================================================
+       Unreal trial A5 (plan A section 3.4): the Godot-free deterministic sim as a NativeAOT shared library,
+       ChimeraSim.dll, behind a plain C ABI (include/chimera_sim.h, the ABI of record). It compiles the REAL sim
+       source set (SimSources.props, the set Tier-1 tests and the analyzer gate also compile) plus Exports/*.cs, and
+       nothing Godot. Published by publish.ps1 (ILC publish: take the UE lock first); built by direct path, not part
+       of godot.sln. godot.csproj removes this folder from the game's compile glob; the folder has a .gdignore.
+
+       Pinned runtime: the .NET 8.0.25 ILCompiler packs (plan A F7/F8). The Exports/ files are the only code here.
+       ============================================================================================ -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <OutputType>Library</OutputType>
+    <PublishAot>true</PublishAot>
+    <NativeLib>Shared</NativeLib>
+    <SelfContained>true</SelfContained>
+    <AssemblyName>ChimeraSim</AssemblyName>
+    <RootNamespace>ProjectChimera.SimNative</RootNamespace>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <IsPackable>false</IsPackable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- No globbing: NAT/ also holds Cli/ (its own project), harness/ and later AotGoldens/. -->
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- Per-site trim/AOT warnings instead of the IL2104 rollup, so publish.log counts real sites. -->
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+    <!-- Build stamp (publish.ps1 passes SourceRevisionId = git HEAD and ChimeraDirty = 0/1). -->
+    <SourceRevisionId Condition="'$(SourceRevisionId)' == ''">unknown</SourceRevisionId>
+    <ChimeraDirty Condition="'$(ChimeraDirty)' == ''">1</ChimeraDirty>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <!-- The single sim-source source-of-truth (same import as ProjectChimera.Sim.Tests, .Analysis and Cli). -->
+  <Import Project="..\SimSources.props" />
+
+  <ItemGroup>
+    <Compile Include="Exports\**\*.cs" />
+    <!-- The pinned ILC packs (plan A F8), an exact NuGet pin; the SDK would otherwise pick its own bundled version. -->
+    <PackageReference Include="Microsoft.DotNet.ILCompiler" Version="[8.0.25]" />
+  </ItemGroup>
+
+  <!-- BuildStamp.g.cs: the commit and dirty flag as constants, so chimera_build_info needs no reflection over assembly
+       attributes (which a NativeAOT trim could drop). Rewritten on every build, only touched when the text changes. -->
+  <Target Name="ChimeraBuildStamp" BeforeTargets="CoreCompile">
+    <PropertyGroup>
+      <_StampFile>$(IntermediateOutputPath)BuildStamp.g.cs</_StampFile>
+    </PropertyGroup>
+    <ItemGroup>
+      <_StampLine Include="namespace ProjectChimera.SimNative { internal static class BuildStamp {" />
+      <_StampLine Include="    public const string Commit = &quot;$(SourceRevisionId)&quot;%3B" />
+      <_StampLine Include="    public const string Dirty = &quot;$(ChimeraDirty)&quot;%3B" />
+      <_StampLine Include="} }" />
+    </ItemGroup>
+    <WriteLinesToFile File="$(_StampFile)" Lines="@(_StampLine)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <Compile Include="$(_StampFile)" />
+      <FileWrites Include="$(_StampFile)" />
+    </ItemGroup>
+  </Target>
+
+</Project>

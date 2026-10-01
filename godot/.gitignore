@@ -42,3 +42,5 @@ secrets/
 .DS_Store
 Thumbs.db
 desktop.ini
+# Unreal trial A5: the NativeAOT publish output log (publish.ps1 tees it here; it would make the dirty stamp read 1)
+ProjectChimera.Sim.Native/publish.log

@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """List the exported symbol names of a PE DLL (derived from proto-a/pe_exports_review.py).
 
-Usage: check_exports.py <dll> [--expect NAME ...] [--allowlist FILE]
+Usage: check_exports.py <dll> [--expect NAME ...] [--allowlist FILE] [--header FILE]
   The DLL is the first argument that is not an option or an option's value; options may come in any order.
 Prints the sorted export names.
   --expect NAME ...  (names run to the next --option or *.dll argument) exit 1 if any expected name is missing.
   --allowlist FILE   one export name per line ('#' comments and blank lines ignored). Compares the DLL's exports,
                      ignoring the runtime's DotNetRuntimeDebugHeader, with the list exactly and prints
                      'missing=N extra=N allowlist=ok|fail' plus MISSING/EXTRA lines; exit 1 on fail.
+  --header FILE      a C header (chimera_sim.h). Its declared functions (comments stripped; every `<type> chimera_xxx(`
+                     declaration) must equal the DLL's exports (minus DotNetRuntimeDebugHeader) AND, when --allowlist is
+                     also given, the allow-list: prints 'header_missing=N header_extra=N header=ok|fail' (header
+                     functions the DLL lacks / DLL exports the header lacks); exit 1 on fail.
 """
-import struct, sys
+import re, struct, sys
 
 def exports(path):
     d = open(path, "rb").read()
@@ -46,8 +50,25 @@ def exports(path):
 IGNORED = {"DotNetRuntimeDebugHeader"}
 
 
+def header_functions(path):
+    """Names declared as functions in a C header: `<return type> chimera_xxx(`, comments removed."""
+    text = open(path, encoding="utf-8").read()
+    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
+    text = re.sub(r"//[^\n]*", " ", text)
+    return sorted(set(re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*[\s*]+(chimera_[a-z0-9_]+)\s*\(", text)))
+
+
+def read_allowlist(path):
+    want = set()
+    for line in open(path, encoding="utf-8"):
+        line = line.split("#", 1)[0].strip()
+        if line:
+            want.add(line)
+    return want
+
+
 def parse_args(a):
-    dll, expect, allow, i = None, [], None, 0
+    dll, expect, allow, header, i = None, [], None, None, 0
     while i < len(a):
         if a[i] == "--expect":
             i += 1
@@ -59,6 +80,10 @@ def parse_args(a):
             allow = a[i + 1]
             i += 2
             continue
+        if a[i] == "--header":
+            header = a[i + 1]
+            i += 2
+            continue
         if a[i].startswith("--"):
             sys.exit("unknown option " + a[i])
         if dll is None:
@@ -68,11 +93,11 @@ def parse_args(a):
         i += 1
     if dll is None:
         sys.exit(__doc__)
-    return dll, expect, allow
+    return dll, expect, allow, header
 
 
 if __name__ == "__main__":
-    dll, exp, allow = parse_args(sys.argv[1:])
+    dll, exp, allow, header = parse_args(sys.argv[1:])
     names = exports(dll)
     print(", ".join(names))
     rc = 0
@@ -81,11 +106,7 @@ if __name__ == "__main__":
         print("MISSING " + ", ".join(missing))
         rc = 1
     if allow:
-        want = set()
-        for line in open(allow, encoding="utf-8"):
-            line = line.split("#", 1)[0].strip()
-            if line:
-                want.add(line)
+        want = read_allowlist(allow)
         have = set(names) - IGNORED
         miss, extra = sorted(want - have), sorted(have - want)
         ok = not miss and not extra
@@ -95,5 +116,19 @@ if __name__ == "__main__":
         if extra:
             print("EXTRA " + ", ".join(extra))
         if not ok:
+            rc = 1
+    if header:
+        decl = set(header_functions(header))
+        have = set(names) - IGNORED
+        hmiss, hextra = sorted(decl - have), sorted(have - decl)
+        hok = not hmiss and not hextra
+        if allow:
+            hok = hok and decl == read_allowlist(allow)
+        print(f"header_missing={len(hmiss)} header_extra={len(hextra)} header={'ok' if hok else 'fail'}")
+        if hmiss:
+            print("HEADER_DECLARES_BUT_DLL_LACKS " + ", ".join(hmiss))
+        if hextra:
+            print("DLL_EXPORTS_BUT_HEADER_LACKS " + ", ".join(hextra))
+        if not hok:
             rc = 1
     sys.exit(rc)

@@ -1,0 +1,16 @@
+[ue_lock] acquired after 232 s (run, tag a/A5): dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj --logger trx;LogFileName=A5.trx --results-directory D:/Projects/Chimera-Unreal/TrialOut/a/tests
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  ProjectChimera.Sim.Tests -> D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Tests\bin\Debug\net8.0\ProjectChimera.Sim.Tests.dll
+Test run for D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Tests\bin\Debug\net8.0\ProjectChimera.Sim.Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:01.21]     ProjectChimera.Sim.Tests.Validation.TriggerValidationTests.RandomEffect_MustDrawFromSimRng_ReservedUntilStory2_3 [SKIP]
+  Skipped ProjectChimera.Sim.Tests.Validation.TriggerValidationTests.RandomEffect_MustDrawFromSimRng_ReservedUntilStory2_3 [1 ms]
+WARNING: Overwriting results file: D:\Projects\Chimera-Unreal\TrialOut\a\tests\A5.trx
+Results File: D:\Projects\Chimera-Unreal\TrialOut\a\tests\A5.trx
+
+Passed!  - Failed:     0, Passed:  7158, Skipped:     1, Total:  7159, Duration: 1 m 37 s - ProjectChimera.Sim.Tests.dll (net8.0)
+[ue_lock] released (exit 0, held 114 s)

@@ -1,0 +1,41 @@
+=== publish run 1 (after the A5 fixes) ===
+[ue_lock] acquired after 88 s (run, tag a/A5): pwsh -NoProfile -ExecutionPolicy Bypass -File D:/Projects/Project_Chimera/godot/ProjectChimera.Sim.Native/publish.ps1
+publish: commit=10a1165f70b4d60111c6bd0503c9b30f98785355 dirty=1 config=Release -> D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\bin\publish
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  ProjectChimera.Sim.Native -> D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\bin\Release\net8.0\win-x64\ChimeraSim.dll
+C:\Users\MD_Ki\.nuget\packages\microsoft.dotnet.ilcompiler\8.0.25\build\Microsoft.DotNet.ILCompiler.SingleEntry.targets(45,5): warning : Delete explicit 'Microsoft.DotNet.ILCompiler' package reference in your project file to avoid versioning problems. [D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\ProjectChimera.Sim.Native.csproj]
+  Generating native code
+     Creating library bin\Release\net8.0\win-x64\native\ChimeraSim.lib and object bin\Release\net8.0\win-x64\native\ChimeraSim.exp
+  ProjectChimera.Sim.Native -> D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\bin\publish.new\
+publish: dotnet exit 0 in 13 s; log D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\publish.log
+publish: 5941760 bytes sha256=9fa51ebd505e9c19ad44c00f4d947565e7ae77460d2bf8747e87bb4bccb8b36e il_warnings=0 native_compile=1
+publish: header sha256=60bf45f14facd9744b3aaa9f00aecc2a637395881d996922b5dd31bbd0c1566a
+publish: swapped into D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\bin\publish
+[ue_lock] released (exit 0, held 14 s)
+
+=== publish run 2 (no source change; must still run ILC) ===
+[ue_lock] acquired after 593 s (run, tag a/A5): pwsh -NoProfile -ExecutionPolicy Bypass -File D:/Projects/Project_Chimera/godot/ProjectChimera.Sim.Native/publish.ps1
+publish: commit=10a1165f70b4d60111c6bd0503c9b30f98785355 dirty=1 config=Release -> D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\bin\publish
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  ProjectChimera.Sim.Native -> D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\bin\Release\net8.0\win-x64\ChimeraSim.dll
+C:\Users\MD_Ki\.nuget\packages\microsoft.dotnet.ilcompiler\8.0.25\build\Microsoft.DotNet.ILCompiler.SingleEntry.targets(45,5): warning : Delete explicit 'Microsoft.DotNet.ILCompiler' package reference in your project file to avoid versioning problems. [D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\ProjectChimera.Sim.Native.csproj]
+  Generating native code
+     Creating library bin\Release\net8.0\win-x64\native\ChimeraSim.lib and object bin\Release\net8.0\win-x64\native\ChimeraSim.exp
+  ProjectChimera.Sim.Native -> D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\bin\publish.new\
+publish: dotnet exit 0 in 9 s; log D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\publish.log
+publish: 5941760 bytes sha256=c06a2235cd5b6b84d3927ee13552ac499903ab22dd6cb5a0b92b61bd66e4c7aa il_warnings=0 native_compile=1
+publish: header sha256=60bf45f14facd9744b3aaa9f00aecc2a637395881d996922b5dd31bbd0c1566a
+publish: swapped into D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\bin\publish
+[ue_lock] released (exit 0, held 10 s)
+
+=== publish with ChimeraSim.dll loaded by another process (documented exit 5, DLL untouched) ===
+loaded D:/Projects/Project_Chimera/godot/ProjectChimera.Sim.Native\bin\publish\ChimeraSim.dll abi=0x10000
+publish: commit=10a1165f70b4d60111c6bd0503c9b30f98785355 dirty=1 config=Release -> D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\bin\publish
+
+[ue_lock] acquired after 57 s (run, tag a/A5): pwsh -NoProfile -ExecutionPolicy Bypass -File D:/Projects/Project_Chimera/godot/ProjectChimera.Sim.Native/publish.ps1
+output in use: D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\bin\publish\ChimeraSim.dll (wait for it to unload, then retry)
+[ue_lock] released (exit 5, held 1 s)
+
+publish.ps1 rc under ue_lock = 5 ; dll unchanged = True c06a2235cd5b6b84d3927ee13552ac499903ab22dd6cb5a0b92b61bd66e4c7aa

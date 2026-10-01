@@ -1,0 +1,26 @@
+# The C ABI allow-list of ChimeraSim.dll (plan A section 3.4 table), one export per line.
+# tools/sim-trial/check_exports.py asserts: DLL exports == include/chimera_sim.h == this list (the runtime's
+# DotNetRuntimeDebugHeader is ignored). Adding an export means editing the header, the Exports/ code and this list together.
+# Only chimera_submit_order and chimera_step write folded sim state; session create/destroy and
+# chimera_set_checksum_interval are host configuration; everything else reads.
+chimera_abi_version
+chimera_abi_check
+chimera_build_info
+chimera_session_create
+chimera_session_destroy
+chimera_set_checksum_interval
+chimera_last_checksum
+chimera_pre_tick_hashes
+chimera_submit_order
+chimera_step
+chimera_read_units
+chimera_read_buildings
+chimera_units_digest
+chimera_wide_digest
+chimera_unit_def_id
+chimera_building_def_id
+chimera_verdict
+chimera_stats
+chimera_file_sha256
+chimera_selftest
+chimera_last_error

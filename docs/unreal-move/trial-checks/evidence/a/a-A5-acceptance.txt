@@ -1,0 +1,36 @@
+A5 acceptance (Unreal trial, NativeAOT library ChimeraSim.dll and its C ABI), 2026-10-01, after the verifier fixes
+publish (UE_LOCK_TAG=a/A5 ue_lock.sh pwsh -File NAT/publish.ps1), two runs back to back plus the in-use case:
+  publish: commit=10a1165f70b4d60111c6bd0503c9b30f98785355 dirty=1 config=Release -> D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\bin\publish
+  publish: dotnet exit 0 in 13 s; log D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\publish.log
+  publish: 5941760 bytes sha256=9fa51ebd505e9c19ad44c00f4d947565e7ae77460d2bf8747e87bb4bccb8b36e il_warnings=0 native_compile=1
+  publish: header sha256=60bf45f14facd9744b3aaa9f00aecc2a637395881d996922b5dd31bbd0c1566a
+  publish: swapped into D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\bin\publish
+  [ue_lock] released (exit 0, held 14 s)
+  publish: commit=10a1165f70b4d60111c6bd0503c9b30f98785355 dirty=1 config=Release -> D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\bin\publish
+  publish: dotnet exit 0 in 9 s; log D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\publish.log
+  publish: 5941760 bytes sha256=c06a2235cd5b6b84d3927ee13552ac499903ab22dd6cb5a0b92b61bd66e4c7aa il_warnings=0 native_compile=1
+  publish: header sha256=60bf45f14facd9744b3aaa9f00aecc2a637395881d996922b5dd31bbd0c1566a
+  publish: swapped into D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\bin\publish
+  [ue_lock] released (exit 0, held 10 s)
+  publish: commit=10a1165f70b4d60111c6bd0503c9b30f98785355 dirty=1 config=Release -> D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\bin\publish
+  output in use: D:\Projects\Project_Chimera\godot\ProjectChimera.Sim.Native\bin\publish\ChimeraSim.dll (wait for it to unload, then retry)
+  [ue_lock] released (exit 5, held 1 s)
+  publish.ps1 rc under ue_lock = 5 ; dll unchanged = True c06a2235cd5b6b84d3927ee13552ac499903ab22dd6cb5a0b92b61bd66e4c7aa
+warning IL count in publish.log (last run): 0; 'Generating native code' lines: 1
+--- check_exports.py (DLL == include/chimera_sim.h == allow-list) rc=0
+DotNetRuntimeDebugHeader, chimera_abi_check, chimera_abi_version, chimera_build_info, chimera_building_def_id, chimera_file_sha256, chimera_last_checksum, chimera_last_error, chimera_pre_tick_hashes, chimera_read_buildings, chimera_read_units, chimera_selftest, chimera_session_create, chimera_session_destroy, chimera_set_checksum_interval, chimera_stats, chimera_step, chimera_submit_order, chimera_unit_def_id, chimera_units_digest, chimera_verdict, chimera_wide_digest
+missing=0 extra=0 allowlist=ok
+header_missing=0 header_extra=0 header=ok
+--- check_exports.py against the header published with the DLL (bin/publish/chimera_sim.h) rc=0
+header_missing=0 header_extra=0 header=ok
+--- ILCompiler pin: 3 x "Microsoft.DotNet.ILCompiler/8.0.25" in NAT/obj/project.assets.json; requested [8.0.25, 8.0.25]
+--- native_abi_smoke main / ai (ctypes, 1440 ticks vs the committed goldens)
+main: native_abi_smoke: PASS 44/44
+ai:   native_abi_smoke: PASS 44/44
+build_info: abi=1.0;algo=29;commit=10a1165f70b4d60111c6bd0503c9b30f98785355;dirty=1;runtime=.NET 8.0.25;aot=1
+--- T1 (dotnet test under the lock, tag a/A5) rc=0
+file=A5.trx run=Completed counters_total=7159
+total=7159 passed=7158 failed=0 skipped=1
+--- godot.csproj: dotnet build godot.csproj -> 0 Error(s) (16 pre-existing warnings)
+--- header compiles warning-free with cl /W4 /WX as C11 and as C++17 (sizes 56/28, offsets, CHIMERA_FACTION_COUNT 9, decltype signatures): HDR_OK
+--- publish.ps1 -StageOnly into a scratch project: dll + pdb + the PUBLISHED header staged, sha256 verified, rc 0
