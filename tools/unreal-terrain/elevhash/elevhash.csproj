@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="..\..\..\godot\src\Core\FixedPoint.cs" Link="sim\FixedPoint.cs" />
+    <Compile Include="..\..\..\godot\src\Core\ElevationGrid.cs" Link="sim\ElevationGrid.cs" />
+    <Compile Include="..\..\..\godot\src\Core\HeightmapCellMapping.cs" Link="sim\HeightmapCellMapping.cs" />
+  </ItemGroup>
+</Project>

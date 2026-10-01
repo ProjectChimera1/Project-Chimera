@@ -1,0 +1,21 @@
+sim_grid_fnv 0x53a3de06
+BAR sim_grid_fnv PASS csharp=0x53a3de06 cpp=0x53a3de06
+probe  0 x=        0 z=        0 csharp= -306422 cpp= -306422 ok
+probe  1 x= -8388608 z= -8388608 csharp=       0 cpp=       0 ok
+probe  2 x=  8388607 z=  8388607 csharp=       0 cpp=       0 ok
+probe  3 x=  8388608 z=  8388608 csharp=       0 cpp=       0 ok
+probe  4 x= -8454144 z= -8454144 csharp=       0 cpp=       0 ok
+probe  5 x=   -32768 z=    32768 csharp= -305296 cpp= -305296 ok
+probe  6 x=    65536 z=   -65536 csharp= -325952 cpp= -325952 ok
+probe  7 x=   -65536 z=   -65536 csharp= -325952 cpp= -325952 ok
+probe  8 x=   -65537 z=   -65537 csharp= -340537 cpp= -340537 ok
+probe  9 x=   688128 z=  -212992 csharp= -285117 cpp= -285117 ok
+probe 10 x= -5095424 z=  2760704 csharp=  275479 cpp=  275479 ok
+probe 11 x=  2097151 z=  2097151 csharp=  712786 cpp=  712786 ok
+probe 12 x=  2097152 z=  2097152 csharp=  719434 cpp=  719434 ok
+probe 13 x=  4194304 z= -4194304 csharp=       0 cpp=       0 ok
+probe 14 x=  6586368 z=  6586368 csharp=  524288 cpp=  524288 ok
+probe 15 x= -6586368 z= -6586368 csharp= -253205 cpp= -253205 ok
+BAR probes_16 PASS n=16 mismatches=0 negative_non_exact=7 cell_boundary=11
+BAR axes PASS sim(x,z,h)->ue_cm(100x,100z,100h)
+ELEVHASH PASS
