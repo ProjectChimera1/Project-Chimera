@@ -55,10 +55,8 @@
     <!-- DW-159: the Godot-free map-bounds predicate extracted from EntityPlacer.WithinMapBounds, included as a single
          file (src/UI is not globbed by SimSources.props) so the off-map paste/move guard is Tier-1 testable. -->
     <Compile Include="..\src\UI\MapBoundsMath.cs" LinkBase="Sim\UI" />
-    <!-- DW-169: the Godot-free building nav-footprint resolution policy (authored nav_footprint > built-in table >
-         mesh AABB > guarded default) extracted from NavObstacleManager, included as a single file (src/UI is not
-         globbed by SimSources.props) so the resolution order is Tier-1 testable. -->
-    <Compile Include="..\src\UI\BuildingNavFootprint.cs" LinkBase="Sim\UI" />
+    <!-- DW-169: src/UI/BuildingNavFootprint.cs was single-file-included here; since Unreal trial A3 it is part of
+         SimSources.props (imported above), so it is no longer listed here (a second include would duplicate it). -->
     <!-- DW-345: the Godot-free variable-picker eligibility policy extracted from TriggerEditorPanel.RefreshVarPickers
          (src/CreationSuite is not globbed by SimSources.props — the EditorHistory single-file precedent) so the
          legacy-path PerPlayer exclusion is Tier-1 testable. -->

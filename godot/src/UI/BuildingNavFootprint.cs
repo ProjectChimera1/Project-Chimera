@@ -25,9 +25,14 @@ namespace ProjectChimera.UI
     ///   4. The guarded <see cref="CUSTOM_FOOTPRINT"/> default (no def / no mesh / degenerate AABB) — the same
     ///      5×3×5 the old code used unconditionally, so a mesh-less custom building behaves exactly as before.
     ///
-    /// Lives under <c>src/UI</c> (NOT globbed by SimSources.props; single-file-included by
-    /// ProjectChimera.Sim.Tests — the StartSlotMath/MapBoundsMath precedent). Presentation-side floats are fine
-    /// here: the navmesh carve size is never folded into SimChecksum / CanonicalModelHash / StartStateHash.
+    /// Lives under <c>src/UI</c> (the folder is NOT globbed by SimSources.props). Since Unreal trial A3 it is a
+    /// single-file include OF SimSources.props (the FactionPalette precedent), so the Tier-1 suite, the analyzer
+    /// gate and the shared Godot-free match composition (<c>SimSession</c>, which wires
+    /// <see cref="ObstacleExtentSource"/> exactly as <c>NavigationPhase</c> does) all compile this one copy.
+    /// Presentation-side floats are fine here: the navmesh carve size is never folded into SimChecksum /
+    /// CanonicalModelHash / StartStateHash, and the flow-field stamp receives only the ints
+    /// <see cref="ToHalfCells"/> produces. The determinism analyzer now reports those floats (CHM0001/CHM0005);
+    /// the counts are recorded as the post-A3 baseline, not fixed, because the policy is deliberately float-based.
     /// </summary>
     public static class BuildingNavFootprint
     {

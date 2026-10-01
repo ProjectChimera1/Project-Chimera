@@ -35,10 +35,16 @@ namespace ProjectChimera.Core.Sim
         /// Godot-free grid down exactly as the client's <c>ScenarioLoadPhase.BuildAndInjectElevationGrid</c> hands it
         /// to the applier. <c>null</c> ⇒ flat: spawns sit at <see cref="Fixed.Zero"/> elevation and the pathability
         /// union's SLOPE arm derives nothing (painted ∪ prop/water only) — byte-identical to the prior behaviour.</param>
+        /// <param name="itemRegistry">Unreal trial A3: the loaded <see cref="ItemRegistry"/> to hand the host, as the
+        /// Godot client does (<c>MainScene.cs:527-535</c>, the 8th <see cref="SimulationHost.Create"/> argument).
+        /// <c>null</c> (every existing caller) ⇒ the host resolves it to <see cref="ItemRegistry.Empty"/> exactly as
+        /// before (<c>SimulationHost.cs:240</c>), so the server path stays byte-identical. Passed by name to
+        /// <see cref="SimulationHost.Create"/>, like <paramref name="abilityRegistry"/>, so the AI level keeps its
+        /// default.</param>
         public static SimulationHost? Build(
             ScenarioData model, FactionDefinition?[] slotFactionDefs, DamageTable? damageTable,
             ILogSink log, int activeFactionCount, AbilityRegistry? abilityRegistry = null,
-            ElevationGrid? elevationGrid = null)
+            ElevationGrid? elevationGrid = null, ItemRegistry? itemRegistry = null)
         {
             // Story 7.1: pin InvariantCulture process-wide at the headless server's composition root — the same
             // hardening net the client applies in MainScene._EnterTree, so the server's number formatting/parsing
@@ -74,10 +80,11 @@ namespace ProjectChimera.Core.Sim
 
             // Same Create the client calls — null damageTable resolves to DamageTable.Default inside combat ctors.
             // registry passed BY NAME so aiLevel keeps its default (the server's prior 5-arg behavior is preserved).
+            // itemRegistry likewise by name; null (every pre-A3 caller) resolves to ItemRegistry.Empty in the host.
             var host = SimulationHost.Create(
                 log, new FactionRegistry(activeFactionCount),
                 slotFactionDefs[(int)Faction.Player1], slotFactionDefs[(int)Faction.Player2],
-                damageTable, registry: registry);
+                damageTable, registry: registry, itemRegistry: itemRegistry);
 
             // The ONLY way to obtain a Validated<ScenarioData> (the Proof ctor is internal + source-scanned).
             ValidationResult r = new ScenarioValidator().Validate(model, slotFactionDefs); // Story 6.8: authored-building-id gate

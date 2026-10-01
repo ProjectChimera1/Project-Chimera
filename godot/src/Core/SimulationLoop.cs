@@ -200,6 +200,20 @@ namespace ProjectChimera.Core
         }
 
         /// <summary>
+        /// Unreal trial A3: the checksum of the world AS IT IS NOW, from the SAME store set and the SAME
+        /// <see cref="SimChecksum.Compute"/> call <see cref="StepOnce"/> folds at a scheduled tick. A pure read: it does
+        /// not touch <see cref="LastChecksum"/>, <see cref="OnChecksum"/>, <see cref="CurrentTick"/> or any store, so a
+        /// run that calls it is byte-identical to one that does not. Used for the pre-tick "tick0" hash (the world
+        /// before the first step), which no scheduled checksum covers. Returns 0 when <see cref="EnableChecksums"/>
+        /// was never called (the same precondition the scheduled fold has).
+        /// </summary>
+        public uint ComputeChecksumNow()
+        {
+            if (_checksumBuildings == null || _checksumResources == null || _checksumFactions == null) return 0;
+            return SimChecksum.Compute(World, _checksumBuildings, _checksumResources, _checksumFactions, _checksumModifiers, _checksumHeroes, _checksumItems, _checksumNodes, _checksumResearch, _checksumVars, _checksumLoopState, _checksumDslEvents, _checksumWinState, _checksumAlliances, _checksumTriggerEnabled);
+        }
+
+        /// <summary>
         /// Advance exactly one simulation tick, bypassing the accumulator.
         /// Used by LockstepManager in online mode — tick advancement is
         /// gated on both peers' commands arriving, not wall-clock time.

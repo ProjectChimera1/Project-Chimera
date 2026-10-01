@@ -1,0 +1,15 @@
+[
+  {
+    "file": "a-A3-chm-delta.txt",
+    "path": "a/a-A3-chm-delta.txt",
+    "sha256": "67d6fe749e1eff8b269f1ce0987abf0ab81a5c4673fce952467b001db24bbb60",
+    "bytes": 4850,
+    "w_h": null,
+    "task": "A3",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/a3_chm_delta.txt",
+    "r_commit": "20dce26a",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  }
+]

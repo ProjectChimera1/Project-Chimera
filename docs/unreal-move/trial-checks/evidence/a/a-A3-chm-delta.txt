@@ -1,0 +1,58 @@
+A3 analyzer delta - ProjectChimera.Sim.Analysis, `dotnet build -c Debug --no-incremental`, unique by (file,line,col,rule,message)
+before = a3_analysis_before.log  (tree at R HEAD before any A3 edit)
+after  = a3_analysis_after.log  (A3 working tree)
+
+rule      before  after  delta
+CHM0001      394    409  +15
+CHM0002       10     10  +0
+CHM0003        1      1  +0
+CHM0004       35     35  +0
+CHM0005      280    284  +4
+CHM0006        3      3  +0
+CS8604         4      4  +0
+CS8618         1      1  +0
+CS8625         2      2  +0
+CS8765         2      2  +0
+IL2026         0      0  +0
+IL3050         0      0  +0
+RS0030         0      0  +0
+IL* total: before=0 after=0
+unique_total: before=732 after=751
+
+delta by (file, rule) (count-based, so line shifts cancel):
+  src/Core/Sim/SimSession.cs  CHM0001: 0 -> 4 (+4)
+  src/Core/Sim/SimSession.cs  CHM0005: 0 -> 4 (+4)
+  src/UI/BuildingNavFootprint.cs  CHM0001: 0 -> 11 (+11)
+
+new sites in the changed files (after-only keys):
+  src/Core/Sim/SimSession.cs(119,38) CHM0001: Sim code uses the 'float' primitive — gameplay magnitudes must use the deterministic Fixed (16.16) t
+  src/Core/Sim/SimSession.cs(119,45) CHM0001: Sim code uses the 'float' primitive — gameplay magnitudes must use the deterministic Fixed (16.16) t
+  src/Core/Sim/SimSession.cs(120,38) CHM0001: Sim code uses the 'float' primitive — gameplay magnitudes must use the deterministic Fixed (16.16) t
+  src/Core/Sim/SimSession.cs(120,45) CHM0001: Sim code uses the 'float' primitive — gameplay magnitudes must use the deterministic Fixed (16.16) t
+  src/Core/Sim/SimSession.cs(140,96) CHM0005: 'Fixed.FromFloat' is called outside FixedJsonConverter — the single AR-14 float<->Fixed quantization
+  src/Core/Sim/SimSession.cs(140,128) CHM0005: 'Fixed.FromFloat' is called outside FixedJsonConverter — the single AR-14 float<->Fixed quantization
+  src/Core/Sim/SimSession.cs(141,102) CHM0005: 'Fixed.FromFloat' is called outside FixedJsonConverter — the single AR-14 float<->Fixed quantization
+  src/Core/Sim/SimSession.cs(141,134) CHM0005: 'Fixed.FromFloat' is called outside FixedJsonConverter — the single AR-14 float<->Fixed quantization
+  src/UI/BuildingNavFootprint.cs(43,29) CHM0001: Sim code uses the 'float' primitive — gameplay magnitudes must use the deterministic Fixed (16.16) t
+  src/UI/BuildingNavFootprint.cs(44,29) CHM0001: Sim code uses the 'float' primitive — gameplay magnitudes must use the deterministic Fixed (16.16) t
+  src/UI/BuildingNavFootprint.cs(45,29) CHM0001: Sim code uses the 'float' primitive — gameplay magnitudes must use the deterministic Fixed (16.16) t
+  src/UI/BuildingNavFootprint.cs(46,26) CHM0001: Sim code uses the 'float' primitive — gameplay magnitudes must use the deterministic Fixed (16.16) t
+  src/UI/BuildingNavFootprint.cs(46,35) CHM0001: Sim code uses the 'float' primitive — gameplay magnitudes must use the deterministic Fixed (16.16) t
+  src/UI/BuildingNavFootprint.cs(46,44) CHM0001: Sim code uses the 'float' primitive — gameplay magnitudes must use the deterministic Fixed (16.16) t
+  src/UI/BuildingNavFootprint.cs(82,59) CHM0001: Sim code uses the 'float' primitive — gameplay magnitudes must use the deterministic Fixed (16.16) t
+  src/UI/BuildingNavFootprint.cs(82,73) CHM0001: Sim code uses the 'float' primitive — gameplay magnitudes must use the deterministic Fixed (16.16) t
+  src/UI/BuildingNavFootprint.cs(82,87) CHM0001: Sim code uses the 'float' primitive — gameplay magnitudes must use the deterministic Fixed (16.16) t
+  src/UI/BuildingNavFootprint.cs(139,41) CHM0001: Sim code uses the 'float' primitive — gameplay magnitudes must use the deterministic Fixed (16.16) t
+  src/UI/BuildingNavFootprint.cs(145,13) CHM0001: Sim code uses the 'float' primitive — gameplay magnitudes must use the deterministic Fixed (16.16) t
+
+line-shifted only (same file+rule count before and after; not new): 2
+  src/Core/Sim/SimulationHost.cs(606,27) CHM0001
+  src/Core/SimulationLoop.cs(246,27) CHM0001
+
+attribution (every new CHM0001/CHM0005):
+  SimSession.cs(119-120)  CHM0001 x4 : the delegate bridge's two Action<int, float, float> fields (OrderApplier's path-request delegate type)
+  SimSession.cs(140-141)  CHM0005 x4 : the delegate bridge's Fixed.FromFloat(x)/Fixed.FromFloat(z) (= FlowFieldBridge.ToSim, FlowFieldBridge.cs:76-77)
+  BuildingNavFootprint.cs CHM0001 x11: the float-based footprint policy now compiled into the analyzed set (Size3 fields/ctor, Resolve out floats, HalfCellsFor)
+  no other file gains a CHM warning; PreTickHashes.cs, WorldDigest.cs, OrderScript.cs add none.
+release-gated build (-p:ChimeraRelease=true --no-incremental): 0 errors (a3_analysis_release.log)
+POST-A3 BASELINE for later tasks: CHM0001=409 CHM0005=284 CHM0004=35 CHM0002=10 CHM0006=3 CHM0003=1 RS0030=0 IL2026=0 IL3050=0 (unique_total=751)

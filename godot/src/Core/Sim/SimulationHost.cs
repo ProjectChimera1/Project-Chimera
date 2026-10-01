@@ -594,6 +594,11 @@ namespace ProjectChimera.Core.Sim
         /// Delegates to <see cref="SimulationLoop.RestoreTick"/>; the checksum store wiring is untouched.</summary>
         public void RestoreTick(uint tick) => _loop.RestoreTick(tick);
 
+        /// <summary>Unreal trial A3: the checksum of the current world, computed exactly as a scheduled
+        /// <see cref="StepOnce"/> fold would (same stores, same <see cref="SimChecksum.Compute"/>). A pure read: it
+        /// changes no tick, no <see cref="LastChecksum"/> and no store. Wraps <see cref="SimulationLoop.ComputeChecksumNow"/>.</summary>
+        public uint ComputeChecksumNow() => _loop.ComputeChecksumNow();
+
         /// <summary>Advance exactly one tick (lockstep / replay / golden path). Wraps SimulationLoop.StepOnce.</summary>
         public void StepOnce() => _loop.StepOnce();
 
