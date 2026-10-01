@@ -235,5 +235,99 @@
     "unreal_build_id": "",
     "committed": true,
     "sent_to_alec": null
+  },
+  {
+    "file": "a-A8-parity.png",
+    "path": "a/a-A8-parity.png",
+    "sha256": "436af9a87afd3ca97a843e388bee23e2f22a66f0c941979c4303bd953562b29b",
+    "bytes": 49310,
+    "w_h": [
+      1400,
+      615
+    ],
+    "task": "A8",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/a8/cmp_main/parity.png",
+    "r_commit": "c88a724e",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A8-acceptance.txt",
+    "path": "a/a-A8-acceptance.txt",
+    "sha256": "25ffab9cc38672da582b1d22b5e0a90fbbf09047568176d8ed570c2fd9ec5d6f",
+    "bytes": 4108,
+    "w_h": null,
+    "task": "A8",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/a8/a8_acceptance.txt",
+    "r_commit": "c88a724e",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A6-gate-aot.txt",
+    "path": "a/a-A6-gate-aot.txt",
+    "sha256": "c4264935dfda6691a9940e0d3908ca1c842dbd6cc9ce443df848400da1ccdd4e",
+    "bytes": 5521,
+    "w_h": null,
+    "task": "A6",
+    "source": "D:/Projects/Project_Chimera/godot/ProjectChimera.Sim.Native/AotGoldens/out/aot.log",
+    "r_commit": "c88a724e",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A6-gate-jit.txt",
+    "path": "a/a-A6-gate-jit.txt",
+    "sha256": "c665debf64ed725c1e454654f222bde8c0f242878833cd54e5e35cdd2573710d",
+    "bytes": 5590,
+    "w_h": null,
+    "task": "A6",
+    "source": "D:/Projects/Project_Chimera/godot/ProjectChimera.Sim.Native/AotGoldens/out/jit.log",
+    "r_commit": "c88a724e",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A6-publish-ilc.txt",
+    "path": "a/a-A6-publish-ilc.txt",
+    "sha256": "48de18f41048df86596d355152574c6005a850bc54306c5a4f0135997ba53f0e",
+    "bytes": 768,
+    "w_h": null,
+    "task": "A6",
+    "source": "D:/Projects/Project_Chimera/godot/ProjectChimera.Sim.Native/AotGoldens/publish.log",
+    "r_commit": "c88a724e",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A6-jit-reference.txt",
+    "path": "a/a-A6-jit-reference.txt",
+    "sha256": "97b4e2ade274df812024dbdf2aa1a7b4016d5a8dae83c3421333e3abcb630b0b",
+    "bytes": 172977,
+    "w_h": null,
+    "task": "A6",
+    "source": "D:/Projects/Project_Chimera/godot/ProjectChimera.Sim.Native/AotGoldens/out/jit_reference.txt",
+    "r_commit": "c88a724e",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A6-acceptance.txt",
+    "path": "a/a-A6-acceptance.txt",
+    "sha256": "f1fd1858875f325b3c6748c1bea12167e7bb7cf89312059d6308ebcb207ed1d0",
+    "bytes": 1652,
+    "w_h": null,
+    "task": "A6",
+    "source": "C:/Users/MD_Ki/AppData/Local/Temp/claude/D--Projects-Project-Chimera/fd02aab1-1ba4-4649-9db9-6cf73fdc69c1/scratchpad/a-A6-acceptance.txt",
+    "r_commit": "c88a724e",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
   }
 ]

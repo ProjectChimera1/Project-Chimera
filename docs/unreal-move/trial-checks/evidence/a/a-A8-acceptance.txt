@@ -1,0 +1,88 @@
+A8 Godot headless leg, acceptance record (2026-10-01)
+Godot 4.6.3 mono console; sim compiled by godot.csproj (Debug, GODOT defined); scene res://scenes/sim_trial.tscn
+
+FINDING (F7 is wrong for the hosted runtime): Godot's GodotSharp/Api/Debug/GodotPlugins.runtimeconfig.json sets rollForward=LatestMajor,
+so a plain Godot start hosts the project on the newest installed runtime (.NET 10.0.12), not the net8.0 of the project runtimeconfig.
+Pinned run: DOTNET_ROLL_FORWARD=LatestMinor in the Godot process gives .NET 8.0.25 (legs godot, godot_ai). Unpinned (legs godot_host, godot_host_ai) = .NET 10.0.12.
+
+--- run_main_net8
+[ue_lock] acquired after 286 s (run, tag a/A8): pwsh -NoProfile -ExecutionPolicy Bypass -File D:/Projects/Project_Chimera/tools/sim-trial/run_godot_leg.ps1 -Variant main -Runtime net8
+== dotnet build godot.csproj (Debug)
+godot_exit=0
+runtime=.NET 8.0.25
+checksum_lines=24 equal_golden=24 expected=24
+OK trace=D:/Projects/Chimera-Unreal/TrialOut/a/godot/godot.trace.txt
+[ue_lock] released (exit 0, held 25 s)
+--- run_ai_net8
+[ue_lock] acquired after 0 s (run, tag a/A8): pwsh -NoProfile -ExecutionPolicy Bypass -File D:/Projects/Project_Chimera/tools/sim-trial/run_godot_leg.ps1 -Variant ai -Runtime net8
+== dotnet build godot.csproj (Debug)
+godot_exit=0
+runtime=.NET 8.0.25
+checksum_lines=24 equal_golden=24 expected=24
+OK trace=D:/Projects/Chimera-Unreal/TrialOut/a/godot/godot_ai.trace.txt
+[ue_lock] released (exit 0, held 25 s)
+--- run_main_host
+[ue_lock] acquired after 0 s (run, tag a/A8): pwsh -NoProfile -ExecutionPolicy Bypass -File D:/Projects/Project_Chimera/tools/sim-trial/run_godot_leg.ps1 -Variant main -Runtime host
+== dotnet build godot.csproj (Debug)
+godot_exit=0
+runtime=.NET 10.0.12
+checksum_lines=24 equal_golden=24 expected=24
+OK trace=D:/Projects/Chimera-Unreal/TrialOut/a/godot/godot_host.trace.txt
+[ue_lock] released (exit 0, held 21 s)
+--- run_ai_host
+[ue_lock] acquired after 1 s (run, tag a/A8): pwsh -NoProfile -ExecutionPolicy Bypass -File D:/Projects/Project_Chimera/tools/sim-trial/run_godot_leg.ps1 -Variant ai -Runtime host
+== dotnet build godot.csproj (Debug)
+godot_exit=0
+runtime=.NET 10.0.12
+checksum_lines=24 equal_golden=24 expected=24
+OK trace=D:/Projects/Chimera-Unreal/TrialOut/a/godot/godot_host_ai.trace.txt
+[ue_lock] released (exit 0, held 21 s)
+
+--- header godot
+# leg: godot
+# host: godot 4.6.3
+# runtime: .NET 8.0.25
+# config: Debug
+# godot_define: 1
+# dotnet_roll_forward_env: LatestMinor
+--- header godot_ai
+# leg: godot_ai
+# host: godot 4.6.3
+# runtime: .NET 8.0.25
+# config: Debug
+# godot_define: 1
+# dotnet_roll_forward_env: LatestMinor
+--- header godot_host
+# leg: godot_host
+# host: godot 4.6.3
+# runtime: .NET 10.0.12
+# config: Debug
+# godot_define: 1
+# dotnet_roll_forward_env: unset
+--- header godot_host_ai
+# leg: godot_host_ai
+# host: godot 4.6.3
+# runtime: .NET 10.0.12
+# config: Debug
+# godot_define: 1
+# dotnet_roll_forward_env: unset
+
+--- compare main (cli, cpp, godot, godot_host)
+set=main golden=trial-1000.golden.txt meta=trial-1000.meta.txt trailer=trial-1000.trailer.txt
+  meta           1440/1440 (reference: golden + meta + trailer)
+  cli            1440/1440 H0=6/6 header=ok digests=ok orders=ok
+  cpp            1440/1440 H0=6/6 header=ok digests=ok orders=ok
+  godot          1440/1440 H0=6/6 header=ok digests=ok orders=ok
+  godot_host     1440/1440 H0=6/6 header=ok digests=ok orders=ok
+RESULT set=main legs=5 ticks=1440 all_equal=yes PASS
+--- compare ai (cli_ai, cpp_ai, godot_ai, godot_host_ai)
+set=ai golden=trial-1000-ai.golden.txt meta=trial-1000-ai.meta.txt trailer=trial-1000-ai.trailer.txt
+  meta           1440/1440 (reference: golden + meta + trailer)
+  cli_ai         1440/1440 H0=6/6 header=ok digests=ok orders=ok
+  cpp_ai         1440/1440 H0=6/6 header=ok digests=ok orders=ok
+  godot_ai       1440/1440 H0=6/6 header=ok digests=ok orders=ok
+  godot_host_ai  1440/1440 H0=6/6 header=ok digests=ok orders=ok
+RESULT set=ai legs=5 ticks=1440 all_equal=yes PASS
+--- [Checksum] lines (godot.log): 24, first/last:
+[Checksum] tick=60 hash=0x71BA9D54
+[Checksum] tick=1440 hash=0x2CFCF09E
