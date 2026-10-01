@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ============================================================================================
+       Unreal trial A14 (plan A section 4 A14): converts the frozen trial order CSV into a replay v8 .chmr that
+       MainScene.ReplayPath plays back, and verifies that .chmr headless by playing it through the REAL
+       ReplayPlayer on a SimSession (the managed control: if this equals the golden, any MainScene divergence is
+       MainScene's, not the file's). Compiles the real sim source set (godot/SimSources.props) and nothing else.
+       Light work (no lock): dotnet run -c Release (project tools/sim-trial/chmr) with write or verify.
+       ============================================================================================ -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>ChmrTool</AssemblyName>
+    <RootNamespace>ProjectChimera.SimTrial.Chmr</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <Import Project="..\..\..\godot\SimSources.props" />
+
+</Project>

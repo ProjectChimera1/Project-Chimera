@@ -48,6 +48,8 @@ namespace ProjectChimera.Core
         /// <see cref="ScenarioPath"/> at the probe scenario) only when both probe arguments are present.</summary>
         private bool ArmSimTrialProbe()
         {
+            // Unreal trial A14: `--sim-trial-replay` arms the full-MainScene replay instead (src/Trial/MainSceneSimTrialReplay.cs).
+            if (ArmSimTrialReplay()) return false;
             string? scenario = CmdArgValue(PROBE_ARG);
             if (scenario == null) return false;
             string? outPath = CmdArgValue(PROBE_OUT_ARG);

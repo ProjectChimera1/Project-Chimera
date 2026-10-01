@@ -1,0 +1,184 @@
+# A14 Full MainScene replay - measured and reported, NOT gating (plan A section 4 A14; EXECUTION D1)
+# 2026-10-01, R HEAD 37d89f22 (A14 files uncommitted at measurement time), Godot 4.6.3 windowed 1280x720, Debug
+# Working output: D:/Projects/Chimera-Unreal/TrialOut/a/a14
+
+RESULT: full MainScene parity 1440/1440 (ai variant of record: 24/24 [Checksum] samples at interval 60 AND 1440/1440 at interval 1;
+        main variant 24/24). Start state 6/6, units+wide digests equal the golden trailer at 0/300/900/1440. No divergence -> no DW draft.
+        Pre-registered expectation (divergence at/after the first Move arrival if DW-681's frame writer is the cause) did NOT occur.
+
+== Pre-registered expectation (written 15:03 before any run): D:/Projects/Chimera-Unreal/TrialOut/a/a14/expectation.txt
+EXPECTATION (plan A section 4 A14, verbatim intent):
+  If DW-681's per-frame writer (PathRequestSystem / FlowFieldBridge Move->Stop transitions in src/UI, presentation
+  layer, frame-paced) is the cause, MainScene's replay DIVERGES from the golden at or after the first Move arrival,
+  i.e. after the Move order batches at tick 150 / 300 have had time to arrive (first divergent 60-tick window
+  expected at or after the window ending at tick 180-360), and NOT before tick 150.
+  Ticks 60, 120 (before any order batch after tick 0 has arrived) are expected to MATCH; a divergence at tick 60
+  or 120 would point at something other than DW-681 (start state of the replay path, the replay order applier's
+  arguments, or the tick-0 batch's arrival).
+  1440/1440 (24/24) would mean DW-681's writer does not perturb this match.
+2026-10-01T15:03:22-04:00
+
+== .chmr conversion (ChmrTool write, ai)
+chmr=D:/Projects/Chimera-Unreal/TrialOut/a/a14/trial_1000_ai.chmr version=8 bytes=29463
+rows=2077 frames=14 empty_end_frames=1 max_orders_per_frame=256 end_tick=1440
+seed=0xC0FFEE1234567890 ai_mask=0x04 scenario_hash=0x26C0BDB524284D74 ruleset_hash=0x1EB102FD18C50DDD algo=17
+pre.canonical_model=0x26C0BDB524284D74 pre.ruleset=0x1EB102FD18C50DDD (header hashes equal)
+decoded=2077/2077 decoded_equal=yes
+
+== Managed control: the .chmr through the real ReplayPlayer on a SimSession (ChmrTool verify)
+-- ai:
+# state.300: digest=0x95A25936D1FCF83B wide=0x94933D757515010A alive=999 move=30 stop=0 idle=40 attackmove=929 other=0
+# state.900: digest=0x19242026FF6C2CA3 wide=0x8B2F99DB800D88AF alive=554 move=0 stop=0 idle=32 attackmove=496 other=26
+# state.1440: digest=0x5F33C907826483F0 wide=0xD89B817FB3EE28AE alive=124 move=0 stop=2 idle=21 attackmove=101 other=0
+verify steps=1440 finished=False last_tick=1440 ai_mask=0x04 alive_end=124
+managed_replay=1440/1440 first_divergent_tick=none trace=D:/Projects/Chimera-Unreal/TrialOut/a/a14/replay_ai_net8_managed_trace.txt
+-- main:
+# state.300: digest=0x3A88C0510C4DABD0 wide=0x2F806525BE4079C5 alive=999 move=30 stop=0 idle=40 attackmove=929 other=0
+# state.900: digest=0x05507E36CBE07BA0 wide=0x5D1B53111D5AACF7 alive=575 move=0 stop=0 idle=32 attackmove=543 other=0
+# state.1440: digest=0x205AA87BE7511479 wide=0x73959E4A50E309BE alive=121 move=0 stop=2 idle=14 attackmove=73 other=32
+verify steps=1440 finished=False last_tick=1440 ai_mask=0x00 alive_end=121
+managed_replay=1440/1440 first_divergent_tick=none trace=D:/Projects/Chimera-Unreal/TrialOut/a/a14/replay_main_net8_managed_trace.txt
+
+== MainScene replay: replay_ai_net8 (run_mainscene_replay.ps1, lock tag a/A14)
+godot_exit=0 elapsed_s=54.3
+managed_control_rc=0 compare_rc=0 godot_exit=0
+set=ai interval=60 samples=24/24 missing=0 diverged=0 dup_conflicts=0
+first_divergent_window=none
+hash.start_state       replay=0xA68FAB39663A44E2   meta=0xA68FAB39663A44E2   ok (reported)
+hash.canonical_model   replay=0x26C0BDB524284D74   meta=0x26C0BDB524284D74   ok (reported)
+hash.content           replay=0x55BB83D5F0A14C4B   meta=0x55BB83D5F0A14C4B   ok (reported)
+hash.ruleset           replay=0x1EB102FD18C50DDD   meta=0x1EB102FD18C50DDD   ok (reported)
+hash.agreement         replay=0x27CFD0074992E886   meta=0x27CFD0074992E886   ok (reported)
+hash.tick0             replay=0x69843E0A           meta=0x69843E0A           ok (reported)
+digest.0               replay=0x0991BB0534C1676D   trailer=0x0991BB0534C1676D ok (reported)
+wide.0                 replay=0x6EB658269F48A28D   trailer=0x6EB658269F48A28D ok (reported)
+state.300: digest ok wide ok (vs trailer; reported)
+  mainscene: digest=0x95A25936D1FCF83B wide=0x94933D757515010A alive=999 move=30 stop=0 idle=40 attackmove=929 other=0
+  managed:   digest=0x95A25936D1FCF83B wide=0x94933D757515010A alive=999 move=30 stop=0 idle=40 attackmove=929 other=0
+state.900: digest ok wide ok (vs trailer; reported)
+  mainscene: digest=0x19242026FF6C2CA3 wide=0x8B2F99DB800D88AF alive=554 move=0 stop=0 idle=32 attackmove=496 other=26
+  managed:   digest=0x19242026FF6C2CA3 wide=0x8B2F99DB800D88AF alive=554 move=0 stop=0 idle=32 attackmove=496 other=26
+state.1440: digest ok wide ok (vs trailer; reported)
+  mainscene: digest=0x5F33C907826483F0 wide=0xD89B817FB3EE28AE alive=124 move=0 stop=2 idle=21 attackmove=101 other=0
+  managed:   digest=0x5F33C907826483F0 wide=0xD89B817FB3EE28AE alive=124 move=0 stop=2 idle=21 attackmove=101 other=0
+start_match=6/6 ai_plan_mask=0x04 tick_at_start=0 rng_state_at_start=0xC0FFEE1234567890
+end_reason=replay finished
+tick_at_end=1441
+alive_end=124
+verdict=0
+frames=2259
+multi_step_frames=285
+max_ticks_per_frame=4
+replay_wall_s=48.5
+fps_mean=46.6
+runtime=.NET 8.0.25
+golden_trailer_alive_end=124
+RESULT 1440/1440 (24/24 samples)
+
+== MainScene replay: replay_ai_net8_every1 (run_mainscene_replay.ps1, lock tag a/A14)
+godot_exit=0 elapsed_s=72.1
+managed_control_rc=0 compare_rc=0 godot_exit=0
+set=ai interval=1 samples=1440/1440 missing=0 diverged=0 dup_conflicts=0
+first_divergent_window=none
+hash.start_state       replay=0xA68FAB39663A44E2   meta=0xA68FAB39663A44E2   ok (reported)
+hash.canonical_model   replay=0x26C0BDB524284D74   meta=0x26C0BDB524284D74   ok (reported)
+hash.content           replay=0x55BB83D5F0A14C4B   meta=0x55BB83D5F0A14C4B   ok (reported)
+hash.ruleset           replay=0x1EB102FD18C50DDD   meta=0x1EB102FD18C50DDD   ok (reported)
+hash.agreement         replay=0x27CFD0074992E886   meta=0x27CFD0074992E886   ok (reported)
+hash.tick0             replay=0x69843E0A           meta=0x69843E0A           ok (reported)
+digest.0               replay=0x0991BB0534C1676D   trailer=0x0991BB0534C1676D ok (reported)
+wide.0                 replay=0x6EB658269F48A28D   trailer=0x6EB658269F48A28D ok (reported)
+state.300: digest ok wide ok (vs trailer; reported)
+  mainscene: digest=0x95A25936D1FCF83B wide=0x94933D757515010A alive=999 move=30 stop=0 idle=40 attackmove=929 other=0
+  managed:   digest=0x95A25936D1FCF83B wide=0x94933D757515010A alive=999 move=30 stop=0 idle=40 attackmove=929 other=0
+state.900: digest ok wide ok (vs trailer; reported)
+  mainscene: digest=0x19242026FF6C2CA3 wide=0x8B2F99DB800D88AF alive=554 move=0 stop=0 idle=32 attackmove=496 other=26
+  managed:   digest=0x19242026FF6C2CA3 wide=0x8B2F99DB800D88AF alive=554 move=0 stop=0 idle=32 attackmove=496 other=26
+state.1440: digest ok wide ok (vs trailer; reported)
+  mainscene: digest=0x5F33C907826483F0 wide=0xD89B817FB3EE28AE alive=124 move=0 stop=2 idle=21 attackmove=101 other=0
+  managed:   digest=0x5F33C907826483F0 wide=0xD89B817FB3EE28AE alive=124 move=0 stop=2 idle=21 attackmove=101 other=0
+start_match=6/6 ai_plan_mask=0x04 tick_at_start=0 rng_state_at_start=0xC0FFEE1234567890
+end_reason=replay finished
+tick_at_end=1441
+alive_end=124
+verdict=0
+frames=547
+multi_step_frames=377
+max_ticks_per_frame=4
+replay_wall_s=67.0
+fps_mean=8.2
+runtime=.NET 8.0.25
+golden_trailer_alive_end=124
+RESULT 1440/1440 (1440/1440 samples)
+
+== MainScene replay: replay_main_net8 (run_mainscene_replay.ps1, lock tag a/A14)
+godot_exit=0 elapsed_s=55.2
+managed_control_rc=0 compare_rc=0 godot_exit=0
+set=main interval=60 samples=24/24 missing=0 diverged=0 dup_conflicts=0
+first_divergent_window=none
+hash.start_state       replay=0xA68FAB39663A44E2   meta=0xA68FAB39663A44E2   ok (reported)
+hash.canonical_model   replay=0x26C0BDB524284D74   meta=0x26C0BDB524284D74   ok (reported)
+hash.content           replay=0x55BB83D5F0A14C4B   meta=0x55BB83D5F0A14C4B   ok (reported)
+hash.ruleset           replay=0x1EB102FD18C50DDD   meta=0x1EB102FD18C50DDD   ok (reported)
+hash.agreement         replay=0x5D0605462E565A22   meta=0x5D0605462E565A22   ok (reported)
+hash.tick0             replay=0x69843E0A           meta=0x69843E0A           ok (reported)
+digest.0               replay=0x0991BB0534C1676D   trailer=0x0991BB0534C1676D ok (reported)
+wide.0                 replay=0x6EB658269F48A28D   trailer=0x6EB658269F48A28D ok (reported)
+state.300: digest ok wide ok (vs trailer; reported)
+  mainscene: digest=0x3A88C0510C4DABD0 wide=0x2F806525BE4079C5 alive=999 move=30 stop=0 idle=40 attackmove=929 other=0
+  managed:   digest=0x3A88C0510C4DABD0 wide=0x2F806525BE4079C5 alive=999 move=30 stop=0 idle=40 attackmove=929 other=0
+state.900: digest ok wide ok (vs trailer; reported)
+  mainscene: digest=0x05507E36CBE07BA0 wide=0x5D1B53111D5AACF7 alive=575 move=0 stop=0 idle=32 attackmove=543 other=0
+  managed:   digest=0x05507E36CBE07BA0 wide=0x5D1B53111D5AACF7 alive=575 move=0 stop=0 idle=32 attackmove=543 other=0
+state.1440: digest ok wide ok (vs trailer; reported)
+  mainscene: digest=0x205AA87BE7511479 wide=0x73959E4A50E309BE alive=121 move=0 stop=2 idle=14 attackmove=73 other=32
+  managed:   digest=0x205AA87BE7511479 wide=0x73959E4A50E309BE alive=121 move=0 stop=2 idle=14 attackmove=73 other=32
+start_match=6/6 ai_plan_mask=0x00 tick_at_start=0 rng_state_at_start=0xC0FFEE1234567890
+end_reason=replay finished
+tick_at_end=1441
+alive_end=121
+verdict=0
+frames=2114
+multi_step_frames=263
+max_ticks_per_frame=4
+replay_wall_s=49.9
+fps_mean=42.3
+runtime=.NET 8.0.25
+golden_trailer_alive_end=121
+RESULT 1440/1440 (24/24 samples)
+
+== Repetition r1 of the ai run (before the state lines were added): D:/Projects/Chimera-Unreal/TrialOut/a/a14/r1_replay_ai_net8.compare.txt
+set=ai interval=60 samples=24/24 missing=0 diverged=0 dup_conflicts=0
+start_match=6/6 ai_plan_mask=0x04 tick_at_start=0 rng_state_at_start=0xC0FFEE1234567890
+frames=2286
+multi_step_frames=262
+fps_mean=46.9
+RESULT 1440/1440 (24/24 samples)
+
+== A8b regression after the probe-file hook (run_mainscene_probe.ps1 -SkipBuild)
+godot_exit=0 elapsed_s=5.3
+probe_match=6/6
+
+== Lock holds (U/ue_lock.log, tag a/A14)
+2026-10-01T15:36:59,release,a/A14,run,987,34,0
+2026-10-01T15:37:20,release,a/A14,run,0,4,2
+2026-10-01T15:38:51,release,a/A14,run,0,64,0
+2026-10-01T15:41:41,release,a/A14,run,0,59,0
+2026-10-01T15:43:26,release,a/A14,run,0,76,0
+2026-10-01T15:44:34,release,a/A14,run,0,58,0
+2026-10-01T15:44:55,release,a/A14,run,0,6,0
+
+== Reading (main-session context; not a gate)
+- "algo=17" in the chmr line is CanonicalModelHash.AlgoVersion (the replay header field), not SimChecksum's algo 29.
+- What A14 shows: the real MainScene (every presentation system live, PathRequestSystem's frame-paced Move->Stop
+  writer included) reproduces the golden on every tick at two different frame pacings (interval 60: ~47 fps, 262-285
+  multi-step frames; interval 1: 547 frames, 377 multi-step frames), and the wide digest, which folds the unfolded
+  CommandState that writer moves (plan A F40), equals the trailer at 300/900/1440.
+- What it does not show: that DW-681 is harmless in general. trial_1000's only plain Move orders (cmd 1) are 60 rows
+  for the SAME 30 units (tick 150 and again at tick 300), and at tick 300 each of those units also gets a queued
+  AttackMove (cmd 0x82). By the code (not instrumented), the sim's queue therefore resolves their arrival, so no unit
+  sits in Move with an empty queue at its goal, which is the state DW-681's writer acts on. DW-681 stays open as filed;
+  a scenario with an un-queued Move that reaches its goal would be needed to exercise it.
+- The .chmr spans several merged frames per tick: ReplayRecorder's 8 x 32 = 256-orders-per-tick envelope cannot hold
+  the trial's 960 tick-0 orders, so ChmrTool writes the recorder's exact v8 header and the frozen MergedTickPacket codec
+  directly, in CSV order (decode check 2077/2077; managed control 1440/1440 on both variants).

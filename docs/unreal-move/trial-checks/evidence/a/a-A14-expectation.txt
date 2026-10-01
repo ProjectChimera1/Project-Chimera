@@ -1,0 +1,18 @@
+# A14 pre-registered expectation (written 2026-10-01 BEFORE any A14 replay run; plan A section 4 A14)
+task: A14 Full MainScene replay (measured, reported, not gating)
+match: trial_1000 (trial_1000.json + trial_1000.orders.csv, 2077 orders), seed 0xC0FFEE1234567890, 1440 ticks
+variant of record: ai (AI plan OfflineDefault, mask 0x04 = the MainScene offline default, the A8b comparison); golden Golden/trial-1000-ai.golden.txt
+extra variant (reported): main (AI plan None), golden Golden/trial-1000.golden.txt
+measurement: Godot's own [Checksum] tick=N hash=0x........ lines (interval 60, MainScene's checksum sink) during
+  .chmr playback through MainScene.ReplayPath, compared with the golden at ticks 60, 120, ..., 1440 (24 samples)
+
+EXPECTATION (plan A section 4 A14, verbatim intent):
+  If DW-681's per-frame writer (PathRequestSystem / FlowFieldBridge Move->Stop transitions in src/UI, presentation
+  layer, frame-paced) is the cause, MainScene's replay DIVERGES from the golden at or after the first Move arrival,
+  i.e. after the Move order batches at tick 150 / 300 have had time to arrive (first divergent 60-tick window
+  expected at or after the window ending at tick 180-360), and NOT before tick 150.
+  Ticks 60, 120 (before any order batch after tick 0 has arrived) are expected to MATCH; a divergence at tick 60
+  or 120 would point at something other than DW-681 (start state of the replay path, the replay order applier's
+  arguments, or the tick-0 batch's arrival).
+  1440/1440 (24/24) would mean DW-681's writer does not perturb this match.
+2026-10-01T15:03:22-04:00

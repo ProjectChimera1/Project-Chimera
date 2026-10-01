@@ -1,0 +1,180 @@
+{
+ "set": "ai",
+ "interval": 60,
+ "samples_equal": 24,
+ "samples_expected": 24,
+ "missing": [],
+ "diverged": [],
+ "first_divergent_sample": null,
+ "first_divergent_window": "none",
+ "game_hash_at_first": null,
+ "golden_hash_at_first": null,
+ "start_rows": [
+  {
+   "key": "hash.start_state",
+   "replay": "0xA68FAB39663A44E2",
+   "meta": "0xA68FAB39663A44E2",
+   "equal": true
+  },
+  {
+   "key": "hash.canonical_model",
+   "replay": "0x26C0BDB524284D74",
+   "meta": "0x26C0BDB524284D74",
+   "equal": true
+  },
+  {
+   "key": "hash.content",
+   "replay": "0x55BB83D5F0A14C4B",
+   "meta": "0x55BB83D5F0A14C4B",
+   "equal": true
+  },
+  {
+   "key": "hash.ruleset",
+   "replay": "0x1EB102FD18C50DDD",
+   "meta": "0x1EB102FD18C50DDD",
+   "equal": true
+  },
+  {
+   "key": "hash.agreement",
+   "replay": "0x27CFD0074992E886",
+   "meta": "0x27CFD0074992E886",
+   "equal": true
+  },
+  {
+   "key": "hash.tick0",
+   "replay": "0x69843E0A",
+   "meta": "0x69843E0A",
+   "equal": true
+  },
+  {
+   "key": "digest.0",
+   "replay": "0x0991BB0534C1676D",
+   "trailer": "0x0991BB0534C1676D",
+   "equal": true
+  },
+  {
+   "key": "wide.0",
+   "replay": "0x6EB658269F48A28D",
+   "trailer": "0x6EB658269F48A28D",
+   "equal": true
+  }
+ ],
+ "start_match": 6,
+ "state_rows": [
+  {
+   "tick": 300,
+   "replay": {
+    "digest": "0x95A25936D1FCF83B",
+    "wide": "0x94933D757515010A",
+    "alive": "999",
+    "move": "30",
+    "stop": "0",
+    "idle": "40",
+    "attackmove": "929",
+    "other": "0"
+   },
+   "managed": {
+    "digest": "0x95A25936D1FCF83B",
+    "wide": "0x94933D757515010A",
+    "alive": "999",
+    "move": "30",
+    "stop": "0",
+    "idle": "40",
+    "attackmove": "929",
+    "other": "0"
+   },
+   "digest_equal": true,
+   "wide_equal": true
+  },
+  {
+   "tick": 900,
+   "replay": {
+    "digest": "0x19242026FF6C2CA3",
+    "wide": "0x8B2F99DB800D88AF",
+    "alive": "554",
+    "move": "0",
+    "stop": "0",
+    "idle": "32",
+    "attackmove": "496",
+    "other": "26"
+   },
+   "managed": {
+    "digest": "0x19242026FF6C2CA3",
+    "wide": "0x8B2F99DB800D88AF",
+    "alive": "554",
+    "move": "0",
+    "stop": "0",
+    "idle": "32",
+    "attackmove": "496",
+    "other": "26"
+   },
+   "digest_equal": true,
+   "wide_equal": true
+  },
+  {
+   "tick": 1440,
+   "replay": {
+    "digest": "0x5F33C907826483F0",
+    "wide": "0xD89B817FB3EE28AE",
+    "alive": "124",
+    "move": "0",
+    "stop": "2",
+    "idle": "21",
+    "attackmove": "101",
+    "other": "0"
+   },
+   "managed": {
+    "digest": "0x5F33C907826483F0",
+    "wide": "0xD89B817FB3EE28AE",
+    "alive": "124",
+    "move": "0",
+    "stop": "2",
+    "idle": "21",
+    "attackmove": "101",
+    "other": "0"
+   },
+   "digest_equal": true,
+   "wide_equal": true
+  }
+ ],
+ "summary": {
+  "leg": "mainscene_replay",
+  "host": "godot 4.6.3",
+  "runtime": ".NET 8.0.25",
+  "config": "Debug",
+  "dotnet_roll_forward_env": "LatestMinor",
+  "chmr": "D:/Projects/Chimera-Unreal/TrialOut/a/a14/trial_1000_ai.chmr",
+  "scenario": "D:/Projects/Project_Chimera/godot/ProjectChimera.Sim.Tests/Trial/trial_1000.json",
+  "mode_at_start": "Play",
+  "tick_at_start": "0",
+  "rng_state_at_start": "0xC0FFEE1234567890",
+  "ai_plan_mask": "0x04",
+  "ai": "1",
+  "game_checksum_interval": "60",
+  "checksum_every_override": "none",
+  "hash.start_state": "0xA68FAB39663A44E2",
+  "hash.canonical_model": "0x26C0BDB524284D74",
+  "hash.content": "0x55BB83D5F0A14C4B",
+  "hash.ruleset": "0x1EB102FD18C50DDD",
+  "hash.agreement": "0x27CFD0074992E886",
+  "hash.tick0": "0x69843E0A",
+  "units_at_start": "1000",
+  "digest.0": "0x0991BB0534C1676D",
+  "wide.0": "0x6EB658269F48A28D",
+  "state.300": "digest=0x95A25936D1FCF83B wide=0x94933D757515010A alive=999 move=30 stop=0 idle=40 attackmove=929 other=0",
+  "state.900": "digest=0x19242026FF6C2CA3 wide=0x8B2F99DB800D88AF alive=554 move=0 stop=0 idle=32 attackmove=496 other=26",
+  "state.1440": "digest=0x5F33C907826483F0 wide=0xD89B817FB3EE28AE alive=124 move=0 stop=2 idle=21 attackmove=101 other=0",
+  "end_reason": "replay finished",
+  "tick_at_end": "1441",
+  "alive_end": "124",
+  "verdict": "0",
+  "game_over": "0",
+  "frames": "2259",
+  "multi_step_frames": "285",
+  "max_ticks_per_frame": "4",
+  "replay_wall_s": "48.5",
+  "fps_mean": "46.6",
+  "rc": "0"
+ },
+ "log": "D:\\Projects\\Chimera-Unreal\\TrialOut\\a\\a14\\replay_ai_net8.log"
+}
