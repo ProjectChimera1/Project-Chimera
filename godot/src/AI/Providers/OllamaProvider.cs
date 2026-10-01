@@ -31,20 +31,11 @@ namespace ProjectChimera.AI.Providers
 
         public async Task<NormalizedResult> GenerateAsync(NormalizedRequest request, CancellationToken ct)
         {
-            var body = new
-            {
-                model    = _model,
-                messages = new[]
-                {
-                    new { role = "system", content = request.SystemPrompt },
-                    new { role = "user",   content = request.UserMessage },
-                },
-                stream = false,
-            };
+            var body = new OllamaRequestBody { Model = _model, Messages = new[] { new LlmMessageBody { Role = "system", Content = request.SystemPrompt }, new LlmMessageBody { Role = "user", Content = request.UserMessage } }, Stream = false };
 
             using var req = new HttpRequestMessage(HttpMethod.Post, _endpoint)
             {
-                Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json"),
+                Content = new StringContent(ProjectChimera.Core.Definitions.AotJson.Serialize(body), Encoding.UTF8, "application/json"),
             };
 
             var (ok, respBody, kind, error) = await LlmHttp.SendAsync(_http, req, ct);

@@ -1,6 +1,8 @@
 #nullable enable
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace ProjectChimera.Core.Definitions
@@ -170,8 +172,17 @@ namespace ProjectChimera.Core.Definitions
         /// bool, string, enums, <see cref="ProjectChimera.Effects.EffectNode"/>/<see cref="ProjectChimera.Effects.Modifier"/>
         /// children, and arrays thereof.</para>
         /// </summary>
+        [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "Reflection over an effect kind with no explicit fold arm; guarded by the IsDynamicCodeSupported fail-closed check below, so it never runs under AOT.")]
         private static ulong MixUnknownEffect(ulong h, ProjectChimera.Effects.EffectNode e)
         {
+            // A2 (deliberate JIT/AOT difference): under NativeAOT the reflection walk below cannot be trusted, so fail closed
+            // before touching it. Only reachable when an effect kind is added without a fold arm, which
+            // EffectFoldCompletenessTests fails in Tier-1. JIT behaviour (DW-449 probe tests, every hash) is unchanged.
+            if (!RuntimeFeature.IsDynamicCodeSupported)
+                throw new NotSupportedException(
+                    $"CanonicalFold.MixEffect: effect kind '{e.GetType().Name}' has no explicit fold arm and the reflection fold " +
+                    "is unavailable under NativeAOT (fail-closed; add an arm to CanonicalFold.MixEffect).");
+
             Type t = e.GetType();
             h = MixStr(h, t.Name); // the kind discriminator — the old default arm's (only) component, kept first
 
@@ -193,13 +204,13 @@ namespace ProjectChimera.Core.Definitions
             int w = 0;
             foreach (FieldInfo f in fields)
             {
-                keys[w] = f.Name + " " + (f.DeclaringType?.FullName ?? string.Empty);
+                keys[w] = f.Name + "\0" + (f.DeclaringType?.FullName ?? string.Empty);
                 values[w] = f.GetValue(e);
                 w++;
             }
             foreach (PropertyInfo p in props)
             {
-                keys[w] = p.Name + " " + (p.DeclaringType?.FullName ?? string.Empty);
+                keys[w] = p.Name + "\0" + (p.DeclaringType?.FullName ?? string.Empty);
                 values[w] = p.GetValue(e);
                 w++;
             }

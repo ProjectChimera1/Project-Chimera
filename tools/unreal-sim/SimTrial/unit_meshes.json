@@ -1,0 +1,475 @@
+{
+ "version": 1,
+ "generated": "2026-10-01T04:13:45",
+ "note": "front_yaw_deg = actor yaw that turns the mesh front to +X (LookTest/run/facing.json, by source); foot_z_cm lifts the pivot so the mesh rests on z=0; size_cm is after scale.",
+ "entries": [
+  {
+   "id": "alpha/worker",
+   "faction": "alpha",
+   "def_id": "worker",
+   "kind": "unit",
+   "role": "Worker",
+   "key": "acolyte_alchemist",
+   "source": "tripo_unrigged",
+   "action": "import",
+   "mesh": "/Game/SimUnits/acolyte_alchemist/acolyte_alchemist/StaticMeshes/acolyte_alchemist",
+   "team_mi": [
+    "/Game/SimUnits/acolyte_alchemist/MI_SimTeam_acolyte_alchemist_alpha"
+   ],
+   "scale": 1.872215,
+   "front_yaw_deg": -90.0,
+   "foot_z_cm": -0.0,
+   "size_cm": [
+    179.4510906998825,
+    63.53526838272094,
+    187.13005468421935
+   ],
+   "expected_cm": 187.13,
+   "expected_dim": "height",
+   "nanite": true,
+   "static": true
+  },
+  {
+   "id": "alpha/infantry",
+   "faction": "alpha",
+   "def_id": "infantry",
+   "kind": "unit",
+   "role": "Melee",
+   "key": "covenant_transmuter",
+   "source": "godot_hunyuan",
+   "action": "reuse",
+   "mesh": "/Game/LookTest/Roster/covenant_transmuter/covenant_transmuter/StaticMeshes/covenant_transmuter",
+   "team_mi": [
+    "/Game/SimUnits/covenant_transmuter/MI_SimTeam_covenant_transmuter_alpha"
+   ],
+   "scale": 1.0,
+   "front_yaw_deg": -90.0,
+   "foot_z_cm": -0.0,
+   "size_cm": [
+    165.10203552246094,
+    116.88726806640625,
+    202.80079650878906
+   ],
+   "expected_cm": 202.8,
+   "expected_dim": "height",
+   "nanite": true,
+   "static": true
+  },
+  {
+   "id": "alpha/scout",
+   "faction": "alpha",
+   "def_id": "scout",
+   "kind": "unit",
+   "role": "Melee",
+   "key": "quicksilver_runner",
+   "source": "tripo_unrigged",
+   "action": "import",
+   "mesh": "/Game/SimUnits/quicksilver_runner/quicksilver_runner/StaticMeshes/quicksilver_runner",
+   "team_mi": [
+    "/Game/SimUnits/quicksilver_runner/MI_SimTeam_quicksilver_runner_alpha"
+   ],
+   "scale": 1.812685,
+   "front_yaw_deg": -90.0,
+   "foot_z_cm": -0.0,
+   "size_cm": [
+    164.89414819335937,
+    71.25055786132813,
+    181.17996233085634
+   ],
+   "expected_cm": 181.18,
+   "expected_dim": "height",
+   "nanite": true,
+   "static": true
+  },
+  {
+   "id": "alpha/heavy_infantry",
+   "faction": "alpha",
+   "def_id": "heavy_infantry",
+   "kind": "unit",
+   "role": "Melee",
+   "key": "bulwark_adept",
+   "source": "tripo_unrigged",
+   "action": "import",
+   "mesh": "/Game/SimUnits/bulwark_adept/bulwark_adept/StaticMeshes/bulwark_adept",
+   "team_mi": [
+    "/Game/SimUnits/bulwark_adept/MI_SimTeam_bulwark_adept_alpha"
+   ],
+   "scale": 2.627111,
+   "front_yaw_deg": -90.0,
+   "foot_z_cm": -0.0,
+   "size_cm": [
+    262.58282309570313,
+    93.2574697699585,
+    246.41997324082948
+   ],
+   "expected_cm": 246.42,
+   "expected_dim": "height",
+   "nanite": true,
+   "static": true
+  },
+  {
+   "id": "alpha/archer",
+   "faction": "alpha",
+   "def_id": "archer",
+   "kind": "unit",
+   "role": "Ranged",
+   "key": "pierce_marksman",
+   "source": "tripo_unrigged",
+   "action": "import",
+   "mesh": "/Game/SimUnits/pierce_marksman/pierce_marksman/StaticMeshes/pierce_marksman",
+   "team_mi": [
+    "/Game/SimUnits/pierce_marksman/MI_SimTeam_pierce_marksman_alpha"
+   ],
+   "scale": 1.750955,
+   "front_yaw_deg": -90.0,
+   "foot_z_cm": -0.0,
+   "size_cm": [
+    144.74444667121887,
+    42.49154412567139,
+    175.00997743293763
+   ],
+   "expected_cm": 175.01,
+   "expected_dim": "height",
+   "nanite": true,
+   "static": true
+  },
+  {
+   "id": "alpha/mage",
+   "faction": "alpha",
+   "def_id": "mage",
+   "kind": "unit",
+   "role": "Ranged",
+   "key": "circle_savant",
+   "source": "tripo_unrigged",
+   "action": "import",
+   "mesh": "/Game/SimUnits/circle_savant/circle_savant/StaticMeshes/circle_savant",
+   "team_mi": [
+    "/Game/SimUnits/circle_savant/MI_SimTeam_circle_savant_alpha"
+   ],
+   "scale": 1.819952,
+   "front_yaw_deg": -90.0,
+   "foot_z_cm": 3.212980237947464,
+   "size_cm": [
+    78.86867352380371,
+    65.8754826372528,
+    184.5199636784992
+   ],
+   "expected_cm": 184.52,
+   "expected_dim": "height",
+   "nanite": true,
+   "static": true
+  },
+  {
+   "id": "alpha/siege_engine",
+   "faction": "alpha",
+   "def_id": "siege_engine",
+   "kind": "unit",
+   "role": "Siege",
+   "key": "crucible_mortar",
+   "source": "tripo_static",
+   "action": "reuse",
+   "mesh": "/Game/LookTest/Roster/crucible_mortar/crucible_mortar/StaticMeshes/crucible_mortar",
+   "team_mi": [
+    "/Game/SimUnits/crucible_mortar/MI_SimTeam_crucible_mortar_alpha"
+   ],
+   "scale": 3.612544,
+   "front_yaw_deg": 0.0,
+   "foot_z_cm": -0.0,
+   "size_cm": [
+    361.0780613730469,
+    318.74350625,
+    310.62939375
+   ],
+   "expected_cm": 310.63,
+   "expected_dim": "height",
+   "nanite": true,
+   "static": true
+  },
+  {
+   "id": "alpha/griffin",
+   "faction": "alpha",
+   "def_id": "griffin",
+   "kind": "unit",
+   "role": "Air",
+   "key": "greycrest_bonded",
+   "source": "tripo_unrigged",
+   "action": "import",
+   "mesh": "/Game/SimUnits/greycrest_bonded/greycrest_bonded/StaticMeshes/greycrest_bonded",
+   "team_mi": [
+    "/Game/SimUnits/greycrest_bonded/MI_SimTeam_greycrest_bonded_alpha"
+   ],
+   "scale": 2.691378,
+   "front_yaw_deg": -90.0,
+   "foot_z_cm": -0.0,
+   "size_cm": [
+    269.0063850585937,
+    201.19627529296875,
+    261.90995768907163
+   ],
+   "expected_cm": 261.91,
+   "expected_dim": "height",
+   "nanite": true,
+   "static": true
+  },
+  {
+   "id": "alpha/command_center",
+   "faction": "alpha",
+   "def_id": "command_center",
+   "kind": "building",
+   "role": "Structure",
+   "key": "covenant_sanctum",
+   "source": "tripo_static",
+   "action": "reuse",
+   "mesh": "/Game/LookTest/Roster/covenant_sanctum/covenant_sanctum/StaticMeshes/covenant_sanctum",
+   "team_mi": [
+    "/Game/SimUnits/covenant_sanctum/MI_SimTeam_covenant_sanctum_alpha"
+   ],
+   "scale": 16.30908,
+   "front_yaw_deg": 0.0,
+   "foot_z_cm": -0.0,
+   "size_cm": [
+    940.6289761962892,
+    1036.687705444336,
+    1599.9999840087892
+   ],
+   "expected_cm": 1600.0,
+   "expected_dim": "longest",
+   "nanite": true,
+   "static": true
+  },
+  {
+   "id": "beta/forgehand",
+   "faction": "beta",
+   "def_id": "forgehand",
+   "kind": "unit",
+   "role": "Worker",
+   "key": "cinderhand_thrall",
+   "source": "tripo_unrigged",
+   "action": "import",
+   "mesh": "/Game/SimUnits/cinderhand_thrall/cinderhand_thrall/StaticMeshes/cinderhand_thrall",
+   "team_mi": [
+    "/Game/SimUnits/cinderhand_thrall/MI_SimTeam_cinderhand_thrall_beta"
+   ],
+   "scale": 1.934945,
+   "front_yaw_deg": -90.0,
+   "foot_z_cm": -0.0,
+   "size_cm": [
+    193.02210131835938,
+    45.44476055505752,
+    193.39999073875427
+   ],
+   "expected_cm": 193.4,
+   "expected_dim": "height",
+   "nanite": true,
+   "static": true
+  },
+  {
+   "id": "beta/footsoldier",
+   "faction": "beta",
+   "def_id": "footsoldier",
+   "kind": "unit",
+   "role": "Melee",
+   "key": "maul_fused_wretch",
+   "source": "tripo_unrigged",
+   "action": "import",
+   "mesh": "/Game/SimUnits/maul_fused_wretch/maul_fused_wretch/StaticMeshes/maul_fused_wretch",
+   "team_mi": [
+    "/Game/SimUnits/maul_fused_wretch/MI_SimTeam_maul_fused_wretch_beta"
+   ],
+   "scale": 1.872514,
+   "front_yaw_deg": -90.0,
+   "foot_z_cm": -0.0,
+   "size_cm": [
+    166.31362138671875,
+    45.07565439453125,
+    187.15998293849182
+   ],
+   "expected_cm": 187.16,
+   "expected_dim": "height",
+   "nanite": true,
+   "static": true
+  },
+  {
+   "id": "beta/bulwark",
+   "faction": "beta",
+   "def_id": "bulwark",
+   "kind": "unit",
+   "role": "Melee",
+   "key": "slag_bulwark",
+   "source": "tripo_unrigged",
+   "action": "import",
+   "mesh": "/Game/SimUnits/slag_bulwark/slag_bulwark/StaticMeshes/slag_bulwark",
+   "team_mi": [
+    "/Game/SimUnits/slag_bulwark/MI_SimTeam_slag_bulwark_beta"
+   ],
+   "scale": 1.994275,
+   "front_yaw_deg": -90.0,
+   "foot_z_cm": 0.5659710369758308,
+   "size_cm": [
+    106.63828765521049,
+    68.26549488961696,
+    191.93001006819532
+   ],
+   "expected_cm": 191.93,
+   "expected_dim": "height",
+   "nanite": true,
+   "static": true
+  },
+  {
+   "id": "beta/ironclad",
+   "faction": "beta",
+   "def_id": "ironclad",
+   "kind": "unit",
+   "role": "Melee",
+   "key": "pride_colossus",
+   "source": "tripo_unrigged",
+   "action": "import",
+   "mesh": "/Game/SimUnits/pride_colossus/pride_colossus/StaticMeshes/pride_colossus",
+   "team_mi": [
+    "/Game/SimUnits/pride_colossus/MI_SimTeam_pride_colossus_beta"
+   ],
+   "scale": 2.56118,
+   "front_yaw_deg": -90.0,
+   "foot_z_cm": -0.4467204790490865,
+   "size_cm": [
+    110.15799865249633,
+    85.99767304729461,
+    255.47001491828976
+   ],
+   "expected_cm": 255.47,
+   "expected_dim": "height",
+   "nanite": true,
+   "static": true
+  },
+  {
+   "id": "beta/crossbowman",
+   "faction": "beta",
+   "def_id": "crossbowman",
+   "kind": "unit",
+   "role": "Ranged",
+   "key": "bolt_penitent",
+   "source": "tripo_unrigged",
+   "action": "import",
+   "mesh": "/Game/SimUnits/bolt_penitent/bolt_penitent/StaticMeshes/bolt_penitent",
+   "team_mi": [
+    "/Game/SimUnits/bolt_penitent/MI_SimTeam_bolt_penitent_beta"
+   ],
+   "scale": 1.835425,
+   "front_yaw_deg": -90.0,
+   "foot_z_cm": 2.645040597137809,
+   "size_cm": [
+    89.53763053207398,
+    45.65496109423638,
+    185.0900132440418
+   ],
+   "expected_cm": 185.09,
+   "expected_dim": "height",
+   "nanite": true,
+   "static": true
+  },
+  {
+   "id": "beta/rune_caster",
+   "faction": "beta",
+   "def_id": "rune_caster",
+   "kind": "unit",
+   "role": "Ranged",
+   "key": "cinder_cantor",
+   "source": "tripo_unrigged",
+   "action": "import",
+   "mesh": "/Game/SimUnits/cinder_cantor/cinder_cantor/StaticMeshes/cinder_cantor",
+   "team_mi": [
+    "/Game/SimUnits/cinder_cantor/MI_SimTeam_cinder_cantor_beta"
+   ],
+   "scale": 1.961434,
+   "front_yaw_deg": -90.0,
+   "foot_z_cm": 1.5574545289520025,
+   "size_cm": [
+    80.56571224839401,
+    67.37151002749252,
+    196.4800462272552
+   ],
+   "expected_cm": 196.48,
+   "expected_dim": "height",
+   "nanite": true,
+   "static": true
+  },
+  {
+   "id": "beta/war_machine",
+   "faction": "beta",
+   "def_id": "war_machine",
+   "kind": "unit",
+   "role": "Siege",
+   "key": "render_crawler",
+   "source": "tripo_static",
+   "action": "reuse",
+   "mesh": "/Game/LookTest/Roster/render_crawler/render_crawler/StaticMeshes/render_crawler",
+   "team_mi": [
+    "/Game/SimUnits/render_crawler/MI_SimTeam_render_crawler_beta"
+   ],
+   "scale": 5.650092,
+   "front_yaw_deg": 0.0,
+   "foot_z_cm": -0.0,
+   "size_cm": [
+    560.3191822265625,
+    564.7333166015625,
+    354.5102100989685
+   ],
+   "expected_cm": 354.51,
+   "expected_dim": "height",
+   "nanite": true,
+   "static": true
+  },
+  {
+   "id": "beta/wyvern",
+   "faction": "beta",
+   "def_id": "wyvern",
+   "kind": "unit",
+   "role": "Air",
+   "key": "envy_wraithwing",
+   "source": "tripo_static",
+   "action": "reuse",
+   "mesh": "/Game/LookTest/Roster/envy_wraithwing/envy_wraithwing/StaticMeshes/envy_wraithwing",
+   "team_mi": [
+    "/Game/SimUnits/envy_wraithwing/MI_SimTeam_envy_wraithwing_beta"
+   ],
+   "scale": 4.099075,
+   "front_yaw_deg": 0.0,
+   "foot_z_cm": -0.0,
+   "size_cm": [
+    409.7073498535156,
+    307.2304748535156,
+    260.39534057617186
+   ],
+   "expected_cm": 260.4,
+   "expected_dim": "height",
+   "nanite": true,
+   "static": true
+  },
+  {
+   "id": "beta/command_center",
+   "faction": "beta",
+   "def_id": "command_center",
+   "kind": "building",
+   "role": "Structure",
+   "key": "sanguine_furnace",
+   "source": "tripo_static",
+   "action": "reuse",
+   "mesh": "/Game/LookTest/Roster/sanguine_furnace/sanguine_furnace/StaticMeshes/sanguine_furnace",
+   "team_mi": [
+    "/Game/SimUnits/sanguine_furnace/MI_SimTeam_sanguine_furnace_beta"
+   ],
+   "scale": 16.379905,
+   "front_yaw_deg": 0.0,
+   "foot_z_cm": -0.0,
+   "size_cm": [
+    1529.1177183532716,
+    1599.9999976806641,
+    1419.1951991424562
+   ],
+   "expected_cm": 1600.0,
+   "expected_dim": "longest",
+   "nanite": true,
+   "static": true
+  }
+ ]
+}

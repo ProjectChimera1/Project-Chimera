@@ -145,7 +145,7 @@ namespace ProjectChimera.Dsl
                     if (ea.Effect is null)
                         throw new JsonException("Cannot serialize a run_effect node with a null embedded effect (malformed graph).");
                     writer.WritePropertyName("effect");
-                    JsonSerializer.Serialize(writer, ea.Effect, options);   // → EffectNodeJsonConverter (no second executor)
+                    ProjectChimera.Core.Definitions.AotJson.Serialize(writer, ea.Effect, options);   // → EffectNodeJsonConverter (no second executor)
                     break;
 
                 // ── Story 7.4 — the five expression kinds (exact inverses of the Read branches) ──
@@ -387,7 +387,7 @@ namespace ProjectChimera.Dsl
                 if (!s.TryGet("effect", out JsonElement effEl))
                     throw new JsonException($"{path}: run_effect is missing its required 'effect' object.");
                 EffectNode effect;
-                try { effect = effEl.Deserialize<EffectNode>(options)!; }   // → EffectNodeJsonConverter (byte-faithful embed)
+                try { effect = ProjectChimera.Core.Definitions.AotJson.Deserialize<EffectNode>(effEl, options)!; }   // → EffectNodeJsonConverter (byte-faithful embed)
                 catch (JsonException ex) { throw new JsonException($"{path}.effect: {ex.Message}"); }
                 return new EffectActionNode { Id = ReadId(s, path), Effect = effect };
             }
@@ -853,7 +853,7 @@ namespace ProjectChimera.Dsl
         {
             if (!s.TryGet(prop, out JsonElement el)) return fallback;
             // The one quantizer (FixedJsonConverter) via its element entry point — same rulebook as
-            // el.Deserialize<Fixed>(options), without per-field JsonSerializer machinery (Story 7.7 perf review:
+            // ProjectChimera.Core.Definitions.AotJson.Deserialize<Fixed>(el, options), without per-field JsonSerializer machinery (Story 7.7 perf review:
             // that overhead dominated the max-caps graph parse inside the cold handshake-hash budget).
             try { return ProjectChimera.Core.Definitions.FixedJsonConverter.ReadElement(el); }
             catch (JsonException ex) { throw new JsonException($"{path}.{prop}: {ex.Message}"); }
@@ -961,7 +961,7 @@ namespace ProjectChimera.Dsl
         private static void WriteFixed(Utf8JsonWriter writer, string name, Fixed value, JsonSerializerOptions options)
         {
             writer.WritePropertyName(name);
-            JsonSerializer.Serialize(writer, value, options);   // → FixedJsonConverter (number); never a hand-rolled ToFloat
+            ProjectChimera.Core.Definitions.AotJson.Serialize(writer, value, options);   // → FixedJsonConverter (number); never a hand-rolled ToFloat
         }
 
         private static void WriteOptString(Utf8JsonWriter writer, string name, string? value)

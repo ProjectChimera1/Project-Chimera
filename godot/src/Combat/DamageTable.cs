@@ -104,7 +104,7 @@ namespace ProjectChimera.Combat
 
         /// <summary>Load-time DTO. The Dictionary exists ONLY here — it is baked into the dense
         /// <see cref="_cells"/> array immediately and never enumerated during a tick.</summary>
-        private sealed class Dto
+        internal sealed class Dto
         {
             [JsonPropertyName("multipliers")]
             public Dictionary<DamageType, Dictionary<ArmorType, Fixed>>? Multipliers { get; set; }
@@ -117,7 +117,8 @@ namespace ProjectChimera.Combat
         {
             ReadCommentHandling = JsonCommentHandling.Skip,
             AllowTrailingCommas = true,
-            Converters = { new JsonStringEnumConverter(), new FixedJsonConverter() },
+            Converters = { new JsonStringEnumConverter<DamageType>(), new JsonStringEnumConverter<ArmorType>(), new FixedJsonConverter() },
+            TypeInfoResolver = ProjectChimera.Core.Definitions.ChimeraJsonContext.Default,
         };
 
         // Raw-document options for the DW-227 duplicate-key pass — must accept exactly the same JSON
@@ -143,7 +144,7 @@ namespace ProjectChimera.Combat
         public static DamageTable FromJson(string json)
         {
             // NaN/Inf/over-range rejected here (located JsonException from FixedJsonConverter) — AC4 half #1.
-            Dto? dto = JsonSerializer.Deserialize<Dto>(json, _opts);
+            Dto? dto = ProjectChimera.Core.Definitions.AotJson.Deserialize<Dto>(json, _opts);
             if (dto?.Multipliers is null)
                 throw new InvalidDataException("damage_table: missing required 'multipliers' object.");
 

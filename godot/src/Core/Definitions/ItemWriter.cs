@@ -39,6 +39,6 @@ namespace ProjectChimera.Core.Definitions
         }
 
         /// <summary>Serialize <paramref name="def"/> to indented JSON. Never throws for a well-formed POCO.</summary>
-        public static string Serialize(ItemDefinition def) => JsonSerializer.Serialize(def, Options);
+        public static string Serialize(ItemDefinition def) => ProjectChimera.Core.Definitions.AotJson.Serialize(def, Options);
     }
 }

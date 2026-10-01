@@ -114,7 +114,7 @@ namespace ProjectChimera.Core.Definitions
                 writer.WritePropertyName("children");
                 writer.WriteStartArray();
                 foreach (WidgetBase child in children)
-                    JsonSerializer.Serialize(writer, child, options); // → this converter (recursive, closed)
+                    ProjectChimera.Core.Definitions.AotJson.Serialize(writer, child, options); // → this converter (recursive, closed)
                 writer.WriteEndArray();
             }
 

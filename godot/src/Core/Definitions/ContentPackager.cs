@@ -32,6 +32,7 @@ namespace ProjectChimera.Core.Definitions
             WriteIndented = true,
             ReadCommentHandling = JsonCommentHandling.Skip,
             AllowTrailingCommas = true,
+            TypeInfoResolver    = ChimeraJsonContext.Default,
         };
 
         // ── Pack ─────────────────────────────────────────────────────────────────
@@ -321,7 +322,7 @@ namespace ProjectChimera.Core.Definitions
                 using (var archive = ZipFile.Open(stagePath, ZipArchiveMode.Create))
                 {
                     // manifest.json
-                    string manifestJson = JsonSerializer.Serialize(manifest, _jsonOpts);
+                    string manifestJson = ProjectChimera.Core.Definitions.AotJson.Serialize(manifest, _jsonOpts);
                     WriteEntry(archive, "manifest.json", Encoding.UTF8.GetBytes(manifestJson));
 
                     // scenario.json — the SAME byte snapshot ScenarioHash covered (DW-423), never a re-read.
@@ -436,7 +437,7 @@ namespace ProjectChimera.Core.Definitions
             using (var ms = new MemoryStream())
             {
                 manifestEntry.Open().CopyTo(ms);
-                manifest = JsonSerializer.Deserialize<ContentPackageManifest>(
+                manifest = ProjectChimera.Core.Definitions.AotJson.Deserialize<ContentPackageManifest>(
                     Encoding.UTF8.GetString(ms.ToArray()), _jsonOpts)
                     ?? throw new InvalidDataException("Failed to parse manifest.json.");
             }
@@ -590,7 +591,7 @@ namespace ProjectChimera.Core.Definitions
             {
                 string manifestPath = Path.Combine(extractDir, "manifest.json");
                 if (!File.Exists(manifestPath)) return null;
-                return JsonSerializer.Deserialize<ContentPackageManifest>(
+                return ProjectChimera.Core.Definitions.AotJson.Deserialize<ContentPackageManifest>(
                     File.ReadAllText(manifestPath), _jsonOpts);
             }
             catch
@@ -665,7 +666,7 @@ namespace ProjectChimera.Core.Definitions
         /// <param name="zipPath">Absolute path to the .chimera.zip to update in place.</param>
         /// <param name="manifest">The manifest to serialize over the existing <c>manifest.json</c>.</param>
         public static void RewriteManifest(string zipPath, ContentPackageManifest manifest) =>
-            RewriteManifest(zipPath, () => Encoding.UTF8.GetBytes(JsonSerializer.Serialize(manifest, _jsonOpts)));
+            RewriteManifest(zipPath, () => Encoding.UTF8.GetBytes(ProjectChimera.Core.Definitions.AotJson.Serialize(manifest, _jsonOpts)));
 
         /// <summary>
         /// DW-421 core (internal so the atomicity contract is fault-injection testable) — the previous
@@ -726,7 +727,7 @@ namespace ProjectChimera.Core.Definitions
                 if (entry == null) return null;
                 using var ms = new MemoryStream();
                 entry.Open().CopyTo(ms);
-                return JsonSerializer.Deserialize<ContentPackageManifest>(
+                return ProjectChimera.Core.Definitions.AotJson.Deserialize<ContentPackageManifest>(
                     Encoding.UTF8.GetString(ms.ToArray()), _jsonOpts);
             }
             catch

@@ -60,6 +60,7 @@ namespace ProjectChimera.Core.Definitions
         {
             ReadCommentHandling = JsonCommentHandling.Skip,
             AllowTrailingCommas = true,
+            TypeInfoResolver = ChimeraJsonContext.Default,
         };
 
         /// <summary>
@@ -158,7 +159,7 @@ namespace ProjectChimera.Core.Definitions
             // never silently ignored. (Effect-node objects are guarded inside EffectNodeJsonConverter — see above.)
             o.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
             // allowIntegerValues:false → enums are authored by NAME only; a numeric enum value fails closed.
-            o.Converters.Add(new JsonStringEnumConverter(namingPolicy: null, allowIntegerValues: false));
+            AotJson.AddStrictEnums(o);
             o.Converters.Add(new FixedJsonConverter());
             o.Converters.Add(new EffectNodeJsonConverter());
             return o;
@@ -172,7 +173,7 @@ namespace ProjectChimera.Core.Definitions
         {
             JsonSerializerOptions o = Base();
             o.WriteIndented = true;
-            o.Converters.Add(new JsonStringEnumConverter(namingPolicy: null, allowIntegerValues: false));
+            AotJson.AddStrictEnums(o);
             o.Converters.Add(new FixedJsonConverter());
             o.Converters.Add(new WidgetBaseJsonConverter());
             return o;

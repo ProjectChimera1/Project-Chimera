@@ -192,7 +192,7 @@ namespace ProjectChimera.Core.Skirmish
                 try
                 {
                     text = File.ReadAllText(file);
-                    def = JsonSerializer.Deserialize<FactionDefinition>(text, FactionDefinition.JsonOptions);
+                    def = ProjectChimera.Core.Definitions.AotJson.Deserialize<FactionDefinition>(text, FactionDefinition.JsonOptions);
                 }
                 catch { continue; } // malformed → skip, scan continues
 

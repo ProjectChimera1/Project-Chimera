@@ -112,7 +112,7 @@ namespace ProjectChimera.Core.Definitions
             string json = File.ReadAllText(absolutePath);
             try
             {
-                return JsonSerializer.Deserialize<ScenarioData>(json, ContentJson.ScenarioOptions);
+                return ProjectChimera.Core.Definitions.AotJson.Deserialize<ScenarioData>(json, ContentJson.ScenarioOptions);
             }
             catch (JsonException e)
             {
@@ -235,7 +235,7 @@ namespace ProjectChimera.Core.Definitions
             // (\r\n on Windows, \n on Linux), which made this method's bytes — and every golden hash
             // pinned on them — platform-dependent. Linux output is already LF, so this is a no-op
             // there and no goldens move. Switch to JsonSerializerOptions.NewLine if/when on .NET 9.
-            return JsonSerializer.Serialize(copy, ContentJson.ScenarioOptions).Replace("\r\n", "\n");
+            return ProjectChimera.Core.Definitions.AotJson.Serialize(copy, ContentJson.ScenarioOptions).Replace("\r\n", "\n");
         }
 
         /// <summary>

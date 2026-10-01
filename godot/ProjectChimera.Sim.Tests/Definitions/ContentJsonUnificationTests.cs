@@ -195,7 +195,7 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Equal(JsonUnmappedMemberHandling.Disallow, ContentJson.Options.UnmappedMemberHandling);
             Assert.False(ContentJson.Options.WriteIndented);
             Assert.Equal(
-                new[] { typeof(JsonStringEnumConverter), typeof(FixedJsonConverter), typeof(EffectNodeJsonConverter) },
+                new[] { typeof(AotJson.StrictEnumConverterFactory), typeof(FixedJsonConverter), typeof(EffectNodeJsonConverter) },
                 Types(ContentJson.Options));
         }
 
@@ -208,7 +208,7 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.True(ContentJson.ScenarioOptions.WriteIndented);
             Assert.NotEqual(JsonUnmappedMemberHandling.Disallow, ContentJson.ScenarioOptions.UnmappedMemberHandling);
             Assert.Equal(
-                new[] { typeof(JsonStringEnumConverter), typeof(FixedJsonConverter), typeof(WidgetBaseJsonConverter) },
+                new[] { typeof(AotJson.StrictEnumConverterFactory), typeof(FixedJsonConverter), typeof(WidgetBaseJsonConverter) },
                 Types(ContentJson.ScenarioOptions));
         }
 

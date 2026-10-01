@@ -1,0 +1,309 @@
+#nullable enable
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using ProjectChimera.Combat;
+using ProjectChimera.Core;
+using ProjectChimera.Core.Definitions;
+using ProjectChimera.Dsl;
+using ProjectChimera.Effects;
+using Xunit;
+
+namespace ProjectChimera.Sim.Tests.Definitions
+{
+    /// <summary>
+    /// TRIAL (R1 research spike) — the permanent guards for the System.Text.Json → source-generation migration:
+    ///   1. every enum reachable from the context is in the closed strict-name registry (a missing one would otherwise be a
+    ///      silently-lenient numeric enum on a strict posture — the factory throws at first use, this fails earlier + clearer);
+    ///   2. every posture resolves every root (a missing [JsonSerializable] is a NotSupportedException the loaders'
+    ///      catch-all blocks would swallow as "excluded faction" / "malformed");
+    ///   3. no reflection-based JsonSerializer call survives outside AotJson (the IL2026/IL3050 class stays at zero);
+    ///   4. the REFLECTION ORACLE: the same postures rebuilt by reflection (no resolver) must deserialize every corpus input to
+    ///      the identical object graph / identical exception text as the shipped source-generated postures, and serialize to
+    ///      the identical bytes.
+    /// </summary>
+    public class AotJsonMigrationGuardTests
+    {
+        // ── 1 + 2. registry / coverage ─────────────────────────────────────────────────────────────────────────────
+
+        private static IEnumerable<Type> ContextRoots() =>
+            typeof(ChimeraJsonContext).CustomAttributes.Where(a => a.AttributeType == typeof(JsonSerializableAttribute)).Select(a => (Type)a.ConstructorArguments[0].Value!);
+
+        private static void CollectEnums(Type t, HashSet<Type> seen, HashSet<Type> enums)
+        {
+            if (t == typeof(string) || t == typeof(object) || t.IsPrimitive || t == typeof(decimal) || t == typeof(JsonElement)) return;
+            Type? u = Nullable.GetUnderlyingType(t);
+            if (u != null) { CollectEnums(u, seen, enums); return; }
+            if (t.IsEnum) { enums.Add(t); return; }
+            if (t.IsArray) { CollectEnums(t.GetElementType()!, seen, enums); return; }
+            if (t.IsGenericType) foreach (Type a in t.GetGenericArguments()) CollectEnums(a, seen, enums);
+            if (!seen.Add(t)) return;
+            foreach (PropertyInfo p in t.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (p.GetIndexParameters().Length != 0 || p.GetMethod is null) continue;
+                if (p.GetCustomAttribute<JsonIgnoreAttribute>() is { Condition: JsonIgnoreCondition.Always }) continue;
+                CollectEnums(p.PropertyType, seen, enums);
+            }
+        }
+
+        [Fact]
+        public void StrictEnumRegistry_CoversEveryEnumReachableFromTheContextRoots()
+        {
+            var enums = new HashSet<Type>();
+            var seen = new HashSet<Type>();
+            foreach (Type root in ContextRoots()) CollectEnums(root, seen, enums);
+            // widget subtypes are only reachable through the closed-registry converter, not a property type
+            foreach (Type w in typeof(WidgetBase).Assembly.GetTypes().Where(t => t.BaseType == typeof(WidgetBase)))
+                CollectEnums(w, seen, enums);
+            string[] missing = enums.Where(e => !AotJson.StrictEnumConverterFactory.RegisteredEnums.Contains(e))
+                                    .Select(e => e.FullName!).OrderBy(x => x, StringComparer.Ordinal).ToArray();
+            Assert.True(missing.Length == 0, "enums reachable from ChimeraJsonContext but missing from AotJson.StrictEnumConverterFactory: " + string.Join(", ", missing));
+        }
+
+        public static IEnumerable<object[]> Postures() => new[]
+        {
+            new object[] { "strict", ContentJson.Options }, new object[] { "scenario", ContentJson.ScenarioOptions },
+            new object[] { "lenient", ContentJson.LenientOptions }, new object[] { "model", ContentJson.ModelOutputOptions },
+            new object[] { "dsl", DslJson.Options }, new object[] { "itemwriter", ItemWriter.Options },
+            new object[] { "settings", SettingsJson.Options },
+        };
+
+        [Theory, MemberData(nameof(Postures))]
+        public void EveryPosture_IsBoundToTheContext_AndResolvesEveryRoot(string name, JsonSerializerOptions o)
+        {
+            Assert.NotNull(o.TypeInfoResolver);
+            foreach (Type root in ContextRoots())
+            {
+                var ex = Record.Exception(() => o.GetTypeInfo(root));
+                Assert.True(ex is null, $"posture '{name}' cannot resolve root {root.FullName}: {ex?.Message}");
+            }
+        }
+
+        // ── 3. no reflection serializer call survives ───────────────────────────────────────────────────────────────
+
+        private static string SrcDir([System.Runtime.CompilerServices.CallerFilePath] string p = "") =>
+            Path.GetFullPath(Path.Combine(Path.GetDirectoryName(p)!, "..", "..", "src"));
+
+        [Fact]
+        public void NoReflectionJsonSerializerCalls_OutsideAotJson_InTheSimSourceSet()
+        {
+            string[] bad = Directory.GetFiles(SrcDir(), "*.cs", SearchOption.AllDirectories)
+                .Where(f => !f.EndsWith("AotJson.cs", StringComparison.Ordinal))
+                .Where(f => !f.Contains(Path.DirectorySeparatorChar + "CreationSuite" + Path.DirectorySeparatorChar)   // Godot-only (reflection OK in JIT)
+                         && !f.Contains(Path.DirectorySeparatorChar + "UGC" + Path.DirectorySeparatorChar)
+                         && !f.Contains(Path.DirectorySeparatorChar + "UI" + Path.DirectorySeparatorChar)
+                         && !f.EndsWith("NakamaService.cs") && !f.EndsWith("DedicatedServer.cs") && !f.EndsWith("MainSceneDebugSeam.cs"))
+                .Where(f => File.ReadAllLines(f).Where(l => !l.TrimStart().StartsWith("//", StringComparison.Ordinal)).Any(l =>
+                            System.Text.RegularExpressions.Regex.IsMatch(l, @"(?<![\w.])JsonSerializer\.(Serialize|Deserialize)\b|\.Deserialize<[^>]+>\(options\)")))
+                .Select(f => Path.GetRelativePath(SrcDir(), f)).ToArray();
+            Assert.True(bad.Length == 0, "reflection-based System.Text.Json calls (IL2026/IL3050) in: " + string.Join(", ", bad));
+        }
+
+        // ── 4. the reflection oracle ───────────────────────────────────────────────────────────────────────────────
+
+        private static JsonSerializerOptions OBase() => new() { ReadCommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
+        private static JsonSerializerOptions OStrict()
+        {
+            var o = OBase();
+            o.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
+            o.Converters.Add(new JsonStringEnumConverter(namingPolicy: null, allowIntegerValues: false));
+            o.Converters.Add(new FixedJsonConverter());
+            o.Converters.Add(new EffectNodeJsonConverter());
+            return o;
+        }
+        private static JsonSerializerOptions OScenario()
+        {
+            var o = OBase(); o.WriteIndented = true;
+            o.Converters.Add(new JsonStringEnumConverter(namingPolicy: null, allowIntegerValues: false));
+            o.Converters.Add(new FixedJsonConverter());
+            o.Converters.Add(new WidgetBaseJsonConverter());
+            return o;
+        }
+        private static JsonSerializerOptions OModel() { var o = OStrict(); o.PropertyNameCaseInsensitive = true; o.UnmappedMemberHandling = JsonUnmappedMemberHandling.Skip; return o; }
+        private static JsonSerializerOptions OItemWriter() { var o = OStrict(); o.WriteIndented = true; o.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault; return o; }
+
+        private static string Dump(object? o)
+        {
+            var sb = new StringBuilder(); DumpTo(sb, o, 0); return sb.ToString();
+        }
+        private static void DumpTo(StringBuilder sb, object? o, int depth)
+        {
+            if (depth > 40) { sb.Append("<deep>"); return; }
+            switch (o)
+            {
+                case null: sb.Append("null"); return;
+                case string s: sb.Append('"').Append(s).Append('"'); return;
+                case bool b: sb.Append(b ? "true" : "false"); return;
+                case float f: sb.Append("f:").Append(BitConverter.SingleToInt32Bits(f)); return;
+                case double d: sb.Append("d:").Append(BitConverter.DoubleToInt64Bits(d)); return;
+                case Fixed fx: sb.Append("Fx:").Append(fx.Raw); return;
+                case Enum e: sb.Append(e.GetType().Name).Append('.').Append(e.ToString()).Append('(').Append(Convert.ToInt64(e)).Append(')'); return;
+                case JsonElement je: sb.Append("je:").Append(je.GetRawText()); return;
+                case IFormattable fm when o.GetType().IsPrimitive: sb.Append(fm.ToString(null, System.Globalization.CultureInfo.InvariantCulture)); return;
+                case IDictionary dict:
+                {
+                    var keys = new List<(string, object?)>();
+                    foreach (DictionaryEntry de in dict) keys.Add((de.Key.ToString() ?? "", de.Value));
+                    keys.Sort((a, b) => string.CompareOrdinal(a.Item1, b.Item1));
+                    sb.Append("{D ");
+                    foreach (var (k, v) in keys) { sb.Append(k).Append('='); DumpTo(sb, v, depth + 1); sb.Append(';'); }
+                    sb.Append('}');
+                    return;
+                }
+                case IEnumerable en:
+                    sb.Append('[').Append(o.GetType().Name).Append(' ');
+                    foreach (object? x in en) { DumpTo(sb, x, depth + 1); sb.Append(','); }
+                    sb.Append(']');
+                    return;
+            }
+            Type t = o.GetType();
+            sb.Append(t.Name).Append('{');
+            foreach (PropertyInfo p in t.GetProperties(BindingFlags.Public | BindingFlags.Instance).OrderBy(p => p.Name, StringComparer.Ordinal))
+            {
+                if (p.GetIndexParameters().Length != 0 || p.GetMethod == null) continue;
+                object? v; try { v = p.GetValue(o); } catch (Exception ex) { v = "<ex " + ex.GetType().Name + ">"; }
+                sb.Append(p.Name).Append('='); DumpTo(sb, v, depth + 1); sb.Append(';');
+            }
+            foreach (FieldInfo f in t.GetFields(BindingFlags.Public | BindingFlags.Instance).OrderBy(f => f.Name, StringComparer.Ordinal))
+            { sb.Append(f.Name).Append('='); DumpTo(sb, f.GetValue(o), depth + 1); sb.Append(';'); }
+            sb.Append('}');
+        }
+
+        private static string Run(Func<string> f)
+        {
+            try { return f(); } catch (Exception ex) { return "EX:" + ex.GetType().Name + ":" + ex.Message; }
+        }
+
+        private static void Same(string what, Func<string> oracle, Func<string> shipped) =>
+            Assert.True(Run(oracle) == Run(shipped), $"oracle != shipped for {what}\n  oracle : {Run(oracle)}\n  shipped: {Run(shipped)}");
+
+        private static string[] Files(string sub) => Directory.GetFiles(RealContentFixture.DataDir(sub), "*.json").OrderBy(x => x, StringComparer.Ordinal).ToArray();
+
+        [Fact]
+        public void Oracle_ShippedContent_DeserializesAndReserializesIdentically()
+        {
+            JsonSerializerOptions strict = OStrict(), scen = OScenario(), model = OModel(), writer = OItemWriter(), lenient = OBase();
+            foreach (string f in Files("abilities"))
+            {
+                string j = File.ReadAllText(f);
+                Same("ability " + f, () => Dump(JsonSerializer.Deserialize<AbilityDefinition>(j, strict)), () => Dump(AotJson.Deserialize<AbilityDefinition>(j, ContentJson.Options)));
+                Same("abilityModel " + f, () => Dump(JsonSerializer.Deserialize<AbilityDefinition>(j, model)), () => Dump(AotJson.Deserialize<AbilityDefinition>(j, ContentJson.ModelOutputOptions)));
+                Same("abilityReser " + f, () => JsonSerializer.Serialize(JsonSerializer.Deserialize<AbilityDefinition>(j, strict), strict), () => AotJson.Serialize(AotJson.Deserialize<AbilityDefinition>(j, ContentJson.Options), ContentJson.Options));
+            }
+            foreach (string f in Files("items"))
+            {
+                string j = File.ReadAllText(f);
+                Same("item " + f, () => Dump(JsonSerializer.Deserialize<ItemDefinition>(j, strict)), () => Dump(AotJson.Deserialize<ItemDefinition>(j, ContentJson.Options)));
+                Same("itemWriter " + f, () => JsonSerializer.Serialize(JsonSerializer.Deserialize<ItemDefinition>(j, strict), writer), () => ItemWriter.Serialize(AotJson.Deserialize<ItemDefinition>(j, ContentJson.Options)!));
+            }
+            foreach (string f in Files("factions"))
+            {
+                string j = File.ReadAllText(f);
+                Same("faction " + f, () => Dump(JsonSerializer.Deserialize<FactionDefinition>(j, lenient)), () => Dump(AotJson.Deserialize<FactionDefinition>(j, FactionDefinition.JsonOptions)));
+                Same("factionReser " + f, () => JsonSerializer.Serialize(JsonSerializer.Deserialize<FactionDefinition>(j, lenient), lenient), () => AotJson.Serialize(AotJson.Deserialize<FactionDefinition>(j, FactionDefinition.JsonOptions), FactionDefinition.JsonOptions));
+            }
+            var scenarios = Files("scenarios").Select(f => File.ReadAllText(f)).ToList();
+            foreach (ulong seed in new ulong[] { 0xC0FFEEUL, 0xBEEFUL, 1UL, 2UL, 3UL, 12345UL, 0xDEADBEEFUL })
+                scenarios.Add(ScenarioSerializer.Serialize(ProjectChimera.Core.MapGen.ProceduralMapGenerator.Generate(seed)));
+            foreach (string j in scenarios)
+            {
+                Same("scenario", () => Dump(JsonSerializer.Deserialize<ScenarioData>(j, scen)), () => Dump(AotJson.Deserialize<ScenarioData>(j, ContentJson.ScenarioOptions)));
+                Same("scenarioReser", () => JsonSerializer.Serialize(JsonSerializer.Deserialize<ScenarioData>(j, scen), scen), () => AotJson.Serialize(AotJson.Deserialize<ScenarioData>(j, ContentJson.ScenarioOptions), ContentJson.ScenarioOptions));
+                Same("scenarioModel", () => Dump(JsonSerializer.Deserialize<ScenarioData>(j, model)), () => Dump(AotJson.Deserialize<ScenarioData>(j, ContentJson.ModelOutputOptions)));
+            }
+        }
+
+        [Fact]
+        public void Oracle_HostileAndEdgeInputs_FailIdenticallyOrParseIdentically()
+        {
+            JsonSerializerOptions strict = OStrict(), scen = OScenario(), model = OModel();
+            string ab(string extra = "", string dmg = "\"damage_type\": \"Magic\"") =>
+                "{ \"id\":\"x\", \"display_name\":\"X\", \"targeting\":\"TargetUnit\", \"cooldown\": 3, " + extra + " \"effect\": { \"kind\":\"damage\", \"amount\": 5, " + dmg + " } }";
+            string[] abilities =
+            {
+                ab(), ab("\"cooldwn\": 1,"), ab("", "\"damage_type\": 3"), ab("", "\"damage_type\": \"magic\""), ab("", "\"damage_type\": \"Nope\""),
+                ab().Replace("\"cooldown\": 3", "\"cooldown\": 40000"), ab().Replace("\"cooldown\": 3", "\"cooldown\": \"3\""), "// c\n" + ab("/* x */ "),
+                ab().Replace("}", "},"), ab("\"combat_feedback\": { \"shake\": { \"duration_sec\": 1, \"strengthh\": 2 } },"),
+                "{ \"id\":\"x\", \"effect\": null }", "{}", "{ \"id\": 5 }", ab("\"cooldown\": 9,"), ab().Replace("\"id\"", "\"ID\""),
+                ab().Replace("\"damage\"", "\"nuke\""), "{ \"id\": \"x\"", ab("\"ParsedTargeting\": 1,"), "null", "[]",
+            };
+            foreach (string j in abilities)
+            {
+                Same("ability " + j, () => Dump(JsonSerializer.Deserialize<AbilityDefinition>(j, strict)), () => Dump(AotJson.Deserialize<AbilityDefinition>(j, ContentJson.Options)));
+                Same("abilityModel " + j, () => Dump(JsonSerializer.Deserialize<AbilityDefinition>(j, model)), () => Dump(AotJson.Deserialize<AbilityDefinition>(j, ContentJson.ModelOutputOptions)));
+            }
+            string[] scenarios =
+            {
+                "{ \"id\":\"a\", \"win_condition\": 1 }", "{ \"id\":\"a\", \"win_condition\": \"destroyallbuildings\" }", "{ \"id\":\"a\", \"win_condition\": \"Nope\" }",
+                "{ \"id\":\"a\", \"win_condition\": \"1\" }", "{ \"id\":\"a\", \"zzz\": 1, \"units\": [ { \"unit_id\":\"w\", \"slot\":1, \"x\": 1.5, \"z\": 2, \"extra\": 1 } ] }",
+                "{ \"id\":\"a\", \"variables\": [ { \"name\":\"v\", \"type\": 1, \"scope\":\"Global\", \"initial\": 3 } ] }",
+                "{ \"id\":\"a\", \"variables\": [ { \"name\":\"v\", \"type\": \"Int\", \"scope\":\"Global\", \"initial\": 3.5 } ] }",
+                "{ \"id\":\"a\", \"variables\": [ { \"name\":\"v\", \"type\": \"Int\", \"scope\":\"Global\", \"initial\": 99999 } ] }",
+                "{ \"id\":\"a\", \"custom_ui\": { \"widgets\": [ { \"kind\": \"Zed\" } ] } }",
+                "{ \"id\":\"a\", \"custom_ui\": { \"widgets\": [ { \"kind\": \"Panel\", \"id\": 1, \"anchor\": \"TopLeft\" } ] } }",
+                "{ \"id\":\"a\", \"custom_ui\": { \"widgets\": [], \"foo\": 1 } }", "{ \"id\":\"a\", \"units\": null, \"player_slots\": null }",
+                "{ \"id\":\"a\", \"triggers\": [ { \"name\":\"t\", \"cooldown_seconds\": 2.25, \"events\":[{\"type\":\"timer\",\"amount\":1.5}] } ] }",
+            };
+            foreach (string j in scenarios)
+            {
+                Same("scenario " + j, () => Dump(JsonSerializer.Deserialize<ScenarioData>(j, scen)), () => Dump(AotJson.Deserialize<ScenarioData>(j, ContentJson.ScenarioOptions)));
+                Same("scenarioModel " + j, () => Dump(JsonSerializer.Deserialize<ScenarioData>(j, model)), () => Dump(AotJson.Deserialize<ScenarioData>(j, ContentJson.ModelOutputOptions)));
+            }
+            string[] units =
+            {
+                "{ \"id\":\"u\", \"hp\": 120.5, \"category\":\"Ranged\", \"tags\":[\"Organic\"], \"prerequisites\":[\"b\"] }", "{ \"id\":\"u\", \"newField\": {\"a\":1}, \"hp\": 1 }",
+                "{ \"id\":\"u\", \"category\": 3 }", "{ \"id\":\"u\", \"ParsedCategory\": 3, \"ParsedDamageType\": 2 }", "{ \"id\":\"u\", \"AbilityIndices\": [1,2], \"AuraAbilityIndex\": 4 }",
+                "{ \"id\":\"u\", \"cost\": null }", "{ \"id\":\"u\", \"cost\": {\"ore\": 5, \"crystal\": 7} }", "{ \"id\":\"u\", \"cost\": {\"ore\": 5, \"ore\": 7} }",
+                "{ \"id\":\"u\", \"hp\": \"100\" }", "{ \"id\":\"u\", \"hp\": NaN }",
+                "{ \"id\":\"u\", \"is_hero\": true, \"hero\": { \"max_level\": 5, \"attributes\": { \"base\": {\"str\": 1.5}, \"per_level\": {\"str\": 0.25} } } }",
+                "{ \"id\":\"u\", \"veterancy\": { \"ranks\": [ {\"kills\": 3, \"stat_deltas\": {\"hp\": 2.5}} ] } }", "{ \"id\":\"u\", \"combat_feedback\": { \"hit_flash\": { \"color_rgb\": [1,0,0] } } }",
+            };
+            foreach (string j in units)
+            {
+                Same("unit " + j, () => Dump(JsonSerializer.Deserialize<UnitDefinition>(j, OBase())), () => Dump(AotJson.Deserialize<UnitDefinition>(j, FactionDefinition.JsonOptions)));
+                Same("unitSer " + j, () => JsonSerializer.Serialize(JsonSerializer.Deserialize<UnitDefinition>(j, OBase()), OBase()), () => AotJson.Serialize(AotJson.Deserialize<UnitDefinition>(j, FactionDefinition.JsonOptions), FactionDefinition.JsonOptions));
+                Same("unitModel " + j, () => Dump(JsonSerializer.Deserialize<UnitDefinition>(j, model)), () => Dump(AotJson.Deserialize<UnitDefinition>(j, ContentJson.ModelOutputOptions)));
+            }
+            Same("buildingSer", () => JsonSerializer.Serialize(new BuildingDefinition { Id = "b" }, OBase()), () => AotJson.Serialize(new BuildingDefinition { Id = "b" }, FactionDefinition.JsonOptions));
+        }
+
+        [Fact]
+        public void Oracle_LlmRequestBodies_NamedDtos_EmitTheLegacyAnonymousTypeBytes()
+        {
+            string sys = "sys & <b> é ☃ 'q' \"x\"", usr = "hi \\ \n \u0001";
+            string legacyAnthropic = JsonSerializer.Serialize(new { model = "m", max_tokens = 123, system = sys, messages = new[] { new { role = "user", content = usr } } });
+            string dtoAnthropic = AotJson.Serialize(new ProjectChimera.AI.Providers.AnthropicRequestBody { Model = "m", MaxTokens = 123, System = sys, Messages = new[] { new ProjectChimera.AI.Providers.LlmMessageBody { Role = "user", Content = usr } } });
+            Assert.Equal(legacyAnthropic, dtoAnthropic);
+            string legacyChat = JsonSerializer.Serialize(new { model = "m", messages = new[] { new { role = "system", content = sys }, new { role = "user", content = usr } } });
+            string dtoChat = AotJson.Serialize(new ProjectChimera.AI.Providers.ChatRequestBody { Model = "m", Messages = new[] { new ProjectChimera.AI.Providers.LlmMessageBody { Role = "system", Content = sys }, new ProjectChimera.AI.Providers.LlmMessageBody { Role = "user", Content = usr } } });
+            Assert.Equal(legacyChat, dtoChat);
+            string legacyOllama = JsonSerializer.Serialize(new { model = "m", messages = new[] { new { role = "system", content = sys }, new { role = "user", content = usr } }, stream = false });
+            string dtoOllama = AotJson.Serialize(new ProjectChimera.AI.Providers.OllamaRequestBody { Model = "m", Messages = new[] { new ProjectChimera.AI.Providers.LlmMessageBody { Role = "system", Content = sys }, new ProjectChimera.AI.Providers.LlmMessageBody { Role = "user", Content = usr } }, Stream = false });
+            Assert.Equal(legacyOllama, dtoOllama);
+        }
+
+        [Fact]
+        public void Oracle_DslGraph_ParsesAndEmitsIdentically()
+        {
+            var flat = new[]
+            {
+                new TriggerDefinition { Name = "A", Priority = 2, Events = new[] { new TriggerEvent { Type = "match_start" } }, Conditions = new[] { new TriggerCondition { Type = "always" } },
+                    Actions = new[] { new TriggerAction { Type = "spawn_unit", UnitId = "grunt", X = Fixed.FromFloat(1.5f), Z = Fixed.FromFloat(2.5f), Count = 3 }, new TriggerAction { Type = "display_message", Text = "hi", Duration = Fixed.FromFloat(2.25f) } } },
+                new TriggerDefinition { Name = "B", Events = new[] { new TriggerEvent { Type = "unit_dies", Faction = 1 } }, Actions = new[] { new TriggerAction { Type = "victory", Faction = 0 } } },
+            };
+            TriggerGraph g = TriggerGraph.FromFlat(flat);
+            g.Nodes.Add(new EffectActionNode { Id = 100, Effect = new SequenceEffect(new DamageEffect(Fixed.FromInt(10), DamageType.Normal), new DamageEffect(Fixed.FromFloat(2.5f), DamageType.Magic, UnitTag.Organic)) });
+            string canonical = g.ToCanonicalJson();
+            JsonSerializerOptions dslOracle = OStrict(); dslOracle.WriteIndented = true;
+            dslOracle.Converters.Add(new NodeBaseJsonConverter()); dslOracle.Converters.Add(new DataEdgeJsonConverter()); dslOracle.Converters.Add(new ExecEdgeJsonConverter());
+            Same("graph deserialize", () => Dump(JsonSerializer.Deserialize<TriggerGraph.GraphJsonShape>(canonical, dslOracle)), () => Dump(AotJson.Deserialize<TriggerGraph.GraphJsonShape>(canonical, DslJson.Options)));
+            Same("graph canonical bytes", () => JsonSerializer.Serialize(JsonSerializer.Deserialize<TriggerGraph.GraphJsonShape>(canonical, dslOracle), dslOracle), () => g.ToCanonicalJson());
+        }
+    }
+}

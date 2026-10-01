@@ -108,7 +108,7 @@ namespace ProjectChimera.Core.Definitions
         /// default-promoted hero writes no <c>"signature_ability": null</c> noise — matching <see cref="ApplyFields"/>'s
         /// omit-on-default discipline. Values round-trip identically (an omitted key deserializes back to null).</summary>
         private static readonly JsonSerializerOptions HeroSerializeOptions =
-            new() { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull };
+            new() { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull, TypeInfoResolver = ChimeraJsonContext.Default };
 
         /// <summary>
         /// Apply one <paramref name="edit"/> to a faction JSON string and return the patched JSON. Pure — parses the
@@ -134,7 +134,7 @@ namespace ProjectChimera.Core.Definitions
                         ?? throw new InvalidOperationException("Create requires a unit definition.");
                     var obj = new JsonObject();
                     ApplyFields(obj, def);          // fresh object → writes only non-default fields (+ id)
-                    units.Add(obj);
+                    units.Add((System.Text.Json.Nodes.JsonNode)obj);
                     break;
                 }
 
@@ -169,7 +169,7 @@ namespace ProjectChimera.Core.Definitions
                     // Deep-clone by re-parse (preserves EVERY field of the source verbatim, incl. combat_feedback + unknown keys).
                     JsonObject clone = (JsonNode.Parse(target.ToJsonString())!).AsObject();
                     clone["id"] = newId;
-                    units.Add(clone);
+                    units.Add((System.Text.Json.Nodes.JsonNode)clone);
                     break;
                 }
 
@@ -298,7 +298,7 @@ namespace ProjectChimera.Core.Definitions
         private static void WriteHero(JsonObject obj, UnitDefinition d)
         {
             if (d.Hero == null) { obj.Remove("hero"); return; }
-            obj["hero"] = JsonNode.Parse(JsonSerializer.Serialize(d.Hero, HeroSerializeOptions));
+            obj["hero"] = JsonNode.Parse(ProjectChimera.Core.Definitions.AotJson.Serialize(d.Hero, HeroSerializeOptions));
         }
 
         /// <summary>
@@ -315,7 +315,7 @@ namespace ProjectChimera.Core.Definitions
         private static void WriteVeterancy(JsonObject obj, UnitDefinition d)
         {
             if (d.Veterancy == null) { obj.Remove("veterancy"); return; }
-            obj["veterancy"] = JsonNode.Parse(JsonSerializer.Serialize(d.Veterancy, HeroSerializeOptions));
+            obj["veterancy"] = JsonNode.Parse(ProjectChimera.Core.Definitions.AotJson.Serialize(d.Veterancy, HeroSerializeOptions));
         }
 
         /// <summary>
@@ -326,7 +326,7 @@ namespace ProjectChimera.Core.Definitions
         /// </summary>
         private static void WriteCombatFeedback(JsonObject obj, UnitDefinition d)
         {
-            string? pocoJson = d.CombatFeedback != null ? JsonSerializer.Serialize(d.CombatFeedback) : null;
+            string? pocoJson = d.CombatFeedback != null ? ProjectChimera.Core.Definitions.AotJson.Serialize(d.CombatFeedback) : null;
 
             string? diskNormalized = null;
             if (obj["combat_feedback"] is JsonNode disk)
@@ -335,8 +335,8 @@ namespace ProjectChimera.Core.Definitions
                 // making the "unchanged" comparison semantic (not textual). A clean float/int/string DTO round-trips.
                 try
                 {
-                    var dto = JsonSerializer.Deserialize<CombatFeedbackProfile>(disk.ToJsonString());
-                    diskNormalized = dto != null ? JsonSerializer.Serialize(dto) : null;
+                    var dto = ProjectChimera.Core.Definitions.AotJson.Deserialize<CombatFeedbackProfile>(disk.ToJsonString());
+                    diskNormalized = dto != null ? ProjectChimera.Core.Definitions.AotJson.Serialize(dto) : null;
                 }
                 catch { diskNormalized = null; }
             }
@@ -378,13 +378,13 @@ namespace ProjectChimera.Core.Definitions
                     byId.Remove(u.Id);
                     oldArr.Remove(existing);        // detach so it can re-parent into newArr
                     ApplyFields(existing, u);       // reconcile in place (untouched tokens preserved)
-                    newArr.Add(existing);
+                    newArr.Add((System.Text.Json.Nodes.JsonNode)existing);
                 }
                 else
                 {
                     var fresh = new JsonObject();
                     ApplyFields(fresh, u);          // only non-default fields (+ id, + combat_feedback if authored)
-                    newArr.Add(fresh);
+                    newArr.Add((System.Text.Json.Nodes.JsonNode)fresh);
                 }
             }
             // Anything still in byId is an on-disk unit no longer in the list → dropped (a delete).
@@ -409,7 +409,7 @@ namespace ProjectChimera.Core.Definitions
             JsonNode root = JsonNode.Parse(factionJson)
                             ?? throw new InvalidOperationException("faction JSON did not parse to an object.");
             if (model == null) ((JsonObject)root).Remove("attribute_model");
-            else root["attribute_model"] = JsonNode.Parse(JsonSerializer.Serialize(model, HeroSerializeOptions));
+            else root["attribute_model"] = JsonNode.Parse(ProjectChimera.Core.Definitions.AotJson.Serialize(model, HeroSerializeOptions));
             return root.ToJsonString(IndentedOptions);
         }
 
@@ -439,7 +439,7 @@ namespace ProjectChimera.Core.Definitions
                         ?? throw new InvalidOperationException("Create requires a building definition.");
                     var obj = new JsonObject();
                     ApplyBuildingFields(obj, def);          // fresh object → writes only non-default fields (+ id)
-                    buildings.Add(obj);
+                    buildings.Add((System.Text.Json.Nodes.JsonNode)obj);
                     break;
                 }
 
@@ -474,7 +474,7 @@ namespace ProjectChimera.Core.Definitions
                     // Deep-clone by re-parse (preserves EVERY field of the source verbatim, incl. unknown keys).
                     JsonObject clone = (JsonNode.Parse(target.ToJsonString())!).AsObject();
                     clone["id"] = newId;
-                    buildings.Add(clone);
+                    buildings.Add((System.Text.Json.Nodes.JsonNode)clone);
                     break;
                 }
 
@@ -578,13 +578,13 @@ namespace ProjectChimera.Core.Definitions
                     byId.Remove(b.Id);
                     oldArr.Remove(existing);            // detach so it can re-parent into newArr
                     ApplyBuildingFields(existing, b);   // reconcile in place (untouched tokens preserved)
-                    newArr.Add(existing);
+                    newArr.Add((System.Text.Json.Nodes.JsonNode)existing);
                 }
                 else
                 {
                     var fresh = new JsonObject();
                     ApplyBuildingFields(fresh, b);       // only non-default fields (+ id) + the required building trio
-                    newArr.Add(fresh);
+                    newArr.Add((System.Text.Json.Nodes.JsonNode)fresh);
                 }
             }
             // Anything still in byId is an on-disk building no longer in the list → dropped (a delete).
@@ -633,13 +633,13 @@ namespace ProjectChimera.Core.Definitions
                     oldArr.Remove(existing);           // detach so it can re-parent into newArr
                     ApplyResearchFields(existing, r);  // reconcile in place (id/display_name/cancel_refund_fraction/
                                                         // prerequisites preserve untouched tokens; levels rewrites fresh)
-                    newArr.Add(existing);
+                    newArr.Add((System.Text.Json.Nodes.JsonNode)existing);
                 }
                 else
                 {
                     var fresh = new JsonObject();
                     ApplyResearchFields(fresh, r);
-                    newArr.Add(fresh);
+                    newArr.Add((System.Text.Json.Nodes.JsonNode)fresh);
                 }
             }
             // Anything still in byId is an on-disk research entry no longer in the list → dropped (a delete).
@@ -715,7 +715,7 @@ namespace ProjectChimera.Core.Definitions
                     }
                     lo["modifier_delta"] = mdObj;
                 }
-                arr.Add(lo);
+                arr.Add((System.Text.Json.Nodes.JsonNode)lo);
             }
             o[key] = arr;
         }

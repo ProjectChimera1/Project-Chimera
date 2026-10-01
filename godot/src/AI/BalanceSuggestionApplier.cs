@@ -78,7 +78,7 @@ namespace ProjectChimera.AI
             try
             {
                 string json = FactionWriter.SerializeUnitClean(target);
-                candidate = JsonSerializer.Deserialize<UnitDefinition>(json, FactionDefinition.JsonOptions)
+                candidate = ProjectChimera.Core.Definitions.AotJson.Deserialize<UnitDefinition>(json, FactionDefinition.JsonOptions)
                     ?? throw new InvalidOperationException("clone deserialized to null.");
             }
             catch (Exception ex)

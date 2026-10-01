@@ -19,16 +19,12 @@ namespace ProjectChimera.Sim.Tests.Meta
     /// is precisely the checkout shape the parallel burn-down track uses, so the Windows↔Linux determinism gate had
     /// to be hand-reproduced against a fresh clone instead — slow and easy to get subtly wrong.</para>
     ///
-    /// <para>DW-502 — the burn-down dispatcher defaulted the Tier-1 baseline to a hardcoded literal. It went stale
-    /// immediately: seven independent worktrees measured a figure ~120 short of it and had to disprove a phantom
-    /// regression; one reached for <c>git stash</c> to explain the gap and cross-wired every parallel worktree's
-    /// shared stash stack (DW-521). A stale baseline is worse than no baseline, so the caller that just measured it
-    /// must supply it.</para>
+    /// <para>DW-502 — its guard was retired with the burn-down dispatcher it checked (removed in c794681b); the test
+    /// itself was deleted by Unreal trial task A0, 2026-10-01.</para>
     /// </summary>
     public class ToolingGateGuardTests
     {
         private const string WslScriptRelPath = "godot/tools/cross-platform-determinism-check.wsl.sh";
-        private const string DispatcherRelPath = ".claude/workflows/dw-burndown.workflow.js";
 
         // ── DW-556: the cross-platform gate must run from a linked worktree ──────
 
@@ -62,39 +58,6 @@ namespace ProjectChimera.Sim.Tests.Meta
                 $"`git -C \"$SRC\" rev-parse --git-dir`, both of which accept a clone AND a linked worktree.");
         }
 
-        // ── DW-502: the burn-down dispatcher must not carry a stale baseline ─────
-
-        [Fact]
-        public void BurnDownDispatcher_HasNoHardcodedTier1Baseline()
-        {
-            string dispatcher = DispatcherPath();
-            Assert.True(File.Exists(dispatcher),
-                $"'{DispatcherRelPath}' not found at '{dispatcher}'. This path is derived from [CallerFilePath]; if " +
-                $"the burn-down workflow moved, move this guard with it — a hardcoded suite baseline is the " +
-                $"regression it exists to prevent (DW-502).");
-
-            string[] active = ActiveJsLines(dispatcher);
-
-            string? fallback = active.FirstOrDefault(l =>
-                Regex.IsMatch(l, @"baselineTests\s*(\?\?|\|\|)\s*\d"));
-            Assert.True(fallback == null,
-                $"'{DispatcherRelPath}' hardcodes a fallback Tier-1 pass count for baselineTests. That literal is a " +
-                $"snapshot of ONE commit and rots on the next merge: seven burn-down worktrees measured ~120 fewer " +
-                $"tests than the stale figure and had to disprove a phantom regression, and one triggered a " +
-                $"cross-worktree `git stash` incident doing so (DW-502 / DW-521). Require args.baselineTests and " +
-                $"fail the launch when it is missing. Offending line: {fallback}");
-
-            // The other end of the same rule: dropping the fallback is only safe if the value is REQUIRED, otherwise
-            // every agent silently receives `undefined` as its baseline.
-            Assert.True(active.Any(l => l.Contains("baselineTests", StringComparison.Ordinal)),
-                $"'{DispatcherRelPath}' no longer references baselineTests at all. The dispatcher must still take " +
-                $"the measured Tier-1 count from its caller and hand it to the agents (DW-502).");
-            Assert.True(active.Any(l => Regex.IsMatch(l, @"error:\s*'missing baselineTests")),
-                $"'{DispatcherRelPath}' does not refuse to launch when baselineTests is absent. Without that guard " +
-                $"the removed fallback just becomes `undefined` in every agent's prompt — the same wrong-number " +
-                $"failure with a less readable value (DW-502).");
-        }
-
         // ── helpers ──────────────────────────────────────────────────────────────
 
         /// <summary>Shell lines with full-line <c>#</c> comments (and blanks) stripped, so a commented-out guard can
@@ -105,20 +68,10 @@ namespace ProjectChimera.Sim.Tests.Meta
                 .Where(t => t.Length > 0 && !t.StartsWith("#", StringComparison.Ordinal))
                 .ToArray();
 
-        /// <summary>JS lines with full-line <c>//</c> comments (and blanks) stripped, same reason.</summary>
-        private static string[] ActiveJsLines(string path) =>
-            File.ReadAllLines(path)
-                .Select(l => l.Trim())
-                .Where(t => t.Length > 0 && !t.StartsWith("//", StringComparison.Ordinal))
-                .ToArray();
-
         // ── path helpers (this file lives in godot/ProjectChimera.Sim.Tests/Meta/) ────────────────
 
         private static string ScriptPath([CallerFilePath] string p = "") =>
             ResolveFromHere(p, "..", "..", "tools", "cross-platform-determinism-check.wsl.sh");
-
-        private static string DispatcherPath([CallerFilePath] string p = "") =>
-            ResolveFromHere(p, "..", "..", "..", ".claude", "workflows", "dw-burndown.workflow.js");
 
         /// <summary>Resolve a path relative to THIS source file's directory and normalize away the '..' segments.</summary>
         private static string ResolveFromHere(string thisFilePath, params string[] segments)

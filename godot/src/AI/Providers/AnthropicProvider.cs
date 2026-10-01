@@ -37,17 +37,11 @@ namespace ProjectChimera.AI.Providers
 
         public async Task<NormalizedResult> GenerateAsync(NormalizedRequest request, CancellationToken ct)
         {
-            var body = new
-            {
-                model      = _model,
-                max_tokens = request.MaxTokens,
-                system     = request.SystemPrompt,
-                messages   = new[] { new { role = "user", content = request.UserMessage } },
-            };
+            var body = new AnthropicRequestBody { Model = _model, MaxTokens = request.MaxTokens, System = request.SystemPrompt, Messages = new[] { new LlmMessageBody { Role = "user", Content = request.UserMessage } } };
 
             using var req = new HttpRequestMessage(HttpMethod.Post, _endpoint)
             {
-                Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json"),
+                Content = new StringContent(ProjectChimera.Core.Definitions.AotJson.Serialize(body), Encoding.UTF8, "application/json"),
             };
             // A pasted key with an invalid header character (embedded space/newline/control char) makes
             // HttpHeaders.Add throw FormatException. Catch it here so GenerateAsync honours the ILLMProvider

@@ -331,6 +331,6 @@ namespace ProjectChimera.Core.Definitions
         /// in try/catch → <c>GD.PrintErr</c> + defaults). Any other caller that needs fail-soft must catch likewise.
         /// </summary>
         public static SettingsData FromJson(string json, JsonSerializerOptions options)
-            => (JsonSerializer.Deserialize<SettingsData>(json, options) ?? new SettingsData()).MigrateForward();
+            => (ProjectChimera.Core.Definitions.AotJson.Deserialize<SettingsData>(json, options) ?? new SettingsData()).MigrateForward();
     }
 }

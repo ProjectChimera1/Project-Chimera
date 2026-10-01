@@ -46,6 +46,7 @@ namespace ProjectChimera.Core.Definitions
             WriteIndented       = true,
             ReadCommentHandling = JsonCommentHandling.Skip,
             AllowTrailingCommas = true,
+            TypeInfoResolver    = ChimeraJsonContext.Default,
         };
     }
 }

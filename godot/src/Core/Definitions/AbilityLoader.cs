@@ -29,7 +29,7 @@ namespace ProjectChimera.Core.Definitions
             AbilityDefinition? def;
             try
             {
-                def = JsonSerializer.Deserialize<AbilityDefinition>(json, ContentJson.Options);
+                def = ProjectChimera.Core.Definitions.AotJson.Deserialize<AbilityDefinition>(json, ContentJson.Options);
             }
             catch (JsonException ex)
             {

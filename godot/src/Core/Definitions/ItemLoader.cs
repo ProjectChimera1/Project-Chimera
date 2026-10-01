@@ -24,7 +24,7 @@ namespace ProjectChimera.Core.Definitions
             ItemDefinition? def;
             try
             {
-                def = JsonSerializer.Deserialize<ItemDefinition>(json, ContentJson.Options);
+                def = ProjectChimera.Core.Definitions.AotJson.Deserialize<ItemDefinition>(json, ContentJson.Options);
             }
             catch (JsonException ex)
             {

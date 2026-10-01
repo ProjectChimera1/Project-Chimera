@@ -86,7 +86,7 @@ namespace ProjectChimera.Core.Definitions
         {
             try
             {
-                BehaviorDefinition? def = JsonSerializer.Deserialize<BehaviorDefinition>(File.ReadAllText(file));
+                BehaviorDefinition? def = ProjectChimera.Core.Definitions.AotJson.Deserialize<BehaviorDefinition>(File.ReadAllText(file));
                 if (def == null || string.IsNullOrEmpty(def.Id)) return null;
                 // A compatible_archetypes token outside the 6-archetype closed set names a non-existent archetype, so the
                 // whole behavior is rejected (dropped at load). The closed set is the shared source of truth

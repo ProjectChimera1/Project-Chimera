@@ -1059,7 +1059,7 @@ namespace ProjectChimera.Dsl
                 ExecEdges = ExecEdges.OrderBy(e => e).ToList(),
                 DataEdges = DataEdges.OrderBy(e => e).ToList(),
             };
-            return JsonSerializer.Serialize(shape, DslJson.Options);
+            return ProjectChimera.Core.Definitions.AotJson.Serialize(shape, DslJson.Options);
         }
 
         /// <summary>Deserialize a graph from canonical (or any) JSON via <see cref="DslJson.Options"/>.
@@ -1069,7 +1069,7 @@ namespace ProjectChimera.Dsl
         /// node after offsetting and silently drop/rewire a trigger.</summary>
         public static TriggerGraph FromJson(string json)
         {
-            GraphJsonShape shape = JsonSerializer.Deserialize<GraphJsonShape>(json, DslJson.Options)
+            GraphJsonShape shape = ProjectChimera.Core.Definitions.AotJson.Deserialize<GraphJsonShape>(json, DslJson.Options)
                 ?? throw new JsonException("Graph JSON deserialized to null.");
             var graph = new TriggerGraph();
             if (shape.Nodes is not null)     graph.Nodes.AddRange(shape.Nodes);
@@ -1083,7 +1083,7 @@ namespace ProjectChimera.Dsl
 
         /// <summary>The on-the-wire JSON shape: the three canonical lists. Nodes (de)serialize through the registered
         /// <see cref="NodeBaseJsonConverter"/>; edges through their JSON-property layout.</summary>
-        private sealed class GraphJsonShape
+        internal sealed class GraphJsonShape
         {
             [JsonPropertyName("nodes")]      public List<NodeBase> Nodes     { get; set; } = new();
             [JsonPropertyName("exec_edges")] public List<ExecEdge> ExecEdges { get; set; } = new();

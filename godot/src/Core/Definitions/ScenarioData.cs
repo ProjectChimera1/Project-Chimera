@@ -7,7 +7,7 @@ namespace ProjectChimera.Core.Definitions
     /// <summary>
     /// Win condition evaluated each simulation tick by the (future) WinConditionSystem.
     /// </summary>
-    [JsonConverter(typeof(JsonStringEnumConverter))]
+    [JsonConverter(typeof(JsonStringEnumConverter<WinCondition>))]
     public enum WinCondition
     {
         /// <summary>First faction to have all buildings destroyed loses.</summary>
@@ -23,7 +23,7 @@ namespace ProjectChimera.Core.Definitions
     /// typed <see cref="WinConditionSpec"/>; each is also expressible as canonical public-DSL graph-IR
     /// (<c>WinConditionPresets</c>) for the round-trip stability proof.
     /// </summary>
-    [JsonConverter(typeof(JsonStringEnumConverter))]
+    [JsonConverter(typeof(JsonStringEnumConverter<WinPresetKind>))]
     public enum WinPresetKind
     {
         /// <summary>No preset — fall back to the built-in <see cref="WinCondition"/> enum.</summary>
@@ -97,7 +97,7 @@ namespace ProjectChimera.Core.Definitions
     /// int, and presentation reads the int back. Serialized by NAME (an authored <c>initial_state</c>). NEVER
     /// enters the tick as a string; only the int ordinal folds.
     /// </summary>
-    [JsonConverter(typeof(JsonStringEnumConverter))]
+    [JsonConverter(typeof(JsonStringEnumConverter<ObjectiveState>))]
     public enum ObjectiveState
     {
         /// <summary>Not yet revealed to the player (ordinal 0). A <c>show_objective</c> flips it to Active.</summary>

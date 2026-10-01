@@ -30,6 +30,7 @@ namespace ProjectChimera.Core.Definitions
             WriteIndented       = true,
             ReadCommentHandling = JsonCommentHandling.Skip,
             AllowTrailingCommas = true,
+            TypeInfoResolver    = ChimeraJsonContext.Default,
         };
 
         /// <summary>Construct the rail over <paramref name="directory"/> (an OS-absolute path; the Godot layer resolves
@@ -52,7 +53,7 @@ namespace ProjectChimera.Core.Definitions
             try
             {
                 string json = File.ReadAllText(_filePath);
-                var list = JsonSerializer.Deserialize<List<PlayerProfile>>(json, JsonOptions);
+                var list = ProjectChimera.Core.Definitions.AotJson.Deserialize<List<PlayerProfile>>(json, JsonOptions);
                 return list ?? new List<PlayerProfile>();
             }
             catch
@@ -120,7 +121,7 @@ namespace ProjectChimera.Core.Definitions
         {
             list.Sort((a, b) => string.CompareOrdinal(a.ProfileId, b.ProfileId));
             Directory.CreateDirectory(_directory);
-            File.WriteAllText(_filePath, JsonSerializer.Serialize(list, JsonOptions));
+            File.WriteAllText(_filePath, ProjectChimera.Core.Definitions.AotJson.Serialize(list, JsonOptions));
         }
     }
 }

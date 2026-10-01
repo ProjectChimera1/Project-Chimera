@@ -484,7 +484,7 @@ namespace ProjectChimera.AI
             TriggerDefinition trigger;
             try
             {
-                trigger = JsonSerializer.Deserialize<TriggerDefinition>(json, ContentJson.ModelOutputOptions)
+                trigger = ProjectChimera.Core.Definitions.AotJson.Deserialize<TriggerDefinition>(json, ContentJson.ModelOutputOptions)
                     ?? throw new InvalidOperationException("Deserialised to null.");
             }
             catch (Exception ex)
@@ -870,7 +870,7 @@ play_sound      — sound_id (string)");
                 // widens the syntax accepted, never the values trusted. What it ADDS over the old inline set is the
                 // name-only enum boundary (a numeric enum now fails closed instead of silently resolving to whichever
                 // member holds that ordinal — the same tightening DW-274 gave the scenario FILE format).
-                scenario = JsonSerializer.Deserialize<ScenarioData>(json, ContentJson.ModelOutputOptions)
+                scenario = ProjectChimera.Core.Definitions.AotJson.Deserialize<ScenarioData>(json, ContentJson.ModelOutputOptions)
                     ?? throw new InvalidOperationException("Deserialised to null.");
             }
             catch (JsonException jex)
@@ -1500,7 +1500,7 @@ play_sound      — sound_id (string)");
                 // DW-526: this site used to build a per-call option set that registered NO converters at all — so it
                 // was the ONE model-output parse path that could not read a Fixed-typed field, and it rejected the
                 // trailing commas / // comments every other LLM path tolerates. Now on the shared posture.
-                report = JsonSerializer.Deserialize<BalanceReport>(json, ContentJson.ModelOutputOptions)
+                report = ProjectChimera.Core.Definitions.AotJson.Deserialize<BalanceReport>(json, ContentJson.ModelOutputOptions)
                     ?? throw new InvalidOperationException("Deserialised to null.");
             }
             catch (Exception ex)
@@ -1655,7 +1655,7 @@ play_sound      — sound_id (string)");
             List<ProjectChimera.Effects.EffectNode>? nodes;
             try
             {
-                nodes = JsonSerializer.Deserialize<List<ProjectChimera.Effects.EffectNode>>(json, ContentJson.Options);
+                nodes = ProjectChimera.Core.Definitions.AotJson.Deserialize<List<ProjectChimera.Effects.EffectNode>>(json, ContentJson.Options);
             }
             catch (Exception ex)
             {
@@ -1682,7 +1682,7 @@ play_sound      — sound_id (string)");
             FactionDefinition def;
             try
             {
-                def = JsonSerializer.Deserialize<FactionDefinition>(json, FactionDefinition.JsonOptions)
+                def = ProjectChimera.Core.Definitions.AotJson.Deserialize<FactionDefinition>(json, FactionDefinition.JsonOptions)
                     ?? throw new InvalidOperationException("Deserialised to null.");
             }
             catch (Exception ex)
@@ -1718,7 +1718,7 @@ play_sound      — sound_id (string)");
         {
             try
             {
-                def = JsonSerializer.Deserialize<UnitDefinition>(json, FactionDefinition.JsonOptions)
+                def = ProjectChimera.Core.Definitions.AotJson.Deserialize<UnitDefinition>(json, FactionDefinition.JsonOptions)
                     ?? throw new InvalidOperationException("Deserialised to null.");
                 error = null;
                 return true;

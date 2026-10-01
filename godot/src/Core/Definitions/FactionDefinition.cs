@@ -248,7 +248,7 @@ namespace ProjectChimera.Core.Definitions
         /// former <c>Units.Count</c> NRE'd; and a <c>"units": [null, {...}]</c> document handed the caller a NULL
         /// <see cref="UnitDefinition"/> as the faction's PRIMARY unit, merely relocating the NRE. Both are reachable
         /// from any path that bypasses <see cref="FactionValidator"/>'s structural pre-check (a direct
-        /// <c>JsonSerializer.Deserialize</c>, hand-built defs in tests/tools, the Story 6.8 scenario-buildings gate).
+        /// <c>ProjectChimera.Core.Definitions.AotJson.Deserialize</c>, hand-built defs in tests/tools, the Story 6.8 scenario-buildings gate).
         /// Mirrors <see cref="GetUnit"/>/<see cref="IndexOfUnit"/>: null list ⇒ null, null elements skipped.</para>
         /// </summary>
         public UnitDefinition? PrimaryUnit
@@ -343,7 +343,7 @@ namespace ProjectChimera.Core.Definitions
             // "this file is unreadable/absent" is not a content error and must not masquerade as one.
             try
             {
-                def = JsonSerializer.Deserialize<FactionDefinition>(json, JsonOptions);
+                def = ProjectChimera.Core.Definitions.AotJson.Deserialize<FactionDefinition>(json, JsonOptions);
             }
             catch (JsonException ex)
             {
@@ -460,7 +460,7 @@ namespace ProjectChimera.Core.Definitions
                     // The raw text is hoisted into a local (still INSIDE the try, so an I/O fault keeps taking the
                     // never-throws onExcluded path) because the DW-537 duplicate-key pass below re-walks it.
                     text = File.ReadAllText(file);
-                    def = JsonSerializer.Deserialize<FactionDefinition>(text, JsonOptions);
+                    def = ProjectChimera.Core.Definitions.AotJson.Deserialize<FactionDefinition>(text, JsonOptions);
                 }
                 catch (System.Exception ex)
                 {

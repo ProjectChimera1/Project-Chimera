@@ -242,20 +242,20 @@ namespace ProjectChimera.Core.Definitions
         {
             if (feedback is null) return;
             writer.WritePropertyName("feedback");
-            JsonSerializer.Serialize(writer, feedback, options);
+            ProjectChimera.Core.Definitions.AotJson.Serialize(writer, feedback, options);
         }
 
         private static void WriteFixed(Utf8JsonWriter writer, string name, Fixed value, JsonSerializerOptions options)
         {
             writer.WritePropertyName(name);
-            JsonSerializer.Serialize(writer, value, options);   // → FixedJsonConverter (number); never a hand-rolled ToFloat (CHM0005)
+            ProjectChimera.Core.Definitions.AotJson.Serialize(writer, value, options);   // → FixedJsonConverter (number); never a hand-rolled ToFloat (CHM0005)
         }
 
         private static void WriteEnum<TEnum>(Utf8JsonWriter writer, string name, TEnum value, JsonSerializerOptions options)
             where TEnum : struct, Enum
         {
             writer.WritePropertyName(name);
-            JsonSerializer.Serialize(writer, value, options);   // → JsonStringEnumConverter (name-only, allowIntegerValues:false)
+            ProjectChimera.Core.Definitions.AotJson.Serialize(writer, value, options);   // → JsonStringEnumConverter (name-only, allowIntegerValues:false)
         }
 
         // Story 2.11 (D-4 / AC3.4): the optional tag gate shared by search_area AND every leaf kind. OMIT-WHEN-None so
@@ -458,7 +458,7 @@ namespace ProjectChimera.Core.Definitions
                 if (!statDef.ModifierAuthorable)
                     throw new JsonException($"{lanePath}.{p.Name}: stat '{statDef.JsonName}' is not modifier-authorable yet (its consumer is the {statDef.ConsumerSite} read seam).");
                 Fixed value;
-                try { value = p.Value.Deserialize<Fixed>(options); }
+                try { value = ProjectChimera.Core.Definitions.AotJson.Deserialize<Fixed>(p.Value, options); }
                 catch (JsonException ex) { throw new JsonException($"{lanePath}.{p.Name}: {ex.Message}"); }
                 scratch.Add(new ProjectChimera.Core.Stats.StatDelta(statDef.Id, value));
             }
@@ -486,14 +486,14 @@ namespace ProjectChimera.Core.Definitions
         {
             if (!parent.TryGetProperty(prop, out JsonElement el))
                 throw new JsonException($"{path}.{prop}: missing required numeric field.");
-            try { return el.Deserialize<Fixed>(options); }            // routes through FixedJsonConverter (the one quantizer)
+            try { return ProjectChimera.Core.Definitions.AotJson.Deserialize<Fixed>(el, options); }            // routes through FixedJsonConverter (the one quantizer)
             catch (JsonException ex) { throw new JsonException($"{path}.{prop}: {ex.Message}"); }
         }
 
         private static Fixed ReadFixedOpt(JsonElement parent, string prop, string path, JsonSerializerOptions options, Fixed fallback)
         {
             if (!parent.TryGetProperty(prop, out JsonElement el)) return fallback;
-            try { return el.Deserialize<Fixed>(options); }
+            try { return ProjectChimera.Core.Definitions.AotJson.Deserialize<Fixed>(el, options); }
             catch (JsonException ex) { throw new JsonException($"{path}.{prop}: {ex.Message}"); }
         }
 
@@ -513,7 +513,7 @@ namespace ProjectChimera.Core.Definitions
                 if (required) throw new JsonException($"{path}.{prop}: missing required '{typeof(TEnum).Name}' value (authored by name).");
                 return fallback;
             }
-            try { return el.Deserialize<TEnum>(options); }            // routes through JsonStringEnumConverter (name-only)
+            try { return ProjectChimera.Core.Definitions.AotJson.Deserialize<TEnum>(el, options); }            // routes through JsonStringEnumConverter (name-only)
             catch (JsonException ex) { throw new JsonException($"{path}.{prop}: {ex.Message}"); }
         }
 
@@ -534,7 +534,7 @@ namespace ProjectChimera.Core.Definitions
             // InvalidOperationException, etc. from the nested Deserialize — rethrow ALL of them as a LOCATED
             // JsonException carrying the "{path}.feedback: …" prefix (the surrounding located-error contract), inner
             // preserved. A missing/explicit-null feedback is handled above (returns null) and never reaches here.
-            try { return fbEl.Deserialize<CombatFeedbackProfile>(options); }
+            try { return ProjectChimera.Core.Definitions.AotJson.Deserialize<CombatFeedbackProfile>(fbEl, options); }
             catch (Exception ex) { throw new JsonException($"{path}.feedback: {ex.Message}", ex); }
         }
 

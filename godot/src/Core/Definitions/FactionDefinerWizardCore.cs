@@ -154,8 +154,8 @@ namespace ProjectChimera.Core.Definitions
         /// fields.</summary>
         public static T DeepClone<T>(T source) where T : notnull
         {
-            string json = JsonSerializer.Serialize(source, FactionDefinition.JsonOptions);
-            return JsonSerializer.Deserialize<T>(json, FactionDefinition.JsonOptions)
+            string json = ProjectChimera.Core.Definitions.AotJson.Serialize(source, FactionDefinition.JsonOptions);
+            return ProjectChimera.Core.Definitions.AotJson.Deserialize<T>(json, FactionDefinition.JsonOptions)
                    ?? throw new InvalidOperationException("DeepClone: round-trip produced null.");
         }
 
@@ -329,7 +329,7 @@ namespace ProjectChimera.Core.Definitions
             FactionDefinition? parsed;
             try
             {
-                parsed = JsonSerializer.Deserialize<FactionDefinition>(json ?? "", FactionDefinition.JsonOptions);
+                parsed = ProjectChimera.Core.Definitions.AotJson.Deserialize<FactionDefinition>(json ?? "", FactionDefinition.JsonOptions);
             }
             catch (Exception ex)
             {

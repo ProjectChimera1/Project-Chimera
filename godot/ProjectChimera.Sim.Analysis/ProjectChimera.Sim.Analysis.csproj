@@ -73,8 +73,10 @@
          WarningsAsErrors (the csc -warnaserror:<ids> switch) BEATS editorconfig severity and is per-ID, unlike
          the blanket -p:TreatWarningsAsErrors (roslyn #43051). The advisory CHM/IL rules with legitimate
          existing debt are deliberately NOT listed here — they stay warnings until their cleanup story.
+         A2: IL2026/IL3050 joined the gate once A1 drove them to zero (source-generated STJ), so a reflection-based
+         serializer call in the sim sources can no longer land unnoticed.
          The exact gated set is the zero-baseline scan result recorded in the story's Baseline/ratchet table. -->
-    <WarningsAsErrors>$(WarningsAsErrors);RS0030</WarningsAsErrors>
+    <WarningsAsErrors>$(WarningsAsErrors);RS0030;IL2026;IL3050</WarningsAsErrors>
   </PropertyGroup>
 
 </Project>

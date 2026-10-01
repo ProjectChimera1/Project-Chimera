@@ -34,19 +34,11 @@ namespace ProjectChimera.AI.Providers
 
         public async Task<NormalizedResult> GenerateAsync(NormalizedRequest request, CancellationToken ct)
         {
-            var body = new
-            {
-                model    = _model,
-                messages = new[]
-                {
-                    new { role = "system", content = request.SystemPrompt },
-                    new { role = "user",   content = request.UserMessage },
-                },
-            };
+            var body = new ChatRequestBody { Model = _model, Messages = new[] { new LlmMessageBody { Role = "system", Content = request.SystemPrompt }, new LlmMessageBody { Role = "user", Content = request.UserMessage } } };
 
             using var req = new HttpRequestMessage(HttpMethod.Post, _endpoint)
             {
-                Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json"),
+                Content = new StringContent(ProjectChimera.Core.Definitions.AotJson.Serialize(body), Encoding.UTF8, "application/json"),
             };
             // A pasted key with an invalid header character makes HttpHeaders.Add throw FormatException; catch it so
             // GenerateAsync honours the ILLMProvider "never throws for a provider-side failure" contract. A bad key is

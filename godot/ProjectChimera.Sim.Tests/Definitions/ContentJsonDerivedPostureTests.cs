@@ -95,7 +95,7 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.Equal(
                 new[]
                 {
-                    typeof(JsonStringEnumConverter), typeof(FixedJsonConverter), typeof(EffectNodeJsonConverter),
+                    typeof(AotJson.StrictEnumConverterFactory), typeof(FixedJsonConverter), typeof(EffectNodeJsonConverter),
                     typeof(NodeBaseJsonConverter), typeof(DataEdgeJsonConverter), typeof(ExecEdgeJsonConverter),
                 },
                 ConverterTypes(DslJson.Options));
@@ -166,7 +166,7 @@ namespace ProjectChimera.Sim.Tests.Definitions
             Assert.False(ContentJson.Options.WriteIndented);
             Assert.False(ContentJson.Options.PropertyNameCaseInsensitive);
             Assert.Equal(
-                new[] { typeof(JsonStringEnumConverter), typeof(FixedJsonConverter), typeof(EffectNodeJsonConverter) },
+                new[] { typeof(AotJson.StrictEnumConverterFactory), typeof(FixedJsonConverter), typeof(EffectNodeJsonConverter) },
                 ConverterTypes(ContentJson.Options));
         }
 
