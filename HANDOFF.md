@@ -35,6 +35,12 @@ two independent Opus xhigh verifiers (results; code and rules). Phase 2 results 
   shrubs and trees that follow runtime edits in a packaged game, presentation only. Design workflow `wf_6722a0c4-e65` writes the
   plan of record `docs/unreal-move/trial-checks/plan-c-scatter.md` (research r8a-d, three designs, judged synthesis, critique).
   Rule from Alec: use Unreal's built-in system (PCG) where it works at runtime on our terrain; otherwise build our own.
+- **Free asset routes (Alec 2026-10-02: "check prices ... research doing this for free first")**: research workflow
+  `wf_0a8ee40c-1be` writes `docs/unreal-move/trial-checks/research/r9-free-asset-routes.md` (Megascans prices on Fab as the paid
+  fallback; free routes per asset class; pilot). Main-session reading: ground textures and leaf/bark/blade images can be
+  generated (SDXL seamless tiling, local); plant shapes come from generators (UE 5.8 PVE, Blender), not image-to-3D. Pilot adds
+  Alec's idea: generate a 360° orbit video of a solid object (boulder, stump) with a local video model (check licence, e.g. Wan
+  2.x Apache-2.0), then rebuild it with photogrammetry or Gaussian splats; not for thin foliage.
 - **Building foundations** (Alec 2026-10-01): brief `docs/unreal-move/briefs/building-foundations.md` (flat pad + soft skirt,
   "too steep" refusal, sculpting lifts the whole pad with the building). Map editor and custom-game creation only: terrain is never sculpted in a match (Alec). After scatter.
 
