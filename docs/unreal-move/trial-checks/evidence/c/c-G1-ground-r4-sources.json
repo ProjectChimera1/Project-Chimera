@@ -1,0 +1,33 @@
+{
+ "panels": [
+  {
+   "file": "Out/look_r3/rts80_full.png",
+   "caption": "G1 round 3 (before): rts80, look full",
+   "sha256": "91a05e4cdcfde659f3a72f777d4388069fff1e2b38e277ced8b1cb0590bad81b"
+  },
+  {
+   "file": "Out/look_r4/rts80_full.png",
+   "caption": "G1 round 4 (after): rts80, look full",
+   "sha256": "f633b24daa8527428c685d9765726e39049633e20ab671b3474a87c5f7c4815e"
+  }
+ ],
+ "output": {
+  "file": "Out/look/ours_r4.png",
+  "sha256": "ef779a15ec05fec78969f52286c172061c0d287e6e895bfdb5553833ebfa13fd",
+  "size": [
+   3840,
+   1306
+  ]
+ },
+ "jpg": {
+  "file": "Out/look/c-G1-ground-r4.jpg",
+  "quality": 55,
+  "bytes": 415882
+ },
+ "phone": null,
+ "numbers": [
+  "G1 round 4 | terrain GPU (C1 visible - hidden, idle) 2.907 ms median of 3 <= 3.0 Phase-4 bar (r3 3.026) | paint bar 0.399 >= 0.30 (r3 0.312)",
+  "S1 PASS; height/splat FNV equal C4 s1_a (0xff563549/0xd264ddc9); P8 SAME-HASH PASS; G1 gate PASS (hill 2.02); tests 26/26",
+  "rts80 lime 0.237 (ML 0.249, r3 0.05); khaki 0.065 (ML 0.087); deep 0.054 (r3 0.359); Lab L 43.4 (ML 45, r3 40.0); closeup whorls gone (clump warp 4 -> 1 m)"
+ ]
+}

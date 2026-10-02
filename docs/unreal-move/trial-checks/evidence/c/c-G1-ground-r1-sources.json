@@ -1,0 +1,42 @@
+{
+ "panels": [
+  {
+   "file": "Out/look_r0/rts80_full.png",
+   "caption": "G1 round 0 (before): rts80, look full",
+   "sha256": "210ef3171e5e79f9b87088dd5dd60fbe0f4ceabbef821b2f6d1022a61307a560"
+  },
+  {
+   "file": "Out/look_r1/rts80_full.png",
+   "caption": "G1 round 1 (after): rts80, look full",
+   "sha256": "4b56f6901f0a0d43a17f58f1b1290d7c4c1089795ab955ea73e81c49a566ecad"
+  },
+  {
+   "file": "Out/look_r1/closeup.png",
+   "caption": "G1 round 1: closeup, look full",
+   "sha256": "6734425530a32ed0f562e77676a88d1472310419c296bff49dc5de0a59e228af"
+  },
+  {
+   "file": "Out/look_r1/oblique.png",
+   "caption": "G1 round 1: oblique, look full",
+   "sha256": "77cecb914a0b700c299b85b4b2d36567546415a42d6b8221c062128dc27efea0"
+  }
+ ],
+ "output": {
+  "file": "Out/look/ours_r1.png",
+  "sha256": "7fe6c732dad90c29dd9237d0b6405899244648d3c5b680c5d9e858f05ce4740d",
+  "size": [
+   3840,
+   2412
+  ]
+ },
+ "jpg": {
+  "file": "Out/look/c-G1-ground-r1.jpg",
+  "quality": 75,
+  "bytes": 1096053
+ },
+ "phone": null,
+ "numbers": [
+  "G1 round 1 | terrain GPU (C1 visible - hidden, idle): 2.923 ms median of 2 runs <= 3.0 Phase-4 bar (r0 2.926) | paint bar 0.458 >= 0.30 | S1 PASS, hashes equal C4 s1_a | G1 gate PASS | tests 26/26",
+  "rts80 meadow hue 62.0 S 0.53 V 0.43, hue p10/50/90 51/63/74 (Manor Lords target 62/0.55/0.40, 48/64/74); patch repeat ACF 0.13 (r0 0.55); cast shadow 0.31x lit, olive (r0 0.11x, cyan) | CC0 Grass004 (height in albedo alpha), Rock030, brown_mud_02, snow_02 | Lumen off"
+ ]
+}

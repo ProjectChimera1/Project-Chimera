@@ -1,0 +1,33 @@
+{
+ "panels": [
+  {
+   "file": "Out/look_r2/rts80_full.png",
+   "caption": "G1 round 2 (before): rts80, look full",
+   "sha256": "118b70be3f58c76df75d442259fa30879b5c999fdde6789e1f86d3f03a00ba70"
+  },
+  {
+   "file": "Out/look_r3/rts80_full.png",
+   "caption": "G1 round 3 (after): rts80, look full",
+   "sha256": "91a05e4cdcfde659f3a72f777d4388069fff1e2b38e277ced8b1cb0590bad81b"
+  }
+ ],
+ "output": {
+  "file": "Out/look/ours_r3.png",
+  "sha256": "74a685a8b5cb9f19463c72e8fc7be2d2848d77c195ca4ee9fa97fb7127afd06c",
+  "size": [
+   3840,
+   1306
+  ]
+ },
+ "jpg": {
+  "file": "Out/look/c-G1-ground-r3.jpg",
+  "quality": 70,
+  "bytes": 555827
+ },
+ "phone": null,
+ "numbers": [
+  "G1 round 3 | terrain GPU (C1 visible - hidden, idle) 3.026 ms median of 3 > 3.0 Phase-4 bar (same-day r2 material 2.97/3.00) | paint bar 0.312 >= 0.30",
+  "S1 PASS; height/splat FNV equal C4 s1_a (0xff563549/0xd264ddc9); P8 SAME-HASH PASS; G1 gate PASS (hill 1.89); tests 26/26",
+  "rts80 meadow hue 67.8 S 0.57 V 0.37 (ML 62/0.55/0.40); hue range 9.2 (ML 9.7); khaki 0.105 (ML 0.087); path S 0.27 V 0.42; shadow ratio 0.307"
+ ]
+}

@@ -50,6 +50,7 @@ FChimeraTerrainOptions FChimeraTerrainOptions::FromCommandLine(const TCHAR* Cmd)
 		O.bGreyMaterial = Material.Equals(TEXT("grey"), ESearchCase::IgnoreCase);
 	}
 	FParse::Value(Cmd, TEXT("ChimeraTerrainGround="), O.GroundParams, false);
+	FParse::Value(Cmd, TEXT("ChimeraTerrainLight="), O.LightParams, false);
 	O.bSynthMouse = FParse::Param(Cmd, TEXT("ChimeraTerrainSynthMouse"));
 	return O;
 }
@@ -108,6 +109,20 @@ void AChimeraTerrainGameMode::StartPlay()
 	if (!bTerrainOk)
 	{
 		UE_LOG(LogChimeraTerrain, Error, TEXT("terrain initialisation failed"));
+	}
+	if (Lighting)
+	{
+		// G1 round 1: the look's lighting values are text in DefaultGame.ini; a -ChimeraTerrainLight= item overrides them.
+		const FString ConfigLook = ATerrainLighting::ReadConfigLookOverrides();
+		UE_LOG(LogChimeraTerrain, Display, TEXT("lighting: config LookOverrides '%s'"), *ConfigLook);
+		if (!ConfigLook.IsEmpty())
+		{
+			Lighting->ApplyOverrides(ConfigLook);
+		}
+	}
+	if (Lighting && !Options.LightParams.IsEmpty())
+	{
+		Lighting->ApplyOverrides(Options.LightParams);
 	}
 	if (Lighting)
 	{

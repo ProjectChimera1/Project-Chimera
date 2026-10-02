@@ -1,0 +1,42 @@
+{
+  "name": "LOOK",
+  "about": "G1 round 2 look map (NOT a gate: no hash, footprint or collision bar reads it; S1 stays the gating script and its hashes stay equal to C4's s1_a). The flat S1 map hides the slope terms (TerrainDry, sun-facing light), so this script sculpts rolling 5-15 m hills with large raise strokes rounded by long smooth passes, a hollow, a small steep outcrop (auto-rock), a painted rock flat and a painted field track that runs over the relief, then takes look-full shots from the three fixed poses (rts80, oblique, closeup; camera heights are absolute, so the hills keep clear of the closeup camera at (-66,-30) m and the oblique camera at (60,-90) m). Map-metre coordinates as in S1.",
+  "ops": [
+    {"op": "look", "mode": "full"},
+    {"op": "camera", "pose": "rts80"},
+    {"op": "settle", "frames": 10},
+
+    {"op": "stroke", "mode": "raise", "d": 100, "s": 10, "path": [[-20, 40]], "ticks": 80, "per_frame": 4, "phase": "sculpt"},
+    {"op": "stroke", "mode": "raise", "d": 100, "s": 10, "path": [[40, 70]], "ticks": 120, "per_frame": 4},
+    {"op": "stroke", "mode": "raise", "d": 100, "s": 10, "path": [[-70, 80]], "ticks": 100, "per_frame": 4},
+    {"op": "stroke", "mode": "raise", "d": 90, "s": 10, "path": [[75, 5]], "ticks": 60, "per_frame": 4},
+    {"op": "stroke", "mode": "raise", "d": 100, "s": 10, "path": [[0, 115]], "ticks": 150, "per_frame": 4},
+    {"op": "stroke", "mode": "raise", "d": 80, "s": 10, "path": [[-95, 15]], "ticks": 50, "per_frame": 4},
+    {"op": "stroke", "mode": "raise", "d": 100, "s": 10, "path": [[100, 95]], "ticks": 100, "per_frame": 4},
+    {"op": "stroke", "mode": "raise", "d": 100, "s": 10, "path": [[-110, 120]], "ticks": 120, "per_frame": 4},
+    {"op": "stroke", "mode": "raise", "d": 60, "s": 10, "path": [[-40, 100], [60, 130]], "ticks": 160, "per_frame": 4},
+    {"op": "stroke", "mode": "lower", "d": 80, "s": 10, "path": [[20, -5]], "ticks": 30, "per_frame": 4},
+    {"op": "stroke", "mode": "smooth", "d": 100, "s": 100, "path": [[-120, 0], [120, 20], [120, 60], [-120, 60], [-120, 110], [120, 120], [120, 150], [-120, 150]], "ticks": 600, "per_frame": 6},
+    {"op": "stroke", "mode": "smooth", "d": 100, "s": 100, "path": [[-120, 140], [120, 130], [120, 90], [-120, 90], [-120, 30], [120, 40], [120, -10], [-120, -10]], "ticks": 600, "per_frame": 6},
+
+    {"op": "stroke", "mode": "raise", "d": 18, "s": 60, "path": [[48, 28]], "ticks": 22, "per_frame": 2},
+    {"op": "stroke", "mode": "smooth", "d": 22, "s": 30, "path": [[48, 28]], "ticks": 12, "per_frame": 2},
+    {"op": "stroke", "mode": "raise", "d": 12, "s": 60, "path": [[56, 34]], "ticks": 14, "per_frame": 2},
+
+    {"op": "paint", "layer": 1, "d": 6, "s": 100, "path": [[-60, -20], [-30, 8], [0, 28], [30, 42], [70, 58], [110, 80]], "ticks": 100, "per_frame": 2, "phase": "paint"},
+    {"op": "paint", "layer": 1, "d": 5, "s": 100, "path": [[0, 28], [-10, 60], [-30, 95], [-60, 130]], "ticks": 60, "per_frame": 2},
+    {"op": "paint", "layer": 2, "d": 14, "s": 100, "path": [[-34, 58], [-24, 64]], "ticks": 30, "per_frame": 2},
+
+    {"op": "settle", "frames": 120},
+    {"op": "camera", "pose": "rts80"},
+    {"op": "settle", "frames": 10},
+    {"op": "shot", "name": "rts80_full"},
+    {"op": "camera", "pose": "closeup"},
+    {"op": "settle", "frames": 10},
+    {"op": "shot", "name": "closeup"},
+    {"op": "camera", "pose": "oblique"},
+    {"op": "settle", "frames": 10},
+    {"op": "shot", "name": "oblique"},
+    {"op": "save"}
+  ]
+}

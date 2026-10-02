@@ -1,0 +1,29 @@
+G1 round 4 - terrain_gpu_ms (C1 idle_visible GPU p50 - idle_hidden GPU p50, CSV GPUTime, parse_terrain.py --summary; the same measure as C7 and rounds 0-3), 2026-10-02
+Bar: <= 3.0 ms (Phase 4 bar of D2); round-4 aim <= 2.95 ms. Round 3 (2026-10-02): 3.026 (3.02 / 3.02 / 3.03).
+
+run            material / lighting                                                               terrain_gpu_ms
+c1_r4v1        r4 first build: grass normal not fetched beyond 45 m (faded 30-45 m), tussocks     2.947
+               removed, 5 m relief term removed (26.6 m relief faded in from 25 m), patch dither,
+               rock vein compression; lighting SunLux 12.5, SunTemp 5700, SkyInt 2.6, contrast 1.22
+c1_r4v1b       same                                                                               2.951
+c1_look_r4     FINAL round 4 (gate configuration, no overrides): all micro-relief removed,         2.899
+               ClumpWarpM 4 -> 1 (closeup whorls), palette retuned; SunLux 14, SkyInt 2.9
+c1_look_r4b    FINAL                                                                              2.907
+c1_look_r4c    FINAL                                                                              2.907
+
+GATE REPORTED-pass P4 terrain GPU ms          2.907 ms <= 3.0 (median of 3 run(s))
+Material: ps_instructions 867 (r3 876), samplers 14 (unchanged), MATERIAL_OK errors=0.
+Where the cost went: at rts80 the camera is about 60-150 m from the ground, so the grass normal (a 2K BC5 fetch on ~all meadow pixels)
+is no longer fetched there; the closeup keeps it (its foreground is < 30 m). The removed ALU (tussocks, relief) is the rest.
+Runs between the two pairs (S1 look variants, whorl-isolation tests) are listed in r4_variants.txt; they measured no GPU time.
+
+Fix round (2026-10-02, reported, NOT gated; same formula as parse_terrain.py P4, recomputed by g1logs/p4_any.py because the gate
+excludes override runs and non-gate scripts):
+run             pose / material                                                                   terrain_gpu_ms
+c1_r4_nocut     rts80, C1, -ChimeraTerrainGround=GrassNFarM=100000 (grass normal fetched everywhere) 3.030
+c1n_r4_cut      closeup, C1 idle phases only (g1logs/C1N.json), round-4 material as built          2.760
+c1n_r4_nocut    closeup, C1N, GrassNFarM=100000                                                    2.769
+Reading: the grass-normal fetch costs about 0.12 ms on a full-screen meadow (rts80 3.030 vs 2.907). The P4 number (2.907) holds at
+rts80, whose nearest flat-ground view depth (~48.7 m) is beyond GrassNFarM 45 m, so its margin assumes view depth > 45 m. A closer
+RTS zoom that fills the screen with ground nearer than 30 m pays the fetch and should be expected near 3.03 ms (over the 3.0 bar);
+the closeup pose itself costs less (2.76) because sky fills part of its frame. C12/Phase 4 should measure a zoomed RTS pose.

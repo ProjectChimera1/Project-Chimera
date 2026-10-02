@@ -1,0 +1,196 @@
+{
+  "date": "2026-10-01",
+  "license": "CC0 1.0 (Poly Haven, ambientCG)",
+  "resolution": "2k",
+  "fallback": false,
+  "layers": {
+    "Grass": {
+      "id": "Grass004",
+      "site": "ambientcg",
+      "page": "https://ambientcg.com/a/Grass004",
+      "license": "CC0 1.0",
+      "license_url": "https://ambientcg.com/license",
+      "packed_size": [
+        2048,
+        2048
+      ],
+      "albedo_alpha": "height",
+      "files": [
+        "Grass/T_Grass_C.png",
+        "Grass/T_Grass_N.png",
+        "Grass/T_Grass_ARH.png"
+      ],
+      "sources": {
+        "Diffuse": {
+          "url": "https://ambientcg.com/get?file=Grass004_2K-JPG.zip",
+          "zip_size": 39900302,
+          "zip_sha256": "d7d3f08e8bb1e59aed0c3dbb85ea0b46d5308481f89b6a3fd62c0ec9e862245b",
+          "verified": "size",
+          "ao_map": true,
+          "member": "Grass004_2K-JPG_Color.jpg"
+        },
+        "nor_dx": {
+          "url": "https://ambientcg.com/get?file=Grass004_2K-JPG.zip",
+          "zip_size": 39900302,
+          "zip_sha256": "d7d3f08e8bb1e59aed0c3dbb85ea0b46d5308481f89b6a3fd62c0ec9e862245b",
+          "verified": "size",
+          "ao_map": true,
+          "member": "Grass004_2K-JPG_NormalDX.jpg"
+        },
+        "arm": {
+          "url": "https://ambientcg.com/get?file=Grass004_2K-JPG.zip",
+          "zip_size": 39900302,
+          "zip_sha256": "d7d3f08e8bb1e59aed0c3dbb85ea0b46d5308481f89b6a3fd62c0ec9e862245b",
+          "verified": "size",
+          "ao_map": true,
+          "member": "Grass004_2K-JPG_Roughness.jpg + Grass004_2K-JPG_AmbientOcclusion.jpg"
+        },
+        "Displacement": {
+          "url": "https://ambientcg.com/get?file=Grass004_2K-JPG.zip",
+          "zip_size": 39900302,
+          "zip_sha256": "d7d3f08e8bb1e59aed0c3dbb85ea0b46d5308481f89b6a3fd62c0ec9e862245b",
+          "verified": "size",
+          "ao_map": true,
+          "member": "Grass004_2K-JPG_Displacement.jpg"
+        }
+      }
+    },
+    "Dirt": {
+      "id": "brown_mud_02",
+      "site": "polyhaven",
+      "page": "https://polyhaven.com/a/brown_mud_02",
+      "license": "CC0 1.0",
+      "license_url": "https://polyhaven.com/license",
+      "packed_size": [
+        2048,
+        2048
+      ],
+      "albedo_alpha": null,
+      "files": [
+        "Dirt/T_Dirt_C.png",
+        "Dirt/T_Dirt_N.png",
+        "Dirt/T_Dirt_ARH.png"
+      ],
+      "sources": {
+        "Diffuse": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/brown_mud_02/brown_mud_02_diff_2k.jpg",
+          "md5": "a2dd06f0df9ce45cc0c5abdd6c1629b2",
+          "size": 2163682,
+          "verified": true
+        },
+        "nor_dx": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/brown_mud_02/brown_mud_02_nor_dx_2k.jpg",
+          "md5": "06f17ad703a25e62882d62dadc4c4bcf",
+          "size": 4290359,
+          "verified": true
+        },
+        "arm": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/brown_mud_02/brown_mud_02_arm_2k.jpg",
+          "md5": "1fda11c430cca29b3dcd51636f088557",
+          "size": 1008909,
+          "verified": true
+        },
+        "Displacement": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/png/2k/brown_mud_02/brown_mud_02_disp_2k.png",
+          "md5": "424a01299369299091f1b8193191e58a",
+          "size": 1647509,
+          "verified": true
+        }
+      }
+    },
+    "Rock": {
+      "id": "Rock030",
+      "site": "ambientcg",
+      "page": "https://ambientcg.com/a/Rock030",
+      "license": "CC0 1.0",
+      "license_url": "https://ambientcg.com/license",
+      "packed_size": [
+        2048,
+        2048
+      ],
+      "albedo_alpha": null,
+      "files": [
+        "Rock/T_Rock_C.png",
+        "Rock/T_Rock_N.png",
+        "Rock/T_Rock_ARH.png"
+      ],
+      "sources": {
+        "Diffuse": {
+          "url": "https://ambientcg.com/get?file=Rock030_2K-JPG.zip",
+          "zip_size": 33491328,
+          "zip_sha256": "18992ddc09f8f0cc60eceb875243c0c2449666c662ab7fedbd8bdea4b3d15a99",
+          "verified": "size",
+          "ao_map": true,
+          "member": "Rock030_2K-JPG_Color.jpg"
+        },
+        "nor_dx": {
+          "url": "https://ambientcg.com/get?file=Rock030_2K-JPG.zip",
+          "zip_size": 33491328,
+          "zip_sha256": "18992ddc09f8f0cc60eceb875243c0c2449666c662ab7fedbd8bdea4b3d15a99",
+          "verified": "size",
+          "ao_map": true,
+          "member": "Rock030_2K-JPG_NormalDX.jpg"
+        },
+        "arm": {
+          "url": "https://ambientcg.com/get?file=Rock030_2K-JPG.zip",
+          "zip_size": 33491328,
+          "zip_sha256": "18992ddc09f8f0cc60eceb875243c0c2449666c662ab7fedbd8bdea4b3d15a99",
+          "verified": "size",
+          "ao_map": true,
+          "member": "Rock030_2K-JPG_Roughness.jpg + Rock030_2K-JPG_AmbientOcclusion.jpg"
+        },
+        "Displacement": {
+          "url": "https://ambientcg.com/get?file=Rock030_2K-JPG.zip",
+          "zip_size": 33491328,
+          "zip_sha256": "18992ddc09f8f0cc60eceb875243c0c2449666c662ab7fedbd8bdea4b3d15a99",
+          "verified": "size",
+          "ao_map": true,
+          "member": "Rock030_2K-JPG_Displacement.jpg"
+        }
+      }
+    },
+    "Snow": {
+      "id": "snow_02",
+      "site": "polyhaven",
+      "page": "https://polyhaven.com/a/snow_02",
+      "license": "CC0 1.0",
+      "license_url": "https://polyhaven.com/license",
+      "packed_size": [
+        2048,
+        2048
+      ],
+      "albedo_alpha": null,
+      "files": [
+        "Snow/T_Snow_C.png",
+        "Snow/T_Snow_N.png",
+        "Snow/T_Snow_ARH.png"
+      ],
+      "sources": {
+        "Diffuse": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/snow_02/snow_02_diff_2k.jpg",
+          "md5": "5541e5601951b071691238ddc70632c0",
+          "size": 1314409,
+          "verified": true
+        },
+        "nor_dx": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/snow_02/snow_02_nor_dx_2k.jpg",
+          "md5": "71ee69f028c6522f7f3e8f8d1e7a4c4d",
+          "size": 4858382,
+          "verified": true
+        },
+        "arm": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/snow_02/snow_02_arm_2k.jpg",
+          "md5": "888201f385b78e06ddd205a352c8ce7d",
+          "size": 390341,
+          "verified": true
+        },
+        "Displacement": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/png/2k/snow_02/snow_02_disp_2k.png",
+          "md5": "e7ef934f3ce4e5061a7f937477f07a0e",
+          "size": 7218660,
+          "verified": true
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,38 @@
+G1 round 3 - terrain_gpu_ms (C1 idle_visible GPU p50 - idle_hidden GPU p50, director samples, ms), every C1 run of the round, 2026-10-02
+Bar: <= 3.0 ms (Phase 4 bar of D2). Round 2 (2026-10-01): 2.946 (c1_look_r2/r2b).
+
+run            material / lighting                                                    visible hidden delta
+c1_r3v1        r3 first build, r2 lighting                                            11.68 8.61 3.07
+c1_r3v4        r3 + dry/lush select, r3 lighting (SkyInt 2.8)                         11.69 8.58 3.11
+c1_r3v4b       same                                                                   11.78 8.72 3.06
+c1_r3v5        + grass C/N fetched in the clump branch                                11.69 8.59 3.10
+c1_r3v5b       same                                                                   11.75 8.60 3.15
+c1_r3base      ROUND-2 MATERIAL rebuilt today, r3 lighting (same-day reference)       11.80 8.83 2.97
+c1_r3baseb     same                                                                   11.81 8.81 3.00
+c1_r3v6        r3 + tussock/field/margin branch skips                                 11.90 8.79 3.11
+c1_r3v6b       same                                                                   11.93 8.84 3.09
+c1_r3v7        + rock projection and brush ring only where needed                     11.62 8.58 3.04
+c1_r3v7b       same                                                                   11.66 8.60 3.06
+c1_r3v8        + auto-rock/crown/Tie branches, cluster term dropped (SkyInt 2.3)      11.59 8.60 2.99
+c1_r3v8b       same                                                                   11.61 8.60 3.01
+c1_r3v9        + tussock pre-test, patch weights                                      11.60 8.61 2.99
+c1_r3v9b       same                                                                   11.63 8.61 3.02
+c1_r3v9L2      same material, round-2 lighting overrides                              11.54 8.59 2.95
+c1_r3v9L2b     same                                                                   11.58 8.60 2.98
+c1_r3v10       + ddx gradients, Mid term removed                                      11.60 8.59 3.01
+c1_r3v10b      same                                                                   11.62 8.59 3.03
+c1_r3v10f      same, FogStart 10000                                                   11.59 8.58 3.01
+c1_r3v10fb     same                                                                   11.60 8.60 3.00
+c1_r3x1        experiment: no tussocks, 2-sine long octave                            11.59 8.59 3.00
+c1_r3x1b       same                                                                   11.61 8.59 3.02
+c1_r3x2        experiment: grass normal not fetched beyond 140 m (reverted)           11.60 8.60 3.00
+c1_r3x2b       same                                                                   11.62 8.59 3.03
+c1_look_r3     FINAL round 3 (gate configuration, no overrides)                       11.59 8.57 3.02
+c1_look_r3b    FINAL                                                                  11.61 8.59 3.02
+c1_look_r3c    FINAL                                                                  11.63 8.60 3.03
+c1_r3fd        final + FogDensity 0.025                                               11.59 8.56 3.03
+c1_r3fdb       same                                                                   11.62 8.60 3.02
+c1_r3sk        final + SkyInt 3.6                                                     11.61 8.60 3.01
+c1_r3skb       same                                                                   11.61 8.58 3.03
+
+GATE REPORTED-fail P4 terrain GPU ms          3.026 ms <= 3.0 (median of 3 run(s))

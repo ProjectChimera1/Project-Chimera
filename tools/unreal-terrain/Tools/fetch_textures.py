@@ -1,21 +1,29 @@
 #!/usr/bin/env python
-"""Fetch Poly Haven CC0 2K layer textures and pack them for the ChimeraTerrain ground material (plan C §3.5, C6).
+"""Fetch CC0 2K layer textures (Poly Haven or ambientCG) and pack them for the ChimeraTerrain ground material (plan C §3.5, C6, G1).
 
 Per layer (Grass, Dirt, Rock, Snow) writes T/Textures/<Layer>/:
-  T_<L>_C.png    sRGB albedo      (Diffuse jpg)
+  T_<L>_C.png    sRGB albedo      (Diffuse jpg); for the layers in HEIGHT_IN_ALPHA (G1 round 1: Grass) RGBA with A = height, so the
+                 material reads the grass grain and its blend height from the albedo fetch alone (no ARH fetch for grass)
   T_<L>_N.png    tangent normal   (nor_dx jpg, DirectX convention, linear)
   T_<L>_ARH.png  R=AO G=roughness B=height (arm jpg R,G + Displacement png), linear
-plus T/Textures/manifest.json. Raw downloads are cached in T/Textures/_raw and md5-verified against the API.
+plus T/Textures/manifest.json. Raw downloads are cached in T/Textures/_raw. Poly Haven maps are md5-verified against its API;
+ambientCG publishes no md5, so its 2K-JPG zip is verified by the byte size its API reports and recorded with its sha256 (G1).
+Layer ids live in LAYERS only ("polyhaven:<id>" or "ambientcg:<id>"); G1 (2026-10-01) took Grass004 and Rock030 from G0's candidates.
 Network failure: falls back to the repo PNGs G/assets/textures/terrain/*.png with flat normals, fallback:true.
 Usage: python fetch_textures.py [--out DIR] [--force-fallback] [--alternates]
 """
-import argparse, datetime, hashlib, json, os, sys, urllib.request
+import argparse, datetime, hashlib, io, json, os, sys, urllib.request, zipfile
 import numpy as np
 from PIL import Image
 
 API = "https://api.polyhaven.com"
-LAYERS = {"Grass": "grass_ground", "Dirt": "brown_mud_02", "Rock": "rocks_ground_05", "Snow": "snow_02"}
-ALTERNATES = {"Grass": "forest_ground_04", "Dirt": "dry_ground_01", "Rock": "aerial_rocks_02", "Snow": "snow_01"}
+ACG_API = "https://ambientcg.com/api/v2/full_json?type=Material&id={}&include=downloadData"
+# The one place the layer ids live (G1: Grass004 and Rock030 per G0's candidates.json; C6's grass_ground and rocks_ground_05 are now
+# alternates). Every source is CC0 1.0 (polyhaven.com/license, ambientcg.com/license).
+LAYERS = {"Grass": "ambientcg:Grass004", "Dirt": "polyhaven:brown_mud_02", "Rock": "ambientcg:Rock030", "Snow": "polyhaven:snow_02"}
+ALTERNATES = {"Grass": "polyhaven:grass_ground", "Dirt": "polyhaven:dry_ground_01", "Rock": "polyhaven:rocks_ground_05", "Snow": "polyhaven:snow_01"}
+# G1 round 1: layers whose albedo PNG carries the height map in alpha (BC3 on import; the ARH file is still written for the record).
+HEIGHT_IN_ALPHA = ("Grass",)
 RES = "2k"
 # (map key, API format, local suffix)
 MAPS = [("Diffuse", "jpg", "diff"), ("nor_dx", "jpg", "nor_dx"), ("arm", "jpg", "arm"), ("Displacement", "png", "disp")]
@@ -51,6 +59,45 @@ def fetch_asset(asset_id, raw_dir):
     return out
 
 
+def fetch_ambientcg(asset_id, raw_dir):
+    """Download the 2K-JPG zip of one ambientCG material (size-verified against its API), extract Color, NormalDX, Roughness,
+    AmbientOcclusion (optional) and Displacement. Returns {key: {path,url,sha256,size}} keyed like the Poly Haven maps
+    (Diffuse, nor_dx, arm = AO+rough packed here, Displacement)."""
+    meta = json.loads(http(ACG_API.format(asset_id)))["foundAssets"][0]
+    dl = [d for d in meta["downloadFolders"]["default"]["downloadFiletypeCategories"]["zip"]["downloads"] if d["attribute"] == "2K-JPG"][0]
+    zpath = os.path.join(raw_dir, dl["fileName"])
+    data = open(zpath, "rb").read() if os.path.exists(zpath) else None
+    if data is None or len(data) != dl["size"]:
+        data = http(dl["downloadLink"])
+        if len(data) != dl["size"]:
+            raise RuntimeError(f"size mismatch {dl['downloadLink']}: got {len(data)} want {dl['size']}")
+        open(zpath, "wb").write(data)
+    sha = hashlib.sha256(data).hexdigest()
+    z = zipfile.ZipFile(io.BytesIO(data))
+    names = z.namelist()
+
+    def member(suffix, required=True):
+        hit = [n for n in names if n.endswith("_" + suffix + ".jpg")]
+        if not hit:
+            if required:
+                raise RuntimeError(f"{asset_id}: no *_{suffix}.jpg in {dl['fileName']} ({names})")
+            return None
+        out = os.path.join(raw_dir, hit[0])
+        with open(out, "wb") as f:
+            f.write(z.read(hit[0]))
+        return out
+    col, nor, rough, disp = member("Color"), member("NormalDX"), member("Roughness"), member("Displacement")
+    ao = member("AmbientOcclusion", required=False)
+    r = to_u8(Image.open(rough))
+    a = to_u8(Image.open(ao)) if ao else np.full_like(r, 255)
+    arm_path = os.path.join(raw_dir, f"{asset_id}_arm_2k.png")
+    Image.fromarray(np.dstack([a, r, np.zeros_like(r)]), "RGB").save(arm_path)
+    src = {"url": dl["downloadLink"], "zip_size": dl["size"], "zip_sha256": sha, "verified": "size", "ao_map": bool(ao)}
+    return {"Diffuse": dict(src, path=col, member=os.path.basename(col)), "nor_dx": dict(src, path=nor, member=os.path.basename(nor)),
+            "arm": dict(src, path=arm_path, member=os.path.basename(rough) + (" + " + os.path.basename(ao) if ao else " + AO=255")),
+            "Displacement": dict(src, path=disp, member=os.path.basename(disp))}
+
+
 def to_u8(img):
     """Grayscale image (8 or 16 bit) -> uint8 array."""
     a = np.asarray(img)
@@ -71,6 +118,8 @@ def pack_layer(layer, srcs, outdir):
     if h.shape != arm.shape[:2]:
         h = np.asarray(Image.fromarray(h).resize((arm.shape[1], arm.shape[0]), Image.BILINEAR))
     arh = np.dstack([arm[..., 0], arm[..., 1], h])
+    if layer in HEIGHT_IN_ALPHA:
+        c = Image.fromarray(np.dstack([np.asarray(c), h]), "RGBA")
     c.save(os.path.join(outdir, f"T_{layer}_C.png"))
     n.save(os.path.join(outdir, f"T_{layer}_N.png"))
     Image.fromarray(arh, "RGB").save(os.path.join(outdir, f"T_{layer}_ARH.png"))
@@ -102,20 +151,24 @@ def main():
     out = a.out
     os.makedirs(out, exist_ok=True)
     ids = ALTERNATES if a.alternates else LAYERS
-    manifest = {"date": datetime.date.today().isoformat(), "license": "CC0 (Poly Haven)", "resolution": RES,
+    manifest = {"date": datetime.date.today().isoformat(), "license": "CC0 1.0 (Poly Haven, ambientCG)", "resolution": RES,
                 "fallback": False, "layers": {}}
     try:
         if a.force_fallback:
             raise OSError("forced fallback")
         raw = os.path.join(out, "_raw")
         os.makedirs(raw, exist_ok=True)
-        for layer, aid in ids.items():
-            srcs = fetch_asset(aid, raw)
+        for layer, key in ids.items():
+            site, aid = key.split(":", 1)
+            srcs = fetch_asset(aid, raw) if site == "polyhaven" else fetch_ambientcg(aid, raw)
             size = pack_layer(layer, srcs, os.path.join(out, layer))
-            manifest["layers"][layer] = {"id": aid, "license": "CC0", "packed_size": list(size),
+            lic = "https://polyhaven.com/license" if site == "polyhaven" else "https://ambientcg.com/license"
+            page = f"https://polyhaven.com/a/{aid}" if site == "polyhaven" else f"https://ambientcg.com/a/{aid}"
+            manifest["layers"][layer] = {"id": aid, "site": site, "page": page, "license": "CC0 1.0", "license_url": lic, "packed_size": list(size),
+                                         "albedo_alpha": "height" if layer in HEIGHT_IN_ALPHA else None,
                                          "files": [f"{layer}/T_{layer}_{s}.png" for s in ("C", "N", "ARH")],
                                          "sources": {k: {kk: vv for kk, vv in v.items() if kk != "path"} for k, v in srcs.items()}}
-        md5s = "verified"
+        md5s = "verified" if all(k.startswith("polyhaven:") for k in ids.values()) else "verified(polyhaven md5, ambientcg size+sha256)"
     except (OSError, urllib.error.URLError) as e:
         print(f"NETWORK FAILURE ({e}); using repo PNG fallback", file=sys.stderr)
         manifest["fallback"] = True

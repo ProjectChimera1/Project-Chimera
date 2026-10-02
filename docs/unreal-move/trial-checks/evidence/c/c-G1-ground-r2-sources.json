@@ -1,0 +1,43 @@
+{
+ "panels": [
+  {
+   "file": "Out/look_r1/rts80_full.png",
+   "caption": "G1 round 1 (before): rts80, look full",
+   "sha256": "4b56f6901f0a0d43a17f58f1b1290d7c4c1089795ab955ea73e81c49a566ecad"
+  },
+  {
+   "file": "Out/look_r2/rts80_full.png",
+   "caption": "G1 round 2 (after): rts80, look full",
+   "sha256": "118b70be3f58c76df75d442259fa30879b5c999fdde6789e1f86d3f03a00ba70"
+  },
+  {
+   "file": "Out/look_r2/oblique.png",
+   "caption": "G1 round 2: oblique, look full",
+   "sha256": "3b97dee3a4f48033f9c4117421a8f7256d6de087fd33fd41e10e7f2bd4162165"
+  },
+  {
+   "file": "Out/look_r2_map/rts80_full.png",
+   "caption": "G1 round 2, look map (rolling hills, not a gate): rts80",
+   "sha256": "1e9ecae8f3560080cf4a54c712a2baeb31633457dcc49c1b8b5b74f7e233e50c"
+  }
+ ],
+ "output": {
+  "file": "Out/look/ours_r2.png",
+  "sha256": "69ceb542d5aed4d3386acac05d7089e8749d767882f60b983dc90e53fc337732",
+  "size": [
+   3840,
+   2442
+  ]
+ },
+ "jpg": {
+  "file": "Out/look/c-G1-ground-r2.jpg",
+  "quality": 65,
+  "bytes": 919949
+ },
+ "phone": null,
+ "numbers": [
+  "G1 round 2 | terrain GPU (C1 visible - hidden, idle): 2.946 ms median of 2 runs <= 3.0 Phase-4 bar (r1 2.923) | paint bar 0.475 >= 0.30 (r1 0.458)",
+  "S1 look_r2: S1 PASS (P7, P11, P5); height/splat FNV equal C4 s1_a (0xff563549/0xd264ddc9; P8 vs look_r2_b at 20 fps + 300 ms hitch PASS); G1 gate PASS (hill 2.60); tests 26/26",
+  "rts80 meadow hue 63.5 S 0.59 V 0.39 (ML 62/0.55/0.40); within-window hue range 4.0 deg (ML 9.7, r1 11.9); lime 0.26 (ML 0.25, r1 0.12); Lab chroma SD 5.1 (ML 5.5, r1 3.2); 64-128 px 0.0044 (ML 0.0052, r1 0.0108)"
+ ]
+}

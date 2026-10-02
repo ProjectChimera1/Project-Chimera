@@ -1,0 +1,8 @@
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=66/66 rule=completed=true and ops_done == ops_total
+BAR c7_material                    PASS   value=/Game/Terrain/M_ChimeraGround.M_ChimeraGround ground=True error='' rule=results.json material = M_ChimeraGround, no error
+BAR c7_compile_errors              PASS   value=0 rule=0 material/shader compile error lines in game.log
+BAR c7_paint_mask_px               PASS   value=50346 rule=>= 50 footprint pixels at rts80/paint
+BAR c7_paint_changed_frac          PASS   value=0.3123 rule=paint vs sculpt inside rts80/paint >= 0.30
+BAR c7_paint_aa_floor              REPORT value=0.0000 rule=before vs before_aa inside the same mask (A/A noise floor)
+C7 PASS

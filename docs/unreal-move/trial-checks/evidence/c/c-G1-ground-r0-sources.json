@@ -1,0 +1,42 @@
+{
+ "panels": [
+  {
+   "file": "Out/s1_mat/rts80_full.png",
+   "caption": "C7 (before): rts80, look full",
+   "sha256": "699707543ce55f6cbdb021a71d301d269dc1fefb2d13031333f2b07ac0aaba74"
+  },
+  {
+   "file": "Out/look_r0/rts80_full.png",
+   "caption": "G1 round 0 (after): rts80, look full",
+   "sha256": "210ef3171e5e79f9b87088dd5dd60fbe0f4ceabbef821b2f6d1022a61307a560"
+  },
+  {
+   "file": "Out/look_r0/closeup.png",
+   "caption": "G1 round 0: closeup, look full",
+   "sha256": "00147e18fb9aef3adf22fc392e02ba55b138e7c39e56178fe50307d8ba45ced2"
+  },
+  {
+   "file": "Out/look_r0/oblique.png",
+   "caption": "G1 round 0: oblique, look full",
+   "sha256": "9c8aa04eb71ccab5a7164167af7e1ef44c1069881f7a33f9f7f49502f525e719"
+  }
+ ],
+ "output": {
+  "file": "Out/look/ours_r0.png",
+  "sha256": "859e048a12c7d9075248f621416b8bbcd9b532f7b3879c9a9b77081393068098",
+  "size": [
+   3840,
+   2412
+  ]
+ },
+ "jpg": {
+  "file": "Out/look/c-G1-ground-r0.jpg",
+  "quality": 80,
+  "bytes": 1416495
+ },
+ "phone": null,
+ "numbers": [
+  "G1 round 0 | terrain GPU 2.926 ms (C1 visible - hidden, median of 2 runs) <= 3.0 | paint bar 0.579 >= 0.30 | S1 PASS, hashes equal C4 s1_a | G1 gate PASS",
+  "rts80 meadow: hue 60.6 deg S 0.57 V 0.41 (C7 33.7 / 0.59 / 0.47; Manor Lords target 62 / 0.55 / 0.40, G0) | CC0 Grass004 + Rock030 (ambientCG), brown_mud_02 + snow_02 (Poly Haven) | sun 6500 K, Lumen off"
+ ]
+}

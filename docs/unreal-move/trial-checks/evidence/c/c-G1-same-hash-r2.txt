@@ -1,0 +1,15 @@
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=59/59 rule=completed=true and ops_done == ops_total
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=66/66 rule=completed=true and ops_done == ops_total
+BAR shared_hashes                  PASS   value=['after', 'pre_last2', 'redo', 'undo'] rule=>= 4 shared hash ops
+BAR height_fnv_equal               PASS   value=equal at 4 hashes + final rule=equal at every shared hash
+BAR splat_fnv_equal                PASS   value=equal at 4 hashes + final rule=equal at every shared hash
+BAR final_equal                    PASS   value=0xff563549/0xd264ddc9 vs 0xff563549/0xd264ddc9 rule=final hashes equal
+BAR ticks_applied_eq_ticks_a       PASS   value=12 strokes, 0 mismatched rule=ticks_applied == ticks
+BAR ticks_applied_eq_ticks_b       PASS   value=12 strokes, 0 mismatched rule=ticks_applied == ticks
+BAR b_capped_fps                   PASS   value=a MaxFPS=0, b MaxFPS=20 rule=a uncapped (0), b capped below 60
+BAR b_frame_time_differs           PASS   value=median frame a=9.07 ms b=50.00 ms rule=b's frames are clearly slower than a's
+BAR b_hitched_mid_stroke           PASS   value=1 hitch(es): [(300, 300)] rule=>= 1 mid-stroke hitch of the requested length
+height_fnv equal, splat_fnv equal, ticks_applied==ticks
+SAME-HASH PASS

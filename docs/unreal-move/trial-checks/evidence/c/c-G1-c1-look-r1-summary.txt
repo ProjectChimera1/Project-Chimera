@@ -1,0 +1,96 @@
+== runs
+tag                  script completed ops      unit  measured  log   configuration
+c1_look_r1           C1     True      12/12    0     no        0     half=160 chunk=64 draw=Dynamic
+c1_look_r1b          C1     True      12/12    0     no        0     half=160 chunk=64 draw=Dynamic
+GATE PASS         runs_completed             2 run(s); completed=true and ops_done == ops_total for each
+GATE PASS         log_scan                   findings per run: {'c1_look_r1': 0, 'c1_look_r1b': 0}
+gate configuration: half=160 chunk=64 draw=Dynamic (default)
+
+== frame metrics per phase (director samples, ms; fps = 1000 / frame ms)
+tag              phase               n  fps p50 fps 1%lo    frame  GPU p50   GT p50   RT p50  GPU p99  >33ms
+c1_look_r1       default           130     81.1     33.0    12.34    11.75     1.42    12.23    14.95      1
+c1_look_r1       idle_visible     2503     84.1     76.1    11.89    11.50     1.21    11.88    12.72      0
+c1_look_r1       transition          6    112.0     82.8     8.92     8.63     1.15     9.23    11.52      0
+c1_look_r1       idle_hidden      1118    113.4    103.0     8.82     8.60     1.12     8.88     9.49      0
+c1_look_r1       idle_visible2     833     83.8     76.2    11.93    11.54     1.27    11.92    12.63      0
+c1_look_r1       walk             4961     83.2     75.4    12.02    11.68     1.63    12.01    12.70      0
+c1_look_r1       idle_after        416     82.8     73.6    12.07    11.69     1.76    12.07    12.77      1
+c1_look_r1b      default           130     82.5     32.9    12.13    11.66     1.42    12.07    16.69      1
+c1_look_r1b      idle_visible     2501     83.8     75.6    11.93    11.53     1.76    11.92    12.56      0
+c1_look_r1b      transition          6    105.8     78.8     9.46     9.24     1.79     9.78    12.28      0
+c1_look_r1b      idle_hidden      1117    112.6    102.2     8.88     8.62     1.68     8.92     9.50      0
+c1_look_r1b      idle_visible2     836     83.9     76.0    11.92    11.54     1.79    11.91    12.55      0
+c1_look_r1b      walk             4987     83.5     75.7    11.98    11.60     1.90    11.97    12.63      0
+c1_look_r1b      idle_after        419     83.5     75.9    11.98    11.62     1.82    11.97    12.67      1
+
+== CSV profiler per phase (frames of terrain.csv tagged by the director's phase events; ms)
+tag              phase               n  fps p50 fps 1%lo  GPU p50   GT p50   RT p50   max ms  prims p50
+c1_look_r1       default             1     57.3     57.3    11.65     5.23    12.23     17.4     295533
+c1_look_r1       idle_visible     2503     84.1     76.1    11.50     1.21    11.88     13.7     295579
+c1_look_r1       transition          6    113.1     82.7     8.60     1.15     9.23     12.1        449
+c1_look_r1       idle_hidden      1118    113.4    102.9     8.59     1.12     8.88     10.2        449
+c1_look_r1       idle_visible2     833     83.8     76.2    11.54     1.27    11.92     14.5     295579
+c1_look_r1       walk             4961     83.2     75.4    11.68     1.63    12.01     20.7     295581
+c1_look_r1       idle_after        413     82.8     73.7    11.69     1.76    12.07     13.8     295581
+c1_look_r1b      default             1     57.2     57.2    11.41     4.83    11.75     17.5     295533
+c1_look_r1b      idle_visible     2501     83.8     75.7    11.53     1.76    11.92     13.8     295579
+c1_look_r1b      transition          6    105.7     78.8     9.24     1.79     9.78     12.7        451
+c1_look_r1b      idle_hidden      1117    112.7    102.2     8.61     1.68     8.92     10.3        449
+c1_look_r1b      idle_visible2     836     83.9     76.0    11.54     1.79    11.91     14.2     295579
+c1_look_r1b      walk             4987     83.5     75.6    11.61     1.90    11.97     23.5     295581
+c1_look_r1b      idle_after        416     83.5     75.9    11.62     1.81    11.97     13.5     295581
+
+== brush ticks by diameter (ms; gate configuration, pooled over its runs, none measured: ['c1_look_r1', 'c1_look_r1b'])
+    d      n   tot p50   tot p99   tot max   apply50    norm50     upl50   splat50
+    5    910     0.072     0.234     0.554     0.004     0.004     0.064     0.000
+   20    888     0.111     0.465     0.629     0.011     0.027     0.070     0.000
+   60    912     0.387     0.832     1.017     0.050     0.172     0.149     0.000
+  100    888     0.856     1.465     1.647     0.121     0.435     0.265     0.000
+by mode: flatten n=600 p50=0.294 p99=1.179, lower n=900 p50=0.297 p99=1.315, paint n=600 p50=0.125 p99=1.067, raise n=898 p50=0.253 p99=1.195, smooth n=600 p50=0.318 p99=1.399
+
+== render-thread acceptance latency of ranged edits
+c1_look_r1       edits=5050 finished=5050 frames p50=1 p95=1 p99=1 max=1 hist(0..4+)=[0, 5050, 0, 0, 0] ms p50=11.68 proxy_recreates_during_strokes=0 proxy_recreates=175
+c1_look_r1b      edits=5050 finished=5050 frames p50=1 p95=1 p99=1 max=1 hist(0..4+)=[0, 5050, 0, 0, 0] ms p50=11.59 proxy_recreates_during_strokes=0 proxy_recreates=175
+
+== memory (UsedPhysical MB) and bodies
+c1_look_r1       n=59 start=2515 end=2677 peak=2677 growth_peak=162 growth_end=162 bodies total/rmc peak=-1/-1 end=-1/-1 vram_peak_mib=2474
+c1_look_r1b      n=59 start=2524 end=2696 peak=2696 growth_peak=172 growth_end=172 bodies total/rmc peak=-1/-1 end=-1/-1 vram_peak_mib=2633
+
+== hashes
+c1_look_r1       final        height=0x95916b8c splat=0xf71438df
+c1_look_r1b      final        height=0x95916b8c splat=0xf71438df
+
+== reported (not gated): triangles / chunks / hitches / dropped ticks / walks / settle
+c1_look_r1       triangles=204800 chunks=25 walks=[(1799, 0)] hitches=0 settle_ms=[1493]
+c1_look_r1b      triangles=204800 chunks=25 walks=[(1799, 0)] hitches=0 settle_ms=[1479]
+
+== rep spread (reps of one configuration; > 5 % is flagged)
+half=160 chunk=64 draw=Dynamic | C1 units=0  idle frame p50 ms  reps=2 spread=0.3 % ok
+half=160 chunk=64 draw=Dynamic | C1 units=0  idle GPU p50 ms    reps=2 spread=0.2 % ok
+half=160 chunk=64 draw=Dynamic | C1 units=0  walk frame p50 ms  reps=2 spread=0.4 % ok
+half=160 chunk=64 draw=Dynamic | C1 units=0  tick total p50 ms  reps=2 spread=7.1 % FLAG
+
+== plan C 5 metrics (NO measured run: timings are REPORTED, not gated (EXECUTION 3 C9))
+GATE REPORTED-pass P1 tick p50 d20            0.111 ms <= 1.0 (n=888)
+GATE REPORTED-pass P1 tick p50 d100           0.856 ms <= 2.0 (n=888)
+GATE REPORTED-pass P1 tick p99                1.300 ms <= 4.0 (n=3598)
+GATE REPORTED-pass P2 latency median          1.0 frames <= 2 (10100 edits)
+GATE REPORTED-pass P2 in-place use            proxy_recreates_during_strokes 0 of 10100 ranged edits (<= 5 %)
+GATE FAIL         P3 fps with 1000 units     no samples (no C1U run with -ChimeraTerrainUnits=1000)
+GATE REPORTED-pass P4 terrain GPU ms          2.923 ms <= 3.0 (median of 2 run(s))
+GATE FAIL         P5 collision               no samples (no S1 run)
+
+== collision cooks and GT apply (ms; per run)
+tag              fast_cook during   cooks cook p50 cook p95 cook max   gt n   gt p95   gt max
+c1_look_r1       True      0          144     3.86     5.03     5.93     40    1.130    1.451
+c1_look_r1b      True      0          144     3.83     5.72     6.37     40    0.974    1.251
+GATE REPORTED-pass P5 cook p95                5.59 ms <= 50 (n=288 pooled)
+GATE REPORTED-pass P5 GT apply p95            1.130 ms <= 4 (n=80 pooled)
+GATE FAIL         P6 soak growth             no samples (no SOAK run)
+GATE FAIL         P7 undo/redo exact         no samples (no S1 run)
+GATE FAIL         P11 GPU mesh = CPU         no samples (no S1 run)
+GATE FAIL         P8 determinism             no samples (needs two S1 runs; run `--same-hash s1_a s1_b`)
+GATE FAIL         P9 sim grid                no samples here: `--simgrid RUN` (python mirror) and C10's elevhash (C#) decide it
+GATE FAIL         P10 mouse                  no samples (no MOUSE run)
+
+GATES: pass=2 fail=8 reported=8 flags=1

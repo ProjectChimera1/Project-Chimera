@@ -1,0 +1,14 @@
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=21/21 rule=completed=true and ops_done == ops_total
+BAR terrain_changed_frac           PASS   value=0.9350 rule=>= 0.40 vs hidden
+BAR terrain_luma_mean              PASS   value=0.2752 rule=in [0.05, 0.95]
+BAR terrain_luma_std               PASS   value=0.0584 rule=> 0.01
+  mask px: {'hill_sun': 16111, 'hill_shadow': 680, 'cast_shadow': 1662, 'lit_ground': 87300}
+  hill sun side luma=0.2377 shadow side luma=0.1174
+BAR hill_sun_over_shadow           PASS   value=2.0249 rule=>= 1.3
+  cast shadow luma=0.1650 lit ground luma=0.2944
+BAR cast_shadow_darker             PASS   value=0.4396 rule=>= 0.20
+  spike mask px=7967
+BAR spike_changed_frac             PASS   value=0.9484 rule=>= 0.50 of the spike's projected pixels
+  reported: draw_type=Dynamic chunks=25 triangles=204800 ranged_edits=210 proxy_recreates=200 during_strokes=0 bounds_widenings=12 settles=[284, 271, 77]
+G1 PASS
