@@ -16,6 +16,8 @@
 #include "Game/RtsCameraPawn.h"
 #include "Game/TerrainActor.h"
 #include "Game/TerrainLighting.h"
+#include "Game/TerrainScatterActor.h"
+#include "Data/TerrainScatter.h"
 #include "Render/TerrainChunkComponent.h"
 #include "Core/RealtimeMeshCollision.h"
 #include "CollisionQueryParams.h"
@@ -436,6 +438,18 @@ double ATerrainScriptDirector::OpTimeoutSeconds(const FString& Name, const FJson
 	{
 		return 30.0 + 5.0;   // the op fails itself with the chunk list at 30 s (plan C 3.8); this is the backstop
 	}
+	if (Name == TEXT("scatter_wait"))
+	{
+		return NumField(Op, TEXT("timeout_s"), 120.0) + 30.0;   // the op times out itself at timeout_s; this is the backstop
+	}
+	if (Name == TEXT("scatter_verify"))
+	{
+		return 300.0;
+	}
+	if (Name == TEXT("scatter_fresh"))
+	{
+		return Options.SettleTimeoutS + 120.0;
+	}
 	return 120.0;
 }
 
@@ -555,6 +569,11 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepOp(const FJsonObject& 
 	if (Name == TEXT("await_mouse")) return StepAwaitMouse(Op);
 	if (Name == TEXT("wait_collision")) return StepWaitCollision(Op);
 	if (Name == TEXT("verify_collision")) return StepVerifyCollision(Op);
+	if (Name == TEXT("scatter")) return StepScatter(Op);
+	if (Name == TEXT("scatter_wait")) return StepScatterWait(Op);
+	if (Name == TEXT("scatter_visible")) return StepScatterVisible(Op);
+	if (Name == TEXT("scatter_verify")) return StepScatterVerify(Op);
+	if (Name == TEXT("scatter_fresh")) return StepScatterFresh(Op);
 	if (Name == TEXT("fail"))
 	{
 		OpError = TEXT("fail op (exit-code contract test)");
@@ -782,6 +801,13 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepHash(const FJsonObject
 		TArray<int32> SimRaw;
 		TerrainSimExport::BuildSimGrid(Terrain->GetHeightfield(), SimRaw);
 		H->SetStringField(TEXT("sim_grid_fnv"), TerrainIO::HashToString(TerrainSimExport::SimGridFnv(SimRaw)));
+	}
+	if (Scatter && Scatter->IsEnabled())
+	{
+		// Plan C scatter 3.8: only while scatter is enabled, so old scripts write identical hash JSON.
+		Scatter->AddHashFields(*H);
+		UE_LOG(LogChimeraTerrain, Display, TEXT("hash %s scatter_fnv=%s scatter_live_fnv=%s scatter_count=%.0f"), *Name, *H->GetStringField(TEXT("scatter_fnv")),
+			*H->GetStringField(TEXT("scatter_live_fnv")), H->GetNumberField(TEXT("scatter_count")));
 	}
 	Hashes->SetObjectField(Name, H);
 	UE_LOG(LogChimeraTerrain, Display, TEXT("hash %s height_fnv=%s splat_fnv=%s"), *Name, *H->GetStringField(TEXT("height_fnv")), *H->GetStringField(TEXT("splat_fnv")));
@@ -2341,6 +2367,210 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepVerifyCollision(const 
 	return EStep::Done;
 }
 
+// ---- scatter ops (task S4, plan C scatter 3.8) ------------------------------------------------------------------------------------------
+
+bool ATerrainScriptDirector::NeedScatter()
+{
+	if (!Scatter || !Scatter->WasRequested())
+	{
+		OpError = TEXT("needs -ChimeraTerrainScatter=1");
+		return false;
+	}
+	return true;
+}
+
+ATerrainScriptDirector::EStep ATerrainScriptDirector::StepScatter(const FJsonObject& Op)
+{
+	if (!NeedScatter())
+	{
+		return EStep::Failed;
+	}
+	if (OpFrame == 0)
+	{
+		const bool bOn = NumField(Op, TEXT("value"), 1.0) != 0.0;
+		TSharedRef<FJsonObject> J = MakeShared<FJsonObject>();
+		J->SetBoolField(TEXT("value"), bOn);
+		J->SetNumberField(TEXT("op_index"), OpIndex + 1);
+		J->SetNumberField(TEXT("frame"), static_cast<double>(GFrameCounter));
+		J->SetBoolField(TEXT("pending_before"), Scatter->HasPendingWork());
+		J->SetNumberField(TEXT("busy_before"), Scatter->NumBusy());
+		J->SetNumberField(TEXT("in_flight_before"), Scatter->NumInFlight());
+		if (bOn)
+		{
+			Scatter->Enable();
+		}
+		else
+		{
+			Scatter->Disable();
+		}
+		ScatterToggles.Add(MakeShared<FJsonValueObject>(J));
+	}
+	return OpFrame >= 2 ? EStep::Done : EStep::Running;
+}
+
+ATerrainScriptDirector::EStep ATerrainScriptDirector::StepScatterWait(const FJsonObject& Op)
+{
+	if (!NeedScatter())
+	{
+		return EStep::Failed;
+	}
+	const double TimeoutS = NumField(Op, TEXT("timeout_s"), 120.0);
+	if (OpPhase == 0)
+	{
+		if (Scatter->HasPendingWork())
+		{
+			if (FPlatformTime::Seconds() - OpStartSeconds > TimeoutS)
+			{
+				OpError = FString::Printf(TEXT("scatter still pending after %.0f s"), TimeoutS);
+				return EStep::TimedOut;
+			}
+			return EStep::Running;
+		}
+		OpPhase = 1;
+		OpPhaseSeconds = FPlatformTime::Seconds();
+		ShotStableFrames = 0;
+		return EStep::Running;
+	}
+	if (++ShotStableFrames < 2)
+	{
+		return EStep::Running;
+	}
+	TSharedRef<FJsonObject> J = MakeShared<FJsonObject>();
+	J->SetNumberField(TEXT("op_index"), OpIndex + 1);
+	J->SetNumberField(TEXT("scatter_wait_ms"), (OpPhaseSeconds - OpStartSeconds) * 1000.0);
+	J->SetNumberField(TEXT("frames"), OpFrame + 1);
+	ScatterWaits.Add(MakeShared<FJsonValueObject>(J));
+	UE_LOG(LogChimeraTerrain, Display, TEXT("scatter_wait_ms=%.0f"), (OpPhaseSeconds - OpStartSeconds) * 1000.0);
+	return EStep::Done;
+}
+
+ATerrainScriptDirector::EStep ATerrainScriptDirector::StepScatterVisible(const FJsonObject& Op)
+{
+	if (!NeedScatter())
+	{
+		return EStep::Failed;
+	}
+	if (OpFrame == 0)
+	{
+		const FString LayerSpec = StrField(Op, TEXT("layers"), TEXT("all"));
+		uint32 Mask = 0;
+		if (LayerSpec.Equals(TEXT("all"), ESearchCase::IgnoreCase))
+		{
+			Mask = (1u << ScatterLayerCount) - 1u;
+		}
+		else
+		{
+			TArray<FString> Names;
+			LayerSpec.ParseIntoArray(Names, TEXT(","), true);
+			for (FString N : Names)
+			{
+				N.TrimStartAndEndInline();
+				bool bFound = false;
+				for (int32 L = 0; L < ScatterLayerCount; ++L)
+				{
+					if (N.Equals(UTF8_TO_TCHAR(ScatterLayerName(static_cast<EScatterLayer>(L))), ESearchCase::IgnoreCase))
+					{
+						Mask |= 1u << L;
+						bFound = true;
+					}
+				}
+				if (!bFound)
+				{
+					OpError = FString::Printf(TEXT("scatter_visible: unknown layer '%s' (grass, groundcover, shrubs, trees, rocks or all)"), *N);
+					return EStep::Failed;
+				}
+			}
+		}
+		Scatter->SetLayersVisible(Mask, NumField(Op, TEXT("value"), 1.0) != 0.0);
+	}
+	return OpFrame >= 2 ? EStep::Done : EStep::Running;
+}
+
+ATerrainScriptDirector::EStep ATerrainScriptDirector::StepScatterVerify(const FJsonObject& Op)
+{
+	if (!NeedScatter())
+	{
+		return EStep::Failed;
+	}
+	const FString Name = StrField(Op, TEXT("name"), FString::Printf(TEXT("verify%d"), OpIndex + 1));
+	bool bPass = false;
+	const TSharedRef<FJsonObject> V = Scatter->Verify(Name, bPass);
+	V->SetNumberField(TEXT("op_index"), OpIndex + 1);
+	ScatterVerifies.Add(MakeShared<FJsonValueObject>(V));
+	return EStep::Done;
+}
+
+ATerrainScriptDirector::EStep ATerrainScriptDirector::StepScatterFresh(const FJsonObject& Op)
+{
+	if (!NeedScatter())
+	{
+		return EStep::Failed;
+	}
+	const FString Name = StrField(Op, TEXT("name"), FString::Printf(TEXT("fresh%d"), OpIndex + 1));
+	static const TCHAR* const ForceCvar = TEXT("r.Shadow.Virtual.Cache.ForceInvalidateDirectional");
+	if (OpFrame == 0)
+	{
+		// Proxies rebuilt from the CPU arrays (each counted as an expected rebuild), and the directional VSM cache dropped for 10 frames (F20).
+		FreshRebuilt = Scatter->RebuildAllProxies();
+		IConsoleVariable* Cv = IConsoleManager::Get().FindConsoleVariable(ForceCvar);
+		FreshCvarOld = Cv ? Cv->GetString() : FString();
+		if (Cv)
+		{
+			Cv->Set(TEXT("1"), ECVF_SetByCode);
+		}
+		FreshStage = 1;
+		FreshFrames = 0;
+		return EStep::Running;
+	}
+	if (FreshStage == 1)
+	{
+		if (++FreshFrames < 10)
+		{
+			return EStep::Running;
+		}
+		if (IConsoleVariable* Cv = IConsoleManager::Get().FindConsoleVariable(ForceCvar))
+		{
+			Cv->Set(FreshCvarOld.IsEmpty() ? TEXT("0") : *FreshCvarOld, ECVF_SetByCode);
+		}
+		FreshStage = 2;
+		ShotStableFrames = 0;
+		return EStep::Running;
+	}
+	if (FreshStage == 2)
+	{
+		// settle 150 (plan C scatter 3.8: Nanite pages, TSR, VSM's 100-frame static threshold).
+		if (!CompileQueuesIdle() || Terrain->HasPendingWork())
+		{
+			ShotStableFrames = 0;
+			return EStep::Running;
+		}
+		if (++ShotStableFrames < 150)
+		{
+			return EStep::Running;
+		}
+		Scatter->ClearExpectedRebuilds();
+		FreshShotOp = MakeShared<FJsonObject>();
+		FreshShotOp->SetStringField(TEXT("op"), TEXT("shot"));
+		FreshShotOp->SetStringField(TEXT("name"), Name + TEXT("_fresh"));
+		FreshStage = 3;
+		OpPhase = 0;
+		ShotStableFrames = 0;
+		return EStep::Running;
+	}
+	const EStep Shot = StepShot(*FreshShotOp);
+	if (Shot == EStep::Done)
+	{
+		TSharedRef<FJsonObject> J = MakeShared<FJsonObject>();
+		J->SetStringField(TEXT("name"), Name);
+		J->SetStringField(TEXT("shot"), Name + TEXT("_fresh"));
+		J->SetNumberField(TEXT("components_rebuilt"), FreshRebuilt);
+		J->SetNumberField(TEXT("op_index"), OpIndex + 1);
+		ScatterFreshes.Add(MakeShared<FJsonValueObject>(J));
+		FreshStage = 0;
+	}
+	return Shot;
+}
+
 TSharedRef<FJsonObject> ATerrainScriptDirector::CollisionToJson() const
 {
 	TSharedRef<FJsonObject> O = MakeShared<FJsonObject>();
@@ -2498,7 +2728,21 @@ void ATerrainScriptDirector::Finish(uint8 Code, const FString& Reason)
 	Opt->SetNumberField(TEXT("hitch_ms"), Options.HitchMs);
 	Opt->SetStringField(TEXT("load_dir"), Options.LoadDir);
 	Opt->SetStringField(TEXT("ground_params"), Options.GroundParams);
+	if (Scatter && Scatter->WasRequested())
+	{
+		Opt->SetObjectField(TEXT("scatter"), Scatter->OptionsJson());
+	}
 	Results->SetObjectField(TEXT("options"), Opt);
+	if (Scatter && Scatter->WasRequested())
+	{
+		// Plan C scatter 3.8 results block (S5 adds checks, dumps, view counts).
+		TSharedRef<FJsonObject> SJ = Scatter->ResultsJson();
+		SJ->SetArrayField(TEXT("verifies"), ScatterVerifies);
+		SJ->SetArrayField(TEXT("waits"), ScatterWaits);
+		SJ->SetArrayField(TEXT("freshes"), ScatterFreshes);
+		SJ->SetArrayField(TEXT("toggles"), ScatterToggles);
+		Results->SetObjectField(TEXT("scatter"), SJ);
+	}
 	if (Terrain)
 	{
 		Results->SetObjectField(TEXT("material"), Terrain->DescribeMaterial());

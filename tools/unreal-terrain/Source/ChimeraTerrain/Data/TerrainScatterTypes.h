@@ -241,12 +241,23 @@ namespace ChimeraTerrain
 		int32 Changes() const { return Updates.Num() + Removes.Num() + Appends.Num(); }
 	};
 
+	/**
+	 * The owner's engine payload of one unit, built by the worker and read by the game-thread apply (task S4). The Data layer only knows this
+	 * opaque base; the Render layer derives its payload from it (FScatterUnitPrepared), so no Render type is named here.
+	 */
+	struct FScatterUnitPayload
+	{
+		virtual ~FScatterUnitPayload() = default;
+	};
+
 	/** The worker's result for one unit: the script and the unit state it leads to (ISM order after the script). */
 	struct FScatterUnitWork
 	{
 		uint8 Mesh = 0;
 		FScatterEditScript Script;
 		TSharedPtr<const FScatterUnitState, ESPMode::ThreadSafe> Next;
+		/** Instance transforms and custom data of the script, built on the worker so the game thread only makes the engine calls (null in pure tests). */
+		TSharedPtr<const FScatterUnitPayload, ESPMode::ThreadSafe> Prepared;
 		/** Instances in the unit before the script (for the apply cost prediction). */
 		int32 InstancesBefore = 0;
 		int32 InstancesAfter() const { return Next.IsValid() ? Next->Records.Num() : 0; }

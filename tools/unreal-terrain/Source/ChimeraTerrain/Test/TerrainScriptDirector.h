@@ -60,6 +60,15 @@
 //                                         counted both ways, |dz| (cm) of the two hit points over the rays both hit (results collision.verifies[])
 //   residue                               REPORTED only, after the gated soak samples: clear the undo history, blocking gc, FMemory::Trim, then
 //                                         a sample with bodies (results memory.residue_*); P6's gated after-GC figures never read it
+// Ops (scatter S4, plan C scatter 3.8; each fails with "needs -ChimeraTerrainScatter=1" unless the run started with scatter):
+//   scatter {value}                       1: enable (load, dirty all, bump the epoch, fill); 0: disable (bump the epoch, cancel, clear, reset)
+//   scatter_wait {timeout_s=120}          until scatter has no pending work, then 2 frames (results scatter.waits[].ms)
+//   scatter_visible {value, layers="all"} hide or show layers (grass, groundcover, shrubs, trees, rocks) by cull distance; no proxy change
+//   scatter_verify {name}                 live == reference, ISM readback == BuildInstance of the unit states, z and up axis from HF, no tile
+//                                         pending (results scatter.verifies[]; recorded, the parser gates it)
+//   scatter_fresh {name}                  rebuild every scatter proxy from the CPU arrays, force-invalidate the directional VSM for 10 frames,
+//                                         settle 150, shot <name>_fresh (SX18's oracle)
+//   hash gains scatter_fnv, scatter_live_fnv, scatter_count while scatter is enabled.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -75,6 +84,7 @@
 class ATerrainActor;
 class UPrimitiveComponent;
 class ATerrainLighting;
+class ATerrainScatter;
 class APlayerController;
 class USceneCaptureComponent2D;
 class UTextureRenderTarget2D;
@@ -93,6 +103,8 @@ public:
 	static constexpr uint8 ExitOpTimeout = 3;
 
 	void Start(const FChimeraTerrainOptions& InOptions, ATerrainActor* InTerrain, ATerrainLighting* InLighting, bool bTerrainOk);
+	/** The scatter actor (dormant unless the run enabled scatter); call before Start. */
+	void SetScatter(ATerrainScatter* InScatter) { Scatter = InScatter; }
 
 	virtual void Tick(float DeltaSeconds) override;
 
@@ -103,6 +115,8 @@ private:
 	TObjectPtr<ATerrainActor> Terrain;
 	UPROPERTY(Transient)
 	TObjectPtr<ATerrainLighting> Lighting;
+	UPROPERTY(Transient)
+	TObjectPtr<ATerrainScatter> Scatter;
 	UPROPERTY(Transient)
 	TObjectPtr<USceneCaptureComponent2D> Capture;
 	UPROPERTY(Transient)
@@ -200,6 +214,16 @@ private:
 	TSharedPtr<FJsonObject> Saved;
 	TSharedPtr<FJsonObject> Loaded;
 	TSharedPtr<FJsonObject> CsvInfo;
+	// scatter ops (S4)
+	TArray<TSharedPtr<FJsonValue>> ScatterVerifies;
+	TArray<TSharedPtr<FJsonValue>> ScatterWaits;
+	TArray<TSharedPtr<FJsonValue>> ScatterFreshes;
+	TArray<TSharedPtr<FJsonValue>> ScatterToggles;
+	int32 FreshStage = 0;
+	int32 FreshFrames = 0;
+	int32 FreshRebuilt = 0;
+	FString FreshCvarOld;
+	TSharedPtr<FJsonObject> FreshShotOp;
 	/** Footprint discs (x, y, radius metres) by set name, filled by strokes with "fp". */
 	TMap<FString, TArray<FVector>> FootprintSets;
 
@@ -234,6 +258,13 @@ private:
 	EStep StepAwaitMouse(const FJsonObject& Op);
 	EStep StepWaitCollision(const FJsonObject& Op);
 	EStep StepVerifyCollision(const FJsonObject& Op);
+	/** Scatter ops need a run started with scatter (OpError otherwise). */
+	bool NeedScatter();
+	EStep StepScatter(const FJsonObject& Op);
+	EStep StepScatterWait(const FJsonObject& Op);
+	EStep StepScatterVisible(const FJsonObject& Op);
+	EStep StepScatterVerify(const FJsonObject& Op);
+	EStep StepScatterFresh(const FJsonObject& Op);
 	/** Physics trace (ECC_Visibility, complex) of a terrain-metre ray; true on a blocking hit, OutTerrain = the hit was a terrain chunk. */
 	bool PhysicsRay(const FVector& OriginM, const FVector& DirM, double MaxM, FVector& OutHitM, bool& OutTerrain,
 		const UPrimitiveComponent** OutComponent = nullptr) const;

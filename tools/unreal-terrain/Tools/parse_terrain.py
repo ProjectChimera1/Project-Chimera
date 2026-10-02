@@ -25,6 +25,11 @@ Usage:
                                                  bar: `paint` vs `sculpt` changed_frac >= 0.30 inside the paint-stroke footprint (imgdiff
                                                  --mask paint), the A/A floor (before vs before_aa, same mask) reported; writes RUN_DIR/c7.json
   parse_terrain.py --same-hash A_DIR B_DIR       P8: equal height/splat FNV at every shared hash, ticks_applied == ticks, B had the hitch
+  parse_terrain.py --equal-hashes A_DIR B_DIR    plan-c-scatter 3.8: shared-name height/splat FNV, final hashes, ticks_applied == ticks, the saved
+                                                 files' sha256, scatter keys when both runs have them (config mismatch FAILs); no timing bars
+  parse_terrain.py --scatter RUN_DIR             scatter S4 (SX1/SX8/SX9 on one run): every scatter_verify passed, settled hashes live == reference,
+                                                 counters balanced, proxy_recreates == 0, SXSMOKE's hidden shot and undo-to-first, log scan;
+                                                 writes RUN_DIR/scatter.json
   parse_terrain.py --simgrid RUN_DIR             independent re-computation of sim_grid_fnv and the 16 probes from height.r32 (python
                                                  mirror of ScenarioLoadPhase.cs:252-270 / ElevationGrid.Sample; C10 does the C# check)
   parse_terrain.py --summary RUN_DIR... [--json OUT.json] [--gate-config KEY]
@@ -485,7 +490,11 @@ def s1(run):
     return g, res, ok
 
 
-def s1l(run, ref):
+def s1l(run, ref, img_ref=None):
+    """S1L (plan C 3.8): hashes and loaded_dir against `ref` (the run whose saved files were loaded). The image bars (A/A floor, footprint and
+    terrain-mask redo comparisons) read their reference shots from `img_ref` when given (default `ref`): a run of the same S1 ops whose saved
+    files are byte-identical to `ref`'s (checked here, else FAIL), for when `ref`'s shots predate a look change. Which run may serve as the
+    image reference is the main session's ruling, never the implementer's."""
     g = Gates()
     res = scan_run(run, g)
     rres = load_results(ref)
@@ -501,6 +510,13 @@ def s1l(run, ref):
     g.bar("hash_eq_reference_redo", h is not None and h == want, "%s vs %s" % (h, want), "loaded hashes = reference redo hashes")
     g.bar("hash_eq_reference_saved", h is not None and h == (saved.get("height_fnv"), saved.get("splat_fnv")), "%s vs %s/%s" % (h, saved.get("height_fnv"), saved.get("splat_fnv")),
           "loaded hashes = reference saved hashes")
+    if img_ref and os.path.normcase(os.path.abspath(img_ref)) != os.path.normcase(os.path.abspath(ref)):
+        present = [f for f in SAVED_FILES if os.path.isfile(os.path.join(ref, f)) and os.path.isfile(os.path.join(img_ref, f))]
+        diff = [f for f in present if sha256_file(os.path.join(ref, f)) != sha256_file(os.path.join(img_ref, f))]
+        g.bar("image_reference_same_terrain", len(present) == len(SAVED_FILES) and not diff,
+              "%s: saved files %s" % (img_ref, ("differ: %s" % diff) if diff else ("equal: %s" % present)),
+              "the image reference saved byte-identical terrain.json, height.r32, splat.rgba8 to the hash reference")
+        ref = img_ref
     try:
         bg = imgdiff.load_luma(png(ref, "bg"))
         ref_redo = imgdiff.load_luma(png(ref, "redo"))
@@ -561,6 +577,231 @@ def same_hash(a, b):
         print("height_fnv equal, splat_fnv equal, ticks_applied==ticks")
     print("SAME-HASH %s" % ("PASS" if g.ok else "FAIL"))
     return g
+
+
+# ---------------------------------------------------------------------------------------------------------------- equal hashes, scatter (S4)
+SAVED_FILES = ("terrain.json", "height.r32", "splat.rgba8")
+# plan-c-scatter.md 3.8 log scan additions: material warnings or errors naming the scatter assets, and VSM page-pool overflow (F20).
+# LogChimeraTerrain: Error is already a KIT logscan rule (chimera-error).
+SCATTER_LOG_FAIL = re.compile(r"LogMaterial: (Warning|Error).*?/Game/Terrain/Scatter|Virtual Shadow Map Page Pool overflow")
+
+
+def sha256_file(path):
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def scatter_config(res):
+    """(config_fnv, level, mesh paths) of a run's options.scatter, or None when the run had no scatter."""
+    o = ((res.get("options") or {}).get("scatter")) or {}
+    if not o:
+        return None
+    meshes = tuple(sorted((k, (v or {}).get("path")) for k, v in (o.get("meshes") or {}).items()))
+    return (o.get("config_fnv"), o.get("level"), meshes)
+
+
+def equal_hashes(a, b):
+    """plan-c-scatter.md 3.8 --equal-hashes: shared-name height and splat FNV, final hashes, ticks_applied == ticks, the saved files' sha256,
+    and the scatter keys when both runs have them. No timing bars (unlike --same-hash, F26)."""
+    g = Gates()
+    ra, rb = scan_run(a, g), scan_run(b, g)
+    if ra is None or rb is None:
+        print("EQUAL-HASHES FAIL")
+        return g
+    names = sorted(set((ra.get("hashes") or {}).keys()) & set((rb.get("hashes") or {}).keys()))
+    g.bar("shared_hashes", len(names) >= 1, names, ">= 1 shared hash op")
+    hneq = [n for n in names if hash_of(ra, n)[0] != hash_of(rb, n)[0]]
+    sneq = [n for n in names if hash_of(ra, n)[1] != hash_of(rb, n)[1]]
+    g.bar("height_fnv_equal", not hneq and bool(names), "differ at %s" % hneq if hneq else "equal at %d shared hashes" % len(names), "equal at every shared hash")
+    g.bar("splat_fnv_equal", not sneq and bool(names), "differ at %s" % sneq if sneq else "equal at %d shared hashes" % len(names), "equal at every shared hash")
+    fa = (ra.get("final_height_fnv"), ra.get("final_splat_fnv"))
+    fb = (rb.get("final_height_fnv"), rb.get("final_splat_fnv"))
+    g.bar("final_equal", fa == fb and None not in fa, "%s/%s vs %s/%s" % (fa + fb), "final hashes equal")
+    for tag, r in (("a", ra), ("b", rb)):
+        bad = [s for s in (r.get("strokes") or []) if s.get("ticks_applied") != s.get("ticks")]
+        g.bar("ticks_applied_eq_ticks_%s" % tag, not bad and bool(r.get("strokes")), "%d strokes, %d mismatched" % (len(r.get("strokes") or []), len(bad)), "ticks_applied == ticks")
+    present = [f for f in SAVED_FILES if os.path.isfile(os.path.join(a, f)) and os.path.isfile(os.path.join(b, f))]
+    if present:
+        diff = [f for f in present if sha256_file(os.path.join(a, f)) != sha256_file(os.path.join(b, f))]
+        g.bar("saved_files_sha256", not diff and len(present) == len(SAVED_FILES), "differ: %s" % diff if diff else "equal: %s" % present,
+              "terrain.json, height.r32, splat.rgba8 sha256 equal (when both runs saved)")
+    else:
+        g.bar("saved_files_sha256", True, "no saved files in both runs", "compared when both runs saved", informational=True)
+    sa, sb = [n for n in names if "scatter_fnv" in ra["hashes"][n]], [n for n in names if "scatter_fnv" in rb["hashes"][n]]
+    both = sorted(set(sa) & set(sb))
+    if both:
+        ca, cb = scatter_config(ra), scatter_config(rb)
+        g.bar("scatter_config", ca == cb and ca is not None, "equal" if ca == cb else "config mismatch: %s vs %s" % (ca, cb),
+              "config_fnv, level and mesh list equal, else FAIL config mismatch (fix the run, never the bar)")
+        keys = ("scatter_fnv", "scatter_live_fnv", "scatter_count")
+        neq = [(n, k) for n in both for k in keys if ra["hashes"][n].get(k) != rb["hashes"][n].get(k)]
+        g.bar("scatter_hashes_equal", not neq, "differ at %s" % neq if neq else "equal at %d shared hashes" % len(both), "scatter_fnv, scatter_live_fnv, scatter_count equal")
+    print("EQUAL-HASHES %s" % ("PASS" if g.ok else "FAIL"))
+    return g
+
+
+def apply_fit(rows, opt):
+    """Least squares of the apply rows (ms, predicted, changes, updates, removes, appends, instances_after, mesh, fill) against
+    [1, changes, instances_after], the residual quantiles, and how often the run's own predictor under-predicted."""
+    if len(rows) < 4:
+        return None
+    A = np.array(rows, dtype=float)
+    ms = A[:, 0]
+    X = np.c_[np.ones(len(A)), A[:, 2], A[:, 6]]
+    coef = np.linalg.lstsq(X, ms, rcond=None)[0]
+    res = ms - X @ coef
+    under = ms > A[:, 1]
+    i = int(np.argmax(ms))
+    return {"n": len(A), "a": float(coef[0]), "b": float(coef[1]), "c": float(coef[2]), "res_p95": float(np.percentile(res, 95)),
+            "res_p99": float(np.percentile(res, 99)), "a_admit": float(coef[0] + np.percentile(res, 95)), "under": int(under.sum()),
+            "worst_under": float((ms - A[:, 1]).max()), "max_ms": float(ms[i]), "max_inst": int(A[i, 6]), "over_08": int((ms > 0.8).sum())}
+
+
+TEARDOWN_RE = re.compile(r"scatter teardown: in_flight_before=(\d+) task_handles_waited=(\d+) in_flight_after=(\d+) busy_after=(\d+) dispatched=(\d+) "
+                         r"applied=(\d+) skipped=(\d+) discarded=(\d+) cancelled=(\d+)")
+
+
+def teardown(run):
+    """TEARX (task S4 teardown coverage): a stroke, then a normal exit (code 0) with its tiles in flight. ATerrainScatter::Shutdown (EndPlay)
+    logs one teardown line: jobs were in flight before it, none after, and the counters balance (the cancelled jobs included)."""
+    g = Gates()
+    res = scan_run(run, g)
+    if res is not None:
+        g.bar("exit_normal", res.get("completed") and res.get("exit_code") == 0, "completed=%s exit_code=%s" % (res.get("completed"), res.get("exit_code")),
+              "the script completed and exited 0 (a normal exit runs EndPlay)")
+        sc = res.get("scatter") or {}
+        g.bar("in_flight_at_results", (sc.get("in_flight_now") or 0) > 0, "in_flight_now=%s busy_now=%s" % (sc.get("in_flight_now"), sc.get("busy_now")),
+              "jobs were in flight when the results were written (the teardown had work to wait on)")
+    m = None
+    log = os.path.join(run, "game.log")
+    if os.path.isfile(log):
+        with open(log, "r", encoding="utf-8", errors="replace") as f:
+            for ln in f:
+                m = TEARDOWN_RE.search(ln) or m
+    g.bar("teardown_line", m is not None, m.group(0) if m else "missing", "EndPlay logged its teardown")
+    if m:
+        v = [int(x) for x in m.groups()]
+        g.bar("teardown_waited", v[0] > 0 and v[1] >= 1 and v[2] == 0, "in_flight before %d, handles waited %d, in flight after %d, busy after %d" % (v[0], v[1], v[2], v[3]),
+              "jobs in flight before Shutdown, every task handle waited, none in flight after")
+        g.bar("teardown_counters_balanced", v[4] == v[5] + v[6] + v[7] + v[8], "dispatched %d = applied %d + skipped %d + discarded %d + cancelled %d" % tuple(v[4:]),
+              "dispatched == applied + skipped_identical + discarded_epoch + cancelled after teardown")
+    print("TEARDOWN %s" % ("PASS" if g.ok else "FAIL"))
+    return g
+
+
+def scatter(run):
+    """plan-c-scatter.md 4 S4 item 4 (SX1, SX8, SX9 on one run): every scatter_verify passed (live == reference, ISM readback == BuildInstance,
+    z and up axis from HF, nothing pending), every settled hash has live == reference, the counters balance with nothing in flight at the end,
+    proxy_recreates == 0, the hidden shot exists (SXSMOKE), SXSMOKE's final hash equals its first, and the log scan is clean."""
+    g = Gates()
+    res = scan_run(run, g)
+    log = os.path.join(run, "game.log")
+    bad = []
+    if os.path.isfile(log):
+        with open(log, "r", encoding="utf-8", errors="replace") as f:
+            bad = [ln.rstrip() for ln in f if SCATTER_LOG_FAIL.search(ln)]
+    g.bar("scatter_log_scan", os.path.isfile(log) and not bad, "%d line(s)" % len(bad), "no LogMaterial warning/error on /Game/Terrain/Scatter, no VSM page-pool overflow")
+    for ln in bad[:10]:
+        print("  " + ln)
+    if res is None:
+        print("SCATTER FAIL")
+        return g, {}
+    sc = res.get("scatter") or {}
+    g.bar("scatter_block", bool(sc.get("available")), "available=%s enabled=%s" % (sc.get("available"), sc.get("enabled")), "results.json scatter block from a run with scatter")
+    opt = ((res.get("options") or {}).get("scatter")) or {}
+    g.bar("scatter_options", bool(opt.get("config_fnv")) and not opt.get("params_error") and not opt.get("mesh_errors"),
+          "config_fnv=%s level=%s params_error=%r mesh_errors=%r" % (opt.get("config_fnv"), opt.get("level"), opt.get("params_error"), opt.get("mesh_errors")),
+          "options.scatter present, no option or mesh error")
+    verifies = sc.get("verifies") or []
+    failed = [v.get("name") for v in verifies if not v.get("pass")]
+    g.bar("scatter_verify", bool(verifies) and not failed, "%d verifies, failed %s" % (len(verifies), failed),
+          ">= 1 scatter_verify and every one passes (live == reference, readback, z, up axis, nothing pending)")
+    for v in verifies:
+        print("  verify %-10s pass=%s live=%s ref=%s instances=%s max dpos %.5f cm drot %.2e rad dz %.2e m dup %.2e rad %s" % (
+            v.get("name"), v.get("pass"), v.get("scatter_live_fnv"), v.get("scatter_fnv"), v.get("instances_read_back"), v.get("max_dpos_cm", 0),
+            v.get("max_drot_rad", 0), v.get("max_dz_m", 0), v.get("max_dup_rad", 0), v.get("fails") or ""))
+    hashes = res.get("hashes") or {}
+    settled = {n: h for n, h in hashes.items() if "scatter_fnv" in h and not h.get("scatter_pending")}
+    neq = [n for n, h in settled.items() if h.get("scatter_fnv") != h.get("scatter_live_fnv")]
+    g.bar("scatter_hash_live_eq_ref", bool(settled) and not neq, "differ at %s" % neq if neq else "equal at %d settled hashes" % len(settled),
+          "scatter_live_fnv == scatter_fnv at every hash taken with nothing pending")
+    k = sc.get("counters") or {}
+    ends = sum(int(k.get(x, 0)) for x in ("applied", "skipped_identical", "discarded_epoch", "cancelled"))
+    g.bar("scatter_counters_balanced", int(k.get("dispatched", -1)) == ends and sc.get("in_flight_now") == 0 and sc.get("busy_now") == 0,
+          "dispatched=%s applied=%s skipped=%s discarded=%s cancelled=%s in_flight=%s busy=%s" % (k.get("dispatched"), k.get("applied"), k.get("skipped_identical"),
+                                                                                            k.get("discarded_epoch"), k.get("cancelled"), sc.get("in_flight_now"), sc.get("busy_now")),
+          "dispatched == applied + skipped_identical + discarded_epoch + cancelled; 0 in flight and 0 busy at the end")
+    floor = [v.get("name") for v in verifies if v.get("components", True) and not (v.get("instances_read_back") or 0) > 0]
+    g.bar("scatter_verify_instances", bool(verifies) and not floor, "read back %s" % [(v.get("name"), v.get("instances_read_back")) for v in verifies],
+          "every scatter_verify with components read back > 0 instances (no vacuous live == reference)")
+    g.bar("scatter_proxy_recreates", sc.get("proxy_recreates") == 0,
+          "recreates=%s (during edits %s, apply-dirtied %s); first=%s expected=%s" % (sc.get("proxy_recreates"), sc.get("proxy_recreates_during_edits"),
+                                                                                   sc.get("proxy_apply_dirtied_recreates"), sc.get("proxy_first_creates"), sc.get("proxy_expected_rebuilds")),
+          "proxy_recreates == 0: no live proxy replaced after scatter's own apply dirtied it, nor for any unexplained dirty mark")
+    for key, what in (("proxy_compile_recreates_during_edits", "editor-compile recreates while edits were in flight"),
+                      ("proxy_engine_recreates_during_edits", "engine-wide recreates while edits were in flight")):
+        g.bar(key, sc.get(key) == 0, "%s (all run: %s)" % (sc.get(key), sc.get(key.replace("_during_edits", ""))), "%s == 0" % what)
+    g.bar("scatter_proxy_reported", True,
+          "refills=%s (during edits %s) pso=%s (during edits %s) engine=%s editor_compile=%s; shader propagations %s, asset post-compiles %s, compile-busy frames %s" % (
+              sc.get("proxy_refills"), sc.get("proxy_refills_during_edits"), sc.get("proxy_pso_recreates"), sc.get("proxy_pso_recreates_during_edits"),
+              sc.get("proxy_engine_recreates"), sc.get("proxy_compile_recreates"), sc.get("shader_propagations"), sc.get("asset_post_compiles"), sc.get("compile_busy_frames")),
+          "reported categories: a refill replaces no proxy; PSO completion, engine contexts and editor compiles are not scatter's own", informational=True)
+    freshes = sc.get("freshes") or []
+    if freshes:
+        rebuilt = sum(int(f.get("components_rebuilt") or 0) for f in freshes)
+        shots = [f.get("shot") for f in freshes if not os.path.isfile(os.path.join(run, "%s.png" % f.get("shot")))]
+        g.bar("scatter_fresh", rebuilt > 0 and (sc.get("proxy_expected_rebuilds") or 0) >= rebuilt and not shots,
+              "%d fresh op(s), %d components rebuilt, proxy_expected_rebuilds %s, missing shots %s" % (len(freshes), rebuilt, sc.get("proxy_expected_rebuilds"), shots),
+              "scatter_fresh rebuilt live proxies as expected rebuilds (proxy_recreates stays 0) and took its shot")
+    gov = int(opt.get("governor") or 0)
+    if gov >= 3:
+        rb = opt.get("governor_readback") or {}
+
+        def num(x):
+            try:
+                return float(x)
+            except (TypeError, ValueError):
+                return None
+        want = {"r.Nanite.MaxPixelsPerEdge": 2.0}
+        bad = [k for k, w in want.items() if num(rb.get(k)) != w]
+        if gov >= 6 and num(rb.get("r.Shadow.Virtual.ResolutionLodBiasDirectional")) is None:
+            bad.append("r.Shadow.Virtual.ResolutionLodBiasDirectional")
+        g.bar("scatter_governor_readback", not bad, "governor %d read back %s" % (gov, rb), "each cvar the governor set reads back its requested value")
+    fit = apply_fit(sc.get("apply_rows") or [], opt)
+    if fit:
+        g.bar("apply_fit", True, "n %d; least squares a %.5f b %.7f c %.7f; residual p95 %.4f p99 %.4f; admission a (a + p95) %.4f; run's predictor a %s b %s c %s "
+              "under-predicted %d units (worst by %.3f ms); max unit %.3f ms at %d instances; units > 0.8 ms: %d" % (
+                  fit["n"], fit["a"], fit["b"], fit["c"], fit["res_p95"], fit["res_p99"], fit["a_admit"], opt.get("predict_a_ms"), opt.get("predict_b_ms_per_change"),
+                  opt.get("predict_c_ms_per_instance"), fit["under"], fit["worst_under"], fit["max_ms"], fit["max_inst"], fit["over_08"]),
+              "apply_unit_ms ~ a + b * changes + c * instances_after (plan C scatter 3.5 and 4 S4 item 5; any unit > 0.8 ms triggers the T0 rank split)",
+              informational=True)
+    if res.get("script") == "SXSMOKE":
+        shot = (res.get("shots") or {}).get("hidden")
+        g.bar("scatter_hidden_shot", bool(shot) and os.path.isfile(os.path.join(run, "hidden.png")), shot.get("path") if shot else "missing",
+              "the shot with every layer hidden was taken (no hang on hidden units)")
+        s0, s1 = hashes.get("start") or {}, hashes.get("final") or {}
+        ok = bool(s0.get("scatter_fnv")) and s1.get("scatter_fnv") == s0.get("scatter_fnv") and s1.get("scatter_live_fnv") == s0.get("scatter_fnv") \
+            and (s1.get("height_fnv"), s1.get("splat_fnv")) == (s0.get("height_fnv"), s0.get("splat_fnv"))
+        g.bar("scatter_undo_returns", ok, "start %s, final ref %s live %s" % (s0.get("scatter_fnv"), s1.get("scatter_fnv"), s1.get("scatter_live_fnv")),
+              "after one undo per stroke, reference and live equal the first hash (and the terrain hashes too)")
+        tog = sc.get("toggles") or []
+        off = [t for t in tog if not t.get("value")]
+        g.bar("scatter_disable_while_busy", bool(off) and any(t.get("busy_before", 0) > 0 or t.get("in_flight_before", 0) > 0 for t in off),
+              [(t.get("busy_before"), t.get("in_flight_before")) for t in off], "scatter 0 ran while tiles were Busy or in flight")
+    gt = (sc.get("scatter_gt_ms") or {}).get("all_but_fill") or {}
+    fl = (sc.get("scatter_flush_ms") or {}).get("all_but_fill") or {}
+    ap = sc.get("apply_unit_ms_edits") or {}
+    g.bar("scatter_gt_ms", True, "p50 %.3f p99 %.3f p99.9 %.3f max %.3f (n %s)" % (gt.get("p50", 0), gt.get("p99", 0), gt.get("p999", 0), gt.get("max", 0), gt.get("n")),
+          "scatter's own game-thread ms per frame outside the fill (SX11 gates it in Phase 4)", informational=True)
+    g.bar("scatter_flush_ms", True, "p50 %.3f p99 %.3f max %.3f" % (fl.get("p50", 0), fl.get("p99", 0), fl.get("max", 0)), "end-of-frame instance flush ms", informational=True)
+    g.bar("apply_unit_ms_edits", True, "p50 %.3f p99 %.3f max %.3f (n %s); init_ms %.0f" % (ap.get("p50", 0), ap.get("p99", 0), ap.get("max", 0), ap.get("n"), sc.get("init_ms", -1)),
+          "per-unit apply cost outside the fill", informational=True)
+    print("SCATTER %s" % ("PASS" if g.ok else "FAIL"))
+    return g, sc
 
 
 # ---------------------------------------------------------------------------------------------------------------- simgrid mirror
@@ -1204,7 +1445,11 @@ def main(argv=None):
     ap.add_argument("--s1l", metavar="RUN_DIR")
     ap.add_argument("--c7", metavar="RUN_DIR")
     ap.add_argument("--ref", metavar="S1_RUN_DIR")
+    ap.add_argument("--img-ref", metavar="S1_RUN_DIR", help="--s1l only: take the image bars' reference shots from this S1 run (saved files must equal --ref's)")
+    ap.add_argument("--teardown", metavar="RUN_DIR", help="TEARX: scatter's EndPlay waited on every in-flight job at a normal exit")
     ap.add_argument("--same-hash", nargs=2, metavar=("A_DIR", "B_DIR"))
+    ap.add_argument("--equal-hashes", nargs=2, metavar=("A_DIR", "B_DIR"))
+    ap.add_argument("--scatter", metavar="RUN_DIR")
     ap.add_argument("--simgrid", metavar="RUN_DIR")
     ap.add_argument("--summary", nargs="+", metavar="RUN_DIR")
     ap.add_argument("--json", metavar="OUT")
@@ -1250,12 +1495,29 @@ def main(argv=None):
     if a.s1l:
         if not a.ref:
             ap.error("--s1l needs --ref")
-        g = s1l(a.s1l, a.ref)
+        g = s1l(a.s1l, a.ref, a.img_ref)
         with open(os.path.join(a.s1l, "s1l.json"), "w", encoding="utf-8") as f:
             json.dump({"gate": "S1L", "pass": g.ok, "bars": g.rows}, f, indent=1)
         return 0 if g.ok else 1
     if a.same_hash:
         g = same_hash(*a.same_hash)
+        return 0 if g.ok else 1
+    if a.equal_hashes:
+        g = equal_hashes(*a.equal_hashes)
+        return 0 if g.ok else 1
+    if a.scatter:
+        if not os.path.isdir(a.scatter):
+            print("no such run dir: %s" % a.scatter)
+            return 2
+        g, _sc = scatter(a.scatter)
+        with open(os.path.join(a.scatter, "scatter.json"), "w", encoding="utf-8") as f:
+            json.dump({"gate": "SCATTER", "pass": g.ok, "bars": g.rows}, f, indent=1)
+        return 0 if g.ok else 1
+    if a.teardown:
+        if not os.path.isdir(a.teardown):
+            print("no such run dir: %s" % a.teardown)
+            return 2
+        g = teardown(a.teardown)
         return 0 if g.ok else 1
     if a.simgrid:
         g = simgrid(a.simgrid)

@@ -1506,5 +1506,34 @@
     "unreal_build_id": "",
     "committed": true,
     "sent_to_alec": null
+  },
+  {
+    "file": "c-S4-sxsmoke-shown-hidden.jpg",
+    "path": "c/c-S4-sxsmoke-shown-hidden.jpg",
+    "sha256": "e9b86e0bb3d19bd57ff43228cd64699362e526d99311e77fd76dc1acb9ed7b68",
+    "bytes": 149121,
+    "w_h": [
+      1600,
+      480
+    ],
+    "task": "S4",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/c_s4/c-S4-sxsmoke-shown-hidden.jpg",
+    "r_commit": "6c6fee25",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-S4-scatter-smoke.txt",
+    "path": "c/c-S4-scatter-smoke.txt",
+    "sha256": "aaa8d88b11be5b767920227bc5578d958f3d37791ce03d2c346e9d52e91e409f",
+    "bytes": 18199,
+    "w_h": null,
+    "task": "S4",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/c_s4/r2/c-S4-scatter-smoke.txt",
+    "r_commit": "6c6fee25",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
   }
 ]

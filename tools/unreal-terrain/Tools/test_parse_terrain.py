@@ -272,6 +272,143 @@ class ParseTests(unittest.TestCase):
             g, vals = quiet(pt.c7, t)
             self.assertFalse(g.ok)
             self.assertEqual(vals["paint_changed_frac"], 0.0)
+    # ---- S4: --equal-hashes and --scatter -------------------------------------------------------------------------------------------
+    def test_equal_hashes_pass_fail_and_saved_files(self):
+        h = {n: ("0x%08x" % i, "0x%08x" % (i + 100)) for i, n in enumerate(("pre_last2", "after", "undo", "redo"))}
+        with tempfile.TemporaryDirectory() as t:
+            a, b, c = (os.path.join(t, x) for x in "abc")
+            write_run(a, h, ("0x1", "0x2"))
+            write_run(b, h, ("0x1", "0x2"))      # no capped fps, no hitch: equal-hashes has no timing bars (F26)
+            self.assertTrue(quiet(pt.equal_hashes, a, b).ok)
+            h2 = dict(h)
+            h2["undo"] = ("0xdead", "0xbeef")
+            write_run(c, h2, ("0x1", "0x2"))
+            self.assertFalse(quiet(pt.equal_hashes, a, c).ok)
+            write_run(c, h, ("0x1", "0x3"))
+            self.assertFalse(quiet(pt.equal_hashes, a, c).ok, "a final splat difference fails")
+            # Saved files are compared when both runs saved them.
+            for d, payload in ((a, b"\x01\x02"), (b, b"\x01\x02")):
+                for f in pt.SAVED_FILES:
+                    with open(os.path.join(d, f), "wb") as fh:
+                        fh.write(payload)
+            self.assertTrue(quiet(pt.equal_hashes, a, b).ok)
+            with open(os.path.join(b, "height.r32"), "wb") as fh:
+                fh.write(b"\x01\x03")
+            self.assertFalse(quiet(pt.equal_hashes, a, b).ok, "a saved height.r32 difference fails")
+
+    def test_equal_hashes_scatter_config_mismatch(self):
+        h = {"after": ("0x1", "0x2")}
+        with tempfile.TemporaryDirectory() as t:
+            a, b = os.path.join(t, "a"), os.path.join(t, "b")
+            write_run(a, h, ("0x1", "0x2"))
+            write_run(b, h, ("0x1", "0x2"))
+            for d, cfg in ((a, "0xaaaa"), (b, "0xbbbb")):
+                p = os.path.join(d, "results.json")
+                res = json.load(open(p, encoding="utf-8"))
+                res["hashes"]["after"].update({"scatter_fnv": "0x5", "scatter_live_fnv": "0x5", "scatter_count": 10})
+                res["options"] = {"scatter": {"config_fnv": cfg, "level": "L0", "meshes": {"GrassT0": {"path": "/Game/x"}}}}
+                json.dump(res, open(p, "w", encoding="utf-8"))
+            g = quiet(pt.equal_hashes, a, b)
+            self.assertFalse(g.ok)
+            self.assertIn("config mismatch", [r for r in g.rows if r["bar"] == "scatter_config"][0]["value"])
+
+    @staticmethod
+    def scatter_run(d, verify_pass=True, recreates=0, final_live="0x9", hidden=True, busy_before=3, read_back=5, compile_edits=0, engine_edits=0, governor=0,
+                    readback=None):
+        os.makedirs(d, exist_ok=True)
+        verify = {"name": "start", "pass": verify_pass, "scatter_fnv": "0x9", "scatter_live_fnv": "0x9" if verify_pass else "0x8", "instances_read_back": read_back,
+                  "max_dpos_cm": 0.0, "max_drot_rad": 0.0, "max_dz_m": 0.0, "max_dup_rad": 0.0, "fails": [] if verify_pass else ["live fold differs"]}
+        res = {"script": "SXSMOKE", "completed": True, "ops_done": 3, "ops_total": 3, "exit_code": 0,
+               "options": {"scatter": {"config_fnv": "0x1234", "level": "L0", "params_error": "", "mesh_errors": "", "meshes": {}, "governor": governor,
+                                       "governor_readback": readback or {}, "predict_a_ms": 0.032, "predict_b_ms_per_change": 7e-05, "predict_c_ms_per_instance": 3e-05}},
+               "hashes": {"start": {"height_fnv": "0x1", "splat_fnv": "0x2", "scatter_fnv": "0x9", "scatter_live_fnv": "0x9", "scatter_pending": False},
+                          "final": {"height_fnv": "0x1", "splat_fnv": "0x2", "scatter_fnv": "0x9", "scatter_live_fnv": final_live, "scatter_pending": False}},
+               "shots": {"hidden": {"path": os.path.join(d, "hidden.png")}} if hidden else {},
+               "scatter": {"available": True, "enabled": True, "verifies": [verify], "in_flight_now": 0, "busy_now": 0,
+                           "counters": {"dispatched": 10, "applied": 7, "skipped_identical": 1, "discarded_epoch": 2, "cancelled": 0},
+                           "proxy_recreates": recreates, "proxy_recreates_during_edits": 0, "proxy_first_creates": 5, "proxy_expected_rebuilds": 5, "proxy_engine_recreates": engine_edits,
+                           "proxy_engine_recreates_during_edits": engine_edits, "proxy_compile_recreates": 3 + compile_edits, "proxy_compile_recreates_during_edits": compile_edits,
+                           "proxy_apply_dirtied_recreates": 0, "proxy_refills": 1, "proxy_refills_during_edits": 1,
+                           "apply_rows": [[0.01 + 0.0001 * k, 0.03, k, k, 0, 0, 10 * k, 0, 0] for k in range(1, 9)],
+                           "toggles": [{"value": False, "busy_before": busy_before, "in_flight_before": 0}, {"value": True}],
+                           "scatter_gt_ms": {"all_but_fill": {"n": 3, "p50": 0.1}}, "scatter_flush_ms": {"all_but_fill": {}}, "apply_unit_ms_edits": {}, "init_ms": 900}}
+        with open(os.path.join(d, "results.json"), "w", encoding="utf-8") as f:
+            json.dump(res, f)
+        with open(os.path.join(d, "game.log"), "w", encoding="utf-8") as f:
+            f.write("LogChimeraTerrain: Display: ok\n")
+        if hidden:
+            open(os.path.join(d, "hidden.png"), "wb").write(b"png")
+
+    def test_scatter_pass_and_each_failure(self):
+        with tempfile.TemporaryDirectory() as t:
+            ok = os.path.join(t, "ok")
+            self.scatter_run(ok)
+            self.assertTrue(quiet(pt.scatter, ok)[0].ok)
+            for i, kw in enumerate(({"verify_pass": False}, {"recreates": 1}, {"final_live": "0x7"}, {"hidden": False}, {"busy_before": 0}, {"read_back": 0},
+                                    {"compile_edits": 1}, {"engine_edits": 1}, {"governor": 3, "readback": {"r.Nanite.MaxPixelsPerEdge": "1"}},
+                                    {"governor": 6, "readback": {"r.Nanite.MaxPixelsPerEdge": "2"}})):
+                d = os.path.join(t, "bad%d" % i)
+                self.scatter_run(d, **kw)
+                self.assertFalse(quiet(pt.scatter, d)[0].ok, kw)
+            # Unbalanced counters and a scatter material warning in the log both fail.
+            d = os.path.join(t, "counters")
+            self.scatter_run(d)
+            p = os.path.join(d, "results.json")
+            res = json.load(open(p, encoding="utf-8"))
+            res["scatter"]["counters"]["applied"] = 6
+            json.dump(res, open(p, "w", encoding="utf-8"))
+            self.assertFalse(quiet(pt.scatter, d)[0].ok)
+            d = os.path.join(t, "log")
+            self.scatter_run(d)
+            with open(os.path.join(d, "game.log"), "a", encoding="utf-8") as f:
+                f.write("LogMaterial: Warning: Missing usage flag on /Game/Terrain/Scatter/Materials/L0/MI_GrassT0_M_Blade\n")
+            self.assertFalse(quiet(pt.scatter, d)[0].ok)
+            # The governor read-back passes when each cvar reads back its value; the apply fit is reported.
+            d = os.path.join(t, "gov")
+            self.scatter_run(d, governor=6, readback={"r.Nanite.MaxPixelsPerEdge": "2.000000", "r.Shadow.Virtual.ResolutionLodBiasDirectional": "1.0"})
+            g = quiet(pt.scatter, d)[0]
+            self.assertTrue(g.ok)
+            fit = [r for r in g.rows if r["bar"] == "apply_fit"][0]
+            self.assertEqual(fit["status"], "REPORT")
+            self.assertIn("least squares a 0.01000", fit["value"])
+
+    def test_s1l_image_reference(self):
+        """--img-ref: hashes stay against --ref; the image reference must have saved byte-identical terrain files."""
+        with tempfile.TemporaryDirectory() as t:
+            ref, img, run = (os.path.join(t, n) for n in ("ref", "img", "run"))
+            for d, body in ((ref, b"A"), (img, b"A")):
+                os.makedirs(d)
+                for f in pt.SAVED_FILES:
+                    open(os.path.join(d, f), "wb").write(body)
+            # Only the reference check is exercised here (the image bars need real shots): a differing saved file fails it.
+            open(os.path.join(img, pt.SAVED_FILES[0]), "wb").write(b"B")
+            os.makedirs(run, exist_ok=True)
+            write_run(run, {"loaded": ("0x1", "0x2")}, ("0x1", "0x2"))
+            res = json.load(open(os.path.join(run, "results.json"), encoding="utf-8"))
+            res["loaded"] = {"dir": ref}
+            json.dump(res, open(os.path.join(run, "results.json"), "w", encoding="utf-8"))
+            write_run(ref, {"redo": ("0x1", "0x2")}, ("0x1", "0x2"))
+            g = quiet(pt.s1l, run, ref, img)
+            row = [r for r in g.rows if r["bar"] == "image_reference_same_terrain"][0]
+            self.assertFalse(row["pass"])
+            self.assertFalse(g.ok)
+
+    def test_teardown(self):
+        with tempfile.TemporaryDirectory() as t:
+            d = os.path.join(t, "tearx")
+            write_run(d, {"a": ("0x1", "0x2")}, ("0x1", "0x2"))
+            p = os.path.join(d, "results.json")
+            res = json.load(open(p, encoding="utf-8"))
+            res["scatter"] = {"in_flight_now": 2, "busy_now": 2}
+            json.dump(res, open(p, "w", encoding="utf-8"))
+            line = "LogChimeraTerrain: Display: scatter teardown: in_flight_before=2 task_handles_waited=2 in_flight_after=0 busy_after=0 dispatched=10 applied=6 skipped=1 discarded=1 cancelled=2\n"
+            with open(os.path.join(d, "game.log"), "a", encoding="utf-8") as f:
+                f.write(line)
+            self.assertTrue(quiet(pt.teardown, d).ok)
+            with open(os.path.join(d, "game.log"), "w", encoding="utf-8") as f:
+                f.write(line.replace("in_flight_after=0", "in_flight_after=1"))
+            self.assertFalse(quiet(pt.teardown, d).ok)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

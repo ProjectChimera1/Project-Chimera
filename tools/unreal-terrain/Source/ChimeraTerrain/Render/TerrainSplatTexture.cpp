@@ -6,6 +6,8 @@
 #include "Engine/Texture2D.h"
 #include "Misc/App.h"
 #include "RHITypes.h"
+#include "UObject/Package.h"
+#include "UObject/UObjectGlobals.h"
 
 namespace ChimeraTerrain
 {
@@ -14,7 +16,10 @@ namespace ChimeraTerrain
 		check(IsInGameThread());
 		Size = HF.SplatSize();
 		check(HF.Splat.Num() == Size * Size * SplatLayerCount);
-		UTexture2D* Tex = UTexture2D::CreateTransient(Size, Size, PF_R8G8B8A8, FName(TEXT("T_ChimeraTerrainSplat")),
+		// A unique name per terrain: a second terrain in one process (tests, a reload) must not reuse a live transient name, which asserts in
+		// UObjectArray.cpp:405 (found by task S4's Chimera.Terrain.Scatter.Render).
+		const FName TexName = MakeUniqueObjectName(GetTransientPackage(), UTexture2D::StaticClass(), FName(TEXT("T_ChimeraTerrainSplat")));
+		UTexture2D* Tex = UTexture2D::CreateTransient(Size, Size, PF_R8G8B8A8, TexName,
 			TConstArrayView64<uint8>(HF.Splat.GetData(), HF.Splat.Num()));
 		if (!Tex)
 		{

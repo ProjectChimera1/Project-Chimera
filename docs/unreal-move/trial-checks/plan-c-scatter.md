@@ -303,6 +303,11 @@ in the palette table: a look round changes numbers, never code, and every change
   `proxy_first_creates`; a later one while the component's atomic "expected rebuilds" count is above zero (raised on the game thread before
   scatter's own rebuild calls: enable, `scatter 1`, `ScatterApply=clear`, `scatter_fresh`) → `proxy_expected_rebuilds`; any other later one →
   `proxy_recreates`, gated 0 (SX8). Counters are read on the game thread after `FlushRenderingCommands` when an op needs them.
+  **Amended 2026-10-02 (S4 ruling, EXECUTION §8):** later proxies are attributed per component. A recreate whose dirty mark came from
+  scatter's own apply always counts in `proxy_recreates`, whatever else applies. Otherwise these are reported, not counted there: refills (a
+  unit emptied, then refilled), PSO-precache completions, engine-context recreates, and editor-compile recreates (the component's render state
+  dirtied by `PropagateMaterialChangesToPrimitives` / `RedrawAllViewports` or an asset post-compile event). Gated 0: `proxy_recreates`,
+  `proxy_compile_recreates_during_edits`, `proxy_engine_recreates_during_edits`. Packaged runs (S7) compile nothing, so they test the strict count.
 - **`HasPendingWork`** is true while any tile is dirty or Busy, a unit was applied this frame (its flush is pending), or a scatter component
   that `ShouldComponentAddToScene()` holds instances and has no proxy (first fill or PSO delay, F3). Because scatter never hides a component
   by visibility, the last term cannot wait on a hidden one.
@@ -618,7 +623,8 @@ Accept:
 1. BG `LOCK PS T/Tools/build.ps1 -Target Editor` and BG `LOCK PS T/Tools/build.ps1 -Target Game` → both `Result: Succeeded`.
 2. `LOCK PS T/Tools/run_tests.ps1 -Filter Chimera.Terrain` → `fail=0`.
 3. Dormant changes nothing: `-Script S1 -Tag s1_sx4`, `--equal-hashes T/Out/s1_a T/Out/s1_sx4` → PASS and `--s1 T/Out/s1_sx4` → PASS;
-   `--c7 T/Out/s1_sx4` → PASS; `-Script S1L -Tag s1l_sx4 -Extra "-ChimeraTerrainLoad=<abs T/Out/s1_a>"` and `--s1l` → PASS; `-Script G1 -Tag
+   `--c7 T/Out/s1_sx4` → PASS; `-Script S1L -Tag s1l_sx4 -Extra "-ChimeraTerrainLoad=<abs T/Out/s1_a>"` and `--s1l T/Out/s1l_sx4 --ref
+   T/Out/s1_a --img-ref T/Out/s1_s4a` → PASS (image reference ruling, EXECUTION §8, 2026-10-02); `-Script G1 -Tag
    g1_sx4` and `--g1` → `G1 PASS`; `-Script MOUSE -Tag mouse_sx4` (MOUSE's own flags) → P10 PASS, or, if preflight finds the desktop locked, the
    row reads "deferred to C11 pkg_mouse" (recorded, not waived).
 4. BG warm-up `LOCK PS T/Tools/run_terrain.ps1 -Script SXSMOKE -Tag sx_warm -TimeoutMin 60 -Extra "-ChimeraTerrainScatter=1"`, then
@@ -699,7 +705,7 @@ after C11, S8 +85 inside C12. About 10 h, inside Phases 3-4. Builds run 4-18 min
 | SX5 | on the edited surface | dump oracle on S1X `redo` and THINX `end`: every record's z within 1 mm of its class rule on the saved heights, `gxq, gyq` exact; verify's z and up-axis rows (SX1); ≥ 1,000 grass and ≥ 20 coarse instances moved in z by > 5 cm between S1X's `before` and `redo` dumps (by key), so moved instances are what is tested | gate | S1X, THINX, SHADX, MOUSEX |
 | SX6 | thinning | THINX cores: grass, tussock, flower ratio to pure grass ≤ 0.10 on `dirt`, `rock`, `snow`; trees 0 on `path`. Each row needs a pure-grass core yield of at least grass 200, tussock 10, flower 20, tree 5, else it FAILs "no samples" (fix the coordinates, never the bar). Positive control: ≥ 5 rocks in the `rock` disc's edge band. Dump oracle: every instance on S1X and THINX obeys its own class's splat and slope limits from the palette (margins 2/255, 0.5°) | gate | THINX, S1X dumps |
 | SX7 | presentation only | S1X height and splat FNV = s1_a at every shared name (`--equal-hashes`); saved `terrain.json`/`height.r32`/`splat.rgba8` sha256 = s1_a's; P5 and P11 pass on S1X; dormant: s1_sx4 `--equal-hashes` and `--s1` PASS, `--c7` PASS, s1l_sx4 `--s1l` PASS, g1_sx4 G1 PASS, mouse_sx4 P10 PASS (or "deferred to C11 pkg_mouse" if the desktop was locked) | gate | S1X, S4's dormant runs |
-| SX8 | accounting | `dispatched == applied + skipped_identical + discarded_epoch + cancelled`; 0 busy and 0 in flight at settle; `proxy_recreates = 0` (a proxy rebuilt for no reason of scatter's own); `proxy_first_creates` and `proxy_expected_rebuilds` reported | gate | every scatter run |
+| SX8 | accounting | `dispatched == applied + skipped_identical + discarded_epoch + cancelled`; 0 busy and 0 in flight at settle; `proxy_recreates = 0` (a proxy rebuilt for no reason of scatter's own; every apply-dirtied recreate counts), `proxy_compile_recreates_during_edits = 0` and `proxy_engine_recreates_during_edits = 0` (§3.5 as amended 2026-10-02); `proxy_first_creates`, `proxy_expected_rebuilds`, refills, PSO and editor-compile recreates reported | gate | every scatter run |
 | SX9 | logs and assets | log scan clean, including `LogMaterial` lines on scatter materials and VSM page-pool overflow; `usage_ok`, `deps_ok`, `flip_ok`, `vc_ok` in the asset report; per-instance random false; licence bar (packaged-only failure class, F7) | gate | every scatter run, S3 |
 | SX10 | shadows follow edits | precondition: stored key `t0` exists after the raise with z up by > 2 m; `t_b` vs `t_a` gives the A/A floor; `t_far`, `t_raised`, `t_undo` each vs its `_fresh` twin pass the local statistic inside the union of t0's tree and shadow masks at `t_a` and `t_raised` (no stale pages anywhere near the edit); `t_raised` vs `t_a` changed fraction ≥ 0.10 inside that union (the scene really changed); VSM pages per edit reported | gate | SHADX |
 | SX11 | no hitch (Phase 4) | C1S `walk` plus every flush window, fill excluded: `scatter_gt_ms` p99 ≤ 1.5, p99.9 ≤ 2.0, ≤ 0.1 % of frames > 2.0 (each listed); walk GT p99 and RT p99 each − C1's ≤ 1.5 ms (interleaved reps; catches the end-of-frame flush and GPU-scene upload, which `scatter_gt_ms` cannot see); frames > 33.3 ms not above C1's + 0.1 pp (a single max is noise on this shared desktop); `scatter_flush_ms` printed beside. `ScatterThreads=0` runs never count | gate | S8 |

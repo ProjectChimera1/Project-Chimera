@@ -226,3 +226,14 @@ All 16 Phase 2 tasks passed two independent Opus xhigh verifiers (results; code 
 - **Ground look committed (2026-10-02):** round 4, art director 5.5/10 (rounds 0-4: 5, 4, 5, 5, 5.5; good enough needs 7), terrain GPU 2.907 ms; the material alone tops out here and scatter is the next lever.
 - **Asset licence rule (pending Alec, from r9):** until Epic answers in writing, the map editor ships only CC0, CC-BY 4.0 and project-original content; Fab Standard content (every Quixel item, Fab EULA 6(b)(iii)) and Epic engine samples (PVE) stay candidates only. Megascans minimum set is $0, a broader set $35.87 Personal / $359.87 Professional.
 - **Scatter progress (2026-10-02):** S0, S1, S4a, S2 and S3 passed both verifiers and are committed. Plan notes from S3: the S3 commandlet runs on a deleted `Content/Terrain/Scatter` inside one lock hold, and S6's from-clean check compares `asset_settings_sha256` (35f87ad8…), not `deterministic_sha256`. F15 correction from S1: Poly Haven `tree_small_02` is 4.56 m tall (scaled ×2.38 / ×2.00 to the slots). Next: S4 → S5 → S6 with `tools/unreal-trial/workflows/scatter-build-s4.js`.
+- **S4 rulings (main session, 2026-10-02).** S4's second round stopped on two questions both verifiers had raised; neither is an S4 defect.
+  (R1) **Image reference after the ground look.** `s1_a`'s screenshots (2026-10-01 12:03) predate the C7 and G1 ground-look commits, so any
+  image bar against them fails in every later build (S4a's build already differs by 0.949 changed fraction; S4's dormant build matches S4a's at
+  0.0). Ruling: hashes and saved files stay against `s1_a` (never re-recorded); image bars take their reference from `s1_s4a` (the last
+  pre-S4 build with the ground look, 2026-10-02 04:10; its `terrain.json`, `height.r32` and `splat.rgba8` sha256 equal `s1_a`'s, which
+  `--img-ref` checks). Applies to S4's S1L row (`--s1l T/Out/s1l_sx4 --ref T/Out/s1_a --img-ref T/Out/s1_s4a`), to every S5 and S7 image bar
+  that would name `s1_a`, and to C11's `pkg_s1l`. (R2) **SX8 proxy categories.** Accepted as plan §3.5 now states: per-component attribution;
+  apply-dirtied recreates always count; refills, PSO and editor-compile recreates are reported; `proxy_recreates`,
+  `proxy_compile_recreates_during_edits` and `proxy_engine_recreates_during_edits` are gated 0. The engine source supports the split
+  (`ShaderCompiler.cpp` `PropagateMaterialChangesToPrimitives` marks every user of a recompiled material dirty). S4's two round-1 crash
+  folders (its own test crashes, both causes fixed) moved to `U/TrialOut/c_s4/crashes_round1/`, so `Saved/Crashes` is empty again.

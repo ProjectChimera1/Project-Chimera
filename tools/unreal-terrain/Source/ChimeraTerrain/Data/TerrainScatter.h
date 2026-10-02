@@ -188,7 +188,10 @@ namespace ChimeraTerrain
 		double DuringStrokeMs = 150.0;
 		/** Coarse (caster) tiles during a stroke (0 = stroke end only). */
 		double CasterDuringStrokeMs = 0.0;
-		/** Predicted apply cost of a unit: a + b * changes + c * instances_after (ms; fitted in S4). */
+		/**
+		 * Predicted apply cost of a unit: a + b * changes + c * instances_after (ms). These defaults serve the pure tests only; the runtime takes
+		 * FScatterOptions::PredictA/B/C (the S4 fit) and overwrites them in ATerrainScatter::Setup.
+		 */
 		double PredictA = 0.02;
 		double PredictB = 0.0005;
 		double PredictC = 0.00002;

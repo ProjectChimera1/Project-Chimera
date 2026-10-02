@@ -265,6 +265,16 @@ files Alec adds.
     `/Game/Terrain/**`, `/Engine/**`, `/BaseMaterial/**` and `/Script/**`, so samples must be copied under `/Game/Terrain`. CC-BY needs a new
     `CC-BY-4.0` class carrying author, title, URL and a modified flag for the credits page, and needs Alec's Fab login to fetch. Fab Standard,
     if ever allowed, needs its own class and a rule that its files never leave git-ignored folders.
+11. **Paragon (added 2026-10-02).** Fab's search API (`/i/listings/search?q=paragon&seller=Epic Games`, 24 character packs, Gideon
+    `51935254` to Muriel `c16f2277`) lists every pack at $0 with only the `Personal` and `Professional` tiers, the Standard-licence tiers of
+    EULA 2(a). So Paragon on Fab is Fab Standard content, no longer the UE-Only content of the old Marketplace (a forum thread,
+    https://forums.unrealengine.com/t/fab-ue-only-content-licensing/2082870, notes the UE-Only label was dropped; no Epic reply). Flag 1 applies
+    to it unchanged: anything a creator can place or pick in Chimera's editors (units, effects, props) is "Content available in world- or
+    level-editing tools". Copies claimed on the old Marketplace under the Epic Content License may keep ECL 5(c)(iii)'s UE-Only exception (as in
+    flag 3); UNVERIFIED which version Alec's library holds. The environment pack "Paragon: Agora and Monolith Environment" (`6f401fb5`, 528
+    meshes, 56 FX, 1,152 textures) has the same two tiers; its tags are Stonework, Arena, Fantasy, Forest, Moba: a fantasy MOBA arena, not a
+    temperate meadow, so it is not a scatter candidate for the Manor Lords look (style judged from tags, not from images). The `isAiForbidden`
+    flag is not in the search results and the listing pages return 403 to scripts; treat Paragon as NoAI (flag 6).
 
 ## 6. What Alec must decide
 

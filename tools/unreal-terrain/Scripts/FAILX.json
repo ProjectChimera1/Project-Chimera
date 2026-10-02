@@ -1,0 +1,10 @@
+{
+  "name": "FAILX",
+  "about": "Scatter teardown under the exit-code contract (plan-c-scatter.md 3.8): run with -ChimeraTerrainScatter=1. A d100 stroke, then a fail op while its tiles are in flight: exit 2, results.json written (scatter.in_flight_now / busy_now record the state), no Saved/Crashes.",
+  "ops": [
+    {"op": "look", "mode": "compare"},
+    {"op": "scatter_wait", "timeout_s": 600},
+    {"op": "stroke", "mode": "raise", "d": 100, "s": 40, "path": [[0, 0], [30, 20]], "ticks": 20},
+    {"op": "fail"}
+  ]
+}

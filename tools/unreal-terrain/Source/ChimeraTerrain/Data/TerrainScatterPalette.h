@@ -360,6 +360,15 @@ namespace ChimeraTerrain
 		// SCATTER_FP_BEGIN: apply budgets (timing, not records).
 		float BudgetMs = 1.0f;
 		float LoadBudgetMs = 8.0f;
+		/**
+		 * Predicted apply cost of a unit, a + b * changes + c * instances_after (ms; plan C scatter 3.5 "stored as option defaults"), overridable
+		 * with -ChimeraTerrainScatterPredict=a,b,c. Fitted in S4 on sx_smoke's 1,101 apply_unit_ms rows (build of 2026-10-02 17:18): least squares
+		 * a 0.00321, b 0.0000697, c 0.0000293; a is raised by the fit's p95 residual (0.0287) so admission under-predicts about 5 % of units, not
+		 * half of them; b and c rounded up.
+		 */
+		double PredictA = 0.032;
+		double PredictB = 0.00007;
+		double PredictC = 0.00003;
 		// SCATTER_FP_END
 		int32 Threads = 2;
 		/** Bit per EScatterLayer: layers shown (visibility only; records and hashes are unchanged). */

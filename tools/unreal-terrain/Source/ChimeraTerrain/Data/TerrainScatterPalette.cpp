@@ -472,6 +472,22 @@ namespace ChimeraTerrain
 		O.BudgetMs = FMath::Clamp(O.BudgetMs, 0.05f, 50.0f);
 		FParse::Value(Cmd, TEXT("ChimeraTerrainScatterLoadBudgetMs="), O.LoadBudgetMs);
 		O.LoadBudgetMs = FMath::Clamp(O.LoadBudgetMs, 0.05f, 100.0f);
+		FString Predict;
+		if (FParse::Value(Cmd, TEXT("ChimeraTerrainScatterPredict="), Predict, false))
+		{
+			TArray<FString> Parts;
+			Predict.ParseIntoArray(Parts, TEXT(","), true);
+			if (Parts.Num() == 3 && Parts[0].IsNumeric() && Parts[1].IsNumeric() && Parts[2].IsNumeric())
+			{
+				O.PredictA = FMath::Max(0.0, FCString::Atod(*Parts[0]));
+				O.PredictB = FMath::Max(0.0, FCString::Atod(*Parts[1]));
+				O.PredictC = FMath::Max(0.0, FCString::Atod(*Parts[2]));
+			}
+			else
+			{
+				O.ParamsError += FString::Printf(TEXT("ScatterPredict '%s' is not a,b,c (kept the defaults); "), *Predict);
+			}
+		}
 		if (FParse::Value(Cmd, TEXT("ChimeraTerrainScatterThreads="), O.Threads) && (O.Threads < 0 || O.Threads > 4))
 		{
 			O.ParamsError += FString::Printf(TEXT("ScatterThreads %d outside 0..4 (clamped); "), O.Threads);

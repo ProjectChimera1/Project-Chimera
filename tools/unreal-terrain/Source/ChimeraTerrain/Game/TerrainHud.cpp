@@ -7,6 +7,7 @@
 #include "EngineUtils.h"
 #include "ChimeraTerrain.h"
 #include "Game/TerrainActor.h"
+#include "Game/TerrainScatterActor.h"
 
 void ATerrainHud::DrawHUD()
 {
@@ -39,4 +40,6 @@ void ATerrainHud::DrawHUD()
 		UE_LOG(LogChimeraTerrain, Display, TEXT("hud: %s"), *Line);
 	}
 	DrawText(Line, FLinearColor::White, 24.0f, 24.0f, GEngine->GetSmallFont(), 1.25f);
+	// Plan C scatter 3.1: one line (instances, dirty tiles, last apply ms).
+	for (TActorIterator<ATerrainScatter> It(GetWorld()); It; ++It) { if (It->WasRequested()) { DrawText(It->HudLine(), FLinearColor::White, 24.0f, 44.0f, GEngine->GetSmallFont(), 1.25f); } break; }
 }

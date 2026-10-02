@@ -1,0 +1,23 @@
+{
+  "name": "SXPATHS",
+  "about": "Scatter path coverage (task S4, ahead of S5's gates): run with -ChimeraTerrainScatter=1, once as is and once each with -ChimeraTerrainScatterThreads=0, -ChimeraTerrainScatterApply=clear and -ChimeraTerrainScatterGovernor=6. Fill, verify, scatter_fresh (proxies rebuilt as expected rebuilds), verify, a raise and a dirt paint, verify, two undos, verify; parse_terrain.py --scatter on each.",
+  "ops": [
+    {"op": "look", "mode": "compare"},
+    {"op": "camera", "pose": "rts80"},
+    {"op": "scatter_wait", "timeout_s": 900, "phase": "fill"},
+    {"op": "settle", "frames": 150, "phase": "idle"},
+    {"op": "hash", "name": "start"},
+    {"op": "scatter_verify", "name": "start"},
+    {"op": "scatter_fresh", "name": "f1"},
+    {"op": "scatter_verify", "name": "fresh"},
+    {"op": "stroke", "mode": "raise", "d": 30, "s": 60, "path": [[20, 20], [35, 30]], "ticks": 30, "phase": "edit"},
+    {"op": "paint", "layer": 1, "d": 8, "s": 100, "path": [[-40, -10], [10, 15]], "ticks": 30},
+    {"op": "scatter_wait", "timeout_s": 300},
+    {"op": "scatter_verify", "name": "edited"},
+    {"op": "hash", "name": "edited"},
+    {"op": "undo", "n": 2, "phase": "undo"},
+    {"op": "scatter_wait", "timeout_s": 300},
+    {"op": "scatter_verify", "name": "undone"},
+    {"op": "hash", "name": "final"}
+  ]
+}

@@ -1,0 +1,149 @@
+S4 runtime scatter (plan-c-scatter.md 3.5, 3.7-3.8, 4 S4), rework round 2 after both verifiers failed round 1. Written by the S4 implementer
+from the T/Out working runs of the final build (Editor DLL built 2026-10-02 18:19:40; every run below started after it, logs in TrialOut/c_s4/r2).
+
+== builds and tests
+  build_ed1.log: Result: Succeeded
+  build_ed1.log: BUILD ChimeraTerrainEditor wall_seconds=979 exit=0
+  build_game.log: Result: Succeeded
+  build_game.log: BUILD ChimeraTerrain wall_seconds=483 exit=0
+  run_tests.ps1 -Filter Chimera.Terrain: TESTS pass=70 fail=0
+  run_tests.ps1 -Filter Chimera.Terrain: found=70
+
+== python T/Tools/parse_terrain.py --scatter T/Out/sx_smoke  (exit 0)
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=28/28 rule=completed=true and ops_done == ops_total
+BAR scatter_log_scan               PASS   value=0 line(s) rule=no LogMaterial warning/error on /Game/Terrain/Scatter, no VSM page-pool overflow
+BAR scatter_block                  PASS   value=available=True enabled=True rule=results.json scatter block from a run with scatter
+BAR scatter_options                PASS   value=config_fnv=0xe55e190fcc1aadc9 level=L0 params_error='' mesh_errors='' rule=options.scatter present, no option or mesh error
+BAR scatter_verify                 PASS   value=4 verifies, failed [] rule=>= 1 scatter_verify and every one passes (live == reference, readback, z, up axis, nothing pending)
+  verify start      pass=True live=0x4131188d5be6f199 ref=0x4131188d5be6f199 instances=243011 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.34e-05 m dup 2.11e-08 rad 
+  verify edited     pass=True live=0x309844e8239f1392 ref=0x309844e8239f1392 instances=239831 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.35e-05 m dup 9.29e-06 rad 
+  verify reenabled  pass=True live=0x0601315a2a22f643 ref=0x0601315a2a22f643 instances=237464 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.35e-05 m dup 9.29e-06 rad 
+  verify undone     pass=True live=0x4131188d5be6f199 ref=0x4131188d5be6f199 instances=243011 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.34e-05 m dup 2.11e-08 rad 
+BAR scatter_hash_live_eq_ref       PASS   value=equal at 3 settled hashes rule=scatter_live_fnv == scatter_fnv at every hash taken with nothing pending
+BAR scatter_counters_balanced      PASS   value=dispatched=335 applied=277 skipped=56 discarded=2 cancelled=0 in_flight=0 busy=0 rule=dispatched == applied + skipped_identical + discarded_epoch + cancelled; 0 in flight and 0 busy at the end
+BAR scatter_verify_instances       PASS   value=read back [('start', 243011), ('edited', 239831), ('reenabled', 237464), ('undone', 243011)] rule=every scatter_verify with components read back > 0 instances (no vacuous live == reference)
+BAR scatter_proxy_recreates        PASS   value=recreates=0 (during edits 0, apply-dirtied 0); first=479 expected=477 rule=proxy_recreates == 0: no live proxy replaced after scatter's own apply dirtied it, nor for any unexplained dirty mark
+BAR proxy_compile_recreates_during_edits PASS   value=0 (all run: 73) rule=editor-compile recreates while edits were in flight == 0
+BAR proxy_engine_recreates_during_edits PASS   value=0 (all run: 0) rule=engine-wide recreates while edits were in flight == 0
+BAR scatter_proxy_reported         REPORT value=refills=1 (during edits 1) pso=0 (during edits 0) engine=0 editor_compile=73; shader propagations 20, asset post-compiles 29, compile-busy frames 10 rule=reported categories: a refill replaces no proxy; PSO completion, engine contexts and editor compiles are not scatter's own
+BAR apply_fit                      REPORT value=n 1101; least squares a 0.00306 b 0.0000818 c 0.0000251; residual p95 0.0373 p99 0.0714; admission a (a + p95) 0.0404; run's predictor a 0.032 b 7e-05 c 3e-05 under-predicted 125 units (worst by 0.217 ms); max unit 0.407 ms at 1580 instances; units > 0.8 ms: 0 rule=apply_unit_ms ~ a + b * changes + c * instances_after (plan C scatter 3.5 and 4 S4 item 5; any unit > 0.8 ms triggers the T0 rank split)
+BAR scatter_hidden_shot            PASS   value=D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/sx_smoke/hidden.png rule=the shot with every layer hidden was taken (no hang on hidden units)
+BAR scatter_undo_returns           PASS   value=start 0x4131188d5be6f199, final ref 0x4131188d5be6f199 live 0x4131188d5be6f199 rule=after one undo per stroke, reference and live equal the first hash (and the terrain hashes too)
+BAR scatter_disable_while_busy     PASS   value=[(2, 2)] rule=scatter 0 ran while tiles were Busy or in flight
+BAR scatter_gt_ms                  REPORT value=p50 0.038 p99 0.297 p99.9 0.481 max 0.481 (n 758) rule=scatter's own game-thread ms per frame outside the fill (SX11 gates it in Phase 4)
+BAR scatter_flush_ms               REPORT value=p50 0.000 p99 0.429 max 0.679 rule=end-of-frame instance flush ms
+BAR apply_unit_ms_edits            REPORT value=p50 0.018 p99 0.137 max 0.170 (n 145); init_ms 1645 rule=per-unit apply cost outside the fill
+SCATTER PASS
+
+== apply_unit_ms (item 5): 1101 units (956 fill, 145 edit)
+  ms p50 0.0156 p99 0.2344 max 0.4073; largest unit 1580 instances; units above 0.8 ms: 0 -> the grass T0 rank split is not taken (644 primitives)
+  predictor of this run (option defaults FScatterOptions::PredictA/B/C): a 0.032 b 7e-05 c 3e-05; they were fitted on round 1's final sx_smoke
+  (1,101 rows: least squares a 0.00321 b 0.0000697 c 0.0000293, residual p95 0.0287; shipped a = 0.00321 + 0.0287 rounded up to 0.032, b 0.00007, c 0.00003;
+  round 1 shipped 0.005/0.00008/0.00003 from an earlier rep's fit a 0.0046 b 0.0000716 c 0.0000257, which under-predicted 138 of 1,101 units, worst by 0.325 ms).
+  The refit on this run is the apply_fit row above (parse_terrain.py --scatter now refits every run).
+  scatter_flush_ms outside the fill: p99 0.429 max 0.679 ms per frame -> SetUseConservativeBounds A/B not needed
+  fill: init_ms 1645, fill_ms [1645, 633]; gen_ms per tile p50 1.91 p99 3.82
+  latency rows (reported; SX12 is S5/S8's): [('enable', 60, 1645), ('stroke_end', 35, 394), ('stroke_end', 5, 56), ('stroke_end', 1, 12), ('enable', 59, 633), ('undo', 30, 325), ('undo', 30, 324), ('undo', 30, 322)]
+  instances per class at the end: {'Grass': 221854, 'Tussock': 4561, 'Flower': 6001, 'NearCard': 0, 'Tree': 1003, 'Sapling': 348, 'Shrub': 1474, 'Fern': 7646, 'Rock': 124}
+  series caps: max_series_rows 200000, frame_rows_dropped 0, apply_rows_dropped 0
+
+== FAILX (-ChimeraTerrainScatter=1): run_exit=2
+  results.json completed=False exit_code=2 fail_reason='op 4 (fail) failed: fail op (exit-code contract test)'
+  at the fail: in_flight_now 2 busy_now 2; counters {'dispatched': 153, 'applied': 142, 'skipped_identical': 9, 'discarded_epoch': 0, 'cancelled': 0, 'units_applied': 573}
+  Saved/Crashes before the round-2 runs 2 folders, after 2, new: none (the 2 old ones are round 1's own test crashes of 17:03 and 17:04,
+  the fixed splat-texture name and GetSHA256Signature; both causes are fixed in round 2, and the folders are left for the main session)
+
+== python T/Tools/parse_terrain.py --teardown T/Out/tearx  (exit 0)
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=3/3 rule=completed=true and ops_done == ops_total
+BAR exit_normal                    PASS   value=completed=True exit_code=0 rule=the script completed and exited 0 (a normal exit runs EndPlay)
+BAR in_flight_at_results           PASS   value=in_flight_now=2 busy_now=2 rule=jobs were in flight when the results were written (the teardown had work to wait on)
+BAR teardown_line                  PASS   value=scatter teardown: in_flight_before=2 task_handles_waited=2 in_flight_after=0 busy_after=0 dispatched=155 applied=144 skipped=9 discarded=0 cancelled=2 rule=EndPlay logged its teardown
+BAR teardown_waited                PASS   value=in_flight before 2, handles waited 2, in flight after 0, busy after 0 rule=jobs in flight before Shutdown, every task handle waited, none in flight after
+BAR teardown_counters_balanced     PASS   value=dispatched 155 = applied 144 + skipped 9 + discarded 0 + cancelled 2 rule=dispatched == applied + skipped_identical + discarded_epoch + cancelled after teardown
+TEARDOWN PASS
+
+  (TEARX: a stroke, then the script ends with exit 0 while its tiles are in flight; a normal exit runs EndPlay, unlike FAILX's forced exit.)
+  Latent test Chimera.Terrain.Scatter.Render, stage 3: scatter teardown: in_flight_before=2 task_handles_waited=2 in_flight_after=0 busy_after=0 dispatched=50 applied=30 skipped=18 discarded=0 cancelled=2
+
+== path coverage ahead of S5 (SXPATHS: fill, verify, scatter_fresh, verify, raise + paint, verify, 2 undos, verify)
+-- sxp_default (defaults): parse exit 0
+  BAR scatter_verify_instances       PASS   value=read back [('start', 243011), ('fresh', 243011), ('edited', 239831), ('undone', 243011)] rule=every scatter_verify with components read back > 0 instances (no vacuous live == reference)
+  BAR scatter_proxy_recreates        PASS   value=recreates=0 (during edits 0, apply-dirtied 0); first=479 expected=479 rule=proxy_recreates == 0: no live proxy replaced after scatter's own apply dirtied it, nor for any unexplained dirty mark
+  BAR proxy_compile_recreates_during_edits PASS   value=0 (all run: 73) rule=editor-compile recreates while edits were in flight == 0
+  BAR proxy_engine_recreates_during_edits PASS   value=0 (all run: 0) rule=engine-wide recreates while edits were in flight == 0
+  BAR scatter_fresh                  PASS   value=1 fresh op(s), 479 components rebuilt, proxy_expected_rebuilds 479, missing shots [] rule=scatter_fresh rebuilt live proxies as expected rebuilds (proxy_recreates stays 0) and took its shot
+  SCATTER PASS
+-- sxp_t0 (-ChimeraTerrainScatterThreads=0): parse exit 0
+  BAR scatter_verify_instances       PASS   value=read back [('start', 243011), ('fresh', 243011), ('edited', 239831), ('undone', 243011)] rule=every scatter_verify with components read back > 0 instances (no vacuous live == reference)
+  BAR scatter_proxy_recreates        PASS   value=recreates=0 (during edits 0, apply-dirtied 0); first=479 expected=479 rule=proxy_recreates == 0: no live proxy replaced after scatter's own apply dirtied it, nor for any unexplained dirty mark
+  BAR proxy_compile_recreates_during_edits PASS   value=0 (all run: 94) rule=editor-compile recreates while edits were in flight == 0
+  BAR proxy_engine_recreates_during_edits PASS   value=0 (all run: 0) rule=engine-wide recreates while edits were in flight == 0
+  BAR scatter_fresh                  PASS   value=1 fresh op(s), 479 components rebuilt, proxy_expected_rebuilds 479, missing shots [] rule=scatter_fresh rebuilt live proxies as expected rebuilds (proxy_recreates stays 0) and took its shot
+  SCATTER PASS
+-- sxp_clear (-ChimeraTerrainScatterApply=clear): parse exit 0
+  BAR scatter_verify_instances       PASS   value=read back [('start', 243011), ('fresh', 243011), ('edited', 239831), ('undone', 243011)] rule=every scatter_verify with components read back > 0 instances (no vacuous live == reference)
+  BAR scatter_proxy_recreates        PASS   value=recreates=0 (during edits 0, apply-dirtied 0); first=479 expected=583 rule=proxy_recreates == 0: no live proxy replaced after scatter's own apply dirtied it, nor for any unexplained dirty mark
+  BAR proxy_compile_recreates_during_edits PASS   value=0 (all run: 73) rule=editor-compile recreates while edits were in flight == 0
+  BAR proxy_engine_recreates_during_edits PASS   value=0 (all run: 0) rule=engine-wide recreates while edits were in flight == 0
+  BAR scatter_fresh                  PASS   value=1 fresh op(s), 479 components rebuilt, proxy_expected_rebuilds 583, missing shots [] rule=scatter_fresh rebuilt live proxies as expected rebuilds (proxy_recreates stays 0) and took its shot
+  SCATTER PASS
+-- sxp_gov6 (-ChimeraTerrainScatterGovernor=6): parse exit 0
+  BAR scatter_verify_instances       PASS   value=read back [('start', 243011), ('fresh', 243011), ('edited', 239831), ('undone', 243011)] rule=every scatter_verify with components read back > 0 instances (no vacuous live == reference)
+  BAR scatter_proxy_recreates        PASS   value=recreates=0 (during edits 0, apply-dirtied 0); first=479 expected=479 rule=proxy_recreates == 0: no live proxy replaced after scatter's own apply dirtied it, nor for any unexplained dirty mark
+  BAR proxy_compile_recreates_during_edits PASS   value=0 (all run: 109) rule=editor-compile recreates while edits were in flight == 0
+  BAR proxy_engine_recreates_during_edits PASS   value=0 (all run: 0) rule=engine-wide recreates while edits were in flight == 0
+  BAR scatter_fresh                  PASS   value=1 fresh op(s), 479 components rebuilt, proxy_expected_rebuilds 479, missing shots [] rule=scatter_fresh rebuilt live proxies as expected rebuilds (proxy_recreates stays 0) and took its shot
+  BAR scatter_governor_readback      PASS   value=governor 6 read back {'r.Nanite.MaxPixelsPerEdge': '2', 'r.Shadow.Virtual.ResolutionLodBiasDirectional': '-0.5'} rule=each cvar the governor set reads back its requested value
+  SCATTER PASS
+-- --equal-hashes sxp_default sxp_t0 (exit 0): BAR scatter_hashes_equal           PASS   value=equal at 3 shared hashes rule=scatter_fnv, scatter_live_fnv, scatter_count equal | EQUAL-HASHES PASS
+-- --equal-hashes sxp_default sxp_clear (exit 0): BAR scatter_hashes_equal           PASS   value=equal at 3 shared hashes rule=scatter_fnv, scatter_live_fnv, scatter_count equal | EQUAL-HASHES PASS
+-- --equal-hashes sxp_default sxp_gov6 (exit 0): BAR scatter_hashes_equal           PASS   value=equal at 3 shared hashes rule=scatter_fnv, scatter_live_fnv, scatter_count equal | EQUAL-HASHES PASS
+
+== dormant runs (no scatter block, no options.scatter, no scatter hash keys; s1_sx4's results.json key set equals s1_s4a's)
+== python T/Tools/parse_terrain.py --equal-hashes T/Out/s1_a T/Out/s1_sx4  (exit 0)
+BAR final_equal                    PASS   value=0xff563549/0xd264ddc9 vs 0xff563549/0xd264ddc9 rule=final hashes equal
+BAR saved_files_sha256             PASS   value=equal: ['terrain.json', 'height.r32', 'splat.rgba8'] rule=terrain.json, height.r32, splat.rgba8 sha256 equal (when both runs saved)
+EQUAL-HASHES PASS
+
+== python T/Tools/parse_terrain.py --s1 T/Out/s1_sx4  (exit 0)
+S1 PASS
+
+== python T/Tools/parse_terrain.py --c7 T/Out/s1_sx4  (exit 0)
+C7 PASS
+
+== python T/Tools/parse_terrain.py --g1 T/Out/g1_sx4  (exit 0)
+G1 PASS
+
+== mouse_gate.py T/Out/mouse_sx4 (MOUSE's flags -Windowed -ResX 1600 -ResY 900 -Inject; preflight: DESKTOP OK 1920x1080 @96 / PARSEC absent)
+C8 INPUT PASS
+P10 PASS
+
+== S1L, loading s1_a's saved files (-ChimeraTerrainLoad=T/Out/s1_a)
+== python T/Tools/parse_terrain.py --s1l T/Out/s1l_sx4 --ref T/Out/s1_a  (exit 1)
+BAR loaded_dir                     PASS   value=D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/s1_a rule=load read the reference run's folder
+BAR hash_eq_reference_redo         PASS   value=('0xff563549', '0xd264ddc9') vs ('0xff563549', '0xd264ddc9') rule=loaded hashes = reference redo hashes
+BAR hash_eq_reference_saved        PASS   value=('0xff563549', '0xd264ddc9') vs 0xff563549/0xd264ddc9 rule=loaded hashes = reference saved hashes
+BAR image_redo_vs_reference_footprint FAIL   value=changed_frac=0.94713 worst16=0.25805 mean_abs=0.08471 mask_px=323761 (every stroke footprint of the reference (rts80/all_after)) rule=changed <= 0.5 % and worst 16x16 block mean |d| <= 2/255
+BAR image_redo_vs_reference        FAIL   value=changed_frac=0.94377 worst16=0.25805 mean_abs=0.06239 mask_px=1873723 (terrain mask of the reference redo vs bg) rule=changed <= 0.5 % and worst 16x16 block mean |d| <= 2/255
+S1L FAIL
+
+== python T/Tools/parse_terrain.py --s1l T/Out/s1l_sx4 --ref T/Out/s1_a --img-ref T/Out/s1_s4a  (exit 0)
+BAR image_reference_same_terrain   PASS   value=D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/s1_s4a: saved files equal: ['terrain.json', 'height.r32', 'splat.rgba8'] rule=the image reference saved byte-identical terrain.json, height.r32, splat.rgba8 to the hash reference
+BAR image_redo_vs_reference_footprint PASS   value=changed_frac=0.00000 worst16=0.00177 mean_abs=0.00142 mask_px=323761 (every stroke footprint of the reference (rts80/all_after)) rule=changed <= 0.5 % and worst 16x16 block mean |d| <= 2/255
+BAR image_redo_vs_reference        PASS   value=changed_frac=0.00000 worst16=0.00128 mean_abs=0.00131 mask_px=1924983 (terrain mask of the reference redo vs bg) rule=changed <= 0.5 % and worst 16x16 block mean |d| <= 2/255
+S1L PASS
+
+== python T/Tools/parse_terrain.py --s1l T/Out/s1l_sx4 --ref T/Out/s1_a --img-ref T/Out/s1_sx4  (exit 0)
+BAR image_reference_same_terrain   PASS   value=D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/s1_sx4: saved files equal: ['terrain.json', 'height.r32', 'splat.rgba8'] rule=the image reference saved byte-identical terrain.json, height.r32, splat.rgba8 to the hash reference
+BAR image_redo_vs_reference_footprint PASS   value=changed_frac=0.00000 worst16=0.00217 mean_abs=0.00164 mask_px=323761 (every stroke footprint of the reference (rts80/all_after)) rule=changed <= 0.5 % and worst 16x16 block mean |d| <= 2/255
+BAR image_redo_vs_reference        PASS   value=changed_frac=0.00000 worst16=0.00181 mean_abs=0.00152 mask_px=1928171 (terrain mask of the reference redo vs bg) rule=changed <= 0.5 % and worst 16x16 block mean |d| <= 2/255
+S1L PASS
+
+  why S1L vs s1_a fails its image bars: s1_a's shots (2026-10-01 12:03) predate the C7 and ground-look commits (M_ChimeraGround round 4).
+  redo.png s1_a vs s1_s4a (s1_a vs the S4a build, before any S4 code): {"changed_frac": 0.949300250771605, "mean_abs": 0.08276661214067417}
+  redo.png s1_s4a vs s1_sx4 (the S4a build vs this build, scatter dormant): {"changed_frac": 0.0, "mean_abs": 0.00112637164162733}
+  redo.png s1_sx4 vs s1l_sx4 (this build: S1 vs its reload of s1_a's files): {"changed_frac": 0.0, "mean_abs": 0.0014951344540516823}
+
+== scatter assets: S3b manifest unchanged; mesh sha256 per slot in sx_smoke options.scatter.meshes (13 L0 .uasset files)

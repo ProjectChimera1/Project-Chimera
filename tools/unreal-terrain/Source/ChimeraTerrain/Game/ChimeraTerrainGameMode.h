@@ -11,6 +11,7 @@
 class ATerrainActor;
 class ATerrainLighting;
 class ATerrainScriptDirector;
+class ATerrainScatter;
 
 /** Command-line options (plan C 3.8). String values use FParse::Value(..., false) (EXECUTION 2.2). */
 struct FChimeraTerrainOptions
@@ -67,6 +68,8 @@ private:
 	TObjectPtr<ATerrainLighting> Lighting;
 	UPROPERTY(Transient)
 	TObjectPtr<ATerrainScriptDirector> Director;
+	UPROPERTY(Transient)
+	TObjectPtr<ATerrainScatter> Scatter;
 
 	FChimeraTerrainOptions Options;
 };

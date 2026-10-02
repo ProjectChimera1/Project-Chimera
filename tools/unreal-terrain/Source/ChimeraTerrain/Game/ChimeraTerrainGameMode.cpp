@@ -10,6 +10,7 @@
 #include "Game/TerrainActor.h"
 #include "Game/TerrainHud.h"
 #include "Game/TerrainLighting.h"
+#include "Game/TerrainScatterActor.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "Test/TerrainScriptDirector.h"
@@ -110,6 +111,10 @@ void AChimeraTerrainGameMode::StartPlay()
 	{
 		UE_LOG(LogChimeraTerrain, Error, TEXT("terrain initialisation failed"));
 	}
+	// Plan C scatter 3.1: scatter after InitTerrain and before Super::StartPlay; its own options; dormant unless enabled.
+	Scatter = GetWorld()->SpawnActor<ATerrainScatter>(ATerrainScatter::StaticClass(), FTransform::Identity, SP);
+	FString ScatterExplicit;
+	if (Scatter && bTerrainOk) { Scatter->Setup(Terrain, ChimeraTerrain::FScatterOptions::FromCommandLine(FCommandLine::Get()), FParse::Value(FCommandLine::Get(), TEXT("ChimeraTerrainScatter="), ScatterExplicit, false)); }
 	if (Lighting)
 	{
 		// G1 round 1: the look's lighting values are text in DefaultGame.ini; a -ChimeraTerrainLight= item overrides them.
@@ -134,6 +139,8 @@ void AChimeraTerrainGameMode::StartPlay()
 	if (!Options.ScriptPath.IsEmpty())
 	{
 		Director = GetWorld()->SpawnActor<ATerrainScriptDirector>(ATerrainScriptDirector::StaticClass(), FTransform::Identity, SP);
+		Director->SetScatter(Scatter);
 		Director->Start(Options, Terrain, Lighting, bTerrainOk);
+		if (Scatter) { Scatter->SetDirector(Director); }
 	}
 }

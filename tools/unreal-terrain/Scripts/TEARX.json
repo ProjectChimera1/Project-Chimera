@@ -1,0 +1,9 @@
+{
+  "name": "TEARX",
+  "about": "Scatter teardown at a normal exit (task S4 coverage; FAILX's forced exit never reaches EndPlay): run with -ChimeraTerrainScatter=1. Fill, then a d100 stroke and the end of the script while its tiles are in flight: exit 0, and ATerrainScatter::Shutdown (EndPlay) logs that it waited on every job (parse_terrain.py --teardown).",
+  "ops": [
+    {"op": "look", "mode": "compare"},
+    {"op": "scatter_wait", "timeout_s": 600},
+    {"op": "stroke", "mode": "raise", "d": 100, "s": 40, "path": [[0, 0], [30, 20]], "ticks": 20}
+  ]
+}
