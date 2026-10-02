@@ -31,6 +31,12 @@ two independent Opus xhigh verifiers (results; code and rules). Phase 2 results 
   Each judged round writes `D:/Projects/Chimera-Unreal/TrialOut/checkpoints/G1-r<n>.json`; the main session sends Alec
   `ChimeraTerrain/Out/look/look_r<n>-phone.jpg` (has third-party reference pixels: never commit it) and commits at the end.
 - Constraints on it: every C4-C8 bar must still pass and terrain GPU must stay ≤ 3.0 ms or be reported with both numbers.
+- **Scatter (Alec approved 2026-10-01: "Go with what you think is best. Just make sure it's implemented well!")**: 3D grass, flowers,
+  shrubs and trees that follow runtime edits in a packaged game, presentation only. Design workflow `wf_6722a0c4-e65` writes the
+  plan of record `docs/unreal-move/trial-checks/plan-c-scatter.md` (research r8a-d, three designs, judged synthesis, critique).
+  Rule from Alec: use Unreal's built-in system (PCG) where it works at runtime on our terrain; otherwise build our own.
+- **Building foundations** (Alec 2026-10-01): brief `docs/unreal-move/briefs/building-foundations.md` (flat pad + soft skirt,
+  "too steep" refusal, sculpting lifts the whole pad with the building). Map editor first, after scatter; in-match is separate.
 
 ## Next step
 
