@@ -24,12 +24,10 @@ two independent Opus xhigh verifiers (results; code and rules). Phase 2 results 
 
 ## In flight
 
-- **Ground look pass (Alec 2026-10-01: "Definitely get the ground closer to Manor Lords level")**, workflow
-  `tools/unreal-trial/workflows/ground-look.js` (run `wf_ea0485ce-7d1`): G0 gathers Manor Lords references (git-ignored, under
-  `ChimeraTerrain/Out/refs/manor_lords/`) and CC0 texture candidates; G1 reworks textures, material and lighting, judged by an Opus
-  art director for up to 4 rounds (good enough = overall ≥ 7, no criterion < 6, scatter out of scope), then the usual two verifiers.
-  Each judged round writes `D:/Projects/Chimera-Unreal/TrialOut/checkpoints/G1-r<n>.json`; the main session sends Alec
-  `ChimeraTerrain/Out/look/look_r<n>-phone.jpg` (has third-party reference pixels: never commit it) and commits at the end.
+- **Ground look pass**: rounds 0-3 done (art director 5, 4, 5, 5; images sent to Alec); round 3 is in the tree, uncommitted,
+  at 3.026 ms terrain GPU (> 3.0 bar). Consolidation round 4 (`tools/unreal-trial/workflows/ground-consolidate.js`, run
+  `wf_3a3793c1-47e`): round 2's sunlit palette + round 3's variety, under 3.0 ms, one judgement, two-lens verify; then commit
+  both repos (marker `G1c.json`). Verdicts: `D:/Projects/Chimera-Unreal/TrialOut/c/g1_verdicts.json`.
 - Constraints on it: every C4-C8 bar must still pass and terrain GPU must stay ≤ 3.0 ms or be reported with both numbers.
 - **Scatter (Alec approved 2026-10-01: "Go with what you think is best. Just make sure it's implemented well!")**: 3D grass, flowers,
   shrubs and trees that follow runtime edits in a packaged game, presentation only. Design workflow `wf_6722a0c4-e65` writes the
