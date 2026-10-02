@@ -36,7 +36,7 @@ two independent Opus xhigh verifiers (results; code and rules). Phase 2 results 
   plan of record `docs/unreal-move/trial-checks/plan-c-scatter.md` (research r8a-d, three designs, judged synthesis, critique).
   Rule from Alec: use Unreal's built-in system (PCG) where it works at runtime on our terrain; otherwise build our own.
 - **Building foundations** (Alec 2026-10-01): brief `docs/unreal-move/briefs/building-foundations.md` (flat pad + soft skirt,
-  "too steep" refusal, sculpting lifts the whole pad with the building). Map editor first, after scatter; in-match is separate.
+  "too steep" refusal, sculpting lifts the whole pad with the building). Map editor and custom-game creation only: terrain is never sculpted in a match (Alec). After scatter.
 
 ## Next step
 

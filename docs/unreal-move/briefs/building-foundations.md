@@ -20,9 +20,9 @@ Players and Architects expect buildings to sit cleanly on the land (Manor Lords 
 through buildings, or buildings floating on slopes, looks broken and makes maps unusable.
 
 ## Constraints
-- Map editor first. The edited heights are content: the sim reads them when play starts (plan C §3.9), so nothing changes in
-  the sim's rules. Building placement and terrain change **during a match** would be a deterministic sim command (Fixed maths,
-  the grid in the checksum), a separate feature with its own decision.
+- **Map editor and custom-game creation only (Alec, 2026-10-01): terrain is never sculpted inside a match.** All sculpting
+  happens while creating maps or custom games. The edited heights are content: the sim reads them when play starts (plan C §3.9),
+  so nothing changes in the sim's rules. In a match, buildings are placed on the terrain as authored (placement rules only).
 - Uses the existing terrain data core (brushes, undo, dirty rects, collision, scatter refresh) in ChimeraTerrain; deterministic
   results (same edits give the same heights); the footprint comes from the building's definition (the sim's footprint data).
 - Text first; no Blueprints.
@@ -35,4 +35,4 @@ through buildings, or buildings floating on slopes, looks broken and makes maps 
 - Screenshot pair for Alec: building on a hillside before and after a nearby sculpt.
 
 ## Out of scope
-In-match placement deformation; walls, roads and other spline structures; terraces or retaining walls.
+Any terrain change during a match (never planned); walls, roads and other spline structures; terraces or retaining walls.
