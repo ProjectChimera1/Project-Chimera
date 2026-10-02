@@ -24,15 +24,13 @@ two independent Opus xhigh verifiers (results; code and rules). Phase 2 results 
 
 ## In flight
 
-- **Ground look pass**: rounds 0-3 done (art director 5, 4, 5, 5; images sent to Alec); round 3 is in the tree, uncommitted,
-  at 3.026 ms terrain GPU (> 3.0 bar). Consolidation round 4 (`tools/unreal-trial/workflows/ground-consolidate.js`, run
-  `wf_3a3793c1-47e`): round 2's sunlit palette + round 3's variety, under 3.0 ms, one judgement, two-lens verify; then commit
-  both repos (marker `G1c.json`). Verdicts: `D:/Projects/Chimera-Unreal/TrialOut/c/g1_verdicts.json`.
-- Constraints on it: every C4-C8 bar must still pass and terrain GPU must stay ≤ 3.0 ms or be reported with both numbers.
-- **Scatter (Alec approved 2026-10-01: "Go with what you think is best. Just make sure it's implemented well!")**: 3D grass, flowers,
-  shrubs and trees that follow runtime edits in a packaged game, presentation only. Design workflow `wf_6722a0c4-e65` writes the
-  plan of record `docs/unreal-move/trial-checks/plan-c-scatter.md` (research r8a-d, three designs, judged synthesis, critique).
-  Rule from Alec: use Unreal's built-in system (PCG) where it works at runtime on our terrain; otherwise build our own.
+- **Ground look pass: committed** (R 23efc90f, U 1c2f459): round 4, art director 5.5/10, terrain GPU 2.907 ms; every C4-C8 bar holds.
+- **Scatter build running** (Alec approved: "Go with what you think is best. Just make sure it's implemented well!"): workflow
+  `tools/unreal-trial/workflows/scatter-build.js`, run `wf_bcd6f3b4-ad3`, plan of record `docs/unreal-move/trial-checks/plan-c-scatter.md`
+  (bespoke C++, not PCG). S0 done (85fed6b7, U e23d09b); S1 assets beside S4a → S2; then S3 → S4 → S5 → S6 (up to 3 look rounds
+  judged against Manor Lords). Markers per task (`S1.json` …) and per look round (`S6-r<n>.json`) in
+  `D:/Projects/Chimera-Unreal/TrialOut/checkpoints/`; the main session commits each passed task in both repos and sends Alec the
+  S1 contact sheet and each `lookx_r<n>-phone.jpg`. S7 (packaged) rides with C11, S8 with C12, S9 with C13.
 - **Free asset routes (Alec 2026-10-02: "check prices ... research doing this for free first")**: research workflow
   `wf_0a8ee40c-1be` writes `docs/unreal-move/trial-checks/research/r9-free-asset-routes.md` (Megascans prices on Fab as the paid
   fallback; free routes per asset class; pilot). Main-session reading: ground textures and leaf/bark/blade images can be
