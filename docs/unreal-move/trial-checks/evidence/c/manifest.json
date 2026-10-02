@@ -1414,35 +1414,6 @@
     "sent_to_alec": null
   },
   {
-    "file": "c-S1-scatter-contact.jpg",
-    "path": "c/c-S1-scatter-contact.jpg",
-    "sha256": "24391566f0f6d3d1e0135b0eda2d7211ba25ddb843ddbdfcfc7fae6d61c83713",
-    "bytes": 205803,
-    "w_h": [
-      1600,
-      1398
-    ],
-    "task": "S1",
-    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/scatter_preview/contact_sheet-phone.jpg",
-    "r_commit": "5370d043",
-    "unreal_build_id": "",
-    "committed": true,
-    "sent_to_alec": null
-  },
-  {
-    "file": "c-S1-scatter-manifest.json",
-    "path": "c/c-S1-scatter-manifest.json",
-    "sha256": "b1bfff76f172d6ab51e553b2d76bf65b66aecdac74f7a27488b7271f2cd9a641",
-    "bytes": 87498,
-    "w_h": null,
-    "task": "S1",
-    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/ScatterSrc/manifest.json",
-    "r_commit": "5370d043",
-    "unreal_build_id": "",
-    "committed": true,
-    "sent_to_alec": null
-  },
-  {
     "file": "c-S2-scatter-tests.txt",
     "path": "c/c-S2-scatter-tests.txt",
     "sha256": "53d99537d4810d98cdb6da50a3eb23f08655749914bc4dcd448318ec8d22e561",
@@ -1451,6 +1422,87 @@
     "task": "S2",
     "source": "D:/Projects/Chimera-Unreal/TrialOut/c-s2/c-S2-scatter-tests.txt",
     "r_commit": "5370d043",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-S1-scatter-contact.jpg",
+    "path": "c/c-S1-scatter-contact.jpg",
+    "sha256": "9e3cd27407c6607651e0086163f1e7ff0f14e9da16c57d718c2521113078f3e4",
+    "bytes": 204033,
+    "w_h": [
+      1600,
+      1398
+    ],
+    "task": "S1",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/scatter_preview/contact_sheet-phone.jpg",
+    "r_commit": "0299c07b",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-S1-scatter-manifest.json",
+    "path": "c/c-S1-scatter-manifest.json",
+    "sha256": "045955d144addddde2d4c57d80f2af0f15b36b40f25e1a4daf7d0e039bb6cf39",
+    "bytes": 87498,
+    "w_h": null,
+    "task": "S1",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/ScatterSrc/manifest.json",
+    "r_commit": "0299c07b",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-S3-assets-report.json",
+    "path": "c/c-S3-assets-report.json",
+    "sha256": "fdea72df7adf5788337cfc41df68f43eec4efccc5a4a7a321c2a6d3216487ad8",
+    "bytes": 204530,
+    "w_h": null,
+    "task": "S3",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/scatter_assets/report.json",
+    "r_commit": "0299c07b",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-S3-assets-report-r1.json",
+    "path": "c/c-S3-assets-report-r1.json",
+    "sha256": "a510acc7279a8588c248b1df0d71482755ebc2af4cd561528ea99d6cd9bb1037",
+    "bytes": 204536,
+    "w_h": null,
+    "task": "S3",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/s3_assets_r1/report.json",
+    "r_commit": "0299c07b",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-S3-scatter-manifest.json",
+    "path": "c/c-S3-scatter-manifest.json",
+    "sha256": "8ab65a55de68990d73680f86087a741b9d41f84d872fb7a9c51a64766fbffe5e",
+    "bytes": 91111,
+    "w_h": null,
+    "task": "S3",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/ScatterSrc/manifest.json",
+    "r_commit": "0299c07b",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-S3-assets-summary.txt",
+    "path": "c/c-S3-assets-summary.txt",
+    "sha256": "7e056fd373a0106b3b37e37311467cea22023ebd341a71dbd9fe19f131ba2c49",
+    "bytes": 6985,
+    "w_h": null,
+    "task": "S3",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/scatter_assets/summary.txt",
+    "r_commit": "0299c07b",
     "unreal_build_id": "",
     "committed": true,
     "sent_to_alec": null

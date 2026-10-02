@@ -1,0 +1,1151 @@
+{
+ "_doc": "Scatter mesh data (plan-c-scatter.md 3.6, task S1). One file for every scatter mesh: slots (nominal heights and triangle budgets), the L0 procedural species (Tools/make_scatter_meshes.py), the CC0 sources (Tools/fetch_scatter_assets.py), the L1 Blender recipes (Tools/blender/prep_polyhaven.py, Tools/blender/make_bush.py). Units metres, +Z up, pivot at the base centre (written to glTF as +Y up, x,z,-y, the Blender exporter's mapping; Interchange maps it back to Z up, GLTFCore ConversionUtilities.h ConvertVec3). Every random draw comes from Mix32 (lowbias32) seeded by seed and the species stream. The rock slots are 1.2 m, equal to S2's palette RockNominalHM (TerrainScatterPalette.h), so the generator's sink (RockSinkFrac x RockNominalHM x scale) is 25 % of the real mesh height; test_rock_height_matches_s2_palette pins the two together.",
+ "version": 1,
+ "seed": 20261002,
+ "vertex_colour": {
+  "R": "ambient occlusion (1 = open)",
+  "G": "per-part variation (one value per blade, lobe, frond, tier)",
+  "B": "part mask: 0 = stem, trunk, bark or rock; 1 = blade, leaf mass, needles; flowers: 1 = head only",
+  "A": "height fraction z / mesh height",
+  "format": "COLOR_0 UNSIGNED_BYTE normalized VEC4 (glTF linear); the bytes are recorded in L0/report.json for S3's read-back"
+ },
+ "slots": {
+  "GrassT0": {
+   "nominal_height_m": 0.45,
+   "tris_min": 36,
+   "tris_max": 48
+  },
+  "GrassT1": {
+   "nominal_height_m": 0.6,
+   "tris_min": 36,
+   "tris_max": 48
+  },
+  "Tussock": {
+   "nominal_height_m": 0.55,
+   "tris_max": 200
+  },
+  "Flower": {
+   "nominal_height_m": 0.32,
+   "tris_max": 64
+  },
+  "Fern": {
+   "nominal_height_m": 0.5,
+   "tris_max": 300
+  },
+  "NearCard": {
+   "nominal_height_m": null,
+   "tris_max": 310,
+   "_note": "L1 only; kept at its native size (the palette scales it 2.2-2.8)"
+  },
+  "ShrubA": {
+   "nominal_height_m": 1.2,
+   "tris_min": 600,
+   "tris_max": 1500,
+   "l1_tris_max": 4000
+  },
+  "ShrubB": {
+   "nominal_height_m": 1.0,
+   "tris_min": 600,
+   "tris_max": 1500,
+   "l1_tris_max": 4000
+  },
+  "TreeBroadA": {
+   "nominal_height_m": 11.0,
+   "tris_max": 4000,
+   "l1_tris_max": 30000
+  },
+  "TreeBroadB": {
+   "nominal_height_m": 11.0,
+   "tris_max": 4000,
+   "l1_tris_max": 30000
+  },
+  "TreeConiferA": {
+   "nominal_height_m": 12.0,
+   "tris_max": 3000,
+   "l1_tris_max": 30000
+  },
+  "TreeConiferB": {
+   "nominal_height_m": 12.0,
+   "tris_max": 3000,
+   "l1_tris_max": 30000
+  },
+  "RockA": {
+   "nominal_height_m": 1.2,
+   "tris_max": 800,
+   "l1_tris_max": null
+  },
+  "RockB": {
+   "nominal_height_m": 1.2,
+   "tris_max": 800,
+   "l1_tris_max": null
+  }
+ },
+ "species": [
+  {
+   "name": "GrassT0",
+   "slot": "GrassT0",
+   "kind": "grass",
+   "stream": 101,
+   "blades": 8,
+   "rings": 3,
+   "radius": 0.07,
+   "width": [
+    0.028,
+    0.038
+   ],
+   "height": [
+    0.7,
+    1.0
+   ],
+   "lean_deg": [
+    6,
+    24
+   ],
+   "bend": [
+    0.08,
+    0.18
+   ],
+   "root": [
+    0.2,
+    0.3,
+    0.08
+   ],
+   "tip": [
+    0.55,
+    0.7,
+    0.28
+   ],
+   "roughness": 0.85
+  },
+  {
+   "name": "GrassT1",
+   "slot": "GrassT1",
+   "kind": "grass",
+   "stream": 102,
+   "blades": 6,
+   "rings": 4,
+   "radius": 0.06,
+   "width": [
+    0.024,
+    0.032
+   ],
+   "height": [
+    0.62,
+    1.0
+   ],
+   "lean_deg": [
+    6,
+    24
+   ],
+   "bend": [
+    0.1,
+    0.2
+   ],
+   "root": [
+    0.2,
+    0.3,
+    0.08
+   ],
+   "tip": [
+    0.62,
+    0.68,
+    0.3
+   ],
+   "roughness": 0.85
+  },
+  {
+   "name": "Tussock",
+   "slot": "Tussock",
+   "kind": "tussock",
+   "stream": 103,
+   "blades": 28,
+   "rings": 4,
+   "radius": 0.13,
+   "width": [
+    0.02,
+    0.032
+   ],
+   "height": [
+    0.55,
+    1.0
+   ],
+   "lean_deg": [
+    6,
+    40
+   ],
+   "bend": [
+    0.12,
+    0.3
+   ],
+   "root": [
+    0.18,
+    0.22,
+    0.08
+   ],
+   "tip": [
+    0.45,
+    0.5,
+    0.22
+   ],
+   "roughness": 0.9
+  },
+  {
+   "name": "Flower",
+   "slot": "Flower",
+   "kind": "flower",
+   "stream": 104,
+   "stems": 5,
+   "radius": 0.06,
+   "head_radius": [
+    0.028,
+    0.04
+   ],
+   "height": [
+    0.62,
+    1.0
+   ],
+   "lean_deg": [
+    3,
+    16
+   ],
+   "leaves": 4,
+   "leaf_len": [
+    0.1,
+    0.16
+   ],
+   "stem": [
+    0.2,
+    0.36,
+    0.1
+   ],
+   "head": [
+    1.0,
+    0.85,
+    0.15
+   ],
+   "roughness": 0.8
+  },
+  {
+   "name": "Fern",
+   "slot": "Fern",
+   "kind": "fern",
+   "stream": 105,
+   "fronds": 8,
+   "segments": 9,
+   "length": [
+    0.55,
+    0.75
+   ],
+   "rise_deg": [
+    32,
+    62
+   ],
+   "droop": [
+    0.25,
+    0.45
+   ],
+   "pinna": [
+    0.07,
+    0.1
+   ],
+   "colour": [
+    0.12,
+    0.28,
+    0.07
+   ],
+   "roughness": 0.85
+  },
+  {
+   "name": "ShrubA",
+   "slot": "ShrubA",
+   "kind": "shrub",
+   "stream": 106,
+   "lobes": 7,
+   "lobe_freq": 3,
+   "lobe_r": [
+    0.3,
+    0.42
+   ],
+   "spread": [
+    0.55,
+    0.4
+   ],
+   "stems": 3,
+   "noise": 0.22,
+   "noise_m": 0.22,
+   "leaf": [
+    0.1,
+    0.2,
+    0.06
+   ],
+   "bark": [
+    0.2,
+    0.15,
+    0.1
+   ],
+   "roughness": 0.85
+  },
+  {
+   "name": "ShrubB",
+   "slot": "ShrubB",
+   "kind": "shrub",
+   "stream": 107,
+   "lobes": 10,
+   "lobe_freq": 2,
+   "lobe_r": [
+    0.22,
+    0.32
+   ],
+   "spread": [
+    0.7,
+    0.3
+   ],
+   "stems": 3,
+   "noise": 0.25,
+   "noise_m": 0.18,
+   "leaf": [
+    0.13,
+    0.22,
+    0.07
+   ],
+   "bark": [
+    0.2,
+    0.15,
+    0.1
+   ],
+   "roughness": 0.85
+  },
+  {
+   "name": "TreeBroadA",
+   "slot": "TreeBroadA",
+   "kind": "broadleaf",
+   "stream": 108,
+   "lobes": 10,
+   "lobe_freq": 4,
+   "lobe_r": [
+    0.13,
+    0.19
+   ],
+   "crown_base": 0.36,
+   "crown_rx": 0.3,
+   "crown_rz": 0.27,
+   "trunk_r": 0.03,
+   "branches": 5,
+   "noise": 0.2,
+   "noise_m": 1.6,
+   "leaf": [
+    0.1,
+    0.19,
+    0.06
+   ],
+   "bark": [
+    0.22,
+    0.18,
+    0.13
+   ],
+   "roughness": 0.85
+  },
+  {
+   "name": "TreeBroadB",
+   "slot": "TreeBroadB",
+   "kind": "broadleaf",
+   "stream": 109,
+   "lobes": 13,
+   "lobe_freq": 3,
+   "lobe_r": [
+    0.11,
+    0.16
+   ],
+   "crown_base": 0.3,
+   "crown_rx": 0.33,
+   "crown_rz": 0.3,
+   "trunk_r": 0.028,
+   "branches": 4,
+   "noise": 0.22,
+   "noise_m": 1.4,
+   "leaf": [
+    0.12,
+    0.21,
+    0.06
+   ],
+   "bark": [
+    0.22,
+    0.18,
+    0.13
+   ],
+   "roughness": 0.85
+  },
+  {
+   "name": "TreeConiferA",
+   "slot": "TreeConiferA",
+   "kind": "conifer",
+   "stream": 110,
+   "tiers": 14,
+   "sectors": 24,
+   "base": 0.12,
+   "radius": 0.2,
+   "trunk_r": 0.02,
+   "droop": 0.35,
+   "jitter": 0.18,
+   "leaf": [
+    0.06,
+    0.13,
+    0.07
+   ],
+   "bark": [
+    0.2,
+    0.15,
+    0.11
+   ],
+   "roughness": 0.9
+  },
+  {
+   "name": "TreeConiferB",
+   "slot": "TreeConiferB",
+   "kind": "conifer",
+   "stream": 111,
+   "tiers": 11,
+   "sectors": 20,
+   "base": 0.18,
+   "radius": 0.17,
+   "trunk_r": 0.018,
+   "droop": 0.45,
+   "jitter": 0.22,
+   "leaf": [
+    0.07,
+    0.14,
+    0.08
+   ],
+   "bark": [
+    0.2,
+    0.15,
+    0.11
+   ],
+   "roughness": 0.9
+  },
+  {
+   "name": "RockA",
+   "slot": "RockA",
+   "kind": "rock",
+   "stream": 112,
+   "freq": 6,
+   "aspect": [
+    1.35,
+    1.0,
+    0.72
+   ],
+   "noise": [
+    0.28,
+    0.1
+   ],
+   "noise_m": [
+    0.45,
+    0.16
+   ],
+   "flatten": 0.18,
+   "colour": [
+    0.24,
+    0.23,
+    0.21
+   ],
+   "roughness": 0.9
+  },
+  {
+   "name": "RockB",
+   "slot": "RockB",
+   "kind": "rock",
+   "stream": 113,
+   "freq": 5,
+   "aspect": [
+    1.0,
+    0.85,
+    0.8
+   ],
+   "noise": [
+    0.32,
+    0.12
+   ],
+   "noise_m": [
+    0.4,
+    0.14
+   ],
+   "flatten": 0.25,
+   "colour": [
+    0.27,
+    0.25,
+    0.22
+   ],
+   "roughness": 0.9
+  }
+ ],
+ "sources": {
+  "_doc": "CC0 1.0 only (polyhaven.com/license; docs.ambientcg.com/license). Poly Haven 1k glTF + .bin + diff/arm/nor_gl + alpha maps, md5 from api.polyhaven.com/files; ambientCG 1K-PNG zips size-verified against its API (it publishes no md5) and checked against the zip_sha256 pinned here (pinned from the first download, 2026-10-02: the pin guards later drift, not that first download). Picks per research/r9-free-asset-routes.md section 2 and plan 3.6; r9 picks deliberately not taken are listed in 'skipped'. The manifest's licence column comes from each site's CC0-only policy (both sites publish only CC0), not from a per-asset API field.",
+  "polyhaven_models": [
+   {
+    "id": "grass_medium_01",
+    "use": "NearCard (Plane.042, plan 3.6)"
+   },
+   {
+    "id": "grass_medium_02",
+    "use": "dry grass clump card candidate GrassT0__medium02 (r9 grass row)"
+   },
+   {
+    "id": "celandine_01",
+    "use": "optional L1 Flower (plan 3.6: only if the art director asks)"
+   },
+   {
+    "id": "fern_02",
+    "use": "optional L1 Fern; composite-bush part"
+   },
+   {
+    "id": "nettle_plant",
+    "use": "composite-bush part"
+   },
+   {
+    "id": "weed_plant_02",
+    "use": "composite-bush part"
+   },
+   {
+    "id": "shrub_04",
+    "use": "composite-bush part"
+   },
+   {
+    "id": "searsia_lucida",
+    "use": "shrub candidate (r9 shrub route 1)"
+   },
+   {
+    "id": "tree_small_02",
+    "use": "TreeBroadA/B (plan 3.6)"
+   },
+   {
+    "id": "fir_tree_01",
+    "use": "TreeConiferA/B (plan 3.6)"
+   },
+   {
+    "id": "rock_09",
+    "use": "RockA (plan 3.6)"
+   },
+   {
+    "id": "rock_07",
+    "use": "RockB (plan 3.6)"
+   },
+   {
+    "id": "rock_moss_set_01",
+    "use": "mossy rock candidate (r9 rock row)"
+   },
+   {
+    "id": "boulder_01",
+    "use": "boulder candidate (r9 rock row)"
+   },
+   {
+    "id": "grass_bermuda_01",
+    "use": "grass clump card candidate GrassT0__bermuda (r9 grass row)"
+   },
+   {
+    "id": "dandelion_01",
+    "use": "flower card candidate Flower__dandelion (r9 wildflower row)"
+   },
+   {
+    "id": "periwinkle_plant",
+    "use": "r9 wildflower row; fetched, not prepared (see skipped)"
+   },
+   {
+    "id": "shrub_sorrel_01",
+    "use": "flower card candidate Flower__sorrel (r9 wildflower row)"
+   }
+  ],
+  "polyhaven_textures": [
+   {
+    "id": "leafy_grass",
+    "use": "L0 canopy triplanar leaf texture (plan 3.6, 3.7)"
+   },
+   {
+    "id": "bark_brown_02",
+    "use": "L0 bark texture (plan 3.6)"
+   }
+  ],
+  "ambientcg_atlases": [
+   {
+    "id": "Foliage002",
+    "use": "seed-head card clump GrassT1__seedcard (r9 grass row)",
+    "zip_sha256": "eae79091d115577e477aba68eb1b09822bff7664ebc76056617634a6776a893a"
+   },
+   {
+    "id": "Foliage003",
+    "use": "seed-head card clump GrassT1__seedcard (r9 grass row)",
+    "zip_sha256": "f49053f04c18c675c4b94d4968a3d1aee4dca246ff9fe64604fb1075af52f495"
+   },
+   {
+    "id": "Foliage004",
+    "use": "seed-head card clump GrassT1__seedcard (r9 grass row)",
+    "zip_sha256": "b68e789f4a90bb15626ffdb2e2b992a62f81b262dae90a9c145f37242dc3222e"
+   }
+  ],
+  "min_free_gb": 3.0,
+  "skipped": [
+   {
+    "id": "opengameart:clover-cutouts-improved-and-expanded",
+    "row": "r9 wildflowers",
+    "reason": "mixed provenance (remixed OpenGameArt CC0 plus Wikimedia CC0/Kopimi photos, r9 flag 20); Kopimi is not CC0, so it fails the CC0-or-project-original rule for level-editing content. Not fetched."
+   },
+   {
+    "id": "polyhaven:periwinkle_plant",
+    "row": "r9 wildflowers",
+    "reason": "fetched but not prepared: its leaves are modelled (no alpha map; the smallest variant has 241 islands in 1,478 triangles), so it cannot be carried as cards or decimated into the 64-triangle flower budget"
+   }
+  ]
+ },
+ "prepared": [
+  {
+   "name": "NearCard",
+   "slot": "NearCard",
+   "source": "grass_medium_01",
+   "objects": [
+    "grass_medium_01_tall_b_LOD0"
+   ],
+   "alpha": [
+    "grass_medium_01"
+   ],
+   "height": null,
+   "budget": 310,
+   "note": "plan 3.6 'Plane.042' = glTF mesh Plane.042 = node grass_medium_01_tall_b_LOD0 (310 tris), native size"
+  },
+  {
+   "name": "TreeBroadA",
+   "slot": "TreeBroadA",
+   "source": "tree_small_02",
+   "objects": [
+    "tree_small_02_LOD0"
+   ],
+   "alpha": [
+    "tree_small_02_leaves"
+   ],
+   "cards": {
+    "materials": [
+     "tree_small_02_leaves"
+    ],
+    "scale_cap": 2.5,
+    "margin": 300,
+    "coverage": 1.25,
+    "wood_filter": {
+     "max_coverage": 0.85,
+     "min_green": -1.0
+    }
+   },
+   "decimate": {
+    "tree_small_02_trunk": 1500,
+    "tree_small_02_branches": 3500
+   },
+   "height": 11.0,
+   "pivot": "trunk",
+   "pivot_material": "tree_small_02_trunk",
+   "budget": 30000,
+   "seed": 1081,
+   "note": "leaf-atlas islands on the opaque olive twig strip (the twig tubes, UV boxes about 0.07 x 0.53) are dropped (wood_filter, coverage only: the leaves' own G - R is low, so no green test)"
+  },
+  {
+   "name": "TreeBroadB",
+   "slot": "TreeBroadB",
+   "source": "tree_small_02",
+   "objects": [
+    "tree_small_02_LOD0"
+   ],
+   "alpha": [
+    "tree_small_02_leaves"
+   ],
+   "cards": {
+    "materials": [
+     "tree_small_02_leaves"
+    ],
+    "scale_cap": 2.5,
+    "margin": 300,
+    "coverage": 1.25,
+    "wood_filter": {
+     "max_coverage": 0.85,
+     "min_green": -1.0
+    }
+   },
+   "decimate": {
+    "tree_small_02_trunk": 1500,
+    "tree_small_02_branches": 3500
+   },
+   "prescale": {
+    "crown": [
+     0.85,
+     0.85,
+     1.3
+    ]
+   },
+   "height": 11.0,
+   "pivot": "trunk",
+   "pivot_material": "tree_small_02_trunk",
+   "budget": 30000,
+   "seed": 1091,
+   "note": "plan 3.6 variant: crown z x1.3, xy x0.85, applied above the crown base only (the trunk keeps its shape) with the leaf cards moved, not stretched; leaf-atlas islands on the opaque olive twig strip (the twig tubes, UV boxes about 0.07 x 0.53) are dropped (wood_filter, coverage only: the leaves' own G - R is low, so no green test)"
+  },
+  {
+   "name": "TreeConiferA",
+   "slot": "TreeConiferA",
+   "source": "fir_tree_01",
+   "objects": [
+    "fir_tree_01_c_LOD0"
+   ],
+   "alpha": [
+    "fir_tree_01_twig"
+   ],
+   "cards": {
+    "materials": [
+     "fir_tree_01_twig"
+    ],
+    "scale_cap": 6.0,
+    "margin": 300,
+    "coverage": 2.5,
+    "wood_filter": {
+     "max_coverage": 0.85,
+     "min_green": 0.0
+    }
+   },
+   "decimate": {
+    "fir_tree_01_trunk_c": 2000
+   },
+   "height": 12.0,
+   "pivot": "trunk",
+   "pivot_material": "fir_tree_01_trunk_c",
+   "budget": 30000,
+   "seed": 1101,
+   "note": "fir_tree_01 variant c (505k tris, plan 'variant 0'); branch wood (bark, dead_branches) dropped: with the twigs thinned it read as bare planks; twig-atlas islands on its opaque bark strip are dropped (wood_filter); the source trunk_c has no TEXCOORD_0, so its bark gets cylindrical UVs (row uv.generated)",
+   "drop": [
+    "fir_tree_01_dead_branches",
+    "fir_tree_01_bark"
+   ]
+  },
+  {
+   "name": "TreeConiferB",
+   "slot": "TreeConiferB",
+   "source": "fir_tree_01",
+   "objects": [
+    "fir_tree_01_b_LOD0"
+   ],
+   "alpha": [
+    "fir_tree_01_twig"
+   ],
+   "cards": {
+    "materials": [
+     "fir_tree_01_twig"
+    ],
+    "scale_cap": 6.0,
+    "margin": 300,
+    "coverage": 2.5,
+    "wood_filter": {
+     "max_coverage": 0.85,
+     "min_green": 0.0
+    }
+   },
+   "decimate": {
+    "fir_tree_01_trunk_b": 2000
+   },
+   "height": 12.0,
+   "pivot": "trunk",
+   "pivot_material": "fir_tree_01_trunk_b",
+   "budget": 30000,
+   "seed": 1111,
+   "note": "fir_tree_01 variant b (2.3M tris, plan 'variant 1'); branch wood (bark, dead_branches) dropped: with the twigs thinned it read as bare planks; twig-atlas islands on its opaque bark strip are dropped (wood_filter)",
+   "drop": [
+    "fir_tree_01_dead_branches",
+    "fir_tree_01_bark"
+   ]
+  },
+  {
+   "name": "RockA",
+   "slot": "RockA",
+   "source": "rock_09",
+   "objects": [
+    "rock_09_LOD0"
+   ],
+   "height": 1.2,
+   "budget": null,
+   "note": "as shipped (Nanite, not decimated)"
+  },
+  {
+   "name": "RockB",
+   "slot": "RockB",
+   "source": "rock_07",
+   "objects": [
+    "rock_07"
+   ],
+   "height": 1.2,
+   "budget": null,
+   "note": "as shipped (Nanite, not decimated)"
+  },
+  {
+   "name": "RockA__moss",
+   "slot": "RockA",
+   "role": "candidate",
+   "source": "rock_moss_set_01",
+   "objects": [
+    "rock_moss_set_01_rock05"
+   ],
+   "height": 1.2,
+   "budget": null,
+   "note": "r9 rock row: mossy grey like Manor Lords news_053"
+  },
+  {
+   "name": "RockB__boulder",
+   "slot": "RockB",
+   "role": "candidate",
+   "source": "boulder_01",
+   "objects": [
+    "boulder_01"
+   ],
+   "height": 1.2,
+   "budget": null,
+   "note": "r9 rock row"
+  },
+  {
+   "name": "ShrubA__searsia",
+   "slot": "ShrubA",
+   "role": "candidate",
+   "source": "searsia_lucida",
+   "objects": [
+    "searsia_lucida_f_LOD0"
+   ],
+   "alpha": [
+    "searsia_lucida_leaves",
+    "searsia_lucida_twigs"
+   ],
+   "cards": {
+    "materials": [
+     "searsia_lucida_leaves",
+     "searsia_lucida_twigs"
+    ],
+    "scale_cap": 2.0,
+    "margin": 100
+   },
+   "decimate": {
+    "searsia_lucida": 600
+   },
+   "height": 1.2,
+   "pivot": "base_centre",
+   "budget": 4000,
+   "seed": 1121,
+   "note": "r9 shrub route 1 (South African species, open crown)"
+  },
+  {
+   "name": "ShrubB__searsia",
+   "slot": "ShrubB",
+   "role": "candidate",
+   "source": "searsia_lucida",
+   "objects": [
+    "searsia_lucida_g_LOD0"
+   ],
+   "alpha": [
+    "searsia_lucida_leaves",
+    "searsia_lucida_twigs"
+   ],
+   "cards": {
+    "materials": [
+     "searsia_lucida_leaves",
+     "searsia_lucida_twigs"
+    ],
+    "scale_cap": 2.0,
+    "margin": 100
+   },
+   "decimate": {
+    "searsia_lucida": 600
+   },
+   "height": 1.0,
+   "pivot": "base_centre",
+   "budget": 4000,
+   "seed": 1131,
+   "note": "r9 shrub route 1"
+  },
+  {
+   "name": "Flower__celandine",
+   "slot": "Flower",
+   "role": "candidate",
+   "source": "celandine_01",
+   "objects": [
+    "celandine_01_a_LOD0"
+   ],
+   "alpha": [
+    "celandine_01"
+   ],
+   "height": 0.32,
+   "budget": 64,
+   "note": "optional (plan 3.6 keeps flowers procedural unless the art director asks for celandine_01); collapse-decimated 622 -> <= 64",
+   "decimate": {
+    "celandine_01": 62
+   }
+  },
+  {
+   "name": "Fern__fern02",
+   "slot": "Fern",
+   "role": "candidate",
+   "source": "fern_02",
+   "objects": [
+    "fern_02_a"
+   ],
+   "alpha": [
+    "fern_02"
+   ],
+   "height": 0.5,
+   "budget": 300,
+   "note": "optional (plan 3.6 keeps ferns procedural unless the art director asks for fern_02); collapse-decimated 784 -> <= 300",
+   "decimate": {
+    "fern_02": 296
+   }
+  },
+  {
+   "name": "Flower__dandelion",
+   "slot": "Flower",
+   "role": "candidate",
+   "source": "dandelion_01",
+   "objects": [
+    "dandelion_01_c_LOD0"
+   ],
+   "alpha": [
+    "dandelion_01"
+   ],
+   "cards": {
+    "materials": [
+     "dandelion_01"
+    ],
+    "scale_cap": 1.5,
+    "margin": 0
+   },
+   "height": 0.32,
+   "pivot": "base_centre",
+   "budget": 64,
+   "seed": 1141,
+   "note": "r9 wildflower row; 43 leaf and head islands as alpha cards, thinned to the 64-triangle flower budget"
+  },
+  {
+   "name": "Flower__sorrel",
+   "slot": "Flower",
+   "role": "candidate",
+   "source": "shrub_sorrel_01",
+   "objects": [
+    "shrub_sorrel_01_d"
+   ],
+   "alpha": [
+    "shrub_sorrel_01"
+   ],
+   "cards": {
+    "materials": [
+     "shrub_sorrel_01"
+    ],
+    "scale_cap": 1.5,
+    "margin": 0
+   },
+   "height": 0.32,
+   "pivot": "base_centre",
+   "budget": 64,
+   "seed": 1151,
+   "note": "r9 wildflower row; 34 islands as alpha cards, thinned to the 64-triangle flower budget"
+  },
+  {
+   "name": "GrassT0__bermuda",
+   "slot": "GrassT0",
+   "role": "candidate",
+   "source": "grass_bermuda_01",
+   "objects": [
+    "grass_bermuda_01_seedling_a",
+    "grass_bermuda_01_seedling_d"
+   ],
+   "alpha": [
+    "grass_bermuda_01"
+   ],
+   "cards": {
+    "materials": [
+     "grass_bermuda_01"
+    ],
+    "scale_cap": 1.5,
+    "margin": 0
+   },
+   "height": 0.45,
+   "pivot": "base_centre",
+   "budget": 48,
+   "seed": 1161,
+   "note": "r9 grass row; two seedling clumps stacked on one base (stack_objects), 19 blade islands as alpha cards (<= 48 tris)",
+   "stack_objects": true
+  },
+  {
+   "name": "GrassT0__medium02",
+   "slot": "GrassT0",
+   "role": "candidate",
+   "source": "grass_medium_02",
+   "objects": [
+    "grass_medium_02_a"
+   ],
+   "alpha": [
+    "grass_medium_02"
+   ],
+   "cards": {
+    "materials": [
+     "grass_medium_02"
+    ],
+    "scale_cap": 1.5,
+    "margin": 0
+   },
+   "height": 0.45,
+   "pivot": "base_centre",
+   "budget": 48,
+   "seed": 1171,
+   "note": "r9 grass row (dry); 18 blade islands as alpha cards (<= 48 tris)"
+  }
+ ],
+ "bushes": [
+  {
+   "name": "ShrubA",
+   "slot": "ShrubA",
+   "seed": 2201,
+   "sprigs": 13,
+   "radius": 0.4,
+   "root_in": 0.55,
+   "squash": 0.85,
+   "upright": 0.5,
+   "height": 1.2,
+   "budget": 4000,
+   "parts": [
+    {
+     "source": "shrub_04",
+     "object": "shrub_04",
+     "op": "cards",
+     "target": 260,
+     "scale_cap": 1.5,
+     "weight": 3,
+     "scale": [
+      2.4,
+      3.2
+     ],
+     "wood_filter": {
+      "max_coverage": 0.85,
+      "min_green": -1.0
+     }
+    },
+    {
+     "source": "fern_02",
+     "object": "fern_02_a",
+     "op": "decimate",
+     "target": 260,
+     "weight": 3,
+     "scale": [
+      1.4,
+      2.0
+     ]
+    },
+    {
+     "source": "nettle_plant",
+     "object": "nettle_plant_tall_a_LOD0",
+     "op": "decimate",
+     "target": 300,
+     "weight": 0.5,
+     "scale": [
+      2.6,
+      3.6
+     ]
+    },
+    {
+     "source": "weed_plant_02",
+     "object": "weed_plant_02_a_LOD0",
+     "op": "decimate",
+     "target": 250,
+     "weight": 2,
+     "scale": [
+      1.8,
+      2.4
+     ]
+    }
+   ],
+   "note": "plan 3.6 composite bush: fern_02, nettle_plant, weed_plant_02, shrub_04 on a seeded hemisphere; shrub_04's branch islands (59, on the atlas's opaque bark strip) are dropped before card fitting (wood_filter): as grown cards they read as planks"
+  },
+  {
+   "name": "ShrubB",
+   "slot": "ShrubB",
+   "seed": 2211,
+   "sprigs": 13,
+   "radius": 0.45,
+   "root_in": 0.55,
+   "squash": 0.7,
+   "upright": 0.35,
+   "height": 1.0,
+   "budget": 4000,
+   "parts": [
+    {
+     "source": "shrub_04",
+     "object": "shrub_04",
+     "op": "cards",
+     "target": 260,
+     "scale_cap": 1.5,
+     "weight": 2,
+     "scale": [
+      2.4,
+      3.2
+     ],
+     "wood_filter": {
+      "max_coverage": 0.85,
+      "min_green": -1.0
+     }
+    },
+    {
+     "source": "fern_02",
+     "object": "fern_02_a",
+     "op": "decimate",
+     "target": 260,
+     "weight": 4,
+     "scale": [
+      1.4,
+      2.0
+     ]
+    },
+    {
+     "source": "nettle_plant",
+     "object": "nettle_plant_tall_a_LOD0",
+     "op": "decimate",
+     "target": 300,
+     "weight": 0.5,
+     "scale": [
+      2.6,
+      3.6
+     ]
+    },
+    {
+     "source": "weed_plant_02",
+     "object": "weed_plant_02_a_LOD0",
+     "op": "decimate",
+     "target": 250,
+     "weight": 1,
+     "scale": [
+      1.8,
+      2.4
+     ]
+    }
+   ],
+   "note": "plan 3.6 composite bush, lower and wider, fern-led; shrub_04's branch islands (59, on the atlas's opaque bark strip) are dropped before card fitting (wood_filter): as grown cards they read as planks"
+  }
+ ],
+ "seedcards": [
+  {
+   "name": "GrassT1__seedcard",
+   "slot": "GrassT1",
+   "role": "candidate",
+   "atlases": [
+    "Foliage002",
+    "Foliage003",
+    "Foliage004"
+   ],
+   "cards": 20,
+   "radius": 0.08,
+   "height": 0.6,
+   "lean_deg": [
+    0,
+    20
+   ],
+   "seed": 3301,
+   "budget": 48,
+   "tris_min": 36,
+   "note": "r9 grass row: knee-high seed heads (ml_07); masked cards, so a bake-off candidate against the opaque Nanite blades of plan 1.3",
+   "pivot": "root_disc"
+  }
+ ]
+}
