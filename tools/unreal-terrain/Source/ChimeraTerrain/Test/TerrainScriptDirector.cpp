@@ -2526,6 +2526,13 @@ void ATerrainScriptDirector::Finish(uint8 Code, const FString& Reason)
 		SJ->SetNumberField(TEXT("submits"), static_cast<double>(Terrain->GetSplat().Submits()));
 		SJ->SetNumberField(TEXT("cleanups"), static_cast<double>(Terrain->GetSplat().Cleanups()));
 		Results->SetObjectField(TEXT("splat"), SJ);
+		// S4a: change events broadcast by the terrain actor, per kind (plan C scatter 3.5).
+		TSharedRef<FJsonObject> EJ = MakeShared<FJsonObject>();
+		for (int32 K = 0; K < static_cast<int32>(ETerrainChangeKind::Count); ++K)
+		{
+			EJ->SetNumberField(TerrainChangeKindName(static_cast<ETerrainChangeKind>(K)), static_cast<double>(Terrain->GetEventCount(static_cast<ETerrainChangeKind>(K))));
+		}
+		Results->SetObjectField(TEXT("terrain_events"), EJ);
 		Results->SetStringField(TEXT("final_height_fnv"), TerrainIO::HashToString(Terrain->HeightFnv()));
 		Results->SetStringField(TEXT("final_splat_fnv"), TerrainIO::HashToString(Terrain->SplatFnv()));
 	}

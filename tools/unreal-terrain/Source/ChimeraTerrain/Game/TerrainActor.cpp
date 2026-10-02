@@ -186,7 +186,34 @@ bool ATerrainActor::InitTerrain(int32 HalfExtentM, int32 ChunkQuads, ETerrainDra
 	}
 	UE_LOG(LogChimeraTerrain, Display, TEXT("terrain: half=%d m chunk=%d quads vertices=%dx%d splat=%dx%d height_fnv=0x%08x splat_fnv=0x%08x"),
 		HalfExtentM, ChunkQuads, HF.Width(), HF.Width(), HF.SplatSize(), HF.SplatSize(), HF.HeightFnv(), HF.SplatFnv());
+	Broadcast(ETerrainChangeKind::Init, FTerrainRect(0, 0, HF.Width(), HF.Width()), FTerrainRect(0, 0, HF.SplatSize(), HF.SplatSize()));
 	return true;
+}
+
+const TCHAR* TerrainChangeKindName(ETerrainChangeKind Kind)
+{
+	switch (Kind)
+	{
+	case ETerrainChangeKind::Init: return TEXT("init");
+	case ETerrainChangeKind::Tick: return TEXT("tick");
+	case ETerrainChangeKind::StrokeEnd: return TEXT("stroke_end");
+	case ETerrainChangeKind::Undo: return TEXT("undo");
+	case ETerrainChangeKind::Redo: return TEXT("redo");
+	case ETerrainChangeKind::Load: return TEXT("load");
+	default: return TEXT("?");
+	}
+}
+
+void ATerrainActor::Broadcast(ETerrainChangeKind Kind, const FTerrainRect& HeightRect, const FTerrainRect& SplatRect, TConstArrayView<int32> Chunks)
+{
+	FTerrainChange Change;
+	Change.Kind = Kind;
+	Change.HeightRect = HeightRect;
+	Change.SplatRect = SplatRect;
+	Change.Chunks = Chunks;
+	Change.Gen = ++ChangeGen;
+	++EventCounts[static_cast<int32>(Kind)];
+	OnTerrainChanged.Broadcast(Change);
 }
 
 void ATerrainActor::BeginStroke(const FTerrainBrushParams& InParams, const FVector2D& StartM)
@@ -236,6 +263,8 @@ FTerrainTickResult ATerrainActor::ApplyTick(const FVector2D& CenterM, FTerrainTi
 	const double T3 = FPlatformTime::Seconds();
 	StrokeHeightRect.Union(R.HeightRect);
 	StrokeSplatRect.Union(R.SplatRect);
+	// Change event (after the unions, so outside the tick timing T0..T3 above: P1 is unchanged). Every tick fires, with this tick's own rects.
+	Broadcast(ETerrainChangeKind::Tick, R.HeightRect, R.SplatRect);
 	// Throttled mid-stroke collision (plan C 3.6 cvar; off by default). Not part of the tick timing: it is the collision path's cost.
 	const int32 DuringMs = CVarCollisionDuringStroke.GetValueOnGameThread();
 	if (bStrokeOpen && DuringMs > 0 && !R.HeightRect.IsEmpty())
@@ -296,7 +325,9 @@ bool ATerrainActor::EndStroke()
 	// Plan C 3.6: each touched chunk's collision is rewritten from the final heights of the whole stroke.
 	SubmitCollision(StrokeHeightRect, ETerrainCollisionReason::StrokeEnd);
 	MidStrokeCollisionRect = FTerrainRect();
-	return Undo.EndStroke(HF);
+	const bool bPushed = Undo.EndStroke(HF);
+	Broadcast(ETerrainChangeKind::StrokeEnd, StrokeHeightRect, StrokeSplatRect);
+	return bPushed;
 }
 
 void ATerrainActor::SubmitCollision(const FTerrainRect& Rect, ETerrainCollisionReason Reason)
@@ -326,6 +357,7 @@ void ATerrainActor::ApplyDelta(const FTerrainEditDelta& Delta, ETerrainCollision
 	{
 		Splat.UpdateRect(HF, Delta.SplatRect);
 	}
+	Broadcast(Reason == ETerrainCollisionReason::Redo ? ETerrainChangeKind::Redo : ETerrainChangeKind::Undo, Delta.HeightRect, Delta.SplatRect, Delta.Chunks);
 }
 
 bool ATerrainActor::UndoLast()
@@ -383,6 +415,7 @@ bool ATerrainActor::LoadFrom(const FString& Dir, FString& OutError)
 	}
 	SubmitCollision(FTerrainRect(0, 0, HF.Width(), HF.Width()), ETerrainCollisionReason::Load);
 	Splat.UpdateAll(HF);
+	Broadcast(ETerrainChangeKind::Load, FTerrainRect(0, 0, HF.Width(), HF.Width()), FTerrainRect(0, 0, HF.SplatSize(), HF.SplatSize()));
 	return true;
 }
 
@@ -412,7 +445,18 @@ void ATerrainActor::SetTerrainVisible(bool bVisible)
 
 bool ATerrainActor::HasPendingWork() const
 {
-	return (Renderer && Renderer->HasPendingWork()) || Splat.HasPendingWork();
+	if ((Renderer && Renderer->HasPendingWork()) || Splat.HasPendingWork())
+	{
+		return true;
+	}
+	for (const TFunction<bool()>& Provider : PendingWorkProviders)
+	{
+		if (Provider && Provider())
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 void ATerrainActor::EndPlay(const EEndPlayReason::Type EndPlayReason)

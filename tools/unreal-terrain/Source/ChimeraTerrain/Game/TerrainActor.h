@@ -44,6 +44,39 @@ struct FTerrainTickSample
 	int32 UploadedVertices = 0;
 };
 
+/** What changed the terrain (plan C scatter 3.5). */
+enum class ETerrainChangeKind : uint8
+{
+	Init,
+	Tick,
+	StrokeEnd,
+	Undo,
+	Redo,
+	Load,
+	Count
+};
+
+/** Text name of a kind, as written in results.json "terrain_events" (init, tick, stroke_end, undo, redo, load). */
+CHIMERATERRAIN_API const TCHAR* TerrainChangeKindName(ETerrainChangeKind Kind);
+
+/**
+ * One terrain change, broadcast by ATerrainActor::OnTerrainChanged after the CPU heightfield, the splat copy and the renderer already hold the
+ * new state. Rects are vertex (HeightRect) and splat texel (SplatRect) rects, half-open; either may be empty (a tick can touch only one).
+ * Init and Load carry the whole grid. Tick carries that tick's own rects (never the stroke union); StrokeEnd carries the stroke's union
+ * (informational). Undo and Redo carry the delta's rects and Chunks = the restored chunk ids (empty for every other kind).
+ * Chunks is valid only during the broadcast. Gen increases by one per broadcast, starting at 1.
+ */
+struct FTerrainChange
+{
+	ETerrainChangeKind Kind = ETerrainChangeKind::Init;
+	ChimeraTerrain::FTerrainRect HeightRect;
+	ChimeraTerrain::FTerrainRect SplatRect;
+	TConstArrayView<int32> Chunks;
+	uint64 Gen = 0;
+};
+
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnTerrainChanged, const FTerrainChange&);
+
 UCLASS()
 class CHIMERATERRAIN_API ATerrainActor : public AActor
 {
@@ -110,8 +143,17 @@ public:
 	void SetTerrainVisible(bool bVisible);
 	bool IsTerrainVisible() const { return bVisibleNow; }
 
-	/** True while mesh updates or splat uploads are still in flight. */
+	/** True while mesh updates or splat uploads are still in flight, or any provider added with AddPendingWorkProvider says so. */
 	bool HasPendingWork() const;
+	/** OR a callback into HasPendingWork (scatter, C9 units): settle, shot and depthcheck then wait for it with no director change. */
+	void AddPendingWorkProvider(TFunction<bool()> Provider) { PendingWorkProviders.Add(MoveTemp(Provider)); }
+
+	/** Fired on Init, every stroke tick, stroke end, undo, redo and load (see FTerrainChange). Game thread only. */
+	FOnTerrainChanged OnTerrainChanged;
+	/** Events broadcast so far, per kind (results.json "terrain_events"). */
+	int64 GetEventCount(ETerrainChangeKind Kind) const { return EventCounts[static_cast<int32>(Kind)]; }
+	/** Last ring centre set by SetBrushRing (terrain metres): the brush centre scatter dispatches nearest-first from. */
+	FVector2D GetBrushRingCenter() const { return RingCenterM; }
 
 	uint32 HeightFnv() const { return HF.HeightFnv(); }
 	uint32 SplatFnv() const { return HF.SplatFnv(); }
@@ -173,6 +215,12 @@ private:
 	/** M_ChimeraGround as a MID (splat texture, HalfExtentM, overrides); the grey material when bGreyMaterial is set or it is missing. */
 	UMaterialInterface* MakeGroundMaterial();
 	void PushBrushRing();
+	/** Builds the FTerrainChange, bumps Gen and the per-kind count, then broadcasts. */
+	void Broadcast(ETerrainChangeKind Kind, const ChimeraTerrain::FTerrainRect& HeightRect, const ChimeraTerrain::FTerrainRect& SplatRect, TConstArrayView<int32> Chunks = TConstArrayView<int32>());
+
+	TArray<TFunction<bool()>> PendingWorkProviders;
+	int64 EventCounts[static_cast<int32>(ETerrainChangeKind::Count)] = {};
+	uint64 ChangeGen = 0;
 
 	bool bGreyMaterial = false;
 	bool bGroundMaterial = false;
