@@ -1,81 +1,71 @@
 # HANDOFF — Project Chimera
 
-_Updated 2026-10-01 17:30 · branch `master` · Phase 2 committed; ground-look workflow `wf_ea0485ce-7d1` running (see `git log -1`)_
+_Updated 2026-10-02 09:30 · branch `master` · last commit: the handoff commit after scatter S3 (see `git log -1`)_
 
 ## Where we stopped
 
-The Unreal trial runs `docs/unreal-move/trial-checks/EXECUTION.md`. **Phases 0, 1 and 2 are done and committed**: every task passed
-two independent Opus xhigh verifiers (results; code and rules). Phase 2 results and main-session rulings: EXECUTION.md §7.
+The Unreal trial runs `docs/unreal-move/trial-checks/EXECUTION.md` (§7 Phase 0-1, §8 Phase 2 and after). **Phases 0-2 are done and
+committed.** Since then: the terrain ground look pass (committed) and runtime scatter tasks S0-S4a-S2-S3 (committed). Every task
+passed two independent Opus xhigh verifiers (results; code and rules). Stopped after S3 on purpose (Alec asked for a clean stop);
+nothing is running and both trees are clean.
 
-- **Check (a) NativeAOT sim: core proven.** SimSession (A3) builds a match the way Godot does; `trial_1000` (1,000 units, 2,077
-  frozen orders) has two new goldens (A4). The same 1,440 checksums come out of the .NET CLI, the C++ harness on `ChimeraSim.dll`
-  (A5, A7), Godot on .NET 8.0.25 and on 10.0.12 (A8; plain Godot 4.6.3 hosts .NET 10, plan fact F7 was wrong), the full real
-  MainScene replay (A14, measured) and **Unreal `-game` at normal pace, 24 fps, with forced hitches and with AI (A10)**. The real
-  MainScene start state equals SimSession's, 6/6 (A8b, the D1 gate). AOT equals JIT on 37/37 sequences and 31 goldens (A6).
-  Sim tests: T1 failed=0 at every task; no existing golden or AlgoVersion moved. DW-681 stays open (trial_1000 never triggers it).
-- **Check (b) HUD:** calibration frozen at `bbfda161` (positives 5/5 incl. the new P6 vector AA model, negatives 8/8 per pair,
-  after the T2 ruling). T4a chose the text route (hinting None, kerning on, fractional placement, PNG icons) and built SChimeraText,
-  the keycap, icon and top-strip first cut. **D10 answered by Alec 2026-10-01: Slate's lighter text weight (5.5-31% less ink) is
-  accepted** ("D10 looks good").
-- **Check (c) terrain:** script director and S1/S1L/C1 (C4: fps-independent hashes, exact undo/redo), sim-grid parity with the C#
-  ElevationGrid (C10), collision current after every stroke and a 79.5 MB soak (C5), ground material (C7), real OS mouse
-  sculpting (C8). Terrain GPU 2.96 ms against the 3.0 ms Phase 4 bar (thin).
-- Images sent to Alec: `a-A8-parity.png`, `c-C7-composite-phone.jpg`, `c-C8-mouse.jpg`, the D10 crop.
-
-## In flight
-
-- **Ground look pass: committed** (R 23efc90f, U 1c2f459): round 4, art director 5.5/10, terrain GPU 2.907 ms; every C4-C8 bar holds.
-- **Scatter build running** (Alec approved: "Go with what you think is best. Just make sure it's implemented well!"): workflow
-  `tools/unreal-trial/workflows/scatter-build.js`, run `wf_bcd6f3b4-ad3`, plan of record `docs/unreal-move/trial-checks/plan-c-scatter.md`
-  (bespoke C++, not PCG). S0 done (85fed6b7, U e23d09b); S1 assets beside S4a → S2; then S3 → S4 → S5 → S6 (up to 3 look rounds
-  judged against Manor Lords). Markers per task (`S1.json` …) and per look round (`S6-r<n>.json`) in
-  `D:/Projects/Chimera-Unreal/TrialOut/checkpoints/`; the main session commits each passed task in both repos and sends Alec the
-  S1 contact sheet and each `lookx_r<n>-phone.jpg`. S7 (packaged) rides with C11, S8 with C12, S9 with C13.
-- **Free asset routes (Alec 2026-10-02: "check prices ... research doing this for free first")**: research workflow
-  `wf_0a8ee40c-1be` writes `docs/unreal-move/trial-checks/research/r9-free-asset-routes.md` (Megascans prices on Fab as the paid
-  fallback; free routes per asset class; pilot). Main-session reading: ground textures and leaf/bark/blade images can be
-  generated (SDXL seamless tiling, local); plant shapes come from generators (UE 5.8 PVE, Blender), not image-to-3D. Pilot adds
-  Alec's idea: generate a 360° orbit video of a solid object (boulder, stump) with a local video model (check licence, e.g. Wan
-  2.x Apache-2.0), then rebuild it with photogrammetry or Gaussian splats; not for thin foliage.
-- **Building foundations** (Alec 2026-10-01): brief `docs/unreal-move/briefs/building-foundations.md` (flat pad + soft skirt,
-  "too steep" refusal, sculpting lifts the whole pad with the building). Map editor and custom-game creation only: terrain is never sculpted in a match (Alec). After scatter.
+- **(a) NativeAOT sim:** one 1,440-tick checksum sequence for `trial_1000` from the .NET CLI, the C++ harness, Godot (.NET 8 and
+  10; plain Godot 4.6.3 hosts .NET 10), the full MainScene replay and Unreal `-game` (normal, 24 fps, hitch, AI). MainScene start
+  state = SimSession's, 6/6. Sim tests failed=0 throughout; no existing golden or AlgoVersion moved. DW-681 stays open.
+- **(b) HUD:** calibration frozen (`bbfda161`, positives 5/5 incl. P6, negatives 8/8); text route chosen (T4a). D10 accepted by
+  Alec: Slate's lighter text weight is fine.
+- **(c) Terrain:** C4, C5, C7, C8, C10 passed. Ground look toward Manor Lords (Alec: floor "way better than Warcraft 3 Reforged",
+  target Manor Lords): round 4 committed (R 23efc90f, U 1c2f459), art director 5.5/10, terrain GPU 2.907 ms (bar 3.0).
+- **Scatter** (Alec: "Go with what you think is best. Just make sure it's implemented well!"): plan of record
+  `docs/unreal-move/trial-checks/plan-c-scatter.md` (bespoke C++, not PCG). Committed: S0 (85fed6b7), S4a terrain change event
+  (5370d043), S2 generator + 43 tests (0299c07b), S1 meshes + CC0 assets (930c09ae), S3 import + 65 materials (09357041); U commits
+  920bc27, a1eba0d, e49e79a, 04f5ddb. Hand-off notes per task: `D:/Projects/Chimera-Unreal/TrialOut/checkpoints/{S1,S2,S3b,S4a}.json`.
 
 ## Next step
 
-Phase 3 "Converge" (EXECUTION §1.2), not started: (a) A11 renderer, cameras, shots, verify, then a separate reviewer fills
-`visual_check.json`; (b) T4b → T5 → T6 → T7 → T8 convergence with `tools/unreal-hud/hud_iterate.sh` (T4a left: top.clock pill
-borders need split coverage; chip text G5 badness is exactly 1.0); (c) C9 unit layer and sculpt video, C11 packaged builds, after
-the ground look settles. Workflow templates: `tools/unreal-trial/workflows/` (phase2.js pattern: per-task markers, main-session
-commits from them). Carry: C12 must keep stale soak folders out (P6 gates every gate-config SOAK); A13 needs a clean republish.
+Run `tools/unreal-trial/workflows/scatter-build-s4.js` (S4 runtime scatter → S5 harness and determinism → S6 up to 3 look rounds
+judged against Manor Lords). Watch with `tools/unreal-trial/checkpoints/wait_marker.sh` (background) and commit each passed task
+with `checkpoints/ckpt.py <task>` by explicit path in both repos (README there). Send Alec each S6 `lookx_r<n>-phone.jpg`.
+Then Phase 3 for the other checks (A11 renderer + reviewer `visual_check.json`; HUD T4b → T8 via `tools/unreal-hud/hud_iterate.sh`),
+C9 (needs only S4a), C11 packaging (+S7). Building foundations (`docs/unreal-move/briefs/building-foundations.md`) after scatter.
 
 ## Waiting on Alec
 
-- Nothing blocks. D2 (performance bar) is needed before Phase 4. Contingent only: D8 (Errant trial form), D9 (mouse injection).
-  Carried over: optional RAM upgrade; DW-1029, HD Model triangle question, DW-1025, `cinderhand_thrall` colour.
+1. **Editor asset licence rule** (`docs/unreal-move/trial-checks/research/r9-free-asset-routes.md`): recommended, ship only CC0,
+   CC-BY 4.0 and our own content in the map editor until Epic answers whether Fab Standard content (all Megascans; Fab EULA
+   6(b)(iii) bars "world- or level-editing tools ... that allow works to be exported") may be placed in maps that run only in
+   our game. I can draft the email to legal@epicgames.com.
+2. **Optional:** add the free CC-BY packs to his Fab library (KV Beech Tree 01, HighPoly Tree Model, European Forest
+   Environment) for the tree and shrub bake-off; check Quixel Bridge / quixel.com for legacy Unreal-plan claims (different terms).
+3. D2 (performance bar) before Phase 4. Contingent: D8, D9. Carried: RAM upgrade, DW-1029, DW-1025, `cinderhand_thrall` colour.
 
 ## How to run and check it
 
 - Sim tests: `UE_LOCK_TAG=x bash D:/Projects/Chimera-Unreal/ue_lock.sh dotnet test godot/ProjectChimera.Sim.Tests/ProjectChimera.Sim.Tests.csproj`
-  (~2 min; LLM generation-timeout tests flake under load: rerun them alone). `python tools/sim-trial/trx_summary.py <dir>`.
-- Trace parity: `python tools/sim-trial/compare_traces.py --set main|ai name=trace…` (writes compare.json and parity.png).
-- Godot leg: `tools/sim-trial/run_godot_leg.ps1 -Variant main|ai -Runtime net8|host` (under the lock). Unreal sim run:
-  `P/SimTrial/tools/run_sim.ps1` (takes the lock itself after preflight). HUD: `tools/unreal-hud/hud_iterate.sh <tag>`.
-  Terrain: `ChimeraTerrain/Tools/run_terrain.ps1 -Script S1|C1|MOUSE …` and `parse_terrain.py`.
+  (~2 min; LLM generation-timeout tests flake under load). Parity: `python tools/sim-trial/compare_traces.py --set main|ai name=trace…`.
+- Terrain: `ChimeraTerrain/Tools/run_terrain.ps1 -Script S1|C1|LOOK|MOUSE …`, `parse_terrain.py`, `look_measure.py`; scatter assets:
+  `Tools/make_scatter_meshes.py`, `fetch_scatter_assets.py` (`--refresh-l0` after regenerating L0), commandlet
+  `Scripts/make_scatter_assets.py` (from a deleted `Content/Terrain/Scatter`, one hold). HUD: `tools/unreal-hud/hud_iterate.sh <tag>`.
 - Any Unreal build/run: through the lock, from Git Bash only, in the background (`bash -c '<cmd> > L 2>&1; echo EXIT=$? > L.exit'`)
   then `bash D:/Projects/Chimera-Unreal/wait_for.sh --file L.exit` in the foreground. Builds take 4-18 min under contention.
 - NativeAOT publish needs `C:\Program Files (x86)\Microsoft Visual Studio\Installer` on PATH; `NAT/publish.ps1` exit 5 = DLL in use.
 
 ## Known issues
 
-- Alec runs other Claude sessions on this PC: free RAM is often 3-6 GB; Windows logged memory pressure from cl.exe during builds.
-- `ProjectChimera/Config/DefaultEngine.ini` holds an AndroidFileServer `SecurityToken` (local history only; mirrors scan it out).
-- A context-warning hook reports a wrong token count (608k when the status line showed 273k); Alec: ignore it, don't hunt it.
-- Godot: Terrain3D brush uses stale operation ints (Paint and Smooth are no-ops; r7), DW-681 frame writer, both unfiled.
+- Resuming a workflow whose lanes run in parallel re-runs agents live (the cached prefix breaks); start a fresh small workflow
+  for follow-ups instead. Workflows resume only inside the session that started them.
+- Terrain GPU margin is thin (2.907 of 3.0 ms); scatter cost is reported separately (S5/S8). Unit GPU cost is unmeasured until C9.
+- Manor Lords reference images live only in `ChimeraTerrain/Out/refs/manor_lords/` (git-ignored, third-party): never commit them.
+- A context-warning hook over-reports tokens (608k shown vs 273k real); Alec: ignore it.
+- Free RAM is often 3-6 GB (other Claude sessions); `ProjectChimera/Config/DefaultEngine.ini` holds a SecurityToken (local only).
+- Godot: Terrain3D brush stale operation ints (r7), DW-681 frame writer, both unfiled.
 
 ## Key context
 
 - Architecture of record (Unreal Spec, https://claude.ai/code/artifact/5b9ecf08-3568-4a8f-833a-f21c1112b395): NativeAOT sim
   library, thin C++ Unreal shell (no widget Blueprints), plain .NET match server. World look: Manor Lords style, Lumen off.
-- `D:/Projects/Chimera-Unreal` (local git, no remote) holds ProjectChimera, ChimeraHud, ChimeraTerrain, `ue_lock.sh` v2 and
-  `wait_for.sh`; text mirrors here: `tools/unreal-sim`, `tools/unreal-hud/ChimeraHud-src`, `tools/unreal-terrain`.
+- Terrain is sculpted only in the map editor / custom-game creation, never in a match (Alec, 2026-10-01).
+- Research this session: `research/r8a-d` (scatter: PCG runtime, assets, perf, integration), `r9-free-asset-routes.md`.
+- `D:/Projects/Chimera-Unreal` (local git, no remote): ProjectChimera, ChimeraHud, ChimeraTerrain, `ue_lock.sh`, `wait_for.sh`;
+  mirrors here: `tools/unreal-sim`, `tools/unreal-hud/ChimeraHud-src`, `tools/unreal-terrain`.
 - PC: Ryzen 5 5600, RTX 3060 12 GB, 16 GB RAM. History: `docs/history/Snapshot-through-2026-09-21.md`.

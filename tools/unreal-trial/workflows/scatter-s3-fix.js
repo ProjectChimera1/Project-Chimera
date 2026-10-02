@@ -1,8 +1,8 @@
 export const meta = {
-  name: 'unreal-trial-scatter-build',
-  description: 'Check c: build runtime scatter per plan-c-scatter.md (S1 assets, S4a event, S2 generator, S3 import, S4 runtime, S5 harness, S6 look rounds): implement, two-lens verify, fix',
+  name: 'unreal-trial-scatter-s3-fix',
+  description: 'Check c: scatter S3 second pass (vertex colours on L0 meshes, a real grass LOD chain), two-lens verify, fix',
   phases: [
-    { title: 'Scatter', detail: 'S1 beside S4a then S2; S3; S4; S5; S6 look rounds with an art director' },
+    { title: 'Scatter', detail: 'S4 runtime; S5 harness and determinism; S6 look rounds with an art director' },
     { title: 'Markers', detail: 'one checkpoint file per finished task and per judged look round' },
   ],
 }
@@ -156,7 +156,7 @@ END-JSON`, { label: `${name}:mark`, phase: 'Markers', model: 'haiku' })
 }
 const SPLAN = DOCS + '/plan-c-scatter.md'
 const R9 = DOCS + '/research/r9-free-asset-routes.md'
-const STATE = `PHASE 3 STATE (supersedes the Phase 2 state above where they differ): Phase 2 is complete and committed. The ground look pass is committed (R 23efc90f, U 1c2f459): round 4 of M_ChimeraGround (CC0 Grass004/Rock030 etc.), terrain_gpu_ms 2.907 ms against the 3.0 ms bar, art director 5.5/10; every C4-C8 bar holds and hashes equal s1_a. Alec approved scatter ("Go with what you think is best. Just make sure it's implemented well!"); the plan of record is ${SPLAN} (bespoke C++ scatter, not PCG; read it in full, especially §0-§3, your task in §4, the bars in §5 and the risks in §6; its rules for every implementer at the top of §4 apply, and its F17 rule is now satisfied: the ground-look final commit is in). Main-session task S0 is done (plan C §7 and §3 pointer, EXECUTION §8 slot, U/.gitignore ChimeraTerrain/ScatterSrc/, blender in KIT/preflight.ps1's busy pattern). Asset routes: ${R9} (free routes per class; CC0 and project-original content only, because Fab Standard content, including every Quixel item and the $0 ones, may be barred from level-editing tools; CC-BY Fab packs are not in Alec's library yet, so do not plan on them; Epic engine samples such as PVE are allowed only in the S6 bake-off as candidates and are marked 'epic' in the manifest, pending Alec's licence decision). Paths for check (c): T = ChimeraTerrain, S = T/Source/ChimeraTerrain, RT = R/tools/unreal-terrain (mirror; every task ends with bash T/Tools/sync_to_repo.sh and secret_scan).`
+const STATE = `PHASE 3 STATE (supersedes the Phase 2 state above where they differ): Phase 2 is complete and committed. The ground look pass is committed (R 23efc90f, U 1c2f459): round 4 of M_ChimeraGround (CC0 Grass004/Rock030 etc.), terrain_gpu_ms 2.907 ms against the 3.0 ms bar, art director 5.5/10; every C4-C8 bar holds and hashes equal s1_a. Alec approved scatter ("Go with what you think is best. Just make sure it's implemented well!"); the plan of record is ${SPLAN} (bespoke C++ scatter, not PCG; read it in full, especially §0-§3, your task in §4, the bars in §5 and the risks in §6; its rules for every implementer at the top of §4 apply, and its F17 rule is now satisfied: the ground-look final commit is in). Main-session task S0 is done (plan C §7 and §3 pointer, EXECUTION §8 slot, U/.gitignore ChimeraTerrain/ScatterSrc/, blender in KIT/preflight.ps1's busy pattern). Asset routes: ${R9} (free routes per class; CC0 and project-original content only, because Fab Standard content, including every Quixel item and the $0 ones, may be barred from level-editing tools; CC-BY Fab packs are not in Alec's library yet, so do not plan on them; Epic engine samples such as PVE are allowed only in the S6 bake-off as candidates and are marked 'epic' in the manifest, pending Alec's licence decision). DONE AND COMMITTED BEFORE THIS RUN: scatter S0, S1 (meshes and CC0 assets; contact sheet sent to Alec), S4a (terrain change event) and S2 (generator, scheduler, 43 tests). S3 (import and materials) is implemented in the working tree, uncommitted, and failed review on two majors (this run fixes them); read their checkpoint notes in D:/Projects/Chimera-Unreal/TrialOut/checkpoints/{S1,S2,S3,S4a}.json for hand-offs (S2's notes say how S4 must drive the scheduler; S1's notes say L1 meshes carry no COLOR_0). Paths for check (c): T = ChimeraTerrain, S = T/Source/ChimeraTerrain, RT = R/tools/unreal-terrain (mirror; every task ends with bash T/Tools/sync_to_repo.sh and secret_scan).`
 
 const TASKS = {
   S1: { id: 'S1', phase: 'Scatter', model: 'opus', effort: 'medium', title: 'Scatter meshes and assets outside Unreal', where: `${SPLAN} §3.6 and §4 S1; ${R9} per-class routes`,
@@ -204,46 +204,10 @@ async function runLookRounds(t) {
   await mark(t.id)
 }
 
-const T_OUT = U + '/ChimeraTerrain/Out'
-const pS1 = runTask(TASKS.S1)
-const pCore = (async () => {
-  await runTask(TASKS.S4a)
-  if (!ok('S4a')) { log('S4a not passed: S2 still runs (it needs only the module), S4 waits on S4a'); }
-  await runTask(TASKS.S2)
-})()
-await Promise.all([pS1, pCore])
-// Main-session decision (2026-10-02): S1 failed only on the 16-bit alpha clip (prep_polyhaven.pack_alpha converts I;16 to L by
-// clipping at 255, so leaf masks lose their gradient). Two more fix-and-verify rounds for S1 before the rest of the chain.
-if (results.S1 && results.S1.status === 'fail' && results.S1.report) {
-  const t = TASKS.S1
-  let rep = results.S1.report, v = results.S1.verdict
-  for (let r = 0; r < 2; r++) {
-    const fixed = await agent(fixPrompt(t, rep, v) + ' MAIN-SESSION NOTE: the remaining major is the 16-bit alpha clip: scale I;16 (and I/F) alpha to 8 bits (value * 255 / 65535, rounded) instead of clipping, for every reader of the packed leaf textures (pack_alpha, texel_grids, the bush driver), rebuild every affected L1 asset, rerun the determinism checks and the contact sheet, and add a test that a 16-bit ramp packs to a full 0-255 ramp.', { label: `S1:fixB${r + 1}`, phase: t.phase, schema: REPORT, model: 'opus', effort: 'medium' })
-    if (!fixed) break
-    rep = fixed
-    v = await verifyBoth(t, rep, 3 + r)
-    if (v.verdict === 'pass') break
-  }
-  results.S1 = { status: rep.status === 'blocked' ? 'blocked' : (v && v.verdict === 'pass' ? 'pass' : 'fail'), report: rep, verdict: v }
-  results.S1b = results.S1
-  log(`S1 (second pass): ${results.S1.status}`)
-  await mark('S1b')
-}
-if (!ok('S1') || !ok('S2')) { skipAll(['S3', 'S4', 'S5', 'S6'], 'S1 or S2 not passed') }
-else {
-  await runTask(TASKS.S3)
-  if (!ok('S3') || !ok('S4a')) { skipAll(['S4', 'S5', 'S6'], 'S3 or S4a not passed') }
-  else {
-    await runTask(TASKS.S4)
-    if (!ok('S4')) { skipAll(['S5', 'S6'], 'S4 not passed') }
-    else {
-      await runTask(TASKS.S5)
-      if (!ok('S5')) { skip('S6', 'S5 not passed') }
-      else { await runLookRounds(TASKS.S6) }
-    }
-  }
-}
+const S3B = Object.assign({}, TASKS.S3, { id: 'S3b', model: 'opus', effort: 'medium', title: 'Scatter import and materials, second pass',
+  extra: TASKS.S3.extra + ` SECOND PASS (main session): the working tree holds S3 as its last fix left it. Read D:/Projects/Chimera-Unreal/TrialOut/c/s3_last.json (the last report and both verifiers' verdicts) first. Fix the two review majors and any cheap minors: (1) the final saved L0 tree, shrub and rock meshes report no vertex colours, because the vc gate was taken on an earlier state; make the L0 meshes keep their vertex colours through the final save, and make the gate read the final saved assets (it must fail if any mesh the materials expect to carry COLOR_0 lacks it); (2) the grass _L A/B arm must be a real non-Nanite LOD chain (plan §1.3, §3.6-3.7): three LODs with reduced triangles (generate them in make_scatter_meshes.py if QuadricMeshReduction cannot reduce such small meshes), with a self-test that fails on a non-reducing chain. Then rerun everything from clean exactly as the last pass did (one commandlet per hold, the rm -rf inside the same hold) and report the new hashes. Every file you and the previous S3 passes changed goes in files_changed.` })
+await runTask(S3B)
 
 const out = {}
-for (const id of Object.keys(results)) out[id] = Object.assign(brief(id), results[id] && results[id].judge ? { judge: results[id].judge } : {})
+for (const id of Object.keys(results)) out[id] = brief(id)
 return out
