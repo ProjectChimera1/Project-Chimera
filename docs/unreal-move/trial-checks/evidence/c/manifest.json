@@ -1412,5 +1412,47 @@
     "unreal_build_id": "",
     "committed": true,
     "sent_to_alec": null
+  },
+  {
+    "file": "c-S1-scatter-contact.jpg",
+    "path": "c/c-S1-scatter-contact.jpg",
+    "sha256": "24391566f0f6d3d1e0135b0eda2d7211ba25ddb843ddbdfcfc7fae6d61c83713",
+    "bytes": 205803,
+    "w_h": [
+      1600,
+      1398
+    ],
+    "task": "S1",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/scatter_preview/contact_sheet-phone.jpg",
+    "r_commit": "5370d043",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-S1-scatter-manifest.json",
+    "path": "c/c-S1-scatter-manifest.json",
+    "sha256": "b1bfff76f172d6ab51e553b2d76bf65b66aecdac74f7a27488b7271f2cd9a641",
+    "bytes": 87498,
+    "w_h": null,
+    "task": "S1",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/ScatterSrc/manifest.json",
+    "r_commit": "5370d043",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-S2-scatter-tests.txt",
+    "path": "c/c-S2-scatter-tests.txt",
+    "sha256": "53d99537d4810d98cdb6da50a3eb23f08655749914bc4dcd448318ec8d22e561",
+    "bytes": 7229,
+    "w_h": null,
+    "task": "S2",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/c-s2/c-S2-scatter-tests.txt",
+    "r_commit": "5370d043",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
   }
 ]
