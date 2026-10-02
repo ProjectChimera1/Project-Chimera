@@ -55,6 +55,8 @@ Log greps and count checks live in `parse_terrain.py`, never in `grep -c` (it ex
    kept stale; that is a cost (risk 3). Chunks are Movable. That this fully covers edited shapes is UNVERIFIED; G1's hill-shadow check proves it.
 
 ## 3. Design
+Scatter (grass, flowers, shrubs, trees, rocks) is designed in `plan-c-scatter.md` (Alec approved 2026-10-01); it is presentation only and builds on §3.2-3.8.
+
 
 ### 3.1 Project `ChimeraTerrain` (sibling, same Blank C++ shape as ProjectChimera)
 - `ChimeraTerrain.uproject`: `EngineAssociation` GUID copied exactly (R3 risk R13). Module `ChimeraTerrain` (Runtime, Default). Plugins:
@@ -435,8 +437,8 @@ the fallback taken; never rounded up.
     S1L catch stale bounds; fallback: fixed conservative bounds (footprint × ±128 m), at the cost of weaker culling and wider VSM coverage.
 
 ## 7. Out of scope
-Ramp, noise and plateau tools. Water, impassable paint, regions, props. Terrain LOD, Nanite, RMC Pro. RVT unless risk 5 triggers. Foliage
-and grass scatter. The Round 2 Map Editor UI (debug HUD only). Feeding edits to the running sim, in-match deformation, terrain in the
+Ramp, noise and plateau tools. Water, impassable paint, regions, props. Terrain LOD, Nanite, RMC Pro. RVT unless risk 5 triggers. (Foliage
+and grass scatter moved into scope on 2026-10-02: `plan-c-scatter.md`.) The Round 2 Map Editor UI (debug HUD only). Feeding edits to the running sim, in-match deformation, terrain in the
 lobby hash (§3.9 is a note); running the sim on the edited grid is handed to check (a) (C10). The 32-layer palette (DW-1019). A Godot `.res`
 importer. Merging into ProjectChimera. The Errant evaluation unless CF also fails. Multiplayer sync of edits.
 

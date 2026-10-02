@@ -43,7 +43,7 @@ if ($w -eq 1920 -and $h -eq 1080 -and "$dpi" -eq '96' -and -not $logon) {
 Write-Output ("PARSEC {0}" -f $parsecState)
 
 if ($Quiet) {
-  $pat = '^(dotnet|ilc|cl|link|MSBuild|testhost.*|Godot.*|ffmpeg|ShaderCompileWorker)$'
+  $pat = '^(dotnet|ilc|cl|link|MSBuild|testhost.*|Godot.*|ffmpeg|ShaderCompileWorker|blender)$'
   function Snap { $d = @{}; foreach ($p in Get-Process) { try { $d[$p.Id] = @($p.ProcessName, $p.TotalProcessorTime.TotalSeconds) } catch { } }; $d }
   $a = Snap
   $i0 = [uint64]0; $t0 = [uint64]0; $ok0 = [ChimeraPf]::Times([ref]$i0, [ref]$t0)
