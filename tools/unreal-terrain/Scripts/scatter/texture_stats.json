@@ -1,0 +1,25 @@
+{
+ "_doc": "Mean linear luma of the L0 scatter textures (Tools/scatter_texture_stats.py); read by make_scatter_assets.py.",
+ "textures": {
+  "leafy_grass": {
+   "file": "raw/polyhaven/leafy_grass/leafy_grass_diff_1k.jpg",
+   "sha256": "cfa40bc9d9417d1852db8753a8d5917f110c40101179f63543c382e39bc05e4a",
+   "mean_linear_luma": 0.24425,
+   "mean_linear_rgb": [
+    0.31976,
+    0.23574,
+    0.10614
+   ]
+  },
+  "bark_brown_02": {
+   "file": "raw/polyhaven/bark_brown_02/bark_brown_02_diff_1k.jpg",
+   "sha256": "920fa0bed0c9d78c1d530e99795113afd532d7db746de440f4a85d7c83ed0f1a",
+   "mean_linear_luma": 0.10684,
+   "mean_linear_rgb": [
+    0.12786,
+    0.10497,
+    0.06337
+   ]
+  }
+ }
+}

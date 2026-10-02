@@ -1,0 +1,2877 @@
+{
+ "_doc": "Scatter asset manifest (plan-c-scatter.md 3.6). Written by Tools/fetch_scatter_assets.py; licences CC0-1.0 | project-original | epic only (r9 section 5 flag 10: no Fab, Quixel or CC-BY content).",
+ "date": "2026-10-02",
+ "root": "D:/Projects/Chimera-Unreal/ChimeraTerrain/ScatterSrc",
+ "rows": [
+  {
+   "id": "grass_medium_01",
+   "kind": "source-model",
+   "level": "src",
+   "slot": null,
+   "use": "NearCard (Plane.042, plan 3.6)",
+   "source": "polyhaven:grass_medium_01",
+   "url": "https://polyhaven.com/a/grass_medium_01",
+   "licence": "CC0-1.0",
+   "licence_url": "https://polyhaven.com/license",
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "raw/polyhaven/grass_medium_01/grass_medium_01_1k.gltf",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/grass_medium_01/grass_medium_01_1k.gltf",
+     "md5": "28dd8247f3faa749bf87a0b84be01e7e",
+     "sha256": "3e5e2a314c94e16de54fd7c28e41709731fbd2b1613ab539f1544f622ddb6a85",
+     "bytes": 27110
+    },
+    {
+     "path": "raw/polyhaven/grass_medium_01/grass_medium_01.bin",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/grass_medium_01/grass_medium_01.bin",
+     "md5": "e0527a0561c2dae5b7b5c1b478d8c6bf",
+     "sha256": "f4587cabdb96a2e96d8be644923dc954a248edfaaa717a0ff224cacb898bee1f",
+     "bytes": 1006632
+    },
+    {
+     "path": "raw/polyhaven/grass_medium_01/textures/grass_medium_01_arm_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/grass_medium_01/grass_medium_01_arm_1k.jpg",
+     "md5": "37ed2730a507b681af2e9f9f7ef3ae5e",
+     "sha256": "9a3a30f72bc02f4398967c5b08f2d20cce30bd423a2613b42a727034296fa3ae",
+     "bytes": 679518
+    },
+    {
+     "path": "raw/polyhaven/grass_medium_01/textures/grass_medium_01_diff_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/grass_medium_01/grass_medium_01_diff_1k.jpg",
+     "md5": "6b18ed50d776fd20c1304d9994bd764e",
+     "sha256": "71495bd6a11fddcab0aaff38246fea1a7b802a705483f1c7cbca53955daa8050",
+     "bytes": 395673
+    },
+    {
+     "path": "raw/polyhaven/grass_medium_01/textures/grass_medium_01_nor_gl_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/grass_medium_01/grass_medium_01_nor_gl_1k.jpg",
+     "md5": "fcf43dd1253f56e4c361079f34155c37",
+     "sha256": "cae298d3d1d7ff7c7e210ad8ac772b96706e356f9315a6b04fde373ce01ccf1e",
+     "bytes": 956166
+    },
+    {
+     "path": "raw/polyhaven/grass_medium_01/textures/grass_medium_01_alpha_1k.png",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/1k/grass_medium_01/grass_medium_01_alpha_1k.png",
+     "md5": "6b5b251ef1ca9a69ab9f49def66d758a",
+     "alpha_map": "Alpha",
+     "sha256": "711a8e49af758d6a6ce1f610db858899a27be19da6d1866bd35c13bc7b8ffeff",
+     "bytes": 648718
+    }
+   ],
+   "variant_mesh_names": [
+    "Plane.037",
+    "Plane.038",
+    "Plane.039",
+    "Plane.042",
+    "Plane.043",
+    "Plane.045",
+    "Plane.047",
+    "Plane.048",
+    "Plane.050",
+    "Plane.051",
+    "Plane.053",
+    "Plane.054",
+    "Plane.055",
+    "Plane.056",
+    "Plane.057",
+    "Plane.058",
+    "Plane.059"
+   ],
+   "gltf_triangles": {
+    "Plane.037": 833,
+    "Plane.038": 4626,
+    "Plane.039": 1257,
+    "Plane.042": 310,
+    "Plane.043": 290,
+    "Plane.045": 340,
+    "Plane.047": 653,
+    "Plane.048": 1466,
+    "Plane.050": 2287,
+    "Plane.051": 6422,
+    "Plane.053": 5945,
+    "Plane.054": 40,
+    "Plane.055": 79,
+    "Plane.056": 28,
+    "Plane.057": 32,
+    "Plane.058": 62,
+    "Plane.059": 60
+   }
+  },
+  {
+   "id": "grass_medium_02",
+   "kind": "source-model",
+   "level": "src",
+   "slot": null,
+   "use": "dry grass clump card candidate GrassT0__medium02 (r9 grass row)",
+   "source": "polyhaven:grass_medium_02",
+   "url": "https://polyhaven.com/a/grass_medium_02",
+   "licence": "CC0-1.0",
+   "licence_url": "https://polyhaven.com/license",
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "raw/polyhaven/grass_medium_02/grass_medium_02_1k.gltf",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/grass_medium_02/grass_medium_02_1k.gltf",
+     "md5": "dd8f166a6399238553bc3b2931677b68",
+     "sha256": "7037f8d2dfc6aeec0bf72f4eeb96cfa3f6b3a5e6c6f0bc5de537c055b2fd5d04",
+     "bytes": 8864
+    },
+    {
+     "path": "raw/polyhaven/grass_medium_02/grass_medium_02.bin",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/4k/grass_medium_02/grass_medium_02.bin",
+     "md5": "145041ae03fe02783a0adbd1cdcb4988",
+     "sha256": "aa8493bc1544a89e08bf440c7ba361042bfe6ea48b1fefc7e4af2dfff42fdf4a",
+     "bytes": 272048
+    },
+    {
+     "path": "raw/polyhaven/grass_medium_02/textures/grass_medium_02_arm_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/grass_medium_02/grass_medium_02_arm_1k.jpg",
+     "md5": "2b7a7e6f8b71fd2da62cf172d4784bbb",
+     "sha256": "f0d57bfd95bff7710526b49d47cf2326ee3796e425639d53b983d1472480b57d",
+     "bytes": 241181
+    },
+    {
+     "path": "raw/polyhaven/grass_medium_02/textures/grass_medium_02_diff_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/grass_medium_02/grass_medium_02_diff_1k.jpg",
+     "md5": "4bb5230e09358d60dd767331685b2d36",
+     "sha256": "91ae99005b449011aceb207a68a937258fd9bfd66ff367d344c50398b1df389c",
+     "bytes": 161235
+    },
+    {
+     "path": "raw/polyhaven/grass_medium_02/textures/grass_medium_02_nor_gl_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/grass_medium_02/grass_medium_02_nor_gl_1k.jpg",
+     "md5": "90b4c27b0c0ff058bd37b88bb70784c1",
+     "sha256": "0b464550366ed72a6cad9c357e19ac4c83fc9adc87272771479138129853b300",
+     "bytes": 118146
+    },
+    {
+     "path": "raw/polyhaven/grass_medium_02/textures/grass_medium_02_alpha_1k.png",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/1k/grass_medium_02/grass_medium_02_alpha_1k.png",
+     "md5": "b231cd6a1b5eb7ae21e7c2e626f8318c",
+     "alpha_map": "Alpha",
+     "sha256": "15976877b3dbd22cd496a9549f1eb7d86710846a3631fb87eedbf046519e339f",
+     "bytes": 110617
+    }
+   ],
+   "variant_mesh_names": [
+    "Plane.001",
+    "Plane.002",
+    "Plane.003",
+    "Plane.004",
+    "Plane.005"
+   ],
+   "gltf_triangles": {
+    "Plane.001": 714,
+    "Plane.002": 1760,
+    "Plane.003": 1215,
+    "Plane.004": 2489,
+    "Plane.005": 1664
+   }
+  },
+  {
+   "id": "celandine_01",
+   "kind": "source-model",
+   "level": "src",
+   "slot": null,
+   "use": "optional L1 Flower (plan 3.6: only if the art director asks)",
+   "source": "polyhaven:celandine_01",
+   "url": "https://polyhaven.com/a/celandine_01",
+   "licence": "CC0-1.0",
+   "licence_url": "https://polyhaven.com/license",
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "raw/polyhaven/celandine_01/celandine_01_1k.gltf",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/celandine_01/celandine_01_1k.gltf",
+     "md5": "b043292dd6b94b83129f49ad7e775cd4",
+     "sha256": "ae54536f79b426e69c33449b75a89b86fb127f91342445c26cc4142c5f4220d5",
+     "bytes": 8770
+    },
+    {
+     "path": "raw/polyhaven/celandine_01/celandine_01.bin",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/celandine_01/celandine_01.bin",
+     "md5": "ee7bd43b52b65b9e2aaa0ae8cf6e8042",
+     "sha256": "7d2c6d2cc44da3a0c08e0fea725af42becdcbb06635d968f42892a1a3dfae7d6",
+     "bytes": 325768
+    },
+    {
+     "path": "raw/polyhaven/celandine_01/textures/celandine_01_arm_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/celandine_01/celandine_01_arm_1k.jpg",
+     "md5": "f56d64e9d0e313d118ab4103afb5a1ef",
+     "sha256": "c04ac3ed56abfbb5193d59016c5b680ca3e53130518084e69c805f2edc1ad6e7",
+     "bytes": 382047
+    },
+    {
+     "path": "raw/polyhaven/celandine_01/textures/celandine_01_diff_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/celandine_01/celandine_01_diff_1k.jpg",
+     "md5": "d064076be42627d3e41e25af39131ae9",
+     "sha256": "d21558d8d101fd6601d620018f9efd2878b559666099aac3ab05df17da833b5f",
+     "bytes": 398468
+    },
+    {
+     "path": "raw/polyhaven/celandine_01/textures/celandine_01_nor_gl_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/celandine_01/celandine_01_nor_gl_1k.jpg",
+     "md5": "ebc32eefb50c3da0159e5fa62248f561",
+     "sha256": "060fc4533ce82b9f9c9e86362920ba1a1934ba5a670bdd77aa803622ceec34ff",
+     "bytes": 410515
+    },
+    {
+     "path": "raw/polyhaven/celandine_01/textures/celandine_01_alpha_1k.png",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/1k/celandine_01/celandine_01_alpha_1k.png",
+     "md5": "10d4b81cbe197d7cd553322de65782d2",
+     "alpha_map": "Alpha",
+     "sha256": "60c2b1387a71376b118de49e6354fbb82762a6ada0c01e5a2205b1502a1bc76c",
+     "bytes": 296498
+    }
+   ],
+   "variant_mesh_names": [
+    "Plane.006",
+    "Plane.007",
+    "Plane.008",
+    "Plane.009",
+    "Plane.010"
+   ],
+   "gltf_triangles": {
+    "Plane.006": 622,
+    "Plane.007": 599,
+    "Plane.008": 4301,
+    "Plane.009": 3002,
+    "Plane.010": 442
+   }
+  },
+  {
+   "id": "fern_02",
+   "kind": "source-model",
+   "level": "src",
+   "slot": null,
+   "use": "optional L1 Fern; composite-bush part",
+   "source": "polyhaven:fern_02",
+   "url": "https://polyhaven.com/a/fern_02",
+   "licence": "CC0-1.0",
+   "licence_url": "https://polyhaven.com/license",
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "raw/polyhaven/fern_02/fern_02_1k.gltf",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/fern_02/fern_02_1k.gltf",
+     "md5": "cf276874d37bfb73c299504a6b355b77",
+     "sha256": "33974295ee19670af4877705fc7d91f33f42d6302f0d44a625e072271223031f",
+     "bytes": 6899
+    },
+    {
+     "path": "raw/polyhaven/fern_02/fern_02.bin",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/fern_02/fern_02.bin",
+     "md5": "c061e9255f7d36ae9ce0e92ef3e100b2",
+     "sha256": "fe1abb762bcbbc7ad9e86925c8080437a62add257d9280e9142fdc85c226e64c",
+     "bytes": 176176
+    },
+    {
+     "path": "raw/polyhaven/fern_02/textures/fern_02_arm_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fern_02/fern_02_arm_1k.jpg",
+     "md5": "1bbb2b22951f450720d28e17d93a2987",
+     "sha256": "ebfb5d76ce9cbdaec20bcd22dce9b755f0b1b8650ef29ca13555e3e6961025d7",
+     "bytes": 280359
+    },
+    {
+     "path": "raw/polyhaven/fern_02/textures/fern_02_diff_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fern_02/fern_02_diff_1k.jpg",
+     "md5": "82c18a6cfd5ae91c37c0e078f591181c",
+     "sha256": "a828a6e7b4c01c826911e2eac4b3afc7457dab7b3b392a31c681ed88b7d50029",
+     "bytes": 315705
+    },
+    {
+     "path": "raw/polyhaven/fern_02/textures/fern_02_nor_gl_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fern_02/fern_02_nor_gl_1k.jpg",
+     "md5": "43aed63dff79554f6064627515afd9d7",
+     "sha256": "45bce132c6e96a0864bc89ab5da51361ab3f4afa83a6669ae499ab5ca811f621",
+     "bytes": 367222
+    },
+    {
+     "path": "raw/polyhaven/fern_02/textures/fern_02_alpha_1k.png",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/1k/fern_02/fern_02_alpha_1k.png",
+     "md5": "1421e5e36946c23a7ddcc907de89025c",
+     "alpha_map": "Alpha",
+     "sha256": "ea3c64284c7ebdeedf484d2d816eae92825ec526140c3bb83859ddc7a64001f9",
+     "bytes": 114589
+    }
+   ],
+   "variant_mesh_names": [
+    "Plane.006",
+    "Plane.024",
+    "Plane.044",
+    "Plane.059"
+   ],
+   "gltf_triangles": {
+    "Plane.024": 2384,
+    "Plane.044": 2248,
+    "Plane.006": 784,
+    "Plane.059": 816
+   }
+  },
+  {
+   "id": "nettle_plant",
+   "kind": "source-model",
+   "level": "src",
+   "slot": null,
+   "use": "composite-bush part",
+   "source": "polyhaven:nettle_plant",
+   "url": "https://polyhaven.com/a/nettle_plant",
+   "licence": "CC0-1.0",
+   "licence_url": "https://polyhaven.com/license",
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "raw/polyhaven/nettle_plant/nettle_plant_1k.gltf",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/nettle_plant/nettle_plant_1k.gltf",
+     "md5": "474e138cdee694335ca4270ac43f9d49",
+     "sha256": "45baafa16feb0017e6a46712e2aa7afe7841fd00905075ead8316a5fc8314b0e",
+     "bytes": 10450
+    },
+    {
+     "path": "raw/polyhaven/nettle_plant/nettle_plant.bin",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/nettle_plant/nettle_plant.bin",
+     "md5": "975cb59d9f42871bb448de70aeecbc01",
+     "sha256": "24810f9d80b5fafdd71e1599b0cc81afa3eb9b744cfa8bf388c5e9f30271ba46",
+     "bytes": 956560
+    },
+    {
+     "path": "raw/polyhaven/nettle_plant/textures/nettle_plant_arm_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/nettle_plant/nettle_plant_arm_1k.jpg",
+     "md5": "7244d9f04fdc0b53212c3d38f5a215b4",
+     "sha256": "8fb33e5e939b4e089f08c867bf449d9e27aa32af94990c3cad1a89dcabd44f14",
+     "bytes": 467172
+    },
+    {
+     "path": "raw/polyhaven/nettle_plant/textures/nettle_plant_diff_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/nettle_plant/nettle_plant_diff_1k.jpg",
+     "md5": "efa546b37e9a8669b214b1fea1422892",
+     "sha256": "7172a9971818a18a7cb7ebaa144d9d2313b83d2a6180c9582000f7260542ea7b",
+     "bytes": 388629
+    },
+    {
+     "path": "raw/polyhaven/nettle_plant/textures/nettle_plant_nor_gl_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/nettle_plant/nettle_plant_nor_gl_1k.jpg",
+     "md5": "471821200314d7eee64cbd35bf3e5bd0",
+     "sha256": "ab5d0cdc9a487a8874b6e9a11bf67ef90319f02bbd74579576198aca90b0fa85",
+     "bytes": 654754
+    },
+    {
+     "path": "raw/polyhaven/nettle_plant/textures/nettle_plant_alpha_1k.png",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/1k/nettle_plant/nettle_plant_alpha_1k.png",
+     "md5": "57a0ce5b6285f558786511ccff178aa1",
+     "alpha_map": "Alpha",
+     "sha256": "61d98e886a20e401f7eb6e2d64e8513b2409e54feb41e83ecbf3b10aaa035810",
+     "bytes": 189288
+    }
+   ],
+   "variant_mesh_names": [
+    "Plane",
+    "Plane.021",
+    "Plane.044",
+    "Plane.096",
+    "Plane.123",
+    "Plane.129"
+   ],
+   "gltf_triangles": {
+    "Plane.096": 5896,
+    "Plane.021": 5664,
+    "Plane.123": 3592,
+    "Plane.129": 1088,
+    "Plane": 6984,
+    "Plane.044": 8080
+   }
+  },
+  {
+   "id": "weed_plant_02",
+   "kind": "source-model",
+   "level": "src",
+   "slot": null,
+   "use": "composite-bush part",
+   "source": "polyhaven:weed_plant_02",
+   "url": "https://polyhaven.com/a/weed_plant_02",
+   "licence": "CC0-1.0",
+   "licence_url": "https://polyhaven.com/license",
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "raw/polyhaven/weed_plant_02/weed_plant_02_1k.gltf",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/weed_plant_02/weed_plant_02_1k.gltf",
+     "md5": "7716ffcf325cbec5c433085a0c0e5f1f",
+     "sha256": "20fe9aa14ec8160de54d8027422ce6db93bcc6211299509067ee3edbceff218b",
+     "bytes": 9128
+    },
+    {
+     "path": "raw/polyhaven/weed_plant_02/textures/weed_plant_02_arm_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/weed_plant_02/weed_plant_02_arm_1k.jpg",
+     "md5": "ef589b514bd7515ded97f81466e27dd8",
+     "sha256": "82dd00b135a605aecf09d46bdaa6e71cdfc221d7b53e20e6f446da6e9e5bf942",
+     "bytes": 571490
+    },
+    {
+     "path": "raw/polyhaven/weed_plant_02/textures/weed_plant_02_diff_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/weed_plant_02/weed_plant_02_diff_1k.jpg",
+     "md5": "147c346358cf123ca50473cf05df7b86",
+     "sha256": "6bcbf7f0b8eaf5156b9021f998dd9233ba4b095aa590f3621b94f47550e21eb9",
+     "bytes": 457595
+    },
+    {
+     "path": "raw/polyhaven/weed_plant_02/textures/weed_plant_02_nor_gl_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/weed_plant_02/weed_plant_02_nor_gl_1k.jpg",
+     "md5": "1f58acb112882c7d0eb7b7d8e58d65c0",
+     "sha256": "53e277362656eaea87a59bc7c5b551e73d2cdb5b852b21d0ffb84becfc7b941d",
+     "bytes": 679362
+    },
+    {
+     "path": "raw/polyhaven/weed_plant_02/weed_plant_02.bin",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/weed_plant_02/weed_plant_02.bin",
+     "md5": "31440e5d2ad17eff90fcf83f3dbe989e",
+     "sha256": "2b77b91a881055365a56156e8a131277187f72b82c1d55806bb5b0a5053e5e9d",
+     "bytes": 330884
+    },
+    {
+     "path": "raw/polyhaven/weed_plant_02/textures/weed_plant_02_alpha_1k.png",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/1k/weed_plant_02/weed_plant_02_alpha_1k.png",
+     "md5": "2fbec8fdd3904e8709718562aa6d37d9",
+     "alpha_map": "Alpha",
+     "sha256": "ceb47162756cba3d8306ce8aa7097f81786c9cd98785b7da5b191806a88ae44e",
+     "bytes": 182453
+    }
+   ],
+   "variant_mesh_names": [
+    "Plane.001",
+    "Plane.003",
+    "Plane.012",
+    "Plane.033",
+    "Plane.042"
+   ],
+   "gltf_triangles": {
+    "Plane.001": 2967,
+    "Plane.003": 2273,
+    "Plane.033": 1766,
+    "Plane.042": 1928,
+    "Plane.012": 2182
+   }
+  },
+  {
+   "id": "shrub_04",
+   "kind": "source-model",
+   "level": "src",
+   "slot": null,
+   "use": "composite-bush part",
+   "source": "polyhaven:shrub_04",
+   "url": "https://polyhaven.com/a/shrub_04",
+   "licence": "CC0-1.0",
+   "licence_url": "https://polyhaven.com/license",
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "raw/polyhaven/shrub_04/shrub_04_1k.gltf",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/shrub_04/shrub_04_1k.gltf",
+     "md5": "eba22f7e018dd3d9ed951150c2092f17",
+     "sha256": "782832cbc57e96686b78c6ef9df6234c25f564f78421c8ed4bd42c3631f5aeae",
+     "bytes": 2882
+    },
+    {
+     "path": "raw/polyhaven/shrub_04/shrub_04.bin",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/4k/shrub_04/shrub_04.bin",
+     "md5": "987a672e598f9dc04b6d23cb8f36d697",
+     "sha256": "cb442c39682e54cc63f912aa78ab17a03566f947a61adbbbaaa6473166744f01",
+     "bytes": 749084
+    },
+    {
+     "path": "raw/polyhaven/shrub_04/textures/shrub_04_arm_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/shrub_04/shrub_04_arm_1k.jpg",
+     "md5": "65e414abd3533b7157f05aed63f5f329",
+     "sha256": "d1085df021928b29b0f38dde7e58e9a2e304c4e8d838e390b37cf57f8aa492e8",
+     "bytes": 332957
+    },
+    {
+     "path": "raw/polyhaven/shrub_04/textures/shrub_04_diff_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/shrub_04/shrub_04_diff_1k.jpg",
+     "md5": "b2b4682a82f44be10b8d4b4d481a4fe8",
+     "sha256": "0b0fa0a474753d13f3093858cea79d0de05da1e6a0c5d6e181cd351080980b6c",
+     "bytes": 373350
+    },
+    {
+     "path": "raw/polyhaven/shrub_04/textures/shrub_04_nor_gl_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/shrub_04/shrub_04_nor_gl_1k.jpg",
+     "md5": "b08f500d19ee9b29d7da06fc0e874bb2",
+     "sha256": "200d791e0474495bfc876ba1c289dade669c6a5b124647c55bc840a875f6b51c",
+     "bytes": 449241
+    },
+    {
+     "path": "raw/polyhaven/shrub_04/textures/shrub_04_alpha_1k.png",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/1k/shrub_04/shrub_04_alpha_1k.png",
+     "md5": "c899653f9884941bdb2ada187809f4c8",
+     "alpha_map": "Alpha",
+     "sha256": "6ddd60dcdbdcf55d7258ae747866f68f5acc9d88a7735c9eb05b02d6dec527e3",
+     "bytes": 42906
+    }
+   ],
+   "variant_mesh_names": [
+    "Plane.063"
+   ],
+   "gltf_triangles": {
+    "Plane.063": 27327
+   }
+  },
+  {
+   "id": "searsia_lucida",
+   "kind": "source-model",
+   "level": "src",
+   "slot": null,
+   "use": "shrub candidate (r9 shrub route 1)",
+   "source": "polyhaven:searsia_lucida",
+   "url": "https://polyhaven.com/a/searsia_lucida",
+   "licence": "CC0-1.0",
+   "licence_url": "https://polyhaven.com/license",
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "raw/polyhaven/searsia_lucida/searsia_lucida_1k.gltf",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/searsia_lucida/searsia_lucida_1k.gltf",
+     "md5": "befd961f4f139131eda7dfca952e8d78",
+     "sha256": "ebdc8d776c058b9a6f9a04c57ca0540368531febd3bfa007d2e2d8af8d368f67",
+     "bytes": 31443
+    },
+    {
+     "path": "raw/polyhaven/searsia_lucida/searsia_lucida.bin",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/searsia_lucida/searsia_lucida.bin",
+     "md5": "aa4c42ee903a3ac22d53386d82480e6d",
+     "sha256": "e0be13cac215725de1f8438d96e1010049d655512a0608c36eabe2ba5abff851",
+     "bytes": 17913396
+    },
+    {
+     "path": "raw/polyhaven/searsia_lucida/textures/searsia_lucida_arm_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/searsia_lucida/searsia_lucida_arm_1k.jpg",
+     "md5": "979fb34427cc5b5580ce89feaff65ef9",
+     "sha256": "f7bf2359e932d3633ac99a5f9e6a507eda439b64937eb6774585da3d0fb6d3d7",
+     "bytes": 580075
+    },
+    {
+     "path": "raw/polyhaven/searsia_lucida/textures/searsia_lucida_diff_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/searsia_lucida/searsia_lucida_diff_1k.jpg",
+     "md5": "d41a7089a41122ddc4edc96288105ecd",
+     "sha256": "5d99ed106c6629d91cf5d29f067c1fd10ff4894df40634abb6c4694c59d3c764",
+     "bytes": 498655
+    },
+    {
+     "path": "raw/polyhaven/searsia_lucida/textures/searsia_lucida_nor_gl_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/searsia_lucida/searsia_lucida_nor_gl_1k.jpg",
+     "md5": "a1e95f7d4cb702b8c6ddfedaafbadcc5",
+     "sha256": "d28556973d1cbf96c5327341be7a71da66ac63ed97b31f22162376a9f95b0041",
+     "bytes": 793264
+    },
+    {
+     "path": "raw/polyhaven/searsia_lucida/textures/searsia_lucida_alpha_1k.png",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/1k/searsia_lucida/searsia_lucida_alpha_1k.png",
+     "md5": "dd64ebe2b0c5cabf6b8eb2e11df1c4a0",
+     "alpha_map": "Alpha",
+     "sha256": "2306c054f7188aa34fdbfd1be725899159c82730c1a5c14fcc56ef7353107006",
+     "bytes": 54408
+    }
+   ],
+   "variant_mesh_names": [
+    "Cube.064",
+    "Cube.065",
+    "Cube.067",
+    "Cube.068",
+    "Cube.069",
+    "Cube.070",
+    "Cube.071"
+   ],
+   "gltf_triangles": {
+    "Cube.070": 113405,
+    "Cube.071": 88629,
+    "Cube.068": 77603,
+    "Cube.069": 56320,
+    "Cube.064": 27701,
+    "Cube.065": 7232,
+    "Cube.067": 6302
+   }
+  },
+  {
+   "id": "tree_small_02",
+   "kind": "source-model",
+   "level": "src",
+   "slot": null,
+   "use": "TreeBroadA/B (plan 3.6)",
+   "source": "polyhaven:tree_small_02",
+   "url": "https://polyhaven.com/a/tree_small_02",
+   "licence": "CC0-1.0",
+   "licence_url": "https://polyhaven.com/license",
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "raw/polyhaven/tree_small_02/tree_small_02_1k.gltf",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/tree_small_02/tree_small_02_1k.gltf",
+     "md5": "63f42b19687332f7b3a5c8b531734d8e",
+     "sha256": "3062a709614c05b80fdc1e56583998bc3cb1027b0d52f956c8ecfb882ff8ca6d",
+     "bytes": 9075
+    },
+    {
+     "path": "raw/polyhaven/tree_small_02/textures/tree_small_02_arm_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_arm_1k.jpg",
+     "md5": "44b6ed4bf32d7cd67cb3e9d5faeacc38",
+     "sha256": "891c5a1bb124292984b01558e9f2b0302d27d2fa3ccf9dfc6c34f9ea4ca24e6c",
+     "bytes": 708242
+    },
+    {
+     "path": "raw/polyhaven/tree_small_02/textures/tree_small_02_branch_arm_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_branch_arm_1k.jpg",
+     "md5": "9ec3d8428295d87ae363bf0d1e0a8288",
+     "sha256": "8968b46d76c67da09ebbf4eed04b8123c9e0ddf5b55d123968b35b32aa76d27a",
+     "bytes": 375732
+    },
+    {
+     "path": "raw/polyhaven/tree_small_02/textures/tree_small_02_branch_diff_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_branch_diff_1k.jpg",
+     "md5": "88b531469f5dba2fc44ca85df3776e7c",
+     "sha256": "a71b768e330c0c6cca097e30314f6b4e842ef724a1370f6aab14b4434eec64cb",
+     "bytes": 449977
+    },
+    {
+     "path": "raw/polyhaven/tree_small_02/textures/tree_small_02_branch_nor_gl_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_branch_nor_gl_1k.jpg",
+     "md5": "00a3eed0d4d28e7e890d9ec6ac0619af",
+     "sha256": "a2efae9e7fede259601188cd5cb7e561fc502bd87e04d862a9532b2d8e647a62",
+     "bytes": 581596
+    },
+    {
+     "path": "raw/polyhaven/tree_small_02/textures/tree_small_02_diff_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_diff_1k.jpg",
+     "md5": "a7287a3f4e7f0d4577cb949b245f5b14",
+     "sha256": "4e0093f407b3a1120a36de49a48ebe5a465a9a9b77e361c7a3e66866e115e404",
+     "bytes": 863246
+    },
+    {
+     "path": "raw/polyhaven/tree_small_02/textures/tree_small_02_leaves_arm_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_leaves_arm_1k.jpg",
+     "md5": "3dad5bafc732f7692db32a262530bbab",
+     "sha256": "71f81374daf5a8f3e6eb2c694264a1769fdb0bea508178e4105618eecea83c3e",
+     "bytes": 633698
+    },
+    {
+     "path": "raw/polyhaven/tree_small_02/textures/tree_small_02_leaves_diff_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_leaves_diff_1k.jpg",
+     "md5": "315cbc2cebfb399e649ccd39112c109a",
+     "sha256": "261e7d7a5ac7d2e16ea8823ff8510be8f3f615999724232994039ad2885e5c36",
+     "bytes": 340003
+    },
+    {
+     "path": "raw/polyhaven/tree_small_02/textures/tree_small_02_leaves_nor_gl_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_leaves_nor_gl_1k.jpg",
+     "md5": "b06c87e73f54d9654f66d67e9de7aa85",
+     "sha256": "8c72e04fb23e16ae1df79c01385a638473d1dd4dede3d51e83d70153c129f09b",
+     "bytes": 681604
+    },
+    {
+     "path": "raw/polyhaven/tree_small_02/textures/tree_small_02_nor_gl_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_nor_gl_1k.jpg",
+     "md5": "115a20da8621cd3e034e9b1bbe574746",
+     "sha256": "9c83be074c950ea1b94c732c0c0291b53b9ba357f932d378bafe3ca3b4418871",
+     "bytes": 1228646
+    },
+    {
+     "path": "raw/polyhaven/tree_small_02/tree_small_02.bin",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/tree_small_02/tree_small_02.bin",
+     "md5": "7a7019a87e6fe0d7475c0fa2e08d8962",
+     "sha256": "8da6c3c389ad8748286d1b7488cd827f75ebdad9d8f59ef7dfb0916df5edc634",
+     "bytes": 95102324
+    },
+    {
+     "path": "raw/polyhaven/tree_small_02/textures/tree_small_02_leaves_alpha_1k.png",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/1k/tree_small_02/tree_small_02_leaves_alpha_1k.png",
+     "md5": "63199ba87a9e8928424bd8c3b8017bd0",
+     "alpha_map": "leaves_alpha",
+     "sha256": "4f143e2dda8a6a572f427ac378b92255d21761e4611de0d26e21816c01aa533b",
+     "bytes": 264711
+    }
+   ],
+   "variant_mesh_names": [
+    "BezierCurve.002"
+   ],
+   "gltf_triangles": {
+    "BezierCurve.002": 2062487
+   }
+  },
+  {
+   "id": "fir_tree_01",
+   "kind": "source-model",
+   "level": "src",
+   "slot": null,
+   "use": "TreeConiferA/B (plan 3.6)",
+   "source": "polyhaven:fir_tree_01",
+   "url": "https://polyhaven.com/a/fir_tree_01",
+   "licence": "CC0-1.0",
+   "licence_url": "https://polyhaven.com/license",
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "raw/polyhaven/fir_tree_01/fir_tree_01_1k.gltf",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/fir_tree_01/fir_tree_01_1k.gltf",
+     "md5": "0a184431efdba9e4bf76900d8d56504d",
+     "sha256": "72e49eefb4ed4db6a8ca5e17fb10980f8463dd300d94589ac774cde95ade7709",
+     "bytes": 30279
+    },
+    {
+     "path": "raw/polyhaven/fir_tree_01/fir_tree_01.bin",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/fir_tree_01/fir_tree_01.bin",
+     "md5": "26d2bf6d4d2e32d3524e8fa3760f643f",
+     "sha256": "ba2ef15a1061a84c73b0a74643e88c118f801ce1664ca7a25a6a79bcc2c63790",
+     "bytes": 478462204
+    },
+    {
+     "path": "raw/polyhaven/fir_tree_01/textures/fir_tree_01_bark_arm_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_bark_arm_1k.jpg",
+     "md5": "4e48a7fa876a1ad47401fe86277a4373",
+     "sha256": "95d4e9e62cd309fbc38a175e2306379c76c062425b09c0fb72c5b7356a719123",
+     "bytes": 789264
+    },
+    {
+     "path": "raw/polyhaven/fir_tree_01/textures/fir_tree_01_bark_diff_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_bark_diff_1k.jpg",
+     "md5": "93265c0d9fbd3cf17deabdb68aa8b5e9",
+     "sha256": "a5d25150ba1bee10008c039f98aa3c73b4477a404d6715c511ca9b5b0f4a9077",
+     "bytes": 776567
+    },
+    {
+     "path": "raw/polyhaven/fir_tree_01/textures/fir_tree_01_bark_nor_gl_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_bark_nor_gl_1k.jpg",
+     "md5": "978d32ec721696e45b38a72411c4edf4",
+     "sha256": "6a570ab53ab2249ecdfa93e7d3b9a8a2cb1a8ad391400e5a64c708914779b2c3",
+     "bytes": 1137533
+    },
+    {
+     "path": "raw/polyhaven/fir_tree_01/textures/fir_tree_01_trunk_a_arm_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_a_arm_1k.jpg",
+     "md5": "e68adf3bf077b1552b5acff7f9d7bebf",
+     "sha256": "2e439391e98f427207a7fc180eb262f4c1ab3ca0ef570785ea7352826bac342b",
+     "bytes": 788967
+    },
+    {
+     "path": "raw/polyhaven/fir_tree_01/textures/fir_tree_01_trunk_a_diff_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_a_diff_1k.jpg",
+     "md5": "304f688bc8212f90a39a3b77f6065ee5",
+     "sha256": "cfb646cbc4b6cb2db410eb4342174ebe7812a4ae03520491e788722cf1867286",
+     "bytes": 789806
+    },
+    {
+     "path": "raw/polyhaven/fir_tree_01/textures/fir_tree_01_trunk_a_nor_gl_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_a_nor_gl_1k.jpg",
+     "md5": "41b92112b3b9a48eb2e1b4b3562dd937",
+     "sha256": "9d46c05be22de0dcc4af7e3703fde4c7397644b9faeff4914c0469a6bde99caf",
+     "bytes": 997355
+    },
+    {
+     "path": "raw/polyhaven/fir_tree_01/textures/fir_tree_01_trunk_b_arm_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_b_arm_1k.jpg",
+     "md5": "2bd8df9326c28b68d8ace5d52adfd4f4",
+     "sha256": "c9e0571b2067cad25a4553119204874e6a5ea3156043cacbd5171155d856cff4",
+     "bytes": 732269
+    },
+    {
+     "path": "raw/polyhaven/fir_tree_01/textures/fir_tree_01_trunk_b_diff_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_b_diff_1k.jpg",
+     "md5": "00ad0c0643a4e6b34914b8ac05cc28cb",
+     "sha256": "9d39263a9243a4b6cd669de5e3a504eae32d52f5ab48e471cad5f7e52e052508",
+     "bytes": 687662
+    },
+    {
+     "path": "raw/polyhaven/fir_tree_01/textures/fir_tree_01_trunk_b_nor_gl_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_b_nor_gl_1k.jpg",
+     "md5": "310666823cba305dd25d1494fbe73877",
+     "sha256": "5e498ee6fee29437196085620c978346ba6731edad8bfc2a2642868f8bf64efe",
+     "bytes": 915273
+    },
+    {
+     "path": "raw/polyhaven/fir_tree_01/textures/fir_tree_01_twig_arm_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_twig_arm_1k.jpg",
+     "md5": "b0d09189350cb716533c1590fec8f8a4",
+     "sha256": "d66c81fc073ee7ea97a76b6da2399769f16944e50ef0e007f09c95619f597c79",
+     "bytes": 407309
+    },
+    {
+     "path": "raw/polyhaven/fir_tree_01/textures/fir_tree_01_twig_diff_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_twig_diff_1k.jpg",
+     "md5": "d267b1117a5d6dbbbd620bd997fb498e",
+     "sha256": "8c0833a10e4fd44498d848cf9e659fe250a3813984cbd679f42430eb98c61fb8",
+     "bytes": 371741
+    },
+    {
+     "path": "raw/polyhaven/fir_tree_01/textures/fir_tree_01_twig_nor_gl_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_twig_nor_gl_1k.jpg",
+     "md5": "1ef6c0d7c2dc74cc073a8c33f58f3795",
+     "sha256": "d470dc39b1d02bbeba06feb0ad818680ef3c24623b4db597270301a5fb8c9369",
+     "bytes": 472604
+    },
+    {
+     "path": "raw/polyhaven/fir_tree_01/textures/fir_tree_01_twig_alpha_1k.png",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/1k/fir_tree_01/fir_tree_01_twig_alpha_1k.png",
+     "md5": "02ab808c8b2ff77ad9fdb2f92892db80",
+     "alpha_map": "twig_alpha",
+     "sha256": "3f399629337e7ac3af27a01b08ffb9c0d60224a9dd374a1427761a5c2eea9d6e",
+     "bytes": 371026
+    }
+   ],
+   "variant_mesh_names": [
+    "NurbsPath.001",
+    "NurbsPath.004",
+    "NurbsPath.006"
+   ],
+   "gltf_triangles": {
+    "NurbsPath.001": 4176819,
+    "NurbsPath.004": 2300624,
+    "NurbsPath.006": 505494
+   }
+  },
+  {
+   "id": "rock_09",
+   "kind": "source-model",
+   "level": "src",
+   "slot": null,
+   "use": "RockA (plan 3.6)",
+   "source": "polyhaven:rock_09",
+   "url": "https://polyhaven.com/a/rock_09",
+   "licence": "CC0-1.0",
+   "licence_url": "https://polyhaven.com/license",
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "raw/polyhaven/rock_09/rock_09_1k.gltf",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/rock_09/rock_09_1k.gltf",
+     "md5": "d12ac6e8433fe1346fe6945154269f66",
+     "sha256": "636e57eb0090889627da18edaec202ff9f65f83101b94f91b7da4d21dc080ab9",
+     "bytes": 2745
+    },
+    {
+     "path": "raw/polyhaven/rock_09/rock_09.bin",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/rock_09/rock_09.bin",
+     "md5": "6f2f71c9ca594566c1a3b29da27293a1",
+     "sha256": "780c37d6fc11ca3a01c3763535ef883908b6007271a46bd446d2289ded820751",
+     "bytes": 286592
+    },
+    {
+     "path": "raw/polyhaven/rock_09/textures/rock_09_arm_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_09/rock_09_arm_1k.jpg",
+     "md5": "323d7cca17cd87656e7f80230a372368",
+     "sha256": "594e2cec49e6bb40bd9bab2649e37dcc261079456cf4d6f680f56770c19db5ea",
+     "bytes": 322950
+    },
+    {
+     "path": "raw/polyhaven/rock_09/textures/rock_09_diff_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_09/rock_09_diff_1k.jpg",
+     "md5": "07f92b23d6e05fbd28cbabecdd98b321",
+     "sha256": "afb7ae5ae82238d304aba589391ac6bc87f7cf1dbfe50980c21f762cfdd87efd",
+     "bytes": 595103
+    },
+    {
+     "path": "raw/polyhaven/rock_09/textures/rock_09_nor_gl_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_09/rock_09_nor_gl_1k.jpg",
+     "md5": "dc1a208133a23006582f792a309c2dcc",
+     "sha256": "2195b5c7da3a23af2a5f93dbb20f38bc069028509b106397bc8d2aee0bc55729",
+     "bytes": 757031
+    }
+   ],
+   "variant_mesh_names": [
+    "realCap_Model_1"
+   ],
+   "gltf_triangles": {
+    "realCap_Model_1": 12416
+   }
+  },
+  {
+   "id": "rock_07",
+   "kind": "source-model",
+   "level": "src",
+   "slot": null,
+   "use": "RockB (plan 3.6)",
+   "source": "polyhaven:rock_07",
+   "url": "https://polyhaven.com/a/rock_07",
+   "licence": "CC0-1.0",
+   "licence_url": "https://polyhaven.com/license",
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "raw/polyhaven/rock_07/rock_07_1k.gltf",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/rock_07/rock_07_1k.gltf",
+     "md5": "2bdb563c126a9d284e60e94951759e2f",
+     "sha256": "efcc2dcaa133ff8ad5c865dc2135772e8f5dbc83fa38db2ee2cf25382436b6e6",
+     "bytes": 2979
+    },
+    {
+     "path": "raw/polyhaven/rock_07/rock_07.bin",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/rock_07/rock_07.bin",
+     "md5": "817b2cfd1626cb06f18a825f87f58ec3",
+     "sha256": "e4a532a6d6cf4a08c288f501b790f32cba0528136a29959ce774c3cd39369e7e",
+     "bytes": 468936
+    },
+    {
+     "path": "raw/polyhaven/rock_07/textures/rock_07_arm_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_07/rock_07_arm_1k.jpg",
+     "md5": "530bfd2a510fe6f778bb1198a2395574",
+     "sha256": "1ed76e9a8542c76bdc6b7b018720ae1f52cd75d9f5ae719f613de3f5032cf4da",
+     "bytes": 309735
+    },
+    {
+     "path": "raw/polyhaven/rock_07/textures/rock_07_diff_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_07/rock_07_diff_1k.jpg",
+     "md5": "b68ac1824bb3bd3867641b830ad02099",
+     "sha256": "8ff1965aa1664cc4abcc0131c44ee2b97ab14d6e131d7a51429ff261eeb101c8",
+     "bytes": 635452
+    },
+    {
+     "path": "raw/polyhaven/rock_07/textures/rock_07_nor_gl_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_07/rock_07_nor_gl_1k.jpg",
+     "md5": "d3a2a0df0db0177c4df8ef644b003652",
+     "sha256": "57cb2210951aeb376164fce5f7c65f03e5599def04873b56cad0f173c275d78d",
+     "bytes": 766986
+    }
+   ],
+   "variant_mesh_names": [
+    "realCap_Model_3"
+   ],
+   "gltf_triangles": {
+    "realCap_Model_3": 14844
+   }
+  },
+  {
+   "id": "rock_moss_set_01",
+   "kind": "source-model",
+   "level": "src",
+   "slot": null,
+   "use": "mossy rock candidate (r9 rock row)",
+   "source": "polyhaven:rock_moss_set_01",
+   "url": "https://polyhaven.com/a/rock_moss_set_01",
+   "licence": "CC0-1.0",
+   "licence_url": "https://polyhaven.com/license",
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "raw/polyhaven/rock_moss_set_01/rock_moss_set_01_1k.gltf",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/rock_moss_set_01/rock_moss_set_01_1k.gltf",
+     "md5": "75113cc1c21806cca5d8badad4737af7",
+     "sha256": "c36675aca9c6b2be7785c2534cf413b03ec82a5a2a5407a2b1c0cdb0346c9727",
+     "bytes": 9987
+    },
+    {
+     "path": "raw/polyhaven/rock_moss_set_01/rock_moss_set_01.bin",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/rock_moss_set_01/rock_moss_set_01.bin",
+     "md5": "207a51c9f56d34732e9814bbf9cc07b1",
+     "sha256": "de8360e6175879aaf02c171911069cf5f1852547f9ca7f10e440085dbcc3315e",
+     "bytes": 1466380
+    },
+    {
+     "path": "raw/polyhaven/rock_moss_set_01/textures/rock_moss_set_01_diff_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_moss_set_01/rock_moss_set_01_diff_1k.jpg",
+     "md5": "b8742301e6b4bc5683d2de712e83f772",
+     "sha256": "40cea65d8aa4ee73a93b04af19963834d061eee9779c3fc2c1cba76eef812ccc",
+     "bytes": 168099
+    },
+    {
+     "path": "raw/polyhaven/rock_moss_set_01/textures/rock_moss_set_01_nor_gl_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_moss_set_01/rock_moss_set_01_nor_gl_1k.jpg",
+     "md5": "eb7ebd31ad08e78d0497900652ff1568",
+     "sha256": "eb4aad3f207f1dc5b624d74ae240372171626a66912bd71adf7bd3e518181d6e",
+     "bytes": 209975
+    },
+    {
+     "path": "raw/polyhaven/rock_moss_set_01/textures/rock_moss_set_01_rough_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_moss_set_01/rock_moss_set_01_rough_1k.jpg",
+     "md5": "ed9d8a2c863262f76f881346e8047c6a",
+     "sha256": "4d6ec46623abd8e2cdb855f59c7ce31873ad61b36b60e4de579e9e776a497c6b",
+     "bytes": 82624
+    }
+   ],
+   "variant_mesh_names": [
+    "medium.001",
+    "mesh1-geometry.003",
+    "modelShape",
+    "modelShape.002",
+    "modelShape.003",
+    "modelShape.005"
+   ],
+   "gltf_triangles": {
+    "modelShape.005": 11000,
+    "modelShape.002": 10996,
+    "modelShape": 5000,
+    "medium.001": 10589,
+    "modelShape.003": 16548,
+    "mesh1-geometry.003": 8994
+   }
+  },
+  {
+   "id": "boulder_01",
+   "kind": "source-model",
+   "level": "src",
+   "slot": null,
+   "use": "boulder candidate (r9 rock row)",
+   "source": "polyhaven:boulder_01",
+   "url": "https://polyhaven.com/a/boulder_01",
+   "licence": "CC0-1.0",
+   "licence_url": "https://polyhaven.com/license",
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "raw/polyhaven/boulder_01/boulder_01_1k.gltf",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/boulder_01/boulder_01_1k.gltf",
+     "md5": "26e2eef4a1f68c9557c65cd375b21d6c",
+     "sha256": "51487934db898b4c24072780a451e34eca5c02e3ada24a62bbc600bbc4019e92",
+     "bytes": 2773
+    },
+    {
+     "path": "raw/polyhaven/boulder_01/boulder_01.bin",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/boulder_01/boulder_01.bin",
+     "md5": "27a19fa031d8b4c3a09261f19c444dc5",
+     "sha256": "7f5b06503d62bd95bfe9c6b8a354a5cc8ff04a4d271a8cf87a3e3125db4232d7",
+     "bytes": 2938808
+    },
+    {
+     "path": "raw/polyhaven/boulder_01/textures/boulder_01_arm_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/boulder_01/boulder_01_arm_1k.jpg",
+     "md5": "d632159982cc3121ed3d69b89a122146",
+     "sha256": "c57187c5746b6be913fa53846cb44ff78743e7ca5000f131c9627b99563c2b87",
+     "bytes": 659386
+    },
+    {
+     "path": "raw/polyhaven/boulder_01/textures/boulder_01_diff_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/boulder_01/boulder_01_diff_1k.jpg",
+     "md5": "25f8a843f13369d56d37f49db05ea8c3",
+     "sha256": "c38f0e918f6dc16b8d386ba3cdd89805c78320c119a1ceec85856f82b09a65b8",
+     "bytes": 987467
+    },
+    {
+     "path": "raw/polyhaven/boulder_01/textures/boulder_01_nor_gl_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/boulder_01/boulder_01_nor_gl_1k.jpg",
+     "md5": "0c4da644d901144b53e4fe2446f3c389",
+     "sha256": "0810cf6e89d89bb6eb065b4d2e2855288f5dcbd2c15c6e40ab90d462021b50aa",
+     "bytes": 1183552
+    }
+   ],
+   "variant_mesh_names": [
+    "rock_PROXY_5m.002"
+   ],
+   "gltf_triangles": {
+    "rock_PROXY_5m.002": 66122
+   }
+  },
+  {
+   "id": "grass_bermuda_01",
+   "kind": "source-model",
+   "level": "src",
+   "slot": null,
+   "use": "grass clump card candidate GrassT0__bermuda (r9 grass row)",
+   "source": "polyhaven:grass_bermuda_01",
+   "url": "https://polyhaven.com/a/grass_bermuda_01",
+   "licence": "CC0-1.0",
+   "licence_url": "https://polyhaven.com/license",
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "raw/polyhaven/grass_bermuda_01/grass_bermuda_01_1k.gltf",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/grass_bermuda_01/grass_bermuda_01_1k.gltf",
+     "md5": "a1bdd74118d2387a42dba4f605226f87",
+     "sha256": "a1e5bb7fcf33721dc4844d7acacab80759fccec659f1ea643f8701afc542e207",
+     "bytes": 32912
+    },
+    {
+     "path": "raw/polyhaven/grass_bermuda_01/grass_bermuda_01.bin",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/grass_bermuda_01/grass_bermuda_01.bin",
+     "md5": "2940aa3405004b62983fd70bede8e47f",
+     "sha256": "b98be48b43afb9d57f6c722d918a49996635064b829b16dc14ef4a48c0f04dae",
+     "bytes": 32260
+    },
+    {
+     "path": "raw/polyhaven/grass_bermuda_01/textures/grass_bermuda_01_arm_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/grass_bermuda_01/grass_bermuda_01_arm_1k.jpg",
+     "md5": "87c58d5d3345d579eab570f7eb446313",
+     "sha256": "38190d342fe951c33ff8c37dd2e3de37aca4cc7633e91be8b0d1c1f71057a641",
+     "bytes": 500088
+    },
+    {
+     "path": "raw/polyhaven/grass_bermuda_01/textures/grass_bermuda_01_diff_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/grass_bermuda_01/grass_bermuda_01_diff_1k.jpg",
+     "md5": "234be9f52cfcd3380c7f782baaa841c3",
+     "sha256": "ef202eeb8f8fb3312446009acecc87e5679a7d612e4dee859d8a849e00af5fcb",
+     "bytes": 175425
+    },
+    {
+     "path": "raw/polyhaven/grass_bermuda_01/textures/grass_bermuda_01_nor_gl_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/grass_bermuda_01/grass_bermuda_01_nor_gl_1k.jpg",
+     "md5": "73a585e0963ff6bf3cefa845cbee0645",
+     "sha256": "4475b37d6e4d217ce03547216f62d1ef6e65cafda2355fd0cb2aeb6d919b9338",
+     "bytes": 709845
+    },
+    {
+     "path": "raw/polyhaven/grass_bermuda_01/textures/grass_bermuda_01_alpha_1k.png",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/1k/grass_bermuda_01/grass_bermuda_01_alpha_1k.png",
+     "md5": "274285abb11b3b7a0fd277b9923d1074",
+     "alpha_map": "Alpha",
+     "sha256": "e58b3052aad2f107cdd763e437f80ed8fb5a31bcc43b44023f7f767cb3d9888e",
+     "bytes": 59564
+    }
+   ],
+   "variant_mesh_names": [
+    "Plane.007",
+    "Plane.010",
+    "Plane.012",
+    "Plane.014",
+    "Plane.021",
+    "Plane.022",
+    "Plane.023",
+    "Plane.024",
+    "Plane.025",
+    "Plane.026",
+    "Plane.027",
+    "Plane.028",
+    "Plane.029",
+    "Plane.030",
+    "Plane.031",
+    "Plane.035",
+    "Plane.039",
+    "Plane.041",
+    "Plane.042",
+    "Plane.043",
+    "Plane.046"
+   ],
+   "gltf_triangles": {
+    "Plane.007": 12,
+    "Plane.010": 12,
+    "Plane.012": 19,
+    "Plane.014": 17,
+    "Plane.021": 8,
+    "Plane.022": 20,
+    "Plane.023": 14,
+    "Plane.024": 24,
+    "Plane.025": 30,
+    "Plane.026": 147,
+    "Plane.027": 140,
+    "Plane.028": 128,
+    "Plane.029": 268,
+    "Plane.030": 15,
+    "Plane.031": 15,
+    "Plane.035": 12,
+    "Plane.039": 12,
+    "Plane.041": 18,
+    "Plane.042": 10,
+    "Plane.043": 10,
+    "Plane.046": 10
+   }
+  },
+  {
+   "id": "dandelion_01",
+   "kind": "source-model",
+   "level": "src",
+   "slot": null,
+   "use": "flower card candidate Flower__dandelion (r9 wildflower row)",
+   "source": "polyhaven:dandelion_01",
+   "url": "https://polyhaven.com/a/dandelion_01",
+   "licence": "CC0-1.0",
+   "licence_url": "https://polyhaven.com/license",
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "raw/polyhaven/dandelion_01/dandelion_01_1k.gltf",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/dandelion_01/dandelion_01_1k.gltf",
+     "md5": "9e470fe32469a68b70f6a7ecc01e2af4",
+     "sha256": "68f804fe29f641f37b03c470cf9065d34aacd1b4f580ed6f35385626c2bb42b7",
+     "bytes": 8915
+    },
+    {
+     "path": "raw/polyhaven/dandelion_01/dandelion_01.bin",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/dandelion_01/dandelion_01.bin",
+     "md5": "a44fda5ce48c4f194791dc0d2e2b1312",
+     "sha256": "ccff5a564f56a69374c09c25ae86c3684c46329309b4eef4569255b1ad54bdd0",
+     "bytes": 1676648
+    },
+    {
+     "path": "raw/polyhaven/dandelion_01/textures/dandelion_01_arm_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/dandelion_01/dandelion_01_arm_1k.jpg",
+     "md5": "60cf149fef7e3a787561312ccd863db1",
+     "sha256": "dad70c20756581fd795548f52a23580d94a2af538664dbbfe64e66a76e4eebb6",
+     "bytes": 448489
+    },
+    {
+     "path": "raw/polyhaven/dandelion_01/textures/dandelion_01_diff_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/dandelion_01/dandelion_01_diff_1k.jpg",
+     "md5": "3516eea45aea05ed60188266abf68323",
+     "sha256": "17e49d535dfce890e539038a80eaa77d90dab5f1781350266dd8f736ee7370d6",
+     "bytes": 470035
+    },
+    {
+     "path": "raw/polyhaven/dandelion_01/textures/dandelion_01_nor_gl_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/dandelion_01/dandelion_01_nor_gl_1k.jpg",
+     "md5": "4957d07cc135503ed860a7cf7ce330f1",
+     "sha256": "fd69513a4803145f634b5ace49fed8709e454b3026d060687071757a72c33250",
+     "bytes": 495857
+    },
+    {
+     "path": "raw/polyhaven/dandelion_01/textures/dandelion_01_alpha_1k.png",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/1k/dandelion_01/dandelion_01_alpha_1k.png",
+     "md5": "0602f861e5f2639060a6093a9c2cf446",
+     "alpha_map": "Alpha",
+     "sha256": "8fa462009b79d58741ba058418cd0ac7e9ec61b049b601f1351179204256c8eb",
+     "bytes": 130962
+    }
+   ],
+   "variant_mesh_names": [
+    "Plane.023",
+    "Plane.041",
+    "Plane.066",
+    "Plane.095",
+    "Plane.113"
+   ],
+   "gltf_triangles": {
+    "Plane.023": 23542,
+    "Plane.095": 23358,
+    "Plane.041": 3180,
+    "Plane.066": 2604,
+    "Plane.113": 2080
+   }
+  },
+  {
+   "id": "periwinkle_plant",
+   "kind": "source-model",
+   "level": "src",
+   "slot": null,
+   "use": "r9 wildflower row; fetched, not prepared (see skipped)",
+   "source": "polyhaven:periwinkle_plant",
+   "url": "https://polyhaven.com/a/periwinkle_plant",
+   "licence": "CC0-1.0",
+   "licence_url": "https://polyhaven.com/license",
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "raw/polyhaven/periwinkle_plant/periwinkle_plant_1k.gltf",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/periwinkle_plant/periwinkle_plant_1k.gltf",
+     "md5": "7a736c4dc3906ea9dbed2baacf6c0b7d",
+     "sha256": "df781eea76123fc6eee97e6e8d466743e3a5fb08e1a2c3f5025a57e090d2cc55",
+     "bytes": 15189
+    },
+    {
+     "path": "raw/polyhaven/periwinkle_plant/periwinkle_plant.bin",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/4k/periwinkle_plant/periwinkle_plant.bin",
+     "md5": "dd2ff3280b0d69c3b03fed2753a6ee84",
+     "sha256": "f039855d84d59f764838285c2b041a5cf255d103afc856e219a62482826d9655",
+     "bytes": 1859752
+    },
+    {
+     "path": "raw/polyhaven/periwinkle_plant/textures/periwinkle_plant_arm_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/periwinkle_plant/periwinkle_plant_arm_1k.jpg",
+     "md5": "3c9e09319e49893167ea0ab009b09526",
+     "sha256": "d964e2e1118c2ca88c137b45590f48d83d3471fef48e913cbd57bf7122bbe4a3",
+     "bytes": 281673
+    },
+    {
+     "path": "raw/polyhaven/periwinkle_plant/textures/periwinkle_plant_diff_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/periwinkle_plant/periwinkle_plant_diff_1k.jpg",
+     "md5": "32b2cba340cf12c976f0fb4c26cc5721",
+     "sha256": "32d61084e6c07fa3ca8e03b35b347a12717f971efc90e8fe1185931ee2298c56",
+     "bytes": 349879
+    },
+    {
+     "path": "raw/polyhaven/periwinkle_plant/textures/periwinkle_plant_nor_gl_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/periwinkle_plant/periwinkle_plant_nor_gl_1k.jpg",
+     "md5": "10e7ee6a4ccf292564237c2b31a5a4be",
+     "sha256": "36d2464e7500f741500228b955c1fb0f26d954e869bd26f93dd25c0fafc5087d",
+     "bytes": 418428
+    }
+   ],
+   "variant_mesh_names": [
+    "tree",
+    "tree.001",
+    "tree.002",
+    "tree.003",
+    "tree.004",
+    "tree.048"
+   ],
+   "gltf_triangles": {
+    "tree": 4108,
+    "tree.001": 1478,
+    "tree.002": 5338,
+    "tree.003": 9096,
+    "tree.004": 3078,
+    "tree.048": 11252
+   }
+  },
+  {
+   "id": "shrub_sorrel_01",
+   "kind": "source-model",
+   "level": "src",
+   "slot": null,
+   "use": "flower card candidate Flower__sorrel (r9 wildflower row)",
+   "source": "polyhaven:shrub_sorrel_01",
+   "url": "https://polyhaven.com/a/shrub_sorrel_01",
+   "licence": "CC0-1.0",
+   "licence_url": "https://polyhaven.com/license",
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "raw/polyhaven/shrub_sorrel_01/shrub_sorrel_01_1k.gltf",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/shrub_sorrel_01/shrub_sorrel_01_1k.gltf",
+     "md5": "d56d50a8492bd7d7c7a0a571f42239c6",
+     "sha256": "97e2c9b564610a1077de9e15de07acbf19f2e66619016aeebb7987e191ad3ce1",
+     "bytes": 17428
+    },
+    {
+     "path": "raw/polyhaven/shrub_sorrel_01/shrub_sorrel_01.bin",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/shrub_sorrel_01/shrub_sorrel_01.bin",
+     "md5": "5b6481fc43f4dc36ab4e80d79a19119f",
+     "sha256": "725f46bf6d330486bf22d4b897fa1d8ef01cdc77a72f1400a3939f86740b4e5d",
+     "bytes": 110936
+    },
+    {
+     "path": "raw/polyhaven/shrub_sorrel_01/textures/shrub_sorrel_01_arm_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/shrub_sorrel_01/shrub_sorrel_01_arm_1k.jpg",
+     "md5": "6230445a48867ef8196ee1ab052d346d",
+     "sha256": "a1b49322e2b0ea988336fca959145dbb53b483b8f9ff2ec5f23dda20c486bdb8",
+     "bytes": 201949
+    },
+    {
+     "path": "raw/polyhaven/shrub_sorrel_01/textures/shrub_sorrel_01_diff_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/shrub_sorrel_01/shrub_sorrel_01_diff_1k.jpg",
+     "md5": "bef299def81bd55c2b378d53dad803b5",
+     "sha256": "9aa62e57767f5b964b8d52e6406ebadb0205fa469d5a369a946fba13a3bc950f",
+     "bytes": 385129
+    },
+    {
+     "path": "raw/polyhaven/shrub_sorrel_01/textures/shrub_sorrel_01_nor_gl_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/shrub_sorrel_01/shrub_sorrel_01_nor_gl_1k.jpg",
+     "md5": "71c6c432b91a8d64f2c480366fd61dfb",
+     "sha256": "0bb2e2aba7831a4e642ad6b1985ad82b0a574930ec6982f9a1a66ad8b41a94b3",
+     "bytes": 470891
+    },
+    {
+     "path": "raw/polyhaven/shrub_sorrel_01/textures/shrub_sorrel_01_alpha_1k.png",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/1k/shrub_sorrel_01/shrub_sorrel_01_alpha_1k.png",
+     "md5": "d73e433a4b041bb19e4dfb4266598e9a",
+     "alpha_map": "Alpha",
+     "sha256": "4788b2a1e8a53cf6f706b1e75bc4007afec3fc823fd3ccaf9b48a52dc1eb04da",
+     "bytes": 64408
+    }
+   ],
+   "variant_mesh_names": [
+    "Plane.012",
+    "Plane.013",
+    "Plane.014",
+    "Plane.015",
+    "Plane.016",
+    "Plane.020",
+    "Plane.026",
+    "Plane.030",
+    "Plane.038",
+    "Plane.044",
+    "Plane.047"
+   ],
+   "gltf_triangles": {
+    "Plane.016": 148,
+    "Plane.020": 414,
+    "Plane.026": 353,
+    "Plane.030": 284,
+    "Plane.038": 990,
+    "Plane.044": 503,
+    "Plane.047": 355,
+    "Plane.015": 71,
+    "Plane.014": 71,
+    "Plane.013": 63,
+    "Plane.012": 67
+   }
+  },
+  {
+   "id": "leafy_grass",
+   "kind": "source-texture",
+   "level": "src",
+   "slot": null,
+   "use": "L0 canopy triplanar leaf texture (plan 3.6, 3.7)",
+   "source": "polyhaven:leafy_grass",
+   "url": "https://polyhaven.com/a/leafy_grass",
+   "licence": "CC0-1.0",
+   "licence_url": "https://polyhaven.com/license",
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "raw/polyhaven/leafy_grass/leafy_grass_diff_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/leafy_grass/leafy_grass_diff_1k.jpg",
+     "md5": "0dbc071e91d6905edfcfbe8eb785a1ab",
+     "sha256": "cfa40bc9d9417d1852db8753a8d5917f110c40101179f63543c382e39bc05e4a",
+     "bytes": 1195394
+    },
+    {
+     "path": "raw/polyhaven/leafy_grass/leafy_grass_nor_gl_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/leafy_grass/leafy_grass_nor_gl_1k.jpg",
+     "md5": "8279e096e204ea326d57a318869f99df",
+     "sha256": "832328216adc0a7e1f70a31d5ee48c9ab7f2152d83816122736cf42ac4b2ebd6",
+     "bytes": 1466049
+    },
+    {
+     "path": "raw/polyhaven/leafy_grass/leafy_grass_arm_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/leafy_grass/leafy_grass_arm_1k.jpg",
+     "md5": "44fb4e40ef0f3425a7d1a14bc328e4d8",
+     "sha256": "95432451cb2693794459fe7ea339ea9ffdb5959c40373740f80a4aa1703f089d",
+     "bytes": 1010081
+    }
+   ]
+  },
+  {
+   "id": "bark_brown_02",
+   "kind": "source-texture",
+   "level": "src",
+   "slot": null,
+   "use": "L0 bark texture (plan 3.6)",
+   "source": "polyhaven:bark_brown_02",
+   "url": "https://polyhaven.com/a/bark_brown_02",
+   "licence": "CC0-1.0",
+   "licence_url": "https://polyhaven.com/license",
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "raw/polyhaven/bark_brown_02/bark_brown_02_diff_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/bark_brown_02/bark_brown_02_diff_1k.jpg",
+     "md5": "6669cca520594bdca19f94084984ab72",
+     "sha256": "920fa0bed0c9d78c1d530e99795113afd532d7db746de440f4a85d7c83ed0f1a",
+     "bytes": 659592
+    },
+    {
+     "path": "raw/polyhaven/bark_brown_02/bark_brown_02_nor_gl_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/bark_brown_02/bark_brown_02_nor_gl_1k.jpg",
+     "md5": "1cad3fe0349a44df2d4d1c2859c79920",
+     "sha256": "0d5e691e8ad8bcd093a3587887fda2a6b4a948b5708a4f256f7919584c6eb857",
+     "bytes": 1015623
+    },
+    {
+     "path": "raw/polyhaven/bark_brown_02/bark_brown_02_arm_1k.jpg",
+     "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/bark_brown_02/bark_brown_02_arm_1k.jpg",
+     "md5": "6a566390a8930454c9ad4056273b08fb",
+     "sha256": "6bd86d37b3b9b40cc30a4b661e382ec41fa7463a8b1144ff44708b19fa675af1",
+     "bytes": 232742
+    }
+   ]
+  },
+  {
+   "id": "Foliage002",
+   "kind": "source-atlas",
+   "level": "src",
+   "slot": null,
+   "use": "seed-head card clump GrassT1__seedcard (r9 grass row)",
+   "source": "ambientcg:Foliage002",
+   "url": "https://ambientcg.com/a/Foliage002",
+   "licence": "CC0-1.0",
+   "licence_url": "https://docs.ambientcg.com/license/",
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "raw/ambientcg/Foliage002/Foliage002_1K-PNG.zip",
+     "url": "https://ambientcg.com/get?file=Foliage002_1K-PNG.zip",
+     "size_verified": 11739258,
+     "sha256_pinned": "eae79091d115577e477aba68eb1b09822bff7664ebc76056617634a6776a893a",
+     "sha256": "eae79091d115577e477aba68eb1b09822bff7664ebc76056617634a6776a893a",
+     "bytes": 11739258
+    },
+    {
+     "path": "raw/ambientcg/Foliage002/Foliage002_1K-PNG_Color.png",
+     "url": "https://ambientcg.com/get?file=Foliage002_1K-PNG.zip#Foliage002_1K-PNG_Color.png",
+     "zip_member": "Foliage002_1K-PNG_Color.png",
+     "sha256": "3f0b476f0f13e817472ebd645e97b18fd56054a4f83035b8997efab236e6cc1e",
+     "bytes": 337277
+    },
+    {
+     "path": "raw/ambientcg/Foliage002/Foliage002_1K-PNG_NormalGL.png",
+     "url": "https://ambientcg.com/get?file=Foliage002_1K-PNG.zip#Foliage002_1K-PNG_NormalGL.png",
+     "zip_member": "Foliage002_1K-PNG_NormalGL.png",
+     "sha256": "10af83fc68abd3733a075ea1f3b2e66d17c9aa1162fe4908346d79d6c2ceb41e",
+     "bytes": 4408731
+    },
+    {
+     "path": "raw/ambientcg/Foliage002/Foliage002_1K-PNG_Opacity.png",
+     "url": "https://ambientcg.com/get?file=Foliage002_1K-PNG.zip#Foliage002_1K-PNG_Opacity.png",
+     "zip_member": "Foliage002_1K-PNG_Opacity.png",
+     "sha256": "48e93acc0db88aac8690576bf243bd61e14dfc2031acb371a309a9574d4ad79b",
+     "bytes": 72039
+    },
+    {
+     "path": "raw/ambientcg/Foliage002/Foliage002_1K-PNG_Roughness.png",
+     "url": "https://ambientcg.com/get?file=Foliage002_1K-PNG.zip#Foliage002_1K-PNG_Roughness.png",
+     "zip_member": "Foliage002_1K-PNG_Roughness.png",
+     "sha256": "f5117568323e486c0385275170ac043e5cb37384fe57957be210016d9c91f0eb",
+     "bytes": 137264
+    }
+   ]
+  },
+  {
+   "id": "Foliage003",
+   "kind": "source-atlas",
+   "level": "src",
+   "slot": null,
+   "use": "seed-head card clump GrassT1__seedcard (r9 grass row)",
+   "source": "ambientcg:Foliage003",
+   "url": "https://ambientcg.com/a/Foliage003",
+   "licence": "CC0-1.0",
+   "licence_url": "https://docs.ambientcg.com/license/",
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "raw/ambientcg/Foliage003/Foliage003_1K-PNG.zip",
+     "url": "https://ambientcg.com/get?file=Foliage003_1K-PNG.zip",
+     "size_verified": 11427635,
+     "sha256_pinned": "f49053f04c18c675c4b94d4968a3d1aee4dca246ff9fe64604fb1075af52f495",
+     "sha256": "f49053f04c18c675c4b94d4968a3d1aee4dca246ff9fe64604fb1075af52f495",
+     "bytes": 11427635
+    },
+    {
+     "path": "raw/ambientcg/Foliage003/Foliage003_1K-PNG_Color.png",
+     "url": "https://ambientcg.com/get?file=Foliage003_1K-PNG.zip#Foliage003_1K-PNG_Color.png",
+     "zip_member": "Foliage003_1K-PNG_Color.png",
+     "sha256": "596f6f861e1c8c89a38dd33a323f42608f0d6f99ce06e78beeea0d6ce49d0851",
+     "bytes": 306252
+    },
+    {
+     "path": "raw/ambientcg/Foliage003/Foliage003_1K-PNG_NormalGL.png",
+     "url": "https://ambientcg.com/get?file=Foliage003_1K-PNG.zip#Foliage003_1K-PNG_NormalGL.png",
+     "zip_member": "Foliage003_1K-PNG_NormalGL.png",
+     "sha256": "b3b4332e1b3be02cdac8a5689c73bbeacf4d8b7cc43439ba2384f37a57f21cb6",
+     "bytes": 4210840
+    },
+    {
+     "path": "raw/ambientcg/Foliage003/Foliage003_1K-PNG_Opacity.png",
+     "url": "https://ambientcg.com/get?file=Foliage003_1K-PNG.zip#Foliage003_1K-PNG_Opacity.png",
+     "zip_member": "Foliage003_1K-PNG_Opacity.png",
+     "sha256": "e8deaeb71b471961cfbdc74b2bf7156501db370a910cc79497ee878b4181b6b5",
+     "bytes": 72451
+    },
+    {
+     "path": "raw/ambientcg/Foliage003/Foliage003_1K-PNG_Roughness.png",
+     "url": "https://ambientcg.com/get?file=Foliage003_1K-PNG.zip#Foliage003_1K-PNG_Roughness.png",
+     "zip_member": "Foliage003_1K-PNG_Roughness.png",
+     "sha256": "817be8bd181fe483be4d98ea520226159f2a751c438c9b9f3b11248d0432d130",
+     "bytes": 209866
+    }
+   ]
+  },
+  {
+   "id": "Foliage004",
+   "kind": "source-atlas",
+   "level": "src",
+   "slot": null,
+   "use": "seed-head card clump GrassT1__seedcard (r9 grass row)",
+   "source": "ambientcg:Foliage004",
+   "url": "https://ambientcg.com/a/Foliage004",
+   "licence": "CC0-1.0",
+   "licence_url": "https://docs.ambientcg.com/license/",
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "raw/ambientcg/Foliage004/Foliage004_1K-PNG.zip",
+     "url": "https://ambientcg.com/get?file=Foliage004_1K-PNG.zip",
+     "size_verified": 11620652,
+     "sha256_pinned": "b68e789f4a90bb15626ffdb2e2b992a62f81b262dae90a9c145f37242dc3222e",
+     "sha256": "b68e789f4a90bb15626ffdb2e2b992a62f81b262dae90a9c145f37242dc3222e",
+     "bytes": 11620652
+    },
+    {
+     "path": "raw/ambientcg/Foliage004/Foliage004_1K-PNG_Color.png",
+     "url": "https://ambientcg.com/get?file=Foliage004_1K-PNG.zip#Foliage004_1K-PNG_Color.png",
+     "zip_member": "Foliage004_1K-PNG_Color.png",
+     "sha256": "8aeea3afa80399911c6747a070a9d6dbf2e230e5bc5076c46e38f3e65ce56103",
+     "bytes": 189599
+    },
+    {
+     "path": "raw/ambientcg/Foliage004/Foliage004_1K-PNG_NormalGL.png",
+     "url": "https://ambientcg.com/get?file=Foliage004_1K-PNG.zip#Foliage004_1K-PNG_NormalGL.png",
+     "zip_member": "Foliage004_1K-PNG_NormalGL.png",
+     "sha256": "660bd8c8985e0245d9caf72516af07196aca417d0f7f989f16dc2adb0bfe5782",
+     "bytes": 4294143
+    },
+    {
+     "path": "raw/ambientcg/Foliage004/Foliage004_1K-PNG_Opacity.png",
+     "url": "https://ambientcg.com/get?file=Foliage004_1K-PNG.zip#Foliage004_1K-PNG_Opacity.png",
+     "zip_member": "Foliage004_1K-PNG_Opacity.png",
+     "sha256": "c6de09f90590275d93e74b3c9ef6907435e3d68b2254d047b27e723191adb0d6",
+     "bytes": 43962
+    },
+    {
+     "path": "raw/ambientcg/Foliage004/Foliage004_1K-PNG_Roughness.png",
+     "url": "https://ambientcg.com/get?file=Foliage004_1K-PNG.zip#Foliage004_1K-PNG_Roughness.png",
+     "zip_member": "Foliage004_1K-PNG_Roughness.png",
+     "sha256": "1324b64572c067efd59a2980d8e260762f9692c3dbfddc8f9a2ff6b337313a1f",
+     "bytes": 235925
+    }
+   ]
+  },
+  {
+   "id": "GrassT0",
+   "kind": "mesh",
+   "level": "L0",
+   "slot": "GrassT0",
+   "source": "procedural:make_scatter_meshes.py@1f12f4c48380d48366091256a3cf22baaf2ce90f1421adbe1ec921ba494d6180",
+   "url": null,
+   "licence": "project-original",
+   "licence_url": null,
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "L0/GrassT0.glb",
+     "sha256": "def9af4adc55302d693029038f0d7c262deda7d2eb91c9b8c5ace36ef235d2a3",
+     "bytes": 3572
+    }
+   ],
+   "variant_mesh_names": [
+    "GrassT0"
+   ],
+   "gltf_triangles": {
+    "GrassT0": 40
+   },
+   "imported_triangles": 40,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L0/GrassT0"
+  },
+  {
+   "id": "GrassT1",
+   "kind": "mesh",
+   "level": "L0",
+   "slot": "GrassT1",
+   "source": "procedural:make_scatter_meshes.py@1f12f4c48380d48366091256a3cf22baaf2ce90f1421adbe1ec921ba494d6180",
+   "url": null,
+   "licence": "project-original",
+   "licence_url": null,
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "L0/GrassT1.glb",
+     "sha256": "ad167c5b94010883ad7c1a2dc5c2cc0b57ea73c079983ce61dc500ef48a171d5",
+     "bytes": 3512
+    }
+   ],
+   "variant_mesh_names": [
+    "GrassT1"
+   ],
+   "gltf_triangles": {
+    "GrassT1": 42
+   },
+   "imported_triangles": 42,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L0/GrassT1"
+  },
+  {
+   "id": "Tussock",
+   "kind": "mesh",
+   "level": "L0",
+   "slot": "Tussock",
+   "source": "procedural:make_scatter_meshes.py@1f12f4c48380d48366091256a3cf22baaf2ce90f1421adbe1ec921ba494d6180",
+   "url": null,
+   "licence": "project-original",
+   "licence_url": null,
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "L0/Tussock.glb",
+     "sha256": "1e6a814e04bcce74e49724a5db951d2a8103a3d739fb4f313a44e629a4e1311e",
+     "bytes": 11572
+    }
+   ],
+   "variant_mesh_names": [
+    "Tussock"
+   ],
+   "gltf_triangles": {
+    "Tussock": 196
+   },
+   "imported_triangles": 196,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L0/Tussock"
+  },
+  {
+   "id": "Flower",
+   "kind": "mesh",
+   "level": "L0",
+   "slot": "Flower",
+   "source": "procedural:make_scatter_meshes.py@1f12f4c48380d48366091256a3cf22baaf2ce90f1421adbe1ec921ba494d6180",
+   "url": null,
+   "licence": "project-original",
+   "licence_url": null,
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "L0/Flower.glb",
+     "sha256": "86353fa5fbae1a31ae43436d2967115f410f528abaf8877775f07654f6dae837",
+     "bytes": 5784
+    }
+   ],
+   "variant_mesh_names": [
+    "Flower"
+   ],
+   "gltf_triangles": {
+    "Flower": 62
+   },
+   "imported_triangles": 62,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L0/Flower"
+  },
+  {
+   "id": "Fern",
+   "kind": "mesh",
+   "level": "L0",
+   "slot": "Fern",
+   "source": "procedural:make_scatter_meshes.py@1f12f4c48380d48366091256a3cf22baaf2ce90f1421adbe1ec921ba494d6180",
+   "url": null,
+   "licence": "project-original",
+   "licence_url": null,
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "L0/Fern.glb",
+     "sha256": "60ed57fd0b3e595a2028f61b47430a6ae3bb292ddbf3c3c328ee7f782cf962a7",
+     "bytes": 24680
+    }
+   ],
+   "variant_mesh_names": [
+    "Fern"
+   ],
+   "gltf_triangles": {
+    "Fern": 296
+   },
+   "imported_triangles": 296,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L0/Fern"
+  },
+  {
+   "id": "ShrubA",
+   "kind": "mesh",
+   "level": "L0",
+   "slot": "ShrubA",
+   "source": "procedural:make_scatter_meshes.py@1f12f4c48380d48366091256a3cf22baaf2ce90f1421adbe1ec921ba494d6180",
+   "url": null,
+   "licence": "project-original",
+   "licence_url": null,
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "L0/ShrubA.glb",
+     "sha256": "da52cc4fa5d403c9978d762f65e89d4b4881aef5fb8ed48310b3832c3e094618",
+     "bytes": 35488
+    }
+   ],
+   "variant_mesh_names": [
+    "ShrubA"
+   ],
+   "gltf_triangles": {
+    "ShrubA": 1332
+   },
+   "imported_triangles": 1332,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L0/ShrubA"
+  },
+  {
+   "id": "ShrubB",
+   "kind": "mesh",
+   "level": "L0",
+   "slot": "ShrubB",
+   "source": "procedural:make_scatter_meshes.py@1f12f4c48380d48366091256a3cf22baaf2ce90f1421adbe1ec921ba494d6180",
+   "url": null,
+   "licence": "project-original",
+   "licence_url": null,
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "L0/ShrubB.glb",
+     "sha256": "08ade2916b601bb31571e0373fa707e3536ec9a0ff5ca43b701a2c0b41285efb",
+     "bytes": 24648
+    }
+   ],
+   "variant_mesh_names": [
+    "ShrubB"
+   ],
+   "gltf_triangles": {
+    "ShrubB": 872
+   },
+   "imported_triangles": 872,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L0/ShrubB"
+  },
+  {
+   "id": "TreeBroadA",
+   "kind": "mesh",
+   "level": "L0",
+   "slot": "TreeBroadA",
+   "source": "procedural:make_scatter_meshes.py@1f12f4c48380d48366091256a3cf22baaf2ce90f1421adbe1ec921ba494d6180",
+   "url": null,
+   "licence": "project-original",
+   "licence_url": null,
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "L0/TreeBroadA.glb",
+     "sha256": "2b8288f302e40195e96c276f860ea8efa0411b47cbaf8b2251ce22fd76d45a95",
+     "bytes": 86048
+    }
+   ],
+   "variant_mesh_names": [
+    "TreeBroadA"
+   ],
+   "gltf_triangles": {
+    "TreeBroadA": 3400
+   },
+   "imported_triangles": 3400,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L0/TreeBroadA"
+  },
+  {
+   "id": "TreeBroadB",
+   "kind": "mesh",
+   "level": "L0",
+   "slot": "TreeBroadB",
+   "source": "procedural:make_scatter_meshes.py@1f12f4c48380d48366091256a3cf22baaf2ce90f1421adbe1ec921ba494d6180",
+   "url": null,
+   "licence": "project-original",
+   "licence_url": null,
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "L0/TreeBroadB.glb",
+     "sha256": "8aff92035a8164562dbbfd13d8a42c09162a036abb9d2f649b77105d92489a53",
+     "bytes": 64836
+    }
+   ],
+   "variant_mesh_names": [
+    "TreeBroadB"
+   ],
+   "gltf_triangles": {
+    "TreeBroadB": 2516
+   },
+   "imported_triangles": 2516,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L0/TreeBroadB"
+  },
+  {
+   "id": "TreeConiferA",
+   "kind": "mesh",
+   "level": "L0",
+   "slot": "TreeConiferA",
+   "source": "procedural:make_scatter_meshes.py@1f12f4c48380d48366091256a3cf22baaf2ce90f1421adbe1ec921ba494d6180",
+   "url": null,
+   "licence": "project-original",
+   "licence_url": null,
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "L0/TreeConiferA.glb",
+     "sha256": "913cf4753cbd769656653465d8217b3a4f5f2a3d5b183d7a7be728e32bc553f6",
+     "bytes": 67884
+    }
+   ],
+   "variant_mesh_names": [
+    "TreeConiferA"
+   ],
+   "gltf_triangles": {
+    "TreeConiferA": 2448
+   },
+   "imported_triangles": 2448,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L0/TreeConiferA"
+  },
+  {
+   "id": "TreeConiferB",
+   "kind": "mesh",
+   "level": "L0",
+   "slot": "TreeConiferB",
+   "source": "procedural:make_scatter_meshes.py@1f12f4c48380d48366091256a3cf22baaf2ce90f1421adbe1ec921ba494d6180",
+   "url": null,
+   "licence": "project-original",
+   "licence_url": null,
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "L0/TreeConiferB.glb",
+     "sha256": "5ffafce995189e58e5aa79dbd9d94cc0a7c7cc80677c75669c292760647a4308",
+     "bytes": 46200
+    }
+   ],
+   "variant_mesh_names": [
+    "TreeConiferB"
+   ],
+   "gltf_triangles": {
+    "TreeConiferB": 1636
+   },
+   "imported_triangles": 1636,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L0/TreeConiferB"
+  },
+  {
+   "id": "RockA",
+   "kind": "mesh",
+   "level": "L0",
+   "slot": "RockA",
+   "source": "procedural:make_scatter_meshes.py@1f12f4c48380d48366091256a3cf22baaf2ce90f1421adbe1ec921ba494d6180",
+   "url": null,
+   "licence": "project-original",
+   "licence_url": null,
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "L0/RockA.glb",
+     "sha256": "b8e9e4c3cd0847f6210ed86eac89a1878edac665d409506c35265d198d6607ef",
+     "bytes": 18672
+    }
+   ],
+   "variant_mesh_names": [
+    "RockA"
+   ],
+   "gltf_triangles": {
+    "RockA": 720
+   },
+   "imported_triangles": 720,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L0/RockA"
+  },
+  {
+   "id": "RockB",
+   "kind": "mesh",
+   "level": "L0",
+   "slot": "RockB",
+   "source": "procedural:make_scatter_meshes.py@1f12f4c48380d48366091256a3cf22baaf2ce90f1421adbe1ec921ba494d6180",
+   "url": null,
+   "licence": "project-original",
+   "licence_url": null,
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "L0/RockB.glb",
+     "sha256": "072e6396d46bc954f7360212e33ee185e1f730760ae2e2de284df5b3059e951c",
+     "bytes": 13392
+    }
+   ],
+   "variant_mesh_names": [
+    "RockB"
+   ],
+   "gltf_triangles": {
+    "RockB": 500
+   },
+   "imported_triangles": 500,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L0/RockB"
+  },
+  {
+   "id": "GrassT0_LOD1",
+   "kind": "mesh",
+   "level": "L0",
+   "slot": "GrassT0",
+   "source": "procedural:make_scatter_meshes.py@1f12f4c48380d48366091256a3cf22baaf2ce90f1421adbe1ec921ba494d6180",
+   "lod_of": "GrassT0",
+   "lod": 1,
+   "url": null,
+   "licence": "project-original",
+   "licence_url": null,
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "L0/GrassT0_LOD1.glb",
+     "sha256": "4005d5254100494b415d0724ee55c65e312f38837e8ee9ca0949fa72297f3e0a",
+     "bytes": 2452
+    }
+   ],
+   "variant_mesh_names": [
+    "GrassT0_LOD1"
+   ],
+   "gltf_triangles": {
+    "GrassT0_LOD1": 20
+   },
+   "imported_triangles": 20,
+   "imported_nanite": false,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L0/GrassT0_L LOD1"
+  },
+  {
+   "id": "GrassT0_LOD2",
+   "kind": "mesh",
+   "level": "L0",
+   "slot": "GrassT0",
+   "source": "procedural:make_scatter_meshes.py@1f12f4c48380d48366091256a3cf22baaf2ce90f1421adbe1ec921ba494d6180",
+   "lod_of": "GrassT0",
+   "lod": 2,
+   "url": null,
+   "licence": "project-original",
+   "licence_url": null,
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "L0/GrassT0_LOD2.glb",
+     "sha256": "d1cbc8316c270938d9f30dd1f5f4ae059f93cd52d2ce5d8981cea5d3fd665fab",
+     "bytes": 1888
+    }
+   ],
+   "variant_mesh_names": [
+    "GrassT0_LOD2"
+   ],
+   "gltf_triangles": {
+    "GrassT0_LOD2": 10
+   },
+   "imported_triangles": 10,
+   "imported_nanite": false,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L0/GrassT0_L LOD2"
+  },
+  {
+   "id": "GrassT1_LOD1",
+   "kind": "mesh",
+   "level": "L0",
+   "slot": "GrassT1",
+   "source": "procedural:make_scatter_meshes.py@1f12f4c48380d48366091256a3cf22baaf2ce90f1421adbe1ec921ba494d6180",
+   "lod_of": "GrassT1",
+   "lod": 1,
+   "url": null,
+   "licence": "project-original",
+   "licence_url": null,
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "L0/GrassT1_LOD1.glb",
+     "sha256": "4f8749ba85986b5e0290a16d96d18d24c52bf88accf992cd2e93ad0beb31c3ec",
+     "bytes": 2420
+    }
+   ],
+   "variant_mesh_names": [
+    "GrassT1_LOD1"
+   ],
+   "gltf_triangles": {
+    "GrassT1_LOD1": 21
+   },
+   "imported_triangles": 21,
+   "imported_nanite": false,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L0/GrassT1_L LOD1"
+  },
+  {
+   "id": "GrassT1_LOD2",
+   "kind": "mesh",
+   "level": "L0",
+   "slot": "GrassT1",
+   "source": "procedural:make_scatter_meshes.py@1f12f4c48380d48366091256a3cf22baaf2ce90f1421adbe1ec921ba494d6180",
+   "lod_of": "GrassT1",
+   "lod": 2,
+   "url": null,
+   "licence": "project-original",
+   "licence_url": null,
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "L0/GrassT1_LOD2.glb",
+     "sha256": "b76286500da49ca43c6455e475b3467ddaf1139e8c7e07a047b9728fbfcd4012",
+     "bytes": 2052
+    }
+   ],
+   "variant_mesh_names": [
+    "GrassT1_LOD2"
+   ],
+   "gltf_triangles": {
+    "GrassT1_LOD2": 14
+   },
+   "imported_triangles": 14,
+   "imported_nanite": false,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L0/GrassT1_L LOD2"
+  },
+  {
+   "id": "Fern__fern02",
+   "kind": "mesh",
+   "level": "L1",
+   "slot": "Fern",
+   "role": "candidate",
+   "source": "derived:polyhaven:fern_02",
+   "derived_by": "prep_polyhaven.py",
+   "url": [
+    "https://polyhaven.com/a/fern_02"
+   ],
+   "licence": "CC0-1.0",
+   "licence_url": [
+    "https://polyhaven.com/license"
+   ],
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "prepared/Fern__fern02.glb",
+     "sha256": "a92b9e6133f35eaa024821a90e3185fe9c034f68a34f7ff6371fa1ce26a2bb94",
+     "bytes": 1624348
+    }
+   ],
+   "variant_mesh_names": [
+    "fern_02_a"
+   ],
+   "gltf_triangles": {
+    "Fern__fern02": 296
+   },
+   "source_triangles": 784,
+   "slot_tris_max": 300,
+   "slot_budget_ok": true,
+   "imported_triangles": 296,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L1/Fern__fern02"
+  },
+  {
+   "id": "Flower__celandine",
+   "kind": "mesh",
+   "level": "L1",
+   "slot": "Flower",
+   "role": "candidate",
+   "source": "derived:polyhaven:celandine_01",
+   "derived_by": "prep_polyhaven.py",
+   "url": [
+    "https://polyhaven.com/a/celandine_01"
+   ],
+   "licence": "CC0-1.0",
+   "licence_url": [
+    "https://polyhaven.com/license"
+   ],
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "prepared/Flower__celandine.glb",
+     "sha256": "1d4add2134795400b2bdd3364a1d9b467bd52b582f6e88c87db950a471bb2bee",
+     "bytes": 1815072
+    }
+   ],
+   "variant_mesh_names": [
+    "celandine_01_a_LOD0"
+   ],
+   "gltf_triangles": {
+    "Flower__celandine": 62
+   },
+   "source_triangles": 622,
+   "slot_tris_max": 64,
+   "slot_budget_ok": true,
+   "imported_triangles": 62,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L1/Flower__celandine"
+  },
+  {
+   "id": "Flower__dandelion",
+   "kind": "mesh",
+   "level": "L1",
+   "slot": "Flower",
+   "role": "candidate",
+   "source": "derived:polyhaven:dandelion_01",
+   "derived_by": "prep_polyhaven.py",
+   "url": [
+    "https://polyhaven.com/a/dandelion_01"
+   ],
+   "licence": "CC0-1.0",
+   "licence_url": [
+    "https://polyhaven.com/license"
+   ],
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "prepared/Flower__dandelion.glb",
+     "sha256": "29e4237c534c164dd278f0db1706d7f76f2ae7f6508373f596db0e233c0fd569",
+     "bytes": 2003656
+    }
+   ],
+   "variant_mesh_names": [
+    "dandelion_01_c_LOD0"
+   ],
+   "gltf_triangles": {
+    "Flower__dandelion": 64
+   },
+   "source_triangles": 3180,
+   "slot_tris_max": 64,
+   "slot_budget_ok": true,
+   "imported_triangles": 64,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L1/Flower__dandelion"
+  },
+  {
+   "id": "Flower__sorrel",
+   "kind": "mesh",
+   "level": "L1",
+   "slot": "Flower",
+   "role": "candidate",
+   "source": "derived:polyhaven:shrub_sorrel_01",
+   "derived_by": "prep_polyhaven.py",
+   "url": [
+    "https://polyhaven.com/a/shrub_sorrel_01"
+   ],
+   "licence": "CC0-1.0",
+   "licence_url": [
+    "https://polyhaven.com/license"
+   ],
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "prepared/Flower__sorrel.glb",
+     "sha256": "815a49bdd7cb13b0fa4339324fb682fef784d72c01a9d44144c04387291be058",
+     "bytes": 1762480
+    }
+   ],
+   "variant_mesh_names": [
+    "shrub_sorrel_01_d"
+   ],
+   "gltf_triangles": {
+    "Flower__sorrel": 64
+   },
+   "source_triangles": 990,
+   "slot_tris_max": 64,
+   "slot_budget_ok": true,
+   "imported_triangles": 64,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L1/Flower__sorrel"
+  },
+  {
+   "id": "GrassT0__bermuda",
+   "kind": "mesh",
+   "level": "L1",
+   "slot": "GrassT0",
+   "role": "candidate",
+   "source": "derived:polyhaven:grass_bermuda_01",
+   "derived_by": "prep_polyhaven.py",
+   "url": [
+    "https://polyhaven.com/a/grass_bermuda_01"
+   ],
+   "licence": "CC0-1.0",
+   "licence_url": [
+    "https://polyhaven.com/license"
+   ],
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "prepared/GrassT0__bermuda.glb",
+     "sha256": "0f213abcf0f944faef4a0cf12cc5e3f1df0a34030dd1d1e43767f59fb7874992",
+     "bytes": 1558944
+    }
+   ],
+   "variant_mesh_names": [
+    "grass_bermuda_01_seedling_a",
+    "grass_bermuda_01_seedling_d"
+   ],
+   "gltf_triangles": {
+    "GrassT0__bermuda": 38
+   },
+   "source_triangles": 415,
+   "slot_tris_max": 48,
+   "slot_budget_ok": true,
+   "imported_triangles": 38,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L1/GrassT0__bermuda"
+  },
+  {
+   "id": "GrassT0__medium02",
+   "kind": "mesh",
+   "level": "L1",
+   "slot": "GrassT0",
+   "role": "candidate",
+   "source": "derived:polyhaven:grass_medium_02",
+   "derived_by": "prep_polyhaven.py",
+   "url": [
+    "https://polyhaven.com/a/grass_medium_02"
+   ],
+   "licence": "CC0-1.0",
+   "licence_url": [
+    "https://polyhaven.com/license"
+   ],
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "prepared/GrassT0__medium02.glb",
+     "sha256": "6af4a1c829b06c1056c7e7b67d11a8e108e597e62c65ba124602ca16199ef3e1",
+     "bytes": 693208
+    }
+   ],
+   "variant_mesh_names": [
+    "grass_medium_02_a"
+   ],
+   "gltf_triangles": {
+    "GrassT0__medium02": 36
+   },
+   "source_triangles": 714,
+   "slot_tris_max": 48,
+   "slot_budget_ok": true,
+   "imported_triangles": 36,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L1/GrassT0__medium02"
+  },
+  {
+   "id": "GrassT1__seedcard",
+   "kind": "mesh",
+   "level": "L1",
+   "slot": "GrassT1",
+   "role": "candidate",
+   "source": "derived:ambientcg:Foliage002,ambientcg:Foliage003,ambientcg:Foliage004",
+   "derived_by": "prep_polyhaven.py",
+   "url": [
+    "https://ambientcg.com/a/Foliage002",
+    "https://ambientcg.com/a/Foliage003",
+    "https://ambientcg.com/a/Foliage004"
+   ],
+   "licence": "CC0-1.0",
+   "licence_url": [
+    "https://docs.ambientcg.com/license/"
+   ],
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "prepared/GrassT1__seedcard.glb",
+     "sha256": "d14101412184bde049f480460a0818a943ed328cba57c4243aa2833ea73cf4cc",
+     "bytes": 3210228
+    }
+   ],
+   "variant_mesh_names": [],
+   "gltf_triangles": {
+    "GrassT1__seedcard": 40
+   },
+   "source_triangles": null,
+   "slot_tris_max": 48,
+   "slot_budget_ok": true,
+   "imported_triangles": 40,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L1/GrassT1__seedcard"
+  },
+  {
+   "id": "NearCard",
+   "kind": "mesh",
+   "level": "L1",
+   "slot": "NearCard",
+   "role": "primary",
+   "source": "derived:polyhaven:grass_medium_01",
+   "derived_by": "prep_polyhaven.py",
+   "url": [
+    "https://polyhaven.com/a/grass_medium_01"
+   ],
+   "licence": "CC0-1.0",
+   "licence_url": [
+    "https://polyhaven.com/license"
+   ],
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "prepared/NearCard.glb",
+     "sha256": "26cb14bad964c948b0a9c8a32219da715c60e4e641208ab1a8b8d310c43ce9c8",
+     "bytes": 2703184
+    }
+   ],
+   "variant_mesh_names": [
+    "grass_medium_01_tall_b_LOD0"
+   ],
+   "gltf_triangles": {
+    "NearCard": 310
+   },
+   "source_triangles": 310,
+   "slot_tris_max": 310,
+   "slot_budget_ok": true,
+   "imported_triangles": 310,
+   "imported_nanite": false,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L1/NearCard"
+  },
+  {
+   "id": "RockA",
+   "kind": "mesh",
+   "level": "L1",
+   "slot": "RockA",
+   "role": "primary",
+   "source": "derived:polyhaven:rock_09",
+   "derived_by": "prep_polyhaven.py",
+   "url": [
+    "https://polyhaven.com/a/rock_09"
+   ],
+   "licence": "CC0-1.0",
+   "licence_url": [
+    "https://polyhaven.com/license"
+   ],
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "prepared/RockA.glb",
+     "sha256": "2c4e610ef4bc2b7f81d0eab162fecb8d69e0f598783a870c0ce89dbb7ddbef7f",
+     "bytes": 1963400
+    }
+   ],
+   "variant_mesh_names": [
+    "rock_09_LOD0"
+   ],
+   "gltf_triangles": {
+    "RockA": 12416
+   },
+   "source_triangles": 12416,
+   "slot_tris_max": null,
+   "slot_budget_ok": true,
+   "imported_triangles": 12416,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L1/RockA"
+  },
+  {
+   "id": "RockA__moss",
+   "kind": "mesh",
+   "level": "L1",
+   "slot": "RockA",
+   "role": "candidate",
+   "source": "derived:polyhaven:rock_moss_set_01",
+   "derived_by": "prep_polyhaven.py",
+   "url": [
+    "https://polyhaven.com/a/rock_moss_set_01"
+   ],
+   "licence": "CC0-1.0",
+   "licence_url": [
+    "https://polyhaven.com/license"
+   ],
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "prepared/RockA__moss.glb",
+     "sha256": "47d8e11ad2584e869c2174f54183c3803384b9476b94a884d7cc46d94408d60f",
+     "bytes": 834972
+    }
+   ],
+   "variant_mesh_names": [
+    "rock_moss_set_01_rock05"
+   ],
+   "gltf_triangles": {
+    "RockA__moss": 16548
+   },
+   "source_triangles": 16548,
+   "slot_tris_max": null,
+   "slot_budget_ok": true,
+   "imported_triangles": 16548,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L1/RockA__moss"
+  },
+  {
+   "id": "RockB",
+   "kind": "mesh",
+   "level": "L1",
+   "slot": "RockB",
+   "role": "primary",
+   "source": "derived:polyhaven:rock_07",
+   "derived_by": "prep_polyhaven.py",
+   "url": [
+    "https://polyhaven.com/a/rock_07"
+   ],
+   "licence": "CC0-1.0",
+   "licence_url": [
+    "https://polyhaven.com/license"
+   ],
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "prepared/RockB.glb",
+     "sha256": "3080a590d1cecce3f335157e9d329a8ee80c94980812bae97428202cc82532bc",
+     "bytes": 2056208
+    }
+   ],
+   "variant_mesh_names": [
+    "rock_07"
+   ],
+   "gltf_triangles": {
+    "RockB": 14844
+   },
+   "source_triangles": 14844,
+   "slot_tris_max": null,
+   "slot_budget_ok": true,
+   "imported_triangles": 14844,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L1/RockB"
+  },
+  {
+   "id": "RockB__boulder",
+   "kind": "mesh",
+   "level": "L1",
+   "slot": "RockB",
+   "role": "candidate",
+   "source": "derived:polyhaven:boulder_01",
+   "derived_by": "prep_polyhaven.py",
+   "url": [
+    "https://polyhaven.com/a/boulder_01"
+   ],
+   "licence": "CC0-1.0",
+   "licence_url": [
+    "https://polyhaven.com/license"
+   ],
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "prepared/RockB__boulder.glb",
+     "sha256": "5911c1f1c5b0526f60f18c451088f11923130bc1b363ead81e4813e2a8b9fe02",
+     "bytes": 5770980
+    }
+   ],
+   "variant_mesh_names": [
+    "boulder_01"
+   ],
+   "gltf_triangles": {
+    "RockB__boulder": 66122
+   },
+   "source_triangles": 66122,
+   "slot_tris_max": null,
+   "slot_budget_ok": true,
+   "imported_triangles": 66122,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L1/RockB__boulder"
+  },
+  {
+   "id": "ShrubA",
+   "kind": "mesh",
+   "level": "L1",
+   "slot": "ShrubA",
+   "role": "primary",
+   "source": "derived:polyhaven:fern_02,polyhaven:nettle_plant,polyhaven:shrub_04,polyhaven:weed_plant_02",
+   "derived_by": "make_bush.py",
+   "url": [
+    "https://polyhaven.com/a/fern_02",
+    "https://polyhaven.com/a/nettle_plant",
+    "https://polyhaven.com/a/shrub_04",
+    "https://polyhaven.com/a/weed_plant_02"
+   ],
+   "licence": "CC0-1.0",
+   "licence_url": [
+    "https://polyhaven.com/license"
+   ],
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "prepared/ShrubA.glb",
+     "sha256": "d2bac2e2d58ba3eb2b5206729b9f481c0319dc59ec86a6bc98c70aa8548c3694",
+     "bytes": 8092248
+    }
+   ],
+   "variant_mesh_names": [
+    "shrub_04",
+    "fern_02_a",
+    "nettle_plant_tall_a_LOD0",
+    "weed_plant_02_a_LOD0"
+   ],
+   "gltf_triangles": {
+    "ShrubA": 3565
+   },
+   "source_triangles": 38062,
+   "slot_tris_max": 4000,
+   "slot_budget_ok": true,
+   "imported_triangles": 3565,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L1/ShrubA"
+  },
+  {
+   "id": "ShrubA__searsia",
+   "kind": "mesh",
+   "level": "L1",
+   "slot": "ShrubA",
+   "role": "candidate",
+   "source": "derived:polyhaven:searsia_lucida",
+   "derived_by": "prep_polyhaven.py",
+   "url": [
+    "https://polyhaven.com/a/searsia_lucida"
+   ],
+   "licence": "CC0-1.0",
+   "licence_url": [
+    "https://polyhaven.com/license"
+   ],
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "prepared/ShrubA__searsia.glb",
+     "sha256": "bb9e1904f46f9c837a706e9f069c036f04463c53cd63fcda78e391910e508ed6",
+     "bytes": 3075460
+    }
+   ],
+   "variant_mesh_names": [
+    "searsia_lucida_f_LOD0"
+   ],
+   "gltf_triangles": {
+    "ShrubA__searsia": 1354
+   },
+   "source_triangles": 7232,
+   "slot_tris_max": 4000,
+   "slot_budget_ok": true,
+   "imported_triangles": 1354,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L1/ShrubA__searsia"
+  },
+  {
+   "id": "ShrubB",
+   "kind": "mesh",
+   "level": "L1",
+   "slot": "ShrubB",
+   "role": "primary",
+   "source": "derived:polyhaven:fern_02,polyhaven:nettle_plant,polyhaven:shrub_04,polyhaven:weed_plant_02",
+   "derived_by": "make_bush.py",
+   "url": [
+    "https://polyhaven.com/a/fern_02",
+    "https://polyhaven.com/a/nettle_plant",
+    "https://polyhaven.com/a/shrub_04",
+    "https://polyhaven.com/a/weed_plant_02"
+   ],
+   "licence": "CC0-1.0",
+   "licence_url": [
+    "https://polyhaven.com/license"
+   ],
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "prepared/ShrubB.glb",
+     "sha256": "4ccf38389d8bed4cfc511c37f9a133d94abb204448c9617ee1bf15b0728f632a",
+     "bytes": 8068896
+    }
+   ],
+   "variant_mesh_names": [
+    "shrub_04",
+    "fern_02_a",
+    "nettle_plant_tall_a_LOD0",
+    "weed_plant_02_a_LOD0"
+   ],
+   "gltf_triangles": {
+    "ShrubB": 3434
+   },
+   "source_triangles": 38062,
+   "slot_tris_max": 4000,
+   "slot_budget_ok": true,
+   "imported_triangles": 3434,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L1/ShrubB"
+  },
+  {
+   "id": "ShrubB__searsia",
+   "kind": "mesh",
+   "level": "L1",
+   "slot": "ShrubB",
+   "role": "candidate",
+   "source": "derived:polyhaven:searsia_lucida",
+   "derived_by": "prep_polyhaven.py",
+   "url": [
+    "https://polyhaven.com/a/searsia_lucida"
+   ],
+   "licence": "CC0-1.0",
+   "licence_url": [
+    "https://polyhaven.com/license"
+   ],
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "prepared/ShrubB__searsia.glb",
+     "sha256": "b61ad2df72af652d01ec9563db125853f4e06f54fe48355524b1577c0eb4a3cc",
+     "bytes": 3073304
+    }
+   ],
+   "variant_mesh_names": [
+    "searsia_lucida_g_LOD0"
+   ],
+   "gltf_triangles": {
+    "ShrubB__searsia": 1282
+   },
+   "source_triangles": 6302,
+   "slot_tris_max": 4000,
+   "slot_budget_ok": true,
+   "imported_triangles": 1282,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L1/ShrubB__searsia"
+  },
+  {
+   "id": "TreeBroadA",
+   "kind": "mesh",
+   "level": "L1",
+   "slot": "TreeBroadA",
+   "role": "primary",
+   "source": "derived:polyhaven:tree_small_02",
+   "derived_by": "prep_polyhaven.py",
+   "url": [
+    "https://polyhaven.com/a/tree_small_02"
+   ],
+   "licence": "CC0-1.0",
+   "licence_url": [
+    "https://polyhaven.com/license"
+   ],
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "prepared/TreeBroadA.glb",
+     "sha256": "9ecf207b2a7aab2c17cc9414e2d8a44841ef946d817222e60e210c217cdf0255",
+     "bytes": 8369976
+    }
+   ],
+   "variant_mesh_names": [
+    "tree_small_02_LOD0"
+   ],
+   "gltf_triangles": {
+    "TreeBroadA": 29699
+   },
+   "source_triangles": 2062487,
+   "slot_tris_max": 30000,
+   "slot_budget_ok": true,
+   "imported_triangles": 29699,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L1/TreeBroadA"
+  },
+  {
+   "id": "TreeBroadB",
+   "kind": "mesh",
+   "level": "L1",
+   "slot": "TreeBroadB",
+   "role": "primary",
+   "source": "derived:polyhaven:tree_small_02",
+   "derived_by": "prep_polyhaven.py",
+   "url": [
+    "https://polyhaven.com/a/tree_small_02"
+   ],
+   "licence": "CC0-1.0",
+   "licence_url": [
+    "https://polyhaven.com/license"
+   ],
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "prepared/TreeBroadB.glb",
+     "sha256": "6d11a8322010554d145b28535eb1b4510b417bea762c78886eeeef1e4971596d",
+     "bytes": 8369976
+    }
+   ],
+   "variant_mesh_names": [
+    "tree_small_02_LOD0"
+   ],
+   "gltf_triangles": {
+    "TreeBroadB": 29699
+   },
+   "source_triangles": 2062487,
+   "slot_tris_max": 30000,
+   "slot_budget_ok": true,
+   "imported_triangles": 29699,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L1/TreeBroadB"
+  },
+  {
+   "id": "TreeConiferA",
+   "kind": "mesh",
+   "level": "L1",
+   "slot": "TreeConiferA",
+   "role": "primary",
+   "source": "derived:polyhaven:fir_tree_01",
+   "derived_by": "prep_polyhaven.py",
+   "url": [
+    "https://polyhaven.com/a/fir_tree_01"
+   ],
+   "licence": "CC0-1.0",
+   "licence_url": [
+    "https://polyhaven.com/license"
+   ],
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "prepared/TreeConiferA.glb",
+     "sha256": "dfba1e809ddc05462e5a2631ef8bb100ec6a2edd053ed4047c8fe3211b1356de",
+     "bytes": 6719408
+    }
+   ],
+   "variant_mesh_names": [
+    "fir_tree_01_c_LOD0"
+   ],
+   "gltf_triangles": {
+    "TreeConiferA": 29699
+   },
+   "source_triangles": 505494,
+   "slot_tris_max": 30000,
+   "slot_budget_ok": true,
+   "imported_triangles": 29699,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L1/TreeConiferA"
+  },
+  {
+   "id": "TreeConiferB",
+   "kind": "mesh",
+   "level": "L1",
+   "slot": "TreeConiferB",
+   "role": "primary",
+   "source": "derived:polyhaven:fir_tree_01",
+   "derived_by": "prep_polyhaven.py",
+   "url": [
+    "https://polyhaven.com/a/fir_tree_01"
+   ],
+   "licence": "CC0-1.0",
+   "licence_url": [
+    "https://polyhaven.com/license"
+   ],
+   "date": "2026-10-02",
+   "fallback": false,
+   "files": [
+    {
+     "path": "prepared/TreeConiferB.glb",
+     "sha256": "457ef7db332f200b0dc984883cd21596c5b0a33b6af6ba226723761501056389",
+     "bytes": 6352372
+    }
+   ],
+   "variant_mesh_names": [
+    "fir_tree_01_b_LOD0"
+   ],
+   "gltf_triangles": {
+    "TreeConiferB": 29700
+   },
+   "source_triangles": 2300624,
+   "slot_tris_max": 30000,
+   "slot_budget_ok": true,
+   "imported_triangles": 29700,
+   "imported_nanite": true,
+   "imported_asset": "/Game/Terrain/Scatter/Meshes/L1/TreeConiferB"
+  },
+  {
+   "id": "T_Variation_1k_RGB_nonVT",
+   "kind": "engine-texture",
+   "level": "engine",
+   "slot": null,
+   "use": "grass patch field noise, shared with the ground material (make_ground_material.py NOISE_TEX)",
+   "source": "epic:/BaseMaterial/Textures/Noises/T_Variation_1k_RGB_nonVT",
+   "engine_path": "/BaseMaterial/Textures/Noises/T_Variation_1k_RGB_nonVT",
+   "url": null,
+   "licence": "epic",
+   "licence_url": null,
+   "date": null,
+   "fallback": false,
+   "files": []
+  }
+ ]
+}

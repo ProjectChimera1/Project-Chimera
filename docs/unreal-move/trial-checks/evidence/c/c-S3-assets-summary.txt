@@ -1,0 +1,89 @@
+S3 scatter import and materials (plan-c-scatter.md 3.6-3.7, 4 S3); written by Tools/scatter_assets_summary.py
+command: LOCK PS T/Tools/run_commandlet.ps1 -Script T/Scripts/make_scatter_assets.py -Tag <tag> -Sentinel SCATTER_OK -TimeoutMin 60,
+         each run on a deleted Content/Terrain/Scatter (the script refuses a non-empty one)
+engine 5.8.3-58210709+++UE5+Release-5.8, script wall 92.9 s (last report)
+from-clean run Out/s3_assets_r1/report.json: t=2026-10-02T08:56:00 deterministic_sha256=6769c36a136a7efc9ef78a384281da8df0327d2c5e9660e147e8c08a0748ecf6 asset_settings_sha256=35f87ad8f1941e59fd4c2b78e4859d10017551b55adca5aed94f3d6e4a86b9be
+from-clean run Out/s3_assets/report.json: t=2026-10-02T08:58:01 deterministic_sha256=6769c36a136a7efc9ef78a384281da8df0327d2c5e9660e147e8c08a0748ecf6 asset_settings_sha256=35f87ad8f1941e59fd4c2b78e4859d10017551b55adca5aed94f3d6e4a86b9be
+deterministic_sha256 and asset_settings_sha256 equal across the from-clean runs: yes (2 runs)
+S6's from-clean re-run compares asset_settings_sha256 (plan S6: triangle counts, flags and dependencies)
+
+checks: errors=0 usage_ok=58/58 deps_ok=1 flip_ok=1 vc_ok=1
+packages under /Game/Terrain/Scatter: 205 = 35 meshes + 7 masters + 58 material instances + 105 textures
+outside /Game/Terrain/Scatter: {"before": 14, "after": 14, "new": [], "gone": []}
+
+masters (default permutation): ps instructions, two-sided, Nanite usage, blend
+  M_ScatterBlade         ps= 369 two_sided=True  nanite=True  opaque translation_errors=0
+  M_ScatterBladeFade     ps= 369 two_sided=True  nanite=False masked fade=blade translation_errors=0
+  M_ScatterCard          ps= 243 two_sided=True  nanite=False masked fade=alpha translation_errors=0
+  M_ScatterTexMasked     ps= 243 two_sided=True  nanite=True  masked translation_errors=0
+  M_ScatterTexOpaque     ps= 236 two_sided=False nanite=True  opaque translation_errors=0
+  M_ScatterTexOpaque2S   ps= 243 two_sided=True  nanite=True  opaque translation_errors=0
+  M_ScatterTriplanar     ps= 298 two_sided=False nanite=True  opaque translation_errors=0
+shader-compile error lines in the run's own log: 0 (scanned=True); RecompileMaterial's list is translation errors only (it returns before the async compile)
+HasPerInstanceRandom asset-registry tag: 65 of 65 materials 'False'; expression scan per_instance_random False on every master
+flip-green: 35 normal maps: 34 flipped (32 of 32 glTF normal maps already by Interchange, gated: F23), plus the flat default normal, exempt
+
+imported source triangles vs the generator's or Blender's report (render LOD0 of a Nanite row is the reduced fallback)
+mesh                                         nanite  expected    source renderLOD0  lods  materials (parent)
+L0/Fern                                      True         296       296       292     1  M_ScatterBlade
+L0/Flower                                    True          62        62        62     1  M_ScatterBlade
+L0/GrassT0                                   True          40        40        40     1  M_ScatterBlade
+L0/GrassT0_L                                 False       None        40        40     3  M_ScatterBladeFade
+L0/GrassT1                                   True          42        42        42     1  M_ScatterBlade
+L0/GrassT1_L                                 False       None        42        42     3  M_ScatterBladeFade
+L0/RockA                                     True         720       720       674     1  M_ScatterTriplanar
+L0/RockB                                     True         500       500       484     1  M_ScatterTriplanar
+L0/ShrubA                                    True        1332      1332      1278     1  M_ScatterTexOpaque,M_ScatterTriplanar
+L0/ShrubB                                    True         872       872       870     1  M_ScatterTexOpaque,M_ScatterTriplanar
+L0/TreeBroadA                                True        3400      3400      1946     1  M_ScatterTexOpaque,M_ScatterTriplanar
+L0/TreeBroadB                                True        2516      2516      1736     1  M_ScatterTexOpaque,M_ScatterTriplanar
+L0/TreeConiferA                              True        2448      2448      1982     1  M_ScatterTexOpaque,M_ScatterTriplanar
+L0/TreeConiferB                              True        1636      1636      1403     1  M_ScatterTexOpaque,M_ScatterTriplanar
+L0/Tussock                                   True         196       196       196     1  M_ScatterBlade
+L1/Fern__fern02                              True         296       296       290     1  M_ScatterTexMasked
+L1/Flower__celandine                         True          62        62        62     1  M_ScatterTexMasked
+L1/Flower__dandelion                         True          64        64        64     1  M_ScatterTexMasked
+L1/Flower__sorrel                            True          64        64        64     1  M_ScatterTexMasked
+L1/GrassT0__bermuda                          True          38        38        38     1  M_ScatterTexMasked
+L1/GrassT0__medium02                         True          36        36        36     1  M_ScatterTexMasked
+L1/GrassT1__seedcard                         True          40        40        40     1  M_ScatterTexMasked
+L1/NearCard                                  False        310       310       310     1  M_ScatterCard
+L1/RockA                                     True       12416     12416      3484     1  M_ScatterTexOpaque
+L1/RockA__moss                               True       16548     16548      2188     1  M_ScatterTexOpaque
+L1/RockB                                     True       14844     14844      2676     1  M_ScatterTexOpaque
+L1/RockB__boulder                            True       66122     66122     18004     1  M_ScatterTexOpaque
+L1/ShrubA                                    True        3565      3565      1854     1  M_ScatterTexMasked
+L1/ShrubA__searsia                           True        1354      1354      1195     1  M_ScatterTexMasked,M_ScatterTexOpaque2S
+L1/ShrubB                                    True        3434      3434      2658     1  M_ScatterTexMasked
+L1/ShrubB__searsia                           True        1282      1282      1012     1  M_ScatterTexMasked,M_ScatterTexOpaque2S
+L1/TreeBroadA                                True       29699     29699      4454     1  M_ScatterTexMasked,M_ScatterTexOpaque2S
+L1/TreeBroadB                                True       29699     29699      4454     1  M_ScatterTexMasked,M_ScatterTexOpaque2S
+L1/TreeConiferA                              True       29699     29699      4454     1  M_ScatterTexMasked,M_ScatterTexOpaque2S
+L1/TreeConiferB                              True       29700     29700      4455     1  M_ScatterTexMasked,M_ScatterTexOpaque2S
+
+Nanite fallback (render LOD0) targets and LOD chains
+  L0/GrassT0_L                   LOD0 triangles=40 screen_size=1.0
+  L0/GrassT0_L                   LOD1 triangles=20 screen_size=0.12
+  L0/GrassT0_L                   LOD2 triangles=10 screen_size=0.04
+  L0/GrassT1_L                   LOD0 triangles=42 screen_size=1.0
+  L0/GrassT1_L                   LOD1 triangles=21 screen_size=0.12
+  L0/GrassT1_L                   LOD2 triangles=14 screen_size=0.04
+  L1/TreeBroadA                  fallback PERCENT_TRIANGLES 0.15: 4454 of 29699 triangles
+  L1/TreeBroadB                  fallback PERCENT_TRIANGLES 0.15: 4454 of 29699 triangles
+  L1/TreeConiferA                fallback PERCENT_TRIANGLES 0.15: 4454 of 29699 triangles
+  L1/TreeConiferB                fallback PERCENT_TRIANGLES 0.15: 4455 of 29700 triangles
+
+vertex colours of the FINAL saved assets (ASCII FBX exports vs the glb COLOR_0, multisets of whole RGBA tuples):
+  source = LOD0 mesh description of the Nanite mesh; render LODn = the non-Nanite _L render data per LOD
+  GrassT0      source       corners 120 == 120  tuples equal True  max abs byte diff {'R': 0, 'G': 0, 'B': 0, 'A': 0}  render LOD0 (fallback) corners 120, non-white 120
+  TreeBroadA   source       corners 10200 == 10200  tuples equal True  max abs byte diff {'R': 0, 'G': 0, 'B': 0, 'A': 0}  render LOD0 (fallback) corners 5838, non-white 5838
+  RockA        source       corners 2160 == 2160  tuples equal True  max abs byte diff {'R': 0, 'G': 0, 'B': 0, 'A': 0}  render LOD0 (fallback) corners 2022, non-white 2022
+  GrassT0_L    render LOD0  corners 120 == 120  tuples equal True  max abs byte diff {'R': 0, 'G': 0, 'B': 0, 'A': 0}
+  GrassT0_L    render LOD1  corners 60 == 60  tuples equal True  max abs byte diff {'R': 0, 'G': 0, 'B': 0, 'A': 0}
+  GrassT0_L    render LOD2  corners 30 == 30  tuples equal True  max abs byte diff {'R': 0, 'G': 0, 'B': 0, 'A': 0}
+  GrassT1_L    render LOD0  corners 126 == 126  tuples equal True  max abs byte diff {'R': 0, 'G': 0, 'B': 0, 'A': 0}
+  GrassT1_L    render LOD1  corners 63 == 63  tuples equal True  max abs byte diff {'R': 0, 'G': 0, 'B': 0, 'A': 0}
+  GrassT1_L    render LOD2  corners 42 == 42  tuples equal True  max abs byte diff {'R': 0, 'G': 0, 'B': 0, 'A': 0}
+meshes whose material reads vertex colour (M_ScatterBlade, M_ScatterBladeFade, M_ScatterTriplanar): 15, HasVertexColors true on 15 of them, missing []
+duplicate Interchange textures deleted (one glTF image, several glTF textures; sizes compared): {'ShrubA__searsia': 5, 'ShrubB__searsia': 5}
+engine dependencies (manifest 'epic' rows): /BaseMaterial/Textures/Noises/T_Variation_1k_RGB_nonVT

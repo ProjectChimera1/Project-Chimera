@@ -3,6 +3,7 @@
 
 Reads Scripts/scatter/meshes.json (slots and species) and writes ScatterSrc/L0/<Name>.glb plus ScatterSrc/L0/report.json:
   grass clumps   GrassT0, GrassT1   opaque tapered blades, 36-48 triangles (the final grass, plan 1.3)
+                 GrassT0_LOD1/2, GrassT1_LOD1/2: the grass _L A/B LOD chain (LOD_CHAINS; report.json "lod_chains", not "meshes")
   tussock        Tussock            a dome of blades, <= 200
   flower         Flower             stems + 6-triangle heads + basal leaves, <= 64 (head mask in vertex colour B)
   fern           Fern               arching fronds of paired pinnae, <= 300
@@ -16,7 +17,7 @@ R = AO, G = part variation, B = part mask, A = height fraction (meshes.json "ver
 only; S3 replaces them (plan 3.6 Import).
 Every random number comes from Mix32 (lowbias32), the same function the C++ generator uses (golden: Scripts/scatter/mix32_golden.json,
 written with --golden; test_scatter_tools.py checks both). No clock, no unordered iteration: re-runs are byte-identical.
-Usage: python make_scatter_meshes.py [--out DIR] [--golden]   -> MESHES_OK species=<n> files=<m> tris_ok
+Usage: python make_scatter_meshes.py [--out DIR] [--golden]   -> MESHES_OK species=<n> files=<m> tris_ok lod_files=<k>
 """
 import argparse
 import hashlib
@@ -498,10 +499,12 @@ def pad4(b, fill):
     return b + fill * ((4 - len(b) % 4) % 4)
 
 
-def write_glb(mesh, path, textures=None):
+def write_glb(mesh, path, textures=None, height_ref=None):
     """glTF 2.0 binary: one node, one mesh, one primitive per material (in first-use order). Returns (bytes, stats).
     textures: optional {material: {"base": png bytes (RGBA: alpha = cut-out), "normal": png bytes (GL), "name": str}} embedded in the
-    file; such a material gets alphaMode MASK (cutoff 0.5) and double sides (used by prep_polyhaven.py for the seed-head cards)."""
+    file; such a material gets alphaMode MASK (cutoff 0.5) and double sides (used by prep_polyhaven.py for the seed-head cards).
+    height_ref: the height the vertex-colour A (height fraction) is taken against; None = this mesh's own top (a LOD subset passes its
+    LOD0's, so a kept blade keeps exactly its LOD0 colours)."""
     textures = textures or {}
     order = []
     for p in mesh.parts:
@@ -539,7 +542,7 @@ def write_glb(mesh, path, textures=None):
         allpos.append(pos)
         prims.append((mname, pos, nrm, uv, col, tri))
     allpos = np.concatenate(allpos)
-    height = allpos[:, 2].max()
+    height = allpos[:, 2].max() if height_ref is None else height_ref
     prim_json = []
     for mname, pos, nrm, uv, col, tri in prims:
         col[:, 3] = np.clip(pos[:, 2] / height, 0, 1)
@@ -604,6 +607,38 @@ BUILDERS = {"grass": lambda sp, rng, m, s: make_grass(sp, rng, m), "tussock": la
             "shrub": make_shrub, "broadleaf": make_broadleaf, "conifer": lambda sp, rng, m, s: make_conifer(sp, rng, m), "rock": make_rock}
 
 
+# LOD chains of the grass _L A/B variant (plan 1.3 "non-Nanite LOD chain as the A/B", 3.6-3.7 "_L variant (Nanite off, 3 LODs)", task S3).
+# QuadricMeshReduction cannot reduce these clumps (separate open blade strips: S3 read 40/40/40 triangles), so the generator writes the
+# lower LODs itself: <Name>_LOD<i>.glb keeps ceil(blades x fraction) blades of LOD0, unchanged (positions, normals, UVs and vertex colours,
+# A still the fraction of LOD0's height), chosen in ascending vertex-colour G byte, then blade index. G is the per-blade value
+# M_ScatterBladeFade thins by (a blade shows while the instance fade is above its G), so a LOD keeps exactly the blades a fading instance
+# keeps longest. make_scatter_assets.py imports them as LOD1 and LOD2 of <Name>_L (StaticMeshEditorSubsystem::SetLodFromStaticMesh).
+LOD_CHAINS = {"GrassT0": (0.5, 0.25), "GrassT1": (0.5, 0.25)}
+
+
+def g_byte(part):
+    """The vertex-colour G byte a part's vertices carry (write_glb's rounding)."""
+    return int(np.clip(np.floor(float(part.var[0]) * 255.0 + 0.5), 0, 255))
+
+
+def lod_subset(mesh, fraction, lod):
+    """A Mesh holding the ceil(n x fraction) parts (blades) with the lowest G byte (ties by part index), in their LOD0 order."""
+    n = len(mesh.parts)
+    k = max(1, int(math.ceil(n * fraction - 1e-9)))
+    order = sorted(range(n), key=lambda i: (g_byte(mesh.parts[i]), i))
+    keep = sorted(order[:k])
+    sub = Mesh(f"{mesh.name}_LOD{lod}")
+    sub.materials = dict(mesh.materials)
+    for i in keep:
+        sub.add(mesh.parts[i])
+    return sub, keep
+
+
+def lod_chain_reduces(triangles):
+    """True when a LOD chain's triangle counts strictly decrease LOD by LOD (and it has at least two LODs)."""
+    return len(triangles) >= 2 and all(a > b for a, b in zip(triangles, triangles[1:]))
+
+
 def write_golden(path, seed):
     ins = [0, 1, 2, 3, 0x7F, 0x80, 0xFF, 0x100, 0xFFFF, 0x10000, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFE, 0xFFFFFFFF, 0xDEADBEEF, 0x9E3779B9,
            seed, 20261002, 123456789, 987654321]
@@ -621,7 +656,7 @@ def build_all(cfg, out):
     gen_sha = hashlib.sha256(open(os.path.abspath(__file__), "rb").read()).hexdigest()
     cfg_sha = hashlib.sha256(open(CONFIG, "rb").read()).hexdigest()
     seed = cfg["seed"]
-    rows, bad = [], []
+    rows, bad, chains = [], [], []
     for sp in cfg["species"]:
         slot = cfg["slots"][sp["slot"]]
         mesh = Mesh(sp["name"])
@@ -644,8 +679,27 @@ def build_all(cfg, out):
                           "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data), "triangles": tris, "budget": [lo, hi],
                           "budget_ok": ok, "nominal_height_m": slot["nominal_height_m"], "build_scale": round(scale, 6),
                           "pivot": "base centre, min z = 0"}, **st))
+        if sp["name"] in LOD_CHAINS:
+            top = float(np.concatenate([p.pos for p in mesh.parts])[:, 2].max())
+            lods = [{"lod": 0, "file": sp["name"] + ".glb", "triangles": tris, "blades": len(mesh.parts), "kept_parts": list(range(len(mesh.parts)))}]
+            for i, frac in enumerate(LOD_CHAINS[sp["name"]], start=1):
+                sub, keep = lod_subset(mesh, frac, i)
+                fname = f"{sp['name']}_LOD{i}.glb"
+                lpath = os.path.join(out, fname)
+                ldata, lst = write_glb(sub, lpath, height_ref=top)
+                lz = sum(int((scatter_glb.triangle_areas(pr) < 1e-7).sum()) for pr in scatter_glb.primitives(lpath))
+                if lz:
+                    bad.append(f"{fname} has {lz} zero-area triangles")
+                lods.append({"lod": i, "file": fname, "keep_fraction": frac, "triangles": sub.triangles(), "blades": len(keep),
+                             "kept_parts": keep, "kept_g_bytes": [g_byte(mesh.parts[j]) for j in keep],
+                             "sha256": hashlib.sha256(ldata).hexdigest(), "bytes": len(ldata),
+                             "vertex_position_sha256": scatter_glb.stats(lpath)["vertex_position_sha256"]})
+            if not lod_chain_reduces([l["triangles"] for l in lods]):
+                bad.append(f"{sp['name']} LOD chain does not reduce: {[l['triangles'] for l in lods]}")
+            chains.append({"name": sp["name"], "slot": sp["slot"], "lods": lods})
     report = {"_doc": "L0 procedural scatter meshes (make_scatter_meshes.py). Bounds in metres, +Z up (the file is glTF +Y up).",
-              "generator_sha256": gen_sha, "config_sha256": cfg_sha, "seed": seed, "date": "deterministic", "meshes": rows}
+              "generator_sha256": gen_sha, "config_sha256": cfg_sha, "seed": seed, "date": "deterministic", "meshes": rows,
+              "lod_chains": chains}
     with open(os.path.join(out, "report.json"), "w", encoding="utf-8", newline="\n") as f:
         json.dump(report, f, indent=1)
     return report, bad
@@ -667,10 +721,13 @@ def main():
     kinds = sorted({m["kind"] for m in report["meshes"]})
     for m in report["meshes"]:
         print(f"  {m['name']:<13} tris={m['triangles']:>5} budget={m['budget'][0]}..{m['budget'][1]} h={m['bounds_max'][2]:.2f} m")
+    for c in report["lod_chains"]:
+        print(f"  {c['name']:<13} LOD chain tris={'/'.join(str(l['triangles']) for l in c['lods'])} blades={'/'.join(str(l['blades']) for l in c['lods'])}")
     if bad:
         print("MESHES_FAIL " + "; ".join(bad))
         return 1
-    print(f"MESHES_OK species={len(kinds)} files={len(report['meshes'])} tris_ok")
+    n_lod = sum(len(c["lods"]) - 1 for c in report["lod_chains"])
+    print(f"MESHES_OK species={len(kinds)} files={len(report['meshes'])} tris_ok lod_files={n_lod}")
     return 0
 
 

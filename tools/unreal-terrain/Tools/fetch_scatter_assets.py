@@ -24,6 +24,7 @@ file-less row only for that shape (plan 3.6 Manifest, proof-30). Run the fetch a
 Usage: python fetch_scatter_assets.py            fetch, verify, write the manifest
                                                  -> SCATTER_FETCH OK ids=<n> md5=verified licence=CC0 (<counts of each check>)
        python fetch_scatter_assets.py --manifest rebuild the manifest from what is on disk (no network)
+       python fetch_scatter_assets.py --refresh-l0  replace only the L0 rows (after make_scatter_meshes.py), keeping every other row
        python fetch_scatter_assets.py --check    validate the manifest
                                                  -> MANIFEST OK rows=<n> licences=CC0-1.0|project-original|epic present=<in use>
 Network failure: exits 1 with the reason; L0 covers every slot (plan 6 risk 14), and the manifest marks missing sources fallback:true.
@@ -233,13 +234,7 @@ def build_manifest(cfg, fetched, today):
             rows.append(row)
     l0 = load_json(os.path.join(SRC, "L0", "report.json"))
     if l0:
-        for m in l0["meshes"]:
-            rows.append({"id": m["name"], "kind": "mesh", "level": "L0", "slot": m["slot"],
-                         "source": f"procedural:make_scatter_meshes.py@{l0['generator_sha256']}",
-                         "url": None, "licence": "project-original", "licence_url": None,
-                         "date": file_date(os.path.join(SRC, "L0", m["file"])), "fallback": False,
-                         "files": [{"path": "L0/" + m["file"], "sha256": m["sha256"], "bytes": m["bytes"]}],
-                         "variant_mesh_names": [m["name"]], "gltf_triangles": {m["name"]: m["triangles"]}, "imported_triangles": None})
+        rows.extend(l0_rows(l0))
     prep = load_json(os.path.join(SRC, "prepared", "report.json"))
     if prep:
         src_rows = {r["source"]: r for r in rows if r["level"] == "src"}
@@ -258,6 +253,47 @@ def build_manifest(cfg, fetched, today):
                          "slot_budget_ok": m.get("slot_budget_ok"), "imported_triangles": None})
     rows.extend(json.loads(json.dumps(r)) for r in ENGINE_ROWS)
     return rows
+
+
+def l0_rows(l0):
+    """Manifest rows of the L0 procedural meshes (ScatterSrc/L0/report.json "meshes") and of the grass LOD-chain files ("lod_chains",
+    LOD1 and up: <Name>_LOD<i>.glb, imported by S3 only as LOD i of <Name>_L, so the row carries lod_of and lod)."""
+    src = f"procedural:make_scatter_meshes.py@{l0['generator_sha256']}"
+    rows = []
+    for m in l0["meshes"]:
+        rows.append({"id": m["name"], "kind": "mesh", "level": "L0", "slot": m["slot"], "source": src,
+                     "url": None, "licence": "project-original", "licence_url": None,
+                     "date": file_date(os.path.join(SRC, "L0", m["file"])), "fallback": False,
+                     "files": [{"path": "L0/" + m["file"], "sha256": m["sha256"], "bytes": m["bytes"]}],
+                     "variant_mesh_names": [m["name"]], "gltf_triangles": {m["name"]: m["triangles"]}, "imported_triangles": None})
+    for c in l0.get("lod_chains", []):
+        for l in c["lods"][1:]:
+            rid = l["file"][:-4]
+            rows.append({"id": rid, "kind": "mesh", "level": "L0", "slot": c["slot"], "source": src, "lod_of": c["name"], "lod": l["lod"],
+                         "url": None, "licence": "project-original", "licence_url": None,
+                         "date": file_date(os.path.join(SRC, "L0", l["file"])), "fallback": False,
+                         "files": [{"path": "L0/" + l["file"], "sha256": l["sha256"], "bytes": l["bytes"]}],
+                         "variant_mesh_names": [rid], "gltf_triangles": {rid: l["triangles"]}, "imported_triangles": None})
+    return rows
+
+
+def refresh_l0(path):
+    """Replace only the L0 rows of an existing manifest with l0_rows(ScatterSrc/L0/report.json), in place (the other rows keep their
+    md5, url and fetch data, which --manifest cannot rebuild offline). Used after make_scatter_meshes.py changes."""
+    man = load_json(path)
+    l0 = load_json(os.path.join(SRC, "L0", "report.json"))
+    if man is None or l0 is None:
+        print("MANIFEST FAIL refresh-l0: manifest or L0 report missing")
+        return 1
+    old = [i for i, r in enumerate(man["rows"]) if r["level"] == "L0"]
+    at = old[0] if old else len(man["rows"])
+    rest = [r for r in man["rows"] if r["level"] != "L0"]
+    new = l0_rows(l0)
+    man["rows"] = rest[:at] + new + rest[at:]
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        json.dump(man, f, indent=1)
+    print(f"MANIFEST L0 REFRESHED rows={len(new)} (was {len(old)})")
+    return 0
 
 
 def is_engine_row(r):
@@ -378,10 +414,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--manifest", action="store_true", help="rebuild the manifest from disk, no network")
+    ap.add_argument("--refresh-l0", action="store_true", help="replace only the L0 rows from ScatterSrc/L0/report.json, no network")
     a = ap.parse_args()
     refuse_mirror()
     if a.check:
         return check(os.path.join(SRC, "manifest.json"))
+    if a.refresh_l0:
+        return refresh_l0(os.path.join(SRC, "manifest.json"))
     cfg = load_json(CONFIG)
     today = datetime.date.today().isoformat()
     if a.manifest:

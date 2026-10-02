@@ -213,6 +213,74 @@ def test_no_zero_area_triangles(l0_twice):
     assert not bad, bad
 
 
+# ------------------------------------------------------------------ grass LOD chains (S3 second pass) ---------------------------
+def corner_tuples(path):
+    """(position xyz rounded to 1e-6, RGBA bytes) at every triangle corner of every primitive of a glb, as a sorted list."""
+    js, binb = sg.read_glb(path)
+    out = []
+    for p in js["meshes"][0]["primitives"]:
+        pos = sg.accessor(js, binb, p["attributes"]["POSITION"])
+        col = sg.accessor(js, binb, p["attributes"]["COLOR_0"])
+        idx = sg.accessor(js, binb, p["indices"]).reshape(-1)
+        out += [(tuple(round(float(x), 6) for x in pos[i]), tuple(int(c) for c in col[i])) for i in idx]
+    return sorted(out)
+
+
+def test_lod_chain_reduces_rejects_a_flat_chain():
+    """The bar the generator and the S3 report test apply: a chain that does not reduce (S3's first 40/40/40) fails."""
+    assert msm.lod_chain_reduces([40, 20, 10])
+    assert not msm.lod_chain_reduces([40, 40, 40])
+    assert not msm.lod_chain_reduces([40, 20, 20])
+    assert not msm.lod_chain_reduces([40])
+
+
+def test_grass_lod_chains_reduce_and_keep_lod0_blades(l0_twice):
+    """Each grass LOD chain (msm.LOD_CHAINS) strictly reduces, every LOD file is in the report with its own hashes, and a lower LOD is
+    exactly a subset of LOD0's corners (same positions and vertex colours, A against LOD0's height): the blades with the lowest G byte,
+    i.e. the ones M_ScatterBladeFade keeps longest."""
+    d1, _, rep, _, _ = l0_twice
+    chains = {c["name"]: c for c in rep["lod_chains"]}
+    assert set(chains) == set(msm.LOD_CHAINS) == {"GrassT0", "GrassT1"}
+    for name, c in chains.items():
+        lods = c["lods"]
+        assert [l["lod"] for l in lods] == [0, 1, 2]
+        tris = [l["triangles"] for l in lods]
+        assert msm.lod_chain_reduces(tris), (name, tris)
+        for l in lods[1:]:
+            assert l["blades"] == max(1, -(-lods[0]["blades"] * int(l["keep_fraction"] * 100) // 100)), (name, l)
+        base = corner_tuples(os.path.join(d1, lods[0]["file"]))
+        g_all = sorted(set(t[1][1] for t in base))
+        for l in lods[1:]:
+            path = os.path.join(d1, l["file"])
+            assert hashlib.sha256(open(path, "rb").read()).hexdigest() == l["sha256"]
+            assert sg.stats(path)["triangles"] == l["triangles"]
+            assert sg.stats(path)["vertex_position_sha256"] == l["vertex_position_sha256"]
+            sub = corner_tuples(path)
+            # multiset inclusion: every corner of the LOD is a corner of LOD0 (no new or moved vertex, no changed colour)
+            pool = {}
+            for t in base:
+                pool[t] = pool.get(t, 0) + 1
+            for t in sub:
+                assert pool.get(t, 0) > 0, (name, l["file"], t)
+                pool[t] -= 1
+            # the kept blades are the lowest-G ones: every dropped blade's G is >= every kept blade's G
+            kept_g = sorted(set(t[1][1] for t in sub))
+            dropped_g = [g for g in g_all if g not in kept_g]
+            assert not dropped_g or min(dropped_g) >= max(kept_g), (name, l["file"], kept_g, dropped_g)
+            assert set(l["kept_g_bytes"]) == set(kept_g), (name, l["file"])
+        # lower LODs are nested (LOD2's blades are LOD1's lowest)
+        assert set(lods[2]["kept_parts"]) <= set(lods[1]["kept_parts"]) <= set(lods[0]["kept_parts"])
+
+
+def test_lod_files_are_not_meshes_rows(l0_twice):
+    """The LOD files are not import rows of their own (S3 imports report['meshes'] as meshes and the LODs only into <Name>_L)."""
+    rep = l0_twice[2]
+    files = {m["file"] for m in rep["meshes"]}
+    for c in rep["lod_chains"]:
+        for l in c["lods"][1:]:
+            assert l["file"] not in files
+
+
 # ------------------------------------------------------------------ L1 prepared ---------------------------------------------------
 def prepared_report():
     p = os.path.join(PREP, "report.json")

@@ -1458,12 +1458,12 @@
   {
     "file": "c-S3-assets-report.json",
     "path": "c/c-S3-assets-report.json",
-    "sha256": "fdea72df7adf5788337cfc41df68f43eec4efccc5a4a7a321c2a6d3216487ad8",
-    "bytes": 204530,
+    "sha256": "74999eaf1f9fc015506be2c501e103c23f70e29a15b4f41af7fce5ebda923ef6",
+    "bytes": 222144,
     "w_h": null,
     "task": "S3",
     "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/scatter_assets/report.json",
-    "r_commit": "0299c07b",
+    "r_commit": "930c09ae",
     "unreal_build_id": "",
     "committed": true,
     "sent_to_alec": null
@@ -1471,12 +1471,12 @@
   {
     "file": "c-S3-assets-report-r1.json",
     "path": "c/c-S3-assets-report-r1.json",
-    "sha256": "a510acc7279a8588c248b1df0d71482755ebc2af4cd561528ea99d6cd9bb1037",
-    "bytes": 204536,
+    "sha256": "ba7f25ccebaf8d02ace21457bc9b3b25f0fcb1aeddba7ceda49b0cf0ea74fb8c",
+    "bytes": 222147,
     "w_h": null,
     "task": "S3",
     "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/s3_assets_r1/report.json",
-    "r_commit": "0299c07b",
+    "r_commit": "930c09ae",
     "unreal_build_id": "",
     "committed": true,
     "sent_to_alec": null
@@ -1484,12 +1484,12 @@
   {
     "file": "c-S3-scatter-manifest.json",
     "path": "c/c-S3-scatter-manifest.json",
-    "sha256": "8ab65a55de68990d73680f86087a741b9d41f84d872fb7a9c51a64766fbffe5e",
-    "bytes": 91111,
+    "sha256": "a32efafc9fd7088c4391dbee3852b13df5e4bfd345bb522c39327e079dd07e9c",
+    "bytes": 94183,
     "w_h": null,
     "task": "S3",
     "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/ScatterSrc/manifest.json",
-    "r_commit": "0299c07b",
+    "r_commit": "930c09ae",
     "unreal_build_id": "",
     "committed": true,
     "sent_to_alec": null
@@ -1497,12 +1497,12 @@
   {
     "file": "c-S3-assets-summary.txt",
     "path": "c/c-S3-assets-summary.txt",
-    "sha256": "7e056fd373a0106b3b37e37311467cea22023ebd341a71dbd9fe19f131ba2c49",
-    "bytes": 6985,
+    "sha256": "41f06019015c45d38d083c62ae58edc7bb9a65674f8a412bec63a191828c643f",
+    "bytes": 9360,
     "w_h": null,
     "task": "S3",
     "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/scatter_assets/summary.txt",
-    "r_commit": "0299c07b",
+    "r_commit": "930c09ae",
     "unreal_build_id": "",
     "committed": true,
     "sent_to_alec": null
