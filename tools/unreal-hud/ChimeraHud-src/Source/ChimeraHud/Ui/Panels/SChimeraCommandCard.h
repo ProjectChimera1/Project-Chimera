@@ -12,7 +12,7 @@
  * #3A3F48 left border, padding 12. A 4x3 grid of 64x60 slots (gap 6) at (13, 13); each slot is a bordered box with a 16x16
  * keycap at (4, 4), a 24 px icon and an optional 9 px cost label. States (r4 5.7): normal; locked (CSS opacity .55 on the whole
  * button: every colour is pre-composited over #1C1F25 and drawn opaque, so no render opacity is used, plan B 2.4); active (green);
- * empty (a transparent box with the dashed-border bake). The ornament frame (rope, sigils, laser) is T7's.
+ * empty (a transparent box with the dashed-border bake). The ornament frame (SChimeraOrnamentFrame: rope, sigils, laser) is the last child.
  */
 class SChimeraCommandCard : public SCompoundWidget
 {

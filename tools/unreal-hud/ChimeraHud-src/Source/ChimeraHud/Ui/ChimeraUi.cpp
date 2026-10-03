@@ -1,16 +1,17 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Ui/ChimeraUi.h"
+#include "Ui/ChimeraBakes.h"
 #include "Ui/Widgets/SChimeraText.h"
 #include "ChimeraHud.h"
 #include "Brushes/SlateColorBrush.h"
 #include "Brushes/SlateDynamicImageBrush.h"
 #include "Brushes/SlateImageBrush.h"
-#include "Brushes/SlateRoundedBoxBrush.h"
 #include "Fonts/FontCache.h"
 #include "Fonts/FontMeasure.h"
 #include "Framework/Application/SlateApplication.h"
 #include "HAL/IConsoleManager.h"
+#include "HAL/PlatformTime.h"
 #include "IImageWrapper.h"
 #include "IImageWrapperModule.h"
 #include "Misc/CommandLine.h"
@@ -130,6 +131,48 @@ namespace ChimeraUi
 		FString Dir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
 		FPaths::NormalizeDirectoryName(Dir);
 		return Dir / TEXT("HudData") / Relative;
+	}
+
+	// ------------------------------------------------------------------ HUD clock
+
+	namespace
+	{
+		struct FHudClock
+		{
+			bool bFrozen = false;
+			double Frozen = 0.0;
+			double Start = 0.0;
+		};
+
+		FHudClock& HudClock()
+		{
+			static FHudClock* Clock = []()
+			{
+				FHudClock* C = new FHudClock();
+				float Freeze = 0.f;
+				C->bFrozen = FParse::Value(FCommandLine::Get(), TEXT("-HudFreezeTime="), Freeze);
+				C->Frozen = (double)Freeze;
+				C->Start = FPlatformTime::Seconds();
+				return C;
+			}();
+			return *Clock;
+		}
+	}
+
+	void StartHudClock()
+	{
+		HudClock().Start = FPlatformTime::Seconds();
+	}
+
+	bool IsHudClockFrozen()
+	{
+		return HudClock().bFrozen;
+	}
+
+	double HudClockSeconds()
+	{
+		const FHudClock& C = HudClock();
+		return C.bFrozen ? C.Frozen : FPlatformTime::Seconds() - C.Start;
 	}
 
 	// ------------------------------------------------------------------ routes
@@ -324,16 +367,10 @@ namespace ChimeraUi
 		return B.Get();
 	}
 
-	const FSlateBrush* KeycapBrush(uint32 Fill, const FVector4f& Radii)
+	const FSlateBrush* KeycapBrush(float Radius, uint32 BorderRgb, uint32 Fill, TOptional<uint32> Backdrop)
 	{
-		const FString Key = FString::Printf(TEXT("round:%06x:%.2f:%.2f:%.2f:%.2f"), Fill, Radii.X, Radii.Y, Radii.Z, Radii.W);
-		TSharedPtr<FSlateBrush>& B = Brushes().FindOrAdd(Key);
-		if (!B.IsValid())
-		{
-			// Fill + radius form only: the fill edge is crisp (smoothstep spread .5, SlateShaderCommon.ush:100-118), outline width stays 0.
-			B = MakeShared<FSlateRoundedBoxBrush>(Hex(Fill), FVector4(Radii.X, Radii.Y, Radii.Z, Radii.W));
-		}
-		return B.Get();
+		// The bake caches itself per (radius, colours, backdrop) for the process.
+		return ChimeraBakes::KeycapFace(Radius, BorderRgb, Fill, Backdrop).Brush;
 	}
 
 	const FSlateBrush* IconBrush(const FString& Name, int32 SizePx)

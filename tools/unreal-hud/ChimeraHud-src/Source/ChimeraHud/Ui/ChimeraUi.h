@@ -52,6 +52,20 @@ namespace ChimeraUi
 	/** Absolute path of a file under H/HudData (forward slashes, matches the shot script's allow-list prefix). */
 	FString HudDataPath(const FString& Relative);
 
+	// ------------------------------------------------------------------ HUD clock (plan B 2.8)
+
+	/**
+	 * Restarts the one HUD clock: seconds since the root HUD (SChimeraMatchHud) was constructed. Called first in its Construct, so
+	 * every child widget (toast, ornament frames) reads the same time base.
+	 */
+	void StartHudClock();
+
+	/** True when -HudFreezeTime=<s> is on the command line (the clock is pinned there; 3.0 s is the reference's capture state). */
+	bool IsHudClockFrozen();
+
+	/** The HUD time in seconds: the frozen value, or seconds since StartHudClock(). */
+	double HudClockSeconds();
+
 	// ------------------------------------------------------------------ render routes (T4a)
 
 	/** Text placement route: SChimeraText with fractional advances (frac) or plain STextBlock (block, route test only). */
@@ -131,8 +145,13 @@ namespace ChimeraUi
 	/** A crisp, pixel-snapped solid quad brush (FSlateColorBrush over FLinearColor). */
 	const FSlateBrush* Solid(uint32 Rgb, float Alpha = 1.0f);
 
-	/** Fill-only rounded box (plan B 2.4: the outline constructor is never used). Radii are (TL, TR, BR, BL) in px. */
-	const FSlateBrush* KeycapBrush(uint32 Fill, const FVector4f& Radii);
+	/**
+	 * The keycap face brush (plan B 2.4): border box in BorderRgb with corner radius Radius, padding box (inset 1, 1, 1, 2) in Fill,
+	 * as one 9-slice CPU bake with Skia's analytic corner coverage (ChimeraBakes::KeycapFace). Backdrop, when the keycap sits on a
+	 * known opaque colour, pre-composites the corners over it. T7 replaced the two nested Slate rounded-box fills: the
+	 * rounded-box shader softens the corner pixels (the empty slot's keycap corners missed the board by 110 levels against 14).
+	 */
+	const FSlateBrush* KeycapBrush(float Radius, uint32 BorderRgb, uint32 Fill, TOptional<uint32> Backdrop = TOptional<uint32>());
 
 	/** White icon brush of the given on-screen size, tinted at draw time: HudData/Icons/<name>.svg (svg route) or <name>_<size>.png. */
 	const FSlateBrush* IconBrush(const FString& Name, int32 SizePx);

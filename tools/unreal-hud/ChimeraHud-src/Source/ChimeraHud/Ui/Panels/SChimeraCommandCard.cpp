@@ -2,6 +2,7 @@
 
 #include "Ui/Panels/SChimeraCommandCard.h"
 #include "Ui/ChimeraBakes.h"
+#include "Ui/Panels/SChimeraOrnamentFrame.h"
 #include "Ui/ChimeraLayout.h"
 #include "Ui/Widgets/SChimeraIcon.h"
 #include "Ui/Widgets/SChimeraKeycap.h"
@@ -45,7 +46,8 @@ namespace
 		const TSharedRef<SConstraintCanvas> C = SNew(SConstraintCanvas);
 		if (bEmpty)
 		{
-			AddBake(C, 0.f, 0.f, ChimeraBakes::DashedBorder((int32)SlotW, (int32)SlotH, Token::Surface4));
+			// The empty slot is transparent inside its dashed border, so the border lies on the card fill: pre-composited over it.
+			AddBake(C, 0.f, 0.f, ChimeraBakes::DashedBorder((int32)SlotW, (int32)SlotH, Token::Surface4, Token::Surface1));
 		}
 		else
 		{
@@ -54,7 +56,8 @@ namespace
 		}
 		AddAbs(C, 4.f, 4.f, 16.f, 16.f,
 			SNew(SChimeraKeycap).Label(Slot.Key).Fill(Tone(Token::Void)).Radius(2.f).Height(16.f).MinWidth(16.f)
-				.BorderColor(Tone(Token::KeycapBorder)).LabelColor(Tone(Token::Text)));
+				.BorderColor(Tone(Token::KeycapBorder)).LabelColor(Tone(Token::Text))
+				.Backdrop(bEmpty ? Token::Surface1 : Tone(FillRgb)));	// what lies under the keycap: the slot fill, or the card
 		if (!Slot.Icon.IsEmpty())
 		{
 			// Flex column, centred, gap 4: icon 24 + (4 + cost line 9) when there is a cost: 10.5 + 1 = 11.5 or 17 + 1 = 18.
@@ -89,6 +92,13 @@ void SChimeraCommandCard::Construct(const FArguments& InArgs)
 	for (int32 I = 0; I < S.Slots.Num() && I < 12; ++I)
 	{
 		AddAbs(C, GridX + (float)(I % 4) * StepX, GridY + (float)(I / 4) * StepY, SlotW, SlotH, MakeSlot(S.Slots[I]));
+	}
+
+	// Ornament frame (z-index 3): container inside the 1 px left border, 299 wide, laser delay 3 s.
+	{
+		const float M = SChimeraOrnamentFrame::Margin;
+		AddAbs(C, 1.f - M, 1.f - M, PanelW - 1.f + 2.f * M, M + 8.f,
+			SNew(SChimeraOrnamentFrame).FrameWidth(PanelW - 1.f).Sigils(true).LaserBaseDelay(3.f));
 	}
 
 	ChildSlot[SNew(SBox).WidthOverride(PanelW).HeightOverride(PanelH)[C]];

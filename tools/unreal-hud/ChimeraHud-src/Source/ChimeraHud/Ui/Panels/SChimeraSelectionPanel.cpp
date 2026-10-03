@@ -2,6 +2,7 @@
 
 #include "Ui/Panels/SChimeraSelectionPanel.h"
 #include "Ui/ChimeraBakes.h"
+#include "Ui/Panels/SChimeraOrnamentFrame.h"
 #include "Ui/ChimeraLayout.h"
 #include "ChimeraHud.h"
 #include "Widgets/Layout/SBox.h"
@@ -67,6 +68,13 @@ void SChimeraSelectionPanel::Construct(const FArguments& InArgs)
 	}
 	// One line, overflow hidden: the 331.2 px stat line fits the 340 px column, so the ellipsis never triggers on this board.
 	AddAbs(C, InfoX, StatY, InfoW, 15.6f, Text(EChimeraText::StatLine, S.UnitStats));
+
+	// Ornament frame (z-index 3): the full 1364 px top inner edge, built with noSigils, laser delay 1.5 s.
+	{
+		const float M = SChimeraOrnamentFrame::Margin;
+		AddAbs(C, -M, 1.f - M, PanelW + 2.f * M, M + 8.f,
+			SNew(SChimeraOrnamentFrame).FrameWidth(PanelW).Sigils(false).LaserBaseDelay(1.5f));
+	}
 
 	ChildSlot[SNew(SBox).WidthOverride(PanelW).HeightOverride(PanelH)[C]];
 }

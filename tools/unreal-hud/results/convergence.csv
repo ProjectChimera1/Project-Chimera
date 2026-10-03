@@ -10,3 +10,8 @@ t4-2,2026-10-03 09:52:47,0,0,top.chip.gold,1.000,0.810,0.9913,831de90cb320bae0,o
 t6-2,2026-10-03 10:30:53,0,0,sel.name,1.000,0.626,0.9785,2f90f02df8f09a0d,only=^(sel\.|card\.) gates=G1;G2;G3;G5 extra=none T6: first cut selection panel + command card; dashed and vat bakes; locked pre-composite
 t4-3,2026-10-03 10:32:58,0,0,top.chip.gold,1.000,0.810,0.9913,2f90f02df8f09a0d,only=^top\. gates=all extra=none T6 end: top.* regression check; all gates
 t5-6,2026-10-03 10:34:40,0,0,tab.3,1.000,0.965,0.9859,2f90f02df8f09a0d,only=^(toast|world\.|mm\.|tab\.) gates=G1;G2;G3;G5;G6 extra=none T6 end: T5 filter regression check
+t7-1,2026-10-03 11:32:12,0,0,card.V,0.666,0.220,0.9989,c87eea4a7f20090e,only=^(orn\.|mm\.plate|mm\.map|sel\.portrait|card\.V|world\.ring) gates=all extra=none T7 ornament frame; keycap/dash/shadow bakes
+t7-2,2026-10-03 12:37:10,0,0,card.V,0.666,0.220,0.9989,8345b06e011b9467,only=^(orn\.|mm\.plate|mm\.map|sel\.portrait|card\.V|world\.ring) gates=all extra=none T7 fix: laser head one bake per sub-pixel phase under a line clip; one HUD clock; hit-test invisible frame; Finish null guard
+t4-4,2026-10-03 12:42:21,0,0,top.chip.gold,1.000,0.808,0.9913,8345b06e011b9467,only=^top\. gates=all extra=none T7 end: top.* regression check; all gates
+t5-7,2026-10-03 12:44:03,0,0,tab.3,1.000,0.953,0.9924,8345b06e011b9467,only=^(toast|world\.|mm\.|tab\.) gates=G1;G2;G3;G5;G6 extra=none T7 end: T5 filter regression check
+t6-3,2026-10-03 12:46:09,0,0,sel.name,1.000,0.622,0.9929,8345b06e011b9467,only=^(sel\.|card\.) gates=G1;G2;G3;G5 extra=none T7 end: T6 filter regression check

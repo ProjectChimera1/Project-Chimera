@@ -24,6 +24,8 @@
 
 void SChimeraMatchHud::Construct(const FArguments& InArgs)
 {
+	ChimeraUi::StartHudClock();	// the one HUD clock (plan B 2.8): t = 0 at the root's construct
+
 	TSharedRef<SOverlay> Overlay = SNew(SOverlay);
 
 	// Layer 0: the backdrop, drawn 1:1 under the HUD.

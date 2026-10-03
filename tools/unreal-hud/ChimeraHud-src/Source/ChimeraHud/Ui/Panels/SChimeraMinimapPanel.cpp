@@ -2,6 +2,7 @@
 
 #include "Ui/Panels/SChimeraMinimapPanel.h"
 #include "Ui/ChimeraBakes.h"
+#include "Ui/Panels/SChimeraOrnamentFrame.h"
 #include "Ui/ChimeraLayout.h"
 #include "Ui/Widgets/SChimeraIcon.h"
 #include "ChimeraHud.h"
@@ -47,7 +48,9 @@ void SChimeraMinimapPanel::Construct(const FArguments& InArgs)
 	AddRect(C, PanelW - 1.f, 1.f, 1.f, PanelH - 1.f, Token::Border);
 
 	// Plate (paint order 21-26): drop shadow, border + fill, bevels, inner line, nodes.
-	AddBake(C, PlateX, PlateY, ChimeraBakes::OuterShadow(200, 200, 0, 3, 6.f, 0x000000, 0.4f));
+	// Every shadow pixel with any alpha lies on the panel fill (the buttons, borders and ropes are beyond its reach), so the bake
+	// is pre-composited over #1C1F25 (ChimeraBakes::OuterShadow).
+	AddBake(C, PlateX, PlateY, ChimeraBakes::OuterShadow(200, 200, 0, 3, 6.f, 0x000000, 0.4f, Token::Surface1));
 	AddAbs(C, PlateX, PlateY, PlateSize, PlateSize,
 		SNew(SBorder).BorderImage(Solid(Token::GoldDark)).Padding(1.f)
 		[
@@ -110,6 +113,13 @@ void SChimeraMinimapPanel::Construct(const FArguments& InArgs)
 	AddAbs(C, 8.f, ContentTop + 16.f, 28.f, 28.f, MapButton(TEXT("eye")));
 	AddAbs(C, 8.f, ContentTop + 48.f, 28.f, 28.f, MapButton(TEXT("flag")));
 	AddAbs(C, 8.f, ContentTop + 80.f, 28.f, 28.f, MapButton(TEXT("grid")));
+
+	// Ornament frame (z-index 3, over everything above): container on the top inner edge, 255 wide (inside the right border).
+	{
+		const float M = SChimeraOrnamentFrame::Margin;
+		AddAbs(C, -M, ContentTop - M, PanelW - 1.f + 2.f * M, M + 8.f,
+			SNew(SChimeraOrnamentFrame).FrameWidth(PanelW - 1.f).Sigils(true).LaserBaseDelay(0.f));
+	}
 
 	ChildSlot[SNew(SBox).WidthOverride(PanelW).HeightOverride(PanelH)[C]];
 }

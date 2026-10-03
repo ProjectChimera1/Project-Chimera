@@ -8,10 +8,9 @@
 
 /**
  * Keycap (r4 5.1: "used everywhere"): mono 600 10px/14px label, padding 0 4, 1 px #5C5446 sides and top, a 2 px bottom, radius 3
- * (2 on the command card). Drawn as plan B 2.4 prescribes: an outer fill-only rounded box in the border colour and an inner
- * fill-only rounded box inset (1, 1, 1, 2), both crisp on their straight edges (fill smoothstep spread .5, F11).
- * The inner radii follow CSS (outer radius minus the border width on each axis; the bottom corners' 2 px border makes them
- * elliptical in CSS, approximated here by the mean of the two axes).
+ * (2 on the command card). Drawn as plan B 2.4's two layers, an outer box in the border colour and the inner box inset
+ * (1, 1, 1, 2) in the face colour, with CSS's inner radii (outer radius minus the border width on each axis, so the bottom
+ * corners are elliptical), baked into one 9-slice image with Skia's analytic corner coverage (T7, ChimeraBakes::KeycapFace).
  */
 class SChimeraKeycap : public SCompoundWidget
 {
@@ -34,6 +33,8 @@ public:
 		SLATE_ARGUMENT(TOptional<uint32>, BorderColor)
 		/** Label colour (sRGB); the keycap style's colour unless overridden. */
 		SLATE_ARGUMENT(TOptional<uint32>, LabelColor)
+		/** The opaque colour the keycap sits on (sRGB), when known: its corner pixels are then pre-composited over it (Skia blend model). */
+		SLATE_ARGUMENT(TOptional<uint32>, Backdrop)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);

@@ -12,7 +12,7 @@
  * border and a 1 px #3A3F48 right border; three 28x28 buttons (eye, flag, grid); the raised 200x200 plate (#262A31, 1 px
  * #8A6E3C, drop-shadow bake, two 1 px bevel lines, a 192x192 inner line, four ringed corner-node bakes); and the 184x184 map
  * surface drawn in CSS paint order: 1 px #0B0C0E border, the photo placeholder, the inset-shadow bake, the dim box, the fog radial
- * bake, the unit dots (half-pixel bakes for odd sizes) and the 54x34 camera rectangle. The ornament frame is T7's.
+ * bake, the unit dots (half-pixel bakes for odd sizes) and the 54x34 camera rectangle. The ornament frame (SChimeraOrnamentFrame) is the last child.
  * All children are absolutely placed in panel coordinates, as the mockup does.
  */
 class SChimeraMinimapPanel : public SCompoundWidget

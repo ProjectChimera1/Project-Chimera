@@ -13,7 +13,9 @@ Outputs under H/HudData/:
                              shapes and groups, not on the root (UE 5.8 ThirdParty/nanosvg, nsvg__parseSVG)
   Icons/<name>_<size>.png    --png: Chromium's raster of the same markup at every on-screen size the board uses (12/14/16/24),
                              white on transparent (straight alpha), placed at integer offsets as Blink snaps an <svg> root
-  Ornaments/rope_tile.svg (16x8), Ornaments/sigil_<k>.svg (14 px, own colours) and their --png rasters
+  Ornaments/rope_tile.svg (16x8), Ornaments/sigil_<k>.svg (14 px, own colours) and their --png rasters; the rope tile is
+                             rasterised as the board paints it, a CSS background-image (rope_tile.png at phase 0 and
+                             rope_tile_h.png at a half-pixel phase)
   Icons/index.json, Ornaments/index.json   name -> sizes, source element ids
   manifest.json              sha256 + bytes of every generated file (the shot script's allow-list, hud_shot_check.py)
 Nothing here is cropped from a reference image: every pixel of the PNG route is Chromium rendering our generated SVG.
@@ -27,6 +29,7 @@ import os
 import re
 import subprocess
 import sys
+import urllib.parse
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -102,7 +105,15 @@ def build(elements: dict) -> tuple[dict[str, str], dict, dict, list[dict]]:
     orn = elements["ornaments"]
     files["Ornaments/rope_tile.svg"] = ornament_svg(orn["ropeTileSvg_16x8_repeat-x"], 16, 8)
     orn_index: dict = {"rope_tile": {"svg": "Ornaments/rope_tile.svg", "size": [16, 8]}, "sigils": []}
-    jobs.append({"name": "rope_tile", "out": str(ORN / "rope_tile.png"), "svg": files["Ornaments/rope_tile.svg"], "w": 16, "h": 8})
+    # The board paints the rope as a CSS background (repeat-x, 16x8 tiles), so the PNG route rasterises it that way too: Chromium
+    # draws an SVG background image at the tile's own (possibly fractional) position, and its raster differs from an inline <svg>
+    # (measured on the cross-over bar, T7). rope_tile.png has the tile origin on a pixel edge; rope_tile_h.png is the same tile with
+    # its origin half a pixel right (column c shows SVG x = c - 0.5), the phase a right-anchored strip of a half-pixel-wide panel gets.
+    rope = files["Ornaments/rope_tile.svg"]
+    # Each is shot from a 48 px strip (the board's strips are 127.5-682 px long) and cropped to its middle tile: a box exactly one
+    # tile wide can take a different raster path in Chromium (measured: it then equals the inline raster), a long strip never does.
+    jobs.append({"name": "rope_tile", "out": str(ORN / "rope_tile.png"), "svg": rope, "w": 16, "h": 8, "bg": "0px 0px", "strip": 48})
+    jobs.append({"name": "rope_tile_h", "out": str(ORN / "rope_tile_h.png"), "svg": rope, "w": 16, "h": 8, "bg": "0.5px 0px", "strip": 48})
     variants: list[str] = []
     for s in orn["sigils"]:
         m = s["markup"]
@@ -129,8 +140,15 @@ def render_pngs(jobs: list[dict]) -> None:
             ".c{position:absolute}svg{display:block}</style></head><body>"]
     y = 0
     for i, j in enumerate(jobs):
-        svg = j["svg"].replace('width="24" height="24"', f'width="{j["w"]}" height="{j["h"]}"', 1)
-        html.append(f'<div class="c" id="j{i}" style="left:0px;top:{y}px;width:{j["w"]}px;height:{j["h"]}px">{svg}</div>')
+        if "bg" in j:
+            # CSS background route: the SVG as a data-URI background-image, background-size = the tile, repeat-x, at the given phase
+            uri = "data:image/svg+xml," + urllib.parse.quote(j["svg"].strip(), safe="")
+            html.append(f'<div class="c" id="j{i}" style="left:0px;top:{y}px;width:{j["strip"]}px;height:{j["h"]}px;'
+                        f'background-image:url(&quot;{uri}&quot;);background-size:{j["w"]}px {j["h"]}px;background-repeat:repeat-x;'
+                        f'background-position:{j["bg"]}"></div>')
+        else:
+            svg = j["svg"].replace('width="24" height="24"', f'width="{j["w"]}" height="{j["h"]}"', 1)
+            html.append(f'<div class="c" id="j{i}" style="left:0px;top:{y}px;width:{j["w"]}px;height:{j["h"]}px">{svg}</div>')
         y += j["h"] + 4
     html.append("</body></html>")
     page = "".join(html)
@@ -157,6 +175,12 @@ def render_pngs(jobs: list[dict]) -> None:
     for j in jobs:
         if not Path(j["out"]).is_file():
             sys.exit(f"PNG not written: {j['out']}")
+        if "strip" in j:
+            # keep the strip's second tile (columns w..2w-1): its phase equals the strip's, away from both strip ends
+            from PIL import Image
+            with Image.open(j["out"]) as im:
+                tile = im.convert("RGBA").crop((j["w"], 0, 2 * j["w"], j["h"]))
+            tile.save(j["out"])
 
 
 def main() -> int:

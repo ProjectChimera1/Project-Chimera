@@ -1,0 +1,911 @@
+{
+ "pair": "A",
+ "only": "^(orn\\.|mm\\.plate|mm\\.map|sel\\.portrait|card\\.V|world\\.ring)",
+ "gates": [
+  "G1",
+  "G2",
+  "G3",
+  "G4",
+  "G5",
+  "G6",
+  "G7"
+ ],
+ "alignment": [
+  {
+   "anchor": "mm.right",
+   "status": "ok",
+   "ok": true,
+   "warn": false,
+   "dx": 0,
+   "dy": 0,
+   "found": true,
+   "ref_unique": true,
+   "guarded_regions": [
+    "mm.panel",
+    "mm.buttons",
+    "mm.plate",
+    "mm.map",
+    "tab.3",
+    "orn.minimap"
+   ]
+  },
+  {
+   "anchor": "mm.plate_top",
+   "status": "ok",
+   "ok": true,
+   "warn": false,
+   "dx": 0,
+   "dy": 0,
+   "found": true,
+   "ref_unique": true,
+   "guarded_regions": [
+    "mm.plate",
+    "mm.map"
+   ]
+  },
+  {
+   "anchor": "sel.vat_top",
+   "status": "ok",
+   "ok": true,
+   "warn": false,
+   "dx": 0,
+   "dy": 0,
+   "found": true,
+   "ref_unique": true,
+   "guarded_regions": [
+    "sel.panel",
+    "sel.portrait",
+    "sel.name",
+    "sel.role",
+    "sel.hp",
+    "sel.stats",
+    "orn.selection"
+   ]
+  },
+  {
+   "anchor": "card.left",
+   "status": "ok",
+   "ok": true,
+   "warn": false,
+   "dx": 0,
+   "dy": 0,
+   "found": true,
+   "ref_unique": true,
+   "guarded_regions": [
+    "card.panel",
+    "card.Q",
+    "card.W",
+    "card.E",
+    "card.R",
+    "card.A",
+    "card.S",
+    "card.D",
+    "card.F",
+    "card.Z",
+    "card.X",
+    "card.C",
+    "card.V",
+    "orn.card"
+   ]
+  },
+  {
+   "anchor": "card.Q_top",
+   "status": "ok",
+   "ok": true,
+   "warn": false,
+   "dx": 0,
+   "dy": 0,
+   "found": true,
+   "ref_unique": true,
+   "guarded_regions": [
+    "card.panel",
+    "card.Q",
+    "card.W",
+    "card.E",
+    "card.R",
+    "card.A",
+    "card.S",
+    "card.D",
+    "card.F",
+    "card.Z",
+    "card.X",
+    "card.C",
+    "card.V",
+    "orn.card"
+   ]
+  }
+ ],
+ "regions": {
+  "world.ring": {
+   "region": "world.ring",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 1694,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "ring.left",
+       "class": "vector",
+       "err": 0
+      },
+      {
+       "id": "auto.7.selection-health-bar-fil",
+       "class": "auto",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 0,
+       "name": "selection-health-bar-frame",
+       "side": "top",
+       "px": 28,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 1,
+       "name": "selection-health-bar-frame",
+       "side": "right",
+       "px": 5,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 2,
+       "name": "selection-health-bar-frame",
+       "side": "bottom",
+       "px": 28,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 3,
+       "name": "selection-health-bar-frame",
+       "side": "left",
+       "px": 5,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 746,
+       "mad": 0.0349,
+       "bad_frac": 0.0,
+       "mad_raw": 0.03485254691689008,
+       "badness": 0.03485254691689008
+      },
+      "vector": {
+       "px": 948,
+       "mad": 0.8312,
+       "bad_frac": 0.04219,
+       "mad_raw": 0.8312236286919831,
+       "ssim": 0.9972,
+       "ssim_raw": 0.9972006543210461,
+       "badness": 0.5794114238756329
+      }
+     },
+     "runs": []
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    986,
+    518,
+    1034,
+    573
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.5794114238756329,
+    "G5": 0.0
+   },
+   "report_only": [
+    "G1.vector"
+   ],
+   "badness": 0.5794114238756329,
+   "worst_gate": "G4",
+   "failing_gates": [],
+   "pass": true
+  },
+  "mm.plate": {
+   "region": "mm.plate",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 10741,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "plate.fill",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "plate.border",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "plate.inner",
+       "class": "hard",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 56,
+       "name": "minimap-frame-plate",
+       "side": "top",
+       "px": 192,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 57,
+       "name": "minimap-frame-plate",
+       "side": "right",
+       "px": 192,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 58,
+       "name": "minimap-frame-plate",
+       "side": "bottom",
+       "px": 192,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 59,
+       "name": "minimap-frame-plate",
+       "side": "left",
+       "px": 192,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 60,
+       "name": "minimap-frame-inner-line",
+       "side": "top",
+       "px": 190,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 61,
+       "name": "minimap-frame-inner-line",
+       "side": "right",
+       "px": 190,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 62,
+       "name": "minimap-frame-inner-line",
+       "side": "bottom",
+       "px": 190,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 63,
+       "name": "minimap-frame-inner-line",
+       "side": "left",
+       "px": 190,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 6247,
+       "mad": 0.041,
+       "bad_frac": 0.0,
+       "mad_raw": 0.040979670241716025,
+       "badness": 0.040979670241716025
+      },
+      "vector": {
+       "px": 4494,
+       "mad": 0.0682,
+       "bad_frac": 0.0,
+       "mad_raw": 0.06816496068832517,
+       "ssim": 0.99998,
+       "ssim_raw": 0.9999773991604048,
+       "badness": 0.2879062036751204
+      }
+     },
+     "runs": []
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    38,
+    869,
+    250,
+    1080
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.2879062036751204,
+    "G5": 0.0
+   },
+   "report_only": [],
+   "badness": 0.2879062036751204,
+   "worst_gate": "G4",
+   "failing_gates": [],
+   "pass": true
+  },
+  "mm.map": {
+   "region": "mm.map",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 33856,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "map.border",
+       "class": "hard",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 64,
+       "name": "minimap-map-surface (bf-village.jpg 300% crop)",
+       "side": "top",
+       "px": 182,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 65,
+       "name": "minimap-map-surface (bf-village.jpg 300% crop)",
+       "side": "right",
+       "px": 182,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 66,
+       "name": "minimap-map-surface (bf-village.jpg 300% crop)",
+       "side": "bottom",
+       "px": 182,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 67,
+       "name": "minimap-map-surface (bf-village.jpg 300% crop)",
+       "side": "left",
+       "px": 182,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 732,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      },
+      "placeholder": {
+       "px": 32433,
+       "mad": 0.313,
+       "bad_frac": 0.0,
+       "mad_raw": 0.3130247998437805,
+       "badness": 0.15651239992189026
+      },
+      "vector": {
+       "px": 691,
+       "mad": 1.2928,
+       "bad_frac": 0.07959,
+       "mad_raw": 1.2928123492522914,
+       "ssim": 0.98359,
+       "ssim_raw": 0.9835947836755256,
+       "badness": 0.31543640063979445
+      }
+     },
+     "runs": []
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    52,
+    881,
+    236,
+    1065
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.31543640063979445,
+    "G5": 0.0
+   },
+   "report_only": [],
+   "badness": 0.31543640063979445,
+   "worst_gate": "G4",
+   "failing_gates": [],
+   "pass": true
+  },
+  "sel.portrait": {
+   "region": "sel.portrait",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 18228,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "vat.border",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "vat.top",
+       "class": "hard",
+       "err": 1
+      },
+      {
+       "id": "vat.glow",
+       "class": "hard",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 71,
+       "name": "portrait-vat",
+       "side": "top",
+       "px": 122,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 72,
+       "name": "portrait-vat",
+       "side": "right",
+       "px": 145,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 73,
+       "name": "portrait-vat",
+       "side": "bottom",
+       "px": 122,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 74,
+       "name": "portrait-vat",
+       "side": "left",
+       "px": 145,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 538,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      },
+      "placeholder": {
+       "px": 3744,
+       "mad": 0.3362,
+       "bad_frac": 0.0,
+       "mad_raw": 0.33618233618233617,
+       "badness": 0.16809116809116809
+      },
+      "vector": {
+       "px": 13946,
+       "mad": 0.1795,
+       "bad_frac": 0.0,
+       "mad_raw": 0.17945408480328887,
+       "ssim": 0.99837,
+       "ssim_raw": 0.9983698375673002,
+       "badness": 0.6367822002733403
+      }
+     },
+     "runs": []
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    274,
+    919,
+    398,
+    1066
+   ],
+   "gate_badness": {
+    "G1": 0.5,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.6367822002733403,
+    "G5": 0.0
+   },
+   "report_only": [],
+   "badness": 0.6367822002733403,
+   "worst_gate": "G4",
+   "failing_gates": [],
+   "pass": true
+  },
+  "card.V": {
+   "region": "card.V",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 3840,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "auto.482.div",
+       "class": "auto",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 168,
+       "name": "div",
+       "side": "top",
+       "px": 10,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 169,
+       "name": "div",
+       "side": "right",
+       "px": 10,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 170,
+       "name": "div",
+       "side": "bottom",
+       "px": 20,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 171,
+       "name": "div",
+       "side": "left",
+       "px": 10,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 3456,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      },
+      "vector": {
+       "px": 280,
+       "mad": 0.0571,
+       "bad_frac": 0.0,
+       "mad_raw": 0.05714285714285714,
+       "ssim": 0.99975,
+       "ssim_raw": 0.9997485144180877,
+       "badness": 0.2857142857142857
+      },
+      "text": {
+       "px": 104,
+       "mad": 15.3333,
+       "bad_frac": 0.32692,
+       "mad_raw": 15.333333333333334,
+       "ssim": 0.90853,
+       "ssim_raw": 0.9085346980828292,
+       "badness": 0.49044029512052845
+      }
+     },
+     "runs": [
+      {
+       "id": 483,
+       "text": "V",
+       "ref_box": [
+        2,
+        2,
+        8,
+        10
+       ],
+       "test_box": [
+        2,
+        2,
+        8,
+        10
+       ],
+       "mass_ref": 24.760491383611274,
+       "mass_test": 17.081706429371785,
+       "peak_ratio": 1.04739336492891,
+       "dl": 0,
+       "dt": 0,
+       "db": 0,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.3101224783980661,
+       "mass_signed": -0.3101224783980661,
+       "bad": 0.0,
+       "badness": 0.6659333092791566
+      }
+     ]
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    1843,
+    1009,
+    1907,
+    1069
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.49044029512052845,
+    "G5": 0.6659333092791566
+   },
+   "report_only": [],
+   "badness": 0.6659333092791566,
+   "worst_gate": "G5",
+   "failing_gates": [],
+   "pass": true
+  },
+  "orn.minimap": {
+   "region": "orn.minimap",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 3334,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "mm.top",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "rope.863",
+       "class": "vector",
+       "err": 0
+      },
+      {
+       "id": "rope.864",
+       "class": "vector",
+       "err": 0
+      },
+      {
+       "id": "rope.865",
+       "class": "vector",
+       "err": 0
+      },
+      {
+       "id": "rope.866",
+       "class": "vector",
+       "err": 0
+      }
+     ],
+     "lines": [],
+     "classes": {
+      "vector": {
+       "px": 3334,
+       "mad": 0.1034,
+       "bad_frac": 0.0,
+       "mad_raw": 0.10337932413517296,
+       "ssim": 0.99999,
+       "ssim_raw": 0.9999868007682666,
+       "badness": 0.011442925367372878
+      }
+     },
+     "runs": []
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    0,
+    855,
+    265,
+    875
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.011442925367372878,
+    "G5": 0.0
+   },
+   "report_only": [],
+   "badness": 0.011442925367372878,
+   "worst_gate": "G4",
+   "failing_gates": [],
+   "pass": true
+  },
+  "orn.selection": {
+   "region": "orn.selection",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 14790,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "sel.top",
+       "class": "hard",
+       "err": 0
+      }
+     ],
+     "lines": [],
+     "classes": {
+      "vector": {
+       "px": 14790,
+       "mad": 0.0924,
+       "bad_frac": 0.0,
+       "mad_raw": 0.09244985350462023,
+       "ssim": 0.99999,
+       "ssim_raw": 0.9999862755324418,
+       "badness": 0.011365934685128101
+      }
+     },
+     "runs": []
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    256,
+    898,
+    1620,
+    909
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.011365934685128101,
+    "G5": 0.0
+   },
+   "report_only": [],
+   "badness": 0.011365934685128101,
+   "worst_gate": "G4",
+   "failing_gates": [],
+   "pass": true
+  },
+  "orn.card": {
+   "region": "orn.card",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 3822,
+     "g3_badness": 0.0,
+     "probes": [],
+     "lines": [],
+     "classes": {
+      "vector": {
+       "px": 3822,
+       "mad": 0.1013,
+       "bad_frac": 0.0,
+       "mad_raw": 0.10134310134310134,
+       "ssim": 0.99998,
+       "ssim_raw": 0.9999846946999974,
+       "badness": 0.011068880026482075
+      }
+     },
+     "runs": []
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    1611,
+    855,
+    1920,
+    875
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.011068880026482075,
+    "G5": 0.0
+   },
+   "report_only": [],
+   "badness": 0.011068880026482075,
+   "worst_gate": "G4",
+   "failing_gates": [],
+   "pass": true
+  }
+ },
+ "uncalibrated": false,
+ "g7": {
+  "mad": 0.22029049701936032,
+  "ssim": 0.9988946226206548,
+  "px": 90305,
+  "badness": 0.0,
+  "report_only": true
+ },
+ "n_regions": 8,
+ "failing": [],
+ "worst": {
+  "region": "card.V",
+  "badness": 0.6659333092791566,
+  "gate": "G5"
+ },
+ "result": "PASS",
+ "seconds": 0.28,
+ "calibration": "OK"
+}

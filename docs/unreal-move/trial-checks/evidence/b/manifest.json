@@ -221,5 +221,89 @@
     "unreal_build_id": "",
     "committed": false,
     "sent_to_alec": null
+  },
+  {
+    "file": "b-T7-report-a.json",
+    "path": "b/b-T7-report-a.json",
+    "sha256": "98722557c37fce4ca5b7176fbac6f6fc09f65b1ada44e3a24372bf7646bb71e9",
+    "bytes": 16829,
+    "w_h": null,
+    "task": "T7",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/t7-2/A/report.json",
+    "r_commit": "e6764605",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "b-T7-report-b.json",
+    "path": "b/b-T7-report-b.json",
+    "sha256": "77742680142bb1ac237a6dd0733f4c71a062314d2e13b3801526bee123365c80",
+    "bytes": 16818,
+    "w_h": null,
+    "task": "T7",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/t7-2/B/report.json",
+    "r_commit": "e6764605",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "b-T7-board-allgates-report-a.json",
+    "path": "b/b-T7-board-allgates-report-a.json",
+    "sha256": "5bb0dd15faa1fbd34520caf05d883d15e64d70c710ebf4fd35139d1f1cdd110d",
+    "bytes": 101800,
+    "w_h": null,
+    "task": "T7",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/t7-2-all/A/report.json",
+    "r_commit": "e6764605",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "b-T7-board-allgates-report-b.json",
+    "path": "b/b-T7-board-allgates-report-b.json",
+    "sha256": "b711111805c3bf9e88c44344947176fd59f414681d796afe02664064e5fba4d7",
+    "bytes": 101823,
+    "w_h": null,
+    "task": "T7",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/t7-2-all/B/report.json",
+    "r_commit": "e6764605",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "b-T7-scorecard-a.png",
+    "path": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/t7-2/A/scorecard.png",
+    "sha256": "0fe4bda605901d55de50aead30922bd853c09d2f3a69c15ec1deb2d4992e6b57",
+    "bytes": 89693,
+    "w_h": [
+      1920,
+      760
+    ],
+    "task": "T7",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/t7-2/A/scorecard.png",
+    "r_commit": "e6764605",
+    "unreal_build_id": "",
+    "committed": false,
+    "sent_to_alec": null
+  },
+  {
+    "file": "b-T7-side-by-side-b-phone.png",
+    "path": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/t7-2/B/side_by_side_phone.png",
+    "sha256": "51610a81d2622deff8fd896effb689a2621e44ad27bee81322aa802c35164b06",
+    "bytes": 922334,
+    "w_h": [
+      1920,
+      540
+    ],
+    "task": "T7",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/t7-2/B/side_by_side_phone.png",
+    "r_commit": "e6764605",
+    "unreal_build_id": "",
+    "committed": false,
+    "sent_to_alec": null
   }
 ]

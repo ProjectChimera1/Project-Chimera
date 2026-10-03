@@ -24,8 +24,15 @@ namespace ChimeraBakes
 		FIntPoint Size = FIntPoint::ZeroValue;		// image size in px
 	};
 
-	/** Outer box-shadow of a W x H box: `OffsetX OffsetY Blur 0 rgba(Rgb, Alpha)`. Zero inside the box (CSS clips it out). */
-	FBake OuterShadow(int32 W, int32 H, int32 OffsetX, int32 OffsetY, float Blur, uint32 Rgb, float Alpha);
+	/**
+	 * Outer box-shadow of a W x H box: `OffsetX OffsetY Blur 0 rgba(Rgb, Alpha)`. Zero inside the box (CSS clips it out).
+	 * The shadow alpha is quantised as Skia's blur mask is, a8 = round(coverage x Alpha x 255). With Backdrop set (the opaque colour
+	 * the shadow falls on, known for the minimap plate: the panel fill), every pixel with a8 > 0 is pre-composited over it in sRGB
+	 * bytes, round(Rgb a + Backdrop (1 - a)), and drawn opaque (the strategy of plan B 2.4's locked buttons); pixels with a8 = 0 stay
+	 * transparent, so nothing under the bake's margin is touched. Measured on the plate's shadow ring (5,276 px over the panel fill,
+	 * T7): this model leaves 372 one-level misses where the GPU blend of the straight-alpha bake leaves 2,184.
+	 */
+	FBake OuterShadow(int32 W, int32 H, int32 OffsetX, int32 OffsetY, float Blur, uint32 Rgb, float Alpha, TOptional<uint32> Backdrop = TOptional<uint32>());
 
 	/** Inset box-shadow of the W x H padding box: `inset OffsetX OffsetY Blur 0 rgba(Rgb, Alpha)`. The image is the padding box. */
 	FBake InsetShadow(int32 W, int32 H, int32 OffsetX, int32 OffsetY, float Blur, uint32 Rgb, float Alpha);
@@ -63,8 +70,37 @@ namespace ChimeraBakes
 	 * so the dashes end flush with both corners): the gap is whichever of the two candidates (one dash fewer or one more) lies
 	 * nearer the nominal gap. Each side is stroked over its full border-box length from its start corner, and a dash edge that
 	 * falls inside a pixel gives that pixel the exact area coverage. Measured on a 121x41 box (r5 2.6) and on the 64x60 slot.
+	 * With Backdrop set (the opaque colour under the border: the command card's fill under the empty slot), each border pixel is
+	 * pre-composited over it the way Skia's raster pipeline blends an anti-aliased path (SkBlendRaster model below) and drawn opaque.
 	 */
-	FBake DashedBorder(int32 W, int32 H, uint32 Rgb);
+	FBake DashedBorder(int32 W, int32 H, uint32 Rgb, TOptional<uint32> Backdrop = TOptional<uint32>());
+
+	/**
+	 * Keycap face (plan B 2.4, r4 5.1): a border box with corner radius Radius in BorderRgb and, over it, the padding box inset
+	 * (1, 1, 1, 2) in FillRgb with CSS's inner radii (Radius minus the border width on each axis: elliptical at the 2 px bottom
+	 * border, square where that reaches 0). Each layer is anti-aliased with Skia's analytic rounded-rect coverage (straight edges
+	 * crisp, corner pixels clamp(0.5 - distance) as in EllipseCoverage) and composited in that order, as Blink paints a keycap whose
+	 * background is drawn under its border. Returned as a 9-slice brush (DrawAs Box): the corner blocks are drawn 1:1 and the one
+	 * middle row and column stretch, so one small image serves every keycap width. With Backdrop set (the opaque colour the keycap
+	 * sits on), both layers are blended over it with the SkBlendRaster model and the image is opaque; without it the layers are
+	 * composited over transparent in float (straight alpha, blended by the GPU).
+	 * Measured on the empty slot V's keycap (T7): corner pixels (36 px) differ from the board by 14 levels in total with the
+	 * backdrop model, 110 with Slate's rounded-box shader.
+	 */
+	FBake KeycapFace(float Radius, uint32 BorderRgb, uint32 FillRgb, TOptional<uint32> Backdrop = TOptional<uint32>());
+
+	/**
+	 * One CSS laser head (r4 8.3): `linear-gradient(90deg, transparent, #E3C887 70%, #FFF3D6 88%, transparent)` sized HeadW px, drawn
+	 * at Opacity, no-repeat, starting Phase px (0 <= Phase < 1) right of the image's left edge. Colours interpolate premultiplied
+	 * (CSS), are sampled at each pixel centre, and a pixel the head covers only in part takes that area fraction. The image is
+	 * ceil(Phase + HeadW) x 1 px with Origin (0, 0); the caller draws it at floor(head x) under a clip of the line's box [0, BoxW),
+	 * which gives the same pixels as clipping the coverage to the box because the box edges are whole pixels.
+	 * Deviation from plan B 2.4 (MakeGradient with 16 pre-sampled stops), T7: a gradient element is sampled at its vertices, so the
+	 * fractional end pixels of a head at a sub-pixel position are not area-weighted as Chromium's are; the bake gives them exactly.
+	 * Keyed by (Phase, HeadW, Opacity) only, so a head costs one texture per sub-pixel phase: the frozen frame uses its exact
+	 * phase (one bake per line), live motion quantises the head to quarter pixels (at most four bakes per panel width, ever).
+	 */
+	FBake LaserHead(float Phase, float HeadW, float Opacity);
 
 	/** Gaps of the dash fit for a side of the given length (exposed for the log line and tests). */
 	float DashGap(float SideLength, float DashLength, float GapLength);

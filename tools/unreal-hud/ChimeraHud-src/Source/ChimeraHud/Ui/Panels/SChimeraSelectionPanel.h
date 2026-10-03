@@ -12,7 +12,7 @@
  * Left the 124x147 portrait vat (1 px #8A6E3C border, radial-gradient bake over #14161A, the 48x78 figure placeholder); right of it
  * the 340 px info column: name (Cinzel), role, "220 / 220" with the 7 px HP bar, and the stat line. Every element is placed at
  * the mockup's layout position (flex column, gap 7, centred; r4 5.6 line boxes), with Blink's pixel snapping applied to the bar
- * boxes. The ornament frame (rope, no sigils on this panel) is T7's.
+ * boxes. The ornament frame (SChimeraOrnamentFrame: rope, no sigils on this panel, laser) is the last child.
  */
 class SChimeraSelectionPanel : public SCompoundWidget
 {

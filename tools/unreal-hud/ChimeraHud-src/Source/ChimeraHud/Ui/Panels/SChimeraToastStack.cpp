@@ -4,8 +4,6 @@
 #include "Ui/ChimeraUi.h"
 #include "Ui/Widgets/SChimeraIcon.h"
 #include "Ui/Widgets/SChimeraKeycap.h"
-#include "Misc/CommandLine.h"
-#include "Misc/Parse.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
@@ -27,9 +25,9 @@ void SChimeraToastStack::Construct(const FArguments& InArgs)
 {
 	const FChimeraHudState& S = InArgs._State;
 
-	// The timer bar is the padding box wide (400 - 2 border) at t = 0 and drains to 0 at 7.7 s; -HudFreezeTime pins t (default 3.0).
-	float T = 3.f;
-	FParse::Value(FCommandLine::Get(), TEXT("-HudFreezeTime="), T);
+	// The timer bar is the padding box wide (400 - 2 border) at t = 0 and drains to 0 at 7.7 s. t is the one HUD clock (plan B 2.8,
+	// ChimeraUi::HudClockSeconds: -HudFreezeTime pins it), read at construct: the bar is laid out once (live draining is not built).
+	const float T = (float)HudClockSeconds();
 	const float BarFrac = FMath::Clamp(1.f - T / HoldEndS, 0.f, 1.f);
 	// Blink snaps the bar's box to whole pixels: 13 + 242.92 = 255.92 rounds to 256.
 	const float BarW = FMath::FloorToFloat(1.f + (ToastW - 2.f) * BarFrac + 0.5f) - 1.f;
