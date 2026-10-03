@@ -7,3 +7,6 @@ t5-3,2026-10-03 09:42:44,0,0,tab.3,1.000,0.970,0.9855,664d7bbd67267812,only=^(to
 t5-4,2026-10-03 09:47:38,0,0,tab.3,1.000,0.969,0.9855,5686ac65b080d28a,only=^(toast|world\.|mm\.|tab\.) gates=G1;G2;G3;G5;G6 extra=none T5: ring and node bakes use Skia-style analytic ellipse coverage (distance based) per layer
 t5-5,2026-10-03 09:50:46,0,0,tab.3,1.000,0.965,0.9855,831de90cb320bae0,only=^(toast|world\.|mm\.|tab\.) gates=G1;G2;G3;G5;G6 extra=none T5: circle bakes use true edge distance (Skia circle shader)
 t4-2,2026-10-03 09:52:47,0,0,top.chip.gold,1.000,0.810,0.9913,831de90cb320bae0,only=^top\. gates=all extra=none T5 end: top.* regression check; all gates
+t6-2,2026-10-03 10:30:53,0,0,sel.name,1.000,0.626,0.9785,2f90f02df8f09a0d,only=^(sel\.|card\.) gates=G1;G2;G3;G5 extra=none T6: first cut selection panel + command card; dashed and vat bakes; locked pre-composite
+t4-3,2026-10-03 10:32:58,0,0,top.chip.gold,1.000,0.810,0.9913,2f90f02df8f09a0d,only=^top\. gates=all extra=none T6 end: top.* regression check; all gates
+t5-6,2026-10-03 10:34:40,0,0,tab.3,1.000,0.965,0.9859,2f90f02df8f09a0d,only=^(toast|world\.|mm\.|tab\.) gates=G1;G2;G3;G5;G6 extra=none T6 end: T5 filter regression check

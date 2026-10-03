@@ -22,14 +22,14 @@ void SChimeraKeycap::Construct(const FArguments& InArgs)
 	[
 		SNew(SBox).HeightOverride(InArgs._Height).MinDesiredWidth(InArgs._MinWidth > 0.f ? FOptionalSize(InArgs._MinWidth) : FOptionalSize())
 		[
-			SNew(SBorder).BorderImage(KeycapBrush(Token::KeycapBorder, OuterRadii)).Padding(FMargin(1.f, 1.f, 1.f, 2.f))
+			SNew(SBorder).BorderImage(KeycapBrush(InArgs._BorderColor.Get(Token::KeycapBorder), OuterRadii)).Padding(FMargin(1.f, 1.f, 1.f, 2.f))
 			[
 				SNew(SBorder).BorderImage(KeycapBrush(InArgs._Fill, InnerRadii)).Padding(FMargin(4.f, 0.f, 4.f, 0.f))
 				.HAlign(HAlign_Center).VAlign(VAlign_Top)
 				[
 					SNew(SBox).HeightOverride(ContentH).MinDesiredWidth(InnerMinW > 8.f ? FOptionalSize(InnerMinW - 8.f) : FOptionalSize()).HAlign(HAlign_Center).VAlign(VAlign_Top)
 					[
-						Text(EChimeraText::Keycap, InArgs._Label)
+						Text(EChimeraText::Keycap, InArgs._Label, InArgs._LabelColor)
 					]
 				]
 			]

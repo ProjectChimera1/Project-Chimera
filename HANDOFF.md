@@ -1,6 +1,6 @@
 # HANDOFF — Project Chimera
 
-_Updated 2026-10-03 10:40 · branch `master` · last commit: terrain C9 (see `git log -1`)_
+_Updated 2026-10-03 10:50 · branch `master` · last commit: HUD T6 (see `git log -1`)_
 
 ## Where we stopped
 
@@ -25,7 +25,7 @@ xhigh verifiers (results; code and rules).
 ## Next step
 
 **Phase 3 (converge) is running** in two workflows started 08:55 on 2026-10-03 in the session that committed S6:
-`tools/unreal-trial/workflows/phase3-b.js` (HUD T4b → T5 → T6 → T7 → T8; **T4b and T5 passed and are committed**) and `phase3-ac.js`
+`tools/unreal-trial/workflows/phase3-b.js` (HUD T4b → T5 → T6 → T7 → T8; **T4b, T5 and T6 passed and are committed**) and `phase3-ac.js`
 (A11 renderer + separate reviewer's `visual_check.json`, beside C9 units and video (**C9 passed, committed**) → C11 packages → S7 SX16). If that session is gone,
 the runs are gone too: start fresh small workflows for the unfinished tasks from those scripts' task notes (`TASKS3B`, `TASKS3`).
 Watch markers with `checkpoints/wait_marker.sh`, commit each passed task with `checkpoints/ckpt.py <task>` by explicit path (HUD: /

@@ -30,6 +30,10 @@ public:
 		SLATE_ARGUMENT(float, Height)
 		/** Border-box minimum width in px (16 on the command card: the label is centred). 0 = fit the label. */
 		SLATE_ARGUMENT(float, MinWidth)
+		/** Border colour (sRGB); #5C5446 unless a locked button passes its pre-composited one (plan B 2.4). */
+		SLATE_ARGUMENT(TOptional<uint32>, BorderColor)
+		/** Label colour (sRGB); the keycap style's colour unless overridden. */
+		SLATE_ARGUMENT(TOptional<uint32>, LabelColor)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);

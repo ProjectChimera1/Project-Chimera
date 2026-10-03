@@ -153,5 +153,73 @@
     "unreal_build_id": "",
     "committed": true,
     "sent_to_alec": null
+  },
+  {
+    "file": "b-T6-report-a.json",
+    "path": "b/b-T6-report-a.json",
+    "sha256": "255ebb581b5023e2fa8ab75bcd26b2a31a09dddfab46a679fa398eef75139f93",
+    "bytes": 54351,
+    "w_h": null,
+    "task": "T6",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/t6-2/A/report.json",
+    "r_commit": "4a97e7ae",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "b-T6-g4-report-a.json",
+    "path": "b/b-T6-g4-report-a.json",
+    "sha256": "0e4e5b949bea11f9bf5e10b8d55affa91387b150c448dac47521724b9180c6d4",
+    "bytes": 54438,
+    "w_h": null,
+    "task": "T6",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/t6-2-g4/A/report.json",
+    "r_commit": "4a97e7ae",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "b-T6-report-b.json",
+    "path": "b/b-T6-report-b.json",
+    "sha256": "06e4ef33d0072637ed468d705c1eafefb0e1eaa6082d09c3dc997f49f5c847e1",
+    "bytes": 54352,
+    "w_h": null,
+    "task": "T6",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/t6-2/B/report.json",
+    "r_commit": "4a97e7ae",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "b-T6-g4-report-b.json",
+    "path": "b/b-T6-g4-report-b.json",
+    "sha256": "63523d9ebe0fb540e7eec50147671838f7c2dea08033dcf977bff265d8795bcc",
+    "bytes": 54438,
+    "w_h": null,
+    "task": "T6",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/t6-2-g4/B/report.json",
+    "r_commit": "4a97e7ae",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "b-T6-scorecard-a.png",
+    "path": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/t6-2/A/scorecard.png",
+    "sha256": "05ddcf59f3b8f56f457b6582a402e9fbb02a12b5d666489a97382980a0f7fcca",
+    "bytes": 123284,
+    "w_h": [
+      1920,
+      760
+    ],
+    "task": "T6",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/t6-2/A/scorecard.png",
+    "r_commit": "4a97e7ae",
+    "unreal_build_id": "",
+    "committed": false,
+    "sent_to_alec": null
   }
 ]

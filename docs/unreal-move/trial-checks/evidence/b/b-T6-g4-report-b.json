@@ -1,0 +1,2866 @@
+{
+ "pair": "B",
+ "only": "^(sel\\.|card\\.)",
+ "gates": [
+  "G1",
+  "G2",
+  "G3",
+  "G4",
+  "G5",
+  "G6",
+  "G7"
+ ],
+ "alignment": [
+  {
+   "anchor": "sel.vat_top",
+   "status": "ok",
+   "ok": true,
+   "warn": false,
+   "dx": 0,
+   "dy": 0,
+   "found": true,
+   "ref_unique": true,
+   "guarded_regions": [
+    "sel.panel",
+    "sel.portrait",
+    "sel.name",
+    "sel.role",
+    "sel.hp",
+    "sel.stats",
+    "orn.selection"
+   ]
+  },
+  {
+   "anchor": "card.left",
+   "status": "ok",
+   "ok": true,
+   "warn": false,
+   "dx": 0,
+   "dy": 0,
+   "found": true,
+   "ref_unique": true,
+   "guarded_regions": [
+    "card.panel",
+    "card.Q",
+    "card.W",
+    "card.E",
+    "card.R",
+    "card.A",
+    "card.S",
+    "card.D",
+    "card.F",
+    "card.Z",
+    "card.X",
+    "card.C",
+    "card.V",
+    "orn.card"
+   ]
+  },
+  {
+   "anchor": "card.Q_top",
+   "status": "ok",
+   "ok": true,
+   "warn": false,
+   "dx": 0,
+   "dy": 0,
+   "found": true,
+   "ref_unique": true,
+   "guarded_regions": [
+    "card.panel",
+    "card.Q",
+    "card.W",
+    "card.E",
+    "card.R",
+    "card.A",
+    "card.S",
+    "card.D",
+    "card.F",
+    "card.Z",
+    "card.X",
+    "card.C",
+    "card.V",
+    "orn.card"
+   ]
+  }
+ ],
+ "regions": {
+  "sel.panel": {
+   "region": "sel.panel",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 178976,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "sel.fill",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "auto.231.selection-panel",
+       "class": "auto",
+       "err": 0
+      }
+     ],
+     "lines": [],
+     "classes": {
+      "flat": {
+       "px": 178976,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      }
+     },
+     "runs": []
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    256,
+    909,
+    1620,
+    1080
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.0,
+    "G5": 0.0
+   },
+   "report_only": [],
+   "badness": 0.0,
+   "worst_gate": null,
+   "failing_gates": [],
+   "pass": true
+  },
+  "sel.portrait": {
+   "region": "sel.portrait",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 18228,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "vat.border",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "vat.top",
+       "class": "hard",
+       "err": 1
+      },
+      {
+       "id": "vat.glow",
+       "class": "hard",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 71,
+       "name": "portrait-vat",
+       "side": "top",
+       "px": 122,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 72,
+       "name": "portrait-vat",
+       "side": "right",
+       "px": 145,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 73,
+       "name": "portrait-vat",
+       "side": "bottom",
+       "px": 122,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 74,
+       "name": "portrait-vat",
+       "side": "left",
+       "px": 145,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 538,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      },
+      "placeholder": {
+       "px": 3744,
+       "mad": 0.3362,
+       "bad_frac": 0.0,
+       "mad_raw": 0.33618233618233617,
+       "badness": 0.16809116809116809
+      },
+      "vector": {
+       "px": 13946,
+       "mad": 0.1795,
+       "bad_frac": 0.0,
+       "mad_raw": 0.17945408480328887,
+       "ssim": 0.99837,
+       "ssim_raw": 0.9983698375673002,
+       "badness": 0.6367822002733403
+      }
+     },
+     "runs": []
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    274,
+    919,
+    398,
+    1066
+   ],
+   "gate_badness": {
+    "G1": 0.5,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.6367822002733403,
+    "G5": 0.0
+   },
+   "report_only": [],
+   "badness": 0.6367822002733403,
+   "worst_gate": "G4",
+   "failing_gates": [],
+   "pass": true
+  },
+  "sel.name": {
+   "region": "sel.name",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 10540,
+     "g3_badness": 0.0,
+     "probes": [],
+     "lines": [],
+     "classes": {
+      "flat": {
+       "px": 4360,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      },
+      "text": {
+       "px": 6180,
+       "mad": 7.8101,
+       "bad_frac": 0.17152,
+       "mad_raw": 7.8101402373247035,
+       "ssim": 0.93365,
+       "ssim_raw": 0.9336524328848013,
+       "badness": 0.6676820681815313
+      }
+     },
+     "runs": [
+      {
+       "id": 270,
+       "text": "Covenant Acolyte",
+       "ref_box": [
+        2,
+        8,
+        207,
+        24
+       ],
+       "test_box": [
+        3,
+        8,
+        206,
+        24
+       ],
+       "mass_ref": 937.7430943553861,
+       "mass_test": 746.3767427288392,
+       "peak_ratio": 1.0,
+       "dl": 1,
+       "dt": 0,
+       "db": 0,
+       "dr": -1,
+       "right_tol": 1.025,
+       "mass_rel": 0.2040711926096284,
+       "mass_signed": -0.2040711926096284,
+       "bad": 1.0,
+       "badness": 1.0
+      }
+     ]
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    418,
+    938,
+    758,
+    969
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.6676820681815313,
+    "G5": 1.0
+   },
+   "report_only": [],
+   "badness": 1.0,
+   "worst_gate": "G5",
+   "failing_gates": [],
+   "pass": true
+  },
+  "sel.role": {
+   "region": "sel.role",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 7140,
+     "g3_badness": 0.0,
+     "probes": [],
+     "lines": [],
+     "classes": {
+      "flat": {
+       "px": 4176,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      },
+      "text": {
+       "px": 2964,
+       "mad": 7.0271,
+       "bad_frac": 0.22267,
+       "mad_raw": 7.027103013945119,
+       "ssim": 0.88932,
+       "ssim_raw": 0.8893159175710734,
+       "badness": 0.7501615243205663
+      }
+     },
+     "runs": [
+      {
+       "id": 272,
+       "text": "Worker \u00b7 carrying 10 gold",
+       "ref_box": [
+        2,
+        6,
+        156,
+        19
+       ],
+       "test_box": [
+        2,
+        6,
+        156,
+        19
+       ],
+       "mass_ref": 438.9157021074473,
+       "mass_test": 396.04977375565613,
+       "peak_ratio": 1.0,
+       "dl": 0,
+       "dt": 0,
+       "db": 0,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.09766323725938958,
+       "mass_signed": -0.09766323725938958,
+       "bad": 0.0,
+       "badness": 0.6685050328518302
+      }
+     ]
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    418,
+    969,
+    758,
+    990
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.7501615243205663,
+    "G5": 0.6685050328518302
+   },
+   "report_only": [],
+   "badness": 0.7501615243205663,
+   "worst_gate": "G4",
+   "failing_gates": [],
+   "pass": true
+  },
+  "sel.hp": {
+   "region": "sel.hp",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 10540,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "hp.frame",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "hp.fill",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "auto.280.hp-bar-fill",
+       "class": "auto",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 75,
+       "name": "hp-bar-frame",
+       "side": "top",
+       "px": 338,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 76,
+       "name": "hp-bar-frame",
+       "side": "right",
+       "px": 5,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 77,
+       "name": "hp-bar-frame",
+       "side": "bottom",
+       "px": 338,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 78,
+       "name": "hp-bar-frame",
+       "side": "left",
+       "px": 5,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 9286,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      },
+      "text": {
+       "px": 1254,
+       "mad": 12.0962,
+       "bad_frac": 0.23206,
+       "mad_raw": 12.096225412014885,
+       "ssim": 0.8794,
+       "ssim_raw": 0.8794035557811442,
+       "badness": 0.6669158041111861
+      }
+     },
+     "runs": [
+      {
+       "id": 276,
+       "text": "220 / 220",
+       "ref_box": [
+        2,
+        5,
+        67,
+        17
+       ],
+       "test_box": [
+        2,
+        5,
+        67,
+        17
+       ],
+       "mass_ref": 216.10142203192174,
+       "mass_test": 157.3684925069187,
+       "peak_ratio": 1.0,
+       "dl": 0,
+       "dt": 0,
+       "db": 0,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.27178409550829896,
+       "mass_signed": -0.27178409550829896,
+       "bad": 0.0,
+       "badness": 0.6670284951916137
+      }
+     ]
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    418,
+    990,
+    758,
+    1021
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.6669158041111861,
+    "G5": 0.6670284951916137
+   },
+   "report_only": [],
+   "badness": 0.6670284951916137,
+   "worst_gate": "G5",
+   "failing_gates": [],
+   "pass": true
+  },
+  "sel.stats": {
+   "region": "sel.stats",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 7820,
+     "g3_badness": 0.0,
+     "probes": [],
+     "lines": [],
+     "classes": {
+      "flat": {
+       "px": 1493,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      },
+      "text": {
+       "px": 6327,
+       "mad": 11.086,
+       "bad_frac": 0.20831,
+       "mad_raw": 11.086033401822876,
+       "ssim": 0.86879,
+       "ssim_raw": 0.8687917011159979,
+       "badness": 0.7902971792271125
+      }
+     },
+     "runs": [
+      {
+       "id": 282,
+       "text": "Armour 1 \u00b7 Damage 6\u20138 \u00b7 Speed 2.8 \u00b7 Carry 10 g",
+       "ref_box": [
+        2,
+        6,
+        333,
+        18
+       ],
+       "test_box": [
+        2,
+        6,
+        332,
+        18
+       ],
+       "mass_ref": 928.260465075801,
+       "mass_test": 668.229761718274,
+       "peak_ratio": 1.0,
+       "dl": 0,
+       "dt": 0,
+       "db": 0,
+       "dr": -1,
+       "right_tol": 1.655,
+       "mass_rel": 0.28012687509673606,
+       "mass_signed": -0.28012687509673606,
+       "bad": 0.6042296072507553,
+       "badness": 0.6669099986352061
+      }
+     ]
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    418,
+    1021,
+    758,
+    1044
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.7902971792271125,
+    "G5": 0.6669099986352061
+   },
+   "report_only": [],
+   "badness": 0.7902971792271125,
+   "worst_gate": "G4",
+   "failing_gates": [],
+   "pass": true
+  },
+  "card.panel": {
+   "region": "card.panel",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 17121,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "card.fill",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "auto.283.command-card",
+       "class": "auto",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 79,
+       "name": "command-card",
+       "side": "left",
+       "px": 208,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 17121,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      }
+     },
+     "runs": []
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    1617,
+    869,
+    1920,
+    1080
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.0,
+    "G5": 0.0
+   },
+   "report_only": [],
+   "badness": 0.0,
+   "worst_gate": null,
+   "failing_gates": [],
+   "pass": true
+  },
+  "card.Q": {
+   "region": "card.Q",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 3840,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "btn.fill",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "btn.border",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "key.fill",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "key.bottom",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "auto.384.cmd-button:foundry",
+       "class": "auto",
+       "err": 0
+      },
+      {
+       "id": "auto.385.div",
+       "class": "auto",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 80,
+       "name": "cmd-button:foundry",
+       "side": "top",
+       "px": 62,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 81,
+       "name": "cmd-button:foundry",
+       "side": "right",
+       "px": 58,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 82,
+       "name": "cmd-button:foundry",
+       "side": "bottom",
+       "px": 62,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 83,
+       "name": "cmd-button:foundry",
+       "side": "left",
+       "px": 58,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 84,
+       "name": "div",
+       "side": "top",
+       "px": 10,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 85,
+       "name": "div",
+       "side": "right",
+       "px": 4,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 86,
+       "name": "div",
+       "side": "bottom",
+       "px": 20,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 87,
+       "name": "div",
+       "side": "left",
+       "px": 10,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 2603,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      },
+      "vector": {
+       "px": 709,
+       "mad": 0.2059,
+       "bad_frac": 0.00846,
+       "mad_raw": 0.2059238363892807,
+       "ssim": 0.99887,
+       "ssim_raw": 0.9988745507709195,
+       "badness": 0.015847171560311724
+      },
+      "text": {
+       "px": 528,
+       "mad": 8.2153,
+       "bad_frac": 0.23485,
+       "mad_raw": 8.215277777777779,
+       "ssim": 0.92389,
+       "ssim_raw": 0.9238859068243495,
+       "badness": 0.4701058430708586
+      }
+     },
+     "runs": [
+      {
+       "id": 386,
+       "text": "Q",
+       "ref_box": [
+        2,
+        2,
+        8,
+        12
+       ],
+       "test_box": [
+        2,
+        2,
+        8,
+        12
+       ],
+       "mass_ref": 31.748035099443577,
+       "mass_test": 21.481070126247584,
+       "peak_ratio": 0.9910714285714286,
+       "dl": 0,
+       "dt": 0,
+       "db": 0,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.32338898898898893,
+       "mass_signed": -0.32338898898898893,
+       "bad": 0.0,
+       "badness": 0.6656093990972369
+      },
+      {
+       "id": 393,
+       "text": "150 g",
+       "ref_box": [
+        3,
+        5,
+        29,
+        14
+       ],
+       "test_box": [
+        3,
+        5,
+        29,
+        14
+       ],
+       "mass_ref": 64.31476120011152,
+       "mass_test": 57.407450299170044,
+       "peak_ratio": 0.9701492537313433,
+       "dl": 0,
+       "dt": 0,
+       "db": 0,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.1073985314110052,
+       "mass_signed": -0.1073985314110052,
+       "bad": 0.0,
+       "badness": 0.2210510388120818
+      }
+     ]
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    1633,
+    877,
+    1697,
+    937
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.4701058430708586,
+    "G5": 0.6656093990972369
+   },
+   "report_only": [],
+   "badness": 0.6656093990972369,
+   "worst_gate": "G5",
+   "failing_gates": [],
+   "pass": true
+  },
+  "card.W": {
+   "region": "card.W",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 3840,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "auto.394.cmd-button:refinery",
+       "class": "auto",
+       "err": 0
+      },
+      {
+       "id": "auto.395.div",
+       "class": "auto",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 88,
+       "name": "cmd-button:refinery",
+       "side": "top",
+       "px": 62,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 89,
+       "name": "cmd-button:refinery",
+       "side": "right",
+       "px": 58,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 90,
+       "name": "cmd-button:refinery",
+       "side": "bottom",
+       "px": 62,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 91,
+       "name": "cmd-button:refinery",
+       "side": "left",
+       "px": 58,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 92,
+       "name": "div",
+       "side": "top",
+       "px": 10,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 93,
+       "name": "div",
+       "side": "right",
+       "px": 4,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 94,
+       "name": "div",
+       "side": "bottom",
+       "px": 20,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 95,
+       "name": "div",
+       "side": "left",
+       "px": 10,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 2603,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      },
+      "vector": {
+       "px": 709,
+       "mad": 0.1815,
+       "bad_frac": 0.00846,
+       "mad_raw": 0.18147625763986835,
+       "ssim": 0.9988,
+       "ssim_raw": 0.9987956389426375,
+       "badness": 0.0174392336303806
+      },
+      "text": {
+       "px": 528,
+       "mad": 7.8605,
+       "bad_frac": 0.25189,
+       "mad_raw": 7.860479797979798,
+       "ssim": 0.92722,
+       "ssim_raw": 0.9272247179520213,
+       "badness": 0.4766388917948893
+      }
+     },
+     "runs": [
+      {
+       "id": 396,
+       "text": "W",
+       "ref_box": [
+        2,
+        2,
+        8,
+        10
+       ],
+       "test_box": [
+        2,
+        2,
+        8,
+        10
+       ],
+       "mass_ref": 33.73218569542013,
+       "mass_test": 23.796574277386636,
+       "peak_ratio": 1.0416666666666667,
+       "dl": 0,
+       "dt": 0,
+       "db": 0,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.29454395596376864,
+       "mass_signed": -0.29454395596376864,
+       "bad": 0.0,
+       "badness": 0.6661373552611766
+      },
+      {
+       "id": 402,
+       "text": "100 g",
+       "ref_box": [
+        3,
+        5,
+        29,
+        14
+       ],
+       "test_box": [
+        3,
+        5,
+        29,
+        14
+       ],
+       "mass_ref": 66.12226296939673,
+       "mass_test": 58.7993737802655,
+       "peak_ratio": 0.9626865671641791,
+       "dl": 0,
+       "dt": 0,
+       "db": 0,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.11074770977696988,
+       "mass_signed": -0.11074770977696988,
+       "bad": 0.0,
+       "badness": 0.25046579635515515
+      }
+     ]
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    1703,
+    877,
+    1767,
+    937
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.4766388917948893,
+    "G5": 0.6661373552611766
+   },
+   "report_only": [],
+   "badness": 0.6661373552611766,
+   "worst_gate": "G5",
+   "failing_gates": [],
+   "pass": true
+  },
+  "card.E": {
+   "region": "card.E",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 3840,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "btn.locked.fill",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "btn.locked.border",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "auto.403.cmd-button:watchtower",
+       "class": "auto",
+       "err": 0
+      },
+      {
+       "id": "auto.404.div",
+       "class": "auto",
+       "err": 1
+      }
+     ],
+     "lines": [
+      {
+       "id": 96,
+       "name": "cmd-button:watchtower",
+       "side": "top",
+       "px": 62,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 97,
+       "name": "cmd-button:watchtower",
+       "side": "right",
+       "px": 58,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 98,
+       "name": "cmd-button:watchtower",
+       "side": "bottom",
+       "px": 62,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 99,
+       "name": "cmd-button:watchtower",
+       "side": "left",
+       "px": 58,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 100,
+       "name": "div",
+       "side": "top",
+       "px": 10,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 101,
+       "name": "div",
+       "side": "right",
+       "px": 4,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 102,
+       "name": "div",
+       "side": "bottom",
+       "px": 20,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 103,
+       "name": "div",
+       "side": "left",
+       "px": 10,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 2495,
+       "mad": 0.0088,
+       "bad_frac": 0.0,
+       "mad_raw": 0.008817635270541082,
+       "badness": 0.008817635270541082
+      },
+      "vector": {
+       "px": 905,
+       "mad": 0.1179,
+       "bad_frac": 0.00442,
+       "mad_raw": 0.11786372007366483,
+       "ssim": 0.99891,
+       "ssim_raw": 0.9989101014387657,
+       "badness": 0.023113034993917935
+      },
+      "text": {
+       "px": 440,
+       "mad": 5.1402,
+       "bad_frac": 0.22727,
+       "mad_raw": 5.140151515151516,
+       "ssim": 0.90487,
+       "ssim_raw": 0.9048736024483357,
+       "badness": 0.7437676707349945
+      }
+     },
+     "runs": [
+      {
+       "id": 405,
+       "text": "E",
+       "ref_box": [
+        2,
+        2,
+        8,
+        10
+       ],
+       "test_box": [
+        3,
+        2,
+        8,
+        10
+       ],
+       "mass_ref": 23.563213722585886,
+       "mass_test": 17.752233742653733,
+       "peak_ratio": 0.9919354838709677,
+       "dl": 1,
+       "dt": 0,
+       "db": 0,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.24661236995708247,
+       "mass_signed": -0.24661236995708247,
+       "bad": 1.0,
+       "badness": 1.0
+      },
+      {
+       "id": 411,
+       "text": "75 g",
+       "ref_box": [
+        3,
+        5,
+        23,
+        14
+       ],
+       "test_box": [
+        2,
+        5,
+        23,
+        14
+       ],
+       "mass_ref": 48.27410478703355,
+       "mass_test": 42.5656238220882,
+       "peak_ratio": 1.0,
+       "dl": -1,
+       "dt": 0,
+       "db": 0,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.11825141015310248,
+       "mass_signed": -0.11825141015310248,
+       "bad": 1.0,
+       "badness": 1.0
+      }
+     ]
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    1773,
+    877,
+    1837,
+    937
+   ],
+   "gate_badness": {
+    "G1": 0.5,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.7437676707349945,
+    "G5": 1.0
+   },
+   "report_only": [],
+   "badness": 1.0,
+   "worst_gate": "G5",
+   "failing_gates": [],
+   "pass": true
+  },
+  "card.R": {
+   "region": "card.R",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 3840,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "auto.416.cmd-button:alembic-works",
+       "class": "auto",
+       "err": 0
+      },
+      {
+       "id": "auto.417.div",
+       "class": "auto",
+       "err": 1
+      }
+     ],
+     "lines": [
+      {
+       "id": 104,
+       "name": "cmd-button:alembic-works",
+       "side": "top",
+       "px": 62,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 105,
+       "name": "cmd-button:alembic-works",
+       "side": "right",
+       "px": 58,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 106,
+       "name": "cmd-button:alembic-works",
+       "side": "bottom",
+       "px": 62,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 107,
+       "name": "cmd-button:alembic-works",
+       "side": "left",
+       "px": 58,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 108,
+       "name": "div",
+       "side": "top",
+       "px": 10,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 109,
+       "name": "div",
+       "side": "right",
+       "px": 4,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 110,
+       "name": "div",
+       "side": "bottom",
+       "px": 20,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 111,
+       "name": "div",
+       "side": "left",
+       "px": 10,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 2407,
+       "mad": 0.0091,
+       "bad_frac": 0.0,
+       "mad_raw": 0.009140008309098464,
+       "badness": 0.009140008309098464
+      },
+      "vector": {
+       "px": 905,
+       "mad": 0.1473,
+       "bad_frac": 0.00442,
+       "mad_raw": 0.14732965009208104,
+       "ssim": 0.99929,
+       "ssim_raw": 0.999290109937476,
+       "badness": 0.01484119890457942
+      },
+      "text": {
+       "px": 528,
+       "mad": 4.1616,
+       "bad_frac": 0.15909,
+       "mad_raw": 4.161616161616162,
+       "ssim": 0.93871,
+       "ssim_raw": 0.9387127470453319,
+       "badness": 0.4444893680786357
+      }
+     },
+     "runs": [
+      {
+       "id": 418,
+       "text": "R",
+       "ref_box": [
+        2,
+        2,
+        8,
+        10
+       ],
+       "test_box": [
+        2,
+        2,
+        8,
+        10
+       ],
+       "mass_ref": 28.537913899374075,
+       "mass_test": 20.503249080223615,
+       "peak_ratio": 0.9919354838709677,
+       "dl": 0,
+       "dt": 0,
+       "db": 0,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.28154352302978547,
+       "mass_signed": -0.28154352302978547,
+       "bad": 0.0,
+       "badness": 0.6675254000497555
+      },
+      {
+       "id": 426,
+       "text": "220 g",
+       "ref_box": [
+        3,
+        5,
+        29,
+        14
+       ],
+       "test_box": [
+        4,
+        5,
+        29,
+        14
+       ],
+       "mass_ref": 65.3492264416315,
+       "mass_test": 57.72742616033755,
+       "peak_ratio": 0.9864864864864865,
+       "dl": 1,
+       "dt": 0,
+       "db": 0,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.11663183630951739,
+       "mass_signed": -0.11663183630951739,
+       "bad": 1.0,
+       "badness": 1.0
+      }
+     ]
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    1843,
+    877,
+    1907,
+    937
+   ],
+   "gate_badness": {
+    "G1": 0.5,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.4444893680786357,
+    "G5": 1.0
+   },
+   "report_only": [],
+   "badness": 1.0,
+   "worst_gate": "G5",
+   "failing_gates": [],
+   "pass": true
+  },
+  "card.A": {
+   "region": "card.A",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 3840,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "auto.431.cmd-button:attack",
+       "class": "auto",
+       "err": 0
+      },
+      {
+       "id": "auto.432.div",
+       "class": "auto",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 112,
+       "name": "cmd-button:attack",
+       "side": "top",
+       "px": 62,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 113,
+       "name": "cmd-button:attack",
+       "side": "right",
+       "px": 58,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 114,
+       "name": "cmd-button:attack",
+       "side": "bottom",
+       "px": 62,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 115,
+       "name": "cmd-button:attack",
+       "side": "left",
+       "px": 58,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 116,
+       "name": "div",
+       "side": "top",
+       "px": 10,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 117,
+       "name": "div",
+       "side": "right",
+       "px": 10,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 118,
+       "name": "div",
+       "side": "bottom",
+       "px": 20,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 119,
+       "name": "div",
+       "side": "left",
+       "px": 10,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 3027,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      },
+      "vector": {
+       "px": 709,
+       "mad": 0.1443,
+       "bad_frac": 0.00846,
+       "mad_raw": 0.14433474377056887,
+       "ssim": 0.99941,
+       "ssim_raw": 0.9994100398874667,
+       "badness": 0.019199498322086957
+      },
+      "text": {
+       "px": 104,
+       "mad": 14.1442,
+       "bad_frac": 0.32692,
+       "mad_raw": 14.14423076923077,
+       "ssim": 0.92444,
+       "ssim_raw": 0.9244367588774846,
+       "badness": 0.49511948305492315
+      }
+     },
+     "runs": [
+      {
+       "id": 433,
+       "text": "A",
+       "ref_box": [
+        2,
+        2,
+        8,
+        10
+       ],
+       "test_box": [
+        2,
+        2,
+        8,
+        10
+       ],
+       "mass_ref": 25.23833933720394,
+       "mass_test": 18.26375876161378,
+       "peak_ratio": 0.9953703703703703,
+       "dl": 0,
+       "dt": 0,
+       "db": 0,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.2763486330223361,
+       "mass_signed": -0.2763486330223361,
+       "bad": 0.0,
+       "badness": 0.667112375309203
+      }
+     ]
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    1633,
+    943,
+    1697,
+    1003
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.49511948305492315,
+    "G5": 0.667112375309203
+   },
+   "report_only": [],
+   "badness": 0.667112375309203,
+   "worst_gate": "G5",
+   "failing_gates": [],
+   "pass": true
+  },
+  "card.S": {
+   "region": "card.S",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 3840,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "auto.440.cmd-button:stop",
+       "class": "auto",
+       "err": 0
+      },
+      {
+       "id": "auto.441.div",
+       "class": "auto",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 120,
+       "name": "cmd-button:stop",
+       "side": "top",
+       "px": 62,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 121,
+       "name": "cmd-button:stop",
+       "side": "right",
+       "px": 58,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 122,
+       "name": "cmd-button:stop",
+       "side": "bottom",
+       "px": 62,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 123,
+       "name": "cmd-button:stop",
+       "side": "left",
+       "px": 58,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 124,
+       "name": "div",
+       "side": "top",
+       "px": 10,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 125,
+       "name": "div",
+       "side": "right",
+       "px": 10,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 126,
+       "name": "div",
+       "side": "bottom",
+       "px": 20,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 127,
+       "name": "div",
+       "side": "left",
+       "px": 10,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 3027,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      },
+      "vector": {
+       "px": 709,
+       "mad": 0.1862,
+       "bad_frac": 0.00846,
+       "mad_raw": 0.1861777150916784,
+       "ssim": 0.99917,
+       "ssim_raw": 0.9991676739724847,
+       "badness": 0.022209135261195948
+      },
+      "text": {
+       "px": 104,
+       "mad": 16.6346,
+       "bad_frac": 0.33654,
+       "mad_raw": 16.634615384615383,
+       "ssim": 0.90722,
+       "ssim_raw": 0.907223724532185,
+       "badness": 0.6004081973299268
+      }
+     },
+     "runs": [
+      {
+       "id": 442,
+       "text": "S",
+       "ref_box": [
+        2,
+        2,
+        8,
+        10
+       ],
+       "test_box": [
+        2,
+        2,
+        8,
+        10
+       ],
+       "mass_ref": 25.35846178431857,
+       "mass_test": 17.541360975113683,
+       "peak_ratio": 0.9910714285714286,
+       "dl": 0,
+       "dt": 0,
+       "db": 0,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.3082639978596378,
+       "mass_signed": -0.3082639978596378,
+       "bad": 0.0,
+       "badness": 0.6657696506183068
+      }
+     ]
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    1703,
+    943,
+    1767,
+    1003
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.6004081973299268,
+    "G5": 0.6657696506183068
+   },
+   "report_only": [],
+   "badness": 0.6657696506183068,
+   "worst_gate": "G5",
+   "failing_gates": [],
+   "pass": true
+  },
+  "card.D": {
+   "region": "card.D",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 3840,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "auto.446.cmd-button:hold",
+       "class": "auto",
+       "err": 0
+      },
+      {
+       "id": "auto.447.div",
+       "class": "auto",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 128,
+       "name": "cmd-button:hold",
+       "side": "top",
+       "px": 62,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 129,
+       "name": "cmd-button:hold",
+       "side": "right",
+       "px": 58,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 130,
+       "name": "cmd-button:hold",
+       "side": "bottom",
+       "px": 62,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 131,
+       "name": "cmd-button:hold",
+       "side": "left",
+       "px": 58,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 132,
+       "name": "div",
+       "side": "top",
+       "px": 10,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 133,
+       "name": "div",
+       "side": "right",
+       "px": 10,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 134,
+       "name": "div",
+       "side": "bottom",
+       "px": 20,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 135,
+       "name": "div",
+       "side": "left",
+       "px": 10,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 3027,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      },
+      "vector": {
+       "px": 709,
+       "mad": 0.1791,
+       "bad_frac": 0.00846,
+       "mad_raw": 0.17912552891396333,
+       "ssim": 0.99923,
+       "ssim_raw": 0.999232971776373,
+       "badness": 0.012415680461769994
+      },
+      "text": {
+       "px": 104,
+       "mad": 18.2404,
+       "bad_frac": 0.33654,
+       "mad_raw": 18.240384615384617,
+       "ssim": 0.91042,
+       "ssim_raw": 0.9104193784227967,
+       "badness": 0.46358748596837746
+      }
+     },
+     "runs": [
+      {
+       "id": 448,
+       "text": "D",
+       "ref_box": [
+        2,
+        2,
+        8,
+        10
+       ],
+       "test_box": [
+        2,
+        2,
+        8,
+        10
+       ],
+       "mass_ref": 28.191777075701857,
+       "mass_test": 19.973897648845295,
+       "peak_ratio": 1.0,
+       "dl": 0,
+       "dt": 0,
+       "db": 0,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.2914991632059779,
+       "mass_signed": -0.2914991632059779,
+       "bad": 0.0,
+       "badness": 0.6646567219583098
+      }
+     ]
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    1773,
+    943,
+    1837,
+    1003
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.46358748596837746,
+    "G5": 0.6646567219583098
+   },
+   "report_only": [],
+   "badness": 0.6646567219583098,
+   "worst_gate": "G5",
+   "failing_gates": [],
+   "pass": true
+  },
+  "card.F": {
+   "region": "card.F",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 3840,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "auto.453.cmd-button:patrol",
+       "class": "auto",
+       "err": 0
+      },
+      {
+       "id": "auto.454.div",
+       "class": "auto",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 136,
+       "name": "cmd-button:patrol",
+       "side": "top",
+       "px": 62,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 137,
+       "name": "cmd-button:patrol",
+       "side": "right",
+       "px": 58,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 138,
+       "name": "cmd-button:patrol",
+       "side": "bottom",
+       "px": 62,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 139,
+       "name": "cmd-button:patrol",
+       "side": "left",
+       "px": 58,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 140,
+       "name": "div",
+       "side": "top",
+       "px": 10,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 141,
+       "name": "div",
+       "side": "right",
+       "px": 10,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 142,
+       "name": "div",
+       "side": "bottom",
+       "px": 20,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 143,
+       "name": "div",
+       "side": "left",
+       "px": 10,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 3027,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      },
+      "vector": {
+       "px": 709,
+       "mad": 0.1848,
+       "bad_frac": 0.00846,
+       "mad_raw": 0.1847672778561354,
+       "ssim": 0.99925,
+       "ssim_raw": 0.9992486777622736,
+       "badness": 0.020302206800766498
+      },
+      "text": {
+       "px": 104,
+       "mad": 17.3205,
+       "bad_frac": 0.31731,
+       "mad_raw": 17.32051282051282,
+       "ssim": 0.88251,
+       "ssim_raw": 0.8825131118022606,
+       "badness": 0.667160479989758
+      }
+     },
+     "runs": [
+      {
+       "id": 455,
+       "text": "F",
+       "ref_box": [
+        2,
+        2,
+        8,
+        10
+       ],
+       "test_box": [
+        2,
+        2,
+        8,
+        10
+       ],
+       "mass_ref": 22.859981432570727,
+       "mass_test": 15.325325829597059,
+       "peak_ratio": 1.0,
+       "dl": 0,
+       "dt": 0,
+       "db": 0,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.3296002503413388,
+       "mass_signed": -0.3296002503413388,
+       "bad": 0.0,
+       "badness": 0.666649643802527
+      }
+     ]
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    1843,
+    943,
+    1907,
+    1003
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.667160479989758,
+    "G5": 0.666649643802527
+   },
+   "report_only": [],
+   "badness": 0.667160479989758,
+   "worst_gate": "G4",
+   "failing_gates": [],
+   "pass": true
+  },
+  "card.Z": {
+   "region": "card.Z",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 3840,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "btn.active.fill",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "btn.active.border",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "auto.460.cmd-button:gather",
+       "class": "auto",
+       "err": 0
+      },
+      {
+       "id": "auto.461.div",
+       "class": "auto",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 144,
+       "name": "cmd-button:gather",
+       "side": "top",
+       "px": 62,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 145,
+       "name": "cmd-button:gather",
+       "side": "right",
+       "px": 58,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 146,
+       "name": "cmd-button:gather",
+       "side": "bottom",
+       "px": 62,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 147,
+       "name": "cmd-button:gather",
+       "side": "left",
+       "px": 58,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 148,
+       "name": "div",
+       "side": "top",
+       "px": 10,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 149,
+       "name": "div",
+       "side": "right",
+       "px": 10,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 150,
+       "name": "div",
+       "side": "bottom",
+       "px": 20,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 151,
+       "name": "div",
+       "side": "left",
+       "px": 10,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 3027,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      },
+      "vector": {
+       "px": 709,
+       "mad": 0.1537,
+       "bad_frac": 0.00846,
+       "mad_raw": 0.153737658674189,
+       "ssim": 0.99905,
+       "ssim_raw": 0.9990453060435192,
+       "badness": 0.02005335189488265
+      },
+      "text": {
+       "px": 104,
+       "mad": 11.4551,
+       "bad_frac": 0.26923,
+       "mad_raw": 11.455128205128204,
+       "ssim": 0.93063,
+       "ssim_raw": 0.9306298252317794,
+       "badness": 0.5305425458230191
+      }
+     },
+     "runs": [
+      {
+       "id": 462,
+       "text": "Z",
+       "ref_box": [
+        2,
+        2,
+        8,
+        10
+       ],
+       "test_box": [
+        2,
+        2,
+        8,
+        10
+       ],
+       "mass_ref": 20.860247709657223,
+       "mass_test": 15.858959504292818,
+       "peak_ratio": 1.0,
+       "dl": 0,
+       "dt": 0,
+       "db": 0,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.23975210050113957,
+       "mass_signed": -0.23975210050113957,
+       "bad": 0.0,
+       "badness": 0.667084305086879
+      }
+     ]
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    1633,
+    1009,
+    1697,
+    1069
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.5305425458230191,
+    "G5": 0.667084305086879
+   },
+   "report_only": [],
+   "badness": 0.667084305086879,
+   "worst_gate": "G5",
+   "failing_gates": [],
+   "pass": true
+  },
+  "card.X": {
+   "region": "card.X",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 3840,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "auto.467.cmd-button:return-cargo",
+       "class": "auto",
+       "err": 0
+      },
+      {
+       "id": "auto.468.div",
+       "class": "auto",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 152,
+       "name": "cmd-button:return-cargo",
+       "side": "top",
+       "px": 62,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 153,
+       "name": "cmd-button:return-cargo",
+       "side": "right",
+       "px": 58,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 154,
+       "name": "cmd-button:return-cargo",
+       "side": "bottom",
+       "px": 62,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 155,
+       "name": "cmd-button:return-cargo",
+       "side": "left",
+       "px": 58,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 156,
+       "name": "div",
+       "side": "top",
+       "px": 10,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 157,
+       "name": "div",
+       "side": "right",
+       "px": 10,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 158,
+       "name": "div",
+       "side": "bottom",
+       "px": 20,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 159,
+       "name": "div",
+       "side": "left",
+       "px": 10,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 3027,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      },
+      "vector": {
+       "px": 709,
+       "mad": 0.1641,
+       "bad_frac": 0.00846,
+       "mad_raw": 0.16408086506817113,
+       "ssim": 0.99924,
+       "ssim_raw": 0.999244625763326,
+       "badness": 0.022273277484122653
+      },
+      "text": {
+       "px": 104,
+       "mad": 14.8365,
+       "bad_frac": 0.375,
+       "mad_raw": 14.836538461538462,
+       "ssim": 0.91388,
+       "ssim_raw": 0.9138773956142578,
+       "badness": 0.4862905669326832
+      }
+     },
+     "runs": [
+      {
+       "id": 469,
+       "text": "X",
+       "ref_box": [
+        2,
+        2,
+        8,
+        10
+       ],
+       "test_box": [
+        2,
+        2,
+        8,
+        10
+       ],
+       "mass_ref": 25.06195458347141,
+       "mass_test": 17.70282788114062,
+       "peak_ratio": 1.0186046511627906,
+       "dl": 0,
+       "dt": 0,
+       "db": 0,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.29363738082839724,
+       "mass_signed": -0.29363738082839724,
+       "bad": 0.0,
+       "badness": 0.668303941326918
+      }
+     ]
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    1703,
+    1009,
+    1767,
+    1069
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.4862905669326832,
+    "G5": 0.668303941326918
+   },
+   "report_only": [],
+   "badness": 0.668303941326918,
+   "worst_gate": "G5",
+   "failing_gates": [],
+   "pass": true
+  },
+  "card.C": {
+   "region": "card.C",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 3840,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "auto.474.cmd-button:repair",
+       "class": "auto",
+       "err": 0
+      },
+      {
+       "id": "auto.475.div",
+       "class": "auto",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 160,
+       "name": "cmd-button:repair",
+       "side": "top",
+       "px": 62,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 161,
+       "name": "cmd-button:repair",
+       "side": "right",
+       "px": 58,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 162,
+       "name": "cmd-button:repair",
+       "side": "bottom",
+       "px": 62,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 163,
+       "name": "cmd-button:repair",
+       "side": "left",
+       "px": 58,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 164,
+       "name": "div",
+       "side": "top",
+       "px": 10,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 165,
+       "name": "div",
+       "side": "right",
+       "px": 10,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 166,
+       "name": "div",
+       "side": "bottom",
+       "px": 20,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 167,
+       "name": "div",
+       "side": "left",
+       "px": 10,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 3027,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      },
+      "vector": {
+       "px": 709,
+       "mad": 0.1702,
+       "bad_frac": 0.00846,
+       "mad_raw": 0.17019275975552423,
+       "ssim": 0.99919,
+       "ssim_raw": 0.999185514717617,
+       "badness": 0.01579096473032851
+      },
+      "text": {
+       "px": 104,
+       "mad": 16.0641,
+       "bad_frac": 0.32692,
+       "mad_raw": 16.064102564102566,
+       "ssim": 0.89817,
+       "ssim_raw": 0.8981701169554349,
+       "badness": 0.5441024706715286
+      }
+     },
+     "runs": [
+      {
+       "id": 476,
+       "text": "C",
+       "ref_box": [
+        2,
+        2,
+        8,
+        10
+       ],
+       "test_box": [
+        2,
+        2,
+        8,
+        10
+       ],
+       "mass_ref": 22.56175816832043,
+       "mass_test": 15.231712986503567,
+       "peak_ratio": 0.9910714285714286,
+       "dl": 0,
+       "dt": 0,
+       "db": 0,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.32488803076123635,
+       "mass_signed": -0.32488803076123635,
+       "bad": 0.0,
+       "badness": 0.6669678241579685
+      }
+     ]
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    1773,
+    1009,
+    1837,
+    1069
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.5441024706715286,
+    "G5": 0.6669678241579685
+   },
+   "report_only": [],
+   "badness": 0.6669678241579685,
+   "worst_gate": "G5",
+   "failing_gates": [],
+   "pass": true
+  },
+  "card.V": {
+   "region": "card.V",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 3840,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "auto.482.div",
+       "class": "auto",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 168,
+       "name": "div",
+       "side": "top",
+       "px": 10,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 169,
+       "name": "div",
+       "side": "right",
+       "px": 10,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 170,
+       "name": "div",
+       "side": "bottom",
+       "px": 20,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 171,
+       "name": "div",
+       "side": "left",
+       "px": 10,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 3456,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      },
+      "vector": {
+       "px": 280,
+       "mad": 0.4071,
+       "bad_frac": 0.02143,
+       "mad_raw": 0.40714285714285714,
+       "ssim": 0.99875,
+       "ssim_raw": 0.9987478842438248,
+       "badness": 2.0357142857142856
+      },
+      "text": {
+       "px": 104,
+       "mad": 15.3333,
+       "bad_frac": 0.32692,
+       "mad_raw": 15.333333333333334,
+       "ssim": 0.90851,
+       "ssim_raw": 0.9085127298456077,
+       "badness": 0.49044029512052845
+      }
+     },
+     "runs": [
+      {
+       "id": 483,
+       "text": "V",
+       "ref_box": [
+        2,
+        2,
+        8,
+        10
+       ],
+       "test_box": [
+        2,
+        2,
+        8,
+        10
+       ],
+       "mass_ref": 24.760491383611274,
+       "mass_test": 17.081706429371785,
+       "peak_ratio": 1.04739336492891,
+       "dl": 0,
+       "dt": 0,
+       "db": 0,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.3101224783980661,
+       "mass_signed": -0.3101224783980661,
+       "bad": 0.0,
+       "badness": 0.6659333092791566
+      }
+     ]
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    1843,
+    1009,
+    1907,
+    1069
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 2.0357142857142856,
+    "G5": 0.6659333092791566
+   },
+   "report_only": [],
+   "badness": 2.0357142857142856,
+   "worst_gate": "G4",
+   "failing_gates": [
+    "G4"
+   ],
+   "pass": false
+  }
+ },
+ "uncalibrated": false,
+ "g7": {
+  "mad": 0.6258271629925731,
+  "ssim": 0.978527093163171,
+  "px": 296445,
+  "badness": 0.0,
+  "report_only": true
+ },
+ "n_regions": 19,
+ "failing": [
+  "card.V"
+ ],
+ "worst": {
+  "region": "card.V",
+  "badness": 2.0357142857142856,
+  "gate": "G4"
+ },
+ "result": "FAIL",
+ "seconds": 0.63,
+ "calibration": "OK"
+}

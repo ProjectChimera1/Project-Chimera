@@ -56,4 +56,16 @@ namespace ChimeraBakes
 	 * area-coverage fringe pixels; an even Size lands on whole pixels and is crisp (image Size).
 	 */
 	FBake DotSquare(int32 Size, uint32 FillRgb, uint32 BorderRgb);
+
+	/**
+	 * A W x H box's 1 px dashed border (CSS `border: 1px dashed`, transparent inside), one image the size of the box. Blink's dash
+	 * arithmetic for a 1 px stroke (StrokeData: dash 3 px, nominal gap 2 px; SelectBestDashGap re-fits the gap to the side length
+	 * so the dashes end flush with both corners): the gap is whichever of the two candidates (one dash fewer or one more) lies
+	 * nearer the nominal gap. Each side is stroked over its full border-box length from its start corner, and a dash edge that
+	 * falls inside a pixel gives that pixel the exact area coverage. Measured on a 121x41 box (r5 2.6) and on the 64x60 slot.
+	 */
+	FBake DashedBorder(int32 W, int32 H, uint32 Rgb);
+
+	/** Gaps of the dash fit for a side of the given length (exposed for the log line and tests). */
+	float DashGap(float SideLength, float DashLength, float GapLength);
 }

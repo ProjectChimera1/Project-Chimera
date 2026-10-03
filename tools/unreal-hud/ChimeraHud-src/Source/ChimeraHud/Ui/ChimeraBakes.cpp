@@ -290,4 +290,54 @@ namespace ChimeraBakes
 		}
 		return Finish(Key, FIntPoint::ZeroValue, FIntPoint(Out, Out), Bgra);
 	}
+
+	float DashGap(float SideLength, float DashLength, float GapLength)
+	{
+		// Blink SelectBestDashGap, open path.
+		const float Available = SideLength + GapLength;
+		const float MinDashes = FMath::FloorToFloat(Available / (DashLength + GapLength));
+		const float MaxDashes = MinDashes + 1.f;
+		const float MinGap = (SideLength - MinDashes * DashLength) / (MinDashes - 1.f);
+		const float MaxGap = (SideLength - MaxDashes * DashLength) / (MaxDashes - 1.f);
+		return (MaxGap <= 0.f || FMath::Abs(MinGap - GapLength) < FMath::Abs(MaxGap - GapLength)) ? MinGap : MaxGap;
+	}
+
+	FBake DashedBorder(int32 W, int32 H, uint32 Rgb)
+	{
+		const FString Key = FString::Printf(TEXT("dashed_%dx%d_%06x"), W, H, Rgb);
+		if (const FBake* Found = Cache().Find(Key)) { return *Found; }
+		constexpr double Dash = 3.0, NominalGap = 2.0;
+		// Coverage along one side: pixel P of a side of length L is covered by the dashes' overlap with [P, P + 1].
+		auto SideCoverage = [&](int32 Length, TArray<double>& Cov)
+		{
+			Cov.Init(0.0, Length);
+			const double Gap = (double)DashGap((float)Length, (float)Dash, (float)NominalGap);
+			for (double Start = 0.0; Start < (double)Length - 1e-6; Start += Dash + Gap)
+			{
+				const double End = FMath::Min(Start + Dash, (double)Length);
+				for (int32 Px = FMath::FloorToInt((float)Start); Px < Length && (double)Px < End; ++Px)
+				{
+					Cov[Px] += FMath::Max(0.0, FMath::Min(End, (double)Px + 1.0) - FMath::Max(Start, (double)Px));
+				}
+			}
+		};
+		TArray<double> AlongX, AlongY;
+		SideCoverage(W, AlongX);
+		SideCoverage(H, AlongY);
+		TArray<uint8> Bgra;
+		Bgra.SetNumZeroed(W * H * 4);
+		for (int32 J = 0; J < H; ++J)
+		{
+			for (int32 I = 0; I < W; ++I)
+			{
+				double Keep = 1.0;
+				if (J == 0 || J == H - 1) { Keep *= 1.0 - FMath::Min(AlongX[I], 1.0); }
+				if (I == 0 || I == W - 1) { Keep *= 1.0 - FMath::Min(AlongY[J], 1.0); }
+				FPix P;
+				Over(P, Rgb, 1.0 - Keep);
+				Store(Bgra, J * W + I, P);
+			}
+		}
+		return Finish(Key, FIntPoint::ZeroValue, FIntPoint(W, H), Bgra);
+	}
 }
