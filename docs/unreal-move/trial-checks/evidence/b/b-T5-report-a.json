@@ -1,0 +1,1098 @@
+{
+ "pair": "A",
+ "only": "^(toast|world\\.|mm\\.|tab\\.)",
+ "gates": [
+  "G1",
+  "G2",
+  "G3",
+  "G5",
+  "G6"
+ ],
+ "alignment": [
+  {
+   "anchor": "toast.left",
+   "status": "ok",
+   "ok": true,
+   "warn": false,
+   "dx": 0,
+   "dy": 0,
+   "found": true,
+   "ref_unique": true,
+   "guarded_regions": [
+    "toast"
+   ]
+  },
+  {
+   "anchor": "mm.right",
+   "status": "ok",
+   "ok": true,
+   "warn": false,
+   "dx": 0,
+   "dy": 0,
+   "found": true,
+   "ref_unique": true,
+   "guarded_regions": [
+    "mm.panel",
+    "mm.buttons",
+    "mm.plate",
+    "mm.map",
+    "tab.3",
+    "orn.minimap"
+   ]
+  },
+  {
+   "anchor": "mm.plate_top",
+   "status": "ok",
+   "ok": true,
+   "warn": false,
+   "dx": 0,
+   "dy": 0,
+   "found": true,
+   "ref_unique": true,
+   "guarded_regions": [
+    "mm.plate",
+    "mm.map"
+   ]
+  }
+ ],
+ "regions": {
+  "world.open": {
+   "region": "world.open",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "mad": 0.0,
+     "max": 0.0,
+     "px": 1597184,
+     "ssim": 0.99975
+    }
+   ],
+   "gate_badness": {
+    "G6": 0.0
+   },
+   "report_only": [],
+   "bbox": [
+    0,
+    0,
+    1920,
+    1080
+   ],
+   "badness": 0.0,
+   "worst_gate": null,
+   "failing_gates": [],
+   "pass": true
+  },
+  "toast": {
+   "region": "toast",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "main",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 16896,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "toast.timer",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "auto.70.toast-idle-acolyte",
+       "class": "auto",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 35,
+       "name": "toast-idle-acolyte",
+       "side": "top",
+       "px": 398,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 36,
+       "name": "toast-idle-acolyte",
+       "side": "right",
+       "px": 36,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 37,
+       "name": "toast-idle-acolyte",
+       "side": "bottom",
+       "px": 398,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 38,
+       "name": "toast-idle-acolyte",
+       "side": "left",
+       "px": 36,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 13095,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      },
+      "vector": {
+       "px": 324,
+       "mad": 0.1502,
+       "bad_frac": 0.0,
+       "mad_raw": 0.15020576131687244,
+       "ssim": 0.99997,
+       "ssim_raw": 0.9999675640461123,
+       "badness": 0.00858091609573424
+      },
+      "text": {
+       "px": 3477,
+       "mad": 13.8271,
+       "bad_frac": 0.28875,
+       "mad_raw": 13.827053973732145,
+       "ssim": 0.8852,
+       "ssim_raw": 0.8851957637585114,
+       "badness": 0.662050760589184
+      }
+     },
+     "runs": [
+      {
+       "id": 77,
+       "text": "Acolyte idle at the west wells",
+       "ref_box": [
+        2,
+        6,
+        182,
+        19
+       ],
+       "test_box": [
+        2,
+        6,
+        182,
+        19
+       ],
+       "mass_ref": 724.1296778289161,
+       "mass_test": 546.9581971115696,
+       "peak_ratio": 1.0,
+       "dl": 0,
+       "dt": 0,
+       "db": 0,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.24466816668603011,
+       "mass_signed": -0.24466816668603011,
+       "bad": 0.0,
+       "badness": 0.5254437789757133
+      }
+     ]
+    },
+    {
+     "unit": "flow0",
+     "kind": "flow",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 968,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "auto.78.toast-keycap-Space",
+       "class": "auto",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 39,
+       "name": "toast-keycap-Space",
+       "side": "top",
+       "px": 32,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 40,
+       "name": "toast-keycap-Space",
+       "side": "right",
+       "px": 10,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 41,
+       "name": "toast-keycap-Space",
+       "side": "bottom",
+       "px": 64,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 42,
+       "name": "toast-keycap-Space",
+       "side": "left",
+       "px": 10,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 456,
+       "mad": 0.731,
+       "bad_frac": 0.0,
+       "mad_raw": 0.7309941520467836,
+       "badness": 0.7309941520467836
+      },
+      "vector": {
+       "px": 64,
+       "mad": 2.1146,
+       "bad_frac": 0.125,
+       "mad_raw": 2.1145833333333335,
+       "ssim": 0.9885,
+       "ssim_raw": 0.9885045073217207,
+       "badness": 0.12080137274157372
+      },
+      "text": {
+       "px": 448,
+       "mad": 17.0841,
+       "bad_frac": 0.34598,
+       "mad_raw": 17.08407738095238,
+       "ssim": 0.90799,
+       "ssim_raw": 0.9079925941984606,
+       "badness": 0.6534055985389383
+      }
+     },
+     "runs": [
+      {
+       "id": 79,
+       "text": "Space",
+       "ref_box": [
+        2,
+        2,
+        32,
+        12
+       ],
+       "test_box": [
+        2,
+        2,
+        32,
+        12
+       ],
+       "mass_ref": 114.09742897952705,
+       "mass_test": 78.68419298524044,
+       "peak_ratio": 1.0,
+       "dl": 0,
+       "dt": 0,
+       "db": 0,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.31037716021314504,
+       "mass_signed": -0.31037716021314504,
+       "bad": 0.0,
+       "badness": 0.666558916017157
+      }
+     ]
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    9,
+    811,
+    415,
+    855
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.7309941520467836,
+    "G5": 0.666558916017157
+   },
+   "report_only": [],
+   "badness": 0.666558916017157,
+   "worst_gate": "G5",
+   "failing_gates": [],
+   "pass": true
+  },
+  "world.ring": {
+   "region": "world.ring",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 1694,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "ring.left",
+       "class": "vector",
+       "err": 0
+      },
+      {
+       "id": "auto.7.selection-health-bar-fil",
+       "class": "auto",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 0,
+       "name": "selection-health-bar-frame",
+       "side": "top",
+       "px": 28,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 1,
+       "name": "selection-health-bar-frame",
+       "side": "right",
+       "px": 5,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 2,
+       "name": "selection-health-bar-frame",
+       "side": "bottom",
+       "px": 28,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 3,
+       "name": "selection-health-bar-frame",
+       "side": "left",
+       "px": 5,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 746,
+       "mad": 0.0349,
+       "bad_frac": 0.0,
+       "mad_raw": 0.03485254691689008,
+       "badness": 0.03485254691689008
+      },
+      "vector": {
+       "px": 948,
+       "mad": 0.8312,
+       "bad_frac": 0.04219,
+       "mad_raw": 0.8312236286919831,
+       "ssim": 0.9972,
+       "ssim_raw": 0.9972006543210461,
+       "badness": 0.5794114238756329
+      }
+     },
+     "runs": []
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    986,
+    518,
+    1034,
+    573
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.5794114238756329,
+    "G5": 0.0
+   },
+   "report_only": [
+    "G1.vector"
+   ],
+   "badness": 0.0,
+   "worst_gate": null,
+   "failing_gates": [],
+   "pass": true
+  },
+  "mm.panel": {
+   "region": "mm.panel",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 6626,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "mm.fill",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "mm.right",
+       "class": "hard",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 43,
+       "name": "minimap-panel",
+       "side": "right",
+       "px": 208,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 6626,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      }
+     },
+     "runs": []
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    0,
+    869,
+    259,
+    1080
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.0,
+    "G5": 0.0
+   },
+   "report_only": [],
+   "badness": 0.0,
+   "worst_gate": null,
+   "failing_gates": [],
+   "pass": true
+  },
+  "mm.buttons": {
+   "region": "mm.buttons",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 2700,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "mmbtn.fill",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "mmbtn.border",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "auto.182.minimap-button:show-alli",
+       "class": "auto",
+       "err": 0
+      },
+      {
+       "id": "auto.186.minimap-button:ping-alt-",
+       "class": "auto",
+       "err": 0
+      },
+      {
+       "id": "auto.190.minimap-button:terrain-u",
+       "class": "auto",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 44,
+       "name": "minimap-button:show-allied-vision-alt-v",
+       "side": "top",
+       "px": 26,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 45,
+       "name": "minimap-button:show-allied-vision-alt-v",
+       "side": "right",
+       "px": 26,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 46,
+       "name": "minimap-button:show-allied-vision-alt-v",
+       "side": "bottom",
+       "px": 26,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 47,
+       "name": "minimap-button:show-allied-vision-alt-v",
+       "side": "left",
+       "px": 26,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 48,
+       "name": "minimap-button:ping-alt-click",
+       "side": "top",
+       "px": 26,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 49,
+       "name": "minimap-button:ping-alt-click",
+       "side": "right",
+       "px": 26,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 50,
+       "name": "minimap-button:ping-alt-click",
+       "side": "bottom",
+       "px": 26,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 51,
+       "name": "minimap-button:ping-alt-click",
+       "side": "left",
+       "px": 26,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 52,
+       "name": "minimap-button:terrain-units-only-alt-t",
+       "side": "top",
+       "px": 26,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 53,
+       "name": "minimap-button:terrain-units-only-alt-t",
+       "side": "right",
+       "px": 26,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 54,
+       "name": "minimap-button:terrain-units-only-alt-t",
+       "side": "bottom",
+       "px": 26,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 55,
+       "name": "minimap-button:terrain-units-only-alt-t",
+       "side": "left",
+       "px": 26,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 1728,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      },
+      "vector": {
+       "px": 972,
+       "mad": 0.0847,
+       "bad_frac": 0.0,
+       "mad_raw": 0.08470507544581618,
+       "ssim": 0.99999,
+       "ssim_raw": 0.9999899776362037,
+       "badness": 0.004359490084777798
+      }
+     },
+     "runs": []
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    7,
+    880,
+    37,
+    974
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.004359490084777798,
+    "G5": 0.0
+   },
+   "report_only": [],
+   "badness": 0.0,
+   "worst_gate": null,
+   "failing_gates": [],
+   "pass": true
+  },
+  "mm.plate": {
+   "region": "mm.plate",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 10741,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "plate.fill",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "plate.border",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "plate.inner",
+       "class": "hard",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 56,
+       "name": "minimap-frame-plate",
+       "side": "top",
+       "px": 192,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 57,
+       "name": "minimap-frame-plate",
+       "side": "right",
+       "px": 192,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 58,
+       "name": "minimap-frame-plate",
+       "side": "bottom",
+       "px": 192,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 59,
+       "name": "minimap-frame-plate",
+       "side": "left",
+       "px": 192,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 60,
+       "name": "minimap-frame-inner-line",
+       "side": "top",
+       "px": 190,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 61,
+       "name": "minimap-frame-inner-line",
+       "side": "right",
+       "px": 190,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 62,
+       "name": "minimap-frame-inner-line",
+       "side": "bottom",
+       "px": 190,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 63,
+       "name": "minimap-frame-inner-line",
+       "side": "left",
+       "px": 190,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 6247,
+       "mad": 0.041,
+       "bad_frac": 0.0,
+       "mad_raw": 0.040979670241716025,
+       "badness": 0.040979670241716025
+      },
+      "vector": {
+       "px": 4494,
+       "mad": 0.2504,
+       "bad_frac": 0.0,
+       "mad_raw": 0.2504079513425308,
+       "ssim": 0.99968,
+       "ssim_raw": 0.999678628435135,
+       "badness": 1.0576401997902138
+      }
+     },
+     "runs": []
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    38,
+    869,
+    250,
+    1080
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 1.0576401997902138,
+    "G5": 0.0
+   },
+   "report_only": [],
+   "badness": 0.0,
+   "worst_gate": null,
+   "failing_gates": [],
+   "pass": true
+  },
+  "mm.map": {
+   "region": "mm.map",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 33856,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "map.border",
+       "class": "hard",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 64,
+       "name": "minimap-map-surface (bf-village.jpg 300% crop)",
+       "side": "top",
+       "px": 182,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 65,
+       "name": "minimap-map-surface (bf-village.jpg 300% crop)",
+       "side": "right",
+       "px": 182,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 66,
+       "name": "minimap-map-surface (bf-village.jpg 300% crop)",
+       "side": "bottom",
+       "px": 182,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 67,
+       "name": "minimap-map-surface (bf-village.jpg 300% crop)",
+       "side": "left",
+       "px": 182,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 732,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      },
+      "placeholder": {
+       "px": 32433,
+       "mad": 0.313,
+       "bad_frac": 0.0,
+       "mad_raw": 0.3130247998437805,
+       "badness": 0.15651239992189026
+      },
+      "vector": {
+       "px": 691,
+       "mad": 1.2928,
+       "bad_frac": 0.07959,
+       "mad_raw": 1.2928123492522914,
+       "ssim": 0.98359,
+       "ssim_raw": 0.9835947836755256,
+       "badness": 0.31543640063979445
+      }
+     },
+     "runs": []
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    52,
+    881,
+    236,
+    1065
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.31543640063979445,
+    "G5": 0.0
+   },
+   "report_only": [],
+   "badness": 0.0,
+   "worst_gate": null,
+   "failing_gates": [],
+   "pass": true
+  },
+  "tab.3": {
+   "region": "tab.3",
+   "kind": "flow",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "flow",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 1984,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "tab.fill",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "tab.top",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "tab.left",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "auto.220.control-group-tab-3",
+       "class": "auto",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 68,
+       "name": "control-group-tab-3",
+       "side": "top",
+       "px": 58,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 69,
+       "name": "control-group-tab-3",
+       "side": "right",
+       "px": 26,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 70,
+       "name": "control-group-tab-3",
+       "side": "left",
+       "px": 26,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 1394,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      },
+      "vector": {
+       "px": 256,
+       "mad": 0.1081,
+       "bad_frac": 0.0,
+       "mad_raw": 0.10807291666666667,
+       "ssim": 0.99997,
+       "ssim_raw": 0.999968692803596,
+       "badness": 0.008207257828953476
+      },
+      "text": {
+       "px": 334,
+       "mad": 9.7096,
+       "bad_frac": 0.24251,
+       "mad_raw": 9.709580838323353,
+       "ssim": 0.89623,
+       "ssim_raw": 0.8962275496695354,
+       "badness": 0.6659764493034565
+      }
+     },
+     "runs": [
+      {
+       "id": 222,
+       "text": "3",
+       "ref_box": [
+        2,
+        5,
+        9,
+        14
+       ],
+       "test_box": [
+        2,
+        5,
+        8,
+        13
+       ],
+       "mass_ref": 23.528438356164383,
+       "mass_test": 19.469776908023483,
+       "peak_ratio": 1.0,
+       "dl": 0,
+       "dt": 0,
+       "db": -1,
+       "dr": -1,
+       "right_tol": 1.0,
+       "mass_rel": 0.17250024785761192,
+       "mass_signed": -0.17250024785761192,
+       "bad": 1.0,
+       "badness": 1.0
+      },
+      {
+       "id": 230,
+       "text": "8",
+       "ref_box": [
+        3,
+        6,
+        10,
+        16
+       ],
+       "test_box": [
+        3,
+        6,
+        10,
+        15
+       ],
+       "mass_ref": 37.82507107779787,
+       "mass_test": 29.063447919359007,
+       "peak_ratio": 1.0,
+       "dl": 0,
+       "dt": 0,
+       "db": -1,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.23163533891101298,
+       "mass_signed": -0.23163533891101298,
+       "bad": 1.0,
+       "badness": 1.0
+      }
+     ]
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    264,
+    870,
+    333,
+    901
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.6659764493034565,
+    "G5": 1.0
+   },
+   "report_only": [],
+   "badness": 1.0,
+   "worst_gate": "G5",
+   "failing_gates": [],
+   "pass": true
+  }
+ },
+ "uncalibrated": false,
+ "g7": {
+  "mad": 0.9652377481834846,
+  "ssim": 0.9854904707892497,
+  "px": 75465,
+  "badness": 0.0,
+  "report_only": true
+ },
+ "n_regions": 8,
+ "failing": [],
+ "worst": {
+  "region": "tab.3",
+  "badness": 1.0,
+  "gate": "G5"
+ },
+ "result": "PASS",
+ "seconds": 0.61,
+ "calibration": "OK"
+}

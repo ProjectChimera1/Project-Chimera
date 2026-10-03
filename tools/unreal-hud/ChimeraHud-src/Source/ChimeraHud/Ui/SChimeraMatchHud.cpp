@@ -14,7 +14,11 @@
 #include "Widgets/SOverlay.h"
 #include "Widgets/Layout/SConstraintCanvas.h"
 #include "Ui/ChimeraHudState.h"
+#include "Ui/Panels/SChimeraGroupTabs.h"
+#include "Ui/Panels/SChimeraMinimapPanel.h"
+#include "Ui/Panels/SChimeraToastStack.h"
 #include "Ui/Panels/SChimeraTopStrip.h"
+#include "Ui/Panels/SChimeraWorldOverlays.h"
 
 void SChimeraMatchHud::Construct(const FArguments& InArgs)
 {
@@ -74,7 +78,36 @@ void SChimeraMatchHud::Construct(const FArguments& InArgs)
 	}
 	ChimeraUi::LogRouteAndKernCheck();
 	const FChimeraHudState State = MakeBoard31aState();
+	// Z order bottom to top (r4 5.8): world overlays, toast, minimap panel, tab row, [selection panel, command card: T6], top strip.
 	TSharedRef<SConstraintCanvas> Canvas = SNew(SConstraintCanvas);
+	Canvas->AddSlot()
+		.Anchors(FAnchors(0.f, 0.f, 1.f, 1.f))		// the world overlays fill the screen
+		.Offset(FMargin(0.f))
+		[
+			SNew(SChimeraWorldOverlays).State(State)
+		];
+	Canvas->AddSlot()
+		.Anchors(FAnchors(0.f, 1.f, 0.f, 1.f))		// toast: left 12, bottom 228
+		.Offset(FMargin(12.f, -228.f, 400.f, 38.f))
+		.Alignment(FVector2D(0.f, 1.f))
+		[
+			SNew(SChimeraToastStack).State(State)
+		];
+	Canvas->AddSlot()
+		.Anchors(FAnchors(0.f, 1.f, 0.f, 1.f))		// minimap panel: bottom-left, 256x216
+		.Offset(FMargin(0.f, 0.f, 256.f, 216.f))
+		.Alignment(FVector2D(0.f, 1.f))
+		[
+			SNew(SChimeraMinimapPanel).State(State)
+		];
+	Canvas->AddSlot()
+		.Anchors(FAnchors(0.f, 1.f, 0.f, 1.f))		// tab row: x 268, resting on the selection panel's top edge (176 above the bottom)
+		.Offset(FMargin(268.f, -176.f, 0.f, 0.f))
+		.Alignment(FVector2D(0.f, 1.f))
+		.AutoSize(true)
+		[
+			SNew(SChimeraGroupTabs).State(State)
+		];
 	Canvas->AddSlot()
 		.Anchors(FAnchors(0.f, 0.f, 1.f, 0.f))		// stretch in X, point in Y
 		.Offset(FMargin(0.f, 0.f, 0.f, 40.f))		// left, top, right margin, height

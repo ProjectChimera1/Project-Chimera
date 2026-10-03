@@ -29,6 +29,26 @@ struct FChimeraCommandSlot
 	FString LockedReason;
 };
 
+/** One minimap unit dot (r4 5.4): centre at (PctX, PctY) percent of the 182 px map content box, border box Size px, Okabe-Ito colour. */
+struct FChimeraMapDot
+{
+	float PctX = 0.f;
+	float PctY = 0.f;
+	uint32 Rgb = 0;
+	int32 Size = 4;
+};
+
+/** A selected unit's world overlay (r4 5.2): ring centre in screen px, ring width (height = round(W x .42)), colour, health 0..1. */
+struct FChimeraWorldRing
+{
+	float X = 0.f;
+	float Y = 0.f;
+	float Width = 38.f;
+	uint32 Rgb = 0x4FB39A;
+	float Hp = 1.f;
+	float BarOffset = 30.f;	// the bar sits this far above the ring's top edge (`tall`, README 244)
+};
+
 struct FChimeraHudState
 {
 	// Top strip (r4 5.1)
@@ -42,6 +62,14 @@ struct FChimeraHudState
 	FString ToastIcon;
 	FString ToastText;
 	FString ToastKey;
+
+	// Minimap (r4 5.4): unit dots in paint order and the camera rectangle centre (0..1 of the map)
+	TArray<FChimeraMapDot> MapDots;
+	float CamX = 0.34f;
+	float CamY = 0.58f;
+
+	// World overlays (r4 5.2)
+	TArray<FChimeraWorldRing> Rings;
 
 	// Control-group tab (r4 5.5)
 	FString TabNumber;
@@ -76,6 +104,19 @@ inline FChimeraHudState MakeBoard31aState()
 	S.ToastIcon = TEXT("info");
 	S.ToastText = TEXT("Acolyte idle at the west wells");
 	S.ToastKey = TEXT("Space");
+
+	// Match.dc.html:603-604 mmDotsBase, :611 mmD (the extra list repeats [20,72,#0072B2,7]: node 216 is dropped as a duplicate,
+	// the dot is drawn once) and state.cam at :524.
+	S.MapDots = {
+		{ 20, 72, 0x0072B2, 7 }, { 28, 78, 0x0072B2, 5 }, { 16, 64, 0x0072B2, 5 }, { 78, 20, 0xD55E00, 7 }, { 72, 12, 0xD55E00, 5 },
+		{ 46, 50, 0x0072B2, 4 }, { 50, 46, 0x56B4E9, 4 }, { 54, 44, 0xD55E00, 4 }, { 60, 38, 0xCC79A7, 4 }, { 86, 58, 0xD55E00, 4 },
+		{ 24, 66, 0x0072B2, 4 },
+	};
+	S.CamX = 0.34f;
+	S.CamY = 0.58f;
+
+	// Match.dc.html:698 X['3.1a'].rings: ring(1010, 560, 38, { tall: 30 })
+	S.Rings = { { 1010.f, 560.f, 38.f, 0x4FB39A, 1.f, 30.f } };
 
 	S.TabNumber = TEXT("3");
 	S.TabIcon = TEXT("owner");

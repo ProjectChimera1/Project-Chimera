@@ -1,6 +1,6 @@
 # HANDOFF — Project Chimera
 
-_Updated 2026-10-03 09:10 · branch `master` · last commit: HUD T4b (see `git log -1`)_
+_Updated 2026-10-03 10:10 · branch `master` · last commit: HUD T5 (see `git log -1`)_
 
 ## Where we stopped
 
@@ -25,7 +25,7 @@ xhigh verifiers (results; code and rules).
 ## Next step
 
 **Phase 3 (converge) is running** in two workflows started 08:55 on 2026-10-03 in the session that committed S6:
-`tools/unreal-trial/workflows/phase3-b.js` (HUD T4b → T5 → T6 → T7 → T8; **T4b passed and is committed**) and `phase3-ac.js`
+`tools/unreal-trial/workflows/phase3-b.js` (HUD T4b → T5 → T6 → T7 → T8; **T4b and T5 passed and are committed**) and `phase3-ac.js`
 (A11 renderer + separate reviewer's `visual_check.json`, beside C9 units and video → C11 packages → S7 SX16). If that session is gone,
 the runs are gone too: start fresh small workflows for the unfinished tasks from those scripts' task notes (`TASKS3B`, `TASKS3`).
 Watch markers with `checkpoints/wait_marker.sh`, commit each passed task with `checkpoints/ckpt.py <task>` by explicit path (HUD: /
@@ -59,8 +59,8 @@ Building foundations (`docs/unreal-move/briefs/building-foundations.md`) after s
 
 - A workflow task that reports `blocked` ends the run without re-verifying; the main session rules, then starts a fresh small
   workflow that verifies from the saved report (patterns: `scatter-build-s4v.js`, `-s5v`, `-s6v`). Resuming parallel-lane workflows re-runs agents.
-- `wait_marker.sh` tracks marker names: before re-running a task, rename its old marker (as `S4-run1.json`) and drop it from
-  `.seen_markers.txt`, or the new marker is missed.
+- `wait_marker.sh` keys markers on name + modification time (2026-10-03), so a rewritten `<task>.json` is caught. Implementers
+  sometimes write their own note into `checkpoints/` (C9 did): rename it (`C9-implnote.json`) so the real marker stands out.
 - **Scatter performance (reported until S8):** S6's grass ends cut drawn instances to 8,043 at rts80 (cap 24k) and scatter GPU to about
   1.44 ms (one unmeasured smoke); the LOD0 triangle bound is still 3.57 M vs 1.5 M, and S5's cross-build smoke showed GT p99 +2.2 ms /
   RT p99 +4.3 ms vs SX11's 1.5 ms. S8's interleaved reps decide.

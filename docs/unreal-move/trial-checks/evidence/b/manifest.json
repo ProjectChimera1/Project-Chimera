@@ -85,5 +85,73 @@
     "unreal_build_id": "",
     "committed": false,
     "sent_to_alec": null
+  },
+  {
+    "file": "b-T5-scorecard-a.png",
+    "path": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/t5-5/A/scorecard.png",
+    "sha256": "c65658c42c993e13a325d731f95e8e8b53f49f7ca07431b874e5a4e3d6555096",
+    "bytes": 96395,
+    "w_h": [
+      1920,
+      760
+    ],
+    "task": "T5",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/t5-5/A/scorecard.png",
+    "r_commit": "3120672d",
+    "unreal_build_id": "",
+    "committed": false,
+    "sent_to_alec": null
+  },
+  {
+    "file": "b-T5-g4-report-a.json",
+    "path": "b/b-T5-g4-report-a.json",
+    "sha256": "057c370e442240f7950258ea04a3b262a3d8887ab941d283019a60dec9e4d10e",
+    "bytes": 21059,
+    "w_h": null,
+    "task": "T5",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/t5-5g4/A/report.json",
+    "r_commit": "3120672d",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "b-T5-report-a.json",
+    "path": "b/b-T5-report-a.json",
+    "sha256": "24ab892da3a4999f017267a1c281b8e225a11ebb9111234755d1a4a7cd5bb5a2",
+    "bytes": 20926,
+    "w_h": null,
+    "task": "T5",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/t5-5/A/report.json",
+    "r_commit": "3120672d",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "b-T5-g4-report-b.json",
+    "path": "b/b-T5-g4-report-b.json",
+    "sha256": "67bcdf560f89c066799196a51d20c8b2493f13dbdc5c71cfd33b5bdb23226d5b",
+    "bytes": 21094,
+    "w_h": null,
+    "task": "T5",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/t5-5g4/B/report.json",
+    "r_commit": "3120672d",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "b-T5-report-b.json",
+    "path": "b/b-T5-report-b.json",
+    "sha256": "53a31c8fecac7c90046afa8a4f8920001baa6ebde1b45699ac94f2ff030c3997",
+    "bytes": 20961,
+    "w_h": null,
+    "task": "T5",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/t5-5/B/report.json",
+    "r_commit": "3120672d",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
   }
 ]
