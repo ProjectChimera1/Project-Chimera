@@ -277,3 +277,13 @@ All 16 Phase 2 tasks passed two independent Opus xhigh verifiers (results; code 
   bar now catches it). C11's cook needs both. **Unit tilt ruling:** units keep full surface-normal tilt for the trial (63° in VIDEO on the
   brush cones, steeper than any real map slope); a clamp would sink or float unit ends by 1-2 m on 60° slopes. Production revisits it
   with real unit footprints. The mp4 stays registered, not committed (`.mp4` is not a committed type in §2.3).
+- **A11 record (main session, 2026-10-03).** A11 passed (main: visible == alive 1000/1000/999/575/121 at 0/60/300/900/1440, 0.00 cm,
+  both CommandCentres, pixel pairs 7/7; ai run: units 1000/999/554/124 and all 5 AI-built buildings drawn by tick 900; traces 1440/1440 on
+  every run). Accepted: (1) **mirroring rule** — plan §3.7's "alpha mean screen x > beta's" holds only while alpha stands at lower world X;
+  once the armies cross (t1440: alpha +10.23 m, beta +7.54 m) `check_shots.py` reverses it, and every shot must also give Pearson
+  r(screen x, world X) ≤ -0.8 (t1440: -0.9995). (2) **Shot freeze** (check (c)'s S5 precedent): each pair is shot after a 30-frame settle
+  with an exposure hold and the TSR freeze; `-NoShotFreeze` turns it off. (3) A stricter per-unit "outside" bar (≤ 5 % against the unit
+  footprints' union) beside the plan's army-box bar. (4) The reviewer's `EV/a/a-A11-visual-check.json` (all yes) was judged on the
+  a11r2 shots and is **carried over** to the re-shot a11r3 run (same draw code; 0.02-0.26 % of pixels differ, 86-95 % of them at unit
+  edges). **A13 must re-dispatch the reviewer on its own final shots.** **For A13's not-covered list:** the renderer's new-unit-id,
+  re-add and mid-run unit-group paths never run (the AI trains no units even in 3,600 ticks; `trial_1000` has no training orders).

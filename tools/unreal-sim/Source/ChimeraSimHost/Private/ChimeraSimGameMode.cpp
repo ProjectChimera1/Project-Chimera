@@ -40,10 +40,11 @@ void AChimeraSimGameMode::StartPlay()
 
 	FActorSpawnParameters Params;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	ACameraActor* Overview = nullptr;
 	if (!Options.bNoArena)
 	{
 		World->SpawnActor<AChimeraArena>(AChimeraArena::StaticClass(), FTransform::Identity, Params);
-		SpawnOverviewCamera();
+		Overview = SpawnOverviewCamera();
 	}
 	else
 	{
@@ -53,6 +54,7 @@ void AChimeraSimGameMode::StartPlay()
 	AChimeraSimDirector* Director = World->SpawnActorDeferred<AChimeraSimDirector>(AChimeraSimDirector::StaticClass(), FTransform::Identity,
 		nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 	Director->Configure(Options);
+	Director->SetOverviewCamera(Overview);
 	Director->FinishSpawning(FTransform::Identity);
 }
 

@@ -92,6 +92,26 @@ bool FChimeraSimOptions::Parse(FString& OutError)
 	const FString DefaultShots = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir() / TEXT("SimTrial/shots.json"));
 	ShotsPath = FPaths::FileExists(DefaultShots) ? DefaultShots : FString();
 	ReadString(Cmd, TEXT("-ChimeraSimShots="), ShotsPath);
+	if (ShotsPath.Equals(TEXT("none"), ESearchCase::IgnoreCase))
+	{
+		ShotsPath.Reset(); // an explicit "no shots" run (A11's rendered ai run)
+	}
+	MeshesPath = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir() / TEXT("SimTrial/unit_meshes.json"));
+	ReadString(Cmd, TEXT("-ChimeraSimMeshes="), MeshesPath);
+	bDeadUnderGround = FParse::Param(Cmd, TEXT("ChimeraSimDeadUnderGround"));
+	bShotFreeze = !FParse::Param(Cmd, TEXT("ChimeraSimNoShotFreeze"));
+	if (!ReadInt(Cmd, TEXT("-ChimeraSimShotSamples="), ShotSamples, OutError)) { return false; }
+	if (ShotSamples < 1)
+	{
+		OutError = TEXT("-ChimeraSimShotSamples must be >= 1");
+		return false;
+	}
+	if (!ReadInt(Cmd, TEXT("-ChimeraSimVerifyEvery="), VerifyEvery, OutError)) { return false; }
+	if (VerifyEvery < 0)
+	{
+		OutError = TEXT("-ChimeraSimVerifyEvery must be >= 0");
+		return false;
+	}
 
 	bHideUnits = FParse::Param(Cmd, TEXT("ChimeraSimHideUnits"));
 	if (!ReadInt(Cmd, TEXT("-ChimeraSimFilmEvery="), FilmEvery, OutError)) { return false; }
@@ -176,6 +196,8 @@ void FChimeraSimOptions::Echo() const
 	UE_LOG(LogChimeraSim, Display, TEXT("option hide_units=%d film_every=%d hitch_ms=%d hitch_every=%d no_arena=%d exit_when_done=%d warmup_max_s=%.0f"),
 		bHideUnits ? 1 : 0, FilmEvery, HitchMs, HitchEvery, bNoArena ? 1 : 0, bExitWhenDone ? 1 : 0, WarmupMaxSec);
 	UE_LOG(LogChimeraSim, Display, TEXT("option leg=%s p_commit=%s p_dirty=%s"), *Leg, *PCommit, *PDirty);
+	UE_LOG(LogChimeraSim, Display, TEXT("option meshes=%s dead_under_ground=%d shot_freeze=%d shot_samples=%d verify_every=%d"), *MeshesPath,
+		bDeadUnderGround ? 1 : 0, bShotFreeze ? 1 : 0, ShotSamples, VerifyEvery);
 	// The two lines run_sim.ps1 asserts (the seed as parsed, and the shot list as parsed).
 	UE_LOG(LogChimeraSim, Display, TEXT("seed=%s"), *SeedHex());
 	UE_LOG(LogChimeraSim, Display, TEXT("shots=%s"), *ShotList());

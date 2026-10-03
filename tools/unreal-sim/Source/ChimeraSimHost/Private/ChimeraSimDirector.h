@@ -1,12 +1,18 @@
 // Copyright Chimera. AChimeraSimDirector: drives one scripted sim run inside -game (plan A 3.7 "Warm-up", "Loop", "Timing";
 // EXECUTION 2.2 exits). It owns the session, replays the frozen order CSV through chimera_submit_order (the one way in), steps
-// at a fixed 30 Hz from wall-clock pacing that never reaches the sim, and writes the trace of plan A 3.5.
+// at a fixed 30 Hz from wall-clock pacing that never reaches the sim, and writes the trace of plan A 3.5. A11 adds the renderer
+// (AChimeraUnitRenderer), the shot cameras, shot pairs (shot + units hidden), film frames and the verify step (plan A 3.7).
 #pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "ChimeraSimOptions.h"
+#include "ChimeraSimVerify.h"
 #include "ChimeraSimDirector.generated.h"
+
+class ACameraActor;
+class AChimeraUnitRenderer;
+class APlayerController;
 
 /** One row of the frozen order CSV: tick,faction,unit_ref,cmd,x_raw,z_raw,slot. */
 struct FChimeraOrderRow
@@ -26,11 +32,13 @@ struct FChimeraFrameRow
 	int64 Alive = 0;
 	double Alpha = 0.0;
 	bool bHitch = false;
+	bool bHold = false;
 };
 
 /**
  * Exit codes (forced, after closing files; EXECUTION 2.2): 3 DLL load / ABI (module), 4 warm-up timeout, 5 session create
- * failed (-3/-4/-6), 6 submit/step/checksum failure, 7 an output file could not be written, 8 bad options or order CSV.
+ * failed (-3/-4/-6), 6 submit/step/checksum failure, 7 an output file (trace, frames, verify, a screenshot) could not be written,
+ * 8 bad options, order CSV, shot camera or mesh table.
  * Success logs "LogChimeraSim: RESULT ..." and, with -ChimeraSimExitWhenDone, exits non-forced with 0.
  */
 UCLASS(NotBlueprintable)
@@ -44,6 +52,9 @@ public:
 	/** Called by the game mode right after spawning, before BeginPlay runs the setup. */
 	void Configure(const FChimeraSimOptions& InOptions) { Options = InOptions; }
 
+	/** The game mode's auto-activating overview camera (absent with -ChimeraSimNoArena; the director then spawns its own for shots). */
+	void SetOverviewCamera(ACameraActor* Camera) { OverviewCamera = Camera; }
+
 	virtual void Tick(float DeltaSeconds) override;
 
 	/** Interpolation alpha of the last frame (acc * 30, in [0, 1)); A11's renderer lerps prev -> pos by it. */
@@ -56,6 +67,12 @@ public:
 	static constexpr int32 MaxStepsPerFrame = 8;
 	static constexpr int32 IdleFramesNeeded = 60;
 	static constexpr double SettleSeconds = 8.0;
+	/** Shot pair frames (plan A 3.7: wait 30 frames, capture, hide units, wait 30, capture hidden). */
+	static constexpr int32 CameraSettleFrames = 30;
+	static constexpr int32 ShotWaitFrames = 30;
+	static constexpr int32 HiddenWaitFrames = 30;
+	static constexpr int32 FilmFreezeFrames = 3;
+	static constexpr double CaptureTimeoutSec = 30.0;
 
 protected:
 	virtual void BeginPlay() override;
@@ -63,6 +80,25 @@ protected:
 
 private:
 	enum class EState : uint8 { Setup, Warmup, Settle, Run, Done, Failed };
+
+	/** A hold freezes stepping at one tick (alpha 1) for the verify, the shot pairs and the film frame of that tick. */
+	enum class EHoldPhase : uint8 { None, CameraSettle, Frozen, WaitShot, HiddenWait, WaitHidden, FilmFreeze, WaitFilm };
+	struct FHold
+	{
+		bool bActive = false;
+		int32 Tick = 0;
+		TArray<int32> ShotIdx;  // indices into Options.Shots taken at this tick
+		int32 ShotCursor = 0;
+		bool bFilm = false;
+		bool bVisual = false;   // shots or a film frame: many frames, pacing restarts after it
+		EHoldPhase Phase = EHoldPhase::None;
+		int32 PhaseFrames = 0;
+		FString PendingPath;
+		FDateTime RequestStamp;
+		double RequestTime = 0.0;
+		int64 LastSize = -1;
+		TSharedPtr<FJsonObject> ShotJson;
+	};
 
 	bool Setup();
 	bool LoadOrders(FString& OutError);
@@ -76,6 +112,26 @@ private:
 	bool WriteOutputs(bool bComplete, FString& OutError) const;
 	static uint64 OrdersDigest(const TArray<FChimeraOrderRow>& Rows);
 	int64 AliveNow() const;
+
+	// A11: renderer, cameras, holds, shots, film, verify.
+	bool SetupRenderAndShots(FString& OutError);
+	ACameraActor* SpawnShotCamera(const FString& Name, double DistM, double PitchDeg, float HFovDeg);
+	ACameraActor* FindCamera(const FString& Name) const;
+	bool IsHoldTick(int32 T) const;
+	void BeginHold();
+	void TickHold();
+	void EndHold();
+	void NextHoldAction();
+	bool DoVerify();
+	bool RequestCapture(const FString& Path);
+	/** 1 = written (exists, non-empty, newer than the request, size stable), 0 = waiting, -1 = timed out. */
+	int32 PollCapture();
+	void SetTemporalFreeze(bool bOn);
+	void OnScreenshotProcessed();
+	void UpdateRenderer(double InAlpha);
+	void RecordHoldFrame(double Dt);
+	TSharedRef<FJsonObject> BuildVerifyJson() const;
+	APlayerController* GetPC() const;
 
 	FChimeraSimOptions Options;
 	EState State = EState::Setup;
@@ -114,4 +170,30 @@ private:
 	double SettleStart = 0.0;
 	double WarmupWaitS = 0.0;
 	double RunStartTime = 0.0;
+
+	// Rendering and shots (A11).
+	UPROPERTY(Transient)
+	TObjectPtr<AChimeraUnitRenderer> Renderer;
+	UPROPERTY(Transient)
+	TObjectPtr<ACameraActor> OverviewCamera;
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<ACameraActor>> ShotCameras;
+	UPROPERTY(Transient)
+	TObjectPtr<AActor> DefaultViewTarget;
+	TArray<FString> ShotCameraNames;
+	TSet<int32> VerifyTicks;
+	TSet<int32> HoldsDone;
+	FHold Hold;
+	bool bShotProcessed = false;
+	FDelegateHandle ShotDelegate;
+	FChimeraVerifyResult CurrentVerify;
+	bool bHaveCurrentVerify = false;
+	TArray<TSharedPtr<FJsonValue>> VerifyRecords;
+	TSharedPtr<FJsonObject> CurrentVerifyJson;
+	int32 VerifyPassed = 0;
+	int32 ShotsWritten = 0;
+	int32 FilmIndex = 0;
+	TArray<FString> FilmLines;
+	bool bTemporalFrozen = false;
+	TMap<FString, FString> TemporalReadback;
 };

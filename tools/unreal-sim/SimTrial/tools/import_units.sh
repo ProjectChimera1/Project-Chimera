@@ -68,3 +68,8 @@ else
 fi
 [ $RC -eq 0 ] || { echo "import_units: import job failed (rc=$RC)" >&2; exit $RC; }
 python $SIM/tools/check_unit_meshes.py
+RC=$?
+[ $RC -eq 0 ] || exit $RC
+# A11: freshly created team MIs lack the "Used with Instanced Static Meshes" usage, so -game would draw the default material
+# on the renderer's ISMs. Content/ is git-ignored, so the fix must follow every import (same lock hold, a second editor session).
+bash $SIM/tools/fix_unit_usage.sh || { echo "import_units: fix_unit_usage failed" >&2; exit 8; }

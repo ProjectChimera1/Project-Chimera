@@ -1,0 +1,352 @@
+# A11 acceptance record (plan A 4 A11; EXECUTION 2.2/2.3). Generated 2026-10-03T11:49:49-04:00.
+# Round 3 (after verification pass 2): building verify (AI-built ids), journal-free drawn-instance counts, per-unit
+# footprint outside gate, HideUnits-aware verify, no check() in AddInstance, -ChimeraSimVerifyEvery. Runs a11r3_*, work dir TrialOut/a/a11r3.
+# U HEAD 0f726f2 (A11 files uncommitted at run time: p_dirty=1), R HEAD 702b682e
+
+## 1. Build (LOCK a/A11): UE_LOCK_TAG=a/A11 bash U/ue_lock.sh pwsh -NoProfile -File P/SimTrial/tools/build.ps1 -Log TrialOut/a/a11r3/build.log
+build: ProjectChimeraEditor Win64 Development -> D:/Projects/Chimera-Unreal/TrialOut/a/a11r3/build.log
+[1/9] Compile [x64] ChimeraSimGameMode.cpp
+[2/9] Compile [x64] ChimeraSimOptions.cpp
+[3/9] Compile [x64] ChimeraSimVerify.cpp
+[4/9] Compile [x64] ChimeraUnitRenderer.cpp
+[5/9] Compile [x64] ChimeraSimDirector.cpp
+[6/9] Compile [x64] Module.ChimeraSimHost.gen.cpp
+[7/9] Link [x64] UnrealEditor-ChimeraSimHost.lib
+[8/9] Link [x64] UnrealEditor-ChimeraSimHost.dll
+[9/9] WriteMetadata ProjectChimeraEditor.target [NoUba]
+Result: Succeeded
+build: exit 0 in 373 s; Result: Succeeded present = True
+build: D:/Projects/Chimera-Unreal/ProjectChimera/Binaries/Win64/UnrealEditor-ChimeraSimHost.dll sha256=b550b02ea1b22d089be28b558a55faadc4128fed98f02abcd5773ff04a23dfcd
+DLL sha256 = b550b02ea1b22d089be28b558a55faadc4128fed98f02abcd5773ff04a23dfcd
+
+## 2. Lock holds of round 3 (U/ue_lock.log, tag a/A11; >= 10 s between a release and the next acquire)
+2026-10-03T11:35:12,acquire,a/A11,run,1008,,
+2026-10-03T11:41:26,release,a/A11,run,1008,374,0
+2026-10-03T11:41:49,acquire,a/A11,run,0,,  (gap after previous release 23 s)
+2026-10-03T11:43:21,release,a/A11,run,0,92,0
+2026-10-03T11:43:51,acquire,a/A11,run,16,,  (gap after previous release 30 s)
+2026-10-03T11:45:13,release,a/A11,run,16,82,0
+2026-10-03T11:45:27,acquire,a/A11,run,1,,  (gap after previous release 14 s)
+2026-10-03T11:46:38,release,a/A11,run,1,71,0
+2026-10-03T11:47:08,acquire,a/A11,run,16,,  (gap after previous release 30 s)
+2026-10-03T11:49:30,release,a/A11,run,16,142,0
+
+## 3.warmup run_sim.ps1 (see runs.sh for the exact arguments): EXIT=0
+run_sim: check exit_0 = True
+run_sim: check no_abort = True
+run_sim: check loaded_once = True
+run_sim: check loaded_full_path = True
+run_sim: check result_once = True
+run_sim: check no_error = True
+run_sim: check seed_echo = True
+run_sim: check shots_echo = True
+run_sim: check trace_exists = True
+run_sim: check verify_exists = True
+run_sim: [2026.10.03-15.43.18:548][429]LogChimeraSim: Display: RESULT ticks=1440 final=0x2CFCF09E fps_median=138.9 sim_p95_ms=3.118 sim_max_ms=14.901 max_steps_per_frame=2 frames=7276 hitches=0 orders_applied=2077 orders_dropped=0 alive_end=121 verdict=0 mxcsr_nondefault=0 abi_calls=51711 warmup_wait_s=17.3 run_s=58.0 hold_frames=659 verify=5/5 shots=7 film=0
+run_sim: PASS a11r3_warmup exit=0 elapsed=91.3s
+
+## 3.main run_sim.ps1 (see runs.sh for the exact arguments): EXIT=0
+run_sim: check exit_0 = True
+run_sim: check no_abort = True
+run_sim: check loaded_once = True
+run_sim: check loaded_full_path = True
+run_sim: check result_once = True
+run_sim: check no_error = True
+run_sim: check seed_echo = True
+run_sim: check shots_echo = True
+run_sim: check trace_exists = True
+run_sim: check verify_exists = True
+run_sim: [2026.10.03-15.45.11:532][409]LogChimeraSim: Display: RESULT ticks=1440 final=0x2CFCF09E fps_median=138.9 sim_p95_ms=3.242 sim_max_ms=15.277 max_steps_per_frame=1 frames=7263 hitches=0 orders_applied=2077 orders_dropped=0 alive_end=121 verdict=0 mxcsr_nondefault=0 abi_calls=51618 warmup_wait_s=9.8 run_s=57.9 hold_frames=659 verify=5/5 shots=7 film=0
+run_sim: PASS a11r3_main exit=0 elapsed=81.3s
+
+## 3.ai run_sim.ps1 (see runs.sh for the exact arguments): EXIT=0
+run_sim: check exit_0 = True
+run_sim: check no_abort = True
+run_sim: check loaded_once = True
+run_sim: check loaded_full_path = True
+run_sim: check result_once = True
+run_sim: check no_error = True
+run_sim: check seed_echo = True
+run_sim: check shots_echo = True
+run_sim: check trace_exists = True
+run_sim: check verify_exists = True
+run_sim: [2026.10.03-15.46.36:598][709]LogChimeraSim: Display: RESULT ticks=1440 final=0xBA13D580 fps_median=137.8 sim_p95_ms=3.149 sim_max_ms=14.643 max_steps_per_frame=3 frames=6553 hitches=0 orders_applied=2064 orders_dropped=13 alive_end=124 verdict=0 mxcsr_nondefault=0 abi_calls=72815 warmup_wait_s=9.7 run_s=48.0 hold_frames=1 verify=4/4 shots=0 film=0
+run_sim: PASS a11r3_ai exit=0 elapsed=70.6s
+
+## 3.ai_long run_sim.ps1 (see runs.sh for the exact arguments): EXIT=0
+run_sim: check exit_0 = True
+run_sim: check no_abort = True
+run_sim: check loaded_once = True
+run_sim: check loaded_full_path = True
+run_sim: check result_once = True
+run_sim: check no_error = True
+run_sim: check seed_echo = True
+run_sim: check shots_echo = True
+run_sim: check trace_exists = True
+run_sim: check verify_exists = True
+run_sim: [2026.10.03-15.49.28:900][923]LogChimeraSim: Display: RESULT ticks=3600 final=0xE40C97BC fps_median=140.3 sim_p95_ms=2.865 sim_max_ms=14.894 max_steps_per_frame=1 frames=16764 hitches=0 orders_applied=2064 orders_dropped=13 alive_end=33 verdict=0 mxcsr_nondefault=0 abi_calls=168347 warmup_wait_s=9.6 run_s=120.0 hold_frames=1 verify=14/14 shots=0 film=0
+run_sim: PASS a11r3_ai_long exit=0 elapsed=141.9s
+
+## 4. check_shots main: python P/SimTrial/tools/check_shots.py TrialOut/a/unreal/a11r3_main/verify.json --ticks 0,60,300,900,1440 --expect-shots 7 --log TrialOut/a/unreal/a11r3_main/run.log --diff-dir TrialOut/a/a11r3/main_check/diff --out TrialOut/a/a11r3/main_check/check_shots_main.json
+verify tick=0: alive=1000 visible=1000 drawn_instances=1000 dead_visible=0 alive_hidden=0 group_mismatch=0 max_err_cm=0.0000 new_ids_alive=0 new_ids_visible=0 | buildings alive=2 visible=2 drawn_instances=2 dead_visible=0 max_err_cm=0.0000 ai_created=0/0 -> PASS
+verify tick=60: alive=1000 visible=1000 drawn_instances=1000 dead_visible=0 alive_hidden=0 group_mismatch=0 max_err_cm=0.0000 new_ids_alive=0 new_ids_visible=0 | buildings alive=2 visible=2 drawn_instances=2 dead_visible=0 max_err_cm=0.0000 ai_created=0/0 -> PASS
+verify tick=300: alive=999 visible=999 drawn_instances=999 dead_visible=0 alive_hidden=0 group_mismatch=0 max_err_cm=0.0000 new_ids_alive=0 new_ids_visible=0 | buildings alive=2 visible=2 drawn_instances=2 dead_visible=0 max_err_cm=0.0000 ai_created=0/0 -> PASS
+verify tick=900: alive=575 visible=575 drawn_instances=575 dead_visible=0 alive_hidden=0 group_mismatch=0 max_err_cm=0.0000 new_ids_alive=0 new_ids_visible=0 | buildings alive=2 visible=2 drawn_instances=2 dead_visible=0 max_err_cm=0.0000 ai_created=0/0 -> PASS
+verify tick=1440: alive=121 visible=121 drawn_instances=121 dead_visible=0 alive_hidden=0 group_mismatch=0 max_err_cm=0.0000 new_ids_alive=0 new_ids_visible=0 | buildings alive=2 visible=2 drawn_instances=2 dead_visible=0 max_err_cm=0.0000 ai_created=0/0 -> PASS
+shot shot_t0000_overview: size=[1920, 1080] bytes=3719635 alpha 200/200 beta 199/200 outside=1e-05 (box_cover 0.1763) outside_units=1e-05 (unit_cover 0.1294) mirror=True -> PASS
+shot shot_t0000_wide: size=[1920, 1080] bytes=3999229 alpha 194/194 beta 193/194 outside=0.00028 (box_cover 0.3967) outside_units=0.0 (unit_cover 0.3067) mirror=True -> PASS
+shot shot_t0060_close: size=[1920, 1080] bytes=3518717 alpha 13/13 beta 12/12 outside=0.0 (box_cover 0.4344) outside_units=0.0 (unit_cover 0.2338) mirror=True -> PASS
+shot shot_t0300_wide: size=[1920, 1080] bytes=3972282 alpha 195/195 beta 195/195 outside=0.00037 (box_cover 0.4534) outside_units=1e-05 (unit_cover 0.2607) mirror=True -> PASS
+shot shot_t0300_close: size=[1920, 1080] bytes=4375163 alpha 95/97 beta 68/68 outside=0.0 (box_cover 0.9744) outside_units=0.0 (unit_cover 0.9201) mirror=True -> PASS
+shot shot_t0900_wide: size=[1920, 1080] bytes=3843916 alpha 198/198 beta 192/192 outside=0.0 (box_cover 0.6261) outside_units=0.0 (unit_cover 0.1771) mirror=True -> PASS
+shot shot_t1440_wide: size=[1920, 1080] bytes=3725752 alpha 35/35 beta 50/50 outside=0.0 (box_cover 0.3519) outside_units=0.0 (unit_cover 0.0769) mirror=True -> PASS
+log: warnings/errors after tick=900: 0 -> PASS
+CHECK_SHOTS PASS verify=5/5 shots=7/7
+exit=0
+
+## 5. PNGs: 7 shots at 1920x1080 > 300 KB (and their hidden pairs)
+shot_t0000_overview.png (1920, 1080) 3719635 bytes OK
+shot_t0000_overview_hidden.png (1920, 1080) 3567066 bytes OK
+shot_t0000_wide.png (1920, 1080) 3999229 bytes OK
+shot_t0000_wide_hidden.png (1920, 1080) 3677230 bytes OK
+shot_t0060_close.png (1920, 1080) 3518717 bytes OK
+shot_t0060_close_hidden.png (1920, 1080) 3402687 bytes OK
+shot_t0300_close.png (1920, 1080) 4375163 bytes OK
+shot_t0300_close_hidden.png (1920, 1080) 3561070 bytes OK
+shot_t0300_wide.png (1920, 1080) 3972282 bytes OK
+shot_t0300_wide_hidden.png (1920, 1080) 3760722 bytes OK
+shot_t0900_wide.png (1920, 1080) 3843916 bytes OK
+shot_t0900_wide_hidden.png (1920, 1080) 3764674 bytes OK
+shot_t1440_wide.png (1920, 1080) 3725752 bytes OK
+shot_t1440_wide_hidden.png (1920, 1080) 3687383 bytes OK
+
+## 6. Per-shot detail: mirroring (premise = alpha's sampled units at lower world X than beta's; r = Pearson screen x vs world X), outside bars
+shot_t0000_overview | premise True alpha_x 1222.4 beta_x 697.8 alpha_wx -4030.0 beta_wx 4026.0 r -0.9987 order_ok True corr_ok True | changed_px 89013 outside 1e-05 box_cover 0.1763 outside_units 1e-05 unit_cover 0.1294 unit_boxes 1000
+shot_t0000_wide | premise True alpha_x 1386.8 beta_x 533.2 alpha_wx -3871.1 beta_wx 3871.1 r -0.9957 order_ok True corr_ok True | changed_px 253101 outside 0.00028 box_cover 0.3967 outside_units 0.0 unit_cover 0.3067 unit_boxes 987
+shot_t0060_close | premise True alpha_x 1778.3 beta_x 134.3 alpha_wx -1881.2 beta_wx 1886.6 r -0.9957 order_ok True corr_ok True | changed_px 220862 outside 0.0 box_cover 0.4344 outside_units 0.0 unit_cover 0.2338 unit_boxes 134
+shot_t0300_wide | premise True alpha_x 1100.2 beta_x 732.7 alpha_wx -1266.3 beta_wx 2098.7 r -0.9985 order_ok True corr_ok True | changed_px 192678 outside 0.00037 box_cover 0.4534 outside_units 1e-05 unit_cover 0.2607 unit_boxes 985
+shot_t0300_close | premise True alpha_x 1152.0 beta_x 549.9 alpha_wx -357.1 beta_wx 752.1 r -0.9851 order_ok True corr_ok True | changed_px 1071486 outside 0.0 box_cover 0.9744 outside_units 0.0 unit_cover 0.9201 unit_boxes 529
+shot_t0900_wide | premise True alpha_x 883.3 beta_x 873.3 alpha_wx 549.3 beta_wx 783.3 r -0.9964 order_ok True corr_ok True | changed_px 101507 outside 0.0 box_cover 0.6261 outside_units 0.0 unit_cover 0.1771 unit_boxes 568
+shot_t1440_wide | premise False alpha_x 833.9 beta_x 873.0 alpha_wx 1023.0 beta_wx 754.0 r -0.9995 order_ok True corr_ok True | changed_px 41422 outside 0.0 box_cover 0.3519 outside_units 0.0 unit_cover 0.0769 unit_boxes 85
+
+## 7. Shots of round 3 vs round 2 (the reviewer's visual check was made on a11r2_main): same render code, so the pixels should agree
+shot_t0000_overview.png: max channel delta 119, mean 1.3187, pixels with delta > 24: 1320 (0.000637)
+shot_t0000_overview_hidden.png: max channel delta 66, mean 1.4495, pixels with delta > 24: 171 (0.000082)
+shot_t0000_wide.png: max channel delta 126, mean 1.6404, pixels with delta > 24: 2374 (0.001145)
+shot_t0000_wide_hidden.png: max channel delta 98, mean 1.7701, pixels with delta > 24: 339 (0.000163)
+shot_t0060_close.png: max channel delta 104, mean 1.5043, pixels with delta > 24: 519 (0.000250)
+shot_t0060_close_hidden.png: max channel delta 43, mean 1.8453, pixels with delta > 24: 239 (0.000115)
+shot_t0300_close.png: max channel delta 142, mean 2.3297, pixels with delta > 24: 5491 (0.002648)
+shot_t0300_close_hidden.png: max channel delta 57, mean 2.0214, pixels with delta > 24: 27 (0.000013)
+shot_t0300_wide.png: max channel delta 122, mean 1.7503, pixels with delta > 24: 1996 (0.000963)
+shot_t0300_wide_hidden.png: max channel delta 69, mean 1.8619, pixels with delta > 24: 177 (0.000085)
+shot_t0900_wide.png: max channel delta 106, mean 1.6056, pixels with delta > 24: 972 (0.000469)
+shot_t0900_wide_hidden.png: max channel delta 61, mean 1.8461, pixels with delta > 24: 183 (0.000088)
+shot_t1440_wide.png: max channel delta 145, mean 1.4950, pixels with delta > 24: 377 (0.000182)
+shot_t1440_wide_hidden.png: max channel delta 73, mean 1.5693, pixels with delta > 24: 60 (0.000029)
+
+## 8. check_shots ai (verify at the 4 ticks, AI-built buildings drawn): python P/SimTrial/tools/check_shots.py TrialOut/a/unreal/a11r3_ai/verify.json --ticks 0,300,900,1440 --expect-shots 0 --min-ai-buildings 1 --ai-by-tick 900 --log TrialOut/a/unreal/a11r3_ai/run.log --out TrialOut/a/a11r3/ai_check/check_shots_ai.json
+verify tick=0: alive=1000 visible=1000 drawn_instances=1000 dead_visible=0 alive_hidden=0 group_mismatch=0 max_err_cm=0.0000 new_ids_alive=0 new_ids_visible=0 | buildings alive=2 visible=2 drawn_instances=2 dead_visible=0 max_err_cm=0.0000 ai_created=0/0 -> PASS
+verify tick=300: alive=999 visible=999 drawn_instances=999 dead_visible=0 alive_hidden=0 group_mismatch=0 max_err_cm=0.0000 new_ids_alive=0 new_ids_visible=0 | buildings alive=4 visible=4 drawn_instances=4 dead_visible=0 max_err_cm=0.0000 ai_created=2/2 -> PASS
+verify tick=900: alive=554 visible=554 drawn_instances=554 dead_visible=0 alive_hidden=0 group_mismatch=0 max_err_cm=0.0000 new_ids_alive=0 new_ids_visible=0 | buildings alive=7 visible=7 drawn_instances=7 dead_visible=0 max_err_cm=0.0000 ai_created=5/5 -> PASS
+verify tick=1440: alive=124 visible=124 drawn_instances=124 dead_visible=0 alive_hidden=0 group_mismatch=0 max_err_cm=0.0000 new_ids_alive=0 new_ids_visible=0 | buildings alive=6 visible=6 drawn_instances=6 dead_visible=0 max_err_cm=0.0000 ai_created=4/4 -> PASS
+ai buildings: max ai_created_alive at ticks <= 900 = 5 (need >= 1) -> PASS
+log: warnings/errors after tick=900: 0 -> PASS
+CHECK_SHOTS PASS verify=4/4 shots=0/0
+exit=0
+ai renderer: {'groups': 'alpha/archer x120, alpha/griffin x40, alpha/heavy_infantry x50, alpha/infantry x150, alpha/mage x60, alpha/scout x30, alpha/siege_engine x30, alpha/worker x20, beta/bulwark x50, beta/crossbowman x120, beta/footsoldier x150, beta/forgehand x20, beta/ironclad x30, beta/rune_caster x60, beta/war_machine x30, beta/wyvern x40, alpha/command_center x1, beta/command_center x2, beta/barracks(proxy) x2, beta/archery_range(proxy) x1, beta/siege_workshop(proxy) x1', 'group_count': 21, 'journal_adds': 1000, 're_adds': 0, 'new_id_adds': 0, 'building_adds': 7, 'initial_rows': 1000, 'building_journal': 7, 'initial_building_adds': 2}
+ai tick 0 units rows 1000 alive 1000 visible 1000 drawn_instances 1000 new_ids_alive 0 | buildings rows 2 alive 2 visible 2 drawn 2 err 0 ai_created 0 / 0 []
+ai tick 300 units rows 1000 alive 999 visible 999 drawn_instances 999 new_ids_alive 0 | buildings rows 4 alive 4 visible 4 drawn 4 err 0 ai_created 2 / 2 [[2, 2, 'command_center', 1], [3, 2, 'barracks', 1]]
+ai tick 900 units rows 1000 alive 554 visible 554 drawn_instances 554 new_ids_alive 0 | buildings rows 7 alive 7 visible 7 drawn 7 err 0 ai_created 5 / 5 [[2, 2, 'command_center', 1], [3, 2, 'barracks', 1], [4, 2, 'barracks', 1], [5, 2, 'archery_range', 1], [6, 2, 'siege_workshop', 1]]
+ai tick 1440 units rows 1000 alive 124 visible 124 drawn_instances 124 new_ids_alive 0 | buildings rows 7 alive 6 visible 6 drawn 6 err 0 ai_created 4 / 4 [[2, 2, 'command_center', 1], [3, 2, 'barracks', 1], [4, 2, 'barracks', 1], [5, 2, 'archery_range', 1]]
+LogChimeraSim: Display: renderer: building slot 0 alpha/command_center at (-100.0, 0.0) m -> group 16 index 0
+LogChimeraSim: Display: renderer: building slot 1 beta/command_center at (100.0, 0.0) m -> group 17 index 0
+LogChimeraSim: Display: renderer: building slot 2 beta/command_center at (54.0, 0.0) m -> group 17 index 1
+LogChimeraSim: Warning: renderer: no unit_meshes.json entry for beta building 'barracks'; drawing a proxy cube
+LogChimeraSim: Display: renderer: building slot 3 beta/barracks at (36.0, 6.0) m -> group 18 index 0
+LogChimeraSim: Display: renderer: building slot 4 beta/barracks at (36.0, -6.0) m -> group 18 index 1
+LogChimeraSim: Warning: renderer: no unit_meshes.json entry for beta building 'archery_range'; drawing a proxy cube
+LogChimeraSim: Display: renderer: building slot 5 beta/archery_range at (42.0, 12.0) m -> group 19 index 0
+LogChimeraSim: Warning: renderer: no unit_meshes.json entry for beta building 'siege_workshop'; drawing a proxy cube
+LogChimeraSim: Display: renderer: building slot 6 beta/siege_workshop at (42.0, -12.0) m -> group 20 index 0
+
+## 9. Diagnostic (ungated): ai run of 3600 ticks, verify every 300 ticks: does the renderer draw AI-trained unit ids?
+verify tick=0: alive=1000 visible=1000 drawn_instances=1000 dead_visible=0 alive_hidden=0 group_mismatch=0 max_err_cm=0.0000 new_ids_alive=0 new_ids_visible=0 | buildings alive=2 visible=2 drawn_instances=2 dead_visible=0 max_err_cm=0.0000 ai_created=0/0 -> PASS
+verify tick=300: alive=999 visible=999 drawn_instances=999 dead_visible=0 alive_hidden=0 group_mismatch=0 max_err_cm=0.0000 new_ids_alive=0 new_ids_visible=0 | buildings alive=4 visible=4 drawn_instances=4 dead_visible=0 max_err_cm=0.0000 ai_created=2/2 -> PASS
+verify tick=600: alive=886 visible=886 drawn_instances=886 dead_visible=0 alive_hidden=0 group_mismatch=0 max_err_cm=0.0000 new_ids_alive=0 new_ids_visible=0 | buildings alive=6 visible=6 drawn_instances=6 dead_visible=0 max_err_cm=0.0000 ai_created=4/4 -> PASS
+verify tick=900: alive=554 visible=554 drawn_instances=554 dead_visible=0 alive_hidden=0 group_mismatch=0 max_err_cm=0.0000 new_ids_alive=0 new_ids_visible=0 | buildings alive=7 visible=7 drawn_instances=7 dead_visible=0 max_err_cm=0.0000 ai_created=5/5 -> PASS
+verify tick=1200: alive=265 visible=265 drawn_instances=265 dead_visible=0 alive_hidden=0 group_mismatch=0 max_err_cm=0.0000 new_ids_alive=0 new_ids_visible=0 | buildings alive=6 visible=6 drawn_instances=6 dead_visible=0 max_err_cm=0.0000 ai_created=4/4 -> PASS
+verify tick=1440: alive=124 visible=124 drawn_instances=124 dead_visible=0 alive_hidden=0 group_mismatch=0 max_err_cm=0.0000 new_ids_alive=0 new_ids_visible=0 | buildings alive=6 visible=6 drawn_instances=6 dead_visible=0 max_err_cm=0.0000 ai_created=4/4 -> PASS
+verify tick=1500: alive=109 visible=109 drawn_instances=109 dead_visible=0 alive_hidden=0 group_mismatch=0 max_err_cm=0.0000 new_ids_alive=0 new_ids_visible=0 | buildings alive=6 visible=6 drawn_instances=6 dead_visible=0 max_err_cm=0.0000 ai_created=4/4 -> PASS
+verify tick=1800: alive=61 visible=61 drawn_instances=61 dead_visible=0 alive_hidden=0 group_mismatch=0 max_err_cm=0.0000 new_ids_alive=0 new_ids_visible=0 | buildings alive=6 visible=6 drawn_instances=6 dead_visible=0 max_err_cm=0.0000 ai_created=4/4 -> PASS
+verify tick=2100: alive=37 visible=37 drawn_instances=37 dead_visible=0 alive_hidden=0 group_mismatch=0 max_err_cm=0.0000 new_ids_alive=0 new_ids_visible=0 | buildings alive=6 visible=6 drawn_instances=6 dead_visible=0 max_err_cm=0.0000 ai_created=4/4 -> PASS
+verify tick=2400: alive=34 visible=34 drawn_instances=34 dead_visible=0 alive_hidden=0 group_mismatch=0 max_err_cm=0.0000 new_ids_alive=0 new_ids_visible=0 | buildings alive=6 visible=6 drawn_instances=6 dead_visible=0 max_err_cm=0.0000 ai_created=4/4 -> PASS
+verify tick=2700: alive=34 visible=34 drawn_instances=34 dead_visible=0 alive_hidden=0 group_mismatch=0 max_err_cm=0.0000 new_ids_alive=0 new_ids_visible=0 | buildings alive=6 visible=6 drawn_instances=6 dead_visible=0 max_err_cm=0.0000 ai_created=4/4 -> PASS
+verify tick=3000: alive=34 visible=34 drawn_instances=34 dead_visible=0 alive_hidden=0 group_mismatch=0 max_err_cm=0.0000 new_ids_alive=0 new_ids_visible=0 | buildings alive=6 visible=6 drawn_instances=6 dead_visible=0 max_err_cm=0.0000 ai_created=4/4 -> PASS
+verify tick=3300: alive=34 visible=34 drawn_instances=34 dead_visible=0 alive_hidden=0 group_mismatch=0 max_err_cm=0.0000 new_ids_alive=0 new_ids_visible=0 | buildings alive=5 visible=5 drawn_instances=5 dead_visible=0 max_err_cm=0.0000 ai_created=4/4 -> PASS
+verify tick=3600: alive=33 visible=33 drawn_instances=33 dead_visible=0 alive_hidden=0 group_mismatch=0 max_err_cm=0.0000 new_ids_alive=0 new_ids_visible=0 | buildings alive=5 visible=5 drawn_instances=5 dead_visible=0 max_err_cm=0.0000 ai_created=4/4 -> PASS
+ai buildings: max ai_created_alive at ticks <= 900 = 5 (need >= 1) -> PASS
+CHECK_SHOTS PASS verify=14/14 shots=0/0
+exit=0
+ai_long renderer: {'groups': 'alpha/archer x120, alpha/griffin x40, alpha/heavy_infantry x50, alpha/infantry x150, alpha/mage x60, alpha/scout x30, alpha/siege_engine x30, alpha/worker x20, beta/bulwark x50, beta/crossbowman x120, beta/footsoldier x150, beta/forgehand x20, beta/ironclad x30, beta/rune_caster x60, beta/war_machine x30, beta/wyvern x40, alpha/command_center x1, beta/command_center x2, beta/barracks(proxy) x2, beta/archery_range(proxy) x1, beta/siege_workshop(proxy) x1', 'group_count': 21, 'journal_adds': 1000, 're_adds': 0, 'new_id_adds': 0, 'building_adds': 7, 'initial_rows': 1000, 'building_journal': 7, 'initial_building_adds': 2}
+tick 0 rows 1000 alive 1000 visible 1000 drawn 1000 new_ids_alive 0 new_ids_visible 0 err 0 | buildings 2 / 2 ai_created 0 / 0 pass True
+tick 300 rows 1000 alive 999 visible 999 drawn 999 new_ids_alive 0 new_ids_visible 0 err 0 | buildings 4 / 4 ai_created 2 / 2 pass True
+tick 600 rows 1000 alive 886 visible 886 drawn 886 new_ids_alive 0 new_ids_visible 0 err 0 | buildings 6 / 6 ai_created 4 / 4 pass True
+tick 900 rows 1000 alive 554 visible 554 drawn 554 new_ids_alive 0 new_ids_visible 0 err 0 | buildings 7 / 7 ai_created 5 / 5 pass True
+tick 1200 rows 1000 alive 265 visible 265 drawn 265 new_ids_alive 0 new_ids_visible 0 err 0 | buildings 6 / 6 ai_created 4 / 4 pass True
+tick 1440 rows 1000 alive 124 visible 124 drawn 124 new_ids_alive 0 new_ids_visible 0 err 0 | buildings 6 / 6 ai_created 4 / 4 pass True
+tick 1500 rows 1000 alive 109 visible 109 drawn 109 new_ids_alive 0 new_ids_visible 0 err 0 | buildings 6 / 6 ai_created 4 / 4 pass True
+tick 1800 rows 1000 alive 61 visible 61 drawn 61 new_ids_alive 0 new_ids_visible 0 err 0 | buildings 6 / 6 ai_created 4 / 4 pass True
+tick 2100 rows 1000 alive 37 visible 37 drawn 37 new_ids_alive 0 new_ids_visible 0 err 0 | buildings 6 / 6 ai_created 4 / 4 pass True
+tick 2400 rows 1000 alive 34 visible 34 drawn 34 new_ids_alive 0 new_ids_visible 0 err 0 | buildings 6 / 6 ai_created 4 / 4 pass True
+tick 2700 rows 1000 alive 34 visible 34 drawn 34 new_ids_alive 0 new_ids_visible 0 err 0 | buildings 6 / 6 ai_created 4 / 4 pass True
+tick 3000 rows 1000 alive 34 visible 34 drawn 34 new_ids_alive 0 new_ids_visible 0 err 0 | buildings 6 / 6 ai_created 4 / 4 pass True
+tick 3300 rows 1000 alive 34 visible 34 drawn 34 new_ids_alive 0 new_ids_visible 0 err 0 | buildings 5 / 5 ai_created 4 / 4 pass True
+tick 3600 rows 1000 alive 33 visible 33 drawn 33 new_ids_alive 0 new_ids_visible 0 err 0 | buildings 5 / 5 ai_created 4 / 4 pass True
+
+## 10. Traces of every round-3 run against the goldens (the 3600-tick diagnostic has no golden)
+  meta           1440/1440 (reference: golden + meta + trailer)
+  unreal_a11     1440/1440 H0=6/6 header=ok digests=ok orders=ok
+RESULT set=main legs=2 ticks=1440 all_equal=yes PASS
+exit=0
+  unreal_w       1440/1440 H0=6/6 header=ok digests=ok orders=ok
+  unreal_main    1440/1440 H0=6/6 header=ok digests=ok orders=ok
+RESULT set=main legs=3 ticks=1440 all_equal=yes PASS
+exit=0
+  meta           1440/1440 (reference: golden + meta + trailer)
+  unreal_a11r3_ai 1440/1440 H0=6/6 header=ok digests=ok orders=ok
+RESULT set=ai legs=2 ticks=1440 all_equal=yes PASS
+exit=0
+
+## 11. Warnings in the evidence logs (all, excluding the LogEditorDataStorageUI start-up lines A10 also had)
+-- a11r3_main
+      1 LogGameFeatures: Error: Asset manager settings do not include a rule for assets of type GameFeatureData, which is required for game feature plugins to function
+      1 LogPython: Error:                                           ^^^^^^^^^^^^^^^^^^^^^^^
+      1 LogPython: Error:                                        ^^^^^^^^^^^^^^^^^
+      1 LogPython: Error:                                ^^^^^^^^^^^^^^^^^
+      2 LogPython: Error:                             ^^^^^^^^^^^^^^^^^^^^^^^^
+      1 LogPython: Error:                           ^^^^^^^^^^^^^^^^^^^^^^^^
+      1 LogPython: Error:                          ^^^^^^^^^^^^^^^^^^^^^^^^
+      1 LogPython: Error:     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      1 LogPython: Error:     class BehaviorTreeTools(unreal.ToolsetDefinition):
+      1 LogPython: Error:     class BlueprintBasicsSkill(unreal.AgentSkill):
+      1 LogPython: Error:     class ControlRigTools(unreal.ToolsetDefinition):
+      1 LogPython: Error:     class ConversationTools(unreal.ToolsetDefinition):
+      1 LogPython: Error:     class NiagaraBlueprintInteropSkill(unreal.AgentSkill):
+      1 LogPython: Error:     class StateTreeTools(unreal.ToolsetDefinition):
+      1 LogPython: Error:     from aimodule_toolset import toolsets
+      1 LogPython: Error:     from aimodule_toolset.toolsets.behavior_tree import BehaviorTreeTools
+      1 LogPython: Error:     from animation_toolset import toolsets
+      1 LogPython: Error:     from animation_toolset.toolsets.controlrig import ControlRigTools
+      1 LogPython: Error:     from conversation_toolset import toolsets
+      1 LogPython: Error:     from conversation_toolset.toolsets.conversation import ConversationTools
+      1 LogPython: Error:     from editor_toolset import skills  # noqa: F401 — imports register @agent_skill modules
+      1 LogPython: Error:     from editor_toolset.skills import blueprint_basics
+      1 LogPython: Error:     from skills import blueprint_interop
+      1 LogPython: Error:     from state_tree_toolset import toolsets
+      1 LogPython: Error:     from state_tree_toolset.toolsets.state_tree import StateTreeTools
+      1 LogPython: Error:     tests._toolset_registry_test_runner = unreal.PythonTestRunner.create(
+      1 LogPython: Error:   File "D:/Epic Games/UE_5.8/Engine/Plugins/Experimental/ToolsetRegistry/Content/Python/init_unreal.py", line 7, in <module>
+      1 LogPython: Error:   File "D:/Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/AIModuleToolset/Content/Python/init_unreal.py", line 5, in <module>
+      1 LogPython: Error:   File "D:/Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/AnimationAssistantToolset/Content/Python/init_unreal.py", line 7, in <module
+      1 LogPython: Error:   File "D:/Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/ConversationToolset/Content/Python/init_unreal.py", line 5, in <module>
+      1 LogPython: Error:   File "D:/Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/EditorToolset/Content/Python/init_unreal.py", line 5, in <module>
+      1 LogPython: Error:   File "D:/Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/NiagaraToolsets/Content/Python/init_unreal.py", line 3, in <module>
+      1 LogPython: Error:   File "D:/Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/StateTreeToolset/Content/Python/init_unreal.py", line 5, in <module>
+      1 LogPython: Error:   File "D:\Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/AIModuleToolset/Content/Python\aimodule_toolset\toolsets\__init__.py", line 
+      1 LogPython: Error:   File "D:\Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/AIModuleToolset/Content/Python\aimodule_toolset\toolsets\behavior_tree.py", 
+      1 LogPython: Error:   File "D:\Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/AnimationAssistantToolset/Content/Python\animation_toolset\toolsets\__init__
+      1 LogPython: Error:   File "D:\Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/AnimationAssistantToolset/Content/Python\animation_toolset\toolsets\controlr
+      1 LogPython: Error:   File "D:\Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/ConversationToolset/Content/Python\conversation_toolset\toolsets\__init__.py
+      1 LogPython: Error:   File "D:\Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/ConversationToolset/Content/Python\conversation_toolset\toolsets\conversatio
+      1 LogPython: Error:   File "D:\Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/EditorToolset/Content/Python\editor_toolset\skills\__init__.py", line 3, in 
+      1 LogPython: Error:   File "D:\Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/EditorToolset/Content/Python\editor_toolset\skills\blueprint_basics.py", lin
+      1 LogPython: Error:   File "D:\Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/NiagaraToolsets/Content/Python\skills\blueprint_interop.py", line 35, in <mo
+      1 LogPython: Error:   File "D:\Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/StateTreeToolset/Content/Python\state_tree_toolset\toolsets\__init__.py", li
+      1 LogPython: Error:   File "D:\Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/StateTreeToolset/Content/Python\state_tree_toolset\toolsets\state_tree.py", 
+      2 LogPython: Error: AttributeError: module 'unreal' has no attribute 'AgentSkill'
+      1 LogPython: Error: AttributeError: module 'unreal' has no attribute 'PythonTestRunner'
+      4 LogPython: Error: AttributeError: module 'unreal' has no attribute 'ToolsetDefinition'
+      7 LogPython: Error: Traceback (most recent call last):
+      1 LogRenderer: Warning: Screen Space Global Illumination (SSGI) is deprecated (from 5.8) and will be removed in a future release. Please migrate to Lumen Global I
+-- a11r3_ai
+      1 LogChimeraSim: Warning: renderer: no unit_meshes.json entry for beta building 'archery_range'; drawing a proxy cube
+      1 LogChimeraSim: Warning: renderer: no unit_meshes.json entry for beta building 'barracks'; drawing a proxy cube
+      1 LogChimeraSim: Warning: renderer: no unit_meshes.json entry for beta building 'siege_workshop'; drawing a proxy cube
+      1 LogGameFeatures: Error: Asset manager settings do not include a rule for assets of type GameFeatureData, which is required for game feature plugins to function
+      1 LogPython: Error:                                           ^^^^^^^^^^^^^^^^^^^^^^^
+      1 LogPython: Error:                                        ^^^^^^^^^^^^^^^^^
+      1 LogPython: Error:                                ^^^^^^^^^^^^^^^^^
+      2 LogPython: Error:                             ^^^^^^^^^^^^^^^^^^^^^^^^
+      1 LogPython: Error:                           ^^^^^^^^^^^^^^^^^^^^^^^^
+      1 LogPython: Error:                          ^^^^^^^^^^^^^^^^^^^^^^^^
+      1 LogPython: Error:     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      1 LogPython: Error:     class BehaviorTreeTools(unreal.ToolsetDefinition):
+      1 LogPython: Error:     class BlueprintBasicsSkill(unreal.AgentSkill):
+      1 LogPython: Error:     class ControlRigTools(unreal.ToolsetDefinition):
+      1 LogPython: Error:     class ConversationTools(unreal.ToolsetDefinition):
+      1 LogPython: Error:     class NiagaraBlueprintInteropSkill(unreal.AgentSkill):
+      1 LogPython: Error:     class StateTreeTools(unreal.ToolsetDefinition):
+      1 LogPython: Error:     from aimodule_toolset import toolsets
+      1 LogPython: Error:     from aimodule_toolset.toolsets.behavior_tree import BehaviorTreeTools
+      1 LogPython: Error:     from animation_toolset import toolsets
+      1 LogPython: Error:     from animation_toolset.toolsets.controlrig import ControlRigTools
+      1 LogPython: Error:     from conversation_toolset import toolsets
+      1 LogPython: Error:     from conversation_toolset.toolsets.conversation import ConversationTools
+      1 LogPython: Error:     from editor_toolset import skills  # noqa: F401 — imports register @agent_skill modules
+      1 LogPython: Error:     from editor_toolset.skills import blueprint_basics
+      1 LogPython: Error:     from skills import blueprint_interop
+      1 LogPython: Error:     from state_tree_toolset import toolsets
+      1 LogPython: Error:     from state_tree_toolset.toolsets.state_tree import StateTreeTools
+      1 LogPython: Error:     tests._toolset_registry_test_runner = unreal.PythonTestRunner.create(
+      1 LogPython: Error:   File "D:/Epic Games/UE_5.8/Engine/Plugins/Experimental/ToolsetRegistry/Content/Python/init_unreal.py", line 7, in <module>
+      1 LogPython: Error:   File "D:/Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/AIModuleToolset/Content/Python/init_unreal.py", line 5, in <module>
+      1 LogPython: Error:   File "D:/Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/AnimationAssistantToolset/Content/Python/init_unreal.py", line 7, in <module
+      1 LogPython: Error:   File "D:/Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/ConversationToolset/Content/Python/init_unreal.py", line 5, in <module>
+      1 LogPython: Error:   File "D:/Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/EditorToolset/Content/Python/init_unreal.py", line 5, in <module>
+      1 LogPython: Error:   File "D:/Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/NiagaraToolsets/Content/Python/init_unreal.py", line 3, in <module>
+      1 LogPython: Error:   File "D:/Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/StateTreeToolset/Content/Python/init_unreal.py", line 5, in <module>
+      1 LogPython: Error:   File "D:\Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/AIModuleToolset/Content/Python\aimodule_toolset\toolsets\__init__.py", line 
+      1 LogPython: Error:   File "D:\Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/AIModuleToolset/Content/Python\aimodule_toolset\toolsets\behavior_tree.py", 
+      1 LogPython: Error:   File "D:\Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/AnimationAssistantToolset/Content/Python\animation_toolset\toolsets\__init__
+      1 LogPython: Error:   File "D:\Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/AnimationAssistantToolset/Content/Python\animation_toolset\toolsets\controlr
+      1 LogPython: Error:   File "D:\Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/ConversationToolset/Content/Python\conversation_toolset\toolsets\__init__.py
+      1 LogPython: Error:   File "D:\Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/ConversationToolset/Content/Python\conversation_toolset\toolsets\conversatio
+      1 LogPython: Error:   File "D:\Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/EditorToolset/Content/Python\editor_toolset\skills\__init__.py", line 3, in 
+      1 LogPython: Error:   File "D:\Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/EditorToolset/Content/Python\editor_toolset\skills\blueprint_basics.py", lin
+      1 LogPython: Error:   File "D:\Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/NiagaraToolsets/Content/Python\skills\blueprint_interop.py", line 35, in <mo
+      1 LogPython: Error:   File "D:\Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/StateTreeToolset/Content/Python\state_tree_toolset\toolsets\__init__.py", li
+      1 LogPython: Error:   File "D:\Epic Games/UE_5.8/Engine/Plugins/Experimental/Toolsets/StateTreeToolset/Content/Python\state_tree_toolset\toolsets\state_tree.py", 
+      2 LogPython: Error: AttributeError: module 'unreal' has no attribute 'AgentSkill'
+      1 LogPython: Error: AttributeError: module 'unreal' has no attribute 'PythonTestRunner'
+      4 LogPython: Error: AttributeError: module 'unreal' has no attribute 'ToolsetDefinition'
+      7 LogPython: Error: Traceback (most recent call last):
+      1 LogRenderer: Warning: Screen Space Global Illumination (SSGI) is deprecated (from 5.8) and will be removed in a future release. Please migrate to Lumen Global I
+
+## 12. Self-test of check_shots.py: python P/SimTrial/tools/test_check_shots.py
+ok   good: rc=0 (want 0)
+ok   mirrored: rc=1 (want 1, with 'mirror')
+ok   noisy: rc=1 (want 1, with 'outside fraction')
+ok   crossed: rc=0 (want 0)
+ok   swapped_axis: rc=1 (want 1, with 'mirror')
+ok   inbox_noise: rc=1 (want 1, with 'outside_units fraction')
+ok   ghost_instance: rc=1 (want 1, with 'FAIL')
+ok   building_hidden: rc=1 (want 1, with 'FAIL')
+ok   ai_buildings_none: rc=1 (want 1, with 'ai buildings')
+ok   ai_buildings_one: rc=0 (want 0)
+SELFTEST OK 10/10 (files in C:\Users\MD_Ki\AppData\Local\Temp\check_shots_selftest_78fiv7fg)
+
+## 13. Mesh table: python P/SimTrial/tools/check_unit_meshes.py
+entries=18 resolved=18 static=18 nanite=18 height_err_max=0.00%
+
+## 14. Mirror R/tools/unreal-sim vs P, and secret scan
+mirror identical=38 different=0
+SECRET_SCAN OK
+
+## 15. HideUnits diagnostic (A12's option; ungated): run_sim.ps1 -Tag a11r3_hide -Shots none -HideUnits -> EXIT=0
+run_sim: [2026.10.03-15.53.10:825][168]LogChimeraSim: Display: RESULT ticks=1440 final=0x2CFCF09E fps_median=145.0 sim_p95_ms=3.140 sim_max_ms=13.859 max_steps_per_frame=1 frames=6953 hitches=0 orders_applied=2077 orders_dropped=0 alive_end=121 verdict=0 mxcsr_nondefault=0 abi_calls=49337 warmup_wait_s=11.1 run_s=48.0 hold_frames=1 verify=4/4 shots=0 film=0
+run_sim: PASS a11r3_hide exit=0 elapsed=88.1s
+tick 0 alive 1000 visible(by instance scale) 1000 drawn_instances 1000 units_hidden_by_option True pass True
+tick 300 alive 999 visible(by instance scale) 999 drawn_instances 999 units_hidden_by_option True pass True
+tick 900 alive 575 visible(by instance scale) 575 drawn_instances 575 units_hidden_by_option True pass True
+tick 1440 alive 121 visible(by instance scale) 121 drawn_instances 121 units_hidden_by_option True pass True

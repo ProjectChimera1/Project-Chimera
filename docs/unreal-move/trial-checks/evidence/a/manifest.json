@@ -491,5 +491,404 @@
     "unreal_build_id": "",
     "committed": true,
     "sent_to_alec": null
+  },
+  {
+    "file": "a-A11-visual-check.json",
+    "path": "a/a-A11-visual-check.json",
+    "sha256": "78458f766ab64640cb64b45fb32c6efa944b6bb6c4ed23d4d9d22fc8e2ae60df",
+    "bytes": 31066,
+    "w_h": null,
+    "task": "A11",
+    "source": "D:/Projects/Project_Chimera/docs/unreal-move/trial-checks/evidence/a/a-A11-visual-check.json",
+    "r_commit": "702b682e",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A11-contact-sheet.jpg",
+    "path": "a/a-A11-contact-sheet.jpg",
+    "sha256": "95555e61010b647b180fefcf557e1b875acb337792a60f50d4fbd15922afbbbe",
+    "bytes": 785448,
+    "w_h": [
+      2448,
+      1522
+    ],
+    "task": "A11",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/a11r3/a-A11-contact-sheet.jpg",
+    "r_commit": "702b682e",
+    "unreal_build_id": "ue_module:b550b02ea1b22d08",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A11-contact-sheet-phone.jpg",
+    "path": "a/a-A11-contact-sheet-phone.jpg",
+    "sha256": "0e2d484b96119c1ecbaad157a3d2ad5f160dcbfe5fe452226ca09fb51698ec85",
+    "bytes": 388232,
+    "w_h": [
+      1600,
+      995
+    ],
+    "task": "A11",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/a11r3/a-A11-contact-sheet-phone.jpg",
+    "r_commit": "702b682e",
+    "unreal_build_id": "ue_module:b550b02ea1b22d08",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A11-verify-main.json",
+    "path": "a/a-A11-verify-main.json",
+    "sha256": "da93db4d76ccad9e393fd823e27b9ed5f41a19ca87c810bfab217f462a22e84e",
+    "bytes": 715058,
+    "w_h": null,
+    "task": "A11",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/verify.json",
+    "r_commit": "702b682e",
+    "unreal_build_id": "ue_module:b550b02ea1b22d08",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A11-verify-ai.json",
+    "path": "a/a-A11-verify-ai.json",
+    "sha256": "ac9ee27506bc61494c6e8f24e08d51948450c4c5c1cb8e603e9754fcd341c804",
+    "bytes": 5837,
+    "w_h": null,
+    "task": "A11",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_ai/verify.json",
+    "r_commit": "702b682e",
+    "unreal_build_id": "ue_module:b550b02ea1b22d08",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A11-check-shots-main.json",
+    "path": "a/a-A11-check-shots-main.json",
+    "sha256": "572a6ceb7d1796d463e72189059af7c72a1e2e270b4e565376e1218796b17f02",
+    "bytes": 14227,
+    "w_h": null,
+    "task": "A11",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/a11r3/main_check/check_shots_main.json",
+    "r_commit": "702b682e",
+    "unreal_build_id": "ue_module:b550b02ea1b22d08",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A11-check-shots-ai.json",
+    "path": "a/a-A11-check-shots-ai.json",
+    "sha256": "0ecec797092248291b67cd523202395aca6336e9b9e020ac6b152501d2e9cf4f",
+    "bytes": 4436,
+    "w_h": null,
+    "task": "A11",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/a11r3/ai_check/check_shots_ai.json",
+    "r_commit": "702b682e",
+    "unreal_build_id": "ue_module:b550b02ea1b22d08",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A11-check-shots-ai-long.json",
+    "path": "a/a-A11-check-shots-ai-long.json",
+    "sha256": "6f1c4f837ad7f2314ed2b595a1bb9f5716a983d81ab757c135c2d5d4a44039fb",
+    "bytes": 14542,
+    "w_h": null,
+    "task": "A11",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/a11r3/ai_long_check/check_shots_ai_long.json",
+    "r_commit": "702b682e",
+    "unreal_build_id": "ue_module:b550b02ea1b22d08",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A11-compare-main.json",
+    "path": "a/a-A11-compare-main.json",
+    "sha256": "dd57a4558eedf31f2ea401f0e535e17acd33b50a3c68bdeae03428d0725ece1c",
+    "bytes": 1014,
+    "w_h": null,
+    "task": "A11",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/a11r3/cmp_main/compare.json",
+    "r_commit": "702b682e",
+    "unreal_build_id": "ue_module:b550b02ea1b22d08",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A11-compare-ai.json",
+    "path": "a/a-A11-compare-ai.json",
+    "sha256": "a97107fbd822a39243468a6c45263a7ad6ddff1c3e6321fd8efc0d224e8eeb78",
+    "bytes": 1022,
+    "w_h": null,
+    "task": "A11",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/a11r3/cmp_ai/compare.json",
+    "r_commit": "702b682e",
+    "unreal_build_id": "ue_module:b550b02ea1b22d08",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A11-trace-unreal-main.txt",
+    "path": "a/a-A11-trace-unreal-main.txt",
+    "sha256": "cb07b2419a71c22d347aa8df3cdd136edae0bdf9eb63a8f68a520a59b1d2fb79",
+    "bytes": 20819,
+    "w_h": null,
+    "task": "A11",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/trace.txt",
+    "r_commit": "702b682e",
+    "unreal_build_id": "ue_module:b550b02ea1b22d08",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A11-trace-unreal-ai.txt",
+    "path": "a/a-A11-trace-unreal-ai.txt",
+    "sha256": "9f2ac334da0da9f2ebdabaa2e4431c4faed8883fa6a6b4da40d63f129266c808",
+    "bytes": 20758,
+    "w_h": null,
+    "task": "A11",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_ai/trace.txt",
+    "r_commit": "702b682e",
+    "unreal_build_id": "ue_module:b550b02ea1b22d08",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A11-shot-t0000-overview.png",
+    "path": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/shots/shot_t0000_overview.png",
+    "sha256": "bd7f77f9212bebde9dfabd808577706b86a7df4328ef128d0948b36893a48c25",
+    "bytes": 3719635,
+    "w_h": [
+      1920,
+      1080
+    ],
+    "task": "A11",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/shots/shot_t0000_overview.png",
+    "r_commit": "702b682e",
+    "unreal_build_id": "ue_module:b550b02ea1b22d08",
+    "committed": false,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A11-shot-t0000-overview-hidden.png",
+    "path": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/shots/shot_t0000_overview_hidden.png",
+    "sha256": "d4286aa298f80d108f4e35b5abab0affeee313478b2f67ed29989e984387258c",
+    "bytes": 3567066,
+    "w_h": [
+      1920,
+      1080
+    ],
+    "task": "A11",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/shots/shot_t0000_overview_hidden.png",
+    "r_commit": "702b682e",
+    "unreal_build_id": "ue_module:b550b02ea1b22d08",
+    "committed": false,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A11-shot-t0000-wide.png",
+    "path": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/shots/shot_t0000_wide.png",
+    "sha256": "7ded74890a3ac09a35860834ee140ba9491eb058e4594626f5da312de879c35f",
+    "bytes": 3999229,
+    "w_h": [
+      1920,
+      1080
+    ],
+    "task": "A11",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/shots/shot_t0000_wide.png",
+    "r_commit": "702b682e",
+    "unreal_build_id": "ue_module:b550b02ea1b22d08",
+    "committed": false,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A11-shot-t0000-wide-hidden.png",
+    "path": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/shots/shot_t0000_wide_hidden.png",
+    "sha256": "2e9e3ebc72bfe02b96887b539a8689a73d7b39b59911c3f2021f1363e2aaf994",
+    "bytes": 3677230,
+    "w_h": [
+      1920,
+      1080
+    ],
+    "task": "A11",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/shots/shot_t0000_wide_hidden.png",
+    "r_commit": "702b682e",
+    "unreal_build_id": "ue_module:b550b02ea1b22d08",
+    "committed": false,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A11-shot-t0060-close.png",
+    "path": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/shots/shot_t0060_close.png",
+    "sha256": "21f59901608f8e693bb9a57e271f5f47a3576ff3fb283eb03e741271187d1e8b",
+    "bytes": 3518717,
+    "w_h": [
+      1920,
+      1080
+    ],
+    "task": "A11",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/shots/shot_t0060_close.png",
+    "r_commit": "702b682e",
+    "unreal_build_id": "ue_module:b550b02ea1b22d08",
+    "committed": false,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A11-shot-t0060-close-hidden.png",
+    "path": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/shots/shot_t0060_close_hidden.png",
+    "sha256": "bfeb774d12099b508d19df6c5ce105a41a98ce32310c23559c2eec771b28639d",
+    "bytes": 3402687,
+    "w_h": [
+      1920,
+      1080
+    ],
+    "task": "A11",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/shots/shot_t0060_close_hidden.png",
+    "r_commit": "702b682e",
+    "unreal_build_id": "ue_module:b550b02ea1b22d08",
+    "committed": false,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A11-shot-t0300-close.png",
+    "path": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/shots/shot_t0300_close.png",
+    "sha256": "9c7ccac6380f4acc2161e2c2687811eb1bade0e390315b7ec436957bf7c6b865",
+    "bytes": 4375163,
+    "w_h": [
+      1920,
+      1080
+    ],
+    "task": "A11",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/shots/shot_t0300_close.png",
+    "r_commit": "702b682e",
+    "unreal_build_id": "ue_module:b550b02ea1b22d08",
+    "committed": false,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A11-shot-t0300-close-hidden.png",
+    "path": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/shots/shot_t0300_close_hidden.png",
+    "sha256": "f690488b93cf13ee129ab0eeb2fcfc438f18e51941e75285ad396e83453ee549",
+    "bytes": 3561070,
+    "w_h": [
+      1920,
+      1080
+    ],
+    "task": "A11",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/shots/shot_t0300_close_hidden.png",
+    "r_commit": "702b682e",
+    "unreal_build_id": "ue_module:b550b02ea1b22d08",
+    "committed": false,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A11-shot-t0300-wide.png",
+    "path": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/shots/shot_t0300_wide.png",
+    "sha256": "66804ab85cc9051dc4e0b33a947cea103aa1cadf4969b5b9f0e2d235bbde532a",
+    "bytes": 3972282,
+    "w_h": [
+      1920,
+      1080
+    ],
+    "task": "A11",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/shots/shot_t0300_wide.png",
+    "r_commit": "702b682e",
+    "unreal_build_id": "ue_module:b550b02ea1b22d08",
+    "committed": false,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A11-shot-t0300-wide-hidden.png",
+    "path": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/shots/shot_t0300_wide_hidden.png",
+    "sha256": "b5916fc356192b3029dadf0797516851b3249ee0b3cb8702902936ba3743eb1b",
+    "bytes": 3760722,
+    "w_h": [
+      1920,
+      1080
+    ],
+    "task": "A11",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/shots/shot_t0300_wide_hidden.png",
+    "r_commit": "702b682e",
+    "unreal_build_id": "ue_module:b550b02ea1b22d08",
+    "committed": false,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A11-shot-t0900-wide.png",
+    "path": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/shots/shot_t0900_wide.png",
+    "sha256": "85c895f0768c632e4ac3ae11ecee1a573bc1554398c5c4c8b2c68d8192d7b5ac",
+    "bytes": 3843916,
+    "w_h": [
+      1920,
+      1080
+    ],
+    "task": "A11",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/shots/shot_t0900_wide.png",
+    "r_commit": "702b682e",
+    "unreal_build_id": "ue_module:b550b02ea1b22d08",
+    "committed": false,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A11-shot-t0900-wide-hidden.png",
+    "path": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/shots/shot_t0900_wide_hidden.png",
+    "sha256": "f0e88d7dbe966bf8230f139a346acce6912dedb66b20768be49122dd2b7b99d3",
+    "bytes": 3764674,
+    "w_h": [
+      1920,
+      1080
+    ],
+    "task": "A11",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/shots/shot_t0900_wide_hidden.png",
+    "r_commit": "702b682e",
+    "unreal_build_id": "ue_module:b550b02ea1b22d08",
+    "committed": false,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A11-shot-t1440-wide.png",
+    "path": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/shots/shot_t1440_wide.png",
+    "sha256": "35f938d19c6dc32fc52a1a266b2545a5d0505c5bdcff060d900d437d186b0c03",
+    "bytes": 3725752,
+    "w_h": [
+      1920,
+      1080
+    ],
+    "task": "A11",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/shots/shot_t1440_wide.png",
+    "r_commit": "702b682e",
+    "unreal_build_id": "ue_module:b550b02ea1b22d08",
+    "committed": false,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A11-shot-t1440-wide-hidden.png",
+    "path": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/shots/shot_t1440_wide_hidden.png",
+    "sha256": "1c3c40841a32beeb04e80f619cac77ac301b1fa8296473323cd5d4f9db95fc75",
+    "bytes": 3687383,
+    "w_h": [
+      1920,
+      1080
+    ],
+    "task": "A11",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r3_main/shots/shot_t1440_wide_hidden.png",
+    "r_commit": "702b682e",
+    "unreal_build_id": "ue_module:b550b02ea1b22d08",
+    "committed": false,
+    "sent_to_alec": null
+  },
+  {
+    "file": "a-A11-acceptance.txt",
+    "path": "a/a-A11-acceptance.txt",
+    "sha256": "ec91d8e3e52ddfc318dd0c1ac12526f58a7c8af5eee67c786c7ef52b3d5d5241",
+    "bytes": 37570,
+    "w_h": null,
+    "task": "A11",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/a/a11r3/a-A11-acceptance.txt",
+    "r_commit": "702b682e",
+    "unreal_build_id": "ue_module:b550b02ea1b22d08",
+    "committed": true,
+    "sent_to_alec": null
   }
 ]

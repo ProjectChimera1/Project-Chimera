@@ -1,0 +1,428 @@
+{
+ "file": "a-A11-visual-check.json",
+ "what": "PROOF/visual_check.json of plan A §4 A11 / §5 item 6 (EV/a per EXECUTION §2.3): the separate reviewer's yes/no on the seven visual items, judged on A11's seven full-resolution shots and the contact sheet. This is review pass 2, on the round-2 re-shoot (a11r2_main) after pass 1 answered no on items 5 and 7; pass 1 is kept unchanged under previous_passes.",
+ "check": "a",
+ "task": "A11",
+ "review_pass": 2,
+ "reviewer": "separate reviewer agent (Opus 5.5), dispatched by the main session; not the A11 implementer",
+ "date": "2026-10-03",
+ "run": {
+  "tag": "a11r2_main",
+  "dir": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r2_main",
+  "result": "ticks=1440 final=0x2CFCF09E orders_applied=2077 alive_end=121 verify=5/5 shots=7 (run_sim.json pass=true)",
+  "dll_sha256": "647404a0062491069f9659a7ed3b1ea39d59223f49f9544d079fbce53662bde1",
+  "ue_module_sha256": "1cb82dbe3c5737f1e1918b7c7880159ba7f910e65c809bd50fc492e07c3cab34",
+  "change_since_pass_1": "P/SimTrial/unit_meshes.json front_yaw_deg: beta/wyvern envy_wraithwing 0 -> 180, beta/war_machine render_crawler 0 -> -90 (run.log: 'group 14 beta/war_machine ... front_yaw=-90', 'group 15 beta/wyvern ... front_yaw=180'); no C++ change."
+ },
+ "inputs": {
+  "shots": [
+   {
+    "name": "shot_t0000_overview",
+    "tick": 0,
+    "camera": "overview",
+    "w_h": [
+     1920,
+     1080
+    ],
+    "png": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r2_main/shots/shot_t0000_overview.png",
+    "sha256": "1beb5ca55045d1a31c5354e573e83f5e09fad1f8a94c1853d6ab62c8fae691e0"
+   },
+   {
+    "name": "shot_t0000_wide",
+    "tick": 0,
+    "camera": "wide",
+    "w_h": [
+     1920,
+     1080
+    ],
+    "png": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r2_main/shots/shot_t0000_wide.png",
+    "sha256": "92d84c9b13cca5eacc787a85ccace5797bd4b3bc34f7ea5bcb8dd10932efe672"
+   },
+   {
+    "name": "shot_t0060_close",
+    "tick": 60,
+    "camera": "close",
+    "w_h": [
+     1920,
+     1080
+    ],
+    "png": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r2_main/shots/shot_t0060_close.png",
+    "sha256": "1201190aa2b680d35214d5d72f934145ff216826ae762fd8dc28804715192719"
+   },
+   {
+    "name": "shot_t0300_wide",
+    "tick": 300,
+    "camera": "wide",
+    "w_h": [
+     1920,
+     1080
+    ],
+    "png": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r2_main/shots/shot_t0300_wide.png",
+    "sha256": "a1aed975ff525820d20461381ef98d25ae0c9001bc792cc9101cc59e59956c26"
+   },
+   {
+    "name": "shot_t0300_close",
+    "tick": 300,
+    "camera": "close",
+    "w_h": [
+     1920,
+     1080
+    ],
+    "png": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r2_main/shots/shot_t0300_close.png",
+    "sha256": "a3b3ed8cd7ccb67be38e5926a5da567e8c4497c53ebaea93a615d3886600f2e7"
+   },
+   {
+    "name": "shot_t0900_wide",
+    "tick": 900,
+    "camera": "wide",
+    "w_h": [
+     1920,
+     1080
+    ],
+    "png": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r2_main/shots/shot_t0900_wide.png",
+    "sha256": "61ac1efb54fb54434ac4319a7cac91002c14384f3207aeb575f478023a266672"
+   },
+   {
+    "name": "shot_t1440_wide",
+    "tick": 1440,
+    "camera": "wide",
+    "w_h": [
+     1920,
+     1080
+    ],
+    "png": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11r2_main/shots/shot_t1440_wide.png",
+    "sha256": "94f3ab2268752c7c5c741b5db29a22220bcda3a12e5e423b318b501e60dfa72f"
+   }
+  ],
+  "contact_sheet": {
+   "file": "a-A11-contact-sheet.jpg",
+   "sha256": "ccdaa6b0cc464dadf58270fbc901e3c996dda968652a1d15519257be602f24ac"
+  },
+  "also_read": [
+   "verify.json of a11r2_main (cameras, per-army boxes, in-engine sample points, sun_dir) and the 7 hidden frames",
+   "run.log of a11r2_main (renderer group table, building slots)",
+   "P/SimTrial/unit_meshes.json (18 entries)",
+   "P/Source/ChimeraSimHost/Private/ChimeraUnitRenderer.cpp: UnitTransform (FRotator(0, YawDeg + FrontYawDeg, 0), uniform G.Scale = FVector(Entry->Scale), Z += FootZCm), Update (yaw = atan2(dz, dx) of pos - prev when 0.01 m < |d| <= 1 m, else the last yaw; InitialYaw 0 alpha / 180 beta)",
+   "UE_5.8 Engine/Plugins/Interchange/Runtime/Source/Parsers/GLTFCore/Private/GLTF/ConversionUtilities.h ConvertVec3: glTF (X, Y, Z) -> UE {X, Z, Y}",
+   "the staged GLBs (P/SimTrial/staging, P/LookTest/staging)",
+   "pass 1 (previous_passes[0]) and its GLB renders"
+  ]
+ },
+ "method": [
+  "Every shot opened at full size (1920x1080), then cropped at native resolution and enlarged 2.5-6x per army, front, rear, building and unit type.",
+  "Expected facing per unit: trial_1000 (main) replayed for 1440 ticks through a scratch COPY of the staged ChimeraSim.dll (sha256 above) with the renderer's own yaw rule including its 1 m displacement cap; final checksum 0x2cfcf09e and alive 1000/1000/999/575/121 at ticks 0/60/300/900/1440 equal the A11 run. No lock, no Unreal job, nothing written outside the reviewer's scratchpad.",
+  "Camera model: each replayed unit projected with the shot's camera (verify.json camera_xyz_pitch_yaw_hfov) lands on verify.json's in-engine sample points with a median error of 0.10-0.19 px on the overview and wide shots and 1.28-1.43 px on the close shots (max 1.94 px); world x error <= 0.5 cm. All cameras sit at world x = 0 with yaw 90, so world +X is screen left and world x = 0 is screen column 960.",
+  "Silhouette test (wyvern, war machine, siege engine): every alive unit of the type projected with the renderer's transform (glTF X->UE X, Z->UE Y, Y->UE Z as in ConvertVec3, uniform scale, yaw = sim yaw + front_yaw_deg + offset, z = foot_z_cm) for offsets 0/90/180/270; score = share of the silhouette's pixels that differ from the hidden frame. Wyvern: offset 0 (the table's 180) wins on all 5 shots it appears in (precision 0.80-0.92 against 0.37-0.79 for the other three; the 180-off pose scores 0.37-0.74). War machine: offset 0 wins where the pack is spread (t300 0.976 vs <= 0.949, t900 0.976 vs <= 0.943, t1440 0.979 vs <= 0.968); in the dense t0 block all offsets cover the same pixels (0.92-0.98).",
+  "Textured render test (every unit type): each type's GLB rendered into the shot camera with base-colour texture and sun_dir Lambert at the table's front_yaw and with front and back swapped, compared with the shot over the silhouette pixels that differ from the hidden frame (RGB correlation). Close shots: the table's facing wins 14 of 14 type x shot cases (t60: heavy_infantry 0.692 vs 0.486, infantry 0.515 vs 0.003, bulwark 0.561 vs 0.275, footsoldier 0.595 vs 0.413; t300: archer 0.491 vs 0.231, griffin 0.688 vs -0.105, heavy_infantry 0.399 vs 0.235, infantry 0.448 vs 0.083, scout 0.307 vs 0.013, bulwark 0.396 vs 0.188, crossbowman 0.516 vs 0.350, footsoldier 0.610 vs 0.267, ironclad 0.532 vs 0.169, wyvern 0.455 vs 0.258). Wide shots t0/t300/t900, all 16 unit types: the table wins 46 of 48; the two exceptions are at t0, where the units have not moved yet: alpha/worker (0.267 vs 0.327; ~1,000 px of 25 px-tall figures at the frame edge) and beta/rune_caster (0.296 vs 0.303, inside the dense block); both win at t300 (0.299 vs 0.145, 0.479 vs 0.426) and t900 (0.309 vs 0.250, 0.465 vs 0.396), and their front axis (glTF +Z, front_yaw -90) is the one verified on the 11 other Tripo humanoids. Recorded as a measurement limit at that pixel size, not a facing defect.",
+  "Heights: the sim keeps every alive unit at height 0 at all five ticks (checked per type); for all 18 table entries the GLB's lowest vertex lands at z = 0.00 cm after scale and foot_z_cm."
+ ],
+ "items": [
+  {
+   "id": 1,
+   "item": "two colour-distinct armies at tick 0",
+   "yes": true,
+   "shots": [
+    "shot_t0000_wide",
+    "shot_t0000_overview"
+   ],
+   "evidence": "t0 wide: beta block at screen x ~225-790, y 330-820 reads red/maroon and copper (copper war-machine column on its left edge, then rows of small red figures); alpha block at x 1145-1710, y 330-800 reads white/grey/blue (two gold-and-navy heavy-infantry columns at its front edge, six white infantry columns, blue-grey archers and mages, grey siege engines with cyan lights at its rear). Overview shows the same split (beta x 555-855, alpha x 1075-1380). Measured (unit pixels = changed vs the hidden frame inside each army box, shadows excluded): wide alpha mean RGB (142,127,109), R/B 1.31, 61% low-saturation pixels; beta (140,92,47), R/B 2.96, 0% low-saturation; overview alpha R/B 1.33 vs beta 2.78. The armies never mix at t0 (fronts at x -20 m and +20 m)."
+  },
+  {
+   "id": 2,
+   "item": "the lines meet near x=0 by tick 300",
+   "yes": true,
+   "shots": [
+    "shot_t0300_wide",
+    "shot_t0300_close"
+   ],
+   "evidence": "t300 wide: red beta and gold/white alpha are in contact in two clumps at screen x ~905-1015, y ~410-580 and ~590-700 (crop x 780-1140, y 380-720 at 3x); the red/gold boundary runs at screen x ~915-940, just left of column 960 = world x 0. t300 close (same yaw-90 camera at x 0): one melee mass at x ~600-1250, beta red on the left, alpha gold and white on the right, the boundary at x ~750-900. Replay at tick 300: alpha's front-most unit at world x +3.99 m (front ten +2.86..+3.99), beta's at +1.86 m (+1.86..+2.81): the fronts have met and interpenetrated 2-4 m from x = 0; 211 alpha and 89 beta units stand within |x| <= 5 m."
+  },
+  {
+   "id": 3,
+   "item": "thinner armies at 900 and 1440",
+   "yes": true,
+   "shots": [
+    "shot_t0000_wide",
+    "shot_t0300_wide",
+    "shot_t0900_wide",
+    "shot_t1440_wide"
+   ],
+   "evidence": "Same wide camera at every tick. t0 and t300: two full blocks (982 and 979 alive units in frame; 1000 and 999 alive). t900: one diagonal battle line (screen x ~720-1100, y ~275-720), beta's copper war-machine pack (x ~595-800, y ~495-600), alpha's grey siege-engine pack (x ~990-1175, y ~500-580), two small groups at the left and a few stragglers; wide empty ground where the blocks stood (563 in frame, 575 alive). t1440: two small packs at x ~750-1100, y ~420-670 (beta war machines, alpha siege engines) with a handful of figures around them (85 in frame, 121 alive). verify.json visible == alive at every tick (1000/1000/999/575/121)."
+  },
+  {
+   "id": 4,
+   "item": "feet on the ground (no floating or sunk units)",
+   "yes": true,
+   "shots": [
+    "shot_t0060_close",
+    "shot_t0300_close",
+    "shot_t0000_wide",
+    "shot_t0000_overview"
+   ],
+   "evidence": "t60 close, right edge (x 1700-1920, y 250-600 at 3x): the gold heavy infantry's boot soles rest on the grass with no gap and no cut-off (e.g. boots at x ~1745-1770, y ~370-385 and x ~1785-1815, y ~430-445). t60 close, beta bulwarks (x 140-290, y 150-300 at 6x): boots at (197,280) and (227,233) sit exactly on the projected ground pivots of units 518 (196,279) and 519 (226,233); their shadows start at the boots. t300 close: archers (x 1340-1760, y 150-450 at 2.5x) stand on their boots with every shadow attached at the feet; a heavy infantryman's boots rest on the ground at x ~820-850, y ~710-727; the white infantry cloaks meet the ground with attached shadows. Wide and overview: every unit's shadow joins its base, war machines and wyverns included. The sim height is 0 for every alive unit at all five ticks and every mesh's lowest vertex lands at z = 0.00 cm after foot_z_cm; the textured and silhouette renders made with that z coincide with the drawn feet."
+  },
+  {
+   "id": 5,
+   "item": "close-ups face their motion",
+   "yes": true,
+   "shots": [
+    "shot_t0060_close",
+    "shot_t0300_close",
+    "shot_t0300_wide",
+    "shot_t0000_wide",
+    "shot_t1440_wide"
+   ],
+   "evidence": "Every unit type in both close shots faces its heading (yaw from its last displacement; 512 of the 515 units with pivots in the two frames were moving at the shot tick). t60 close: beta footsoldiers (yaw -135, toward the camera and screen right; x 0-260, y 0-350): the maul head sits low on the screen-left side and the bare hand reaches up-left, exactly as the render at the table's facing shows and opposite to the swapped render; beta bulwarks (yaw -136): faces visible inside the hoods, scarves on the chest toward the camera; alpha gold heavy infantry (yaw -45, toward the camera and screen left; x 1700-1920, y 250-600): toes point down-left. t300 close: beta footsoldiers (yaw 135-165, screen right; x 180-560, y 400-760): the maul points up-right ahead of each figure, bare hands trail down-left; alpha archers (yaw ~0, screen left; x 1340-1760, y 150-450): boot toes point left; alpha white infantry (yaw 15-45, away from the camera; x 1050-1450, y 150-520): the plain cloak of their backs faces the camera. The two meshes pass 1 rejected are fixed: t300 close top-left corner (x 0-260, y 0-110): the wyverns' tails curve down-left behind them and their claws match the render at front_yaw 180, not the swapped one; t300 wide wyvern flight (x 570-750, y 340-560, yaw 122-153 = screen up-right): the long tails trail down-left, the head ends lead up-right; t0 wide (x ~230-500, y ~330-820): the war machines' muzzle rings point screen right toward alpha (yaw 180), and the wyverns behind them show only their tails over the bare ground to the left (x ~185-240); t1440 wide war-machine pack (x 750-920, y 480-670): muzzles protrude on the up-right edge (x ~896-910, y ~511-546), the way the pack moves (yaw 132-175), and unit 944 (yaw 83, moving away from the camera) points its muzzle straight up (x ~844, y ~486-497). Objective check: the table's facing beats front-and-back swapped in all 14 type x shot cases of the close shots (method)."
+  },
+  {
+   "id": 6,
+   "item": "both CommandCentres visible in the overview",
+   "yes": true,
+   "shots": [
+    "shot_t0000_overview"
+   ],
+   "evidence": "Left (beta, world x +100 m, base projects to (320,540)): sanguine_furnace, dark furnace with four chimneys at screen x ~235-385 (shadow to ~460), y ~465-585, with beta's 20 forgehands just to its right. Right (alpha, world x -100 m, base (1600,540)): covenant_sanctum, cathedral with a spire and cyan windows at x ~1560-1660, y ~455-570, with alpha's 20 workers just to its left. Both fully in frame, upright, with their shadows; run.log 'building slot 0 alpha/command_center at (-100.0, 0.0) m' and 'building slot 1 beta/command_center at (100.0, 0.0) m'; renderer building_adds = 2."
+  },
+  {
+   "id": 7,
+   "item": "no stretched or rotated meshes",
+   "yes": true,
+   "shots": [
+    "shot_t0000_wide",
+    "shot_t0300_wide",
+    "shot_t0300_close",
+    "shot_t0060_close",
+    "shot_t1440_wide",
+    "shot_t0000_overview"
+   ],
+   "evidence": "Not stretched: one uniform scale per group (run.log group table, one scale value each; UnitTransform passes G.Scale = FVector(Entry->Scale)), and the GLB silhouettes projected at that scale reproduce the drawn units (wyvern 0.80-0.92, war machine 0.98, siege engine 0.98-0.99 silhouette precision). Not tilted: rotation is yaw only (FRotator(0, YawDeg + FrontYawDeg, 0)); every unit stands upright in the close shots, including the T-posed heavy infantry whose outstretched arms read as diagonal bars from above while their boots stand on the ground (t300 close x ~820-850, y ~710-727). Not rotated against the heading: the two meshes pass 1 found rotated are now drawn along their heading: wyvern (front_yaw 180) head first, tail behind (t0 wide tails at x ~185-240, t300 wide x 570-750, y 340-560, t300 close x 0-260, y 0-110); war machine (front_yaw -90) cannon forward, long axis along its heading (t0 wide x ~230-500, y ~330-820: barrels along the screen-right heading, muzzle rings at the right ends; t1440 wide x 750-920, y 480-670). All other 14 unit types face their heading (item 5 and the render test in method), the siege engine's barrel leads (front_yaw 0; silhouette offset 0 best at t300/t900/t1440), and the two command centres are upright buildings (yaw not a facing claim)."
+  }
+ ],
+ "all_yes": true,
+ "no_items": [],
+ "defects": [],
+ "pass_1_items_rechecked": {
+  "5": "was no (wyvern drawn tail-first); now yes: wyvern heads lead, tails trail (t0 wide, t300 wide, t300 close).",
+  "7": "was no (wyvern 180 deg off, war machine 90 deg off); now yes: both drawn along their heading (t0 wide, t300 wide, t1440 wide)."
+ },
+ "not_defects": [
+  "Dense packs overlap because the sim places them that way: at t0 the 5.6 m war machines at x 52-54 m cover most of the 4.1 m wyverns at x 54-58 m, so in the t0 shots only the wyvern tails show (silhouette test still picks front_yaw 180); verify.json max_err 0.0 cm.",
+  "The t0 render-test exceptions (alpha/worker, beta/rune_caster) are a pixel-size limit of 25 px figures that have not moved yet; both pass at t300 and t900.",
+  "Observation outside the seven items: the scenario puts beta's forgehand column nearest the furnace at world x 94 m, inside the 15.3 m-wide furnace mesh (x ~92.4-107.6 m if centred), so a few forgehands stand against its right wall in the overview (x ~360-385, y ~500-580). That is trial_1000's start placement against the CC mesh scale, not a renderer error."
+ ],
+ "summary": "7 of 7 yes on the round-2 re-shoot (a11r2_main). Armies colour-distinct at t0 (beta red/copper R/B 2.96, alpha white/grey/blue R/B 1.31); lines meet 2-4 m from x = 0 by t300 (contact at screen column ~915-940, 960 = x 0); visibly thinner at t900/t1440 (563 and 85 in frame); feet on the ground (sim height 0, mesh bottoms at z 0.00 cm, boots on the projected pivots); both CommandCentres in the overview; uniform scale, yaw-only rotation. Pass 1's two no items are fixed: the wyvern now flies head first and the war machine points its cannon along its heading; every unit type in the close shots faces its motion, and the table's facing beats the swapped facing in 14/14 close-shot render comparisons.",
+ "previous_passes": [
+  {
+   "file": "a-A11-visual-check.json",
+   "what": "PROOF/visual_check.json of plan A §4 A11 / §5 item 6 (EV/a per EXECUTION §2.3): the separate reviewer's yes/no on the seven visual items, judged on A11's seven full-resolution shots and the contact sheet",
+   "check": "a",
+   "task": "A11",
+   "review_pass": 1,
+   "reviewer": "separate reviewer agent (Opus 5.5, xhigh), dispatched by the main session; not the A11 implementer",
+   "date": "2026-10-03",
+   "run": {
+    "tag": "a11_main",
+    "dir": "D:/Projects/Chimera-Unreal/TrialOut/a/unreal/a11_main",
+    "result": "ticks=1440 final=0x2CFCF09E verify=5/5 shots=7",
+    "dll_sha256": "647404a0062491069f9659a7ed3b1ea39d59223f49f9544d079fbce53662bde1"
+   },
+   "inputs": {
+    "shots": [
+     {
+      "name": "shot_t0000_overview",
+      "tick": 0,
+      "camera": "overview",
+      "w_h": [
+       1920,
+       1080
+      ],
+      "sha256": "1df2fa2eaa28b3ad2462603967038e699434406cab26a5ed7bcea84d1e5dde8b"
+     },
+     {
+      "name": "shot_t0000_wide",
+      "tick": 0,
+      "camera": "wide",
+      "w_h": [
+       1920,
+       1080
+      ],
+      "sha256": "2a15ff0f7434a7fad689ac3522d029622c5671c37450709d8b924c3985a7f796"
+     },
+     {
+      "name": "shot_t0060_close",
+      "tick": 60,
+      "camera": "close",
+      "w_h": [
+       1920,
+       1080
+      ],
+      "sha256": "05f64f06196a84df86f75125859579b731cb41b40b0e0f79664692866260bfd6"
+     },
+     {
+      "name": "shot_t0300_wide",
+      "tick": 300,
+      "camera": "wide",
+      "w_h": [
+       1920,
+       1080
+      ],
+      "sha256": "d3e2996983e147c6354508ae1f81cfbe8cec22e3fdef07832716ecfb3b676406"
+     },
+     {
+      "name": "shot_t0300_close",
+      "tick": 300,
+      "camera": "close",
+      "w_h": [
+       1920,
+       1080
+      ],
+      "sha256": "1554ffb9a0b7b7b67b707ba3ff4e4c4d457076127aae3b911c318bf3d1433b63"
+     },
+     {
+      "name": "shot_t0900_wide",
+      "tick": 900,
+      "camera": "wide",
+      "w_h": [
+       1920,
+       1080
+      ],
+      "sha256": "b8e1b0550f5314ec86a8e1b9ff454a55db830ec68f477e5d492c5878be43968b"
+     },
+     {
+      "name": "shot_t1440_wide",
+      "tick": 1440,
+      "camera": "wide",
+      "w_h": [
+       1920,
+       1080
+      ],
+      "sha256": "8b14607b7bd4294409afc6399157cc10f8a5583ec1b5b738858a1d3757e2a4e6"
+     }
+    ],
+    "contact_sheet": {
+     "file": "a-A11-contact-sheet.jpg",
+     "sha256": "33f9899096a3e7eb93b67c6caa1d2237935e45ab9569d48a8b5b5e5955ea25e6"
+    },
+    "also_read": [
+     "verify.json of a11_main (cameras, per-army boxes and sample points)",
+     "P/SimTrial/unit_meshes.json",
+     "the staged GLBs of the 18 meshes (P/SimTrial/staging, P/LookTest/staging)",
+     "the Tripo plates D:/tripo-out/<name>.png"
+    ]
+   },
+   "method": [
+    "Every shot opened at full size, then cropped at native resolution and enlarged 2-7x per army, front, rear and building.",
+    "Expected facing per unit: trial_1000 (main) replayed for 1440 ticks through a scratch COPY of the staged ChimeraSim.dll (sha256 above; final checksum 0x2cfcf09e and alive 1000/1000/999/575/121 equal the A11 run), keeping the renderer's own yaw rule (atan2 of pos-prev when > 0.01 m, else the last yaw; initial 0 alpha / 180 beta). No lock, no Unreal job, nothing written outside the reviewer's scratchpad.",
+    "Camera model check: each unit's position projected with the shot's camera (verify.json camera_xyz_pitch_yaw_hfov, hFOV-constrained) lands on verify.json's in-engine sample points with a median error of 0.2-2.6 px.",
+    "Mesh check: the GLB of a unit type projected with the renderer's transform (glTF X->UE X, glTF Z->UE Y, glTF Y->UE Z, uniform scale from size_cm, actor yaw = sim yaw + front_yaw_deg, z = foot_z_cm) reproduces the drawn silhouettes pixel for pixel for bulwark_adept (t60 close), covenant_transmuter and maul_fused_wretch (t300 close), envy_wraithwing (t0 wide, t300 close) and render_crawler (t0 wide, t1440 wide); the same projection with +180 deg does not match. So what is drawn is known exactly, including which end of each mesh points where.",
+    "Front of each mesh in its own glTF frame taken from textured renders of the GLBs and the Tripo plates: the 12 humanoid units (Tripo T-pose characters and the Hunyuan covenant_transmuter) face glTF +Z, crucible_mortar's barrel points glTF +X, envy_wraithwing's head is at glTF -X, render_crawler's cannon and face are at glTF +Z."
+   ],
+   "items": [
+    {
+     "id": 1,
+     "item": "two colour-distinct armies at tick 0",
+     "yes": true,
+     "shots": [
+      "shot_t0000_overview",
+      "shot_t0000_wide"
+     ],
+     "evidence": "Overview: beta block at screen x 530-870 reads red/copper/brown (copper war-machine column, red rune casters and footsoldiers), alpha block at x 1070-1380 reads grey/white/blue-grey (white infantry columns, blue archers, dark siege engines with cyan); the two never mix. Wide: same split at x 190-790 (beta) and 1145-1710 (alpha). Measured on the wide pair (unit pixels = changed vs the hidden frame inside each army box, shadows excluded): alpha mean RGB (142,127,109), R/B 1.30, 62% low-saturation (grey/white) pixels; beta (142,96,49), R/B 2.93, 0% low-saturation; overview alpha R/B 1.32 vs beta 2.77. Alpha's front column of gold heavy infantry is warm too, but it sits inside an otherwise grey/white army and does not make the armies confusable."
+    },
+    {
+     "id": 2,
+     "item": "the lines meet near x=0 by tick 300",
+     "yes": true,
+     "shots": [
+      "shot_t0300_wide",
+      "shot_t0300_close"
+     ],
+     "evidence": "t300 wide: red beta and white/gold alpha are in contact in two clumps at screen x 900-1040, y 400-700; world x=0 projects to screen x 960 on these yaw-90 cameras (camera at x=0). t300 close (pivot 0,0,0): a single melee mass at screen x 600-1250 with the red/white boundary at x 750-900, beta red on the left, alpha white and gold on the right. Fronts from the fresh read: alpha's front-most unit at world x +3.99 m, beta's at +1.86 m (front ten 2.9-4.0 m and 1.9-2.8 m), i.e. the lines have met and interpenetrated 2-4 m from x=0."
+    },
+    {
+     "id": 3,
+     "item": "thinner armies at 900 and 1440",
+     "yes": true,
+     "shots": [
+      "shot_t0900_wide",
+      "shot_t1440_wide",
+      "shot_t0300_wide",
+      "shot_t0000_wide"
+     ],
+     "evidence": "Same wide camera at every tick. t0/t300: two full blocks (1000/999 alive). t900: one diagonal battle line (screen x 700-1100, y 270-720), the beta war-machine pack (600-800, 490-590), the alpha siege-engine pack (990-1170, 500-580) and a few stragglers; large empty ground where the blocks stood (575 alive). t1440: two small packs at screen x 760-1100, y 420-660 (beta war machines, alpha siege engines) plus small groups and stragglers (85 units in frame, 121 alive). Each step is visibly sparser."
+    },
+    {
+     "id": 4,
+     "item": "feet on the ground (no floating or sunk units)",
+     "yes": true,
+     "shots": [
+      "shot_t0060_close",
+      "shot_t0300_close",
+      "shot_t0000_wide",
+      "shot_t0000_overview"
+     ],
+     "evidence": "t60 close, right edge (x 1730-1870, y 300-440): the gold heavy infantry's boot soles rest on the ground texture, no gap and no cut-off. t300 close: archers (x 1600-1720, y 230-330) stand on their boots with their sun shadows starting at the boots; ironclads and crossbowmen at the top left (x 30-200, y 140-300) have shadows attached at the feet; footsoldiers on the left likewise. Wide and overview: every unit's shadow joins its base, including war machines (legs) and wyverns (claws). The sim keeps every unit at y=0 at all five ticks (checked per type), the renderer adds only foot_z_cm, and the projected GLB silhouettes (which include foot_z) coincide with the drawn feet in every mesh check above. No unit floats or sinks."
+    },
+    {
+     "id": 5,
+     "item": "close-ups face their motion",
+     "yes": false,
+     "shots": [
+      "shot_t0300_close",
+      "shot_t0060_close",
+      "shot_t0000_wide"
+     ],
+     "evidence": "NO, because of one unit type. The beta wyverns (envy_wraithwing) are drawn tail-first: in the t300 close's top-left corner (x 0-170, y 0-60) wyverns 960, 961 and 987 have yaw 135 (moving toward screen up-right) and the visible tails and claws match the renderer transform in which the tail (glTF +X end) leads and the head trails: wyvern 961 pivot (107,25), motion toward (158,10), tail toward (168,-21), head at (25,19). Same defect seen whole in the t0 wide (beta rear, x 150-330, y 330-780): the wing rings sit on the +X side of each wyvern's pivot and nothing extends past them onto the bare ground, i.e. the heads point away from alpha (screen left) while the yaw (180, facing the enemy, the direction they then move) points screen right; the projected head end lies 25 px left of each pivot. Everything else in the close-ups faces its motion, shown with features that cannot be read either way: t60 close, alpha gold heavy infantry (yaw -42, toward the camera and screen left): toes point down-left and the cyan pauldron symbol (left shoulder on the plate) sits on the arm reaching toward the camera; white infantry behind them show their armoured fronts. t60 close, beta bulwarks (yaw -135, toward the camera): visors and red scarves face the camera. t300 close: alpha archers (yaw ~0, screen left): boot toes point left, the cyan left sleeve faces the camera; beta footsoldiers (yaw ~179, screen right): the maul arm (left arm on the plate) points away from the camera, the bare right arm toward it; white infantry facing away (yaw 60-70, ids 315-317, x 770-815, y 530-645) show the plain cloak of their backs, those facing screen left show their fronts on the left side."
+    },
+    {
+     "id": 6,
+     "item": "both CommandCentres visible in the overview",
+     "yes": true,
+     "shots": [
+      "shot_t0000_overview"
+     ],
+     "evidence": "Left (world x +100, beta): sanguine_furnace, dark furnace with four chimneys at screen x 240-460, y 430-580, with beta's 20 forgehands just to its right. Right (world x -100, alpha): covenant_sanctum, cathedral with a spire at x 1560-1660, y 420-570, with alpha's 20 workers just to its left. Both fully in frame, upright, with their shadows; renderer building_adds = 2."
+    },
+    {
+     "id": 7,
+     "item": "no stretched or rotated meshes",
+     "yes": false,
+     "shots": [
+      "shot_t0000_wide",
+      "shot_t0000_overview",
+      "shot_t1440_wide",
+      "shot_t0300_close"
+     ],
+     "evidence": "NO. Nothing is stretched (uniform scale; the GLB silhouettes at the unit_meshes scale match the drawn units) and nothing is tilted (yaw-only rotation; every unit upright, including the gold heavy infantry whose T-pose arms read as bars from above: boots on the ground at t300 close x 820-870, y 590-730). But two unit meshes are rotated about the vertical axis against their heading, which is the per-source front-yaw error plan A's research names as 'rotated units' (r3 R4): (a) beta wyvern envy_wraithwing drawn 180 deg off (see item 5; t0 wide x 150-330, y 330-780, t0 overview beta rear column x 535-650, y 410-690); (b) beta war machine render_crawler drawn 90 deg off: its front (cannon and face, glTF +Z) points at yaw+90, so at t0 the 30 crawlers stand with their long axes along the column (barrel bands run across the column, muzzle rings at the near ends) and cannons toward the camera while they face and then move toward alpha (screen right) (t0 wide x 200-560, y 320-800); at t1440 the pack's muzzles point screen right/down while the units move up-right (t1440 wide x 760-920, y 480-660)."
+    }
+   ],
+   "all_yes": false,
+   "no_items": [
+    5,
+    7
+   ],
+   "defects": [
+    {
+     "unit": "beta/wyvern",
+     "mesh": "envy_wraithwing (source tripo_static, front_yaw_deg 0 in unit_meshes.json)",
+     "observed": "drawn 180 deg from its heading: head at the trailing end, tail leading",
+     "cause_by_reviewer": "the GLB's head is at glTF -X (= UE local -X after import), but tripo_static was given 0 from the crucible_mortar measurement (whose barrel is at glTF +X); Tripo static meshes share no front axis",
+     "front_yaw_that_matches_the_mesh": 180
+    },
+    {
+     "unit": "beta/war_machine",
+     "mesh": "render_crawler (source tripo_static, front_yaw_deg 0)",
+     "observed": "drawn 90 deg from its heading: cannon and face point to the unit's left (yaw+90)",
+     "cause_by_reviewer": "front (cannon, face) is at glTF +Z (= UE local +Y), like the Tripo characters, not at +X",
+     "front_yaw_that_matches_the_mesh": -90
+    }
+   ],
+   "not_defects": [
+    "alpha/siege_engine crucible_mortar (front_yaw 0): barrel at glTF +X, correct.",
+    "The 12 humanoid unit meshes (front_yaw -90): all face glTF +Z, correct.",
+    "Dense packs of 5.6 m war machines and 4.1 m wyverns at 2 m spacing overlap because the sim places them that way; verify.json max_err 0.0 cm.",
+    "Command centres are buildings; their yaw is not a facing claim."
+   ],
+   "summary": "5 of 7 yes. Armies colour-distinct at t0, lines meet 2-4 m from x=0 by t300, visibly thinner at t900/t1440, feet on the ground, both CommandCentres in the overview. No on 5 and 7, one cause: two tripo_static unit meshes carry the wrong front yaw (wyvern drawn backward, war machine sideways); every other unit type faces its motion. Fix in unit_meshes.json front yaw per mesh (or prep_units.py), re-shoot, re-review."
+  }
+ ]
+}

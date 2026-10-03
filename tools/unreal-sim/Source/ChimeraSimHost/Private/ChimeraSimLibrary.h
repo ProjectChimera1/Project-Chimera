@@ -92,6 +92,7 @@ public:
 	FString FileSha256(const FString& Path, int32* OutRc = nullptr);
 	/** chimera_unit_def_id / chimera_building_def_id as a string ("" when none). */
 	FString UnitDefId(int32 Session, int32 UnitId);
+	FString BuildingDefId(int32 Session, int32 Slot);
 
 	/** Runs chimera_selftest kinds 1-3 (throw/catch, NullReferenceException, full blocking GC); returns how many passed. */
 	int32 RunSelfTests();

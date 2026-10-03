@@ -190,6 +190,13 @@ FString FChimeraSimLibrary::UnitDefId(int32 Session, int32 UnitId)
 	return Rc == CHIMERA_OK ? S : FString();
 }
 
+FString FChimeraSimLibrary::BuildingDefId(int32 Session, int32 Slot)
+{
+	int32 Rc = 0;
+	FString S = ReadText(*this, Rc, Fns.BuildingDefId, Session, Slot);
+	return Rc == CHIMERA_OK ? S : FString();
+}
+
 int32 FChimeraSimLibrary::RunSelfTests()
 {
 	int32 Passed = 0;

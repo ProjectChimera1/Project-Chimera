@@ -1,0 +1,647 @@
+{
+ "verify_json": "D:\\Projects\\Chimera-Unreal\\TrialOut\\a\\unreal\\a11r3_main\\verify.json",
+ "leg": "unreal_a11r3_main",
+ "thresholds": {
+  "delta": 24,
+  "window": 5,
+  "min_frac": 0.9,
+  "min_points": 10,
+  "max_out": 0.05,
+  "dilate": 24,
+  "mirror_r": -0.8,
+  "size": [
+   1920,
+   1080
+  ],
+  "min_bytes": 307200,
+  "max_err_cm": 0.5
+ },
+ "shot_freeze": true,
+ "verify": [
+  {
+   "tick": 0,
+   "rows": 1000,
+   "alive": 1000,
+   "phased": 0,
+   "expected_visible": 1000,
+   "visible": 1000,
+   "drawn_instances": 1000,
+   "dead_visible": 0,
+   "alive_hidden": 0,
+   "no_instance": 0,
+   "group_mismatch": 0,
+   "max_err_cm": 0,
+   "stats_alive": 1000,
+   "new_ids_alive": 0,
+   "new_ids_visible": 0,
+   "units_hidden_by_option": false,
+   "building_rows": 2,
+   "buildings_alive": 2,
+   "buildings_visible": 2,
+   "building_drawn_instances": 2,
+   "building_dead_visible": 0,
+   "building_alive_hidden": 0,
+   "building_group_mismatch": 0,
+   "building_max_err_cm": 0,
+   "ai_created_alive": 0,
+   "ai_created_visible": 0,
+   "ai_created": [],
+   "units_pass": true,
+   "buildings_pass": true,
+   "pass": true
+  },
+  {
+   "tick": 60,
+   "rows": 1000,
+   "alive": 1000,
+   "phased": 0,
+   "expected_visible": 1000,
+   "visible": 1000,
+   "drawn_instances": 1000,
+   "dead_visible": 0,
+   "alive_hidden": 0,
+   "no_instance": 0,
+   "group_mismatch": 0,
+   "max_err_cm": 0,
+   "stats_alive": 1000,
+   "new_ids_alive": 0,
+   "new_ids_visible": 0,
+   "units_hidden_by_option": false,
+   "building_rows": 2,
+   "buildings_alive": 2,
+   "buildings_visible": 2,
+   "building_drawn_instances": 2,
+   "building_dead_visible": 0,
+   "building_alive_hidden": 0,
+   "building_group_mismatch": 0,
+   "building_max_err_cm": 0,
+   "ai_created_alive": 0,
+   "ai_created_visible": 0,
+   "ai_created": [],
+   "units_pass": true,
+   "buildings_pass": true,
+   "pass": true
+  },
+  {
+   "tick": 300,
+   "rows": 1000,
+   "alive": 999,
+   "phased": 0,
+   "expected_visible": 999,
+   "visible": 999,
+   "drawn_instances": 999,
+   "dead_visible": 0,
+   "alive_hidden": 0,
+   "no_instance": 0,
+   "group_mismatch": 0,
+   "max_err_cm": 0,
+   "stats_alive": 999,
+   "new_ids_alive": 0,
+   "new_ids_visible": 0,
+   "units_hidden_by_option": false,
+   "building_rows": 2,
+   "buildings_alive": 2,
+   "buildings_visible": 2,
+   "building_drawn_instances": 2,
+   "building_dead_visible": 0,
+   "building_alive_hidden": 0,
+   "building_group_mismatch": 0,
+   "building_max_err_cm": 0,
+   "ai_created_alive": 0,
+   "ai_created_visible": 0,
+   "ai_created": [],
+   "units_pass": true,
+   "buildings_pass": true,
+   "pass": true
+  },
+  {
+   "tick": 900,
+   "rows": 1000,
+   "alive": 575,
+   "phased": 0,
+   "expected_visible": 575,
+   "visible": 575,
+   "drawn_instances": 575,
+   "dead_visible": 0,
+   "alive_hidden": 0,
+   "no_instance": 0,
+   "group_mismatch": 0,
+   "max_err_cm": 0,
+   "stats_alive": 575,
+   "new_ids_alive": 0,
+   "new_ids_visible": 0,
+   "units_hidden_by_option": false,
+   "building_rows": 2,
+   "buildings_alive": 2,
+   "buildings_visible": 2,
+   "building_drawn_instances": 2,
+   "building_dead_visible": 0,
+   "building_alive_hidden": 0,
+   "building_group_mismatch": 0,
+   "building_max_err_cm": 0,
+   "ai_created_alive": 0,
+   "ai_created_visible": 0,
+   "ai_created": [],
+   "units_pass": true,
+   "buildings_pass": true,
+   "pass": true
+  },
+  {
+   "tick": 1440,
+   "rows": 1000,
+   "alive": 121,
+   "phased": 0,
+   "expected_visible": 121,
+   "visible": 121,
+   "drawn_instances": 121,
+   "dead_visible": 0,
+   "alive_hidden": 0,
+   "no_instance": 0,
+   "group_mismatch": 0,
+   "max_err_cm": 0,
+   "stats_alive": 121,
+   "new_ids_alive": 0,
+   "new_ids_visible": 0,
+   "units_hidden_by_option": false,
+   "building_rows": 2,
+   "buildings_alive": 2,
+   "buildings_visible": 2,
+   "building_drawn_instances": 2,
+   "building_dead_visible": 0,
+   "building_alive_hidden": 0,
+   "building_group_mismatch": 0,
+   "building_max_err_cm": 0,
+   "ai_created_alive": 0,
+   "ai_created_visible": 0,
+   "ai_created": [],
+   "units_pass": true,
+   "buildings_pass": true,
+   "pass": true
+  }
+ ],
+ "shots": [
+  {
+   "name": "shot_t0000_overview",
+   "tick": 0,
+   "camera": "overview",
+   "pass": true,
+   "fail": [],
+   "size": [
+    1920,
+    1080
+   ],
+   "png_bytes": 3719635,
+   "changed_px": 89013,
+   "armies": {
+    "1": {
+     "pass": true,
+     "name": "alpha",
+     "on_screen": 200,
+     "hits": 200,
+     "hit_frac": 1.0,
+     "mean_x": 1222.4,
+     "mean_world_x_cm": -4030.0,
+     "box_dilated": [
+      1053,
+      382,
+      1613,
+      704
+     ]
+    },
+    "2": {
+     "pass": true,
+     "name": "beta",
+     "on_screen": 200,
+     "hits": 199,
+     "hit_frac": 0.995,
+     "mean_x": 697.8,
+     "mean_world_x_cm": 4026.0,
+     "box_dilated": [
+      308,
+      379,
+      878,
+      704
+     ]
+    }
+   },
+   "outside_px": 1,
+   "outside_frac": 1e-05,
+   "box_cover": 0.1763,
+   "unit_boxes": 1000,
+   "outside_units_px": 1,
+   "outside_units_frac": 1e-05,
+   "unit_cover": 0.1294,
+   "mirror": {
+    "alpha_mean_x": 1222.4,
+    "beta_mean_x": 697.8,
+    "alpha_mean_world_x_cm": -4030.0,
+    "beta_mean_world_x_cm": 4026.0,
+    "premise_alpha_left_in_world": true,
+    "order_ok": true,
+    "rule": "alpha mean screen x > beta mean screen x",
+    "r_screen_x_world_x": -0.9987,
+    "corr_ok": true
+   },
+   "mirror_ok": true,
+   "diff_png": "D:/Projects/Chimera-Unreal/TrialOut/a/a11r3/main_check/diff\\shot_t0000_overview_diff.png"
+  },
+  {
+   "name": "shot_t0000_wide",
+   "tick": 0,
+   "camera": "wide",
+   "pass": true,
+   "fail": [],
+   "size": [
+    1920,
+    1080
+   ],
+   "png_bytes": 3999229,
+   "changed_px": 253101,
+   "armies": {
+    "1": {
+     "pass": true,
+     "name": "alpha",
+     "on_screen": 194,
+     "hits": 194,
+     "hit_frac": 1.0,
+     "mean_x": 1386.8,
+     "mean_world_x_cm": -3871.1,
+     "box_dilated": [
+      1121,
+      306,
+      1920,
+      813
+     ]
+    },
+    "2": {
+     "pass": true,
+     "name": "beta",
+     "on_screen": 194,
+     "hits": 193,
+     "hit_frac": 0.9948,
+     "mean_x": 533.2,
+     "mean_world_x_cm": 3871.1,
+     "box_dilated": [
+      0,
+      302,
+      817,
+      813
+     ]
+    }
+   },
+   "outside_px": 70,
+   "outside_frac": 0.00028,
+   "box_cover": 0.3967,
+   "unit_boxes": 987,
+   "outside_units_px": 0,
+   "outside_units_frac": 0.0,
+   "unit_cover": 0.3067,
+   "mirror": {
+    "alpha_mean_x": 1386.8,
+    "beta_mean_x": 533.2,
+    "alpha_mean_world_x_cm": -3871.1,
+    "beta_mean_world_x_cm": 3871.1,
+    "premise_alpha_left_in_world": true,
+    "order_ok": true,
+    "rule": "alpha mean screen x > beta mean screen x",
+    "r_screen_x_world_x": -0.9957,
+    "corr_ok": true
+   },
+   "mirror_ok": true,
+   "diff_png": "D:/Projects/Chimera-Unreal/TrialOut/a/a11r3/main_check/diff\\shot_t0000_wide_diff.png"
+  },
+  {
+   "name": "shot_t0060_close",
+   "tick": 60,
+   "camera": "close",
+   "pass": true,
+   "fail": [],
+   "size": [
+    1920,
+    1080
+   ],
+   "png_bytes": 3518717,
+   "changed_px": 220862,
+   "armies": {
+    "1": {
+     "pass": true,
+     "name": "alpha",
+     "on_screen": 13,
+     "hits": 13,
+     "hit_frac": 1.0,
+     "mean_x": 1778.3,
+     "mean_world_x_cm": -1881.2,
+     "box_dilated": [
+      1539,
+      0,
+      1920,
+      1080
+     ]
+    },
+    "2": {
+     "pass": true,
+     "name": "beta",
+     "on_screen": 12,
+     "hits": 12,
+     "hit_frac": 1.0,
+     "mean_x": 134.3,
+     "mean_world_x_cm": 1886.6,
+     "box_dilated": [
+      0,
+      0,
+      453,
+      1080
+     ]
+    }
+   },
+   "outside_px": 0,
+   "outside_frac": 0.0,
+   "box_cover": 0.4344,
+   "unit_boxes": 134,
+   "outside_units_px": 0,
+   "outside_units_frac": 0.0,
+   "unit_cover": 0.2338,
+   "mirror": {
+    "alpha_mean_x": 1778.3,
+    "beta_mean_x": 134.3,
+    "alpha_mean_world_x_cm": -1881.2,
+    "beta_mean_world_x_cm": 1886.6,
+    "premise_alpha_left_in_world": true,
+    "order_ok": true,
+    "rule": "alpha mean screen x > beta mean screen x",
+    "r_screen_x_world_x": -0.9957,
+    "corr_ok": true
+   },
+   "mirror_ok": true,
+   "diff_png": "D:/Projects/Chimera-Unreal/TrialOut/a/a11r3/main_check/diff\\shot_t0060_close_diff.png"
+  },
+  {
+   "name": "shot_t0300_wide",
+   "tick": 300,
+   "camera": "wide",
+   "pass": true,
+   "fail": [],
+   "size": [
+    1920,
+    1080
+   ],
+   "png_bytes": 3972282,
+   "changed_px": 192678,
+   "armies": {
+    "1": {
+     "pass": true,
+     "name": "alpha",
+     "on_screen": 195,
+     "hits": 195,
+     "hit_frac": 1.0,
+     "mean_x": 1100.2,
+     "mean_world_x_cm": -1266.3,
+     "box_dilated": [
+      891,
+      383,
+      1920,
+      927
+     ]
+    },
+    "2": {
+     "pass": true,
+     "name": "beta",
+     "on_screen": 195,
+     "hits": 195,
+     "hit_frac": 1.0,
+     "mean_x": 732.7,
+     "mean_world_x_cm": 2098.7,
+     "box_dilated": [
+      0,
+      306,
+      982,
+      725
+     ]
+    }
+   },
+   "outside_px": 72,
+   "outside_frac": 0.00037,
+   "box_cover": 0.4534,
+   "unit_boxes": 985,
+   "outside_units_px": 1,
+   "outside_units_frac": 1e-05,
+   "unit_cover": 0.2607,
+   "mirror": {
+    "alpha_mean_x": 1100.2,
+    "beta_mean_x": 732.7,
+    "alpha_mean_world_x_cm": -1266.3,
+    "beta_mean_world_x_cm": 2098.7,
+    "premise_alpha_left_in_world": true,
+    "order_ok": true,
+    "rule": "alpha mean screen x > beta mean screen x",
+    "r_screen_x_world_x": -0.9985,
+    "corr_ok": true
+   },
+   "mirror_ok": true,
+   "diff_png": "D:/Projects/Chimera-Unreal/TrialOut/a/a11r3/main_check/diff\\shot_t0300_wide_diff.png"
+  },
+  {
+   "name": "shot_t0300_close",
+   "tick": 300,
+   "camera": "close",
+   "pass": true,
+   "fail": [],
+   "size": [
+    1920,
+    1080
+   ],
+   "png_bytes": 4375163,
+   "changed_px": 1071486,
+   "armies": {
+    "1": {
+     "pass": true,
+     "name": "alpha",
+     "on_screen": 97,
+     "hits": 95,
+     "hit_frac": 0.9794,
+     "mean_x": 1152.0,
+     "mean_world_x_cm": -357.1,
+     "box_dilated": [
+      678,
+      56,
+      1920,
+      1080
+     ]
+    },
+    "2": {
+     "pass": true,
+     "name": "beta",
+     "on_screen": 68,
+     "hits": 68,
+     "hit_frac": 1.0,
+     "mean_x": 549.9,
+     "mean_world_x_cm": 752.1,
+     "box_dilated": [
+      0,
+      0,
+      972,
+      1080
+     ]
+    }
+   },
+   "outside_px": 0,
+   "outside_frac": 0.0,
+   "box_cover": 0.9744,
+   "unit_boxes": 529,
+   "outside_units_px": 0,
+   "outside_units_frac": 0.0,
+   "unit_cover": 0.9201,
+   "mirror": {
+    "alpha_mean_x": 1152.0,
+    "beta_mean_x": 549.9,
+    "alpha_mean_world_x_cm": -357.1,
+    "beta_mean_world_x_cm": 752.1,
+    "premise_alpha_left_in_world": true,
+    "order_ok": true,
+    "rule": "alpha mean screen x > beta mean screen x",
+    "r_screen_x_world_x": -0.9851,
+    "corr_ok": true
+   },
+   "mirror_ok": true,
+   "diff_png": "D:/Projects/Chimera-Unreal/TrialOut/a/a11r3/main_check/diff\\shot_t0300_close_diff.png"
+  },
+  {
+   "name": "shot_t0900_wide",
+   "tick": 900,
+   "camera": "wide",
+   "pass": true,
+   "fail": [],
+   "size": [
+    1920,
+    1080
+   ],
+   "png_bytes": 3843916,
+   "changed_px": 101507,
+   "armies": {
+    "1": {
+     "pass": true,
+     "name": "alpha",
+     "on_screen": 198,
+     "hits": 198,
+     "hit_frac": 1.0,
+     "mean_x": 883.3,
+     "mean_world_x_cm": 549.3,
+     "box_dilated": [
+      9,
+      275,
+      1920,
+      934
+     ]
+    },
+    "2": {
+     "pass": true,
+     "name": "beta",
+     "on_screen": 192,
+     "hits": 192,
+     "hit_frac": 1.0,
+     "mean_x": 873.3,
+     "mean_world_x_cm": 783.3,
+     "box_dilated": [
+      0,
+      243,
+      1098,
+      701
+     ]
+    }
+   },
+   "outside_px": 0,
+   "outside_frac": 0.0,
+   "box_cover": 0.6261,
+   "unit_boxes": 568,
+   "outside_units_px": 0,
+   "outside_units_frac": 0.0,
+   "unit_cover": 0.1771,
+   "mirror": {
+    "alpha_mean_x": 883.3,
+    "beta_mean_x": 873.3,
+    "alpha_mean_world_x_cm": 549.3,
+    "beta_mean_world_x_cm": 783.3,
+    "premise_alpha_left_in_world": true,
+    "order_ok": true,
+    "rule": "alpha mean screen x > beta mean screen x",
+    "r_screen_x_world_x": -0.9964,
+    "corr_ok": true
+   },
+   "mirror_ok": true,
+   "diff_png": "D:/Projects/Chimera-Unreal/TrialOut/a/a11r3/main_check/diff\\shot_t0900_wide_diff.png"
+  },
+  {
+   "name": "shot_t1440_wide",
+   "tick": 1440,
+   "camera": "wide",
+   "pass": true,
+   "fail": [],
+   "size": [
+    1920,
+    1080
+   ],
+   "png_bytes": 3725752,
+   "changed_px": 41422,
+   "armies": {
+    "1": {
+     "pass": true,
+     "name": "alpha",
+     "on_screen": 35,
+     "hits": 35,
+     "hit_frac": 1.0,
+     "mean_x": 833.9,
+     "mean_world_x_cm": 1023.0,
+     "box_dilated": [
+      0,
+      397,
+      1920,
+      715
+     ]
+    },
+    "2": {
+     "pass": true,
+     "name": "beta",
+     "on_screen": 50,
+     "hits": 50,
+     "hit_frac": 1.0,
+     "mean_x": 873.0,
+     "mean_world_x_cm": 754.0,
+     "box_dilated": [
+      19,
+      287,
+      1103,
+      709
+     ]
+    }
+   },
+   "outside_px": 0,
+   "outside_frac": 0.0,
+   "box_cover": 0.3519,
+   "unit_boxes": 85,
+   "outside_units_px": 0,
+   "outside_units_frac": 0.0,
+   "unit_cover": 0.0769,
+   "mirror": {
+    "alpha_mean_x": 833.9,
+    "beta_mean_x": 873.0,
+    "alpha_mean_world_x_cm": 1023.0,
+    "beta_mean_world_x_cm": 754.0,
+    "premise_alpha_left_in_world": false,
+    "order_ok": true,
+    "rule": "armies crossed in world X: alpha mean screen x < beta mean screen x",
+    "r_screen_x_world_x": -0.9995,
+    "corr_ok": true
+   },
+   "mirror_ok": true,
+   "diff_png": "D:/Projects/Chimera-Unreal/TrialOut/a/a11r3/main_check/diff\\shot_t1440_wide_diff.png"
+  }
+ ],
+ "shot_pairs": 7,
+ "log": {
+  "pass": true,
+  "after_line": 1768,
+  "warnings_after": 0,
+  "examples": []
+ },
+ "pass": true
+}

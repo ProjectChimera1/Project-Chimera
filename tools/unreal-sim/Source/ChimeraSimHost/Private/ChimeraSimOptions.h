@@ -14,7 +14,8 @@ struct FChimeraSimShot
  * -ChimeraSimContent= -ChimeraSimScenario= -ChimeraSimOrders= -ChimeraSimSeed=<decimal or 0x hex> -ChimeraSimTicks=1440
  * -ChimeraSimAi -ChimeraSimOut= -ChimeraSimShots=<shots.json> -ChimeraSimHideUnits -ChimeraSimFilmEvery=N -ChimeraSimHitchMs=
  * -ChimeraSimHitchEvery= -ChimeraSimNoArena -ChimeraSimExitWhenDone -ChimeraSimWarmupMaxSec= -ChimeraSimLeg= -ChimeraSimPCommit=
- * -ChimeraSimPDirty=. Strings use FParse::Value(..., bShouldStopOnSeparator=false) and the seed FCString::Strtoui64(S, End, 0)
+ * -ChimeraSimPDirty=; A11: -ChimeraSimShots=none (no shots), -ChimeraSimMeshes=<unit_meshes.json> -ChimeraSimDeadUnderGround
+ * -ChimeraSimNoShotFreeze -ChimeraSimShotSamples=200 -ChimeraSimVerifyEvery=N. Strings use FParse::Value(..., bShouldStopOnSeparator=false) and the seed FCString::Strtoui64(S, End, 0)
  * (plan A F26: the uint64 overload reads decimal only and the default string parse stops at ',' or ')').
  */
 struct FChimeraSimOptions
@@ -39,6 +40,16 @@ struct FChimeraSimOptions
 	FString Leg = TEXT("unreal");
 	FString PCommit = TEXT("unknown");
 	FString PDirty = TEXT("?");
+	/** Mesh table of the renderer (default P/SimTrial/unit_meshes.json). */
+	FString MeshesPath;
+	/** Plan A 3.7 fallback: dead/phased instances go under the ground plane instead of scale 0. */
+	bool bDeadUnderGround = false;
+	/** Shot pairs hold exposure and pin the TSR sequence (ChimeraTerrain S5's temporal_freeze) so shot and hidden differ only by units. */
+	bool bShotFreeze = true;
+	/** Projected units per army per shot (plan A 3.7: 200). */
+	int32 ShotSamples = 200;
+	/** Extra verify holds every N ticks (0 = only the digest and shot ticks); for diagnostic runs such as a long ai run. */
+	int32 VerifyEvery = 0;
 
 	/** Parses FCommandLine::Get(); false with OutError on a malformed value (missing optional values keep defaults). */
 	bool Parse(FString& OutError);

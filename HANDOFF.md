@@ -1,6 +1,6 @@
 # HANDOFF — Project Chimera
 
-_Updated 2026-10-03 10:50 · branch `master` · last commit: HUD T6 (see `git log -1`)_
+_Updated 2026-10-03 12:15 · branch `master` · last commit: sim A11 (see `git log -1`)_
 
 ## Where we stopped
 
@@ -8,7 +8,8 @@ The Unreal trial runs `docs/unreal-move/trial-checks/EXECUTION.md` (§7 Phase 0-
 committed**, then the terrain ground look pass and scatter S0-S4a-S2-S3-S4-S5-S6 (all committed; scatter's in-editor work is complete). Every task passed two independent Opus
 xhigh verifiers (results; code and rules).
 
-- **(a) NativeAOT sim:** one 1,440-tick checksum sequence for `trial_1000` from the .NET CLI, the C++ harness, Godot (.NET 8 and
+- **(a) NativeAOT sim:** **A11: Unreal draws the sim exactly** (visible == alive at every check tick, 0.00 cm, 7/7 pixel pairs,
+  reviewer's visual check all yes). One 1,440-tick checksum sequence for `trial_1000` from the .NET CLI, the C++ harness, Godot (.NET 8 and
   10), the full MainScene replay and Unreal `-game`. Sim tests failed=0 throughout; no golden or AlgoVersion moved. DW-681 stays open.
 - **(b) HUD:** calibration frozen (`bbfda161`, positives 5/5, negatives 8/8); text route chosen (T4a); D10 accepted by Alec; **T4b top
   strip PASS 0/8 on both pairs** (7 text regions sit exactly at the G5 limit from D10's lighter weight: no margin left there).
@@ -26,7 +27,7 @@ xhigh verifiers (results; code and rules).
 
 **Phase 3 (converge) is running** in two workflows started 08:55 on 2026-10-03 in the session that committed S6:
 `tools/unreal-trial/workflows/phase3-b.js` (HUD T4b → T5 → T6 → T7 → T8; **T4b, T5 and T6 passed and are committed**) and `phase3-ac.js`
-(A11 renderer + separate reviewer's `visual_check.json`, beside C9 units and video (**C9 passed, committed**) → C11 packages → S7 SX16). If that session is gone,
+(A11 renderer + separate reviewer's `visual_check.json` (**A11 passed, committed**), beside C9 units and video (**C9 passed, committed**) → C11 packages → S7 SX16). If that session is gone,
 the runs are gone too: start fresh small workflows for the unfinished tasks from those scripts' task notes (`TASKS3B`, `TASKS3`).
 Watch markers with `checkpoints/wait_marker.sh`, commit each passed task with `checkpoints/ckpt.py <task>` by explicit path (HUD: /
 SimTrial: / Terrain: prefixes). Send Alec: A11 contact sheet + verify numbers, `c-C9-sculpt.gif`, T8 scorecard previews.

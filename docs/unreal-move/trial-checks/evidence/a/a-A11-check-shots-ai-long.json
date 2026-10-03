@@ -1,0 +1,798 @@
+{
+ "verify_json": "D:\\Projects\\Chimera-Unreal\\TrialOut\\a\\unreal\\a11r3_ai_long\\verify.json",
+ "leg": "unreal_a11r3_ai_long",
+ "thresholds": {
+  "delta": 24,
+  "window": 5,
+  "min_frac": 0.9,
+  "min_points": 10,
+  "max_out": 0.05,
+  "dilate": 24,
+  "mirror_r": -0.8,
+  "size": [
+   1920,
+   1080
+  ],
+  "min_bytes": 307200,
+  "max_err_cm": 0.5
+ },
+ "shot_freeze": true,
+ "verify": [
+  {
+   "tick": 0,
+   "rows": 1000,
+   "alive": 1000,
+   "phased": 0,
+   "expected_visible": 1000,
+   "visible": 1000,
+   "drawn_instances": 1000,
+   "dead_visible": 0,
+   "alive_hidden": 0,
+   "no_instance": 0,
+   "group_mismatch": 0,
+   "max_err_cm": 0,
+   "stats_alive": 1000,
+   "new_ids_alive": 0,
+   "new_ids_visible": 0,
+   "units_hidden_by_option": false,
+   "building_rows": 2,
+   "buildings_alive": 2,
+   "buildings_visible": 2,
+   "building_drawn_instances": 2,
+   "building_dead_visible": 0,
+   "building_alive_hidden": 0,
+   "building_group_mismatch": 0,
+   "building_max_err_cm": 0,
+   "ai_created_alive": 0,
+   "ai_created_visible": 0,
+   "ai_created": [],
+   "units_pass": true,
+   "buildings_pass": true,
+   "pass": true
+  },
+  {
+   "tick": 300,
+   "rows": 1000,
+   "alive": 999,
+   "phased": 0,
+   "expected_visible": 999,
+   "visible": 999,
+   "drawn_instances": 999,
+   "dead_visible": 0,
+   "alive_hidden": 0,
+   "no_instance": 0,
+   "group_mismatch": 0,
+   "max_err_cm": 0,
+   "stats_alive": 999,
+   "new_ids_alive": 0,
+   "new_ids_visible": 0,
+   "units_hidden_by_option": false,
+   "building_rows": 4,
+   "buildings_alive": 4,
+   "buildings_visible": 4,
+   "building_drawn_instances": 4,
+   "building_dead_visible": 0,
+   "building_alive_hidden": 0,
+   "building_group_mismatch": 0,
+   "building_max_err_cm": 0,
+   "ai_created_alive": 2,
+   "ai_created_visible": 2,
+   "ai_created": [
+    [
+     2,
+     2,
+     "command_center",
+     1
+    ],
+    [
+     3,
+     2,
+     "barracks",
+     1
+    ]
+   ],
+   "units_pass": true,
+   "buildings_pass": true,
+   "pass": true
+  },
+  {
+   "tick": 600,
+   "rows": 1000,
+   "alive": 886,
+   "phased": 0,
+   "expected_visible": 886,
+   "visible": 886,
+   "drawn_instances": 886,
+   "dead_visible": 0,
+   "alive_hidden": 0,
+   "no_instance": 0,
+   "group_mismatch": 0,
+   "max_err_cm": 0,
+   "stats_alive": 886,
+   "new_ids_alive": 0,
+   "new_ids_visible": 0,
+   "units_hidden_by_option": false,
+   "building_rows": 6,
+   "buildings_alive": 6,
+   "buildings_visible": 6,
+   "building_drawn_instances": 6,
+   "building_dead_visible": 0,
+   "building_alive_hidden": 0,
+   "building_group_mismatch": 0,
+   "building_max_err_cm": 0,
+   "ai_created_alive": 4,
+   "ai_created_visible": 4,
+   "ai_created": [
+    [
+     2,
+     2,
+     "command_center",
+     1
+    ],
+    [
+     3,
+     2,
+     "barracks",
+     1
+    ],
+    [
+     4,
+     2,
+     "barracks",
+     1
+    ],
+    [
+     5,
+     2,
+     "archery_range",
+     1
+    ]
+   ],
+   "units_pass": true,
+   "buildings_pass": true,
+   "pass": true
+  },
+  {
+   "tick": 900,
+   "rows": 1000,
+   "alive": 554,
+   "phased": 0,
+   "expected_visible": 554,
+   "visible": 554,
+   "drawn_instances": 554,
+   "dead_visible": 0,
+   "alive_hidden": 0,
+   "no_instance": 0,
+   "group_mismatch": 0,
+   "max_err_cm": 0,
+   "stats_alive": 554,
+   "new_ids_alive": 0,
+   "new_ids_visible": 0,
+   "units_hidden_by_option": false,
+   "building_rows": 7,
+   "buildings_alive": 7,
+   "buildings_visible": 7,
+   "building_drawn_instances": 7,
+   "building_dead_visible": 0,
+   "building_alive_hidden": 0,
+   "building_group_mismatch": 0,
+   "building_max_err_cm": 0,
+   "ai_created_alive": 5,
+   "ai_created_visible": 5,
+   "ai_created": [
+    [
+     2,
+     2,
+     "command_center",
+     1
+    ],
+    [
+     3,
+     2,
+     "barracks",
+     1
+    ],
+    [
+     4,
+     2,
+     "barracks",
+     1
+    ],
+    [
+     5,
+     2,
+     "archery_range",
+     1
+    ],
+    [
+     6,
+     2,
+     "siege_workshop",
+     1
+    ]
+   ],
+   "units_pass": true,
+   "buildings_pass": true,
+   "pass": true
+  },
+  {
+   "tick": 1200,
+   "rows": 1000,
+   "alive": 265,
+   "phased": 0,
+   "expected_visible": 265,
+   "visible": 265,
+   "drawn_instances": 265,
+   "dead_visible": 0,
+   "alive_hidden": 0,
+   "no_instance": 0,
+   "group_mismatch": 0,
+   "max_err_cm": 0,
+   "stats_alive": 265,
+   "new_ids_alive": 0,
+   "new_ids_visible": 0,
+   "units_hidden_by_option": false,
+   "building_rows": 7,
+   "buildings_alive": 6,
+   "buildings_visible": 6,
+   "building_drawn_instances": 6,
+   "building_dead_visible": 0,
+   "building_alive_hidden": 0,
+   "building_group_mismatch": 0,
+   "building_max_err_cm": 0,
+   "ai_created_alive": 4,
+   "ai_created_visible": 4,
+   "ai_created": [
+    [
+     2,
+     2,
+     "command_center",
+     1
+    ],
+    [
+     3,
+     2,
+     "barracks",
+     1
+    ],
+    [
+     4,
+     2,
+     "barracks",
+     1
+    ],
+    [
+     5,
+     2,
+     "archery_range",
+     1
+    ]
+   ],
+   "units_pass": true,
+   "buildings_pass": true,
+   "pass": true
+  },
+  {
+   "tick": 1440,
+   "rows": 1000,
+   "alive": 124,
+   "phased": 0,
+   "expected_visible": 124,
+   "visible": 124,
+   "drawn_instances": 124,
+   "dead_visible": 0,
+   "alive_hidden": 0,
+   "no_instance": 0,
+   "group_mismatch": 0,
+   "max_err_cm": 0,
+   "stats_alive": 124,
+   "new_ids_alive": 0,
+   "new_ids_visible": 0,
+   "units_hidden_by_option": false,
+   "building_rows": 7,
+   "buildings_alive": 6,
+   "buildings_visible": 6,
+   "building_drawn_instances": 6,
+   "building_dead_visible": 0,
+   "building_alive_hidden": 0,
+   "building_group_mismatch": 0,
+   "building_max_err_cm": 0,
+   "ai_created_alive": 4,
+   "ai_created_visible": 4,
+   "ai_created": [
+    [
+     2,
+     2,
+     "command_center",
+     1
+    ],
+    [
+     3,
+     2,
+     "barracks",
+     1
+    ],
+    [
+     4,
+     2,
+     "barracks",
+     1
+    ],
+    [
+     5,
+     2,
+     "archery_range",
+     1
+    ]
+   ],
+   "units_pass": true,
+   "buildings_pass": true,
+   "pass": true
+  },
+  {
+   "tick": 1500,
+   "rows": 1000,
+   "alive": 109,
+   "phased": 0,
+   "expected_visible": 109,
+   "visible": 109,
+   "drawn_instances": 109,
+   "dead_visible": 0,
+   "alive_hidden": 0,
+   "no_instance": 0,
+   "group_mismatch": 0,
+   "max_err_cm": 0,
+   "stats_alive": 109,
+   "new_ids_alive": 0,
+   "new_ids_visible": 0,
+   "units_hidden_by_option": false,
+   "building_rows": 7,
+   "buildings_alive": 6,
+   "buildings_visible": 6,
+   "building_drawn_instances": 6,
+   "building_dead_visible": 0,
+   "building_alive_hidden": 0,
+   "building_group_mismatch": 0,
+   "building_max_err_cm": 0,
+   "ai_created_alive": 4,
+   "ai_created_visible": 4,
+   "ai_created": [
+    [
+     2,
+     2,
+     "command_center",
+     1
+    ],
+    [
+     3,
+     2,
+     "barracks",
+     1
+    ],
+    [
+     4,
+     2,
+     "barracks",
+     1
+    ],
+    [
+     5,
+     2,
+     "archery_range",
+     1
+    ]
+   ],
+   "units_pass": true,
+   "buildings_pass": true,
+   "pass": true
+  },
+  {
+   "tick": 1800,
+   "rows": 1000,
+   "alive": 61,
+   "phased": 0,
+   "expected_visible": 61,
+   "visible": 61,
+   "drawn_instances": 61,
+   "dead_visible": 0,
+   "alive_hidden": 0,
+   "no_instance": 0,
+   "group_mismatch": 0,
+   "max_err_cm": 0,
+   "stats_alive": 61,
+   "new_ids_alive": 0,
+   "new_ids_visible": 0,
+   "units_hidden_by_option": false,
+   "building_rows": 7,
+   "buildings_alive": 6,
+   "buildings_visible": 6,
+   "building_drawn_instances": 6,
+   "building_dead_visible": 0,
+   "building_alive_hidden": 0,
+   "building_group_mismatch": 0,
+   "building_max_err_cm": 0,
+   "ai_created_alive": 4,
+   "ai_created_visible": 4,
+   "ai_created": [
+    [
+     2,
+     2,
+     "command_center",
+     1
+    ],
+    [
+     3,
+     2,
+     "barracks",
+     1
+    ],
+    [
+     4,
+     2,
+     "barracks",
+     1
+    ],
+    [
+     5,
+     2,
+     "archery_range",
+     1
+    ]
+   ],
+   "units_pass": true,
+   "buildings_pass": true,
+   "pass": true
+  },
+  {
+   "tick": 2100,
+   "rows": 1000,
+   "alive": 37,
+   "phased": 0,
+   "expected_visible": 37,
+   "visible": 37,
+   "drawn_instances": 37,
+   "dead_visible": 0,
+   "alive_hidden": 0,
+   "no_instance": 0,
+   "group_mismatch": 0,
+   "max_err_cm": 0,
+   "stats_alive": 37,
+   "new_ids_alive": 0,
+   "new_ids_visible": 0,
+   "units_hidden_by_option": false,
+   "building_rows": 7,
+   "buildings_alive": 6,
+   "buildings_visible": 6,
+   "building_drawn_instances": 6,
+   "building_dead_visible": 0,
+   "building_alive_hidden": 0,
+   "building_group_mismatch": 0,
+   "building_max_err_cm": 0,
+   "ai_created_alive": 4,
+   "ai_created_visible": 4,
+   "ai_created": [
+    [
+     2,
+     2,
+     "command_center",
+     1
+    ],
+    [
+     3,
+     2,
+     "barracks",
+     1
+    ],
+    [
+     4,
+     2,
+     "barracks",
+     1
+    ],
+    [
+     5,
+     2,
+     "archery_range",
+     1
+    ]
+   ],
+   "units_pass": true,
+   "buildings_pass": true,
+   "pass": true
+  },
+  {
+   "tick": 2400,
+   "rows": 1000,
+   "alive": 34,
+   "phased": 0,
+   "expected_visible": 34,
+   "visible": 34,
+   "drawn_instances": 34,
+   "dead_visible": 0,
+   "alive_hidden": 0,
+   "no_instance": 0,
+   "group_mismatch": 0,
+   "max_err_cm": 0,
+   "stats_alive": 34,
+   "new_ids_alive": 0,
+   "new_ids_visible": 0,
+   "units_hidden_by_option": false,
+   "building_rows": 7,
+   "buildings_alive": 6,
+   "buildings_visible": 6,
+   "building_drawn_instances": 6,
+   "building_dead_visible": 0,
+   "building_alive_hidden": 0,
+   "building_group_mismatch": 0,
+   "building_max_err_cm": 0,
+   "ai_created_alive": 4,
+   "ai_created_visible": 4,
+   "ai_created": [
+    [
+     2,
+     2,
+     "command_center",
+     1
+    ],
+    [
+     3,
+     2,
+     "barracks",
+     1
+    ],
+    [
+     4,
+     2,
+     "barracks",
+     1
+    ],
+    [
+     5,
+     2,
+     "archery_range",
+     1
+    ]
+   ],
+   "units_pass": true,
+   "buildings_pass": true,
+   "pass": true
+  },
+  {
+   "tick": 2700,
+   "rows": 1000,
+   "alive": 34,
+   "phased": 0,
+   "expected_visible": 34,
+   "visible": 34,
+   "drawn_instances": 34,
+   "dead_visible": 0,
+   "alive_hidden": 0,
+   "no_instance": 0,
+   "group_mismatch": 0,
+   "max_err_cm": 0,
+   "stats_alive": 34,
+   "new_ids_alive": 0,
+   "new_ids_visible": 0,
+   "units_hidden_by_option": false,
+   "building_rows": 7,
+   "buildings_alive": 6,
+   "buildings_visible": 6,
+   "building_drawn_instances": 6,
+   "building_dead_visible": 0,
+   "building_alive_hidden": 0,
+   "building_group_mismatch": 0,
+   "building_max_err_cm": 0,
+   "ai_created_alive": 4,
+   "ai_created_visible": 4,
+   "ai_created": [
+    [
+     2,
+     2,
+     "command_center",
+     1
+    ],
+    [
+     3,
+     2,
+     "barracks",
+     1
+    ],
+    [
+     4,
+     2,
+     "barracks",
+     1
+    ],
+    [
+     5,
+     2,
+     "archery_range",
+     1
+    ]
+   ],
+   "units_pass": true,
+   "buildings_pass": true,
+   "pass": true
+  },
+  {
+   "tick": 3000,
+   "rows": 1000,
+   "alive": 34,
+   "phased": 0,
+   "expected_visible": 34,
+   "visible": 34,
+   "drawn_instances": 34,
+   "dead_visible": 0,
+   "alive_hidden": 0,
+   "no_instance": 0,
+   "group_mismatch": 0,
+   "max_err_cm": 0,
+   "stats_alive": 34,
+   "new_ids_alive": 0,
+   "new_ids_visible": 0,
+   "units_hidden_by_option": false,
+   "building_rows": 7,
+   "buildings_alive": 6,
+   "buildings_visible": 6,
+   "building_drawn_instances": 6,
+   "building_dead_visible": 0,
+   "building_alive_hidden": 0,
+   "building_group_mismatch": 0,
+   "building_max_err_cm": 0,
+   "ai_created_alive": 4,
+   "ai_created_visible": 4,
+   "ai_created": [
+    [
+     2,
+     2,
+     "command_center",
+     1
+    ],
+    [
+     3,
+     2,
+     "barracks",
+     1
+    ],
+    [
+     4,
+     2,
+     "barracks",
+     1
+    ],
+    [
+     5,
+     2,
+     "archery_range",
+     1
+    ]
+   ],
+   "units_pass": true,
+   "buildings_pass": true,
+   "pass": true
+  },
+  {
+   "tick": 3300,
+   "rows": 1000,
+   "alive": 34,
+   "phased": 0,
+   "expected_visible": 34,
+   "visible": 34,
+   "drawn_instances": 34,
+   "dead_visible": 0,
+   "alive_hidden": 0,
+   "no_instance": 0,
+   "group_mismatch": 0,
+   "max_err_cm": 0,
+   "stats_alive": 34,
+   "new_ids_alive": 0,
+   "new_ids_visible": 0,
+   "units_hidden_by_option": false,
+   "building_rows": 7,
+   "buildings_alive": 5,
+   "buildings_visible": 5,
+   "building_drawn_instances": 5,
+   "building_dead_visible": 0,
+   "building_alive_hidden": 0,
+   "building_group_mismatch": 0,
+   "building_max_err_cm": 0,
+   "ai_created_alive": 4,
+   "ai_created_visible": 4,
+   "ai_created": [
+    [
+     2,
+     2,
+     "command_center",
+     1
+    ],
+    [
+     3,
+     2,
+     "barracks",
+     1
+    ],
+    [
+     4,
+     2,
+     "barracks",
+     1
+    ],
+    [
+     5,
+     2,
+     "archery_range",
+     1
+    ]
+   ],
+   "units_pass": true,
+   "buildings_pass": true,
+   "pass": true
+  },
+  {
+   "tick": 3600,
+   "rows": 1000,
+   "alive": 33,
+   "phased": 0,
+   "expected_visible": 33,
+   "visible": 33,
+   "drawn_instances": 33,
+   "dead_visible": 0,
+   "alive_hidden": 0,
+   "no_instance": 0,
+   "group_mismatch": 0,
+   "max_err_cm": 0,
+   "stats_alive": 33,
+   "new_ids_alive": 0,
+   "new_ids_visible": 0,
+   "units_hidden_by_option": false,
+   "building_rows": 7,
+   "buildings_alive": 5,
+   "buildings_visible": 5,
+   "building_drawn_instances": 5,
+   "building_dead_visible": 0,
+   "building_alive_hidden": 0,
+   "building_group_mismatch": 0,
+   "building_max_err_cm": 0,
+   "ai_created_alive": 4,
+   "ai_created_visible": 4,
+   "ai_created": [
+    [
+     2,
+     2,
+     "command_center",
+     1
+    ],
+    [
+     3,
+     2,
+     "barracks",
+     1
+    ],
+    [
+     4,
+     2,
+     "barracks",
+     1
+    ],
+    [
+     5,
+     2,
+     "archery_range",
+     1
+    ]
+   ],
+   "units_pass": true,
+   "buildings_pass": true,
+   "pass": true
+  }
+ ],
+ "ai_buildings": {
+  "min": 1,
+  "by_tick": 900,
+  "max_ai_created_alive": 5,
+  "pass": true
+ },
+ "shots": [],
+ "shot_pairs": 0,
+ "pass": true
+}

@@ -1,7 +1,8 @@
 {
  "version": 1,
  "generated": "2026-10-01T04:13:45",
- "note": "front_yaw_deg = actor yaw that turns the mesh front to +X (LookTest/run/facing.json, by source); foot_z_cm lifts the pivot so the mesh rests on z=0; size_cm is after scale.",
+ "edited": "2026-10-03 A11 round 2: front_yaw_deg of render_crawler (-90) and envy_wraithwing (180) set by hand to the values of sim_import.FRONT_YAW_OVERRIDES; a regeneration reproduces them and drops this field.",
+ "note": "front_yaw_deg = actor yaw that turns the mesh front to +X (LookTest/run/facing.json, by source, then sim_import.FRONT_YAW_OVERRIDES per mesh); foot_z_cm lifts the pivot so the mesh rests on z=0; size_cm is after scale.",
  "entries": [
   {
    "id": "alpha/worker",
@@ -407,7 +408,7 @@
     "/Game/SimUnits/render_crawler/MI_SimTeam_render_crawler_beta"
    ],
    "scale": 5.650092,
-   "front_yaw_deg": 0.0,
+   "front_yaw_deg": -90.0,
    "foot_z_cm": -0.0,
    "size_cm": [
     560.3191822265625,
@@ -433,7 +434,7 @@
     "/Game/SimUnits/envy_wraithwing/MI_SimTeam_envy_wraithwing_beta"
    ],
    "scale": 4.099075,
-   "front_yaw_deg": 0.0,
+   "front_yaw_deg": 180.0,
    "foot_z_cm": -0.0,
    "size_cm": [
     409.7073498535156,

@@ -20,6 +20,11 @@ PREP = SIM + '/run/units_prep.json'
 REPORT = SIM + '/run/unit_meshes_report.json'
 OUT = SIM + '/unit_meshes.json'
 ROOT = '/Game/SimUnits'
+# Per-mesh front yaw (A11 review pass 1, 2026-10-03). Tripo static meshes do not share a front axis, so the
+# by-source value in LookTest/run/facing.json (0 for tripo_static, measured on crucible_mortar whose barrel is at
+# glTF +X) is wrong for two of them. These win over facing.json: envy_wraithwing has its head at glTF -X (yaw 180);
+# render_crawler has its cannon and face at glTF +Z, the humanoid front axis (yaw -90).
+FRONT_YAW_OVERRIDES = {'envy_wraithwing': 180.0, 'render_crawler': -90.0}
 EAL = unreal.EditorAssetLibrary
 MEL = unreal.MaterialEditingLibrary
 
@@ -118,7 +123,7 @@ def run(only=None):
                     'id': eid, 'faction': p['faction'], 'def_id': p['def_id'], 'kind': p['kind'], 'role': p['role'],
                     'key': key, 'source': p['source'], 'action': p['action'],
                     'mesh': info['mesh'], 'team_mi': [t['path'] for t in tm], 'scale': p['scale'],
-                    'front_yaw_deg': float(facing['overrides'].get(key, facing['front_yaw'][p['front_source']])),
+                    'front_yaw_deg': float(FRONT_YAW_OVERRIDES.get(key, facing['overrides'].get(key, facing['front_yaw'][p['front_source']]))),
                     'foot_z_cm': -bb.min.z * p['scale'], 'size_cm': [s * p['scale'] for s in size],
                     'expected_cm': p['expected_cm'], 'expected_dim': p['expected_dim'],
                     'nanite': nanite, 'static': True})
@@ -126,7 +131,7 @@ def run(only=None):
         fails += [f'{eid}: {x}' for x in f]
         yield
     doc = {'version': 1, 'generated': C.now_iso(),
-           'note': 'front_yaw_deg = actor yaw that turns the mesh front to +X (LookTest/run/facing.json, by source); '
+           'note': 'front_yaw_deg = actor yaw that turns the mesh front to +X (LookTest/run/facing.json, by source, then sim_import.FRONT_YAW_OVERRIDES per mesh); '
                    'foot_z_cm lifts the pivot so the mesh rests on z=0; size_cm is after scale.',
            'entries': entries}
     C.write_json(REPORT, {'generated': C.now_iso(), 'entries': rep, 'failures': fails})

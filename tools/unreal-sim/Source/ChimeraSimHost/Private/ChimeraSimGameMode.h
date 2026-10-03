@@ -19,6 +19,6 @@ public:
 	virtual void StartPlay() override;
 
 private:
-	/** The "overview" camera of plan A 3.7 (pivot 0,0,0, 150 m, pitch 55, yaw 90, hFOV 90); A11 adds the shot cameras. */
+	/** The "overview" camera of plan A 3.7 (pivot 0,0,0, 150 m, pitch 55, yaw 90, hFOV 90); the director spawns "wide" and "close". */
 	ACameraActor* SpawnOverviewCamera();
 };

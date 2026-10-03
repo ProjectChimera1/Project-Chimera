@@ -19,6 +19,10 @@
   10 = preflight failed (nothing launched); 11 = machine not quiet (-Perf).
   -Perf (A12): the quiet preflight, plus CPU seconds of dotnet/ilc/cl/link/MSBuild/godot* over the run into perf.json (quiet=0
   when any used > 5% of a core).
+  A11: every run draws the units (AChimeraUnitRenderer) and writes verify.json; shot pairs go to <Tag>/shots/, film frames to
+  <Tag>/film/. -Shots none runs without shots (verify still runs at ticks 0/300/900/1440); -DeadUnderGround is plan A 3.7's
+  fallback for dead instances; -NoShotFreeze takes shot pairs without the exposure hold and TSR freeze; -VerifyEvery N adds
+  verify holds every N ticks (diagnostic runs, e.g. a long ai run with -Ticks above 1440: its trace has no golden).
 #>
 param(
     [Parameter(Mandatory)][string]$Tag,
@@ -43,6 +47,9 @@ param(
     [switch]$ExpectFail,
     [switch]$Perf,
     [int]$LoadTimeoutSec = 300,
+    [switch]$DeadUnderGround,
+    [switch]$NoShotFreeze,
+    [int]$VerifyEvery = 0,
     [switch]$Inner
 )
 $ErrorActionPreference = 'Stop'
@@ -109,9 +116,9 @@ function Get-CpuSeconds {
 $running = @(Get-Process -Name 'UnrealEditor*' -ErrorAction SilentlyContinue)
 if ($running.Count -gt 0) { Write-Host "run_sim: UnrealEditor already running (pid $($running.Id -join ',')); refusing"; exit 1 }
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
-foreach ($f in 'run.log', 'trace.txt', 'trace.partial.txt', 'frames.csv', 'run_sim.json', 'perf.json', 'profile.csv') {
+foreach ($f in 'run.log', 'trace.txt', 'trace.partial.txt', 'frames.csv', 'run_sim.json', 'perf.json', 'profile.csv', 'verify.json', 'shots', 'film') {
     $p = Join-Path $Out $f
-    if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Force }   # stale files never pass as this run's
+    if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Force -Recurse }   # stale files never pass as this run's
 }
 $log = "$Out/run.log"
 
@@ -131,6 +138,9 @@ if ($HitchMs -gt 0 -and $HitchEvery -gt 0) { $a += "-ChimeraSimHitchMs=$HitchMs"
 if ($NoArena) { $a += '-ChimeraSimNoArena' }
 if ($HideUnits) { $a += '-ChimeraSimHideUnits' }
 if ($FilmEvery -gt 0) { $a += "-ChimeraSimFilmEvery=$FilmEvery" }
+if ($DeadUnderGround) { $a += '-ChimeraSimDeadUnderGround' }
+if ($NoShotFreeze) { $a += '-ChimeraSimNoShotFreeze' }
+if ($VerifyEvery -gt 0) { $a += "-ChimeraSimVerifyEvery=$VerifyEvery" }
 if ($CsvFrames -gt 0) { $a += "-csvCaptureFrames=$CsvFrames"; $a += '-csvCompression=0' }
 
 $hardS = $WarmupMaxSec + [math]::Ceiling($Ticks / 30.0) + 180 + $LoadTimeoutSec
@@ -183,7 +193,7 @@ $loadedPath = if ($loaded.Count -ge 1) { ([regex]::Match($loaded[0], 'loaded pat
 $seedNum = if ($Seed -match '^0[xX]') { [Convert]::ToUInt64($Seed.Substring(2), 16) } else { [UInt64]::Parse($Seed) }
 $seedWant = '0x{0:X16}' -f $seedNum
 $shotWant = 'none'
-if ($Shots -and (Test-Path -LiteralPath $Shots)) {
+if ($Shots -and $Shots -ne 'none' -and (Test-Path -LiteralPath $Shots)) {
     $j = Get-Content -LiteralPath $Shots -Raw | ConvertFrom-Json
     $shotWant = (@($j) | ForEach-Object { "$($_.tick):$($_.camera)" }) -join ','
 }
@@ -206,6 +216,7 @@ if ($ExpectFail) {
     $checks['seed_echo'] = ($seedEcho.Count -eq 1 -and $seedEcho[0] -eq $seedWant)
     $checks['shots_echo'] = ($shotsEcho.Count -eq 1 -and $shotsEcho[0] -eq $shotWant)
     $checks['trace_exists'] = (Test-Path -LiteralPath $trace)
+    $checks['verify_exists'] = (Test-Path -LiteralPath "$Out/verify.json")
 }
 
 # The CSV profiler writes to the per-user Saved dir for an installed-engine -game run (run_fps.ps1).
