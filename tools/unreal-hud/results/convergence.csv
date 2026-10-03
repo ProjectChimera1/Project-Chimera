@@ -1,2 +1,3 @@
 iteration,time,failing_A,failing_B,worst_region,badness,hud_mad,hud_ssim,tree_hash,note
 t4a-1,2026-10-01 13:28:19,1,1,top.clock,5.390,0.828,0.9901,8dd0c35dfebb946c,only=^top\. gates=all extra=none T4a chosen defaults compiled in
+t4-1,2026-10-03 08:54:26,0,0,top.chip.gold,1.000,0.810,0.9913,0e7deb5e87c0915d,only=^top\. gates=all extra=none T4b: clock pill split-coverage border (SChimeraTranslateLayer + SChimeraSubpixelBorder)

@@ -4,6 +4,8 @@
 #include "Ui/ChimeraUi.h"
 #include "Ui/Widgets/SChimeraIcon.h"
 #include "Ui/Widgets/SChimeraKeycap.h"
+#include "Ui/Widgets/SChimeraSubpixelBorder.h"
+#include "Ui/Widgets/SChimeraTranslateLayer.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
@@ -87,17 +89,20 @@ void SChimeraTopStrip::Construct(const FArguments& InArgs)
 		Add(Chip(Token::Surface0, Token::Border, Kids));
 	}
 
-	// Clock group: the match clock and the speed pill (1 px border, padding 5/8, transparent over the strip).
-	TSharedRef<SWidget> Clock = SNew(SHorizontalBox)
-		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+	// Clock group: the match clock and the speed pill (1 px border, padding 5/8, transparent over the strip). CSS centres the group
+	// with left:50%; transform:translateX(-50%), so it sits at a fractional x (886.53) and Blink anti-aliases the pill's side
+	// borders across two columns; SChimeraTranslateLayer + SChimeraSubpixelBorder reproduce that coverage from the live layout.
+	const TSharedRef<float> ClockOriginX = MakeShared<float>(0.f);
+	TSharedRef<SWidget> Clock = SNew(SChimeraTranslateLayer).OriginX(ClockOriginX)
 		[
-			Text(EChimeraText::Clock, S.Clock)
-		]
-		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(ClockGap, 0.f, 0.f, 0.f))
-		[
-			SNew(SBorder).BorderImage(Solid(Token::Border)).Padding(1.f)
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
-				SNew(SBorder).BorderImage(Solid(Token::Surface1)).Padding(FMargin(8.f, 5.f))
+				Text(EChimeraText::Clock, S.Clock)
+			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(ClockGap, 0.f, 0.f, 0.f))
+			[
+				SNew(SChimeraSubpixelBorder).BorderColor(Token::Border).Padding(FMargin(8.f, 5.f)).LayerOriginX(ClockOriginX)
 				[
 					Text(EChimeraText::Label12, S.Speed, Token::TextMuted)
 				]

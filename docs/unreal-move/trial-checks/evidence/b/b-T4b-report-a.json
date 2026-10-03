@@ -1,0 +1,1270 @@
+{
+ "pair": "A",
+ "only": "^top\\.",
+ "gates": [
+  "G1",
+  "G2",
+  "G3",
+  "G4",
+  "G5",
+  "G6",
+  "G7"
+ ],
+ "alignment": [
+  {
+   "anchor": "top.hairline",
+   "status": "ok",
+   "ok": true,
+   "warn": false,
+   "dx": 0,
+   "dy": 0,
+   "found": true,
+   "ref_unique": true,
+   "guarded_regions": [
+    "top.strip",
+    "top.chip.gold",
+    "top.chip.iron",
+    "top.chip.aether",
+    "top.chip.supply",
+    "top.clock",
+    "top.alertlog",
+    "top.menu"
+   ]
+  },
+  {
+   "anchor": "top.chip_left",
+   "status": "ok",
+   "ok": true,
+   "warn": false,
+   "dx": 0,
+   "dy": 0,
+   "found": true,
+   "ref_unique": true,
+   "guarded_regions": [
+    "top.strip",
+    "top.chip.gold",
+    "top.chip.iron",
+    "top.chip.aether",
+    "top.chip.supply",
+    "top.clock",
+    "top.alertlog",
+    "top.menu"
+   ]
+  },
+  {
+   "anchor": "top.menu_right",
+   "status": "ok",
+   "ok": true,
+   "warn": false,
+   "dx": 0,
+   "dy": 0,
+   "found": true,
+   "ref_unique": true,
+   "guarded_regions": [
+    "top.strip",
+    "top.chip.gold",
+    "top.chip.iron",
+    "top.chip.aether",
+    "top.chip.supply",
+    "top.clock",
+    "top.alertlog",
+    "top.menu"
+   ]
+  }
+ ],
+ "regions": {
+  "top.strip": {
+   "region": "top.strip",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 60440,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "strip.fill",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "strip.border",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "strip.below",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "auto.8.top-strip",
+       "class": "auto",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 4,
+       "name": "top-strip",
+       "side": "bottom",
+       "px": 1920,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 60440,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      }
+     },
+     "runs": []
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    0,
+    0,
+    1920,
+    43
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.0,
+    "G5": 0.0
+   },
+   "report_only": [],
+   "badness": 0.0,
+   "worst_gate": null,
+   "failing_gates": [],
+   "pass": true
+  },
+  "top.chip.gold": {
+   "region": "top.chip.gold",
+   "kind": "fixed",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "fixed",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 3296,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "chip.fill",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "chip.left",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "chip.top",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "chip.bottom",
+       "class": "hard",
+       "err": 0
+      },
+      {
+       "id": "auto.9.chip:gold-18-every-10-s",
+       "class": "auto",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 5,
+       "name": "chip:gold-18-every-10-s",
+       "side": "top",
+       "px": 97,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 6,
+       "name": "chip:gold-18-every-10-s",
+       "side": "right",
+       "px": 26,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 7,
+       "name": "chip:gold-18-every-10-s",
+       "side": "bottom",
+       "px": 97,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 8,
+       "name": "chip:gold-18-every-10-s",
+       "side": "left",
+       "px": 26,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 1982,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      },
+      "vector": {
+       "px": 324,
+       "mad": 0.0545,
+       "bad_frac": 0.0,
+       "mad_raw": 0.05452674897119342,
+       "ssim": 0.99999,
+       "ssim_raw": 0.999991852620261,
+       "badness": 0.004378355947049441
+      },
+      "text": {
+       "px": 990,
+       "mad": 9.0535,
+       "bad_frac": 0.24545,
+       "mad_raw": 9.053535353535354,
+       "ssim": 0.94166,
+       "ssim_raw": 0.94165527280897,
+       "badness": 0.5336548327734024
+      }
+     },
+     "runs": [
+      {
+       "id": 15,
+       "text": "340",
+       "ref_box": [
+        2,
+        6,
+        29,
+        18
+       ],
+       "test_box": [
+        3,
+        6,
+        28,
+        18
+       ],
+       "mass_ref": 146.3221710839549,
+       "mass_test": 113.82671004602444,
+       "peak_ratio": 1.0,
+       "dl": 1,
+       "dt": 0,
+       "db": 0,
+       "dr": -1,
+       "right_tol": 1.0,
+       "mass_rel": 0.22208159431481936,
+       "mass_signed": -0.22208159431481936,
+       "bad": 1.0,
+       "badness": 1.0
+      },
+      {
+       "id": 17,
+       "text": "+18",
+       "ref_box": [
+        2,
+        5,
+        22,
+        13
+       ],
+       "test_box": [
+        2,
+        5,
+        21,
+        13
+       ],
+       "mass_ref": 53.35145510304746,
+       "mass_test": 50.05794677132257,
+       "peak_ratio": 1.0,
+       "dl": 0,
+       "dt": 0,
+       "db": 0,
+       "dr": -1,
+       "right_tol": 1.0,
+       "mass_rel": 0.06173230562059716,
+       "mass_signed": -0.06173230562059716,
+       "bad": 1.0,
+       "badness": 1.0
+      }
+     ]
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    6,
+    4,
+    109,
+    36
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.5336548327734024,
+    "G5": 1.0
+   },
+   "report_only": [],
+   "badness": 1.0,
+   "worst_gate": "G5",
+   "failing_gates": [],
+   "pass": true
+  },
+  "top.chip.iron": {
+   "region": "top.chip.iron",
+   "kind": "flow",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "flow",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 2784,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "auto.18.chip:iron-6-every-10-s",
+       "class": "auto",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 9,
+       "name": "chip:iron-6-every-10-s",
+       "side": "top",
+       "px": 81,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 10,
+       "name": "chip:iron-6-every-10-s",
+       "side": "right",
+       "px": 26,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 11,
+       "name": "chip:iron-6-every-10-s",
+       "side": "bottom",
+       "px": 81,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 12,
+       "name": "chip:iron-6-every-10-s",
+       "side": "left",
+       "px": 26,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 1726,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      },
+      "vector": {
+       "px": 324,
+       "mad": 0.1049,
+       "bad_frac": 0.0,
+       "mad_raw": 0.10493827160493827,
+       "ssim": 0.99998,
+       "ssim_raw": 0.9999845255636192,
+       "badness": 0.008628345973342482
+      },
+      "text": {
+       "px": 734,
+       "mad": 9.6008,
+       "bad_frac": 0.23433,
+       "mad_raw": 9.600817438692099,
+       "ssim": 0.91899,
+       "ssim_raw": 0.9189921974144678,
+       "badness": 0.5777069566728155
+      }
+     },
+     "runs": [
+      {
+       "id": 24,
+       "text": "60",
+       "ref_box": [
+        3,
+        6,
+        21,
+        18
+       ],
+       "test_box": [
+        4,
+        6,
+        20,
+        18
+       ],
+       "mass_ref": 106.79957149658784,
+       "mass_test": 81.86771940961752,
+       "peak_ratio": 1.0,
+       "dl": 1,
+       "dt": 0,
+       "db": 0,
+       "dr": -1,
+       "right_tol": 1.0,
+       "mass_rel": 0.2334452445604323,
+       "mass_signed": -0.2334452445604323,
+       "bad": 1.0,
+       "badness": 1.0
+      },
+      {
+       "id": 26,
+       "text": "+6",
+       "ref_box": [
+        3,
+        5,
+        16,
+        13
+       ],
+       "test_box": [
+        3,
+        5,
+        16,
+        13
+       ],
+       "mass_ref": 31.948208196615838,
+       "mass_test": 29.1926269060027,
+       "peak_ratio": 0.9925373134328358,
+       "dl": 0,
+       "dt": 0,
+       "db": 0,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.08625151287529877,
+       "mass_signed": -0.08625151287529877,
+       "bad": 0.0,
+       "badness": 0.24608837021112945
+      }
+     ]
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    109,
+    4,
+    196,
+    36
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.5777069566728155,
+    "G5": 1.0
+   },
+   "report_only": [],
+   "badness": 1.0,
+   "worst_gate": "G5",
+   "failing_gates": [],
+   "pass": true
+  },
+  "top.chip.aether": {
+   "region": "top.chip.aether",
+   "kind": "flow",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "flow",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 2784,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "auto.27.chip:aether-regenerates",
+       "class": "auto",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 13,
+       "name": "chip:aether-regenerates",
+       "side": "top",
+       "px": 81,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 14,
+       "name": "chip:aether-regenerates",
+       "side": "right",
+       "px": 26,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 15,
+       "name": "chip:aether-regenerates",
+       "side": "bottom",
+       "px": 81,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 16,
+       "name": "chip:aether-regenerates",
+       "side": "left",
+       "px": 26,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 1742,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      },
+      "vector": {
+       "px": 324,
+       "mad": 0.1358,
+       "bad_frac": 0.0,
+       "mad_raw": 0.13580246913580246,
+       "ssim": 0.99998,
+       "ssim_raw": 0.9999789147286658,
+       "badness": 0.005943134910595846
+      },
+      "text": {
+       "px": 718,
+       "mad": 8.4861,
+       "bad_frac": 0.21309,
+       "mad_raw": 8.486072423398328,
+       "ssim": 0.93966,
+       "ssim_raw": 0.9396599989196118,
+       "badness": 0.5068840565119129
+      }
+     },
+     "runs": [
+      {
+       "id": 35,
+       "text": "20",
+       "ref_box": [
+        2,
+        6,
+        20,
+        18
+       ],
+       "test_box": [
+        3,
+        6,
+        19,
+        18
+       ],
+       "mass_ref": 104.93172512299635,
+       "mass_test": 82.10707824154896,
+       "peak_ratio": 1.0,
+       "dl": 1,
+       "dt": 0,
+       "db": 0,
+       "dr": -1,
+       "right_tol": 1.0,
+       "mass_rel": 0.2175190282509255,
+       "mass_signed": -0.2175190282509255,
+       "bad": 1.0,
+       "badness": 1.0
+      },
+      {
+       "id": 37,
+       "text": "+2",
+       "ref_box": [
+        2,
+        5,
+        15,
+        13
+       ],
+       "test_box": [
+        2,
+        5,
+        15,
+        13
+       ],
+       "mass_ref": 30.738102897338567,
+       "mass_test": 29.044178515516098,
+       "peak_ratio": 1.0,
+       "dl": 0,
+       "dt": 0,
+       "db": 0,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.05510829303551901,
+       "mass_signed": -0.05510829303551901,
+       "bad": 0.0,
+       "badness": 0.16881547671866895
+      }
+     ]
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    196,
+    4,
+    283,
+    36
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.5068840565119129,
+    "G5": 1.0
+   },
+   "report_only": [],
+   "badness": 1.0,
+   "worst_gate": "G5",
+   "failing_gates": [],
+   "pass": true
+  },
+  "top.chip.supply": {
+   "region": "top.chip.supply",
+   "kind": "flow",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "flow",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 3520,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "auto.38.chip:supply-used-max",
+       "class": "auto",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 17,
+       "name": "chip:supply-used-max",
+       "side": "top",
+       "px": 104,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 18,
+       "name": "chip:supply-used-max",
+       "side": "right",
+       "px": 26,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 19,
+       "name": "chip:supply-used-max",
+       "side": "bottom",
+       "px": 104,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 20,
+       "name": "chip:supply-used-max",
+       "side": "left",
+       "px": 26,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 1942,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      },
+      "vector": {
+       "px": 324,
+       "mad": 0.0792,
+       "bad_frac": 0.0,
+       "mad_raw": 0.07921810699588477,
+       "ssim": 0.99998,
+       "ssim_raw": 0.9999835299120745,
+       "badness": 0.0067331229539860345
+      },
+      "text": {
+       "px": 1254,
+       "mad": 8.3177,
+       "bad_frac": 0.15949,
+       "mad_raw": 8.317650186071239,
+       "ssim": 0.91297,
+       "ssim_raw": 0.9129712446227702,
+       "badness": 0.6668205878129364
+      }
+     },
+     "runs": [
+      {
+       "id": 46,
+       "text": "9 / 20",
+       "ref_box": [
+        2,
+        4,
+        56,
+        19
+       ],
+       "test_box": [
+        3,
+        4,
+        55,
+        19
+       ],
+       "mass_ref": 185.85269004919854,
+       "mass_test": 144.93943818441517,
+       "peak_ratio": 1.0,
+       "dl": 1,
+       "dt": 0,
+       "db": 0,
+       "dr": -1,
+       "right_tol": 1.0,
+       "mass_rel": 0.22013806662660038,
+       "mass_signed": -0.22013806662660038,
+       "bad": 1.0,
+       "badness": 1.0
+      }
+     ]
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    283,
+    4,
+    393,
+    36
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.6668205878129364,
+    "G5": 1.0
+   },
+   "report_only": [],
+   "badness": 1.0,
+   "worst_gate": "G5",
+   "failing_gates": [],
+   "pass": true
+  },
+  "top.clock": {
+   "region": "top.clock",
+   "kind": "flow",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "flow",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 4200,
+     "g3_badness": 0.0,
+     "probes": [],
+     "lines": [
+      {
+       "id": 21,
+       "name": "game-speed-pill",
+       "side": "top",
+       "px": 91,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 22,
+       "name": "game-speed-pill",
+       "side": "bottom",
+       "px": 91,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 1707,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      },
+      "text": {
+       "px": 2493,
+       "mad": 6.781,
+       "bad_frac": 0.19254,
+       "mad_raw": 6.780986762936221,
+       "ssim": 0.91828,
+       "ssim_raw": 0.9182823585007347,
+       "badness": 0.5520090010722901
+      }
+     },
+     "runs": [
+      {
+       "id": 51,
+       "text": "2:14",
+       "ref_box": [
+        3,
+        6,
+        45,
+        21
+       ],
+       "test_box": [
+        4,
+        6,
+        45,
+        21
+       ],
+       "mass_ref": 201.56469636050338,
+       "mass_test": 162.56306024054444,
+       "peak_ratio": 1.0,
+       "dl": 1,
+       "dt": 0,
+       "db": 0,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.19349438083246262,
+       "mass_signed": -0.19349438083246262,
+       "bad": 1.0,
+       "badness": 1.0
+      },
+      {
+       "id": 53,
+       "text": "Normal \u00b7 \u00d71.0",
+       "ref_box": [
+        3,
+        5,
+        78,
+        14
+       ],
+       "test_box": [
+        4,
+        5,
+        78,
+        14
+       ],
+       "mass_ref": 210.66293342666432,
+       "mass_test": 187.1018974525637,
+       "peak_ratio": 1.0,
+       "dl": 1,
+       "dt": 0,
+       "db": 0,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.11184234260320251,
+       "mass_signed": -0.11184234260320251,
+       "bad": 1.0,
+       "badness": 1.0
+      }
+     ]
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    885,
+    6,
+    1035,
+    34
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.5520090010722901,
+    "G5": 1.0
+   },
+   "report_only": [],
+   "badness": 1.0,
+   "worst_gate": "G5",
+   "failing_gates": [],
+   "pass": true
+  },
+  "top.alertlog": {
+   "region": "top.alertlog",
+   "kind": "flow",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "flow",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 1824,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "auto.55.alert-log-button",
+       "class": "auto",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 23,
+       "name": "alert-log-button",
+       "side": "top",
+       "px": 51,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 24,
+       "name": "alert-log-button",
+       "side": "right",
+       "px": 26,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 25,
+       "name": "alert-log-button",
+       "side": "bottom",
+       "px": 51,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 26,
+       "name": "alert-log-button",
+       "side": "left",
+       "px": 26,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 1291,
+       "mad": 0.0,
+       "bad_frac": 0.0,
+       "mad_raw": 0.0,
+       "badness": 0.0
+      },
+      "vector": {
+       "px": 324,
+       "mad": 0.0885,
+       "bad_frac": 0.0,
+       "mad_raw": 0.08847736625514403,
+       "ssim": 0.99999,
+       "ssim_raw": 0.9999883760055928,
+       "badness": 0.00627073530919898
+      },
+      "text": {
+       "px": 209,
+       "mad": 2.2153,
+       "bad_frac": 0.11483,
+       "mad_raw": 2.215311004784689,
+       "ssim": 0.9837,
+       "ssim_raw": 0.9836983003015836,
+       "badness": 0.2261294196133647
+      }
+     },
+     "runs": [
+      {
+       "id": 60,
+       "text": "3",
+       "ref_box": [
+        3,
+        5,
+        10,
+        15
+       ],
+       "test_box": [
+        4,
+        5,
+        10,
+        15
+       ],
+       "mass_ref": 29.21969160822664,
+       "mass_test": 27.338180102511313,
+       "peak_ratio": 1.0,
+       "dl": 1,
+       "dt": 0,
+       "db": 0,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.06439190156221902,
+       "mass_signed": -0.06439190156221902,
+       "bad": 1.0,
+       "badness": 1.0
+      }
+     ]
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    1741,
+    4,
+    1798,
+    36
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.2261294196133647,
+    "G5": 1.0
+   },
+   "report_only": [],
+   "badness": 1.0,
+   "worst_gate": "G5",
+   "failing_gates": [],
+   "pass": true
+  },
+  "top.menu": {
+   "region": "top.menu",
+   "kind": "flow",
+   "units": [
+    {
+     "unit": "all",
+     "kind": "flow",
+     "argmin_shift": [
+      0,
+      0
+     ],
+     "scored_shift": [
+      0,
+      0
+     ],
+     "px": 3712,
+     "g3_badness": 0.0,
+     "probes": [
+      {
+       "id": "auto.61.menu-button",
+       "class": "auto",
+       "err": 0
+      },
+      {
+       "id": "auto.68.menu-keycap-F10",
+       "class": "auto",
+       "err": 0
+      }
+     ],
+     "lines": [
+      {
+       "id": 27,
+       "name": "menu-button",
+       "side": "top",
+       "px": 110,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 28,
+       "name": "menu-button",
+       "side": "right",
+       "px": 26,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 29,
+       "name": "menu-button",
+       "side": "bottom",
+       "px": 110,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 30,
+       "name": "menu-button",
+       "side": "left",
+       "px": 26,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 31,
+       "name": "menu-keycap-F10",
+       "side": "top",
+       "px": 20,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 32,
+       "name": "menu-keycap-F10",
+       "side": "right",
+       "px": 10,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 33,
+       "name": "menu-keycap-F10",
+       "side": "bottom",
+       "px": 40,
+       "bad_frac": 0.0
+      },
+      {
+       "id": 34,
+       "name": "menu-keycap-F10",
+       "side": "left",
+       "px": 10,
+       "bad_frac": 0.0
+      }
+     ],
+     "classes": {
+      "flat": {
+       "px": 2414,
+       "mad": 0.0801,
+       "bad_frac": 0.0,
+       "mad_raw": 0.08008837337752002,
+       "badness": 0.08008837337752002
+      },
+      "vector": {
+       "px": 388,
+       "mad": 0.421,
+       "bad_frac": 0.02062,
+       "mad_raw": 0.4209621993127148,
+       "ssim": 0.99647,
+       "ssim_raw": 0.9964702068582617,
+       "badness": 0.23819374733371246
+      },
+      "text": {
+       "px": 910,
+       "mad": 18.0634,
+       "bad_frac": 0.31758,
+       "mad_raw": 18.063369963369965,
+       "ssim": 0.83814,
+       "ssim_raw": 0.8381437167889196,
+       "badness": 0.6736124920866835
+      }
+     },
+     "runs": [
+      {
+       "id": 61,
+       "text": "Menu",
+       "ref_box": [
+        3,
+        6,
+        35,
+        16
+       ],
+       "test_box": [
+        4,
+        6,
+        35,
+        15
+       ],
+       "mass_ref": 143.2719727027456,
+       "mass_test": 103.5834629423901,
+       "peak_ratio": 1.0,
+       "dl": 1,
+       "dt": 0,
+       "db": -1,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.2770151692033966,
+       "mass_signed": -0.2770151692033966,
+       "bad": 1.0,
+       "badness": 1.0
+      },
+      {
+       "id": 68,
+       "text": "F10",
+       "ref_box": [
+        2,
+        2,
+        20,
+        10
+       ],
+       "test_box": [
+        2,
+        2,
+        20,
+        10
+       ],
+       "mass_ref": 71.87965854864858,
+       "mass_test": 49.379397514219505,
+       "peak_ratio": 1.0,
+       "dl": 0,
+       "dt": 0,
+       "db": 0,
+       "dr": 0,
+       "right_tol": 1.0,
+       "mass_rel": 0.3130268213391799,
+       "mass_signed": -0.3130268213391799,
+       "bad": 0.0,
+       "badness": 0.6671259168767967
+      }
+     ]
+    }
+   ],
+   "gates": {},
+   "bbox": [
+    1798,
+    4,
+    1914,
+    36
+   ],
+   "gate_badness": {
+    "G1": 0.0,
+    "G2": 0.0,
+    "G3": 0.0,
+    "G4": 0.6736124920866835,
+    "G5": 1.0
+   },
+   "report_only": [],
+   "badness": 1.0,
+   "worst_gate": "G5",
+   "failing_gates": [],
+   "pass": true
+  }
+ },
+ "uncalibrated": false,
+ "g7": {
+  "mad": 0.8096616602067184,
+  "ssim": 0.9913293728497231,
+  "px": 82560,
+  "badness": 0.0,
+  "report_only": true
+ },
+ "n_regions": 8,
+ "failing": [],
+ "worst": {
+  "region": "top.chip.gold",
+  "badness": 1.0,
+  "gate": "G5"
+ },
+ "result": "PASS",
+ "seconds": 0.23,
+ "calibration": "OK"
+}
