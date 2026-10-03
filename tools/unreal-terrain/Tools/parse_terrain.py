@@ -35,6 +35,10 @@ Usage:
                                                  scatter S5 (scatter_bars.py): SX1-SX5, SX7-SX9, SX17, SX18 (SX16 with --packaged); --thinx RUN (SX6),
                                                  --shadx RUN (SX10), --latx RUN (SX12 rows), --dump-oracle RUN NAME (the numpy oracle alone),
                                                  --dump-diff RUN_A RUN_B NAME [NAME_B] (two dumps diffed by key)
+  parse_terrain.py --units RUN_DIR [--expect-units N] [--min-verifies K]
+                                                 task C9 (units_bars.py): the unit layer on a VIDEO / UNITX / C1U / C1US run: every units_verify passed
+                                                 (pushed == full recompute, ISM readback, z == HF.SampleSurface), hash rows carry units_fnv, edits re-pose
+                                                 only the units under them (p99 < 60 % of N per flush), paint moves nothing; writes RUN_DIR/units.json
   parse_terrain.py --simgrid RUN_DIR             independent re-computation of sim_grid_fnv and the 16 probes from height.r32 (python
                                                  mirror of ScenarioLoadPhase.cs:252-270 / ElevationGrid.Sample; C10 does the C# check)
   parse_terrain.py --summary RUN_DIR... [--json OUT.json] [--gate-config KEY]
@@ -1484,6 +1488,9 @@ def main(argv=None):
     ap.add_argument("--equal-hashes", nargs=2, metavar=("A_DIR", "B_DIR"))
     ap.add_argument("--scatter", metavar="RUN_DIR")
     ap.add_argument("--simgrid", metavar="RUN_DIR")
+    ap.add_argument("--units", metavar="RUN_DIR", help="task C9: the unit-layer bars on a VIDEO / UNITX / C1U / C1US run (units_bars.py)")
+    ap.add_argument("--expect-units", type=int, metavar="N", help="--units: the unit count (default: read from the run's cmdline.txt)")
+    ap.add_argument("--min-verifies", type=int, default=1, metavar="K", help="--units: at least K units_verify rows")
     ap.add_argument("--s1x", metavar="RUN_DIR", help="scatter S5: SX1-SX5, SX7-SX9, SX17, SX18 on an S1X run (see scatter_bars.py); needs --ref")
     ap.add_argument("--pair", nargs="+", metavar="RUN_DIR", help="--s1x: the other S1X runs (s1x_b capped with ScatterThreads=0, s1x_c with ScatterDuringStroke=0)")
     ap.add_argument("--reload", metavar="RUN_DIR", help="--s1x: the S1XL run")
@@ -1508,6 +1515,12 @@ def main(argv=None):
             out.extend(h for h in hits if os.path.isdir(h))
         return out
 
+    if a.units:
+        if not os.path.isdir(a.units):
+            print("no such run dir: %s" % a.units)
+            return 2
+        import units_bars
+        return units_bars.main_hook(a)
     if a.s1x or a.sx17f or a.thinx or a.shadx or a.latx or a.dump_oracle or a.dump_diff:
         import scatter_bars
         return scatter_bars.main_hook(a)

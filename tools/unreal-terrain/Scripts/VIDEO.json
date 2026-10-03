@@ -1,0 +1,130 @@
+{
+ "name": "VIDEO",
+ "about": "Plan C 3.8 script VIDEO (task C9): the sculpt video with the unit layer (look full, oblique): 3 sculpt strokes of 60 ticks, 1 paint stroke of 60 ticks, 1 undo, movie 330 frames captured while they run (movie_start / movie_wait, since `movie` blocks), for Alec; units_verify and hash after the movie. Run it with -FixedFps 30 -Extra \"-ChimeraTerrainUnits=300\" (scatter off).",
+ "ops": [
+  {
+   "op": "look",
+   "mode": "full"
+  },
+  {
+   "op": "camera",
+   "pose": "oblique"
+  },
+  {
+   "op": "settle",
+   "frames": 150,
+   "phase": "idle"
+  },
+  {
+   "op": "movie_start",
+   "frames": 330,
+   "phase": "movie"
+  },
+  {
+   "op": "idle",
+   "frames": 20
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 40,
+   "s": 60,
+   "path": [
+    [
+     -30,
+     40
+    ]
+   ],
+   "ticks": 60,
+   "phase": "sculpt"
+  },
+  {
+   "op": "idle",
+   "frames": 10
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 30,
+   "s": 50,
+   "path": [
+    [
+     20,
+     60
+    ]
+   ],
+   "ticks": 60
+  },
+  {
+   "op": "idle",
+   "frames": 10
+  },
+  {
+   "op": "stroke",
+   "mode": "lower",
+   "d": 36,
+   "s": 25,
+   "path": [
+    [
+     -15,
+     -5
+    ],
+    [
+     15,
+     -5
+    ]
+   ],
+   "ticks": 60
+  },
+  {
+   "op": "idle",
+   "frames": 10
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 6,
+   "s": 100,
+   "path": [
+    [
+     -40,
+     0
+    ],
+    [
+     0,
+     30
+    ],
+    [
+     40,
+     60
+    ]
+   ],
+   "ticks": 60,
+   "phase": "paint"
+  },
+  {
+   "op": "idle",
+   "frames": 10
+  },
+  {
+   "op": "undo",
+   "n": 1,
+   "phase": "undo"
+  },
+  {
+   "op": "idle",
+   "frames": 60
+  },
+  {
+   "op": "movie_wait"
+  },
+  {
+   "op": "units_verify",
+   "name": "end"
+  },
+  {
+   "op": "hash",
+   "name": "end"
+  }
+ ]
+}

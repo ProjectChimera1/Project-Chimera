@@ -1891,5 +1891,63 @@
     "unreal_build_id": "",
     "committed": true,
     "sent_to_alec": null
+  },
+  {
+    "file": "c-C9-bars.txt",
+    "path": "c/c-C9-bars.txt",
+    "sha256": "4fdab5d7eea7df7dd30f8cc479fbc29f6b1ac53904ff89889de7c3838743b70b",
+    "bytes": 16508,
+    "w_h": null,
+    "task": "C9",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/c_c9/c-C9-bars.txt",
+    "r_commit": "05f271a0",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-C9-sculpt-sheet.jpg",
+    "path": "c/c-C9-sculpt-sheet.jpg",
+    "sha256": "1e6ac47a65ea8b5da07824fa189ce9a199225ace321dcea09bb0047fd4069230",
+    "bytes": 492297,
+    "w_h": [
+      1600,
+      1350
+    ],
+    "task": "C9",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/c_c9/c-C9-sculpt-sheet.jpg",
+    "r_commit": "05f271a0",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-C9-sculpt.gif",
+    "path": "D:/Projects/Chimera-Unreal/TrialOut/c_c9/c-C9-sculpt.gif",
+    "sha256": "81b7ae6f34f6a104d731f740b0606e237b4b06e20e319b7a0d565f5e50514108",
+    "bytes": 4943940,
+    "w_h": [
+      640,
+      360
+    ],
+    "task": "C9",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/c_c9/c-C9-sculpt.gif",
+    "r_commit": "05f271a0",
+    "unreal_build_id": "",
+    "committed": false,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-C9-sculpt.mp4",
+    "path": "D:/Projects/Chimera-Unreal/TrialOut/c_c9/c-C9-sculpt.mp4",
+    "sha256": "4970c8e2f9a4a04b837da510cd10a39f518f99419a2c4c0900a7d3f0b11e3f72",
+    "bytes": 1239666,
+    "w_h": null,
+    "task": "C9",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/c_c9/c-C9-sculpt.mp4",
+    "r_commit": "05f271a0",
+    "unreal_build_id": "",
+    "committed": false,
+    "sent_to_alec": null
   }
 ]

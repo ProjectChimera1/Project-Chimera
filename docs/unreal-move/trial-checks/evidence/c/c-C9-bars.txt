@@ -1,0 +1,131 @@
+C9 unit layer bars (fix round 2026-10-03: unit material usage fixed by Scripts/fix_unit_usage.py; editor DLL of 10:10; runs video, unitx, c1u_smoke, c1us_smoke, s1_c9)
+Contact sheet c-C9-sculpt-sheet.jpg = python Tools/make_video_sheet.py Out/video <out> (frames 5,70,150,230,300,325 of sculpt.mp4)
+
+== material usage fix (Out/c9_usage/report.json)
+{
+ "mesh": "/Game/LookTest/Roster/crucible_mortar/crucible_mortar/StaticMeshes/crucible_mortar",
+ "mis": 1,
+ "ok": 1,
+ "rows": [
+  {
+   "mi": "/Game/LookTest/Roster/crucible_mortar/crucible_mortar/Materials/tripo_node_f6910e7d-5967-45a1-9d9c-4368369a115b_material",
+   "before": false,
+   "after": true,
+   "override": true,
+   "saved": true
+  }
+ ],
+ "errors": []
+}
+== make_video.sh Out/video
+MP4 duration_s=11.000000 1280x720 30/1 nb_frames=330 bytes=1239666; GIF 640 px 15 fps 256 colours bytes=4943940 max=8388608
+
+== parse_terrain.py --units Out/video 
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=18/18 rule=completed=true and ops_done == ops_total
+BAR units_active                   PASS   value=active=True count=300 expected=300 error='' rule=the unit layer is active with exactly the requested count
+BAR verify_present                 PASS   value=1 units_verify row(s) rule=>= 1
+BAR verify_pass                    PASS   value=1 of 1 passed; mismatches 0; max pos err 0.00000 cm, max z err 0.00000 cm, max rot err 4.58e-16 rule=every units_verify passed (pushed == full recompute, ISM readback within float, z == SampleSurface)
+BAR hash_fields                    PASS   value=1 hash row(s), 0 without units_fnv/units_count == 300 rule=every hash row names the units' fnv and count
+  phase sculpt: flushes 180, updated/flush p50 12 p99 14 max 14, step ms p50 0.018 p99 0.049 max 0.053
+BAR locality                       PASS   value=1 edit phase(s); p99 re-posed per flush >= 60 % of 300 in: none rule=p99 units re-posed per flush < 60 % of N in every edit phase
+  totals: events seen 245 marked 180, flushes 180 (whole grid 0), examined 2603, updated 1859, skipped identical 744, max per flush 14
+BAR unit_material                  PASS   value=0 fallback line(s) rule=no material falls back to the default (missing usage flag)
+BAR proxy_creates_after_first_edit REPORT value=0 (total 2, at first edit 2) rule=reported
+UNITS PASS
+
+== parse_terrain.py --units Out/unitx --min-verifies 10
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=42/42 rule=completed=true and ops_done == ops_total
+BAR units_active                   PASS   value=active=True count=1000 expected=1000 error='' rule=the unit layer is active with exactly the requested count
+BAR verify_present                 PASS   value=10 units_verify row(s) rule=>= 10
+BAR verify_pass                    PASS   value=10 of 10 passed; mismatches 0; max pos err 0.00000 cm, max z err 0.00000 cm, max rot err 4.58e-16 rule=every units_verify passed (pushed == full recompute, ISM readback within float, z == SampleSurface)
+BAR hash_fields                    PASS   value=10 hash row(s), 0 without units_fnv/units_count == 1000 rule=every hash row names the units' fnv and count
+  phase sculpt: flushes 180, updated/flush p50 13 p99 20 max 20, step ms p50 0.027 p99 0.068 max 0.078
+  phase undo: flushes 1, updated/flush p50 25 p99 25 max 25, step ms p50 0.042 p99 0.042 max 0.042
+  phase redo: flushes 1, updated/flush p50 25 p99 25 max 25, step ms p50 0.042 p99 0.042 max 0.042
+BAR locality                       PASS   value=3 edit phase(s); p99 re-posed per flush >= 60 % of 1000 in: none rule=p99 units re-posed per flush < 60 % of N in every edit phase
+  totals: events seen 221 marked 183, flushes 183 (whole grid 1), examined 4788, updated 2857, skipped identical 1931, max per flush 145
+BAR paint_moves_nothing            PASS   value=flatten 0x11dc232107e8c271 paint 0x11dc232107e8c271 rule=a paint stroke changes no height, so units_fnv stays
+BAR edits_move_units               PASS   value=start 0x568807ea15d08c7a raise 0x24dabdc1b1fe4818 rule=a raise under the army changes units_fnv
+BAR flatten_moves_units            PASS   value=smooth 0x940bf869/0x4722977eb2219f8a flatten 0x98a8c78e/0x11dc232107e8c271 rule=the flatten stroke changes heights and moves units
+BAR unit_material                  PASS   value=0 fallback line(s) rule=no material falls back to the default (missing usage flag)
+BAR proxy_creates_after_first_edit REPORT value=0 (total 2, at first edit 2) rule=reported
+UNITS PASS
+
+== parse_terrain.py --units Out/c1u_smoke 
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=14/14 rule=completed=true and ops_done == ops_total
+BAR units_active                   PASS   value=active=True count=1000 expected=1000 error='' rule=the unit layer is active with exactly the requested count
+BAR verify_present                 PASS   value=1 units_verify row(s) rule=>= 1
+BAR verify_pass                    PASS   value=1 of 1 passed; mismatches 0; max pos err 0.00000 cm, max z err 0.00000 cm, max rot err 3.53e-16 rule=every units_verify passed (pushed == full recompute, ISM readback within float, z == SampleSurface)
+BAR hash_fields                    PASS   value=1 hash row(s), 0 without units_fnv/units_count == 1000 rule=every hash row names the units' fnv and count
+  phase walk: flushes 1499, updated/flush p50 38 p99 117 max 118, step ms p50 0.026 p99 0.073 max 0.245
+BAR locality                       PASS   value=1 edit phase(s); p99 re-posed per flush >= 60 % of 1000 in: none rule=p99 units re-posed per flush < 60 % of N in every edit phase
+  totals: events seen 1847 marked 1499, flushes 1499 (whole grid 0), examined 76709, updated 60472, skipped identical 16237, max per flush 118
+BAR unit_material                  PASS   value=0 fallback line(s) rule=no material falls back to the default (missing usage flag)
+BAR proxy_creates_after_first_edit REPORT value=0 (total 2, at first edit 2) rule=reported
+UNITS PASS
+
+== parse_terrain.py --units Out/c1us_smoke --min-verifies 0
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=62/62 rule=completed=true and ops_done == ops_total
+BAR units_active                   PASS   value=active=True count=1000 expected=1000 error='' rule=the unit layer is active with exactly the requested count
+BAR verify_pass                    PASS   value=0 of 0 passed; mismatches 0; max pos err 0.00000 cm, max z err 0.00000 cm, max rot err 0.00e+00 rule=every units_verify passed (pushed == full recompute, ISM readback within float, z == SampleSurface)
+BAR hash_fields                    PASS   value=1 hash row(s), 0 without units_fnv/units_count == 1000 rule=every hash row names the units' fnv and count
+  phase walk: flushes 1499, updated/flush p50 38 p99 117 max 118, step ms p50 0.024 p99 0.064 max 0.260
+BAR locality                       PASS   value=1 edit phase(s); p99 re-posed per flush >= 60 % of 1000 in: none rule=p99 units re-posed per flush < 60 % of N in every edit phase
+  totals: events seen 1847 marked 1499, flushes 1499 (whole grid 0), examined 76709, updated 60472, skipped identical 16237, max per flush 118
+BAR unit_material                  PASS   value=0 fallback line(s) rule=no material falls back to the default (missing usage flag)
+BAR proxy_creates_after_first_edit REPORT value=0 (total 2, at first edit 2) rule=reported
+UNITS PASS
+
+== parse_terrain.py --equal-hashes Out/s1_a Out/s1_c9 (units off)
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=59/59 rule=completed=true and ops_done == ops_total
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=66/66 rule=completed=true and ops_done == ops_total
+BAR shared_hashes                  PASS   value=['after', 'pre_last2', 'redo', 'undo'] rule=>= 1 shared hash op
+BAR height_fnv_equal               PASS   value=equal at 4 shared hashes rule=equal at every shared hash
+BAR splat_fnv_equal                PASS   value=equal at 4 shared hashes rule=equal at every shared hash
+BAR final_equal                    PASS   value=0xff563549/0xd264ddc9 vs 0xff563549/0xd264ddc9 rule=final hashes equal
+BAR ticks_applied_eq_ticks_a       PASS   value=12 strokes, 0 mismatched rule=ticks_applied == ticks
+BAR ticks_applied_eq_ticks_b       PASS   value=12 strokes, 0 mismatched rule=ticks_applied == ticks
+BAR saved_files_sha256             PASS   value=equal: ['terrain.json', 'height.r32', 'splat.rgba8'] rule=terrain.json, height.r32, splat.rgba8 sha256 equal (when both runs saved)
+EQUAL-HASHES PASS
+
+== parse_terrain.py --s1 Out/s1_c9 (units off)
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=66/66 rule=completed=true and ops_done == ops_total
+BAR hash_undo_eq_pre_last2         PASS   value=('0x47f2ef9b', '0x124af687') vs ('0x47f2ef9b', '0x124af687') rule=undo = pre_last2 (height and splat FNV)
+BAR hash_redo_eq_after             PASS   value=('0xff563549', '0xd264ddc9') vs ('0xff563549', '0xd264ddc9') rule=redo = after (height and splat FNV)
+BAR hash_after_ne_pre_last2        PASS   value=('0xff563549', '0xd264ddc9') vs ('0x47f2ef9b', '0x124af687') rule=the last two strokes changed height and splat
+BAR saved_eq_after                 PASS   value=saved 0xff563549/0xd264ddc9 rule=save wrote the redo state
+BAR ticks_applied_eq_ticks         PASS   value=12 strokes, 0 mismatched rule=ticks_applied == ticks for every stroke
+BAR shots_present                  PASS   value=11 shots rule=11 S1 shots
+BAR splat_submits_eq_cleanups      PASS   value=submits=132 cleanups=132 rule=equal and > 0
+BAR P2_in_place                    REPORT value=ranged_edits=644 proxy_recreates_during_strokes=0 rule=<= 5 %% of ranged edits (reported here; gated from the measured campaign)
+  edit latency: n=644 frames p50=1 p99=1 max=1 hist(0..4+)=[0, 644, 0, 0, 0] ms p50=8.54
+BAR P7_aa_floor                    PASS   value=changed_frac=0.00000 worst16=0.00087 mean_abs=0.00111 mask_px=43028 (footprint of the last two strokes, after + flat states; before vs before_aa) rule=changed <= 0.5 % and worst 16x16 block mean |d| <= 2/255
+BAR P7_undo_vs_pre_last2           PASS   value=changed_frac=0.00000 worst16=0.00174 mean_abs=0.00116 mask_px=43028 (footprint of the last two strokes, after + flat states) rule=changed <= 0.5 % and worst 16x16 block mean |d| <= 2/255
+BAR P7_redo_vs_after               PASS   value=changed_frac=0.00000 worst16=0.00155 mean_abs=0.00167 mask_px=43028 (footprint of the last two strokes, after + flat states) rule=changed <= 0.5 % and worst 16x16 block mean |d| <= 2/255
+BAR P7_control                     PASS   value=after vs pre_last2 changed_frac=0.7890 (A/A 0.00000) rule=>= 0.10 of the footprint and >= 10x the A/A changed_frac
+BAR P11 after_rts80                PASS   value=pairs=9039 p50=0.005 p99=0.055 max=0.382 cm; disagree in/out band 0/0; frame hit 0.90 rule=pairs >= 1000, p99 <= 2.0 cm, outside-band disagreements 0 (after and undo at rts80 and oblique)
+BAR P11 after_rts80 footprint      PASS   value=set=last2 pixels=16968 draws=2000 pairs=2000 p50=0.007 p99=0.131 max=0.573 cm; disagree in/out band 0/0 rule=same bar on the fp draws from the last strokes' projected footprint: pairs >= 500, p99 <= 2.0 cm, outside-band 0
+BAR P11 after_oblique              PASS   value=pairs=6383 p50=0.007 p99=0.164 max=0.405 cm; disagree in/out band 0/0; frame hit 0.64 rule=pairs >= 1000, p99 <= 2.0 cm, outside-band disagreements 0 (after and undo at rts80 and oblique)
+BAR P11 after_oblique footprint    PASS   value=set=last2 pixels=11403 draws=2000 pairs=2000 p50=0.009 p99=0.159 max=1.475 cm; disagree in/out band 0/0 rule=same bar on the fp draws from the last strokes' projected footprint: pairs >= 500, p99 <= 2.0 cm, outside-band 0
+BAR P11 undo_rts80                 PASS   value=pairs=9039 p50=0.005 p99=0.054 max=0.238 cm; disagree in/out band 0/0; frame hit 0.90 rule=pairs >= 1000, p99 <= 2.0 cm, outside-band disagreements 0 (after and undo at rts80 and oblique)
+BAR P11 undo_rts80 footprint       PASS   value=set=last2 pixels=21728 draws=2000 pairs=2000 p50=0.010 p99=0.030 max=0.059 cm; disagree in/out band 0/0 rule=same bar on the fp draws from the last strokes' projected footprint: pairs >= 500, p99 <= 2.0 cm, outside-band 0
+BAR P11 undo_oblique               PASS   value=pairs=6383 p50=0.007 p99=0.166 max=0.405 cm; disagree in/out band 0/0; frame hit 0.64 rule=pairs >= 1000, p99 <= 2.0 cm, outside-band disagreements 0 (after and undo at rts80 and oblique)
+BAR P11 undo_oblique footprint     PASS   value=set=last2 pixels=16346 draws=2000 pairs=2000 p50=0.024 p99=0.156 max=1.716 cm; disagree in/out band 0/0 rule=same bar on the fp draws from the last strokes' projected footprint: pairs >= 500, p99 <= 2.0 cm, outside-band 0
+BAR P11 pre_last2_rts80            PASS   value=pairs=9039 p50=0.005 p99=0.054 max=0.238 cm; disagree in/out band 0/0; frame hit 0.90 rule=pairs >= 1000, p99 <= 2.0 cm, outside-band disagreements 0 (pre_last2 (reported with the same bar))
+BAR P11 pre_last2_oblique          PASS   value=pairs=6383 p50=0.007 p99=0.166 max=0.405 cm; disagree in/out band 0/0; frame hit 0.64 rule=pairs >= 1000, p99 <= 2.0 cm, outside-band disagreements 0 (pre_last2 (reported with the same bar))
+BAR probes                         PASS   value=n=16 negative_non_exact=7 cell_boundary=11 sim_grid_fnv=0x53a3de06 axes=sim(x,z,h)->ue_cm(100x,100z,100h) rule=16 probes, >= 4 negative non-exact heights, >= 2 at cell boundaries
+BAR P5 collision pre_last2         PASS   value=wait ok 2 ms touched=25 min_tri=1 probes 25/25; frustum n=2000 hit=1821 phys_only=0 pick_only=0 foreign=0 max_dz=0.0002; vertex n=3953 (rects 8) hit=3953 phys_only=0 pick_only=0 foreign=0 max_dz=0.0001 cm rule=wait: ok, every chunk's body has a trimesh, is in use and its probe ray hits; verify: 0 disagreements either way, max |dz| <= 1.0 cm, frustum both-hit >= 1500, vertex rays >= 100 (S1 checkpoints)
+BAR P5 collision after             PASS   value=wait ok 2 ms touched=4 min_tri=1 probes 25/25; frustum n=2000 hit=1821 phys_only=0 pick_only=0 foreign=0 max_dz=0.0002; vertex n=2025 (rects 1) hit=2025 phys_only=0 pick_only=0 foreign=0 max_dz=0.0001 cm rule=wait: ok, every chunk's body has a trimesh, is in use and its probe ray hits; verify: 0 disagreements either way, max |dz| <= 1.0 cm, frustum both-hit >= 1500, vertex rays >= 100 (S1 checkpoints)
+BAR P5 collision undo              PASS   value=wait ok 8 ms touched=9 min_tri=1 probes 25/25; frustum n=2000 hit=1821 phys_only=0 pick_only=0 foreign=0 max_dz=0.0002; vertex n=3277 (rects 1) hit=3277 phys_only=0 pick_only=0 foreign=0 max_dz=0.0001 cm rule=wait: ok, every chunk's body has a trimesh, is in use and its probe ray hits; verify: 0 disagreements either way, max |dz| <= 1.0 cm, frustum both-hit >= 1500, vertex rays >= 100 (S1 checkpoints)
+BAR P5 collision redo              PASS   value=wait ok 9 ms touched=9 min_tri=1 probes 25/25; frustum n=2000 hit=1821 phys_only=0 pick_only=0 foreign=0 max_dz=0.0002; vertex n=3277 (rects 1) hit=3277 phys_only=0 pick_only=0 foreign=0 max_dz=0.0001 cm rule=wait: ok, every chunk's body has a trimesh, is in use and its probe ray hits; verify: 0 disagreements either way, max |dz| <= 1.0 cm, frustum both-hit >= 1500, vertex rays >= 100 (S1 checkpoints)
+BAR P5_cooks_valid                 PASS   value=cooks=68 updated=68 ignored=0 errors=0 unknown=0 updated_without_trimesh=0 batches=12 incomplete=0 rule=0 errors, 0 unknown, 0 Updated bodies without a trimesh
+BAR P5_cook_p95                    REPORT value=n=43 p50=3.26 p95=10.05 max=10.91 ms (edit cooks; fast_cook=True; init cooks p95 703.73 ms) rule=p95 <= 50 ms (reported; gated from the measured campaign)
+BAR P5_gt_apply_p95                REPORT value=n=11 p50=0.430 p95=1.495 max=1.495 ms (submit p95 0.796, physics state p95 0.800) rule=per stroke end / undo / redo p95 <= 4 ms (reported; gated from the measured campaign)
+S1 PASS

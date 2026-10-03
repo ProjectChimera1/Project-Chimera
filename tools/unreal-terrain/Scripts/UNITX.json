@@ -1,0 +1,245 @@
+{
+ "name": "UNITX",
+ "about": "Plan C 3.8 script UNITX (task C9): the unit layer through every kind of terrain change, each followed by units_verify and a hash: raise, lower, smooth, flatten, paint (no height change), a stroke near a chunk corner, undo 2, redo 2, shots at three poses, then load (needs -ChimeraTerrainLoad=<saved run dir>). Run with -Extra \"-ChimeraTerrainUnits=1000 -ChimeraTerrainLoad=<abs dir>\".",
+ "ops": [
+  {
+   "op": "look",
+   "mode": "full"
+  },
+  {
+   "op": "camera",
+   "pose": "rts80"
+  },
+  {
+   "op": "settle",
+   "frames": 150,
+   "phase": "idle"
+  },
+  {
+   "op": "units_verify",
+   "name": "start"
+  },
+  {
+   "op": "hash",
+   "name": "start"
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 40,
+   "s": 80,
+   "path": [
+    [
+     0,
+     0
+    ]
+   ],
+   "ticks": 40,
+   "phase": "sculpt"
+  },
+  {
+   "op": "units_verify",
+   "name": "raise"
+  },
+  {
+   "op": "hash",
+   "name": "raise"
+  },
+  {
+   "op": "stroke",
+   "mode": "lower",
+   "d": 36,
+   "s": 60,
+   "path": [
+    [
+     -40,
+     30
+    ],
+    [
+     -10,
+     30
+    ]
+   ],
+   "ticks": 40
+  },
+  {
+   "op": "units_verify",
+   "name": "lower"
+  },
+  {
+   "op": "hash",
+   "name": "lower"
+  },
+  {
+   "op": "stroke",
+   "mode": "smooth",
+   "d": 30,
+   "s": 50,
+   "path": [
+    [
+     0,
+     0
+    ]
+   ],
+   "ticks": 30
+  },
+  {
+   "op": "units_verify",
+   "name": "smooth"
+  },
+  {
+   "op": "hash",
+   "name": "smooth"
+  },
+  {
+   "op": "stroke",
+   "mode": "flatten",
+   "d": 30,
+   "s": 60,
+   "path": [
+    [
+     10,
+     5
+    ]
+   ],
+   "ticks": 30
+  },
+  {
+   "op": "units_verify",
+   "name": "flatten"
+  },
+  {
+   "op": "hash",
+   "name": "flatten"
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 20,
+   "s": 100,
+   "path": [
+    [
+     -60,
+     -20
+    ],
+    [
+     -30,
+     10
+    ]
+   ],
+   "ticks": 30,
+   "phase": "paint"
+  },
+  {
+   "op": "units_verify",
+   "name": "paint"
+  },
+  {
+   "op": "hash",
+   "name": "paint"
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 30,
+   "s": 90,
+   "path": [
+    [
+     30,
+     30
+    ],
+    [
+     50,
+     50
+    ]
+   ],
+   "ticks": 40,
+   "phase": "sculpt"
+  },
+  {
+   "op": "units_verify",
+   "name": "corner"
+  },
+  {
+   "op": "hash",
+   "name": "corner"
+  },
+  {
+   "op": "undo",
+   "n": 2,
+   "phase": "undo"
+  },
+  {
+   "op": "units_verify",
+   "name": "undo"
+  },
+  {
+   "op": "hash",
+   "name": "undo"
+  },
+  {
+   "op": "redo",
+   "n": 2,
+   "phase": "redo"
+  },
+  {
+   "op": "units_verify",
+   "name": "redo"
+  },
+  {
+   "op": "hash",
+   "name": "redo"
+  },
+  {
+   "op": "camera",
+   "pose": "oblique"
+  },
+  {
+   "op": "settle",
+   "frames": 120
+  },
+  {
+   "op": "shot",
+   "name": "u_oblique"
+  },
+  {
+   "op": "camera",
+   "pose": "closeup"
+  },
+  {
+   "op": "settle",
+   "frames": 120
+  },
+  {
+   "op": "shot",
+   "name": "u_closeup"
+  },
+  {
+   "op": "camera",
+   "pose": "rts80"
+  },
+  {
+   "op": "settle",
+   "frames": 120
+  },
+  {
+   "op": "shot",
+   "name": "u_rts80"
+  },
+  {
+   "op": "load",
+   "phase": "load"
+  },
+  {
+   "op": "units_verify",
+   "name": "load"
+  },
+  {
+   "op": "hash",
+   "name": "load"
+  },
+  {
+   "op": "save"
+  }
+ ]
+}

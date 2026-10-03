@@ -11,6 +11,7 @@
 #include "Game/TerrainHud.h"
 #include "Game/TerrainLighting.h"
 #include "Game/TerrainScatterActor.h"
+#include "Game/TerrainUnitsActor.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "Test/TerrainScriptDirector.h"
@@ -53,6 +54,8 @@ FChimeraTerrainOptions FChimeraTerrainOptions::FromCommandLine(const TCHAR* Cmd)
 	FParse::Value(Cmd, TEXT("ChimeraTerrainGround="), O.GroundParams, false);
 	FParse::Value(Cmd, TEXT("ChimeraTerrainLight="), O.LightParams, false);
 	O.bSynthMouse = FParse::Param(Cmd, TEXT("ChimeraTerrainSynthMouse"));
+	FParse::Value(Cmd, TEXT("ChimeraTerrainUnits="), O.Units);
+	O.Units = FMath::Clamp(O.Units, 0, 20000);
 	return O;
 }
 
@@ -115,6 +118,15 @@ void AChimeraTerrainGameMode::StartPlay()
 	Scatter = GetWorld()->SpawnActor<ATerrainScatter>(ATerrainScatter::StaticClass(), FTransform::Identity, SP);
 	FString ScatterExplicit;
 	if (Scatter && bTerrainOk) { Scatter->Setup(Terrain, ChimeraTerrain::FScatterOptions::FromCommandLine(FCommandLine::Get()), FParse::Value(FCommandLine::Get(), TEXT("ChimeraTerrainScatter="), ScatterExplicit, false)); }
+	// Plan C 4 C9: the unit layer, only when asked for (a run without -ChimeraTerrainUnits spawns nothing, so the dormant gates see no new actor).
+	if (Options.Units > 0 && bTerrainOk)
+	{
+		UnitLayer = GetWorld()->SpawnActor<ATerrainUnits>(ATerrainUnits::StaticClass(), FTransform::Identity, SP);
+		if (UnitLayer)
+		{
+			UnitLayer->Setup(Terrain, Options.Units);
+		}
+	}
 	if (Lighting)
 	{
 		// G1 round 1: the look's lighting values are text in DefaultGame.ini; a -ChimeraTerrainLight= item overrides them.
@@ -140,7 +152,9 @@ void AChimeraTerrainGameMode::StartPlay()
 	{
 		Director = GetWorld()->SpawnActor<ATerrainScriptDirector>(ATerrainScriptDirector::StaticClass(), FTransform::Identity, SP);
 		Director->SetScatter(Scatter);
+		Director->SetUnits(UnitLayer);
 		Director->Start(Options, Terrain, Lighting, bTerrainOk);
 		if (Scatter) { Scatter->SetDirector(Director); }
+		if (UnitLayer) { UnitLayer->SetDirector(Director); }
 	}
 }

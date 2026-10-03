@@ -1169,5 +1169,23 @@ class ScatterBarsTests(AssetFixture):
         self.assertNotIn("FAIL     SX15", g_out.getvalue())
 
 
+class UnitsMaterialBarTest(unittest.TestCase):
+    """C9: units_bars.unit_material fails on a material that fell back to the engine default (missing ISM usage)."""
+
+    def test_fallback_lines_found(self):
+        import units_bars as ub
+        with tempfile.TemporaryDirectory() as d:
+            self.assertIsNone(ub.material_fallbacks(d), "no game.log -> None (the bar fails)")
+            with open(os.path.join(d, "game.log"), "w", encoding="utf-8") as f:
+                f.write("LogInit: ok\n")
+            self.assertEqual(ub.material_fallbacks(d), [])
+            with open(os.path.join(d, "game.log"), "a", encoding="utf-8") as f:
+                f.write("[0]LogMaterial: Warning: Material /Game/LookTest/Roster/crucible_mortar/x.x missing usage flag InstancedStaticMeshes! "
+                        "Default Material will be used in game.\n")
+            fb = ub.material_fallbacks(d)
+            self.assertEqual(len(fb), 1)
+            self.assertIn("crucible_mortar", fb[0])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -85,6 +85,12 @@
 //                                         (metres) keeps the instances around that target; only="@<as>" keeps that target's instance alone;
 //                                         union_with merges an earlier mask of the same pose; caster shadows are taken both on the instance's
 //                                         base plane and where the sun ray meets HF's drawn surface
+// Ops (C9, plan C 4 C9; needs -ChimeraTerrainUnits=N):
+//   units_verify {name}                   waits until no terrain or unit work is pending, then: every unit's transform recomputed from the heightfield equals the
+//                                         pushed state (exact), the ISM's instance transforms read back equal it (float precision), and each z equals
+//                                         HF.SampleSurface at its x, y (results.json units.verifies[], the parser gates it)
+//   hash gains units_fnv and units_count while the unit layer is active, and then first waits until no unit re-pose is pending (an undo/redo/load
+//                                         chained into the same director tick is flushed by the units actor's tick after it).
 // Results (task S5): timeline rows carry frame_start/frame_end (GFrameCounter) and the op's name; results.json carries script_path,
 // script_sha256 and sg (the effective scalability groups of every run); scatter.proxy_events lists frame-stamped proxy and compile events.
 #pragma once
@@ -103,6 +109,7 @@ class ATerrainActor;
 class UPrimitiveComponent;
 class ATerrainLighting;
 class ATerrainScatter;
+class ATerrainUnits;
 class APlayerController;
 class USceneCaptureComponent2D;
 class UTextureRenderTarget2D;
@@ -124,6 +131,8 @@ public:
 	void Start(const FChimeraTerrainOptions& InOptions, ATerrainActor* InTerrain, ATerrainLighting* InLighting, bool bTerrainOk);
 	/** The scatter actor (dormant unless the run enabled scatter); call before Start. */
 	void SetScatter(ATerrainScatter* InScatter) { Scatter = InScatter; }
+	/** The unit layer (null unless the run started with -ChimeraTerrainUnits=N); call before Start. */
+	void SetUnits(ATerrainUnits* InUnits) { Units = InUnits; }
 
 	virtual void Tick(float DeltaSeconds) override;
 
@@ -136,6 +145,8 @@ private:
 	TObjectPtr<ATerrainLighting> Lighting;
 	UPROPERTY(Transient)
 	TObjectPtr<ATerrainScatter> Scatter;
+	UPROPERTY(Transient)
+	TObjectPtr<ATerrainUnits> Units;
 	UPROPERTY(Transient)
 	TObjectPtr<USceneCaptureComponent2D> Capture;
 	UPROPERTY(Transient)
@@ -241,6 +252,8 @@ private:
 	TSharedPtr<FJsonObject> Saved;
 	TSharedPtr<FJsonObject> Loaded;
 	TSharedPtr<FJsonObject> CsvInfo;
+	// unit layer ops (C9)
+	TArray<TSharedPtr<FJsonValue>> UnitVerifies;
 	// scatter ops (S4)
 	TArray<TSharedPtr<FJsonValue>> ScatterVerifies;
 	TArray<TSharedPtr<FJsonValue>> ScatterWaits;
@@ -306,6 +319,7 @@ private:
 	EStep StepAwaitMouse(const FJsonObject& Op);
 	EStep StepWaitCollision(const FJsonObject& Op);
 	EStep StepVerifyCollision(const FJsonObject& Op);
+	EStep StepUnitsVerify(const FJsonObject& Op);
 	/** Scatter ops need a run started with scatter (OpError otherwise). */
 	bool NeedScatter();
 	EStep StepScatter(const FJsonObject& Op);

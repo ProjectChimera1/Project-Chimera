@@ -17,6 +17,7 @@
 #include "Game/TerrainActor.h"
 #include "Game/TerrainLighting.h"
 #include "Game/TerrainScatterActor.h"
+#include "Game/TerrainUnitsActor.h"
 #include "Data/TerrainScatter.h"
 #include "Render/TerrainChunkComponent.h"
 #include "Core/RealtimeMeshCollision.h"
@@ -631,6 +632,7 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepOp(const FJsonObject& 
 	if (Name == TEXT("scatter_view_counts")) return StepScatterViewCounts(Op);
 	if (Name == TEXT("scatter_target")) return StepScatterTarget(Op);
 	if (Name == TEXT("scatter_mask")) return StepScatterMask(Op);
+	if (Name == TEXT("units_verify")) return StepUnitsVerify(Op);
 	if (Name == TEXT("movie_start")) return StepMovieStart(Op);
 	if (Name == TEXT("movie_wait")) return StepMovieWait(Op);
 	if (Name == TEXT("fail"))
@@ -850,6 +852,12 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepStroke(const FJsonObje
 
 ATerrainScriptDirector::EStep ATerrainScriptDirector::StepHash(const FJsonObject& Op)
 {
+	if (Units && Units->IsActive() && Units->HasPendingWork())
+	{
+		// C9: the units flush in their own tick after the director's, so an undo/redo/load chained into this tick is still pending:
+		// wait for that flush so units_fnv is never the pre-change pose. Only while the unit layer is active (unit-less runs unchanged).
+		return EStep::Running;
+	}
 	const FString Name = StrField(Op, TEXT("name"), FString::Printf(TEXT("hash%d"), OpIndex + 1));
 	TSharedRef<FJsonObject> H = MakeShared<FJsonObject>();
 	H->SetStringField(TEXT("height_fnv"), TerrainIO::HashToString(Terrain->HeightFnv()));
@@ -867,6 +875,11 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepHash(const FJsonObject
 		Scatter->AddHashFields(*H);
 		UE_LOG(LogChimeraTerrain, Display, TEXT("hash %s scatter_fnv=%s scatter_live_fnv=%s scatter_count=%.0f"), *Name, *H->GetStringField(TEXT("scatter_fnv")),
 			*H->GetStringField(TEXT("scatter_live_fnv")), H->GetNumberField(TEXT("scatter_count")));
+	}
+	if (Units && Units->IsActive())
+	{
+		// Only while the unit layer is active, so runs without units write identical hash JSON.
+		Units->AddHashFields(*H);
 	}
 	Hashes->SetObjectField(Name, H);
 	UE_LOG(LogChimeraTerrain, Display, TEXT("hash %s height_fnv=%s splat_fnv=%s"), *Name, *H->GetStringField(TEXT("height_fnv")), *H->GetStringField(TEXT("splat_fnv")));
@@ -2606,6 +2619,26 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepScatterVisible(const F
 	return OpFrame >= 2 ? EStep::Done : EStep::Running;
 }
 
+ATerrainScriptDirector::EStep ATerrainScriptDirector::StepUnitsVerify(const FJsonObject& Op)
+{
+	if (!Units || !Units->IsActive())
+	{
+		OpError = TEXT("needs -ChimeraTerrainUnits=N (and the unit mesh loading)");
+		return EStep::Failed;
+	}
+	// The units flush in their own tick after the director's, so an edit of this frame is still pending here: wait until nothing is.
+	if (OpFrame == 0 || Terrain->HasPendingWork() || Units->HasPendingWork())
+	{
+		return EStep::Running;
+	}
+	const FString Name = StrField(Op, TEXT("name"), FString::Printf(TEXT("units%d"), OpIndex + 1));
+	bool bPass = false;
+	const TSharedRef<FJsonObject> V = Units->Verify(Name, bPass);
+	V->SetNumberField(TEXT("op_index"), OpIndex + 1);
+	UnitVerifies.Add(MakeShared<FJsonValueObject>(V));
+	return EStep::Done;
+}
+
 ATerrainScriptDirector::EStep ATerrainScriptDirector::StepScatterVerify(const FJsonObject& Op)
 {
 	if (!NeedScatter())
@@ -2875,7 +2908,17 @@ void ATerrainScriptDirector::Finish(uint8 Code, const FString& Reason)
 	{
 		Opt->SetObjectField(TEXT("scatter"), Scatter->OptionsJson());
 	}
+	if (Units)
+	{
+		Opt->SetNumberField(TEXT("units"), Units->NumUnits());
+	}
 	Results->SetObjectField(TEXT("options"), Opt);
+	if (Units)
+	{
+		TSharedRef<FJsonObject> UJ = Units->ResultsJson();
+		UJ->SetArrayField(TEXT("verifies"), UnitVerifies);
+		Results->SetObjectField(TEXT("units"), UJ);
+	}
 	if (Scatter && Scatter->WasRequested())
 	{
 		// Plan C scatter 3.8 results block (S5 adds checks, dumps, view counts).

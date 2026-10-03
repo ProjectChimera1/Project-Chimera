@@ -5,7 +5,7 @@ Usage: python gen_scatter_scripts.py            write every script
        python gen_scatter_scripts.py --check    exit 1 when a checked-in script differs from what this generator writes, or an op is unknown
 
 S1X is S1.json's ops verbatim (so heights and splat equal s1_a) with scatter ops injected; S1XF is S1X frozen in one window (SX17's frozen variant); S1XL, SHADX, THINX, LATX, MOUSEX, C1S, C1S_ATTR, C1US,
-SOAKS, SOAKS_SMOKE, LOOKX, VIDEOX and SXPROBE are written here. The scripts that were derived from a base script (S1, MOUSE, C1, SOAK, LOOK) read it from
+SOAKS, SOAKS_SMOKE, LOOKX, VIDEOX and SXPROBE are written here; VIDEO, C1U and UNITX (task C9, the unit layer) too. The scripts that were derived from a base script (S1, MOUSE, C1, SOAK, LOOK) read it from
 Scripts/, so a change to the base shows up here. The meadow coordinates of THINX are constants below, chosen from the field map of the default seed
 by thinx_pick.py (the minimum-sample rule of the SX6 bar guards the choice).
 """
@@ -24,7 +24,7 @@ KNOWN_OPS = {
     "camera", "look", "visible", "settle", "idle", "stroke", "paint", "hash", "shot", "g1_regions", "undo", "redo", "hitch", "save", "load",
     "random_walk", "soak", "gc", "residue", "csv", "movie", "depthcheck", "project_footprint", "await_mouse", "wait_collision", "verify_collision",
     "scatter", "scatter_wait", "scatter_visible", "scatter_verify", "scatter_fresh", "scatter_dump", "scatter_check", "scatter_counts",
-    "scatter_view_counts", "scatter_target", "scatter_mask", "movie_start", "movie_wait", "fail", "exit", "temporal_freeze", "exposure",
+    "scatter_view_counts", "scatter_target", "scatter_mask", "movie_start", "movie_wait", "fail", "exit", "temporal_freeze", "exposure", "units_verify",
 }
 
 # The fresh-rebuild image pairs (SX10, SX18) are shot with the renderer's temporal sequences frozen (temporal_freeze 1: r.Test.FreezeTemporalSequences 1 and
@@ -370,6 +370,57 @@ def videox():
                   "-FixedFps 30 -Extra \"-ChimeraTerrainScatter=1\".", ops)
 
 
+def video():
+    """VIDEO (plan C 3.8, C9): the sculpt video without scatter, with the unit layer (run it with -FixedFps 30 -Extra "-ChimeraTerrainUnits=300"). Same strokes and the same
+    330 captured frames as VIDEOX; units_verify after the movie checks every unit against the heightfield."""
+    ops = [op("look", mode="full"), op("camera", pose="oblique"), settle(150, phase="idle"),
+           op("movie_start", frames=330, phase="movie"), op("idle", frames=20),
+           op("stroke", mode="raise", d=40, s=60, path=[[-30, 40]], ticks=60, phase="sculpt"), op("idle", frames=10),
+           op("stroke", mode="raise", d=30, s=50, path=[[20, 60]], ticks=60), op("idle", frames=10),
+           op("stroke", mode="lower", d=36, s=25, path=[[-15, -5], [15, -5]], ticks=60), op("idle", frames=10),
+           op("paint", layer=1, d=6, s=100, path=[[-40, 0], [0, 30], [40, 60]], ticks=60, phase="paint"), op("idle", frames=10),
+           op("undo", n=1, phase="undo"), op("idle", frames=60),
+           op("movie_wait"), op("units_verify", name="end"), op("hash", name="end")]
+    return script("VIDEO", "Plan C 3.8 script VIDEO (task C9): the sculpt video with the unit layer (look full, oblique): 3 sculpt strokes of 60 ticks, 1 paint stroke of 60 ticks, "
+                  "1 undo, movie 330 frames captured while they run (movie_start / movie_wait, since `movie` blocks), for Alec; units_verify and hash after the movie. "
+                  "Run it with -FixedFps 30 -Extra \"-ChimeraTerrainUnits=300\" (scatter off).", ops)
+
+
+def c1u():
+    """C1U (plan C 3.8): C1's ops under their own script name; the unit workload is on the command line (-Extra "-ChimeraTerrainUnits=1000"), scatter stays off."""
+    base = load("C1")
+    ops = copy.deepcopy(base["ops"])
+    # After the capture (csv stop): the same units_verify and hash that C1S's tail takes, so the run proves the army still stands on the surface after the random walk.
+    ops += [op("units_verify", name="end"), op("hash", name="end")]
+    return script("C1U", "Plan C 3.8 script C1U (task C9): C1's ops with the unit layer (run with -Extra \"-ChimeraTerrainUnits=1000\"; scatter stays off), then units_verify and "
+                  "hash after the capture (outside every measured phase). Its own script name so the D2 rows read it against C1.", ops)
+
+
+def unitx():
+    """UNITX (task C9): the unit layer through every kind of terrain change, verified after each: raise, lower, smooth, flatten, paint (no height change), a stroke across a chunk
+    corner, undo, redo and load (the whole-grid path). Run with -Extra "-ChimeraTerrainUnits=1000 -ChimeraTerrainLoad=<abs dir of a saved run, e.g. Out/s1_a>"; shots of the
+    result at the three poses are the visual check that units stand on the surface."""
+    def ver(name):
+        return [op("units_verify", name=name), op("hash", name=name)]
+    ops = [op("look", mode="full"), op("camera", pose="rts80"), settle(150, phase="idle")] + ver("start")
+    ops += [op("stroke", mode="raise", d=40, s=80, path=[[0, 0]], ticks=40, phase="sculpt")] + ver("raise")
+    ops += [op("stroke", mode="lower", d=36, s=60, path=[[-40, 30], [-10, 30]], ticks=40)] + ver("lower")
+    ops += [op("stroke", mode="smooth", d=30, s=50, path=[[0, 0]], ticks=30)] + ver("smooth")
+    # flatten on the raised hill's flank (relief), so it changes heights and moves units (units_bars flatten_moves_units)
+    ops += [op("stroke", mode="flatten", d=30, s=60, path=[[10, 5]], ticks=30)] + ver("flatten")
+    ops += [op("paint", layer=1, d=20, s=100, path=[[-60, -20], [-30, 10]], ticks=30, phase="paint")] + ver("paint")
+    ops += [op("stroke", mode="raise", d=30, s=90, path=[[30, 30], [50, 50]], ticks=40, phase="sculpt")] + ver("corner")
+    ops += [op("undo", n=2, phase="undo")] + ver("undo")
+    ops += [op("redo", n=2, phase="redo")] + ver("redo")
+    ops += [op("camera", pose="oblique"), settle(120), op("shot", name="u_oblique"), op("camera", pose="closeup"), settle(120), op("shot", name="u_closeup"),
+            op("camera", pose="rts80"), settle(120), op("shot", name="u_rts80")]
+    ops += [op("load", phase="load")] + ver("load")
+    ops += [op("save")]
+    return script("UNITX", "Plan C 3.8 script UNITX (task C9): the unit layer through every kind of terrain change, each followed by units_verify and a hash: raise, lower, smooth, flatten, "
+                  "paint (no height change), a stroke near a chunk corner, undo 2, redo 2, shots at three poses, then load (needs -ChimeraTerrainLoad=<saved run dir>). Run with "
+                  "-Extra \"-ChimeraTerrainUnits=1000 -ChimeraTerrainLoad=<abs dir>\".", ops)
+
+
 def sxprobe():
     return script("SXPROBE", "Scatter probe (S5): fill wait, settle, hash, dump and counts of the unpainted map, the three analytic view counts. thinx_pick.py reads "
                   "the dump to choose THINX's coordinates.", [
@@ -393,6 +444,7 @@ def all_scripts():
                         "name, so it is never pooled with or compared to C1S reps."),
         "C1US": c1s("C1US", "C1S with the 1,000 units (run with -Extra \"-ChimeraTerrainScatter=1 -ChimeraTerrainUnits=1000\" once C9 has landed): its own script name "
                     "so the D2 rows read it against C1U."),
+        "VIDEO": video(), "C1U": c1u(), "UNITX": unitx(),
         "SOAKS": soaks(), "SOAKS_SMOKE": soaks("SOAKS_SMOKE", 1), "LOOKX": lookx(), "VIDEOX": videox(), "SXPROBE": sxprobe(),
     }
 

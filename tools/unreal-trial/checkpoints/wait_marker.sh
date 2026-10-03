@@ -8,10 +8,10 @@ MAX=${1:-6900}
 mkdir -p "$DIR"; touch "$SEEN"
 start=$(date +%s)
 while true; do
-  new=$(cd "$DIR" && for f in *.json; do [ -e "$f" ] && echo "$f|$(stat -c %Y "$f")"; done | grep -vxF -f "$SEEN")
+  new=$(cd "$DIR" && for f in *.json; do case "$f" in *-implnote.json) continue;; esac; [ -e "$f" ] && echo "$f|$(stat -c %Y "$f")"; done | grep -vxF -f "$SEEN")
   if [ -n "$new" ]; then
     sleep 5   # let the writer finish
-    new=$(cd "$DIR" && for f in *.json; do [ -e "$f" ] && echo "$f|$(stat -c %Y "$f")"; done | grep -vxF -f "$SEEN")
+    new=$(cd "$DIR" && for f in *.json; do case "$f" in *-implnote.json) continue;; esac; [ -e "$f" ] && echo "$f|$(stat -c %Y "$f")"; done | grep -vxF -f "$SEEN")
     echo "$new" | cut -d'|' -f1; echo "$new" >> "$SEEN"; exit 0
   fi
   if [ $(( $(date +%s) - start )) -ge "$MAX" ]; then echo TIMEOUT; exit 0; fi

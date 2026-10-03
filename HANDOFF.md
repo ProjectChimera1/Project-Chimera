@@ -1,6 +1,6 @@
 # HANDOFF — Project Chimera
 
-_Updated 2026-10-03 10:10 · branch `master` · last commit: HUD T5 (see `git log -1`)_
+_Updated 2026-10-03 10:40 · branch `master` · last commit: terrain C9 (see `git log -1`)_
 
 ## Where we stopped
 
@@ -26,7 +26,7 @@ xhigh verifiers (results; code and rules).
 
 **Phase 3 (converge) is running** in two workflows started 08:55 on 2026-10-03 in the session that committed S6:
 `tools/unreal-trial/workflows/phase3-b.js` (HUD T4b → T5 → T6 → T7 → T8; **T4b and T5 passed and are committed**) and `phase3-ac.js`
-(A11 renderer + separate reviewer's `visual_check.json`, beside C9 units and video → C11 packages → S7 SX16). If that session is gone,
+(A11 renderer + separate reviewer's `visual_check.json`, beside C9 units and video (**C9 passed, committed**) → C11 packages → S7 SX16). If that session is gone,
 the runs are gone too: start fresh small workflows for the unfinished tasks from those scripts' task notes (`TASKS3B`, `TASKS3`).
 Watch markers with `checkpoints/wait_marker.sh`, commit each passed task with `checkpoints/ckpt.py <task>` by explicit path (HUD: /
 SimTrial: / Terrain: prefixes). Send Alec: A11 contact sheet + verify numbers, `c-C9-sculpt.gif`, T8 scorecard previews.
@@ -50,7 +50,8 @@ Building foundations (`docs/unreal-move/briefs/building-foundations.md`) after s
   (~2 min; LLM generation-timeout tests flake under load). Parity: `python tools/sim-trial/compare_traces.py --set main|ai name=trace…`.
 - Terrain: `ChimeraTerrain/Tools/run_terrain.ps1 -Script S1|C1|LOOK|MOUSE|SXSMOKE …`, `parse_terrain.py` (`--scatter`, `--s1l … --img-ref`,
   `--teardown`), `look_measure.py`; scatter assets: `Tools/make_scatter_meshes.py`, `fetch_scatter_assets.py`, commandlet
-  `Scripts/make_scatter_assets.py` (from a deleted `Content/Terrain/Scatter`, one hold). HUD: `tools/unreal-hud/hud_iterate.sh <tag>`.
+  `Scripts/make_scatter_assets.py` (from a deleted `Content/Terrain/Scatter`, one hold); unit content (git-ignored): `cp -r` of
+  `crucible_mortar` + `Scripts/fix_unit_usage.py` (EXECUTION §8 'C9 record'). HUD: `tools/unreal-hud/hud_iterate.sh <tag>`.
 - Any Unreal build/run: through the lock, from Git Bash only, in the background (`bash -c '<cmd> > L 2>&1; echo EXIT=$? > L.exit'`)
   then `bash D:/Projects/Chimera-Unreal/wait_for.sh --file L.exit` in the foreground. Builds take 4-18 min under contention.
 - NativeAOT publish needs `C:\Program Files (x86)\Microsoft Visual Studio\Installer` on PATH; `NAT/publish.ps1` exit 5 = DLL in use.

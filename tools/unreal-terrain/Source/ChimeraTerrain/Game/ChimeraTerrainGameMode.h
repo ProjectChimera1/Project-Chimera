@@ -12,6 +12,7 @@ class ATerrainActor;
 class ATerrainLighting;
 class ATerrainScriptDirector;
 class ATerrainScatter;
+class ATerrainUnits;
 
 /** Command-line options (plan C 3.8). String values use FParse::Value(..., false) (EXECUTION 2.2). */
 struct FChimeraTerrainOptions
@@ -41,6 +42,8 @@ struct FChimeraTerrainOptions
 	FString LightParams;
 	/** -ChimeraTerrainSynthMouse: C8's fallback drives the mouse strokes through FSlateApplication::ProcessMouse*Event; strokes log source=slate. */
 	bool bSynthMouse = false;
+	/** -ChimeraTerrainUnits=<n>: n units (ISM of the crucible_mortar mesh) standing on the drawn surface and re-posed where the terrain changes (plan C 4 C9). 0 = no unit layer. */
+	int32 Units = 0;
 
 	static FChimeraTerrainOptions FromCommandLine(const TCHAR* CommandLine);
 };
@@ -70,6 +73,8 @@ private:
 	TObjectPtr<ATerrainScriptDirector> Director;
 	UPROPERTY(Transient)
 	TObjectPtr<ATerrainScatter> Scatter;
+	UPROPERTY(Transient)
+	TObjectPtr<ATerrainUnits> UnitLayer;
 
 	FChimeraTerrainOptions Options;
 };

@@ -270,3 +270,10 @@ All 16 Phase 2 tasks passed two independent Opus xhigh verifiers (results; code 
   fresh rebuild (S1X, THINX, SXSMOKE, dormant S1, tests); the shared `ChimeraPatch.hlsl` include leaves the ground's code byte-identical.
   Shipped defaults scored rts80 6.0 / oblique 5.0 / closeup 4.5 (art director, reported; `EV/c/c-S6-*`). One unmeasured C1S smoke:
   `scatter_gpu_ms` 1.44, SX15 drawn 8,043 at rts80 (cap 24k), LOD0 triangle bound 3.57 M (cap 1.5 M; the LOD-weighted figure is S8's).
+- **C9 record (main session, 2026-10-03).** C9 passed (VIDEO 11.0 s, GIF 4.94 MB, UNITX 10/10 exact, 76/76 tests, units-off S1 hashes
+  equal s1_a). **Unit content is git-ignored; rebuild it, both under the lock:** `cp -r ProjectChimera/Content/LookTest/Roster/crucible_mortar
+  ChimeraTerrain/Content/LookTest/Roster/`, then `Tools/run_commandlet.ps1 -Script Scripts/fix_unit_usage.py -Tag c9_usage -Sentinel USAGE_OK`
+  (the Interchange material instance lacked the InstancedStaticMeshes usage, so `-game` drew WorldGrid; `units_bars.py`'s `unit_material`
+  bar now catches it). C11's cook needs both. **Unit tilt ruling:** units keep full surface-normal tilt for the trial (63° in VIDEO on the
+  brush cones, steeper than any real map slope); a clamp would sink or float unit ends by 1-2 m on 60° slopes. Production revisits it
+  with real unit footprints. The mp4 stays registered, not committed (`.mp4` is not a committed type in §2.3).

@@ -1,0 +1,78 @@
+{
+ "name": "C1U",
+ "about": "Plan C 3.8 script C1U (task C9): C1's ops with the unit layer (run with -Extra \"-ChimeraTerrainUnits=1000\"; scatter stays off), then units_verify and hash after the capture (outside every measured phase). Its own script name so the D2 rows read it against C1.",
+ "ops": [
+  {
+   "op": "look",
+   "mode": "full"
+  },
+  {
+   "op": "camera",
+   "pose": "rts80"
+  },
+  {
+   "op": "settle",
+   "frames": 120
+  },
+  {
+   "op": "csv",
+   "mode": "start"
+  },
+  {
+   "op": "idle",
+   "seconds": 30,
+   "phase": "idle_visible"
+  },
+  {
+   "op": "visible",
+   "value": 0,
+   "phase": "transition"
+  },
+  {
+   "op": "idle",
+   "seconds": 10,
+   "phase": "idle_hidden"
+  },
+  {
+   "op": "visible",
+   "value": 1,
+   "phase": "transition"
+  },
+  {
+   "op": "idle",
+   "seconds": 10,
+   "phase": "idle_visible2"
+  },
+  {
+   "op": "random_walk",
+   "seconds": 60,
+   "seed": 7,
+   "cycle_s": 5,
+   "diameters": [
+    5,
+    20,
+    60,
+    100
+   ],
+   "s": 10,
+   "phase": "walk"
+  },
+  {
+   "op": "idle",
+   "seconds": 5,
+   "phase": "idle_after"
+  },
+  {
+   "op": "csv",
+   "mode": "stop"
+  },
+  {
+   "op": "units_verify",
+   "name": "end"
+  },
+  {
+   "op": "hash",
+   "name": "end"
+  }
+ ]
+}

@@ -339,6 +339,8 @@ terrain changed), `Scripts/{VIDEO,C1U}.json`, `Tools/make_video.sh` (collects `M
 ffmpeg `C:/Users/MD_Ki/AppData/Local/Microsoft/WinGet/Links/ffmpeg.exe` → `sculpt.mp4` h264 1280x720 30 fps, `sculpt.gif` 640 px 15 fps).
 Accept: `LOCK PS ... -Script VIDEO -Tag video -FixedFps 30 -Extra "-ChimeraTerrainUnits=300"`, then `bash T/Tools/make_video.sh T/Out/video`;
 `ffprobe` duration 10-15 s; GIF ≤ 8 MB. One `-Script C1U -Tag c1u_smoke` exits 0.
+As built (2026-10-03, EXECUTION §8 'C9 record'): units ride `HF.SampleSurface` via `FOnTerrainChanged`; the git-ignored unit content is
+rebuilt by the `cp -r` plus `Scripts/fix_unit_usage.py` (ISM usage on the material instance), both under the lock.
 
 **C10 Sim-grid parity** · sonnet · no lock · deps: C4
 `RT/elevhash/elevhash.csproj` (net8.0 console; `<Compile Include>` `G/src/Core/FixedPoint.cs`, `ElevationGrid.cs`, `HeightmapCellMapping.cs`,
