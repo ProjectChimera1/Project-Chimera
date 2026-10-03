@@ -1,0 +1,111 @@
+{
+ "name": "MOUSEX",
+ "about": "Plan C scatter 3.8 script MOUSEX: MOUSE's ops with scatter on (fill wait before the first shot; wait before hash after; verify and dump after), ending with scatter_wait, scatter_verify, hash and save (the dump oracle reads the saved files). Run it like MOUSE (-Windowed -ResX 1600 -ResY 900 -Inject, D9 desktop rule).",
+ "ops": [
+  {
+   "op": "look",
+   "mode": "compare"
+  },
+  {
+   "op": "camera",
+   "pose": "rts80"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 600,
+   "phase": "fill"
+  },
+  {
+   "op": "settle",
+   "frames": 150,
+   "phase": "idle"
+  },
+  {
+   "op": "shot",
+   "name": "before"
+  },
+  {
+   "op": "idle",
+   "seconds": 1
+  },
+  {
+   "op": "shot",
+   "name": "before_aa"
+  },
+  {
+   "op": "await_mouse",
+   "n": 3,
+   "pose": "rts80",
+   "tail": 10
+  },
+  {
+   "op": "settle",
+   "frames": 30
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 300
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "hash",
+   "name": "after"
+  },
+  {
+   "op": "scatter_verify",
+   "name": "after"
+  },
+  {
+   "op": "scatter_dump",
+   "name": "after"
+  },
+  {
+   "op": "shot",
+   "name": "after"
+  },
+  {
+   "op": "project_footprint",
+   "pose": "rts80",
+   "name": "mouse",
+   "as": "mouse"
+  },
+  {
+   "op": "wait_collision",
+   "name": "after"
+  },
+  {
+   "op": "verify_collision",
+   "name": "after"
+  },
+  {
+   "op": "look",
+   "mode": "full"
+  },
+  {
+   "op": "settle",
+   "frames": 30
+  },
+  {
+   "op": "shot",
+   "name": "hud"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 300
+  },
+  {
+   "op": "scatter_verify",
+   "name": "end"
+  },
+  {
+   "op": "hash",
+   "name": "end"
+  },
+  {
+   "op": "save"
+  }
+ ]
+}

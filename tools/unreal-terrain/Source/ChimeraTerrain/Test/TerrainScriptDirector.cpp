@@ -74,9 +74,20 @@ namespace
 		return false;
 	}
 
-	/** [[x, y], ...] -> points (terrain metres). */
-	bool ParsePath(const FJsonObject& Op, TArray<FVector2D>& Out)
+	/** [[x, y], ...] -> points (terrain metres). A path may also be "@<name>" (or contain "@<name>" items): the stored scatter_target's XY. */
+	bool ParsePath(const FJsonObject& Op, TArray<FVector2D>& Out, const TMap<FString, TSharedPtr<FScatterTarget>>* Targets = nullptr)
 	{
+		FString Single;
+		if (Op.TryGetStringField(TEXT("path"), Single) && Single.StartsWith(TEXT("@")))
+		{
+			const TSharedPtr<FScatterTarget>* T = Targets ? Targets->Find(Single.Mid(1)) : nullptr;
+			if (!T || !T->IsValid())
+			{
+				return false;
+			}
+			Out.Add(FVector2D((*T)->X, (*T)->Y));
+			return true;
+		}
 		const TArray<TSharedPtr<FJsonValue>>* Arr = nullptr;
 		if (!Op.TryGetArrayField(TEXT("path"), Arr) || Arr->Num() == 0)
 		{
@@ -84,6 +95,17 @@ namespace
 		}
 		for (const TSharedPtr<FJsonValue>& V : *Arr)
 		{
+			FString Ref;
+			if (V.IsValid() && V->TryGetString(Ref) && Ref.StartsWith(TEXT("@")))
+			{
+				const TSharedPtr<FScatterTarget>* T = Targets ? Targets->Find(Ref.Mid(1)) : nullptr;
+				if (!T || !T->IsValid())
+				{
+					return false;
+				}
+				Out.Add(FVector2D((*T)->X, (*T)->Y));
+				continue;
+			}
 			const TArray<TSharedPtr<FJsonValue>>* P = nullptr;
 			if (!V.IsValid() || !V->TryGetArray(P) || P->Num() != 2)
 			{
@@ -284,6 +306,14 @@ bool ATerrainScriptDirector::LoadScript(FString& OutError)
 		return false;
 	}
 	ScriptName = StrField(*Root, TEXT("name"), FPaths::GetBaseFilename(Options.ScriptPath));
+	{
+		// The script's bytes as run (task S5): results.json script_sha256 ties a run to the script that drove it.
+		TArray<uint8> ScriptBytes;
+		if (FFileHelper::LoadFileToArray(ScriptBytes, *Options.ScriptPath))
+		{
+			ScriptSha256 = ATerrainScatter::Sha256HexOf(ScriptBytes);
+		}
+	}
 	const TArray<TSharedPtr<FJsonValue>>* Arr = nullptr;
 	if (!Root->TryGetArrayField(TEXT("ops"), Arr) || Arr->Num() == 0)
 	{
@@ -450,6 +480,14 @@ double ATerrainScriptDirector::OpTimeoutSeconds(const FString& Name, const FJson
 	{
 		return Options.SettleTimeoutS + 120.0;
 	}
+	if (Name == TEXT("movie_wait"))
+	{
+		return 120.0;
+	}
+	if (Name == TEXT("scatter_dump") || Name == TEXT("scatter_check") || Name == TEXT("scatter_mask") || Name == TEXT("scatter_view_counts"))
+	{
+		return 300.0;
+	}
 	return 120.0;
 }
 
@@ -488,6 +526,7 @@ void ATerrainScriptDirector::Tick(float DeltaSeconds)
 		const double Now = FPlatformTime::Seconds();
 		if (OpFrame == 0 && OpPhase == 0)
 		{
+			OpStartFrame = GFrameCounter;
 			UE_LOG(LogChimeraTerrain, Display, TEXT("op %d/%d %s frame=%llu"), OpIndex + 1, Ops.Num(), *Name, static_cast<unsigned long long>(GFrameCounter));
 			const FString PhaseName = StrField(Op, TEXT("phase"));
 			if (!PhaseName.IsEmpty())
@@ -523,6 +562,16 @@ void ATerrainScriptDirector::Tick(float DeltaSeconds)
 		T->SetStringField(TEXT("op"), Name);
 		T->SetNumberField(TEXT("seconds"), FPlatformTime::Seconds() - OpStartSeconds);
 		T->SetNumberField(TEXT("frames"), OpFrame);
+		// Game frames (GFrameCounter) of the op's first and last step: the parser places the scatter's frame-stamped proxy and compile events in op windows.
+		T->SetNumberField(TEXT("frame_start"), static_cast<double>(OpStartFrame));
+		T->SetNumberField(TEXT("frame_end"), static_cast<double>(GFrameCounter));
+		{
+			const FString OpName = StrField(Op, TEXT("name"));
+			if (!OpName.IsEmpty())
+			{
+				T->SetStringField(TEXT("name"), OpName);
+			}
+		}
 		Timeline.Add(MakeShared<FJsonValueObject>(T));
 		if (bFinished)
 		{
@@ -556,6 +605,7 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepOp(const FJsonObject& 
 	if (Name == TEXT("undo")) return StepUndoRedo(Op, true);
 	if (Name == TEXT("redo")) return StepUndoRedo(Op, false);
 	if (Name == TEXT("hitch")) return StepHitch(Op);
+	if (Name == TEXT("temporal_freeze")) return StepTemporalFreeze(Op);
 	if (Name == TEXT("save")) return StepSave(Op);
 	if (Name == TEXT("load")) return StepLoad(Op);
 	if (Name == TEXT("random_walk")) return StepRandomWalk(Op, false);
@@ -574,6 +624,14 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepOp(const FJsonObject& 
 	if (Name == TEXT("scatter_visible")) return StepScatterVisible(Op);
 	if (Name == TEXT("scatter_verify")) return StepScatterVerify(Op);
 	if (Name == TEXT("scatter_fresh")) return StepScatterFresh(Op);
+	if (Name == TEXT("scatter_dump")) return StepScatterDump(Op);
+	if (Name == TEXT("scatter_check")) return StepScatterCheck(Op);
+	if (Name == TEXT("scatter_counts")) return StepScatterCounts(Op);
+	if (Name == TEXT("scatter_view_counts")) return StepScatterViewCounts(Op);
+	if (Name == TEXT("scatter_target")) return StepScatterTarget(Op);
+	if (Name == TEXT("scatter_mask")) return StepScatterMask(Op);
+	if (Name == TEXT("movie_start")) return StepMovieStart(Op);
+	if (Name == TEXT("movie_wait")) return StepMovieWait(Op);
 	if (Name == TEXT("fail"))
 	{
 		OpError = TEXT("fail op (exit-code contract test)");
@@ -688,9 +746,9 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepStroke(const FJsonObje
 	{
 		bModeOk = ParseMode(StrField(Op, TEXT("mode")), P.Mode);
 	}
-	if (!bModeOk || !ParsePath(Op, Path))
+	if (!bModeOk || !ParsePath(Op, Path, &ScatterTargets))
 	{
-		OpError = TEXT("stroke needs mode (raise|lower|smooth|flatten|paint) and path [[x,y],...]");
+		OpError = TEXT("stroke needs mode (raise|lower|smooth|flatten|paint) and path [[x,y],...] (or \"@<scatter_target name>\" of a target taken earlier)");
 		return EStep::Failed;
 	}
 	const FString ModeName = bForcePaint ? FString(TEXT("paint")) : StrField(Op, TEXT("mode"));
@@ -1106,6 +1164,40 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepHitch(const FJsonObjec
 	return EStep::Done;
 }
 
+ATerrainScriptDirector::EStep ATerrainScriptDirector::StepTemporalFreeze(const FJsonObject& Op)
+{
+	// Engine: SceneVisibility.cpp r.Test.FreezeTemporalSequences (stops ViewState->FrameIndex and the TSR sample index advancing) and
+	// r.TemporalAA.Debug.OverrideTemporalIndex (pins the TSR jitter index), both under !UE_BUILD_SHIPPING. A static scene then renders the same frame every
+	// frame within one freeze window, so two shots of it agree to a fraction of 1/255 and SX10/SX18 see staleness rather than TSR and screen-space noise.
+	// Frames of different windows are not comparable (each window pins a different frame index). Render state only.
+	const bool bOn = NumField(Op, TEXT("value"), 1.0) != 0.0;
+	static const TCHAR* const Names[2] = {TEXT("r.Test.FreezeTemporalSequences"), TEXT("r.TemporalAA.Debug.OverrideTemporalIndex")};
+	static const TCHAR* const OnValues[2] = {TEXT("1"), TEXT("0")};
+	static const TCHAR* const OffValues[2] = {TEXT("0"), TEXT("-1")};
+	TSharedRef<FJsonObject> J = MakeShared<FJsonObject>();
+	J->SetNumberField(TEXT("op_index"), OpIndex + 1);
+	J->SetNumberField(TEXT("value"), bOn ? 1 : 0);
+	J->SetNumberField(TEXT("frame"), static_cast<double>(GFrameCounter));
+	bool bAll = true;
+	TSharedRef<FJsonObject> Rb = MakeShared<FJsonObject>();
+	for (int32 K = 0; K < 2; ++K)
+	{
+		IConsoleVariable* Cv = IConsoleManager::Get().FindConsoleVariable(Names[K]);
+		if (!Cv)
+		{
+			bAll = false;
+			continue;
+		}
+		Cv->Set(bOn ? OnValues[K] : OffValues[K], ECVF_SetByCode);
+		Rb->SetStringField(Names[K], Cv->GetString());
+	}
+	J->SetBoolField(TEXT("available"), bAll);
+	J->SetObjectField(TEXT("readback"), Rb);
+	TemporalFreezes.Add(MakeShared<FJsonValueObject>(J));
+	UE_LOG(LogChimeraTerrain, Display, TEXT("temporal_freeze %d available=%d"), bOn ? 1 : 0, bAll ? 1 : 0);
+	return EStep::Done;
+}
+
 ATerrainScriptDirector::EStep ATerrainScriptDirector::StepSave(const FJsonObject& Op)
 {
 	FString Err;
@@ -1468,29 +1560,38 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepMovie(const FJsonObjec
 	}
 	TArray<FString> Files;
 	IFileManager::Get().FindFiles(Files, *FPaths::Combine(Dir, TEXT("MovieFrame*.*")), true, false);
-	int32 Fresh = 0;
 	FString Ext;
 	TArray<FString> FreshFiles;
 	for (const FString& F : Files)
 	{
-		// A file is this op's when it was written after the op started; older MovieFrame files in the folder belong to earlier runs and
-		// are listed nowhere, so consumers (C9's video) take exactly movies[].files.
+		// A file is this op's when it was written after the op started and no earlier movie op of this run claimed it (a second movie started
+		// within the 2 s timestamp slack would otherwise list the first one's last frames); older MovieFrame files in the folder belong to
+		// earlier runs and are listed nowhere, so consumers (C9's video, S6's M9) take exactly movies[].files.
 		const FDateTime Stamp = IFileManager::Get().GetTimeStamp(*FPaths::Combine(Dir, F));
-		if (Stamp >= MovieStartUtc - FTimespan::FromSeconds(2.0) && IFileManager::Get().FileSize(*FPaths::Combine(Dir, F)) > 0)
+		if (!MovieClaimed.Contains(F) && Stamp >= MovieStartUtc - FTimespan::FromSeconds(2.0) && IFileManager::Get().FileSize(*FPaths::Combine(Dir, F)) > 0)
 		{
-			++Fresh;
-			Ext = FPaths::GetExtension(F);
 			FreshFiles.Add(F);
 		}
 	}
+	// MovieFrame names carry the process's running frame-dump index (zero padded), so name order is frame order: this op's frames are the first
+	// MovieRequested unclaimed ones.
 	FreshFiles.Sort();
-	if (Fresh < MovieRequested)
+	const int32 Seen = FreshFiles.Num();
+	if (Seen < MovieRequested)
 	{
 		return EStep::Running; // files are written asynchronously; the op timeout (120 s) fails a run that never gets them
 	}
+	FreshFiles.SetNum(MovieRequested);
+	for (const FString& F : FreshFiles)
+	{
+		MovieClaimed.Add(F);
+		Ext = FPaths::GetExtension(F);
+	}
+	const int32 Fresh = FreshFiles.Num();
 	TSharedRef<FJsonObject> M = MakeShared<FJsonObject>();
 	M->SetNumberField(TEXT("frames_requested"), MovieRequested);
 	M->SetNumberField(TEXT("files_written"), Fresh);
+	M->SetNumberField(TEXT("unclaimed_files_seen"), Seen);
 	M->SetStringField(TEXT("dir"), Dir);
 	M->SetStringField(TEXT("extension"), Ext);
 	TArray<TSharedPtr<FJsonValue>> FileArr;
@@ -2494,7 +2595,15 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepScatterVerify(const FJ
 	}
 	const FString Name = StrField(Op, TEXT("name"), FString::Printf(TEXT("verify%d"), OpIndex + 1));
 	bool bPass = false;
-	const TSharedRef<FJsonObject> V = Scatter->Verify(Name, bPass);
+	TArray<FScatterTarget> TargetList;
+	for (const TPair<FString, TSharedPtr<FScatterTarget>>& Pr : ScatterTargets)
+	{
+		if (Pr.Value.IsValid())
+		{
+			TargetList.Add(*Pr.Value);
+		}
+	}
+	const TSharedRef<FJsonObject> V = Scatter->Verify(Name, bPass, &TargetList);
 	V->SetNumberField(TEXT("op_index"), OpIndex + 1);
 	ScatterVerifies.Add(MakeShared<FJsonValueObject>(V));
 	return EStep::Done;
@@ -2713,6 +2822,21 @@ void ATerrainScriptDirector::Finish(uint8 Code, const FString& Reason)
 	bFinished = true;
 	const bool bCompleted = Code == ExitOk;
 	Results->SetStringField(TEXT("script"), ScriptName);
+	Results->SetStringField(TEXT("script_path"), Options.ScriptPath);
+	Results->SetStringField(TEXT("script_sha256"), ScriptSha256);
+	{
+		// The effective scalability groups of every run, scatter or not (plan C scatter 3.8: every compared pair, C1 vs C1S included, must have equal sg.*).
+		static const TCHAR* const SgCvars[] = {TEXT("sg.ResolutionQuality"), TEXT("sg.ViewDistanceQuality"), TEXT("sg.AntiAliasingQuality"), TEXT("sg.ShadowQuality"),
+			TEXT("sg.GlobalIlluminationQuality"), TEXT("sg.ReflectionQuality"), TEXT("sg.PostProcessQuality"), TEXT("sg.TextureQuality"), TEXT("sg.EffectsQuality"),
+			TEXT("sg.FoliageQuality"), TEXT("sg.ShadingQuality"), TEXT("sg.LandscapeQuality")};
+		TSharedRef<FJsonObject> SG = MakeShared<FJsonObject>();
+		for (const TCHAR* Cv : SgCvars)
+		{
+			const IConsoleVariable* V = IConsoleManager::Get().FindConsoleVariable(Cv);
+			SG->SetStringField(Cv, V ? V->GetString() : FString(TEXT("missing")));
+		}
+		Results->SetObjectField(TEXT("sg"), SG);
+	}
 	Results->SetBoolField(TEXT("completed"), bCompleted);
 	Results->SetNumberField(TEXT("exit_code"), Code);
 	// ops_done counts ops that finished (an `exit` op counts itself).
@@ -2741,6 +2865,7 @@ void ATerrainScriptDirector::Finish(uint8 Code, const FString& Reason)
 		SJ->SetArrayField(TEXT("waits"), ScatterWaits);
 		SJ->SetArrayField(TEXT("freshes"), ScatterFreshes);
 		SJ->SetArrayField(TEXT("toggles"), ScatterToggles);
+		AddScatterOpResults(*SJ);
 		Results->SetObjectField(TEXT("scatter"), SJ);
 	}
 	if (Terrain)
@@ -2791,6 +2916,7 @@ void ATerrainScriptDirector::Finish(uint8 Code, const FString& Reason)
 	Results->SetArrayField(TEXT("skipped"), Skipped);
 	Results->SetArrayField(TEXT("walks"), Walks);
 	Results->SetArrayField(TEXT("hitches"), Hitches);
+	Results->SetArrayField(TEXT("temporal_freeze"), TemporalFreezes);
 	Results->SetArrayField(TEXT("gcs"), Gcs);
 	Results->SetArrayField(TEXT("movies"), Movies);
 	Results->SetArrayField(TEXT("undo_redo"), UndoRedos);

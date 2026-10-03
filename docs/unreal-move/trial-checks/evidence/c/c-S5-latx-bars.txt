@@ -1,0 +1,14 @@
+S5 (scatter harness and determinism runs), round 4 (residual fix after round 3: SX17 frozen variant and the reviewers' minors): LATX (SX12 rows)
+Parser outputs re-run on round 4 parser code; Unreal runs from round 3 (TrialOut/c_s5/r3, functionally the same build) except the S1XF runs (round 4 final Editor build, TrialOut/c_s5/r4); runs in T/Out.
+
+$ python Tools/parse_terrain.py --latx Out/latx
+BAR SX1/SX8/SX9                    PASS   value=24 bars rule=every bar of the group passes
+BAR SX12 pairing                   PASS   value=80 stroke_end latency rows, 80 strokes rule=one stroke_end latency row per stroke, in order
+BAR SX12 latency d5                REPORT value=n=20 (finished 20) p95 0.035 s (median 0.023, max 0.035), unfinished 0: within 0.3 s rule=end -> every tile current and flushed: <= 0.3 s at d <= 20, <= 1.0 s at d100; statistics over finished strokes (reported)
+BAR SX12 latency d20               REPORT value=n=20 (finished 20) p95 0.046 s (median 0.033, max 0.056), unfinished 0: within 0.3 s rule=end -> every tile current and flushed: <= 0.3 s at d <= 20, <= 1.0 s at d100; statistics over finished strokes (reported)
+BAR SX12 latency d60               REPORT value=n=20 (finished 20) p95 0.098 s (median 0.077, max 0.120), unfinished 0: n/a (no bar at this diameter) rule=end -> every tile current and flushed: <= 0.3 s at d <= 20, <= 1.0 s at d100; statistics over finished strokes (reported)
+BAR SX12 latency d100              REPORT value=n=20 (finished 20) p95 0.139 s (median 0.114, max 0.155), unfinished 0: within 1.0 s rule=end -> every tile current and flushed: <= 0.3 s at d <= 20, <= 1.0 s at d100; statistics over finished strokes (reported)
+BAR SX12 init_ms                   REPORT value=init_ms=1632; fill rows [('enable', 1632)] rule=initial fill (reported)
+LATX PASS
+exit=0
+

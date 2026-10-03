@@ -1,0 +1,892 @@
+{
+ "name": "S1XF",
+ "about": "SX17's frozen single-window variant (task S5 round 4, reported): S1X's ops with the temporal sequences frozen from the first op through the redo checkpoint in ONE window (S1X's per-pair freeze/unfreeze removed), so x_before/x_before_aa (the A/A floor), x_pre_last2, x_after, x_undo and x_redo compare within one window; at each of the four checkpoints a scatter_visible 0 twin xo_<cp> (settle 150 after each toggle) separates terrain from scatter. Run it with -ChimeraTerrainScatter=1, and once more with -ChimeraTerrainScatterApply=clear (canonical instance order). parse_terrain.py --sx17f reads it.",
+ "ops": [
+  {
+   "op": "temporal_freeze",
+   "value": 1
+  },
+  {
+   "op": "look",
+   "mode": "compare"
+  },
+  {
+   "op": "camera",
+   "pose": "rts80"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 600,
+   "phase": "fill"
+  },
+  {
+   "op": "settle",
+   "frames": 150,
+   "phase": "default"
+  },
+  {
+   "op": "shot",
+   "name": "before"
+  },
+  {
+   "op": "idle",
+   "seconds": 1
+  },
+  {
+   "op": "shot",
+   "name": "before_aa"
+  },
+  {
+   "op": "hash",
+   "name": "before"
+  },
+  {
+   "op": "scatter_verify",
+   "name": "before"
+  },
+  {
+   "op": "scatter_dump",
+   "name": "before"
+  },
+  {
+   "op": "scatter_counts",
+   "name": "before"
+  },
+  {
+   "op": "shot",
+   "name": "x_before"
+  },
+  {
+   "op": "idle",
+   "seconds": 1
+  },
+  {
+   "op": "shot",
+   "name": "x_before_aa"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "xf_before"
+  },
+  {
+   "op": "idle",
+   "seconds": 1
+  },
+  {
+   "op": "shot",
+   "name": "xf_before_aa"
+  },
+  {
+   "op": "visible",
+   "value": 0
+  },
+  {
+   "op": "shot",
+   "name": "bg"
+  },
+  {
+   "op": "visible",
+   "value": 1
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 40,
+   "s": 60,
+   "path": [
+    [
+     -62,
+     38
+    ]
+   ],
+   "ticks": 40,
+   "fp": "all",
+   "phase": "sculpt",
+   "hitch": true
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 16,
+   "s": 40,
+   "path": [
+    [
+     15,
+     5
+    ],
+    [
+     15,
+     70
+    ]
+   ],
+   "ticks": 60,
+   "fp": "all"
+  },
+  {
+   "op": "stroke",
+   "mode": "lower",
+   "d": 36,
+   "s": 25,
+   "path": [
+    [
+     -15,
+     -5
+    ],
+    [
+     15,
+     -5
+    ]
+   ],
+   "ticks": 40,
+   "fp": "all"
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 30,
+   "s": 40,
+   "path": [
+    [
+     100,
+     100
+    ]
+   ],
+   "ticks": 20,
+   "fp": "all"
+  },
+  {
+   "op": "stroke",
+   "mode": "lower",
+   "d": 20,
+   "s": 30,
+   "path": [
+    [
+     -100,
+     -100
+    ]
+   ],
+   "ticks": 15,
+   "fp": "all"
+  },
+  {
+   "op": "stroke",
+   "mode": "smooth",
+   "d": 40,
+   "s": 50,
+   "path": [
+    [
+     -62,
+     38
+    ],
+    [
+     -30,
+     38
+    ]
+   ],
+   "ticks": 30,
+   "fp": "all"
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 30,
+   "s": 60,
+   "path": [
+    [
+     55,
+     60
+    ]
+   ],
+   "ticks": 20,
+   "fp": "all"
+  },
+  {
+   "op": "stroke",
+   "mode": "flatten",
+   "d": 30,
+   "s": 100,
+   "path": [
+    [
+     55,
+     60
+    ]
+   ],
+   "ticks": 30,
+   "fp": "all"
+  },
+  {
+   "op": "shot",
+   "name": "sculpt"
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 6,
+   "s": 100,
+   "path": [
+    [
+     -60,
+     -20
+    ],
+    [
+     -20,
+     10
+    ],
+    [
+     20,
+     40
+    ],
+    [
+     60,
+     70
+    ]
+   ],
+   "ticks": 60,
+   "fp": [
+    "paint",
+    "all",
+    "dirt"
+   ],
+   "phase": "paint"
+  },
+  {
+   "op": "paint",
+   "layer": 2,
+   "d": 14,
+   "s": 100,
+   "path": [
+    [
+     -70,
+     34
+    ],
+    [
+     -52,
+     42
+    ]
+   ],
+   "ticks": 40,
+   "fp": [
+    "paint",
+    "all",
+    "rock"
+   ]
+  },
+  {
+   "op": "shot",
+   "name": "paint"
+  },
+  {
+   "op": "project_footprint",
+   "pose": "rts80",
+   "name": "paint",
+   "as": "paint"
+  },
+  {
+   "op": "wait_collision",
+   "name": "pre_last2"
+  },
+  {
+   "op": "verify_collision",
+   "name": "pre_last2"
+  },
+  {
+   "op": "depthcheck",
+   "pose": "rts80",
+   "name": "pre_last2_rts80"
+  },
+  {
+   "op": "depthcheck",
+   "pose": "oblique",
+   "name": "pre_last2_oblique"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 300
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "pre_last2"
+  },
+  {
+   "op": "scatter_verify",
+   "name": "pre_last2"
+  },
+  {
+   "op": "camera",
+   "pose": "rts80"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "x_pre_last2"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 0
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "xo_pre_last2"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 1
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 300
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "hash",
+   "name": "pre_last2"
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 30,
+   "s": 60,
+   "path": [
+    [
+     24,
+     24
+    ],
+    [
+     40,
+     40
+    ]
+   ],
+   "ticks": 30,
+   "fp": [
+    "last2",
+    "all"
+   ],
+   "phase": "last2"
+  },
+  {
+   "op": "paint",
+   "layer": 3,
+   "d": 24,
+   "s": 100,
+   "path": [
+    [
+     26,
+     30
+    ],
+    [
+     38,
+     34
+    ]
+   ],
+   "ticks": 30,
+   "fp": [
+    "last2",
+    "all",
+    "snow"
+   ]
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 300
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "hash",
+   "name": "after"
+  },
+  {
+   "op": "shot",
+   "name": "after"
+  },
+  {
+   "op": "scatter_verify",
+   "name": "after"
+  },
+  {
+   "op": "camera",
+   "pose": "rts80"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "x_after"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 0
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "xo_after"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 1
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "scatter_mask",
+   "pose": "rts80",
+   "name": "m_after",
+   "layers": "all"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "xf_after"
+  },
+  {
+   "op": "scatter_fresh",
+   "name": "xf_after"
+  },
+  {
+   "op": "project_footprint",
+   "pose": "rts80",
+   "name": "last2",
+   "as": "last2_after"
+  },
+  {
+   "op": "project_footprint",
+   "pose": "rts80",
+   "name": "all",
+   "as": "all_after"
+  },
+  {
+   "op": "wait_collision",
+   "name": "after"
+  },
+  {
+   "op": "verify_collision",
+   "name": "after"
+  },
+  {
+   "op": "depthcheck",
+   "pose": "rts80",
+   "name": "after_rts80",
+   "fp": "last2"
+  },
+  {
+   "op": "depthcheck",
+   "pose": "oblique",
+   "name": "after_oblique",
+   "fp": "last2"
+  },
+  {
+   "op": "undo",
+   "n": 2
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 300
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "hash",
+   "name": "undo"
+  },
+  {
+   "op": "wait_collision",
+   "name": "undo"
+  },
+  {
+   "op": "verify_collision",
+   "name": "undo"
+  },
+  {
+   "op": "depthcheck",
+   "pose": "rts80",
+   "name": "undo_rts80",
+   "fp": "last2"
+  },
+  {
+   "op": "depthcheck",
+   "pose": "oblique",
+   "name": "undo_oblique",
+   "fp": "last2"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 300
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "undo"
+  },
+  {
+   "op": "scatter_verify",
+   "name": "undo"
+  },
+  {
+   "op": "camera",
+   "pose": "rts80"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "x_undo"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 0
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "xo_undo"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 1
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "scatter_mask",
+   "pose": "rts80",
+   "name": "m_undo",
+   "layers": "all"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "xf_undo"
+  },
+  {
+   "op": "scatter_fresh",
+   "name": "xf_undo"
+  },
+  {
+   "op": "project_footprint",
+   "pose": "rts80",
+   "name": "last2",
+   "as": "last2_flat"
+  },
+  {
+   "op": "redo",
+   "n": 2
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 300
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "hash",
+   "name": "redo"
+  },
+  {
+   "op": "wait_collision",
+   "name": "redo"
+  },
+  {
+   "op": "verify_collision",
+   "name": "redo"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 300
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "redo"
+  },
+  {
+   "op": "scatter_verify",
+   "name": "redo"
+  },
+  {
+   "op": "camera",
+   "pose": "rts80"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "x_redo"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 0
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "xo_redo"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 1
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "scatter_mask",
+   "pose": "rts80",
+   "name": "m_redo",
+   "layers": "all"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "xf_redo"
+  },
+  {
+   "op": "scatter_fresh",
+   "name": "xf_redo"
+  },
+  {
+   "op": "scatter_dump",
+   "name": "redo"
+  },
+  {
+   "op": "scatter_check",
+   "name": "dirt",
+   "fp": "dirt"
+  },
+  {
+   "op": "scatter_check",
+   "name": "rock",
+   "fp": "rock"
+  },
+  {
+   "op": "scatter_check",
+   "name": "snow",
+   "fp": "snow"
+  },
+  {
+   "op": "temporal_freeze",
+   "value": 0
+  },
+  {
+   "op": "look",
+   "mode": "full"
+  },
+  {
+   "op": "settle",
+   "frames": 120
+  },
+  {
+   "op": "camera",
+   "pose": "rts80"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "x_rts80_full"
+  },
+  {
+   "op": "scatter_view_counts",
+   "pose": "rts80",
+   "name": "rts80"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 0
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "x_rts80_full_off"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 1
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "camera",
+   "pose": "oblique"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "x_oblique_full"
+  },
+  {
+   "op": "scatter_view_counts",
+   "pose": "oblique",
+   "name": "oblique"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 0
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "x_oblique_full_off"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 1
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "camera",
+   "pose": "closeup"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "x_closeup_full"
+  },
+  {
+   "op": "scatter_view_counts",
+   "pose": "closeup",
+   "name": "closeup"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 0
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "x_closeup_full_off"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 1
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "camera",
+   "pose": "rts80"
+  },
+  {
+   "op": "settle",
+   "frames": 10
+  },
+  {
+   "op": "shot",
+   "name": "rts80_full"
+  },
+  {
+   "op": "camera",
+   "pose": "closeup"
+  },
+  {
+   "op": "settle",
+   "frames": 10
+  },
+  {
+   "op": "shot",
+   "name": "closeup"
+  },
+  {
+   "op": "camera",
+   "pose": "oblique"
+  },
+  {
+   "op": "settle",
+   "frames": 10
+  },
+  {
+   "op": "shot",
+   "name": "oblique"
+  },
+  {
+   "op": "save"
+  }
+ ]
+}

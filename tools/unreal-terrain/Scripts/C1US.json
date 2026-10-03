@@ -1,0 +1,310 @@
+{
+ "name": "C1US",
+ "about": "C1S with the 1,000 units (run with -Extra \"-ChimeraTerrainScatter=1 -ChimeraTerrainUnits=1000\" once C9 has landed): its own script name so the D2 rows read it against C1U.",
+ "ops": [
+  {
+   "op": "look",
+   "mode": "full"
+  },
+  {
+   "op": "camera",
+   "pose": "rts80"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 900,
+   "phase": "fill"
+  },
+  {
+   "op": "settle",
+   "frames": 150,
+   "phase": "transition"
+  },
+  {
+   "op": "csv",
+   "mode": "start"
+  },
+  {
+   "op": "idle",
+   "seconds": 20,
+   "phase": "idle_scatter_on"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 0,
+   "phase": "transition"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "idle",
+   "seconds": 10,
+   "phase": "idle_scatter_off"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 1,
+   "phase": "transition"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "idle",
+   "seconds": 10,
+   "phase": "idle_scatter_on2"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 0,
+   "layers": "grass",
+   "phase": "transition"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "idle",
+   "seconds": 8,
+   "phase": "idle_layer_off_grass"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 1,
+   "layers": "grass",
+   "phase": "transition"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "scatter_visible",
+   "value": 0,
+   "layers": "groundcover",
+   "phase": "transition"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "idle",
+   "seconds": 8,
+   "phase": "idle_layer_off_groundcover"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 1,
+   "layers": "groundcover",
+   "phase": "transition"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "scatter_visible",
+   "value": 0,
+   "layers": "shrubs",
+   "phase": "transition"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "idle",
+   "seconds": 8,
+   "phase": "idle_layer_off_shrubs"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 1,
+   "layers": "shrubs",
+   "phase": "transition"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "scatter_visible",
+   "value": 0,
+   "layers": "trees",
+   "phase": "transition"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "idle",
+   "seconds": 8,
+   "phase": "idle_layer_off_trees"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 1,
+   "layers": "trees",
+   "phase": "transition"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "scatter_visible",
+   "value": 0,
+   "layers": "rocks",
+   "phase": "transition"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "idle",
+   "seconds": 8,
+   "phase": "idle_layer_off_rocks"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 1,
+   "layers": "rocks",
+   "phase": "transition"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "camera",
+   "pose": "oblique",
+   "phase": "transition"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "idle",
+   "seconds": 8,
+   "phase": "oblique_on"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 0,
+   "phase": "transition"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "idle",
+   "seconds": 8,
+   "phase": "oblique_off"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 1,
+   "phase": "transition"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "camera",
+   "pose": "closeup",
+   "phase": "transition"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "idle",
+   "seconds": 8,
+   "phase": "closeup_on"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 0,
+   "phase": "transition"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "idle",
+   "seconds": 8,
+   "phase": "closeup_off"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 1,
+   "phase": "transition"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "camera",
+   "pose": "rts80",
+   "phase": "transition"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "random_walk",
+   "seconds": 60,
+   "seed": 7,
+   "cycle_s": 5,
+   "diameters": [
+    5,
+    20,
+    60,
+    100
+   ],
+   "s": 10,
+   "phase": "walk"
+  },
+  {
+   "op": "idle",
+   "seconds": 5,
+   "phase": "idle_after"
+  },
+  {
+   "op": "csv",
+   "mode": "stop"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 300,
+   "phase": "transition"
+  },
+  {
+   "op": "scatter_verify",
+   "name": "end"
+  },
+  {
+   "op": "hash",
+   "name": "end"
+  },
+  {
+   "op": "scatter_view_counts",
+   "pose": "rts80",
+   "name": "rts80"
+  }
+ ]
+}

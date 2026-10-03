@@ -1,0 +1,199 @@
+{
+ "name": "SHADX",
+ "about": "Plan C scatter 3.8 script SHADX (flat map, compare mode, rts80): grass and groundcover hidden (thin geometry out of the A/A floor), tree t0 stored near [0,40] with the caster mask within 45 m and t0's own tree + shadow mask, shots t_a and t_b 1 s apart (the A/A floor); a far raise 80 m from t0 with the t_far shot and its scatter_fresh twin; raise d60 s20 on t0 (the tree must rise more than 2 m), t_raised and its fresh twin with the union masks; undo, t_undo and its fresh twin. The CSV capture (-csvCategories=VSM) covers the edits. Temporal sequences are frozen first (repeatable frames).",
+ "ops": [
+  {
+   "op": "temporal_freeze",
+   "value": 1
+  },
+  {
+   "op": "look",
+   "mode": "compare"
+  },
+  {
+   "op": "camera",
+   "pose": "rts80"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 600,
+   "phase": "fill"
+  },
+  {
+   "op": "settle",
+   "frames": 150,
+   "phase": "idle"
+  },
+  {
+   "op": "hash",
+   "name": "start"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 0,
+   "layers": "grass,groundcover"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "scatter_target",
+   "class": "tree",
+   "near": [
+    0,
+    40
+   ],
+   "as": "t0"
+  },
+  {
+   "op": "scatter_verify",
+   "name": "start"
+  },
+  {
+   "op": "scatter_mask",
+   "pose": "rts80",
+   "name": "m_a",
+   "layers": "trees,shrubs,rocks",
+   "near": "@t0",
+   "radius": 45
+  },
+  {
+   "op": "scatter_mask",
+   "pose": "rts80",
+   "name": "m_t0_a",
+   "layers": "trees",
+   "only": "@t0"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "csv",
+   "mode": "start"
+  },
+  {
+   "op": "shot",
+   "name": "t_a",
+   "phase": "a"
+  },
+  {
+   "op": "idle",
+   "seconds": 1
+  },
+  {
+   "op": "shot",
+   "name": "t_b"
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 40,
+   "s": 40,
+   "path": [
+    [
+     -75,
+     40
+    ]
+   ],
+   "ticks": 20,
+   "phase": "far"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 300
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "t_far"
+  },
+  {
+   "op": "scatter_fresh",
+   "name": "t_far"
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 60,
+   "s": 20,
+   "path": "@t0",
+   "ticks": 20,
+   "phase": "raised"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 300
+  },
+  {
+   "op": "scatter_verify",
+   "name": "raised"
+  },
+  {
+   "op": "scatter_mask",
+   "pose": "rts80",
+   "name": "m_raised",
+   "layers": "trees,shrubs,rocks",
+   "near": "@t0",
+   "radius": 45,
+   "union_with": "m_a"
+  },
+  {
+   "op": "scatter_mask",
+   "pose": "rts80",
+   "name": "m_t0_raised",
+   "layers": "trees",
+   "only": "@t0",
+   "union_with": "m_t0_a"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "t_raised"
+  },
+  {
+   "op": "scatter_fresh",
+   "name": "t_raised"
+  },
+  {
+   "op": "undo",
+   "n": 1,
+   "phase": "undo"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 300
+  },
+  {
+   "op": "scatter_verify",
+   "name": "undone"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "t_undo"
+  },
+  {
+   "op": "scatter_fresh",
+   "name": "t_undo"
+  },
+  {
+   "op": "hash",
+   "name": "final"
+  },
+  {
+   "op": "csv",
+   "mode": "stop"
+  }
+ ]
+}

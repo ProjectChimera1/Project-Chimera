@@ -1384,11 +1384,15 @@ namespace ChimeraTerrain
 			const double MaxDeg = static_cast<double>(P.Get(EScatterParam::RockTiltDeg)) / 65536.0;
 			const double Ang = (static_cast<double>(R.Tilt) / 65536.0) * MaxDeg * 3.14159265358979323846 / 180.0;
 			const double Dir = 2.0 * 3.14159265358979323846 * (static_cast<double>((static_cast<uint32>(R.Tilt) * 3u + R.Yaw) & 0xFFFFu) / 65536.0);
-			double E1[3] = {-Up[1], Up[0], 0.0};
-			if (std::fabs(E1[0]) + std::fabs(E1[1]) < 1e-9)
+			// The tilt frame: world X projected onto the plane perpendicular to Up (world Y if Up were within 1e-3 of X, which no rock slope reaches).
+			// Well conditioned near vertical, so a one-unit gradient change on near-flat ground moves the lean by about that much, never by a swing of
+			// its direction (the earlier frame (-Up.y, Up.x, 0) turned with the gradient's direction there). Records and hashes do not depend on it.
+			double E1[3] = {1.0 - Up[0] * Up[0], -Up[0] * Up[1], -Up[0] * Up[2]};
+			if (E1[0] * E1[0] + E1[1] * E1[1] + E1[2] * E1[2] < 1e-6)
 			{
-				E1[0] = 1.0;
-				E1[1] = 0.0;
+				E1[0] = -Up[1] * Up[0];
+				E1[1] = 1.0 - Up[1] * Up[1];
+				E1[2] = -Up[1] * Up[2];
 			}
 			Normalize3(E1);
 			const double E2[3] = {Up[1] * E1[2] - Up[2] * E1[1], Up[2] * E1[0] - Up[0] * E1[2], Up[0] * E1[1] - Up[1] * E1[0]};

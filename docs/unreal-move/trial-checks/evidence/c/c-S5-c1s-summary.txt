@@ -1,0 +1,267 @@
+S5 (scatter harness and determinism runs), round 4 (residual fix after round 3: SX17 frozen variant and the reviewers' minors): C1S smoke --summary (SCATTER table), and the reported cross-build stroke_gpu_ms / SX11 smoke beside C1's c1_look_r4
+Parser outputs re-run on round 4 parser code; Unreal runs from round 3 (TrialOut/c_s5/r3, functionally the same build) except the S1XF runs (round 4 final Editor build, TrialOut/c_s5/r4); runs in T/Out.
+
+$ python Tools/parse_terrain.py --summary Out/c1s_smoke
+== runs
+tag                  script completed ops      unit  measured  log   configuration
+c1s_smoke            C1S    True      62/62    0     no        0     half=160 chunk=64 draw=Dynamic Scatter=1 SettleTimeoutS=1620
+GATE PASS         runs_completed             1 run(s); completed=true and ops_done == ops_total for each
+GATE PASS         log_scan                   findings per run: {'c1s_smoke': 0}
+gate configuration: half=160 chunk=64 draw=Dynamic (default)
+
+== frame metrics per phase (director samples, ms; fps = 1000 / frame ms)
+tag              phase               n  fps p50 fps 1%lo    frame  GPU p50   GT p50   RT p50  GPU p99  >33ms
+c1s_smoke        default             7     32.4     11.1    30.87    13.13    26.80    18.26    16.92      2
+c1s_smoke        fill               57     65.2     57.3    15.34    15.08     3.15    15.36    16.56      0
+c1s_smoke        transition       3086     63.3     49.5    15.81    15.47     2.26    15.81    19.41      1
+c1s_smoke        idle_scatter_on   1305     64.6     57.8    15.48    15.21     2.24    15.46    16.46      0
+c1s_smoke        idle_scatter_off    731     72.4     64.0    13.81    13.53     2.26    13.81    14.84      0
+c1s_smoke        idle_scatter_on2    648     64.4     57.7    15.53    15.27     2.34    15.54    16.46      0
+c1s_smoke        idle_layer_off_grass    536     66.5     60.2    15.04    14.72     2.32    15.01    15.85      0
+c1s_smoke        idle_layer_off_groundcover    516     63.9     57.6    15.65    15.29     2.35    15.64    16.45      0
+c1s_smoke        idle_layer_off_shrubs    523     64.6     58.0    15.47    15.15     2.35    15.44    16.37      0
+c1s_smoke        idle_layer_off_trees    543     67.9     60.1    14.73    14.46     2.25    14.71    16.01      0
+c1s_smoke        idle_layer_off_rocks    525     65.3     58.2    15.31    15.10     2.28    15.29    16.44      0
+c1s_smoke        oblique_on        428     53.2     48.5    18.79    18.48     2.26    18.77    19.45      0
+c1s_smoke        oblique_off       457     57.0     48.9    17.55    17.15     2.34    17.54    18.20      1
+c1s_smoke        closeup_on        454     56.4     51.4    17.74    17.42     2.26    17.73    18.43      0
+c1s_smoke        closeup_off       439     54.6     49.6    18.33    18.04     2.25    18.32    19.09      0
+c1s_smoke        walk             3927     65.1     57.9    15.36    15.08     2.58    15.34    16.51      1
+c1s_smoke        idle_after        334     65.5     57.4    15.26    14.94     2.23    15.24    16.17      1
+
+== CSV profiler per phase (frames of terrain.csv tagged by the director's phase events; ms)
+tag              phase               n  fps p50 fps 1%lo  GPU p50   GT p50   RT p50   max ms  prims p50
+c1s_smoke        transition       2927     63.0     49.6    15.52     2.27    15.88     28.1     295681
+c1s_smoke        idle_scatter_on   1305     64.6     57.8    15.21     2.24    15.46     25.7     295679
+c1s_smoke        idle_scatter_off    731     72.4     64.0    13.53     2.26    13.81     16.7     295681
+c1s_smoke        idle_scatter_on2    648     64.4     57.7    15.27     2.34    15.54     17.8     295681
+c1s_smoke        idle_layer_off_grass    536     66.5     60.2    14.72     2.32    15.01     19.0     295681
+c1s_smoke        idle_layer_off_groundcover    516     63.9     57.6    15.29     2.35    15.64     19.1     295681
+c1s_smoke        idle_layer_off_shrubs    523     64.6     57.9    15.15     2.35    15.44     19.2     295681
+c1s_smoke        idle_layer_off_trees    543     67.9     59.9    14.46     2.25    14.71     16.8     295681
+c1s_smoke        idle_layer_off_rocks    525     65.3     58.0    15.10     2.28    15.29     18.2     295681
+c1s_smoke        oblique_on        428     53.2     48.5    18.48     2.26    18.77     30.6     262877
+c1s_smoke        oblique_off       457     57.0     48.9    17.15     2.34    17.54     40.2     262877
+c1s_smoke        closeup_on        454     56.4     51.4    17.42     2.26    17.73     23.4     197295
+c1s_smoke        closeup_off       439     54.6     49.6    18.04     2.25    18.32     23.7     213677
+c1s_smoke        walk             3927     65.1     57.9    15.08     2.58    15.34     44.5     295687
+c1s_smoke        idle_after        331     65.5     57.5    14.96     2.23    15.24     19.5     295685
+
+== brush ticks by diameter (ms; gate configuration, pooled over its runs, none measured: [])
+    d      n   tot p50   tot p99   tot max   apply50    norm50     upl50   splat50
+by mode: 
+
+== brush ticks by diameter (ms; REPORTED, configuration half=160 chunk=64 draw=Dynamic Scatter=1 SettleTimeoutS=1620: ['c1s_smoke'])
+    d      n   tot p50   tot p99   tot max   apply50    norm50     upl50   splat50
+    5    455     0.081     0.402     0.504     0.004     0.004     0.073     0.000
+   20    444     0.117     0.430     0.516     0.011     0.026     0.080     0.000
+   60    456     0.456     0.829     0.962     0.045     0.204     0.195     0.000
+  100    444     1.000     1.601     1.879     0.106     0.539     0.328     0.000
+by mode: flatten n=300 p50=0.384 p99=1.337, lower n=450 p50=0.387 p99=1.420, paint n=300 p50=0.164 p99=1.091, raise n=449 p50=0.365 p99=1.407, smooth n=300 p50=0.441 p99=1.480
+
+== render-thread acceptance latency of ranged edits
+c1s_smoke        edits=5050 finished=5050 frames p50=1 p95=1 p99=1 max=1 hist(0..4+)=[0, 5050, 0, 0, 0] ms p50=14.93 proxy_recreates_during_strokes=0 proxy_recreates=175
+
+== memory (UsedPhysical MB) and bodies
+c1s_smoke        n=114 start=2582 end=2868 peak=2868 growth_peak=286 growth_end=286 bodies total/rmc peak=-1/-1 end=-1/-1 vram_peak_mib=3168
+
+== hashes
+c1s_smoke        end          height=0x95916b8c splat=0xf71438df sim_grid=0x5986a455 ticks=1799
+c1s_smoke        final        height=0x95916b8c splat=0xf71438df
+
+== reported (not gated): triangles / chunks / hitches / dropped ticks / walks / settle
+c1s_smoke        triangles=204800 chunks=25 walks=[(1799, 0)] hitches=0 settle_ms=[2235, 2075, 2380, 2265, 2335, 2343, 2355, 2311, 2342, 2256, 2330, 2255, 2314, 2762, 2642, 2898, 2654, 2757, 2699, 2332]
+
+== rep spread (reps of one configuration; > 5 % is flagged)
+no flags
+
+== plan C 5 metrics (NO measured run: timings are REPORTED, not gated (EXECUTION 3 C9))
+GATE FAIL         P1 tick p50 d20            no samples (no tick at d=20)
+GATE FAIL         P1 tick p50 d100           no samples (no tick at d=100)
+GATE FAIL         P1 tick p99                no samples
+GATE FAIL         P2 latency median          no samples
+GATE FAIL         P2 in-place use            no samples
+GATE FAIL         P3 fps with 1000 units     no samples (no C1U run with -ChimeraTerrainUnits=1000)
+GATE FAIL         P4 terrain GPU ms          no samples (no C1 run with idle_visible and idle_hidden phases)
+GATE FAIL         P5 collision               no samples (no S1 run)
+
+== collision cooks and GT apply (ms; per run)
+tag              fast_cook during   cooks cook p50 cook p95 cook max   gt n   gt p95   gt max
+c1s_smoke        True      0          144     4.54     6.28     8.41     40    1.198    2.036
+GATE FAIL         P5 cook p95                no samples (no cook in the gate configuration's S1/C1/SOAK runs)
+GATE FAIL         P5 GT apply p95            no samples (no stroke-end/undo/redo batch in the gate configuration's S1/C1/SOAK runs)
+GATE FAIL         P6 soak growth             no samples (no SOAK run)
+GATE FAIL         P7 undo/redo exact         no samples (no S1 run)
+GATE FAIL         P11 GPU mesh = CPU         no samples (no S1 run)
+GATE FAIL         P8 determinism             no samples (needs two S1 runs; run `--same-hash s1_a s1_b`)
+GATE FAIL         P9 sim grid                no samples here: `--simgrid RUN` (python mirror) and C10's elevhash (C#) decide it
+GATE FAIL         P10 mouse                  no samples (no MOUSE run)
+
+== SCATTER (plan-c-scatter.md 5; ms unless noted)
+tag              script   instances  init ms scatter_gt p50/p99/max    flush p50/p99/max    apply p50/p99   recr
+c1s_smoke        C1S         215525     1736    0.040/0.395/3.319    0.000/0.591/1.703      0.018/0.112      0
+c1s_smoke        scatter_flush_ms row: p50 0.000 p99 0.591 max 1.703 (end-of-frame instance flush, outside the fill)
+c1s_smoke        scatter_gpu_ms = 1.705 (on p50 15.238 [15.209, 15.267], off p50 13.533; target 1.8, kill above 2.5 after the governor ladder)
+c1s_smoke          layer grass        0.521 ms (on 15.238 - layer off 14.717)
+c1s_smoke          layer groundcover  -0.047 ms (on 15.238 - layer off 15.285)
+c1s_smoke          layer shrubs       0.084 ms (on 15.238 - layer off 15.154)
+c1s_smoke          layer trees        0.779 ms (on 15.238 - layer off 14.458)
+c1s_smoke          layer rocks        0.133 ms (on 15.238 - layer off 15.105)
+c1s_smoke          pose oblique      1.329 ms (on 18.484 - off 17.155)
+c1s_smoke          pose closeup      -0.623 ms (on 17.418 - off 18.041)
+GATE REPORTED-pass SX13 scatter_gpu_ms c1s_smoke 1.705 ms at rts80 (target 1.8, kill above 2.5; reported, kill rule applied by the main session)
+c1s_smoke        stroke_gpu_ms: no samples (needs a scatter-off C1 run with a CSV beside it, and this run's walk CSV)
+GATE REPORTED-pass SX11 scatter_gt_ms c1s_smoke walk walk: n 3927, p99 0.472 <= 1.5, p99.9 0.673 <= 2.0, frames > 2.0 ms 0.025 % <= 0.1 %, max 3.319
+GATE REPORTED-pass SX11 scatter_gt_ms c1s_smoke flush_windows flush_windows: n 1406, p99 0.562 <= 1.5, p99.9 0.738 <= 2.0, frames > 2.0 ms 0.071 % <= 0.1 %, max 3.319
+GATE FAIL         SX11 frame GT/RT c1s_smoke no samples (no scatter-off C1 run in this summary to difference against)
+GATE REPORTED-pass SX15 caps c1s_smoke        analytic at rts80: drawn 23895 (<= 24000), primitives in view 139 of 463 with instances (<= 700, no T0 rank split recorded)
+GATE REPORTED-fail SX15 triangles c1s_smoke   LOD0 triangle upper bound 2991986 above the cap 1500000: LOD-weighted figure unknown (not computed: no per-instance LOD recorded)
+
+GATES: pass=2 fail=17 reported=5 flags=0
+exit=1
+
+$ python Tools/parse_terrain.py --summary Out/c1s_smoke Out/c1_look_r4
+== runs
+tag                  script completed ops      unit  measured  log   configuration
+c1s_smoke            C1S    True      62/62    0     no        0     half=160 chunk=64 draw=Dynamic Scatter=1 SettleTimeoutS=1620
+c1_look_r4           C1     True      12/12    0     no        0     half=160 chunk=64 draw=Dynamic
+GATE PASS         runs_completed             2 run(s); completed=true and ops_done == ops_total for each
+GATE PASS         log_scan                   findings per run: {'c1s_smoke': 0, 'c1_look_r4': 0}
+gate configuration: half=160 chunk=64 draw=Dynamic (default)
+
+== frame metrics per phase (director samples, ms; fps = 1000 / frame ms)
+tag              phase               n  fps p50 fps 1%lo    frame  GPU p50   GT p50   RT p50  GPU p99  >33ms
+c1s_smoke        default             7     32.4     11.1    30.87    13.13    26.80    18.26    16.92      2
+c1s_smoke        fill               57     65.2     57.3    15.34    15.08     3.15    15.36    16.56      0
+c1s_smoke        transition       3086     63.3     49.5    15.81    15.47     2.26    15.81    19.41      1
+c1s_smoke        idle_scatter_on   1305     64.6     57.8    15.48    15.21     2.24    15.46    16.46      0
+c1s_smoke        idle_scatter_off    731     72.4     64.0    13.81    13.53     2.26    13.81    14.84      0
+c1s_smoke        idle_scatter_on2    648     64.4     57.7    15.53    15.27     2.34    15.54    16.46      0
+c1s_smoke        idle_layer_off_grass    536     66.5     60.2    15.04    14.72     2.32    15.01    15.85      0
+c1s_smoke        idle_layer_off_groundcover    516     63.9     57.6    15.65    15.29     2.35    15.64    16.45      0
+c1s_smoke        idle_layer_off_shrubs    523     64.6     58.0    15.47    15.15     2.35    15.44    16.37      0
+c1s_smoke        idle_layer_off_trees    543     67.9     60.1    14.73    14.46     2.25    14.71    16.01      0
+c1s_smoke        idle_layer_off_rocks    525     65.3     58.2    15.31    15.10     2.28    15.29    16.44      0
+c1s_smoke        oblique_on        428     53.2     48.5    18.79    18.48     2.26    18.77    19.45      0
+c1s_smoke        oblique_off       457     57.0     48.9    17.55    17.15     2.34    17.54    18.20      1
+c1s_smoke        closeup_on        454     56.4     51.4    17.74    17.42     2.26    17.73    18.43      0
+c1s_smoke        closeup_off       439     54.6     49.6    18.33    18.04     2.25    18.32    19.09      0
+c1s_smoke        walk             3927     65.1     57.9    15.36    15.08     2.58    15.34    16.51      1
+c1s_smoke        idle_after        334     65.5     57.4    15.26    14.94     2.23    15.24    16.17      1
+c1_look_r4       default           130     81.7     32.2    12.24    11.71     1.29    12.19    16.67      1
+c1_look_r4       idle_visible     2520     84.7     77.9    11.81    11.47     1.13    11.80    12.51      0
+c1_look_r4       transition          6    111.7     80.8     8.95     9.21     1.16     9.19    11.51      0
+c1_look_r4       idle_hidden      1127    113.8    103.9     8.79     8.58     1.06     8.83     9.45      0
+c1_look_r4       idle_visible2     841     84.7     77.5    11.81    11.49     1.13    11.81    12.51      0
+c1_look_r4       walk             5008     84.1     77.2    11.89    11.60     1.18    11.88    12.58      0
+c1_look_r4       idle_after        421     84.0     76.4    11.90    11.61     1.12    11.90    12.61      1
+
+== CSV profiler per phase (frames of terrain.csv tagged by the director's phase events; ms)
+tag              phase               n  fps p50 fps 1%lo  GPU p50   GT p50   RT p50   max ms  prims p50
+c1s_smoke        transition       2927     63.0     49.6    15.52     2.27    15.88     28.1     295681
+c1s_smoke        idle_scatter_on   1305     64.6     57.8    15.21     2.24    15.46     25.7     295679
+c1s_smoke        idle_scatter_off    731     72.4     64.0    13.53     2.26    13.81     16.7     295681
+c1s_smoke        idle_scatter_on2    648     64.4     57.7    15.27     2.34    15.54     17.8     295681
+c1s_smoke        idle_layer_off_grass    536     66.5     60.2    14.72     2.32    15.01     19.0     295681
+c1s_smoke        idle_layer_off_groundcover    516     63.9     57.6    15.29     2.35    15.64     19.1     295681
+c1s_smoke        idle_layer_off_shrubs    523     64.6     57.9    15.15     2.35    15.44     19.2     295681
+c1s_smoke        idle_layer_off_trees    543     67.9     59.9    14.46     2.25    14.71     16.8     295681
+c1s_smoke        idle_layer_off_rocks    525     65.3     58.0    15.10     2.28    15.29     18.2     295681
+c1s_smoke        oblique_on        428     53.2     48.5    18.48     2.26    18.77     30.6     262877
+c1s_smoke        oblique_off       457     57.0     48.9    17.15     2.34    17.54     40.2     262877
+c1s_smoke        closeup_on        454     56.4     51.4    17.42     2.26    17.73     23.4     197295
+c1s_smoke        closeup_off       439     54.6     49.6    18.04     2.25    18.32     23.7     213677
+c1s_smoke        walk             3927     65.1     57.9    15.08     2.58    15.34     44.5     295687
+c1s_smoke        idle_after        331     65.5     57.5    14.96     2.23    15.24     19.5     295685
+c1_look_r4       default             1     57.3     57.3    11.60     4.68    12.40     17.4     295533
+c1_look_r4       idle_visible     2520     84.7     77.9    11.47     1.13    11.80     13.6     295579
+c1_look_r4       transition          6    113.5     82.9     9.21     1.16     9.19     12.1        453
+c1_look_r4       idle_hidden      1127    113.8    103.9     8.58     1.06     8.83      9.9        449
+c1_look_r4       idle_visible2     841     84.6     77.5    11.49     1.13    11.81     13.3     295579
+c1_look_r4       walk             5008     84.1     77.2    11.60     1.18    11.88     22.6     295581
+c1_look_r4       idle_after        418     84.0     76.6    11.61     1.12    11.90     13.4     295581
+
+== brush ticks by diameter (ms; gate configuration, pooled over its runs, none measured: ['c1_look_r4'])
+    d      n   tot p50   tot p99   tot max   apply50    norm50     upl50   splat50
+    5    455     0.069     0.144     0.391     0.004     0.004     0.060     0.000
+   20    444     0.103     0.208     0.298     0.010     0.027     0.065     0.000
+   60    456     0.362     0.717     0.873     0.045     0.158     0.136     0.000
+  100    444     0.782     1.342     1.502     0.105     0.375     0.237     0.000
+by mode: flatten n=300 p50=0.219 p99=1.067, lower n=450 p50=0.234 p99=1.140, paint n=300 p50=0.131 p99=0.883, raise n=449 p50=0.249 p99=1.048, smooth n=300 p50=0.208 p99=1.299
+
+== brush ticks by diameter (ms; REPORTED, configuration half=160 chunk=64 draw=Dynamic Scatter=1 SettleTimeoutS=1620: ['c1s_smoke'])
+    d      n   tot p50   tot p99   tot max   apply50    norm50     upl50   splat50
+    5    455     0.081     0.402     0.504     0.004     0.004     0.073     0.000
+   20    444     0.117     0.430     0.516     0.011     0.026     0.080     0.000
+   60    456     0.456     0.829     0.962     0.045     0.204     0.195     0.000
+  100    444     1.000     1.601     1.879     0.106     0.539     0.328     0.000
+by mode: flatten n=300 p50=0.384 p99=1.337, lower n=450 p50=0.387 p99=1.420, paint n=300 p50=0.164 p99=1.091, raise n=449 p50=0.365 p99=1.407, smooth n=300 p50=0.441 p99=1.480
+
+== render-thread acceptance latency of ranged edits
+c1s_smoke        edits=5050 finished=5050 frames p50=1 p95=1 p99=1 max=1 hist(0..4+)=[0, 5050, 0, 0, 0] ms p50=14.93 proxy_recreates_during_strokes=0 proxy_recreates=175
+c1_look_r4       edits=5050 finished=5050 frames p50=1 p95=1 p99=1 max=1 hist(0..4+)=[0, 5050, 0, 0, 0] ms p50=11.61 proxy_recreates_during_strokes=0 proxy_recreates=175
+
+== memory (UsedPhysical MB) and bodies
+c1s_smoke        n=114 start=2582 end=2868 peak=2868 growth_peak=286 growth_end=286 bodies total/rmc peak=-1/-1 end=-1/-1 vram_peak_mib=3168
+c1_look_r4       n=59 start=2547 end=2729 peak=2729 growth_peak=182 growth_end=182 bodies total/rmc peak=-1/-1 end=-1/-1 vram_peak_mib=2468
+
+== hashes
+c1s_smoke        end          height=0x95916b8c splat=0xf71438df sim_grid=0x5986a455 ticks=1799
+c1s_smoke        final        height=0x95916b8c splat=0xf71438df
+c1_look_r4       final        height=0x95916b8c splat=0xf71438df
+
+== reported (not gated): triangles / chunks / hitches / dropped ticks / walks / settle
+c1s_smoke        triangles=204800 chunks=25 walks=[(1799, 0)] hitches=0 settle_ms=[2235, 2075, 2380, 2265, 2335, 2343, 2355, 2311, 2342, 2256, 2330, 2255, 2314, 2762, 2642, 2898, 2654, 2757, 2699, 2332]
+c1_look_r4       triangles=204800 chunks=25 walks=[(1799, 0)] hitches=0 settle_ms=[1483]
+
+== rep spread (reps of one configuration; > 5 % is flagged)
+no flags
+
+== plan C 5 metrics (NO measured run: timings are REPORTED, not gated (EXECUTION 3 C9))
+GATE REPORTED-pass P1 tick p50 d20            0.103 ms <= 1.0 (n=444)
+GATE REPORTED-pass P1 tick p50 d100           0.782 ms <= 2.0 (n=444)
+GATE REPORTED-pass P1 tick p99                1.159 ms <= 4.0 (n=1799)
+GATE REPORTED-pass P2 latency median          1.0 frames <= 2 (5050 edits)
+GATE REPORTED-pass P2 in-place use            proxy_recreates_during_strokes 0 of 5050 ranged edits (<= 5 %)
+GATE FAIL         P3 fps with 1000 units     no samples (no C1U run with -ChimeraTerrainUnits=1000)
+GATE REPORTED-pass P4 terrain GPU ms          2.899 ms <= 3.0 (median of 1 run(s))
+GATE FAIL         P5 collision               no samples (no S1 run)
+
+== collision cooks and GT apply (ms; per run)
+tag              fast_cook during   cooks cook p50 cook p95 cook max   gt n   gt p95   gt max
+c1s_smoke        True      0          144     4.54     6.28     8.41     40    1.198    2.036
+c1_look_r4       True      0          144     3.40     4.89     5.73     40    0.986    1.078
+GATE REPORTED-pass P5 cook p95                4.89 ms <= 50 (n=144 pooled)
+GATE REPORTED-pass P5 GT apply p95            0.986 ms <= 4 (n=40 pooled)
+GATE FAIL         P6 soak growth             no samples (no SOAK run)
+GATE FAIL         P7 undo/redo exact         no samples (no S1 run)
+GATE FAIL         P11 GPU mesh = CPU         no samples (no S1 run)
+GATE FAIL         P8 determinism             no samples (needs two S1 runs; run `--same-hash s1_a s1_b`)
+GATE FAIL         P9 sim grid                no samples here: `--simgrid RUN` (python mirror) and C10's elevhash (C#) decide it
+GATE FAIL         P10 mouse                  no samples (no MOUSE run)
+
+== SCATTER (plan-c-scatter.md 5; ms unless noted)
+tag              script   instances  init ms scatter_gt p50/p99/max    flush p50/p99/max    apply p50/p99   recr
+c1s_smoke        C1S         215525     1736    0.040/0.395/3.319    0.000/0.591/1.703      0.018/0.112      0
+c1s_smoke        scatter_flush_ms row: p50 0.000 p99 0.591 max 1.703 (end-of-frame instance flush, outside the fill)
+c1s_smoke        scatter_gpu_ms = 1.705 (on p50 15.238 [15.209, 15.267], off p50 13.533; target 1.8, kill above 2.5 after the governor ladder)
+c1s_smoke          layer grass        0.521 ms (on 15.238 - layer off 14.717)
+c1s_smoke          layer groundcover  -0.047 ms (on 15.238 - layer off 15.285)
+c1s_smoke          layer shrubs       0.084 ms (on 15.238 - layer off 15.154)
+c1s_smoke          layer trees        0.779 ms (on 15.238 - layer off 14.458)
+c1s_smoke          layer rocks        0.133 ms (on 15.238 - layer off 15.105)
+c1s_smoke          pose oblique      1.329 ms (on 18.484 - off 17.155)
+c1s_smoke          pose closeup      -0.623 ms (on 17.418 - off 18.041)
+GATE REPORTED-pass SX13 scatter_gpu_ms c1s_smoke 1.705 ms at rts80 (target 1.8, kill above 2.5; reported, kill rule applied by the main session)
+GATE FAIL         sg stroke_gpu_ms c1s_smoke/c1_look_r4 no samples (sg.* not recorded in ['c1_look_r4'])
+c1s_smoke        stroke_gpu_ms p50 -0.271 p95 -0.143 p99 0.168 (= (c1s_smoke walk - scatter on idle) - (c1_look_r4 walk - idle_visible)); reported; NOT COMPARABLE (sg mismatch or sg.* not recorded: a different configuration, here a different build)
+GATE REPORTED-pass SX11 scatter_gt_ms c1s_smoke walk walk: n 3927, p99 0.472 <= 1.5, p99.9 0.673 <= 2.0, frames > 2.0 ms 0.025 % <= 0.1 %, max 3.319
+GATE REPORTED-pass SX11 scatter_gt_ms c1s_smoke flush_windows flush_windows: n 1406, p99 0.562 <= 1.5, p99.9 0.738 <= 2.0, frames > 2.0 ms 0.071 % <= 0.1 %, max 3.319
+GATE FAIL         sg SX11 c1s_smoke/c1_look_r4 no samples (sg.* not recorded in ['c1_look_r4'])
+GATE REPORTED-fail SX11 frame GT/RT c1s_smoke walk GT p99 delta 2.212, RT p99 delta 4.269 (<= 1.5 vs c1_look_r4), frames > 33.3 ms 0.03 % vs 0.00 % (+0.03 pp <= 0.1)
+GATE REPORTED-pass SX15 caps c1s_smoke        analytic at rts80: drawn 23895 (<= 24000), primitives in view 139 of 463 with instances (<= 700, no T0 rank split recorded)
+GATE REPORTED-fail SX15 triangles c1s_smoke   LOD0 triangle upper bound 2991986 above the cap 1500000: LOD-weighted figure unknown (not computed: no per-instance LOD recorded)
+
+GATES: pass=2 fail=10 reported=14 flags=0
+exit=1
+

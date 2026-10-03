@@ -5,6 +5,7 @@
 #include "ChimeraTerrain.h"
 #include "HAL/PlatformTime.h"
 #include "Misc/ScopeExit.h"
+#include "Misc/ScopeLock.h"
 
 namespace ChimeraTerrain
 {
@@ -84,6 +85,72 @@ namespace ChimeraTerrain
 		static FScatterProxyCounters Counters;
 		return Counters;
 	}
+
+	namespace
+	{
+		struct FProxyEventLog
+		{
+			FCriticalSection Lock;
+			TArray<FScatterProxyEventRow> Rows;
+			int64 Dropped = 0;
+		};
+
+		FProxyEventLog& ProxyEventLog()
+		{
+			static FProxyEventLog Log;
+			return Log;
+		}
+	}
+
+	const TCHAR* ScatterProxyEventName(EScatterProxyEvent Kind)
+	{
+		switch (Kind)
+		{
+		case EScatterProxyEvent::FirstCreate: return TEXT("first_create");
+		case EScatterProxyEvent::ExpectedRebuild: return TEXT("expected_rebuild");
+		case EScatterProxyEvent::Refill: return TEXT("refill");
+		case EScatterProxyEvent::EngineRecreate: return TEXT("engine_recreate");
+		case EScatterProxyEvent::PsoRecreate: return TEXT("pso_recreate");
+		case EScatterProxyEvent::CompileRecreate: return TEXT("compile_recreate");
+		case EScatterProxyEvent::Recreate: return TEXT("recreate");
+		case EScatterProxyEvent::ShaderPropagation: return TEXT("shader_propagation");
+		case EScatterProxyEvent::AssetPostCompile: return TEXT("asset_post_compile");
+		case EScatterProxyEvent::CompileBusyFrame: return TEXT("compile_busy_frame");
+		case EScatterProxyEvent::Apply: return TEXT("apply");
+		default: return TEXT("unknown");
+		}
+	}
+
+	void ScatterLogProxyEvent(EScatterProxyEvent Kind, int32 Unit)
+	{
+		FProxyEventLog& L = ProxyEventLog();
+		FScopeLock Guard(&L.Lock);
+		if (L.Rows.Num() >= MaxScatterProxyEvents)
+		{
+			++L.Dropped;
+			return;
+		}
+		FScatterProxyEventRow& R = L.Rows.AddDefaulted_GetRef();
+		R.Frame = GFrameCounter;
+		R.Kind = Kind;
+		R.Unit = Unit;
+	}
+
+	void ScatterCopyProxyEvents(TArray<FScatterProxyEventRow>& Out, int64& OutDropped)
+	{
+		FProxyEventLog& L = ProxyEventLog();
+		FScopeLock Guard(&L.Lock);
+		Out = L.Rows;
+		OutDropped = L.Dropped;
+	}
+
+	void ScatterResetProxyEvents()
+	{
+		FProxyEventLog& L = ProxyEventLog();
+		FScopeLock Guard(&L.Lock);
+		L.Rows.Reset();
+		L.Dropped = 0;
+	}
 }
 
 using namespace ChimeraTerrain;
@@ -118,9 +185,11 @@ FPrimitiveSceneProxy* UChimeraScatterISM::CreateSceneProxy()
 	const int32 Previous = ProxyCreateCount.fetch_add(1);
 	const bool bWasProxyless = bProxyless.exchange(false);
 	const bool bPreviousHadPendingPso = bLastProxyPsoPending.exchange(bPsoPendingNow);
+	const int32 UnitId = (static_cast<int32>(Grid) << 24) | (static_cast<int32>(MeshSlot) << 16) | (TileIndex & 0xFFFF);
 	if (Previous == 0)
 	{
 		C.FirstCreates.fetch_add(1);
+		ScatterLogProxyEvent(EScatterProxyEvent::FirstCreate, UnitId);
 		return Proxy;
 	}
 	int32 Expected = ExpectedRebuildCount.load();
@@ -129,6 +198,7 @@ FPrimitiveSceneProxy* UChimeraScatterISM::CreateSceneProxy()
 		if (ExpectedRebuildCount.compare_exchange_weak(Expected, Expected - 1))
 		{
 			C.ExpectedRebuilds.fetch_add(1);
+			ScatterLogProxyEvent(EScatterProxyEvent::ExpectedRebuild, UnitId);
 			return Proxy;
 		}
 	}
@@ -139,6 +209,7 @@ FPrimitiveSceneProxy* UChimeraScatterISM::CreateSceneProxy()
 		{
 			C.RefillsDuringEdits.fetch_add(1);
 		}
+		ScatterLogProxyEvent(EScatterProxyEvent::Refill, UnitId);
 		return Proxy;
 	}
 	// From here a live proxy is being replaced. Scatter's own apply dirtying it outranks every other explanation (plan C scatter 3.5: an edit
@@ -152,6 +223,7 @@ FPrimitiveSceneProxy* UChimeraScatterISM::CreateSceneProxy()
 			{
 				C.EngineRecreatesDuringEdits.fetch_add(1);
 			}
+			ScatterLogProxyEvent(EScatterProxyEvent::EngineRecreate, UnitId);
 			return Proxy;
 		}
 		if (bPreviousHadPendingPso)
@@ -161,6 +233,7 @@ FPrimitiveSceneProxy* UChimeraScatterISM::CreateSceneProxy()
 			{
 				C.PsoRecreatesDuringEdits.fetch_add(1);
 			}
+			ScatterLogProxyEvent(EScatterProxyEvent::PsoRecreate, UnitId);
 			return Proxy;
 		}
 		if (bCompileDirty)
@@ -170,11 +243,13 @@ FPrimitiveSceneProxy* UChimeraScatterISM::CreateSceneProxy()
 			{
 				C.CompileRecreatesDuringEdits.fetch_add(1);
 			}
+			ScatterLogProxyEvent(EScatterProxyEvent::CompileRecreate, UnitId);
 			UE_LOG(LogChimeraTerrain, Verbose, TEXT("scatter proxy recreate (editor compile) unit=%s create=%d frame=%llu"), *GetName(), Previous + 1, static_cast<unsigned long long>(GFrameCounter));
 			return Proxy;
 		}
 	}
 	C.Recreates.fetch_add(1);
+	ScatterLogProxyEvent(EScatterProxyEvent::Recreate, UnitId);
 	if (bApplyDirty)
 	{
 		C.ApplyDirtiedRecreates.fetch_add(1);
@@ -216,6 +291,7 @@ void UChimeraScatterISM::SendRenderInstanceData_Concurrent()
 void UChimeraScatterISM::ApplyScript(const FScatterEditScript& Script, const FScatterUnitPrepared& P)
 {
 	const int32 NC = P.NumCustom;
+	ScatterLogProxyEvent(EScatterProxyEvent::Apply, (static_cast<int32>(Grid) << 24) | (static_cast<int32>(MeshSlot) << 16) | (TileIndex & 0xFFFF));
 	if (P.bFull)
 	{
 		if (SceneProxy != nullptr)

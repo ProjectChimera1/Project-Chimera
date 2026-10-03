@@ -1,0 +1,21 @@
+S5 (scatter harness and determinism runs), round 4 (residual fix after round 3: SX17 frozen variant and the reviewers' minors): THINX (SX6, SX5/SX6 dump oracle)
+Parser outputs re-run on round 4 parser code; Unreal runs from round 3 (TrialOut/c_s5/r3, functionally the same build) except the S1XF runs (round 4 final Editor build, TrialOut/c_s5/r4); runs in T/Out.
+
+$ python Tools/parse_terrain.py --thinx Out/thinx
+BAR SX1/SX8/SX9                    PASS   value=26 bars rule=every bar of the group passes
+BAR SX6 dirt Grass                 PASS   value=core live 0 / pure-grass 454 = 0.000 rule=<= 0.10 of the pure-grass yield (min yield 200)
+BAR SX6 dirt Tussock               PASS   value=core live 0 / pure-grass 30 = 0.000 rule=<= 0.10 of the pure-grass yield (min yield 10)
+BAR SX6 dirt Flower                PASS   value=core live 0 / pure-grass 64 = 0.000 rule=<= 0.10 of the pure-grass yield (min yield 20)
+BAR SX6 rock Grass                 PASS   value=core live 0 / pure-grass 1161 = 0.000 rule=<= 0.10 of the pure-grass yield (min yield 200)
+BAR SX6 rock Tussock               PASS   value=core live 0 / pure-grass 49 = 0.000 rule=<= 0.10 of the pure-grass yield (min yield 10)
+BAR SX6 rock Flower                PASS   value=core live 0 / pure-grass 167 = 0.000 rule=<= 0.10 of the pure-grass yield (min yield 20)
+BAR SX6 snow Grass                 PASS   value=core live 0 / pure-grass 295 = 0.000 rule=<= 0.10 of the pure-grass yield (min yield 200)
+BAR SX6 snow Tussock               PASS   value=core live 0 / pure-grass 13 = 0.000 rule=<= 0.10 of the pure-grass yield (min yield 10)
+BAR SX6 snow Flower                PASS   value=core live 0 / pure-grass 62 = 0.000 rule=<= 0.10 of the pure-grass yield (min yield 20)
+BAR SX6 path Tree                  PASS   value=core live 0 / pure-grass 20 rule=0 trees on the path (min yield 5)
+BAR SX6 rock positive control      PASS   value=rocks in the rock disc's edge band: 23 (core 0) rule=>= 5 rocks in the edge band (rock paint makes rocks there)
+BAR SX5/SX6 oracle end_sha256      PASS   value=ea28b96cd97f091b vs results.json ea28b96cd97f091b rule=the dump file's sha256 equals the one the run recorded
+BAR SX5/SX6 oracle end             PASS   value=records=234363 max|dz|=0.046 mm bad_z=0 bad_gradient=0 limit violations=0 rule=z within 1 mm of the class rule on the saved heights, gxq/gyq exact, every instance inside its class's splat and slope limits (margins 2/255, 0.5 deg)
+THINX PASS
+exit=0
+

@@ -1,0 +1,79 @@
+{
+ "name": "SXPROBE",
+ "about": "Scatter probe (S5): fill wait, settle, hash, dump and counts of the unpainted map, the three analytic view counts. thinx_pick.py reads the dump to choose THINX's coordinates.",
+ "ops": [
+  {
+   "op": "look",
+   "mode": "compare"
+  },
+  {
+   "op": "camera",
+   "pose": "rts80"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 600,
+   "phase": "fill"
+  },
+  {
+   "op": "settle",
+   "frames": 150,
+   "phase": "idle"
+  },
+  {
+   "op": "hash",
+   "name": "start"
+  },
+  {
+   "op": "scatter_verify",
+   "name": "start"
+  },
+  {
+   "op": "scatter_dump",
+   "name": "start"
+  },
+  {
+   "op": "scatter_counts",
+   "name": "start"
+  },
+  {
+   "op": "scatter_view_counts",
+   "pose": "rts80",
+   "name": "rts80"
+  },
+  {
+   "op": "scatter_view_counts",
+   "pose": "oblique",
+   "name": "oblique"
+  },
+  {
+   "op": "scatter_view_counts",
+   "pose": "closeup",
+   "name": "closeup"
+  },
+  {
+   "op": "scatter_target",
+   "class": "tree",
+   "near": [
+    0,
+    40
+   ],
+   "as": "t0"
+  },
+  {
+   "op": "scatter_mask",
+   "pose": "rts80",
+   "name": "m_trees",
+   "layers": "trees",
+   "near": "@t0",
+   "radius": 45
+  },
+  {
+   "op": "shot",
+   "name": "probe"
+  },
+  {
+   "op": "save"
+  }
+ ]
+}

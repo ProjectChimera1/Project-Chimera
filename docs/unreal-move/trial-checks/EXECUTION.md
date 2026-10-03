@@ -237,3 +237,19 @@ All 16 Phase 2 tasks passed two independent Opus xhigh verifiers (results; code 
   `proxy_compile_recreates_during_edits` and `proxy_engine_recreates_during_edits` are gated 0. The engine source supports the split
   (`ShaderCompiler.cpp` `PropagateMaterialChangesToPrimitives` marks every user of a recompiled material dirty). S4's two round-1 crash
   folders (its own test crashes, both causes fixed) moved to `U/TrialOut/c_s4/crashes_round1/`, so `Saved/Crashes` is empty again.
+- **S5 record (main session, 2026-10-03).** S5's round 3 passes every gate (verifier: pass; reviewer: one reporting major on SX17,
+  fixed in a follow-up before commit; both passed the follow-up). **SX17 result:** after undo, heights, splat and every scatter record are
+  restored exactly; frozen frames still differ (12.7 % of the edit footprint, worst block 0.025) because TSR's history depends on what was
+  on screen before: with anti-aliasing off the undo pair is identical (0.000 %) and terrain alone is 0 px; canonical instance order
+  (`ScatterApply=clear`) does not remove it. No defect; reported to Alec (new script S1XF, parser mode `--sx17f`). Recorded deviations, all accepted: (1) **Frozen image pairs.** Under TSR the unfrozen A/A floor
+  (about 0.7 % changed) is as large as P7's bar, so SX10 and SX18 pairs and their floors are shot with the new director op `temporal_freeze`
+  (`r.Test.FreezeTemporalSequences=1`, `r.TemporalAA.Debug.OverrideTemporalIndex=0`; non-Shipping cvars, `SceneVisibility.cpp:434-441`; VSM
+  ageing counts scene frames, so the freeze cannot hide stale shadow pages). A floor above the P7 bar reads "floor unusable", so every
+  gated pair is held to the bar itself (stricter than the plan). **Frozen frames compare only within one freeze window** (each window pins
+  a different frame index; across windows about 0.2 % of the frame differs). S1X shot names: `xf_<cp>` / `xf_<cp>_fresh`; look shots
+  `x_<pose>_full` / `x_<pose>_full_off`; S6, S7 and S9 use these. (2) Rock tilt frame in `BuildInstance` and `RuleUpAxis` (S2's
+  `Data/TerrainScatter.cpp`): world X projected perpendicular to Up; records and hashes unchanged; full up-axis verify restored. (3) THINX's
+  rock disc is d48 s10 x14 (plan d24: too few rocks for the positive control). (4) Saplings share the broadleaf tree units and draw to
+  600 m (plan §3.4: 300 m; no effect at E = 160). (5) LATX strokes are separated by `scatter_wait` + 1.5 s idle. **Phase 4 risks carried
+  to S6/S8:** at S1X `rts80`, SX15 analytic drawn 34,529 against the 24k cap and LOD0 triangles up to 3.52 M against 1.5 M; an
+  unmeasured cross-build C1S smoke showed walk GT p99 +2.2 ms and RT p99 +4.3 ms against SX11's 1.5 ms (S8's interleaved reps decide).

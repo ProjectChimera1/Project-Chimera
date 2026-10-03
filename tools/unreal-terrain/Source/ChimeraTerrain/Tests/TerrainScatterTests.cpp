@@ -2915,6 +2915,51 @@ SC_TEST(BuildInstanceBasics)
 	return bOk;
 }
 
+SC_TEST(RockTiltFrameConditioned)
+{
+	// A rock's hashed lean must not swing with the gradient's direction on near-flat ground: one gradient unit in any direction moves its up axis by about one
+	// unit (1/65536 rad), never by up to twice the tilt angle (the tilt frame is world X projected onto the plane perpendicular to the aligned axis).
+	FScatterPalette P;
+	FScatterRecord R;
+	R.Class = static_cast<uint8>(EScatterClass::Rock);
+	R.Mesh = static_cast<uint8>(EScatterMesh::RockA);
+	R.Scale = 4096;
+	R.ZScale = 4096;
+	bool bOk = true;
+	auto Ang = [](const FScatterInstance& A, const FScatterInstance& B)
+	{
+		const double D = A.Up[0] * B.Up[0] + A.Up[1] * B.Up[1] + A.Up[2] * B.Up[2];
+		return std::acos(FMath::Clamp(D, -1.0, 1.0));
+	};
+	static const int32 G[][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {-1, -1}, {3, -2}};
+	for (uint32 K = 0; K < 64; ++K)
+	{
+		R.Tilt = static_cast<uint16>(1024u + K * 1009u);
+		R.Yaw = static_cast<uint16>(K * 7919u);
+		R.GXQ = 0;
+		R.GYQ = 0;
+		const FScatterInstance Flat = BuildInstance(R, P);
+		const double Lean = std::acos(FMath::Clamp(Flat.Up[2], -1.0, 1.0));
+		if (Lean < 1e-4)
+		{
+			AddError(FString::Printf(TEXT("tilt %u gave no lean on flat ground"), R.Tilt));
+			bOk = false;
+		}
+		for (const auto& D : G)
+		{
+			R.GXQ = D[0];
+			R.GYQ = D[1];
+			const double A = Ang(Flat, BuildInstance(R, P));
+			if (A > 1e-4)
+			{
+				AddError(FString::Printf(TEXT("tilt %u yaw %u: gradient (%d,%d) moved the up axis by %.3g rad"), R.Tilt, R.Yaw, D[0], D[1], A));
+				bOk = false;
+			}
+		}
+	}
+	return bOk;
+}
+
 // ---- palette, options, config ---------------------------------------------------------------------------------------------
 
 SC_TEST(PaletteAndConfigFnv)

@@ -1,0 +1,58 @@
+S5 (scatter harness and determinism runs), round 4 (residual fix after round 3: SX17 frozen variant and the reviewers' minors): MOUSEX (P10, C8, SX1/SX8/SX9, dump oracle)
+Parser outputs re-run on round 4 parser code; Unreal runs from round 3 (TrialOut/c_s5/r3, functionally the same build) except the S1XF runs (round 4 final Editor build, TrialOut/c_s5/r4); runs in T/Out.
+
+$ python Tools/mouse_gate.py Out/mousex
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=25/25 rule=completed=true and ops_done == ops_total
+BAR strokes_os                     PASS   value=n=3 sources=['os', 'os', 'os'] rule=>= 3 strokes, every source=os
+BAR pick_error                     PASS   value=start pick err m=[0.084, 0.068, 0.239] start px=[0.31, 0.25, 0.31] rule=<= 1.0 m against the logged start targets, every stroke
+BAR pick_error_end_px              PASS   value=end px err=[0.46, 0.33, 0.25] rule=<= 9 px against the logged end targets (1 m at 80 m), every stroke
+BAR end_pick_drift                 REPORT value={'end_pick_drift_xy_m': [7.21, 6.91, 10.69], 'centre_m': [[-27.50756741671054, 25.643482625512174], [17.069892146255693, 34.27490012283635], [57.268291058462346, 25.268881858347132]]} rule=reported: the pick follows the surface the stroke edits (raise climbs toward the camera, lower runs away)
+BAR footprint_changed              PASS   value=changed=0.6801 floor(A/A)=0.0002 above=0.6800 mask_px=120664 rule=before vs after inside the three planned drags: changed_frac above the A/A floor >= 0.30
+BAR brush_keys                     PASS   value=modes=['raise', 'lower', 'raise'] d=[30, 30, 30] s=[30, 30, 30] rule=raise, lower, raise at d 30 / s 30 (keys ] ] = = = = 2 1 arrived)
+BAR keys_ignored_while_lmb         PASS   value=ignored per stroke=[0, 0, 1] ctrl+z ignored records=1 undo applied during strokes=0 rule=Ctrl+Z mid-drag on stroke 3 ignored (DW-144), no undo applied before the strokes ended
+BAR undo_redo                      PASS   value=stroke3 start=0x1b7e09d2 end=0xd49e6286 undo=0x1b7e09d2 redo=0xd49e6286 after=0xd49e6286 rule=Ctrl+Z restores stroke 3's start hash, Ctrl+Y its end hash, the `after` hash equals it
+BAR tail_keys                      PASS   value=got=[('ctrl+z', 'undo', 'raise', 30, 30, 0), ('ctrl+y', 'redo', 'raise', 30, 30, 0), ('[', 'size', 'raise', 25, 30, 0), ('-', 'strength', 'raise', 25, 25, 0), (']', 'size', 'raise', 30, 25, 0), ('=', 'strength', 'raise', 30, 30, 0), ('3', 'mode', 'smooth', 30, 30, 0), ('4', 'mode', 'flatten', 30, 30, 0), ('5', 'mode', 'paint', 30, 30, 0), ('shift+2', 'paint_layer', 'paint', 30, 30, 1)] rule=after the strokes: ctrl+z ctrl+y [ - ] = 3 4 5 shift+2
+BAR hud                            PASS   value=final HUD line logged=True rule=the HUD drew the final brush: 'hud: Terrain  mode Paint  size 30 m  strength 30  layer Dirt'
+BAR ticks                          REPORT value={'ticks_applied': [60, 60, 60], 'plan_ticks': 60, 'ticks_dropped': [0, 0, 0], 'max_frame_gap_ms': [10.5, 10.2, 11.1], 'platform_cursor_err_px': [0, 0, 0], 'input_while_disarmed': 0} rule=reported
+BAR injector                       REPORT value={'exit': 0, 'reason': '3 strokes and 10 tail keys sent through SendInput', 'precheck': {'LogonUI_running': False, 'input_desktop_openable': True, 'parsecd_running': False, 'virtual_screen': [0, 0, 3840, 1080]}, 'foreground': True} rule=inject.json (reported; the strokes bar is the gate)
+C8 INPUT PASS
+P10 PASS
+exit=0
+
+$ python Tools/parse_terrain.py --scatter Out/mousex
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=25/25 rule=completed=true and ops_done == ops_total
+BAR scatter_log_scan               PASS   value=0 line(s) rule=no LogMaterial warning/error on /Game/Terrain/Scatter, no VSM page-pool overflow
+BAR scatter_block                  PASS   value=available=True enabled=True rule=results.json scatter block from a run with scatter
+BAR scatter_options                PASS   value=config_fnv=0xe55e190fcc1aadc9 level=L0 params_error='' mesh_errors='' rule=options.scatter present, no option or mesh error
+BAR scatter_verify                 PASS   value=2 verifies, failed [] rule=>= 1 scatter_verify and every one passes (live == reference, readback, z, up axis, nothing pending)
+  verify after      pass=True live=0xf45dcf28bbdbf574 ref=0xf45dcf28bbdbf574 instances=239663 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.56e-05 m dup 1.22e-05 rad 
+  verify end        pass=True live=0xf45dcf28bbdbf574 ref=0xf45dcf28bbdbf574 instances=239663 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.56e-05 m dup 1.22e-05 rad 
+BAR scatter_hash_live_eq_ref       PASS   value=equal at 2 settled hashes rule=scatter_live_fnv == scatter_fnv at every hash taken with nothing pending
+BAR scatter_counters_balanced      PASS   value=dispatched=398 applied=300 skipped=98 discarded=0 cancelled=0 in_flight=0 busy=0 rule=dispatched == applied + skipped_identical + discarded_epoch + cancelled; 0 in flight and 0 busy at the end
+BAR scatter_verify_instances       PASS   value=read back [('after', 239663), ('end', 239663)] rule=every scatter_verify with components read back > 0 instances (no vacuous live == reference)
+BAR scatter_proxy_recreates        PASS   value=recreates=0 (during edits 0, apply-dirtied 0); first=479 expected=0 rule=proxy_recreates == 0: no live proxy replaced after scatter's own apply dirtied it, nor for any unexplained dirty mark
+BAR proxy_compile_recreates_during_edits PASS   value=0 (all run: 104) rule=editor-compile recreates while edits were in flight == 0
+BAR proxy_engine_recreates_during_edits PASS   value=0 (all run: 0) rule=engine-wide recreates while edits were in flight == 0
+BAR scatter_proxy_reported         REPORT value=refills=0 (during edits 0) pso=0 (during edits 0) engine=0 editor_compile=104; shader propagations 21, asset post-compiles 30, compile-busy frames 10 rule=reported categories: a refill replaces no proxy; PSO completion, engine contexts and editor compiles are not scatter's own
+BAR apply_fit                      REPORT value=n 1073; least squares a 0.00446 b 0.0000936 c 0.0000073; residual p95 0.0357 p99 0.0625; admission a (a + p95) 0.0402; run's predictor a 0.032 b 7e-05 c 3e-05 under-predicted 67 units (worst by 0.181 ms); max unit 0.292 ms at 1190 instances; units > 0.8 ms: 0 rule=apply_unit_ms ~ a + b * changes + c * instances_after (plan C scatter 3.5 and 4 S4 item 5; any unit > 0.8 ms triggers the T0 rank split)
+BAR scatter_gt_ms                  REPORT value=p50 0.033 p99 0.264 p99.9 0.426 max 0.470 (n 2552) rule=scatter's own game-thread ms per frame outside the fill (SX11 gates it in Phase 4)
+BAR scatter_flush_ms               REPORT value=p50 0.000 p99 0.431 max 0.855 rule=end-of-frame instance flush ms
+BAR apply_unit_ms_edits            REPORT value=p50 0.015 p99 0.116 max 0.263 (n 594); init_ms 1362 rule=per-unit apply cost outside the fill
+BAR SX9 asset_report               PASS   value=usage_ok=58/58 deps_ok=True flip_ok=True vc_ok=True errors=0 (0 listed); asset_settings_sha256 35f87ad8f1941e59 rule=S3's asset report: usage_ok k/k, deps_ok, flip_ok, vc_ok, errors 0
+BAR SX9 per_instance_random        PASS   value=65 materials, reading PerInstanceRandom: none rule=no scatter material reads PerInstanceRandom (F25)
+BAR SX9 licence                    PASS   value=13 meshes: Fern=project-original, Flower=project-original, GrassT0=project-original, GrassT1=project-original, RockA=project-original, RockB=project-original, ShrubA=project-original, ShrubB=project-original, TreeBroadA=project-original, TreeBroadB=project-original, TreeConiferA=project-original, TreeConiferB=project-original, Tussock=project-original rule=every loaded mesh maps through report.json to a manifest row with licence in ('CC0-1.0', 'project-original', 'epic'), with its usage rows ok
+BAR scatter_verify_full_up_axis    PASS   value=after max_dup 1.22e-05 rad; end max_dup 1.22e-05 rad rule=every verify compares each instance's full up axis with HF's cell-triangle rule (no angle-only exemption)
+BAR SX5 oracle after_sha256        PASS   value=49700891bcfc9b1b vs results.json 49700891bcfc9b1b rule=the dump file's sha256 equals the one the run recorded
+BAR SX5 oracle after               PASS   value=records=239663 max|dz|=0.046 mm bad_z=0 bad_gradient=0 limit violations=0 rule=z within 1 mm of the class rule on the saved heights, gxq/gyq exact, every instance inside its class's splat and slope limits (margins 2/255, 0.5 deg)
+BAR proxy_events_logged            PASS   value=1717 events, 0 dropped rule=every proxy and compile event is in the log (none dropped past the bound)
+BAR compile_events_per_phase       REPORT value={'before_ops': {'asset_post_compile': 2, 'shader_propagation': 1}, 'default': {'compile_busy_frame': 6, 'asset_post_compile': 10, 'shader_propagation': 3, 'compile_recreate': 39}, 'fill': {'compile_recreate': 65, 'compile_busy_frame': 4, 'shader_propagation': 1, 'asset_post_compile': 2}, 'idle': {'asset_post_compile': 16, 'shader_propagation': 16}} rule=shader propagations, asset post-compiles, compile-busy frames and later proxies per script phase (refills, PSO, engine and editor-compile recreates; reported)
+SCATTER PASS
+exit=0
+
+$ python Tools/parse_terrain.py --dump-oracle Out/mousex after
+BAR oracle after_sha256            PASS   value=49700891bcfc9b1b vs results.json 49700891bcfc9b1b rule=the dump file's sha256 equals the one the run recorded
+BAR oracle after                   PASS   value=records=239663 max|dz|=0.046 mm bad_z=0 bad_gradient=0 limit violations=0 rule=z within 1 mm of the class rule on the saved heights, gxq/gyq exact, every instance inside its class's splat and slope limits (margins 2/255, 0.5 deg)
+exit=0
+

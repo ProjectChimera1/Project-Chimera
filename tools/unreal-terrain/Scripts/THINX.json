@@ -1,0 +1,179 @@
+{
+ "name": "THINX",
+ "about": "Plan C scatter 3.8 script THINX (flat all-grass map, compare mode): flower f0 and core-zone tree w0 stored; dirt d20 discs (set dirt), rock d48 (set rock), snow d24 (set snow) on open meadow, a dirt path d10 100 m long through the woodland (set path); settle, verify, scatter_check per set (SX6: the core ratio to the pure-grass yield), dump end (the dump oracle), save. Coordinates are the constants of gen_scatter_scripts.py THINX, chosen by thinx_pick.py from a dump of the unpainted map.",
+ "ops": [
+  {
+   "op": "look",
+   "mode": "compare"
+  },
+  {
+   "op": "camera",
+   "pose": "rts80"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 600,
+   "phase": "fill"
+  },
+  {
+   "op": "settle",
+   "frames": 150,
+   "phase": "idle"
+  },
+  {
+   "op": "hash",
+   "name": "start"
+  },
+  {
+   "op": "scatter_target",
+   "class": "flower",
+   "near": [
+    84.0,
+    39.0
+   ],
+   "as": "f0"
+  },
+  {
+   "op": "scatter_target",
+   "class": "tree",
+   "near": [
+    84.0,
+    -128.0
+   ],
+   "zone": "core",
+   "as": "w0"
+  },
+  {
+   "op": "scatter_verify",
+   "name": "start"
+  },
+  {
+   "op": "scatter_dump",
+   "name": "start"
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 20,
+   "s": 100,
+   "path": "@f0",
+   "ticks": 30,
+   "fp": [
+    "dirt"
+   ],
+   "phase": "paint"
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 20,
+   "s": 100,
+   "path": [
+    [
+     -107.0,
+     -94.0
+    ]
+   ],
+   "ticks": 30,
+   "fp": [
+    "dirt"
+   ]
+  },
+  {
+   "op": "paint",
+   "layer": 2,
+   "d": 48,
+   "s": 10,
+   "path": [
+    [
+     55.0,
+     -45.0
+    ]
+   ],
+   "ticks": 14,
+   "fp": [
+    "rock"
+   ]
+  },
+  {
+   "op": "paint",
+   "layer": 3,
+   "d": 24,
+   "s": 100,
+   "path": [
+    [
+     -68.0,
+     23.0
+    ]
+   ],
+   "ticks": 30,
+   "fp": [
+    "snow"
+   ]
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 10,
+   "s": 100,
+   "path": [
+    [
+     34.0,
+     -128.0
+    ],
+    "@w0",
+    [
+     134.0,
+     -128.0
+    ]
+   ],
+   "ticks": 120,
+   "fp": [
+    "path"
+   ]
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 300
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "scatter_verify",
+   "name": "end"
+  },
+  {
+   "op": "hash",
+   "name": "end"
+  },
+  {
+   "op": "scatter_check",
+   "name": "dirt",
+   "fp": "dirt"
+  },
+  {
+   "op": "scatter_check",
+   "name": "rock",
+   "fp": "rock"
+  },
+  {
+   "op": "scatter_check",
+   "name": "snow",
+   "fp": "snow"
+  },
+  {
+   "op": "scatter_check",
+   "name": "path",
+   "fp": "path"
+  },
+  {
+   "op": "scatter_dump",
+   "name": "end"
+  },
+  {
+   "op": "save"
+  }
+ ]
+}

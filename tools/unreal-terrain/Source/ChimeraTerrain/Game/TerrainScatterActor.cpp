@@ -12,6 +12,8 @@
 #include "Misc/App.h"
 #include "Misc/FileHelper.h"
 #include "Misc/PackageName.h"
+#include "Async/ParallelFor.h"
+#include "Data/TerrainScatterMath.h"
 #include "Render/TerrainScatterRenderer.h"
 #include "AssetCompilingManager.h"
 #include "ShaderCompiler.h"
@@ -161,7 +163,10 @@ namespace
 		return FVector(-GX, -GY, 1.0).GetSafeNormal();
 	}
 
-	/** The up axis a class rule gives for a surface normal (align factor, plus a rock's hashed tilt from the record's Tilt and Yaw words). */
+	/**
+	 * The up axis a class rule gives for a surface normal (align factor, plus a rock's hashed tilt from the record's Tilt and Yaw words), with BuildInstance's tilt
+	 * frame (world X projected onto the plane perpendicular to the aligned axis), which is well conditioned near vertical, so the full axis is compared everywhere.
+	 */
 	FVector RuleUpAxis(const FScatterPalette& P, EScatterClass Class, const FVector& N, uint16 Tilt, uint16 Yaw)
 	{
 		int64 AQ = 0;
@@ -183,12 +188,17 @@ namespace
 			const double MaxDeg = static_cast<double>(P.Get(EScatterParam::RockTiltDeg)) / 65536.0;
 			const double Ang = (static_cast<double>(Tilt) / 65536.0) * MaxDeg * Pi / 180.0;
 			const double Dir = 2.0 * Pi * (static_cast<double>((static_cast<uint32>(Tilt) * 3u + Yaw) & 0xFFFFu) / 65536.0);
-			FVector E1(-Up.Y, Up.X, 0.0);
-			if (FMath::Abs(E1.X) + FMath::Abs(E1.Y) < 1e-9)
+			FVector E1(1.0 - Up.X * Up.X, -Up.X * Up.Y, -Up.X * Up.Z);
+			if (E1.SizeSquared() < 1e-6)
 			{
-				E1 = FVector(1.0, 0.0, 0.0);
+				E1 = FVector(-Up.Y * Up.X, 1.0 - Up.Y * Up.Y, -Up.Y * Up.Z);
 			}
-			E1.Normalize();
+			// Normalised exactly as BuildInstance's Normalize3 (threshold 1e-12), not with FVector::Normalize's tolerance.
+			const double E1Len = E1.Size();
+			if (E1Len > 1e-12)
+			{
+				E1 /= E1Len;
+			}
 			const FVector E2 = FVector::CrossProduct(Up, E1);
 			const double T = std::tan(Ang);
 			Up = (Up + E1 * (std::cos(Dir) * T) + E2 * (std::sin(Dir) * T)).GetSafeNormal();
@@ -334,6 +344,7 @@ void ATerrainScatter::Setup(ATerrainActor* InTerrain, const FScatterOptions& InO
 		return;
 	}
 	ScatterProxyCounters().Reset();
+	ScatterResetProxyEvents();
 #if WITH_EDITOR
 	// -game in the editor build compiles shaders and assets on demand; each compiler marks the primitives it affects dirty and then
 	// broadcasts, so the handlers attribute those recreates per component (counted apart from proxy_recreates; see FScatterProxyCounters).
@@ -365,12 +376,14 @@ void ATerrainScatter::Setup(ATerrainActor* InTerrain, const FScatterOptions& InO
 void ATerrainScatter::OnShaderPropagation()
 {
 	ScatterProxyCounters().ShaderPropagations.fetch_add(1);
+	ScatterLogProxyEvent(EScatterProxyEvent::ShaderPropagation);
 	NoteCompilePropagationAll();
 }
 
 void ATerrainScatter::OnAssetPostCompile(const TArray<FAssetCompileData>& Assets)
 {
 	ScatterProxyCounters().AssetPostCompiles.fetch_add(1);
+	ScatterLogProxyEvent(EScatterProxyEvent::AssetPostCompile);
 	NoteCompilePropagationAll();
 }
 
@@ -960,6 +973,7 @@ void ATerrainScatter::StepFrame()
 	if (!bShadersIdle || FAssetCompilingManager::Get().GetNumRemainingAssets() > 0)
 	{
 		PC.CompileBusyFrames.fetch_add(1);
+		ScatterLogProxyEvent(EScatterProxyEvent::CompileBusyFrame);
 	}
 
 	Scheduler.SetStrokeOpen(Terrain->IsStrokeOpen());
@@ -1104,9 +1118,14 @@ int32 ATerrainScatter::RebuildAllProxies()
 		{
 			if (C && C->HasLiveProxy())
 			{
-				C->ExpectRebuild();
+				// Only a component that still holds instances gets a proxy back (an empty ISM creates none, F3), so only those are expected rebuilds.
+				const bool bGetsProxy = C->GetInstanceCount() > 0;
+				if (bGetsProxy)
+				{
+					C->ExpectRebuild();
+				}
 				C->MarkRenderStateDirty();
-				++N;
+				N += bGetsProxy ? 1 : 0;
 			}
 		}
 	}
@@ -1147,7 +1166,7 @@ int64 ATerrainScatter::TotalInstances() const
 	return N;
 }
 
-TSharedRef<FJsonObject> ATerrainScatter::Verify(const FString& Name, bool& bOutPass)
+TSharedRef<FJsonObject> ATerrainScatter::Verify(const FString& Name, bool& bOutPass, const TArray<FScatterTarget>* Targets)
 {
 	TSharedRef<FJsonObject> V = MakeShared<FJsonObject>();
 	V->SetStringField(TEXT("name"), Name);
@@ -1297,13 +1316,24 @@ TSharedRef<FJsonObject> ATerrainScatter::Verify(const FString& Name, bool& bOutP
 						}
 					}
 					const FVector UpGot = Got.GetRotation().RotateVector(FVector(0.0, 0.0, 1.0));
-					// A position on a cell edge or the diagonal may round to either neighbouring triangle: take the closer of the nearby samples.
+					// The record's exact position, not the instance's float32-cm translation (about 2e-5 m of rounding at 160 m, enough to move a position that
+					// lies within that distance of a cell edge or the diagonal onto the other triangle). A position on an edge or the diagonal may still
+					// round to either triangle: take the closer of the nearby samples.
+					const double RX = static_cast<double>(R.XQ) / 65536.0;
+					const double RY = static_cast<double>(R.YQ) / 65536.0;
 					double DUp = 1.0e30;
 					static const double Off[5][2] = {{0.0, 0.0}, {1e-6, 0.0}, {-1e-6, 0.0}, {0.0, 1e-6}, {0.0, -1e-6}};
+					FVector BestWant = FVector::ZeroVector;
 					for (const auto& O : Off)
 					{
-						const FVector UpWant = RuleUpAxis(P, Class, HfCellNormal(HF, PosM.X + O[0], PosM.Y + O[1]), R.Tilt, R.Yaw);
-						DUp = FMath::Min(DUp, std::acos(FMath::Clamp(UpGot | UpWant, -1.0, 1.0)));
+						// The full axis (plan C scatter 3.8): every class, rocks included.
+						const FVector UpWant = RuleUpAxis(P, Class, HfCellNormal(HF, RX + O[0], RY + O[1]), R.Tilt, R.Yaw);
+						const double Ang = std::acos(FMath::Clamp(UpGot | UpWant, -1.0, 1.0));
+						if (Ang < DUp)
+						{
+							DUp = Ang;
+							BestWant = UpWant;
+						}
 					}
 					MaxDUp = FMath::Max(MaxDUp, DUp);
 					if (DUp > TolUpRad)
@@ -1311,7 +1341,9 @@ TSharedRef<FJsonObject> ATerrainScatter::Verify(const FString& Name, bool& bOutP
 						++BadUp;
 						if (Examples.Num() < 8)
 						{
-							Examples.Add(FString::Printf(TEXT("%s[%d] %s: up axis off by %.2e rad"), *C->GetName(), I, UTF8_TO_TCHAR(ScatterClassName(Class)), DUp));
+							Examples.Add(FString::Printf(TEXT("%s[%d] %s: up axis off by %.2e rad (tilt %u yaw %u, gradient %d,%d, drawn up %.5f %.5f %.5f, rule up %.5f %.5f %.5f)"),
+								*C->GetName(), I, UTF8_TO_TCHAR(ScatterClassName(Class)), DUp, R.Tilt, R.Yaw, R.GXQ, R.GYQ, UpGot.X, UpGot.Y, UpGot.Z,
+								BestWant.X, BestWant.Y, BestWant.Z));
 						}
 					}
 				}
@@ -1366,6 +1398,36 @@ TSharedRef<FJsonObject> ATerrainScatter::Verify(const FString& Name, bool& bOutP
 		Ex.Add(MakeShared<FJsonValueString>(E));
 	}
 	V->SetArrayField(TEXT("examples"), Ex);
+	if (Targets && Targets->Num() > 0)
+	{
+		// scatter_target rows: does each stored key still exist, and how far did its z move (SHADX's precondition, SX10).
+		TMap<uint64, FScatterRecord> ByKey;
+		TArray<FScatterRecord> All;
+		CollectLive(All);
+		for (const FScatterRecord& R : All)
+		{
+			ByKey.Add(R.Key(), R);
+		}
+		TArray<TSharedPtr<FJsonValue>> Tj;
+		for (const FScatterTarget& T : *Targets)
+		{
+			TSharedRef<FJsonObject> J = MakeShared<FJsonObject>();
+			J->SetStringField(TEXT("name"), T.Name);
+			J->SetStringField(TEXT("key"), Hex64(T.Key));
+			J->SetStringField(TEXT("class"), UTF8_TO_TCHAR(ScatterClassName(static_cast<EScatterClass>(T.Class))));
+			const FScatterRecord* R = ByKey.Find(T.Key);
+			J->SetBoolField(TEXT("exists"), R != nullptr);
+			J->SetNumberField(TEXT("z0_m"), T.Z);
+			if (R)
+			{
+				const double Z = static_cast<double>(R->ZQ) / 65536.0;
+				J->SetNumberField(TEXT("z_m"), Z);
+				J->SetNumberField(TEXT("dz_m"), Z - T.Z);
+			}
+			Tj.Add(MakeShared<FJsonValueObject>(J));
+		}
+		V->SetArrayField(TEXT("targets"), Tj);
+	}
 	TArray<TSharedPtr<FJsonValue>> Fj;
 	for (const FString& F : Fails)
 	{
@@ -1378,6 +1440,302 @@ TSharedRef<FJsonObject> ATerrainScatter::Verify(const FString& Name, bool& bOutP
 	UE_LOG(LogChimeraTerrain, Display, TEXT("scatter_verify %s: %s live=%s ref=%s instances=%lld max dpos %.5f cm drot %.2e dz %.2e m dup %.2e%s"), *Name, bOutPass ? TEXT("PASS") : TEXT("FAIL"),
 		*Hex64(LiveFnv), *Hex64(RefFnv), Instances, MaxDPos, MaxDRot, MaxDZ, MaxDUp, Fails.Num() ? *(TEXT(" fails: ") + FString::Join(Fails, TEXT("; "))) : TEXT(""));
 	return V;
+}
+
+FString ATerrainScatter::Sha256HexOf(const TArray<uint8>& Data)
+{
+	return Sha256Hex(Data);
+}
+
+void ATerrainScatter::CollectLive(TArray<FScatterRecord>& Out) const
+{
+	Out.Reset();
+	if (!bAvailable)
+	{
+		return;
+	}
+	for (int32 G = 0; G < ScatterGridCount; ++G)
+	{
+		const EScatterGrid Grid = static_cast<EScatterGrid>(G);
+		const int32 NM = ScatterMeshCountOfGrid(Grid);
+		for (int32 Tile = 0; Tile < Scheduler.GetTileGrid(Grid).NumTiles(); ++Tile)
+		{
+			for (int32 K = 0; K < NM; ++K)
+			{
+				const TSharedPtr<const FScatterUnitState, ESPMode::ThreadSafe> St = Scheduler.GetUnitState(Grid, Tile, K);
+				if (St.IsValid())
+				{
+					Out.Append(St->Records);
+				}
+			}
+		}
+	}
+}
+
+bool ATerrainScatter::FindNearest(EScatterClass Class, double XM, double YM, int32 Zone, FScatterRecord& Out) const
+{
+	if (!bAvailable || !Palette.IsValid())
+	{
+		return false;
+	}
+	const EScatterGrid Grid = ScatterGridOfClass(Class);
+	const int32 NM = ScatterMeshCountOfGrid(Grid);
+	double Best = TNumericLimits<double>::Max();
+	bool bFound = false;
+	for (int32 Tile = 0; Tile < Scheduler.GetTileGrid(Grid).NumTiles(); ++Tile)
+	{
+		for (int32 K = 0; K < NM; ++K)
+		{
+			const TSharedPtr<const FScatterUnitState, ESPMode::ThreadSafe> St = Scheduler.GetUnitState(Grid, Tile, K);
+			if (!St.IsValid())
+			{
+				continue;
+			}
+			for (const FScatterRecord& R : St->Records)
+			{
+				if (R.Class != static_cast<uint8>(Class))
+				{
+					continue;
+				}
+				if (Zone >= 0 && static_cast<int32>(ScatterTreeZoneAt(*Palette, R.XQ, R.YQ)) != Zone)
+				{
+					continue;
+				}
+				const double Dx = static_cast<double>(R.XQ) / 65536.0 - XM;
+				const double Dy = static_cast<double>(R.YQ) / 65536.0 - YM;
+				const double D2 = Dx * Dx + Dy * Dy;
+				if (D2 < Best || (D2 == Best && bFound && R.Key() < Out.Key()))
+				{
+					Best = D2;
+					Out = R;
+					bFound = true;
+				}
+			}
+		}
+	}
+	return bFound;
+}
+
+TSharedRef<FJsonObject> ATerrainScatter::DumpApplied(const FString& Name, const FString& FilePath, bool& bOutOk) const
+{
+	const uint64 T0 = FPlatformTime::Cycles64();
+	TSharedRef<FJsonObject> J = MakeShared<FJsonObject>();
+	J->SetStringField(TEXT("name"), Name);
+	J->SetStringField(TEXT("path"), FilePath);
+	TArray<FScatterRecord> All;
+	CollectLive(All);
+	All.Sort([](const FScatterRecord& L, const FScatterRecord& R) { return L.Key() < R.Key(); });
+	TArray<uint8> Bytes;
+	Bytes.Reserve(All.Num() * ScatterRecordBytes);
+	FScatterHash H;
+	int64 PerClass[ScatterClassCount] = {};
+	for (const FScatterRecord& R : All)
+	{
+		AppendScatterRecordBytes(Bytes, R);
+		ScatterFoldRecord(H, R);
+		++PerClass[R.Class];
+	}
+	bOutOk = FFileHelper::SaveArrayToFile(Bytes, *FilePath);
+	J->SetBoolField(TEXT("written"), bOutOk);
+	J->SetNumberField(TEXT("records"), static_cast<double>(All.Num()));
+	J->SetNumberField(TEXT("bytes"), static_cast<double>(Bytes.Num()));
+	J->SetNumberField(TEXT("record_bytes"), ScatterRecordBytes);
+	J->SetStringField(TEXT("sha256"), Sha256Hex(Bytes));
+	J->SetStringField(TEXT("scatter_live_fnv"), Hex64(ScatterFnvOf(H)));
+	TSharedRef<FJsonObject> Cls = MakeShared<FJsonObject>();
+	for (int32 C = 0; C < ScatterClassCount; ++C)
+	{
+		Cls->SetNumberField(UTF8_TO_TCHAR(ScatterClassName(static_cast<EScatterClass>(C))), static_cast<double>(PerClass[C]));
+	}
+	J->SetObjectField(TEXT("classes"), Cls);
+	J->SetNumberField(TEXT("ms"), FPlatformTime::ToMilliseconds64(FPlatformTime::Cycles64() - T0));
+	return J;
+}
+
+TSharedRef<FJsonObject> ATerrainScatter::CheckDiscs(const FString& Name, const FString& SetName, const TArray<FVector>& Discs) const
+{
+	const uint64 T0 = FPlatformTime::Cycles64();
+	TSharedRef<FJsonObject> J = MakeShared<FJsonObject>();
+	J->SetStringField(TEXT("name"), Name);
+	J->SetStringField(TEXT("set"), SetName);
+	J->SetNumberField(TEXT("discs"), Discs.Num());
+	struct FCls
+	{
+		int64 CoreLive = 0;
+		int64 BandLive = 0;
+		int64 CorePure = 0;
+		int64 BandPure = 0;
+	};
+	FCls Counts[ScatterClassCount];
+	// 0 = outside, 1 = band (0.5R .. R + 2 m), 2 = core (inner half radius of some disc).
+	auto Zone = [&Discs](int32 XQ, int32 YQ) -> int32
+	{
+		const double X = static_cast<double>(XQ) / 65536.0;
+		const double Y = static_cast<double>(YQ) / 65536.0;
+		int32 Best = 0;
+		for (const FVector& D : Discs)
+		{
+			const double Dx = X - D.X;
+			const double Dy = Y - D.Y;
+			const double D2 = Dx * Dx + Dy * Dy;
+			const double Core = 0.5 * D.Z;
+			if (D2 <= Core * Core)
+			{
+				return 2;
+			}
+			const double Outer = D.Z + 2.0;
+			if (D2 <= Outer * Outer)
+			{
+				Best = 1;
+			}
+		}
+		return Best;
+	};
+	TArray<FScatterRecord> Live;
+	CollectLive(Live);
+	for (const FScatterRecord& R : Live)
+	{
+		const int32 Z = Zone(R.XQ, R.YQ);
+		if (Z == 2)
+		{
+			++Counts[R.Class].CoreLive;
+		}
+		else if (Z == 1)
+		{
+			++Counts[R.Class].BandLive;
+		}
+	}
+	// The same discs with the splat forced to pure grass (same heights, same seed): the yield a disc would have had unpainted.
+	const FTerrainHeightfield& HF = Terrain->GetHeightfield();
+	FScatterSnapshot Full = MakeFullSnapshot(HF);
+	for (int32 I = 0; I + 3 < Full.Splat.Num(); I += 4)
+	{
+		Full.Splat[I] = 255;
+		Full.Splat[I + 1] = 0;
+		Full.Splat[I + 2] = 0;
+		Full.Splat[I + 3] = 0;
+	}
+	FCriticalSection Lock;
+	for (int32 G = 0; G < ScatterGridCount; ++G)
+	{
+		const EScatterGrid Grid = static_cast<EScatterGrid>(G);
+		const FScatterTileGrid& TG = Scheduler.GetTileGrid(Grid);
+		ParallelFor(TG.NumTiles(), [&](int32 Index)
+		{
+			const FScatterTileKey Key = Scheduler.GetTileKey(Grid, Index);
+			FScatterTileRecords Recs;
+			EvaluateTile(Full, *Palette, Key, Recs);
+			FCls Local[ScatterClassCount];
+			for (int32 M = 0; M < ScatterMeshCount; ++M)
+			{
+				for (const FScatterRecord& R : Recs.PerMesh[M])
+				{
+					const int32 Z = Zone(R.XQ, R.YQ);
+					if (Z == 2)
+					{
+						++Local[R.Class].CorePure;
+					}
+					else if (Z == 1)
+					{
+						++Local[R.Class].BandPure;
+					}
+				}
+			}
+			FScopeLock L(&Lock);
+			for (int32 C = 0; C < ScatterClassCount; ++C)
+			{
+				Counts[C].CorePure += Local[C].CorePure;
+				Counts[C].BandPure += Local[C].BandPure;
+			}
+		});
+	}
+	TSharedRef<FJsonObject> Cls = MakeShared<FJsonObject>();
+	for (int32 C = 0; C < ScatterClassCount; ++C)
+	{
+		TSharedRef<FJsonObject> One = MakeShared<FJsonObject>();
+		One->SetNumberField(TEXT("core_live"), static_cast<double>(Counts[C].CoreLive));
+		One->SetNumberField(TEXT("core_pure"), static_cast<double>(Counts[C].CorePure));
+		One->SetNumberField(TEXT("band_live"), static_cast<double>(Counts[C].BandLive));
+		One->SetNumberField(TEXT("band_pure"), static_cast<double>(Counts[C].BandPure));
+		Cls->SetObjectField(UTF8_TO_TCHAR(ScatterClassName(static_cast<EScatterClass>(C))), One);
+	}
+	J->SetObjectField(TEXT("classes"), Cls);
+	J->SetNumberField(TEXT("ms"), FPlatformTime::ToMilliseconds64(FPlatformTime::Cycles64() - T0));
+	return J;
+}
+
+TSharedRef<FJsonObject> ATerrainScatter::CountsJson() const
+{
+	TSharedRef<FJsonObject> O = MakeShared<FJsonObject>();
+	TArray<TSharedPtr<FJsonValue>> Names;
+	for (int32 C = 0; C < ScatterClassCount; ++C)
+	{
+		Names.Add(MakeShared<FJsonValueString>(UTF8_TO_TCHAR(ScatterClassName(static_cast<EScatterClass>(C)))));
+	}
+	O->SetArrayField(TEXT("class_names"), Names);
+	for (int32 G = 0; G < ScatterGridCount; ++G)
+	{
+		const EScatterGrid Grid = static_cast<EScatterGrid>(G);
+		const FScatterTileGrid& TG = Scheduler.GetTileGrid(Grid);
+		const int32 NM = ScatterMeshCountOfGrid(Grid);
+		TSharedRef<FJsonObject> GJ = MakeShared<FJsonObject>();
+		GJ->SetNumberField(TEXT("size_m"), TG.SizeM);
+		GJ->SetNumberField(TEXT("min"), TG.Min);
+		GJ->SetNumberField(TEXT("count"), TG.Count);
+		TArray<TSharedPtr<FJsonValue>> Tiles;
+		for (int32 Tile = 0; Tile < TG.NumTiles(); ++Tile)
+		{
+			int64 PerClass[ScatterClassCount] = {};
+			for (int32 K = 0; K < NM; ++K)
+			{
+				const TSharedPtr<const FScatterUnitState, ESPMode::ThreadSafe> St = Scheduler.GetUnitState(Grid, Tile, K);
+				if (St.IsValid())
+				{
+					for (const FScatterRecord& R : St->Records)
+					{
+						++PerClass[R.Class];
+					}
+				}
+			}
+			TArray<TSharedPtr<FJsonValue>> Row;
+			Row.Add(MakeShared<FJsonValueNumber>(TG.TXOf(Tile)));
+			Row.Add(MakeShared<FJsonValueNumber>(TG.TYOf(Tile)));
+			for (int32 C = 0; C < ScatterClassCount; ++C)
+			{
+				Row.Add(MakeShared<FJsonValueNumber>(static_cast<double>(PerClass[C])));
+			}
+			Tiles.Add(MakeShared<FJsonValueArray>(Row));
+		}
+		GJ->SetArrayField(TEXT("tiles"), Tiles);
+		O->SetObjectField(Grid == EScatterGrid::Fine ? TEXT("fine") : TEXT("coarse"), GJ);
+	}
+	O->SetStringField(TEXT("tile_row_format"), TEXT("tx, ty, then the count of each class in class_names order"));
+	return O;
+}
+
+FTransform ATerrainScatter::InstanceTransformOf(const FScatterRecord& R) const
+{
+	return ScatterInstanceTransform(BuildInstance(R, *Palette));
+}
+
+FBox ATerrainScatter::MeshLocalBoundsCm(EScatterMesh Mesh) const
+{
+	const int32 M = static_cast<int32>(Mesh);
+	if (!Meshes.IsValidIndex(M) || !Meshes[M])
+	{
+		return FBox(ForceInit);
+	}
+	return Meshes[M]->GetBounds().GetBox();
+}
+
+double ATerrainScatter::CullEndMetersOf(const FScatterRecord& R) const
+{
+	int32 S0 = 0;
+	int32 S1 = 0;
+	UnitCullDistances(static_cast<EScatterMesh>(R.Mesh), S0, S1);
+	// What the unit really draws: saplings share the tree units (TreeBroadA/B), whose end is the tree's 600 m, so a sapling is drawn to 600 m, not
+	// the 300 m of plan C scatter 3.4 (a layout gap reported to the main session by S5; the analytic counts and masks follow the drawing).
+	return static_cast<double>(S1) / 100.0;
 }
 
 TSharedRef<FJsonObject> ATerrainScatter::OptionsJson() const
@@ -1403,6 +1761,17 @@ TSharedRef<FJsonObject> ATerrainScatter::OptionsJson() const
 	O->SetStringField(TEXT("params"), Options.ParamsSpec);
 	O->SetStringField(TEXT("params_error"), Options.ParamsError);
 	O->SetStringField(TEXT("config_fnv"), Hex64(GetConfigFnv()));
+	if (Palette.IsValid())
+	{
+		// The whole table as stored integers (Q16, bytes, tan^2 * 2^32), for the parser's dump oracle (class limits come from here).
+		TSharedRef<FJsonObject> Pal = MakeShared<FJsonObject>();
+		for (int32 I = 0; I < ScatterParamCount; ++I)
+		{
+			Pal->SetNumberField(UTF8_TO_TCHAR(ScatterParamInfo(static_cast<EScatterParam>(I)).Name), static_cast<double>(Palette->V[I]));
+		}
+		O->SetObjectField(TEXT("palette"), Pal);
+		O->SetNumberField(TEXT("palette_seed"), static_cast<double>(Palette->Seed));
+	}
 	const FScatterSchedulerConfig& Cfg = Scheduler.GetConfig();
 	O->SetNumberField(TEXT("predict_a_ms"), Cfg.PredictA);
 	O->SetNumberField(TEXT("predict_b_ms_per_change"), Cfg.PredictB);
@@ -1491,6 +1860,31 @@ TSharedRef<FJsonObject> ATerrainScatter::ResultsJson() const
 	O->SetNumberField(TEXT("frame_rows_dropped"), static_cast<double>(FrameRowsDropped));
 	O->SetNumberField(TEXT("apply_rows_dropped"), static_cast<double>(ApplyRowsDropped));
 	O->SetNumberField(TEXT("max_series_rows"), MaxSeriesRows);
+	{
+		// Frame-stamped proxy and compile events (task S5): the parser places them in the op windows of the timeline (frame_start / frame_end).
+		TArray<FScatterProxyEventRow> Events;
+		int64 Dropped = 0;
+		ScatterCopyProxyEvents(Events, Dropped);
+		TArray<TSharedPtr<FJsonValue>> Kinds;
+		for (int32 K = 0; K < static_cast<int32>(EScatterProxyEvent::Count); ++K)
+		{
+			Kinds.Add(MakeShared<FJsonValueString>(ScatterProxyEventName(static_cast<EScatterProxyEvent>(K))));
+		}
+		O->SetArrayField(TEXT("proxy_event_kinds"), Kinds);
+		O->SetStringField(TEXT("proxy_events_format"), TEXT("frame, kind (index into proxy_event_kinds), unit (grid << 24 | mesh << 16 | tile, -1 = none)"));
+		TArray<TSharedPtr<FJsonValue>> Rows;
+		Rows.Reserve(Events.Num());
+		for (const FScatterProxyEventRow& E : Events)
+		{
+			TArray<TSharedPtr<FJsonValue>> Row;
+			Row.Add(MakeShared<FJsonValueNumber>(static_cast<double>(E.Frame)));
+			Row.Add(MakeShared<FJsonValueNumber>(static_cast<double>(static_cast<uint8>(E.Kind))));
+			Row.Add(MakeShared<FJsonValueNumber>(static_cast<double>(E.Unit)));
+			Rows.Add(MakeShared<FJsonValueArray>(Row));
+		}
+		O->SetArrayField(TEXT("proxy_events"), Rows);
+		O->SetNumberField(TEXT("proxy_events_dropped"), static_cast<double>(Dropped));
+	}
 
 	const FScatterCounters& K = Scheduler.GetCounters();
 	TSharedRef<FJsonObject> CJ = MakeShared<FJsonObject>();
@@ -1624,6 +2018,18 @@ TSharedRef<FJsonObject> ATerrainScatter::ResultsJson() const
 		Frames.Add(MakeShared<FJsonValueArray>(A));
 	}
 	O->SetStringField(TEXT("frames_format"), TEXT("frame, phase_index, fill, gt_ms, flush_ms, flush_calls, ready, in_flight, busy, units_applied"));
+	{
+		// phase_index -> phase name (the terrain's phase list), so the parser can select frames by phase (SX11's > 2 ms fraction).
+		TArray<TSharedPtr<FJsonValue>> Names;
+		if (Terrain)
+		{
+			for (const FString& N : Terrain->GetPhaseNames())
+			{
+				Names.Add(MakeShared<FJsonValueString>(N));
+			}
+		}
+		O->SetArrayField(TEXT("phase_names"), Names);
+	}
 	O->SetArrayField(TEXT("frames"), Frames);
 	TArray<TSharedPtr<FJsonValue>> Lat;
 	for (const FScatterLatencyRow& L : Latencies)

@@ -1,0 +1,66 @@
+{
+ "name": "SOAKS_SMOKE",
+ "about": "SOAKS with a 1-minute soak: the unmeasured smoke of the SOAKS path (task S5); never a P6 or SX15 figure.",
+ "ops": [
+  {
+   "op": "look",
+   "mode": "compare"
+  },
+  {
+   "op": "camera",
+   "pose": "rts80"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 900,
+   "phase": "fill"
+  },
+  {
+   "op": "settle",
+   "frames": 150,
+   "phase": "idle"
+  },
+  {
+   "op": "wait_collision",
+   "name": "init"
+  },
+  {
+   "op": "soak",
+   "minutes": 1,
+   "seed": 11,
+   "cycle_s": 5,
+   "diameters": [
+    5,
+    20,
+    60,
+    100
+   ],
+   "s": 10,
+   "phase": "soak"
+  },
+  {
+   "op": "wait_collision",
+   "name": "end"
+  },
+  {
+   "op": "verify_collision",
+   "name": "end"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 300
+  },
+  {
+   "op": "scatter_verify",
+   "name": "end"
+  },
+  {
+   "op": "hash",
+   "name": "end"
+  },
+  {
+   "op": "residue",
+   "delay_s": 12
+  }
+ ]
+}

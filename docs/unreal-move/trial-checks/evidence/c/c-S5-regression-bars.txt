@@ -1,0 +1,744 @@
+S5 (scatter harness and determinism runs), round 4 (residual fix after round 3: SX17 frozen variant and the reviewers' minors): S4 paths and the S5 script smokes on the final build, FAILX, TEARX, the SX7 dormant rows re-run on this build (S1, C7, S1L, G1, MOUSE), builds and tests
+Parser outputs re-run on round 4 parser code; Unreal runs from round 3 (TrialOut/c_s5/r3, functionally the same build) except the S1XF runs (round 4 final Editor build, TrialOut/c_s5/r4); runs in T/Out.
+
+$ python Tools/parse_terrain.py --scatter Out/sx_smoke
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=28/28 rule=completed=true and ops_done == ops_total
+BAR scatter_log_scan               PASS   value=0 line(s) rule=no LogMaterial warning/error on /Game/Terrain/Scatter, no VSM page-pool overflow
+BAR scatter_block                  PASS   value=available=True enabled=True rule=results.json scatter block from a run with scatter
+BAR scatter_options                PASS   value=config_fnv=0xe55e190fcc1aadc9 level=L0 params_error='' mesh_errors='' rule=options.scatter present, no option or mesh error
+BAR scatter_verify                 PASS   value=4 verifies, failed [] rule=>= 1 scatter_verify and every one passes (live == reference, readback, z, up axis, nothing pending)
+  verify start      pass=True live=0x4131188d5be6f199 ref=0x4131188d5be6f199 instances=243011 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.34e-05 m dup 2.11e-08 rad 
+  verify edited     pass=True live=0x309844e8239f1392 ref=0x309844e8239f1392 instances=239831 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.35e-05 m dup 9.29e-06 rad 
+  verify reenabled  pass=True live=0x0601315a2a22f643 ref=0x0601315a2a22f643 instances=237464 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.35e-05 m dup 9.29e-06 rad 
+  verify undone     pass=True live=0x4131188d5be6f199 ref=0x4131188d5be6f199 instances=243011 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.34e-05 m dup 2.11e-08 rad 
+BAR scatter_hash_live_eq_ref       PASS   value=equal at 3 settled hashes rule=scatter_live_fnv == scatter_fnv at every hash taken with nothing pending
+BAR scatter_counters_balanced      PASS   value=dispatched=333 applied=274 skipped=57 discarded=2 cancelled=0 in_flight=0 busy=0 rule=dispatched == applied + skipped_identical + discarded_epoch + cancelled; 0 in flight and 0 busy at the end
+BAR scatter_verify_instances       PASS   value=read back [('start', 243011), ('edited', 239831), ('reenabled', 237464), ('undone', 243011)] rule=every scatter_verify with components read back > 0 instances (no vacuous live == reference)
+BAR scatter_proxy_recreates        PASS   value=recreates=0 (during edits 0, apply-dirtied 0); first=479 expected=477 rule=proxy_recreates == 0: no live proxy replaced after scatter's own apply dirtied it, nor for any unexplained dirty mark
+BAR proxy_compile_recreates_during_edits PASS   value=0 (all run: 116) rule=editor-compile recreates while edits were in flight == 0
+BAR proxy_engine_recreates_during_edits PASS   value=0 (all run: 0) rule=engine-wide recreates while edits were in flight == 0
+BAR scatter_proxy_reported         REPORT value=refills=1 (during edits 1) pso=0 (during edits 0) engine=0 editor_compile=116; shader propagations 22, asset post-compiles 35, compile-busy frames 11 rule=reported categories: a refill replaces no proxy; PSO completion, engine contexts and editor compiles are not scatter's own
+BAR apply_fit                      REPORT value=n 1094; least squares a -0.00074 b 0.0000690 c 0.0000917; residual p95 0.0132 p99 0.0931; admission a (a + p95) 0.0125; run's predictor a 0.032 b 7e-05 c 3e-05 under-predicted 162 units (worst by 20.879 ms); max unit 21.016 ms at 1248 instances; units > 0.8 ms: 2 rule=apply_unit_ms ~ a + b * changes + c * instances_after (plan C scatter 3.5 and 4 S4 item 5; any unit > 0.8 ms triggers the T0 rank split)
+BAR scatter_hidden_shot            PASS   value=D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/sx_smoke/hidden.png rule=the shot with every layer hidden was taken (no hang on hidden units)
+BAR scatter_undo_returns           PASS   value=start 0x4131188d5be6f199, final ref 0x4131188d5be6f199 live 0x4131188d5be6f199 rule=after one undo per stroke, reference and live equal the first hash (and the terrain hashes too)
+BAR scatter_disable_while_busy     PASS   value=[(2, 2)] rule=scatter 0 ran while tiles were Busy or in flight
+BAR scatter_gt_ms                  REPORT value=p50 0.037 p99 0.358 p99.9 21.080 max 21.080 (n 759) rule=scatter's own game-thread ms per frame outside the fill (SX11 gates it in Phase 4)
+BAR scatter_flush_ms               REPORT value=p50 0.000 p99 0.365 max 13.166 rule=end-of-frame instance flush ms
+BAR apply_unit_ms_edits            REPORT value=p50 0.014 p99 0.300 max 21.016 (n 138); init_ms 14162 rule=per-unit apply cost outside the fill
+BAR SX9 asset_report               PASS   value=usage_ok=58/58 deps_ok=True flip_ok=True vc_ok=True errors=0 (0 listed); asset_settings_sha256 35f87ad8f1941e59 rule=S3's asset report: usage_ok k/k, deps_ok, flip_ok, vc_ok, errors 0
+BAR SX9 per_instance_random        PASS   value=65 materials, reading PerInstanceRandom: none rule=no scatter material reads PerInstanceRandom (F25)
+BAR SX9 licence                    PASS   value=13 meshes: Fern=project-original, Flower=project-original, GrassT0=project-original, GrassT1=project-original, RockA=project-original, RockB=project-original, ShrubA=project-original, ShrubB=project-original, TreeBroadA=project-original, TreeBroadB=project-original, TreeConiferA=project-original, TreeConiferB=project-original, Tussock=project-original rule=every loaded mesh maps through report.json to a manifest row with licence in ('CC0-1.0', 'project-original', 'epic'), with its usage rows ok
+BAR scatter_verify_full_up_axis    PASS   value=start max_dup 2.11e-08 rad; edited max_dup 9.29e-06 rad; reenabled max_dup 9.29e-06 rad; undone max_dup 2.11e-08 rad rule=every verify compares each instance's full up axis with HF's cell-triangle rule (no angle-only exemption)
+BAR SX5 oracle (other dumps)       REPORT value=dumps not at the saved state or no saved files: no dumps rule=the oracle needs the dump's own heights
+BAR proxy_events_logged            PASS   value=2235 events, 0 dropped rule=every proxy and compile event is in the log (none dropped past the bound)
+BAR compile_events_per_phase       REPORT value={'before_ops': {'asset_post_compile': 2, 'shader_propagation': 1}, 'default': {'compile_busy_frame': 6, 'asset_post_compile': 10, 'shader_propagation': 4, 'compile_recreate': 39}, 'fill': {'compile_busy_frame': 5, 'asset_post_compile': 7, 'shader_propagation': 1, 'compile_recreate': 77}, 'idle': {'asset_post_compile': 16, 'shader_propagation': 16}, 'undo': {'refill': 1}} rule=shader propagations, asset post-compiles, compile-busy frames and later proxies per script phase (refills, PSO, engine and editor-compile recreates; reported)
+SCATTER PASS
+exit=0
+
+$ python Tools/parse_terrain.py --scatter Out/sxp_default
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=17/17 rule=completed=true and ops_done == ops_total
+BAR scatter_log_scan               PASS   value=0 line(s) rule=no LogMaterial warning/error on /Game/Terrain/Scatter, no VSM page-pool overflow
+BAR scatter_block                  PASS   value=available=True enabled=True rule=results.json scatter block from a run with scatter
+BAR scatter_options                PASS   value=config_fnv=0xe55e190fcc1aadc9 level=L0 params_error='' mesh_errors='' rule=options.scatter present, no option or mesh error
+BAR scatter_verify                 PASS   value=4 verifies, failed [] rule=>= 1 scatter_verify and every one passes (live == reference, readback, z, up axis, nothing pending)
+  verify start      pass=True live=0x4131188d5be6f199 ref=0x4131188d5be6f199 instances=243011 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.34e-05 m dup 2.11e-08 rad 
+  verify fresh      pass=True live=0x4131188d5be6f199 ref=0x4131188d5be6f199 instances=243011 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.34e-05 m dup 2.11e-08 rad 
+  verify edited     pass=True live=0x309844e8239f1392 ref=0x309844e8239f1392 instances=239831 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.35e-05 m dup 9.29e-06 rad 
+  verify undone     pass=True live=0x4131188d5be6f199 ref=0x4131188d5be6f199 instances=243011 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.34e-05 m dup 2.11e-08 rad 
+BAR scatter_hash_live_eq_ref       PASS   value=equal at 3 settled hashes rule=scatter_live_fnv == scatter_fnv at every hash taken with nothing pending
+BAR scatter_counters_balanced      PASS   value=dispatched=200 applied=146 skipped=54 discarded=0 cancelled=0 in_flight=0 busy=0 rule=dispatched == applied + skipped_identical + discarded_epoch + cancelled; 0 in flight and 0 busy at the end
+BAR scatter_verify_instances       PASS   value=read back [('start', 243011), ('fresh', 243011), ('edited', 239831), ('undone', 243011)] rule=every scatter_verify with components read back > 0 instances (no vacuous live == reference)
+BAR scatter_proxy_recreates        PASS   value=recreates=0 (during edits 0, apply-dirtied 0); first=479 expected=479 rule=proxy_recreates == 0: no live proxy replaced after scatter's own apply dirtied it, nor for any unexplained dirty mark
+BAR proxy_compile_recreates_during_edits PASS   value=0 (all run: 98) rule=editor-compile recreates while edits were in flight == 0
+BAR proxy_engine_recreates_during_edits PASS   value=0 (all run: 0) rule=engine-wide recreates while edits were in flight == 0
+BAR scatter_proxy_reported         REPORT value=refills=0 (during edits 0) pso=0 (during edits 0) engine=0 editor_compile=98; shader propagations 20, asset post-compiles 32, compile-busy frames 10 rule=reported categories: a refill replaces no proxy; PSO completion, engine contexts and editor compiles are not scatter's own
+BAR scatter_fresh                  PASS   value=1 fresh op(s), 479 components rebuilt, proxy_expected_rebuilds 479, missing shots [] rule=scatter_fresh rebuilt live proxies as expected rebuilds (proxy_recreates stays 0) and took its shot
+BAR apply_fit                      REPORT value=n 584; least squares a 0.00442 b 0.0001019 c 0.0000230; residual p95 0.0490 p99 0.0810; admission a (a + p95) 0.0534; run's predictor a 0.032 b 7e-05 c 3e-05 under-predicted 114 units (worst by 0.318 ms); max unit 0.492 ms at 1429 instances; units > 0.8 ms: 0 rule=apply_unit_ms ~ a + b * changes + c * instances_after (plan C scatter 3.5 and 4 S4 item 5; any unit > 0.8 ms triggers the T0 rank split)
+BAR scatter_gt_ms                  REPORT value=p50 0.034 p99 0.313 p99.9 0.636 max 0.636 (n 421) rule=scatter's own game-thread ms per frame outside the fill (SX11 gates it in Phase 4)
+BAR scatter_flush_ms               REPORT value=p50 0.000 p99 0.377 max 1.007 rule=end-of-frame instance flush ms
+BAR apply_unit_ms_edits            REPORT value=p50 0.015 p99 0.177 max 0.180 (n 105); init_ms 1743 rule=per-unit apply cost outside the fill
+BAR SX9 asset_report               PASS   value=usage_ok=58/58 deps_ok=True flip_ok=True vc_ok=True errors=0 (0 listed); asset_settings_sha256 35f87ad8f1941e59 rule=S3's asset report: usage_ok k/k, deps_ok, flip_ok, vc_ok, errors 0
+BAR SX9 per_instance_random        PASS   value=65 materials, reading PerInstanceRandom: none rule=no scatter material reads PerInstanceRandom (F25)
+BAR SX9 licence                    PASS   value=13 meshes: Fern=project-original, Flower=project-original, GrassT0=project-original, GrassT1=project-original, RockA=project-original, RockB=project-original, ShrubA=project-original, ShrubB=project-original, TreeBroadA=project-original, TreeBroadB=project-original, TreeConiferA=project-original, TreeConiferB=project-original, Tussock=project-original rule=every loaded mesh maps through report.json to a manifest row with licence in ('CC0-1.0', 'project-original', 'epic'), with its usage rows ok
+BAR scatter_verify_full_up_axis    PASS   value=start max_dup 2.11e-08 rad; fresh max_dup 2.11e-08 rad; edited max_dup 9.29e-06 rad; undone max_dup 2.11e-08 rad rule=every verify compares each instance's full up axis with HF's cell-triangle rule (no angle-only exemption)
+BAR SX5 oracle (other dumps)       REPORT value=dumps not at the saved state or no saved files: no dumps rule=the oracle needs the dump's own heights
+BAR proxy_events_logged            PASS   value=1702 events, 0 dropped rule=every proxy and compile event is in the log (none dropped past the bound)
+BAR compile_events_per_phase       REPORT value={'before_ops': {'asset_post_compile': 2, 'shader_propagation': 1}, 'default': {'compile_busy_frame': 6, 'asset_post_compile': 8, 'shader_propagation': 2, 'compile_recreate': 16}, 'fill': {'compile_busy_frame': 4, 'asset_post_compile': 6, 'shader_propagation': 1, 'compile_recreate': 82}, 'idle': {'asset_post_compile': 16, 'shader_propagation': 16}} rule=shader propagations, asset post-compiles, compile-busy frames and later proxies per script phase (refills, PSO, engine and editor-compile recreates; reported)
+SCATTER PASS
+exit=0
+
+$ python Tools/parse_terrain.py --scatter Out/sxp_t0
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=17/17 rule=completed=true and ops_done == ops_total
+BAR scatter_log_scan               PASS   value=0 line(s) rule=no LogMaterial warning/error on /Game/Terrain/Scatter, no VSM page-pool overflow
+BAR scatter_block                  PASS   value=available=True enabled=True rule=results.json scatter block from a run with scatter
+BAR scatter_options                PASS   value=config_fnv=0xe55e190fcc1aadc9 level=L0 params_error='' mesh_errors='' rule=options.scatter present, no option or mesh error
+BAR scatter_verify                 PASS   value=4 verifies, failed [] rule=>= 1 scatter_verify and every one passes (live == reference, readback, z, up axis, nothing pending)
+  verify start      pass=True live=0x4131188d5be6f199 ref=0x4131188d5be6f199 instances=243011 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.34e-05 m dup 2.11e-08 rad 
+  verify fresh      pass=True live=0x4131188d5be6f199 ref=0x4131188d5be6f199 instances=243011 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.34e-05 m dup 2.11e-08 rad 
+  verify edited     pass=True live=0x309844e8239f1392 ref=0x309844e8239f1392 instances=239831 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.35e-05 m dup 9.29e-06 rad 
+  verify undone     pass=True live=0x4131188d5be6f199 ref=0x4131188d5be6f199 instances=243011 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.34e-05 m dup 2.11e-08 rad 
+BAR scatter_hash_live_eq_ref       PASS   value=equal at 3 settled hashes rule=scatter_live_fnv == scatter_fnv at every hash taken with nothing pending
+BAR scatter_counters_balanced      PASS   value=dispatched=200 applied=146 skipped=54 discarded=0 cancelled=0 in_flight=0 busy=0 rule=dispatched == applied + skipped_identical + discarded_epoch + cancelled; 0 in flight and 0 busy at the end
+BAR scatter_verify_instances       PASS   value=read back [('start', 243011), ('fresh', 243011), ('edited', 239831), ('undone', 243011)] rule=every scatter_verify with components read back > 0 instances (no vacuous live == reference)
+BAR scatter_proxy_recreates        PASS   value=recreates=0 (during edits 0, apply-dirtied 0); first=479 expected=479 rule=proxy_recreates == 0: no live proxy replaced after scatter's own apply dirtied it, nor for any unexplained dirty mark
+BAR proxy_compile_recreates_during_edits PASS   value=0 (all run: 79) rule=editor-compile recreates while edits were in flight == 0
+BAR proxy_engine_recreates_during_edits PASS   value=0 (all run: 0) rule=engine-wide recreates while edits were in flight == 0
+BAR scatter_proxy_reported         REPORT value=refills=0 (during edits 0) pso=0 (during edits 0) engine=0 editor_compile=79; shader propagations 21, asset post-compiles 33, compile-busy frames 14 rule=reported categories: a refill replaces no proxy; PSO completion, engine contexts and editor compiles are not scatter's own
+BAR scatter_fresh                  PASS   value=1 fresh op(s), 479 components rebuilt, proxy_expected_rebuilds 479, missing shots [] rule=scatter_fresh rebuilt live proxies as expected rebuilds (proxy_recreates stays 0) and took its shot
+BAR apply_fit                      REPORT value=n 584; least squares a 0.00261 b 0.0001086 c 0.0000242; residual p95 0.0400 p99 0.0715; admission a (a + p95) 0.0426; run's predictor a 0.032 b 7e-05 c 3e-05 under-predicted 113 units (worst by 0.215 ms); max unit 0.397 ms at 1500 instances; units > 0.8 ms: 0 rule=apply_unit_ms ~ a + b * changes + c * instances_after (plan C scatter 3.5 and 4 S4 item 5; any unit > 0.8 ms triggers the T0 rank split)
+BAR scatter_gt_ms                  REPORT value=p50 0.036 p99 2.464 p99.9 3.082 max 3.082 (n 451) rule=scatter's own game-thread ms per frame outside the fill (SX11 gates it in Phase 4)
+BAR scatter_flush_ms               REPORT value=p50 0.000 p99 0.301 max 0.370 rule=end-of-frame instance flush ms
+BAR apply_unit_ms_edits            REPORT value=p50 0.015 p99 0.167 max 0.188 (n 105); init_ms 2577 rule=per-unit apply cost outside the fill
+BAR SX9 asset_report               PASS   value=usage_ok=58/58 deps_ok=True flip_ok=True vc_ok=True errors=0 (0 listed); asset_settings_sha256 35f87ad8f1941e59 rule=S3's asset report: usage_ok k/k, deps_ok, flip_ok, vc_ok, errors 0
+BAR SX9 per_instance_random        PASS   value=65 materials, reading PerInstanceRandom: none rule=no scatter material reads PerInstanceRandom (F25)
+BAR SX9 licence                    PASS   value=13 meshes: Fern=project-original, Flower=project-original, GrassT0=project-original, GrassT1=project-original, RockA=project-original, RockB=project-original, ShrubA=project-original, ShrubB=project-original, TreeBroadA=project-original, TreeBroadB=project-original, TreeConiferA=project-original, TreeConiferB=project-original, Tussock=project-original rule=every loaded mesh maps through report.json to a manifest row with licence in ('CC0-1.0', 'project-original', 'epic'), with its usage rows ok
+BAR scatter_verify_full_up_axis    PASS   value=start max_dup 2.11e-08 rad; fresh max_dup 2.11e-08 rad; edited max_dup 9.29e-06 rad; undone max_dup 2.11e-08 rad rule=every verify compares each instance's full up axis with HF's cell-triangle rule (no angle-only exemption)
+BAR SX5 oracle (other dumps)       REPORT value=dumps not at the saved state or no saved files: no dumps rule=the oracle needs the dump's own heights
+BAR proxy_events_logged            PASS   value=1689 events, 0 dropped rule=every proxy and compile event is in the log (none dropped past the bound)
+BAR compile_events_per_phase       REPORT value={'before_ops': {'asset_post_compile': 2, 'shader_propagation': 1}, 'default': {'compile_busy_frame': 6, 'asset_post_compile': 8, 'shader_propagation': 2, 'compile_recreate': 4}, 'fill': {'compile_busy_frame': 8, 'asset_post_compile': 7, 'compile_recreate': 75, 'shader_propagation': 2}, 'idle': {'asset_post_compile': 16, 'shader_propagation': 16}} rule=shader propagations, asset post-compiles, compile-busy frames and later proxies per script phase (refills, PSO, engine and editor-compile recreates; reported)
+SCATTER PASS
+exit=0
+
+$ python Tools/parse_terrain.py --scatter Out/sxp_clear
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=17/17 rule=completed=true and ops_done == ops_total
+BAR scatter_log_scan               PASS   value=0 line(s) rule=no LogMaterial warning/error on /Game/Terrain/Scatter, no VSM page-pool overflow
+BAR scatter_block                  PASS   value=available=True enabled=True rule=results.json scatter block from a run with scatter
+BAR scatter_options                PASS   value=config_fnv=0xe55e190fcc1aadc9 level=L0 params_error='' mesh_errors='' rule=options.scatter present, no option or mesh error
+BAR scatter_verify                 PASS   value=4 verifies, failed [] rule=>= 1 scatter_verify and every one passes (live == reference, readback, z, up axis, nothing pending)
+  verify start      pass=True live=0x4131188d5be6f199 ref=0x4131188d5be6f199 instances=243011 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.34e-05 m dup 2.11e-08 rad 
+  verify fresh      pass=True live=0x4131188d5be6f199 ref=0x4131188d5be6f199 instances=243011 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.34e-05 m dup 2.11e-08 rad 
+  verify edited     pass=True live=0x309844e8239f1392 ref=0x309844e8239f1392 instances=239831 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.35e-05 m dup 9.29e-06 rad 
+  verify undone     pass=True live=0x4131188d5be6f199 ref=0x4131188d5be6f199 instances=243011 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.34e-05 m dup 2.11e-08 rad 
+BAR scatter_hash_live_eq_ref       PASS   value=equal at 3 settled hashes rule=scatter_live_fnv == scatter_fnv at every hash taken with nothing pending
+BAR scatter_counters_balanced      PASS   value=dispatched=200 applied=146 skipped=54 discarded=0 cancelled=0 in_flight=0 busy=0 rule=dispatched == applied + skipped_identical + discarded_epoch + cancelled; 0 in flight and 0 busy at the end
+BAR scatter_verify_instances       PASS   value=read back [('start', 243011), ('fresh', 243011), ('edited', 239831), ('undone', 243011)] rule=every scatter_verify with components read back > 0 instances (no vacuous live == reference)
+BAR scatter_proxy_recreates        PASS   value=recreates=0 (during edits 0, apply-dirtied 0); first=479 expected=583 rule=proxy_recreates == 0: no live proxy replaced after scatter's own apply dirtied it, nor for any unexplained dirty mark
+BAR proxy_compile_recreates_during_edits PASS   value=0 (all run: 77) rule=editor-compile recreates while edits were in flight == 0
+BAR proxy_engine_recreates_during_edits PASS   value=0 (all run: 0) rule=engine-wide recreates while edits were in flight == 0
+BAR scatter_proxy_reported         REPORT value=refills=0 (during edits 0) pso=0 (during edits 0) engine=0 editor_compile=77; shader propagations 20, asset post-compiles 32, compile-busy frames 10 rule=reported categories: a refill replaces no proxy; PSO completion, engine contexts and editor compiles are not scatter's own
+BAR scatter_fresh                  PASS   value=1 fresh op(s), 479 components rebuilt, proxy_expected_rebuilds 583, missing shots [] rule=scatter_fresh rebuilt live proxies as expected rebuilds (proxy_recreates stays 0) and took its shot
+BAR apply_fit                      REPORT value=n 584; least squares a 0.00481 b 0.0000507 c 0.0000925; residual p95 0.0491 p99 0.1237; admission a (a + p95) 0.0539; run's predictor a 0.032 b 7e-05 c 3e-05 under-predicted 182 units (worst by 0.340 ms); max unit 0.532 ms at 1598 instances; units > 0.8 ms: 0 rule=apply_unit_ms ~ a + b * changes + c * instances_after (plan C scatter 3.5 and 4 S4 item 5; any unit > 0.8 ms triggers the T0 rank split)
+BAR scatter_gt_ms                  REPORT value=p50 0.036 p99 0.606 p99.9 1.045 max 1.045 (n 421) rule=scatter's own game-thread ms per frame outside the fill (SX11 gates it in Phase 4)
+BAR scatter_flush_ms               REPORT value=p50 0.000 p99 0.000 max 0.000 rule=end-of-frame instance flush ms
+BAR apply_unit_ms_edits            REPORT value=p50 0.052 p99 0.214 max 0.318 (n 105); init_ms 1844 rule=per-unit apply cost outside the fill
+BAR SX9 asset_report               PASS   value=usage_ok=58/58 deps_ok=True flip_ok=True vc_ok=True errors=0 (0 listed); asset_settings_sha256 35f87ad8f1941e59 rule=S3's asset report: usage_ok k/k, deps_ok, flip_ok, vc_ok, errors 0
+BAR SX9 per_instance_random        PASS   value=65 materials, reading PerInstanceRandom: none rule=no scatter material reads PerInstanceRandom (F25)
+BAR SX9 licence                    PASS   value=13 meshes: Fern=project-original, Flower=project-original, GrassT0=project-original, GrassT1=project-original, RockA=project-original, RockB=project-original, ShrubA=project-original, ShrubB=project-original, TreeBroadA=project-original, TreeBroadB=project-original, TreeConiferA=project-original, TreeConiferB=project-original, Tussock=project-original rule=every loaded mesh maps through report.json to a manifest row with licence in ('CC0-1.0', 'project-original', 'epic'), with its usage rows ok
+BAR scatter_verify_full_up_axis    PASS   value=start max_dup 2.11e-08 rad; fresh max_dup 2.11e-08 rad; edited max_dup 9.29e-06 rad; undone max_dup 2.11e-08 rad rule=every verify compares each instance's full up axis with HF's cell-triangle rule (no angle-only exemption)
+BAR SX5 oracle (other dumps)       REPORT value=dumps not at the saved state or no saved files: no dumps rule=the oracle needs the dump's own heights
+BAR proxy_events_logged            PASS   value=1785 events, 0 dropped rule=every proxy and compile event is in the log (none dropped past the bound)
+BAR compile_events_per_phase       REPORT value={'before_ops': {'asset_post_compile': 2, 'shader_propagation': 1}, 'default': {'compile_busy_frame': 6, 'asset_post_compile': 8, 'shader_propagation': 2, 'compile_recreate': 8}, 'fill': {'compile_busy_frame': 4, 'asset_post_compile': 6, 'shader_propagation': 1, 'compile_recreate': 69}, 'idle': {'asset_post_compile': 16, 'shader_propagation': 16}} rule=shader propagations, asset post-compiles, compile-busy frames and later proxies per script phase (refills, PSO, engine and editor-compile recreates; reported)
+SCATTER PASS
+exit=0
+
+$ python Tools/parse_terrain.py --scatter Out/sxp_gov6
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=17/17 rule=completed=true and ops_done == ops_total
+BAR scatter_log_scan               PASS   value=0 line(s) rule=no LogMaterial warning/error on /Game/Terrain/Scatter, no VSM page-pool overflow
+BAR scatter_block                  PASS   value=available=True enabled=True rule=results.json scatter block from a run with scatter
+BAR scatter_options                PASS   value=config_fnv=0xe55e190fcc1aadc9 level=L0 params_error='' mesh_errors='' rule=options.scatter present, no option or mesh error
+BAR scatter_verify                 PASS   value=4 verifies, failed [] rule=>= 1 scatter_verify and every one passes (live == reference, readback, z, up axis, nothing pending)
+  verify start      pass=True live=0x4131188d5be6f199 ref=0x4131188d5be6f199 instances=243011 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.34e-05 m dup 2.11e-08 rad 
+  verify fresh      pass=True live=0x4131188d5be6f199 ref=0x4131188d5be6f199 instances=243011 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.34e-05 m dup 2.11e-08 rad 
+  verify edited     pass=True live=0x309844e8239f1392 ref=0x309844e8239f1392 instances=239831 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.35e-05 m dup 9.29e-06 rad 
+  verify undone     pass=True live=0x4131188d5be6f199 ref=0x4131188d5be6f199 instances=243011 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.34e-05 m dup 2.11e-08 rad 
+BAR scatter_hash_live_eq_ref       PASS   value=equal at 3 settled hashes rule=scatter_live_fnv == scatter_fnv at every hash taken with nothing pending
+BAR scatter_counters_balanced      PASS   value=dispatched=200 applied=146 skipped=54 discarded=0 cancelled=0 in_flight=0 busy=0 rule=dispatched == applied + skipped_identical + discarded_epoch + cancelled; 0 in flight and 0 busy at the end
+BAR scatter_verify_instances       PASS   value=read back [('start', 243011), ('fresh', 243011), ('edited', 239831), ('undone', 243011)] rule=every scatter_verify with components read back > 0 instances (no vacuous live == reference)
+BAR scatter_proxy_recreates        PASS   value=recreates=0 (during edits 0, apply-dirtied 0); first=479 expected=479 rule=proxy_recreates == 0: no live proxy replaced after scatter's own apply dirtied it, nor for any unexplained dirty mark
+BAR proxy_compile_recreates_during_edits PASS   value=0 (all run: 73) rule=editor-compile recreates while edits were in flight == 0
+BAR proxy_engine_recreates_during_edits PASS   value=0 (all run: 0) rule=engine-wide recreates while edits were in flight == 0
+BAR scatter_proxy_reported         REPORT value=refills=0 (during edits 0) pso=0 (during edits 0) engine=0 editor_compile=73; shader propagations 20, asset post-compiles 30, compile-busy frames 11 rule=reported categories: a refill replaces no proxy; PSO completion, engine contexts and editor compiles are not scatter's own
+BAR scatter_fresh                  PASS   value=1 fresh op(s), 479 components rebuilt, proxy_expected_rebuilds 479, missing shots [] rule=scatter_fresh rebuilt live proxies as expected rebuilds (proxy_recreates stays 0) and took its shot
+BAR scatter_governor_readback      PASS   value=governor 6 read back {'r.Nanite.MaxPixelsPerEdge': '2', 'r.Shadow.Virtual.ResolutionLodBiasDirectional': '-0.5'} rule=each cvar the governor set reads back its requested value
+BAR apply_fit                      REPORT value=n 583; least squares a 0.00193 b 0.0000905 c 0.0000245; residual p95 0.0485 p99 0.1361; admission a (a + p95) 0.0504; run's predictor a 0.032 b 7e-05 c 3e-05 under-predicted 63 units (worst by 0.306 ms); max unit 0.497 ms at 1593 instances; units > 0.8 ms: 0 rule=apply_unit_ms ~ a + b * changes + c * instances_after (plan C scatter 3.5 and 4 S4 item 5; any unit > 0.8 ms triggers the T0 rank split)
+BAR scatter_gt_ms                  REPORT value=p50 0.033 p99 0.308 p99.9 0.615 max 0.615 (n 422) rule=scatter's own game-thread ms per frame outside the fill (SX11 gates it in Phase 4)
+BAR scatter_flush_ms               REPORT value=p50 0.000 p99 0.416 max 0.717 rule=end-of-frame instance flush ms
+BAR apply_unit_ms_edits            REPORT value=p50 0.013 p99 0.153 max 0.189 (n 104); init_ms 1640 rule=per-unit apply cost outside the fill
+BAR SX9 asset_report               PASS   value=usage_ok=58/58 deps_ok=True flip_ok=True vc_ok=True errors=0 (0 listed); asset_settings_sha256 35f87ad8f1941e59 rule=S3's asset report: usage_ok k/k, deps_ok, flip_ok, vc_ok, errors 0
+BAR SX9 per_instance_random        PASS   value=65 materials, reading PerInstanceRandom: none rule=no scatter material reads PerInstanceRandom (F25)
+BAR SX9 licence                    PASS   value=13 meshes: Fern=project-original, Flower=project-original, GrassT0=project-original, GrassT1=project-original, RockA=project-original, RockB=project-original, ShrubA=project-original, ShrubB=project-original, TreeBroadA=project-original, TreeBroadB=project-original, TreeConiferA=project-original, TreeConiferB=project-original, Tussock=project-original rule=every loaded mesh maps through report.json to a manifest row with licence in ('CC0-1.0', 'project-original', 'epic'), with its usage rows ok
+BAR scatter_verify_full_up_axis    PASS   value=start max_dup 2.11e-08 rad; fresh max_dup 2.11e-08 rad; edited max_dup 9.29e-06 rad; undone max_dup 2.11e-08 rad rule=every verify compares each instance's full up axis with HF's cell-triangle rule (no angle-only exemption)
+BAR SX5 oracle (other dumps)       REPORT value=dumps not at the saved state or no saved files: no dumps rule=the oracle needs the dump's own heights
+BAR proxy_events_logged            PASS   value=1675 events, 0 dropped rule=every proxy and compile event is in the log (none dropped past the bound)
+BAR compile_events_per_phase       REPORT value={'before_ops': {'asset_post_compile': 2, 'shader_propagation': 1}, 'default': {'compile_busy_frame': 6, 'asset_post_compile': 8, 'shader_propagation': 2, 'compile_recreate': 8}, 'fill': {'compile_busy_frame': 5, 'compile_recreate': 65, 'asset_post_compile': 4, 'shader_propagation': 1}, 'idle': {'asset_post_compile': 16, 'shader_propagation': 16}} rule=shader propagations, asset post-compiles, compile-busy frames and later proxies per script phase (refills, PSO, engine and editor-compile recreates; reported)
+SCATTER PASS
+exit=0
+
+$ python Tools/parse_terrain.py --equal-hashes Out/sxp_default Out/sxp_t0
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=17/17 rule=completed=true and ops_done == ops_total
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=17/17 rule=completed=true and ops_done == ops_total
+BAR shared_hashes                  PASS   value=['edited', 'final', 'start'] rule=>= 1 shared hash op
+BAR height_fnv_equal               PASS   value=equal at 3 shared hashes rule=equal at every shared hash
+BAR splat_fnv_equal                PASS   value=equal at 3 shared hashes rule=equal at every shared hash
+BAR final_equal                    PASS   value=0x51e77d15/0xb58a9dc5 vs 0x51e77d15/0xb58a9dc5 rule=final hashes equal
+BAR ticks_applied_eq_ticks_a       PASS   value=2 strokes, 0 mismatched rule=ticks_applied == ticks
+BAR ticks_applied_eq_ticks_b       PASS   value=2 strokes, 0 mismatched rule=ticks_applied == ticks
+BAR saved_files_sha256             REPORT value=no saved files in both runs rule=compared when both runs saved
+BAR scatter_config                 PASS   value=equal rule=config_fnv, level and mesh list equal, else FAIL config mismatch (fix the run, never the bar)
+BAR scatter_hashes_equal           PASS   value=equal at 3 shared hashes rule=scatter_fnv, scatter_live_fnv, scatter_count equal
+EQUAL-HASHES PASS
+exit=0
+
+$ python Tools/parse_terrain.py --equal-hashes Out/sxp_default Out/sxp_clear
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=17/17 rule=completed=true and ops_done == ops_total
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=17/17 rule=completed=true and ops_done == ops_total
+BAR shared_hashes                  PASS   value=['edited', 'final', 'start'] rule=>= 1 shared hash op
+BAR height_fnv_equal               PASS   value=equal at 3 shared hashes rule=equal at every shared hash
+BAR splat_fnv_equal                PASS   value=equal at 3 shared hashes rule=equal at every shared hash
+BAR final_equal                    PASS   value=0x51e77d15/0xb58a9dc5 vs 0x51e77d15/0xb58a9dc5 rule=final hashes equal
+BAR ticks_applied_eq_ticks_a       PASS   value=2 strokes, 0 mismatched rule=ticks_applied == ticks
+BAR ticks_applied_eq_ticks_b       PASS   value=2 strokes, 0 mismatched rule=ticks_applied == ticks
+BAR saved_files_sha256             REPORT value=no saved files in both runs rule=compared when both runs saved
+BAR scatter_config                 PASS   value=equal rule=config_fnv, level and mesh list equal, else FAIL config mismatch (fix the run, never the bar)
+BAR scatter_hashes_equal           PASS   value=equal at 3 shared hashes rule=scatter_fnv, scatter_live_fnv, scatter_count equal
+EQUAL-HASHES PASS
+exit=0
+
+$ python Tools/parse_terrain.py --equal-hashes Out/sxp_default Out/sxp_gov6
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=17/17 rule=completed=true and ops_done == ops_total
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=17/17 rule=completed=true and ops_done == ops_total
+BAR shared_hashes                  PASS   value=['edited', 'final', 'start'] rule=>= 1 shared hash op
+BAR height_fnv_equal               PASS   value=equal at 3 shared hashes rule=equal at every shared hash
+BAR splat_fnv_equal                PASS   value=equal at 3 shared hashes rule=equal at every shared hash
+BAR final_equal                    PASS   value=0x51e77d15/0xb58a9dc5 vs 0x51e77d15/0xb58a9dc5 rule=final hashes equal
+BAR ticks_applied_eq_ticks_a       PASS   value=2 strokes, 0 mismatched rule=ticks_applied == ticks
+BAR ticks_applied_eq_ticks_b       PASS   value=2 strokes, 0 mismatched rule=ticks_applied == ticks
+BAR saved_files_sha256             REPORT value=no saved files in both runs rule=compared when both runs saved
+BAR scatter_config                 PASS   value=equal rule=config_fnv, level and mesh list equal, else FAIL config mismatch (fix the run, never the bar)
+BAR scatter_hashes_equal           PASS   value=equal at 3 shared hashes rule=scatter_fnv, scatter_live_fnv, scatter_count equal
+EQUAL-HASHES PASS
+exit=0
+
+$ python Tools/parse_terrain.py --teardown Out/tearx
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=3/3 rule=completed=true and ops_done == ops_total
+BAR exit_normal                    PASS   value=completed=True exit_code=0 rule=the script completed and exited 0 (a normal exit runs EndPlay)
+BAR in_flight_at_results           PASS   value=in_flight_now=2 busy_now=2 rule=jobs were in flight when the results were written (the teardown had work to wait on)
+BAR teardown_line                  PASS   value=scatter teardown: in_flight_before=2 task_handles_waited=2 in_flight_after=0 busy_after=0 dispatched=155 applied=144 skipped=9 discarded=0 cancelled=2 rule=EndPlay logged its teardown
+BAR teardown_waited                PASS   value=in_flight before 2, handles waited 2, in flight after 0, busy after 0 rule=jobs in flight before Shutdown, every task handle waited, none in flight after
+BAR teardown_counters_balanced     PASS   value=dispatched 155 = applied 144 + skipped 9 + discarded 0 + cancelled 2 rule=dispatched == applied + skipped_identical + discarded_epoch + cancelled after teardown
+TEARDOWN PASS
+exit=0
+
+$ python -c import json,os;r=json.load(open('Out/failx/results.json'));print('FAILX completed=%s exit_code=%s fail_reason=%r'%(r.get('completed'),r.get('exit_code'),r.get('fail_reason')));print('Saved/Crashes entries:',os.listdir('Saved/Crashes') if os.path.isdir('Saved/Crashes') else 'no folder')
+FAILX completed=False exit_code=2 fail_reason='op 4 (fail) failed: fail op (exit-code contract test)'
+Saved/Crashes entries: []
+exit=0
+
+$ python Tools/parse_terrain.py --scatter Out/lookx_smoke
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=64/64 rule=completed=true and ops_done == ops_total
+BAR scatter_log_scan               PASS   value=0 line(s) rule=no LogMaterial warning/error on /Game/Terrain/Scatter, no VSM page-pool overflow
+BAR scatter_block                  PASS   value=available=True enabled=True rule=results.json scatter block from a run with scatter
+BAR scatter_options                PASS   value=config_fnv=0xe55e190fcc1aadc9 level=L0 params_error='' mesh_errors='' rule=options.scatter present, no option or mesh error
+BAR scatter_verify                 PASS   value=1 verifies, failed [] rule=>= 1 scatter_verify and every one passes (live == reference, readback, z, up axis, nothing pending)
+  verify look       pass=True live=0xfd3adeeb5f20cc46 ref=0xfd3adeeb5f20cc46 instances=237371 max dpos 0.00000 cm drot 5.16e-08 rad dz 1.75e-05 m dup 1.55e-05 rad 
+BAR scatter_hash_live_eq_ref       PASS   value=equal at 1 settled hashes rule=scatter_live_fnv == scatter_fnv at every hash taken with nothing pending
+BAR scatter_counters_balanced      PASS   value=dispatched=1125 applied=1012 skipped=113 discarded=0 cancelled=0 in_flight=0 busy=0 rule=dispatched == applied + skipped_identical + discarded_epoch + cancelled; 0 in flight and 0 busy at the end
+BAR scatter_verify_instances       PASS   value=read back [('look', 237371)] rule=every scatter_verify with components read back > 0 instances (no vacuous live == reference)
+BAR scatter_proxy_recreates        PASS   value=recreates=0 (during edits 0, apply-dirtied 0); first=480 expected=0 rule=proxy_recreates == 0: no live proxy replaced after scatter's own apply dirtied it, nor for any unexplained dirty mark
+BAR proxy_compile_recreates_during_edits PASS   value=0 (all run: 121) rule=editor-compile recreates while edits were in flight == 0
+BAR proxy_engine_recreates_during_edits PASS   value=0 (all run: 0) rule=engine-wide recreates while edits were in flight == 0
+BAR scatter_proxy_reported         REPORT value=refills=0 (during edits 0) pso=0 (during edits 0) engine=0 editor_compile=121; shader propagations 21, asset post-compiles 32, compile-busy frames 9 rule=reported categories: a refill replaces no proxy; PSO completion, engine contexts and editor compiles are not scatter's own
+BAR apply_fit                      REPORT value=n 3583; least squares a 0.00441 b 0.0000507 c 0.0000094; residual p95 0.0502 p99 0.1454; admission a (a + p95) 0.0546; run's predictor a 0.032 b 7e-05 c 3e-05 under-predicted 154 units (worst by 0.303 ms); max unit 0.447 ms at 1143 instances; units > 0.8 ms: 0 rule=apply_unit_ms ~ a + b * changes + c * instances_after (plan C scatter 3.5 and 4 S4 item 5; any unit > 0.8 ms triggers the T0 rank split)
+BAR scatter_gt_ms                  REPORT value=p50 0.039 p99 0.402 p99.9 0.731 max 1.036 (n 2700) rule=scatter's own game-thread ms per frame outside the fill (SX11 gates it in Phase 4)
+BAR scatter_flush_ms               REPORT value=p50 0.000 p99 0.625 max 1.244 rule=end-of-frame instance flush ms
+BAR apply_unit_ms_edits            REPORT value=p50 0.016 p99 0.100 max 0.401 (n 3104); init_ms 1903 rule=per-unit apply cost outside the fill
+BAR SX9 asset_report               PASS   value=usage_ok=58/58 deps_ok=True flip_ok=True vc_ok=True errors=0 (0 listed); asset_settings_sha256 35f87ad8f1941e59 rule=S3's asset report: usage_ok k/k, deps_ok, flip_ok, vc_ok, errors 0
+BAR SX9 per_instance_random        PASS   value=65 materials, reading PerInstanceRandom: none rule=no scatter material reads PerInstanceRandom (F25)
+BAR SX9 licence                    PASS   value=13 meshes: Fern=project-original, Flower=project-original, GrassT0=project-original, GrassT1=project-original, RockA=project-original, RockB=project-original, ShrubA=project-original, ShrubB=project-original, TreeBroadA=project-original, TreeBroadB=project-original, TreeConiferA=project-original, TreeConiferB=project-original, Tussock=project-original rule=every loaded mesh maps through report.json to a manifest row with licence in ('CC0-1.0', 'project-original', 'epic'), with its usage rows ok
+BAR scatter_verify_full_up_axis    PASS   value=look max_dup 1.55e-05 rad rule=every verify compares each instance's full up axis with HF's cell-triangle rule (no angle-only exemption)
+BAR SX5 oracle (other dumps)       REPORT value=dumps not at the saved state or no saved files: no dumps rule=the oracle needs the dump's own heights
+BAR proxy_events_logged            PASS   value=4246 events, 0 dropped rule=every proxy and compile event is in the log (none dropped past the bound)
+BAR compile_events_per_phase       REPORT value={'before_ops': {'asset_post_compile': 2, 'shader_propagation': 1}, 'default': {'compile_busy_frame': 9, 'asset_post_compile': 14, 'shader_propagation': 4, 'compile_recreate': 121}, 'paint': {'asset_post_compile': 16, 'shader_propagation': 16}} rule=shader propagations, asset post-compiles, compile-busy frames and later proxies per script phase (refills, PSO, engine and editor-compile recreates; reported)
+SCATTER PASS
+exit=0
+
+$ python Tools/parse_terrain.py --scatter Out/videox_smoke
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=20/20 rule=completed=true and ops_done == ops_total
+BAR scatter_log_scan               PASS   value=0 line(s) rule=no LogMaterial warning/error on /Game/Terrain/Scatter, no VSM page-pool overflow
+BAR scatter_block                  PASS   value=available=True enabled=True rule=results.json scatter block from a run with scatter
+BAR scatter_options                PASS   value=config_fnv=0xe55e190fcc1aadc9 level=L0 params_error='' mesh_errors='' rule=options.scatter present, no option or mesh error
+BAR scatter_verify                 PASS   value=1 verifies, failed [] rule=>= 1 scatter_verify and every one passes (live == reference, readback, z, up axis, nothing pending)
+  verify end        pass=True live=0x938576f9cde5582d ref=0x938576f9cde5582d instances=237484 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.53e-05 m dup 9.13e-06 rad 
+BAR scatter_hash_live_eq_ref       PASS   value=equal at 1 settled hashes rule=scatter_live_fnv == scatter_fnv at every hash taken with nothing pending
+BAR scatter_counters_balanced      PASS   value=dispatched=646 applied=581 skipped=65 discarded=0 cancelled=0 in_flight=0 busy=0 rule=dispatched == applied + skipped_identical + discarded_epoch + cancelled; 0 in flight and 0 busy at the end
+BAR scatter_verify_instances       PASS   value=read back [('end', 237484)] rule=every scatter_verify with components read back > 0 instances (no vacuous live == reference)
+BAR scatter_proxy_recreates        PASS   value=recreates=0 (during edits 0, apply-dirtied 0); first=480 expected=0 rule=proxy_recreates == 0: no live proxy replaced after scatter's own apply dirtied it, nor for any unexplained dirty mark
+BAR proxy_compile_recreates_during_edits PASS   value=0 (all run: 73) rule=editor-compile recreates while edits were in flight == 0
+BAR proxy_engine_recreates_during_edits PASS   value=0 (all run: 0) rule=engine-wide recreates while edits were in flight == 0
+BAR scatter_proxy_reported         REPORT value=refills=0 (during edits 0) pso=0 (during edits 0) engine=0 editor_compile=73; shader propagations 20, asset post-compiles 29, compile-busy frames 9 rule=reported categories: a refill replaces no proxy; PSO completion, engine contexts and editor compiles are not scatter's own
+BAR apply_fit                      REPORT value=n 1840; least squares a 0.00638 b 0.0000954 c 0.0000022; residual p95 0.0302 p99 0.0715; admission a (a + p95) 0.0366; run's predictor a 0.032 b 7e-05 c 3e-05 under-predicted 75 units (worst by 0.392 ms); max unit 0.538 ms at 1278 instances; units > 0.8 ms: 0 rule=apply_unit_ms ~ a + b * changes + c * instances_after (plan C scatter 3.5 and 4 S4 item 5; any unit > 0.8 ms triggers the T0 rank split)
+BAR scatter_gt_ms                  REPORT value=p50 0.071 p99 0.462 p99.9 0.555 max 0.555 (n 526) rule=scatter's own game-thread ms per frame outside the fill (SX11 gates it in Phase 4)
+BAR scatter_flush_ms               REPORT value=p50 0.000 p99 0.736 max 0.797 rule=end-of-frame instance flush ms
+BAR apply_unit_ms_edits            REPORT value=p50 0.011 p99 0.098 max 0.170 (n 1361); init_ms 2021 rule=per-unit apply cost outside the fill
+BAR SX9 asset_report               PASS   value=usage_ok=58/58 deps_ok=True flip_ok=True vc_ok=True errors=0 (0 listed); asset_settings_sha256 35f87ad8f1941e59 rule=S3's asset report: usage_ok k/k, deps_ok, flip_ok, vc_ok, errors 0
+BAR SX9 per_instance_random        PASS   value=65 materials, reading PerInstanceRandom: none rule=no scatter material reads PerInstanceRandom (F25)
+BAR SX9 licence                    PASS   value=13 meshes: Fern=project-original, Flower=project-original, GrassT0=project-original, GrassT1=project-original, RockA=project-original, RockB=project-original, ShrubA=project-original, ShrubB=project-original, TreeBroadA=project-original, TreeBroadB=project-original, TreeConiferA=project-original, TreeConiferB=project-original, Tussock=project-original rule=every loaded mesh maps through report.json to a manifest row with licence in ('CC0-1.0', 'project-original', 'epic'), with its usage rows ok
+BAR scatter_verify_full_up_axis    PASS   value=end max_dup 9.13e-06 rad rule=every verify compares each instance's full up axis with HF's cell-triangle rule (no angle-only exemption)
+BAR SX5 oracle (other dumps)       REPORT value=dumps not at the saved state or no saved files: no dumps rule=the oracle needs the dump's own heights
+BAR proxy_events_logged            PASS   value=2451 events, 0 dropped rule=every proxy and compile event is in the log (none dropped past the bound)
+BAR compile_events_per_phase       REPORT value={'before_ops': {'asset_post_compile': 2, 'shader_propagation': 1}, 'default': {'compile_busy_frame': 6, 'asset_post_compile': 9, 'shader_propagation': 2, 'compile_recreate': 8}, 'fill': {'compile_recreate': 65, 'compile_busy_frame': 3, 'shader_propagation': 1, 'asset_post_compile': 2}, 'movie': {'asset_post_compile': 16, 'shader_propagation': 16}} rule=shader propagations, asset post-compiles, compile-busy frames and later proxies per script phase (refills, PSO, engine and editor-compile recreates; reported)
+SCATTER PASS
+exit=0
+
+$ python Tools/parse_terrain.py --scatter Out/soaks_smoke
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=12/12 rule=completed=true and ops_done == ops_total
+BAR scatter_log_scan               PASS   value=0 line(s) rule=no LogMaterial warning/error on /Game/Terrain/Scatter, no VSM page-pool overflow
+BAR scatter_block                  PASS   value=available=True enabled=True rule=results.json scatter block from a run with scatter
+BAR scatter_options                PASS   value=config_fnv=0xe55e190fcc1aadc9 level=L0 params_error='' mesh_errors='' rule=options.scatter present, no option or mesh error
+BAR scatter_verify                 PASS   value=1 verifies, failed [] rule=>= 1 scatter_verify and every one passes (live == reference, readback, z, up axis, nothing pending)
+  verify end        pass=True live=0x42eb3c7bb3d14f78 ref=0x42eb3c7bb3d14f78 instances=215901 max dpos 0.00000 cm drot 5.96e-08 rad dz 1.83e-05 m dup 1.61e-05 rad 
+BAR scatter_hash_live_eq_ref       PASS   value=equal at 1 settled hashes rule=scatter_live_fnv == scatter_fnv at every hash taken with nothing pending
+BAR scatter_counters_balanced      PASS   value=dispatched=3563 applied=2021 skipped=1542 discarded=0 cancelled=0 in_flight=0 busy=0 rule=dispatched == applied + skipped_identical + discarded_epoch + cancelled; 0 in flight and 0 busy at the end
+BAR scatter_verify_instances       PASS   value=read back [('end', 215901)] rule=every scatter_verify with components read back > 0 instances (no vacuous live == reference)
+BAR scatter_proxy_recreates        PASS   value=recreates=0 (during edits 0, apply-dirtied 0); first=480 expected=0 rule=proxy_recreates == 0: no live proxy replaced after scatter's own apply dirtied it, nor for any unexplained dirty mark
+BAR proxy_compile_recreates_during_edits PASS   value=0 (all run: 80) rule=editor-compile recreates while edits were in flight == 0
+BAR proxy_engine_recreates_during_edits PASS   value=0 (all run: 0) rule=engine-wide recreates while edits were in flight == 0
+BAR scatter_proxy_reported         REPORT value=refills=0 (during edits 0) pso=0 (during edits 0) engine=0 editor_compile=80; shader propagations 4, asset post-compiles 14, compile-busy frames 11 rule=reported categories: a refill replaces no proxy; PSO completion, engine contexts and editor compiles are not scatter's own
+BAR apply_fit                      REPORT value=n 6361; least squares a 0.00414 b 0.0000536 c 0.0000088; residual p95 0.0269 p99 0.0730; admission a (a + p95) 0.0311; run's predictor a 0.032 b 7e-05 c 3e-05 under-predicted 83 units (worst by 0.187 ms); max unit 0.327 ms at 1371 instances; units > 0.8 ms: 0 rule=apply_unit_ms ~ a + b * changes + c * instances_after (plan C scatter 3.5 and 4 S4 item 5; any unit > 0.8 ms triggers the T0 rank split)
+BAR scatter_gt_ms                  REPORT value=p50 0.031 p99 0.342 p99.9 0.424 max 0.470 (n 7716) rule=scatter's own game-thread ms per frame outside the fill (SX11 gates it in Phase 4)
+BAR scatter_flush_ms               REPORT value=p50 0.000 p99 0.474 max 0.717 rule=end-of-frame instance flush ms
+BAR apply_unit_ms_edits            REPORT value=p50 0.014 p99 0.090 max 0.305 (n 5882); init_ms 1664 rule=per-unit apply cost outside the fill
+BAR SX9 asset_report               PASS   value=usage_ok=58/58 deps_ok=True flip_ok=True vc_ok=True errors=0 (0 listed); asset_settings_sha256 35f87ad8f1941e59 rule=S3's asset report: usage_ok k/k, deps_ok, flip_ok, vc_ok, errors 0
+BAR SX9 per_instance_random        PASS   value=65 materials, reading PerInstanceRandom: none rule=no scatter material reads PerInstanceRandom (F25)
+BAR SX9 licence                    PASS   value=13 meshes: Fern=project-original, Flower=project-original, GrassT0=project-original, GrassT1=project-original, RockA=project-original, RockB=project-original, ShrubA=project-original, ShrubB=project-original, TreeBroadA=project-original, TreeBroadB=project-original, TreeConiferA=project-original, TreeConiferB=project-original, Tussock=project-original rule=every loaded mesh maps through report.json to a manifest row with licence in ('CC0-1.0', 'project-original', 'epic'), with its usage rows ok
+BAR scatter_verify_full_up_axis    PASS   value=end max_dup 1.61e-05 rad rule=every verify compares each instance's full up axis with HF's cell-triangle rule (no angle-only exemption)
+BAR SX5 oracle (other dumps)       REPORT value=dumps not at the saved state or no saved files: no dumps rule=the oracle needs the dump's own heights
+BAR proxy_events_logged            PASS   value=6950 events, 0 dropped rule=every proxy and compile event is in the log (none dropped past the bound)
+BAR compile_events_per_phase       REPORT value={'before_ops': {'asset_post_compile': 2, 'shader_propagation': 1}, 'default': {'compile_busy_frame': 6, 'asset_post_compile': 8, 'shader_propagation': 2, 'compile_recreate': 8}, 'fill': {'compile_busy_frame': 5, 'asset_post_compile': 4, 'compile_recreate': 72, 'shader_propagation': 1}} rule=shader propagations, asset post-compiles, compile-busy frames and later proxies per script phase (refills, PSO, engine and editor-compile recreates; reported)
+SCATTER PASS
+exit=0
+
+$ python Tools/parse_terrain.py --scatter Out/c1s_smoke
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=62/62 rule=completed=true and ops_done == ops_total
+BAR scatter_log_scan               PASS   value=0 line(s) rule=no LogMaterial warning/error on /Game/Terrain/Scatter, no VSM page-pool overflow
+BAR scatter_block                  PASS   value=available=True enabled=True rule=results.json scatter block from a run with scatter
+BAR scatter_options                PASS   value=config_fnv=0xe55e190fcc1aadc9 level=L0 params_error='' mesh_errors='' rule=options.scatter present, no option or mesh error
+BAR scatter_verify                 PASS   value=1 verifies, failed [] rule=>= 1 scatter_verify and every one passes (live == reference, readback, z, up axis, nothing pending)
+  verify end        pass=True live=0xc2ea6e0e31bb1b69 ref=0xc2ea6e0e31bb1b69 instances=215525 max dpos 0.00000 cm drot 5.96e-08 rad dz 1.89e-05 m dup 1.42e-05 rad 
+BAR scatter_hash_live_eq_ref       PASS   value=equal at 1 settled hashes rule=scatter_live_fnv == scatter_fnv at every hash taken with nothing pending
+BAR scatter_counters_balanced      PASS   value=dispatched=3407 applied=2281 skipped=1126 discarded=0 cancelled=0 in_flight=0 busy=0 rule=dispatched == applied + skipped_identical + discarded_epoch + cancelled; 0 in flight and 0 busy at the end
+BAR scatter_verify_instances       PASS   value=read back [('end', 215525)] rule=every scatter_verify with components read back > 0 instances (no vacuous live == reference)
+BAR scatter_proxy_recreates        PASS   value=recreates=0 (during edits 0, apply-dirtied 0); first=479 expected=0 rule=proxy_recreates == 0: no live proxy replaced after scatter's own apply dirtied it, nor for any unexplained dirty mark
+BAR proxy_compile_recreates_during_edits PASS   value=0 (all run: 73) rule=editor-compile recreates while edits were in flight == 0
+BAR proxy_engine_recreates_during_edits PASS   value=0 (all run: 0) rule=engine-wide recreates while edits were in flight == 0
+BAR scatter_proxy_reported         REPORT value=refills=0 (during edits 0) pso=0 (during edits 0) engine=0 editor_compile=73; shader propagations 4, asset post-compiles 13, compile-busy frames 9 rule=reported categories: a refill replaces no proxy; PSO completion, engine contexts and editor compiles are not scatter's own
+BAR apply_fit                      REPORT value=n 7379; least squares a 0.00566 b 0.0000533 c 0.0000140; residual p95 0.0275 p99 0.0751; admission a (a + p95) 0.0331; run's predictor a 0.032 b 7e-05 c 3e-05 under-predicted 128 units (worst by 0.367 ms); max unit 0.513 ms at 1137 instances; units > 0.8 ms: 0 rule=apply_unit_ms ~ a + b * changes + c * instances_after (plan C scatter 3.5 and 4 S4 item 5; any unit > 0.8 ms triggers the T0 rank split)
+BAR scatter_gt_ms                  REPORT value=p50 0.040 p99 0.395 p99.9 0.573 max 3.319 (n 14456) rule=scatter's own game-thread ms per frame outside the fill (SX11 gates it in Phase 4)
+BAR scatter_flush_ms               REPORT value=p50 0.000 p99 0.591 max 1.703 rule=end-of-frame instance flush ms
+BAR apply_unit_ms_edits            REPORT value=p50 0.018 p99 0.112 max 0.451 (n 6900); init_ms 1736 rule=per-unit apply cost outside the fill
+BAR SX9 asset_report               PASS   value=usage_ok=58/58 deps_ok=True flip_ok=True vc_ok=True errors=0 (0 listed); asset_settings_sha256 35f87ad8f1941e59 rule=S3's asset report: usage_ok k/k, deps_ok, flip_ok, vc_ok, errors 0
+BAR SX9 per_instance_random        PASS   value=65 materials, reading PerInstanceRandom: none rule=no scatter material reads PerInstanceRandom (F25)
+BAR SX9 licence                    PASS   value=13 meshes: Fern=project-original, Flower=project-original, GrassT0=project-original, GrassT1=project-original, RockA=project-original, RockB=project-original, ShrubA=project-original, ShrubB=project-original, TreeBroadA=project-original, TreeBroadB=project-original, TreeConiferA=project-original, TreeConiferB=project-original, Tussock=project-original rule=every loaded mesh maps through report.json to a manifest row with licence in ('CC0-1.0', 'project-original', 'epic'), with its usage rows ok
+BAR scatter_verify_full_up_axis    PASS   value=end max_dup 1.42e-05 rad rule=every verify compares each instance's full up axis with HF's cell-triangle rule (no angle-only exemption)
+BAR SX5 oracle (other dumps)       REPORT value=dumps not at the saved state or no saved files: no dumps rule=the oracle needs the dump's own heights
+BAR proxy_events_logged            PASS   value=7957 events, 0 dropped rule=every proxy and compile event is in the log (none dropped past the bound)
+BAR compile_events_per_phase       REPORT value={'before_ops': {'asset_post_compile': 2, 'shader_propagation': 1}, 'default': {'compile_busy_frame': 6, 'asset_post_compile': 9, 'shader_propagation': 2, 'compile_recreate': 8}, 'fill': {'compile_recreate': 65, 'compile_busy_frame': 3, 'shader_propagation': 1, 'asset_post_compile': 2}} rule=shader propagations, asset post-compiles, compile-busy frames and later proxies per script phase (refills, PSO, engine and editor-compile recreates; reported)
+SCATTER PASS
+exit=0
+
+$ python Tools/parse_terrain.py --scatter Out/thinx
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=24/24 rule=completed=true and ops_done == ops_total
+BAR scatter_log_scan               PASS   value=0 line(s) rule=no LogMaterial warning/error on /Game/Terrain/Scatter, no VSM page-pool overflow
+BAR scatter_block                  PASS   value=available=True enabled=True rule=results.json scatter block from a run with scatter
+BAR scatter_options                PASS   value=config_fnv=0xe55e190fcc1aadc9 level=L0 params_error='' mesh_errors='' rule=options.scatter present, no option or mesh error
+BAR scatter_verify                 PASS   value=2 verifies, failed [] rule=>= 1 scatter_verify and every one passes (live == reference, readback, z, up axis, nothing pending)
+  verify start      pass=True live=0x4131188d5be6f199 ref=0x4131188d5be6f199 instances=243011 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.34e-05 m dup 2.11e-08 rad 
+  verify end        pass=True live=0xcb062bdd8e997843 ref=0xcb062bdd8e997843 instances=234363 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.34e-05 m dup 2.11e-08 rad 
+BAR scatter_hash_live_eq_ref       PASS   value=equal at 2 settled hashes rule=scatter_live_fnv == scatter_fnv at every hash taken with nothing pending
+BAR scatter_counters_balanced      PASS   value=dispatched=224 applied=189 skipped=35 discarded=0 cancelled=0 in_flight=0 busy=0 rule=dispatched == applied + skipped_identical + discarded_epoch + cancelled; 0 in flight and 0 busy at the end
+BAR scatter_verify_instances       PASS   value=read back [('start', 243011), ('end', 234363)] rule=every scatter_verify with components read back > 0 instances (no vacuous live == reference)
+BAR scatter_proxy_recreates        PASS   value=recreates=0 (during edits 0, apply-dirtied 0); first=479 expected=0 rule=proxy_recreates == 0: no live proxy replaced after scatter's own apply dirtied it, nor for any unexplained dirty mark
+BAR proxy_compile_recreates_during_edits PASS   value=0 (all run: 65) rule=editor-compile recreates while edits were in flight == 0
+BAR proxy_engine_recreates_during_edits PASS   value=0 (all run: 0) rule=engine-wide recreates while edits were in flight == 0
+BAR scatter_proxy_reported         REPORT value=refills=0 (during edits 0) pso=0 (during edits 0) engine=0 editor_compile=65; shader propagations 4, asset post-compiles 12, compile-busy frames 8 rule=reported categories: a refill replaces no proxy; PSO completion, engine contexts and editor compiles are not scatter's own
+BAR apply_fit                      REPORT value=n 680; least squares a 0.00499 b 0.0000970 c 0.0000124; residual p95 0.0354 p99 0.0680; admission a (a + p95) 0.0403; run's predictor a 0.032 b 7e-05 c 3e-05 under-predicted 76 units (worst by 0.097 ms); max unit 0.252 ms at 1488 instances; units > 0.8 ms: 0 rule=apply_unit_ms ~ a + b * changes + c * instances_after (plan C scatter 3.5 and 4 S4 item 5; any unit > 0.8 ms triggers the T0 rank split)
+BAR scatter_gt_ms                  REPORT value=p50 0.035 p99 0.288 p99.9 0.530 max 0.530 (n 540) rule=scatter's own game-thread ms per frame outside the fill (SX11 gates it in Phase 4)
+BAR scatter_flush_ms               REPORT value=p50 0.000 p99 0.359 max 0.589 rule=end-of-frame instance flush ms
+BAR apply_unit_ms_edits            REPORT value=p50 0.012 p99 0.118 max 0.205 (n 201); init_ms 1500 rule=per-unit apply cost outside the fill
+BAR SX9 asset_report               PASS   value=usage_ok=58/58 deps_ok=True flip_ok=True vc_ok=True errors=0 (0 listed); asset_settings_sha256 35f87ad8f1941e59 rule=S3's asset report: usage_ok k/k, deps_ok, flip_ok, vc_ok, errors 0
+BAR SX9 per_instance_random        PASS   value=65 materials, reading PerInstanceRandom: none rule=no scatter material reads PerInstanceRandom (F25)
+BAR SX9 licence                    PASS   value=13 meshes: Fern=project-original, Flower=project-original, GrassT0=project-original, GrassT1=project-original, RockA=project-original, RockB=project-original, ShrubA=project-original, ShrubB=project-original, TreeBroadA=project-original, TreeBroadB=project-original, TreeConiferA=project-original, TreeConiferB=project-original, Tussock=project-original rule=every loaded mesh maps through report.json to a manifest row with licence in ('CC0-1.0', 'project-original', 'epic'), with its usage rows ok
+BAR scatter_verify_full_up_axis    PASS   value=start max_dup 2.11e-08 rad; end max_dup 2.11e-08 rad rule=every verify compares each instance's full up axis with HF's cell-triangle rule (no angle-only exemption)
+BAR SX5 oracle end_sha256          PASS   value=ea28b96cd97f091b vs results.json ea28b96cd97f091b rule=the dump file's sha256 equals the one the run recorded
+BAR SX5 oracle end                 PASS   value=records=234363 max|dz|=0.046 mm bad_z=0 bad_gradient=0 limit violations=0 rule=z within 1 mm of the class rule on the saved heights, gxq/gyq exact, every instance inside its class's splat and slope limits (margins 2/255, 0.5 deg)
+BAR SX5 oracle (other dumps)       REPORT value=dumps not at the saved state or no saved files: ['start'] rule=the oracle needs the dump's own heights
+BAR proxy_events_logged            PASS   value=1248 events, 0 dropped rule=every proxy and compile event is in the log (none dropped past the bound)
+BAR compile_events_per_phase       REPORT value={'before_ops': {'asset_post_compile': 2, 'shader_propagation': 1}, 'default': {'compile_busy_frame': 5, 'asset_post_compile': 8, 'shader_propagation': 2, 'compile_recreate': 39}, 'fill': {'compile_busy_frame': 3, 'shader_propagation': 1, 'asset_post_compile': 2, 'compile_recreate': 26}} rule=shader propagations, asset post-compiles, compile-busy frames and later proxies per script phase (refills, PSO, engine and editor-compile recreates; reported)
+SCATTER PASS
+exit=0
+
+$ python Tools/parse_terrain.py --scatter Out/shadx
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=38/38 rule=completed=true and ops_done == ops_total
+BAR scatter_log_scan               PASS   value=0 line(s) rule=no LogMaterial warning/error on /Game/Terrain/Scatter, no VSM page-pool overflow
+BAR scatter_block                  PASS   value=available=True enabled=True rule=results.json scatter block from a run with scatter
+BAR scatter_options                PASS   value=config_fnv=0xe55e190fcc1aadc9 level=L0 params_error='' mesh_errors='' rule=options.scatter present, no option or mesh error
+BAR scatter_verify                 PASS   value=3 verifies, failed [] rule=>= 1 scatter_verify and every one passes (live == reference, readback, z, up axis, nothing pending)
+  verify start      pass=True live=0x4131188d5be6f199 ref=0x4131188d5be6f199 instances=243011 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.34e-05 m dup 2.11e-08 rad 
+  verify raised     pass=True live=0x9b600e4b7f77dcfc ref=0x9b600e4b7f77dcfc instances=243008 max dpos 0.00000 cm drot 5.16e-08 rad dz 1.47e-05 m dup 1.02e-05 rad 
+  verify undone     pass=True live=0x663655c22dd70b0f ref=0x663655c22dd70b0f instances=243008 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.47e-05 m dup 8.46e-06 rad 
+BAR scatter_hash_live_eq_ref       PASS   value=equal at 2 settled hashes rule=scatter_live_fnv == scatter_fnv at every hash taken with nothing pending
+BAR scatter_counters_balanced      PASS   value=dispatched=212 applied=166 skipped=46 discarded=0 cancelled=0 in_flight=0 busy=0 rule=dispatched == applied + skipped_identical + discarded_epoch + cancelled; 0 in flight and 0 busy at the end
+BAR scatter_verify_instances       PASS   value=read back [('start', 243011), ('raised', 243008), ('undone', 243008)] rule=every scatter_verify with components read back > 0 instances (no vacuous live == reference)
+BAR scatter_proxy_recreates        PASS   value=recreates=0 (during edits 0, apply-dirtied 0); first=479 expected=1437 rule=proxy_recreates == 0: no live proxy replaced after scatter's own apply dirtied it, nor for any unexplained dirty mark
+BAR proxy_compile_recreates_during_edits PASS   value=0 (all run: 81) rule=editor-compile recreates while edits were in flight == 0
+BAR proxy_engine_recreates_during_edits PASS   value=0 (all run: 0) rule=engine-wide recreates while edits were in flight == 0
+BAR scatter_proxy_reported         REPORT value=refills=0 (during edits 0) pso=0 (during edits 0) engine=0 editor_compile=81; shader propagations 20, asset post-compiles 30, compile-busy frames 12 rule=reported categories: a refill replaces no proxy; PSO completion, engine contexts and editor compiles are not scatter's own
+BAR scatter_fresh                  PASS   value=3 fresh op(s), 1437 components rebuilt, proxy_expected_rebuilds 1437, missing shots [] rule=scatter_fresh rebuilt live proxies as expected rebuilds (proxy_recreates stays 0) and took its shot
+BAR apply_fit                      REPORT value=n 657; least squares a 0.00326 b 0.0001147 c -0.0000031; residual p95 0.0414 p99 0.0934; admission a (a + p95) 0.0447; run's predictor a 0.032 b 7e-05 c 3e-05 under-predicted 78 units (worst by 0.323 ms); max unit 0.521 ms at 1662 instances; units > 0.8 ms: 0 rule=apply_unit_ms ~ a + b * changes + c * instances_after (plan C scatter 3.5 and 4 S4 item 5; any unit > 0.8 ms triggers the T0 rank split)
+BAR scatter_gt_ms                  REPORT value=p50 0.033 p99 0.214 p99.9 0.365 max 0.412 (n 1636) rule=scatter's own game-thread ms per frame outside the fill (SX11 gates it in Phase 4)
+BAR scatter_flush_ms               REPORT value=p50 0.000 p99 0.412 max 0.601 rule=end-of-frame instance flush ms
+BAR apply_unit_ms_edits            REPORT value=p50 0.009 p99 0.093 max 0.124 (n 178); init_ms 1678 rule=per-unit apply cost outside the fill
+BAR SX9 asset_report               PASS   value=usage_ok=58/58 deps_ok=True flip_ok=True vc_ok=True errors=0 (0 listed); asset_settings_sha256 35f87ad8f1941e59 rule=S3's asset report: usage_ok k/k, deps_ok, flip_ok, vc_ok, errors 0
+BAR SX9 per_instance_random        PASS   value=65 materials, reading PerInstanceRandom: none rule=no scatter material reads PerInstanceRandom (F25)
+BAR SX9 licence                    PASS   value=13 meshes: Fern=project-original, Flower=project-original, GrassT0=project-original, GrassT1=project-original, RockA=project-original, RockB=project-original, ShrubA=project-original, ShrubB=project-original, TreeBroadA=project-original, TreeBroadB=project-original, TreeConiferA=project-original, TreeConiferB=project-original, Tussock=project-original rule=every loaded mesh maps through report.json to a manifest row with licence in ('CC0-1.0', 'project-original', 'epic'), with its usage rows ok
+BAR scatter_verify_full_up_axis    PASS   value=start max_dup 2.11e-08 rad; raised max_dup 1.02e-05 rad; undone max_dup 8.46e-06 rad rule=every verify compares each instance's full up axis with HF's cell-triangle rule (no angle-only exemption)
+BAR SX5 oracle (other dumps)       REPORT value=dumps not at the saved state or no saved files: no dumps rule=the oracle needs the dump's own heights
+BAR proxy_events_logged            PASS   value=2716 events, 0 dropped rule=every proxy and compile event is in the log (none dropped past the bound)
+BAR compile_events_per_phase       REPORT value={'before_ops': {'asset_post_compile': 2, 'shader_propagation': 1}, 'default': {'compile_busy_frame': 6, 'asset_post_compile': 8, 'shader_propagation': 2, 'compile_recreate': 8}, 'fill': {'compile_busy_frame': 6, 'asset_post_compile': 4, 'compile_recreate': 73, 'shader_propagation': 1}, 'a': {'asset_post_compile': 16, 'shader_propagation': 16}} rule=shader propagations, asset post-compiles, compile-busy frames and later proxies per script phase (refills, PSO, engine and editor-compile recreates; reported)
+SCATTER PASS
+exit=0
+
+$ python Tools/parse_terrain.py --scatter Out/latx
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=248/248 rule=completed=true and ops_done == ops_total
+BAR scatter_log_scan               PASS   value=0 line(s) rule=no LogMaterial warning/error on /Game/Terrain/Scatter, no VSM page-pool overflow
+BAR scatter_block                  PASS   value=available=True enabled=True rule=results.json scatter block from a run with scatter
+BAR scatter_options                PASS   value=config_fnv=0xe55e190fcc1aadc9 level=L0 params_error='' mesh_errors='' rule=options.scatter present, no option or mesh error
+BAR scatter_verify                 PASS   value=1 verifies, failed [] rule=>= 1 scatter_verify and every one passes (live == reference, readback, z, up axis, nothing pending)
+  verify end        pass=True live=0xe23d3c84c0ab297e ref=0xe23d3c84c0ab297e instances=96793 max dpos 0.00000 cm drot 5.16e-08 rad dz 1.58e-05 m dup 1.54e-05 rad 
+BAR scatter_hash_live_eq_ref       PASS   value=equal at 1 settled hashes rule=scatter_live_fnv == scatter_fnv at every hash taken with nothing pending
+BAR scatter_counters_balanced      PASS   value=dispatched=1966 applied=1331 skipped=635 discarded=0 cancelled=0 in_flight=0 busy=0 rule=dispatched == applied + skipped_identical + discarded_epoch + cancelled; 0 in flight and 0 busy at the end
+BAR scatter_verify_instances       PASS   value=read back [('end', 96793)] rule=every scatter_verify with components read back > 0 instances (no vacuous live == reference)
+BAR scatter_proxy_recreates        PASS   value=recreates=0 (during edits 0, apply-dirtied 0); first=480 expected=0 rule=proxy_recreates == 0: no live proxy replaced after scatter's own apply dirtied it, nor for any unexplained dirty mark
+BAR proxy_compile_recreates_during_edits PASS   value=0 (all run: 73) rule=editor-compile recreates while edits were in flight == 0
+BAR proxy_engine_recreates_during_edits PASS   value=0 (all run: 0) rule=engine-wide recreates while edits were in flight == 0
+BAR scatter_proxy_reported         REPORT value=refills=0 (during edits 0) pso=0 (during edits 0) engine=0 editor_compile=73; shader propagations 4, asset post-compiles 13, compile-busy frames 9 rule=reported categories: a refill replaces no proxy; PSO completion, engine contexts and editor compiles are not scatter's own
+BAR apply_fit                      REPORT value=n 4087; least squares a 0.00508 b 0.0000708 c 0.0000086; residual p95 0.0289 p99 0.0705; admission a (a + p95) 0.0339; run's predictor a 0.032 b 7e-05 c 3e-05 under-predicted 122 units (worst by 0.366 ms); max unit 0.510 ms at 1128 instances; units > 0.8 ms: 0 rule=apply_unit_ms ~ a + b * changes + c * instances_after (plan C scatter 3.5 and 4 S4 item 5; any unit > 0.8 ms triggers the T0 rank split)
+BAR scatter_gt_ms                  REPORT value=p50 0.034 p99 0.232 p99.9 0.406 max 0.564 (n 13572) rule=scatter's own game-thread ms per frame outside the fill (SX11 gates it in Phase 4)
+BAR scatter_flush_ms               REPORT value=p50 0.000 p99 0.310 max 0.544 rule=end-of-frame instance flush ms
+BAR apply_unit_ms_edits            REPORT value=p50 0.009 p99 0.095 max 0.253 (n 3608); init_ms 1632 rule=per-unit apply cost outside the fill
+BAR SX9 asset_report               PASS   value=usage_ok=58/58 deps_ok=True flip_ok=True vc_ok=True errors=0 (0 listed); asset_settings_sha256 35f87ad8f1941e59 rule=S3's asset report: usage_ok k/k, deps_ok, flip_ok, vc_ok, errors 0
+BAR SX9 per_instance_random        PASS   value=65 materials, reading PerInstanceRandom: none rule=no scatter material reads PerInstanceRandom (F25)
+BAR SX9 licence                    PASS   value=13 meshes: Fern=project-original, Flower=project-original, GrassT0=project-original, GrassT1=project-original, RockA=project-original, RockB=project-original, ShrubA=project-original, ShrubB=project-original, TreeBroadA=project-original, TreeBroadB=project-original, TreeConiferA=project-original, TreeConiferB=project-original, Tussock=project-original rule=every loaded mesh maps through report.json to a manifest row with licence in ('CC0-1.0', 'project-original', 'epic'), with its usage rows ok
+BAR scatter_verify_full_up_axis    PASS   value=end max_dup 1.54e-05 rad rule=every verify compares each instance's full up axis with HF's cell-triangle rule (no angle-only exemption)
+BAR SX5 oracle (other dumps)       REPORT value=dumps not at the saved state or no saved files: no dumps rule=the oracle needs the dump's own heights
+BAR proxy_events_logged            PASS   value=4666 events, 0 dropped rule=every proxy and compile event is in the log (none dropped past the bound)
+BAR compile_events_per_phase       REPORT value={'before_ops': {'asset_post_compile': 2, 'shader_propagation': 1}, 'default': {'compile_busy_frame': 6, 'asset_post_compile': 9, 'shader_propagation': 2, 'compile_recreate': 8}, 'fill': {'compile_recreate': 65, 'compile_busy_frame': 3, 'shader_propagation': 1, 'asset_post_compile': 2}} rule=shader propagations, asset post-compiles, compile-busy frames and later proxies per script phase (refills, PSO, engine and editor-compile recreates; reported)
+SCATTER PASS
+exit=0
+
+$ python Tools/parse_terrain.py --scatter Out/s1x_a
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=156/156 rule=completed=true and ops_done == ops_total
+BAR scatter_log_scan               PASS   value=0 line(s) rule=no LogMaterial warning/error on /Game/Terrain/Scatter, no VSM page-pool overflow
+BAR scatter_block                  PASS   value=available=True enabled=True rule=results.json scatter block from a run with scatter
+BAR scatter_options                PASS   value=config_fnv=0xe55e190fcc1aadc9 level=L0 params_error='' mesh_errors='' rule=options.scatter present, no option or mesh error
+BAR scatter_verify                 PASS   value=5 verifies, failed [] rule=>= 1 scatter_verify and every one passes (live == reference, readback, z, up axis, nothing pending)
+  verify before     pass=True live=0x4131188d5be6f199 ref=0x4131188d5be6f199 instances=243011 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.34e-05 m dup 2.11e-08 rad 
+  verify pre_last2  pass=True live=0xffce820be4be94d4 ref=0xffce820be4be94d4 instances=236494 max dpos 0.00000 cm drot 5.16e-08 rad dz 1.72e-05 m dup 9.57e-06 rad 
+  verify after      pass=True live=0xa672536bd60501c5 ref=0xa672536bd60501c5 instances=234302 max dpos 0.00000 cm drot 5.16e-08 rad dz 1.72e-05 m dup 9.57e-06 rad 
+  verify undo       pass=True live=0xffce820be4be94d4 ref=0xffce820be4be94d4 instances=236494 max dpos 0.00000 cm drot 5.16e-08 rad dz 1.72e-05 m dup 9.57e-06 rad 
+  verify redo       pass=True live=0xa672536bd60501c5 ref=0xa672536bd60501c5 instances=234302 max dpos 0.00000 cm drot 5.16e-08 rad dz 1.72e-05 m dup 9.57e-06 rad 
+BAR scatter_hash_live_eq_ref       PASS   value=equal at 5 settled hashes rule=scatter_live_fnv == scatter_fnv at every hash taken with nothing pending
+BAR scatter_counters_balanced      PASS   value=dispatched=400 applied=272 skipped=128 discarded=0 cancelled=0 in_flight=0 busy=0 rule=dispatched == applied + skipped_identical + discarded_epoch + cancelled; 0 in flight and 0 busy at the end
+BAR scatter_verify_instances       PASS   value=read back [('before', 243011), ('pre_last2', 236494), ('after', 234302), ('undo', 236494), ('redo', 234302)] rule=every scatter_verify with components read back > 0 instances (no vacuous live == reference)
+BAR scatter_proxy_recreates        PASS   value=recreates=0 (during edits 0, apply-dirtied 0); first=479 expected=1429 rule=proxy_recreates == 0: no live proxy replaced after scatter's own apply dirtied it, nor for any unexplained dirty mark
+BAR proxy_compile_recreates_during_edits PASS   value=0 (all run: 125) rule=editor-compile recreates while edits were in flight == 0
+BAR proxy_engine_recreates_during_edits PASS   value=0 (all run: 0) rule=engine-wide recreates while edits were in flight == 0
+BAR scatter_proxy_reported         REPORT value=refills=1 (during edits 1) pso=0 (during edits 0) engine=0 editor_compile=125; shader propagations 21, asset post-compiles 31, compile-busy frames 13 rule=reported categories: a refill replaces no proxy; PSO completion, engine contexts and editor compiles are not scatter's own
+BAR scatter_fresh                  PASS   value=3 fresh op(s), 1429 components rebuilt, proxy_expected_rebuilds 1429, missing shots [] rule=scatter_fresh rebuilt live proxies as expected rebuilds (proxy_recreates stays 0) and took its shot
+BAR apply_fit                      REPORT value=n 994; least squares a 0.00532 b 0.0000957 c 0.0000091; residual p95 0.0481 p99 0.0800; admission a (a + p95) 0.0534; run's predictor a 0.032 b 7e-05 c 3e-05 under-predicted 91 units (worst by 0.111 ms); max unit 0.254 ms at 1399 instances; units > 0.8 ms: 0 rule=apply_unit_ms ~ a + b * changes + c * instances_after (plan C scatter 3.5 and 4 S4 item 5; any unit > 0.8 ms triggers the T0 rank split)
+BAR scatter_gt_ms                  REPORT value=p50 0.037 p99 0.193 p99.9 0.373 max 0.648 (n 5467) rule=scatter's own game-thread ms per frame outside the fill (SX11 gates it in Phase 4)
+BAR scatter_flush_ms               REPORT value=p50 0.000 p99 0.270 max 0.619 rule=end-of-frame instance flush ms
+BAR apply_unit_ms_edits            REPORT value=p50 0.014 p99 0.117 max 0.171 (n 515); init_ms 1648 rule=per-unit apply cost outside the fill
+BAR SX9 asset_report               PASS   value=usage_ok=58/58 deps_ok=True flip_ok=True vc_ok=True errors=0 (0 listed); asset_settings_sha256 35f87ad8f1941e59 rule=S3's asset report: usage_ok k/k, deps_ok, flip_ok, vc_ok, errors 0
+BAR SX9 per_instance_random        PASS   value=65 materials, reading PerInstanceRandom: none rule=no scatter material reads PerInstanceRandom (F25)
+BAR SX9 licence                    PASS   value=13 meshes: Fern=project-original, Flower=project-original, GrassT0=project-original, GrassT1=project-original, RockA=project-original, RockB=project-original, ShrubA=project-original, ShrubB=project-original, TreeBroadA=project-original, TreeBroadB=project-original, TreeConiferA=project-original, TreeConiferB=project-original, Tussock=project-original rule=every loaded mesh maps through report.json to a manifest row with licence in ('CC0-1.0', 'project-original', 'epic'), with its usage rows ok
+BAR scatter_verify_full_up_axis    PASS   value=before max_dup 2.11e-08 rad; pre_last2 max_dup 9.57e-06 rad; after max_dup 9.57e-06 rad; undo max_dup 9.57e-06 rad; redo max_dup 9.57e-06 rad rule=every verify compares each instance's full up axis with HF's cell-triangle rule (no angle-only exemption)
+BAR SX5 oracle redo_sha256         PASS   value=21943c36f3753a63 vs results.json 21943c36f3753a63 rule=the dump file's sha256 equals the one the run recorded
+BAR SX5 oracle redo                PASS   value=records=234302 max|dz|=0.046 mm bad_z=0 bad_gradient=0 limit violations=0 rule=z within 1 mm of the class rule on the saved heights, gxq/gyq exact, every instance inside its class's splat and slope limits (margins 2/255, 0.5 deg)
+BAR SX5 oracle (other dumps)       REPORT value=dumps not at the saved state or no saved files: ['before'] rule=the oracle needs the dump's own heights
+BAR proxy_events_logged            PASS   value=3093 events, 0 dropped rule=every proxy and compile event is in the log (none dropped past the bound)
+BAR compile_events_per_phase       REPORT value={'before_ops': {'asset_post_compile': 3, 'shader_propagation': 1}, 'default': {'compile_busy_frame': 6, 'asset_post_compile': 24, 'shader_propagation': 17, 'compile_recreate': 16}, 'fill': {'compile_recreate': 109, 'compile_busy_frame': 7, 'shader_propagation': 3, 'asset_post_compile': 4}, 'last2': {'refill': 1}} rule=shader propagations, asset post-compiles, compile-busy frames and later proxies per script phase (refills, PSO, engine and editor-compile recreates; reported)
+SCATTER PASS
+exit=0
+
+$ python Tools/parse_terrain.py --scatter Out/s1x_b
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=156/156 rule=completed=true and ops_done == ops_total
+BAR scatter_log_scan               PASS   value=0 line(s) rule=no LogMaterial warning/error on /Game/Terrain/Scatter, no VSM page-pool overflow
+BAR scatter_block                  PASS   value=available=True enabled=True rule=results.json scatter block from a run with scatter
+BAR scatter_options                PASS   value=config_fnv=0xe55e190fcc1aadc9 level=L0 params_error='' mesh_errors='' rule=options.scatter present, no option or mesh error
+BAR scatter_verify                 PASS   value=5 verifies, failed [] rule=>= 1 scatter_verify and every one passes (live == reference, readback, z, up axis, nothing pending)
+  verify before     pass=True live=0x4131188d5be6f199 ref=0x4131188d5be6f199 instances=243011 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.34e-05 m dup 2.11e-08 rad 
+  verify pre_last2  pass=True live=0xffce820be4be94d4 ref=0xffce820be4be94d4 instances=236494 max dpos 0.00000 cm drot 5.16e-08 rad dz 1.72e-05 m dup 9.57e-06 rad 
+  verify after      pass=True live=0xa672536bd60501c5 ref=0xa672536bd60501c5 instances=234302 max dpos 0.00000 cm drot 5.16e-08 rad dz 1.72e-05 m dup 9.57e-06 rad 
+  verify undo       pass=True live=0xffce820be4be94d4 ref=0xffce820be4be94d4 instances=236494 max dpos 0.00000 cm drot 5.16e-08 rad dz 1.72e-05 m dup 9.57e-06 rad 
+  verify redo       pass=True live=0xa672536bd60501c5 ref=0xa672536bd60501c5 instances=234302 max dpos 0.00000 cm drot 5.16e-08 rad dz 1.72e-05 m dup 9.57e-06 rad 
+BAR scatter_hash_live_eq_ref       PASS   value=equal at 5 settled hashes rule=scatter_live_fnv == scatter_fnv at every hash taken with nothing pending
+BAR scatter_counters_balanced      PASS   value=dispatched=609 applied=445 skipped=164 discarded=0 cancelled=0 in_flight=0 busy=0 rule=dispatched == applied + skipped_identical + discarded_epoch + cancelled; 0 in flight and 0 busy at the end
+BAR scatter_verify_instances       PASS   value=read back [('before', 243011), ('pre_last2', 236494), ('after', 234302), ('undo', 236494), ('redo', 234302)] rule=every scatter_verify with components read back > 0 instances (no vacuous live == reference)
+BAR scatter_proxy_recreates        PASS   value=recreates=0 (during edits 0, apply-dirtied 0); first=479 expected=1429 rule=proxy_recreates == 0: no live proxy replaced after scatter's own apply dirtied it, nor for any unexplained dirty mark
+BAR proxy_compile_recreates_during_edits PASS   value=0 (all run: 44) rule=editor-compile recreates while edits were in flight == 0
+BAR proxy_engine_recreates_during_edits PASS   value=0 (all run: 0) rule=engine-wide recreates while edits were in flight == 0
+BAR scatter_proxy_reported         REPORT value=refills=1 (during edits 1) pso=0 (during edits 0) engine=0 editor_compile=44; shader propagations 20, asset post-compiles 30, compile-busy frames 9 rule=reported categories: a refill replaces no proxy; PSO completion, engine contexts and editor compiles are not scatter's own
+BAR scatter_fresh                  PASS   value=3 fresh op(s), 1429 components rebuilt, proxy_expected_rebuilds 1429, missing shots [] rule=scatter_fresh rebuilt live proxies as expected rebuilds (proxy_recreates stays 0) and took its shot
+BAR apply_fit                      REPORT value=n 1563; least squares a 0.00237 b 0.0000605 c 0.0000090; residual p95 0.0197 p99 0.0380; admission a (a + p95) 0.0220; run's predictor a 0.032 b 7e-05 c 3e-05 under-predicted 2 units (worst by 0.024 ms); max unit 0.163 ms at 1580 instances; units > 0.8 ms: 0 rule=apply_unit_ms ~ a + b * changes + c * instances_after (plan C scatter 3.5 and 4 S4 item 5; any unit > 0.8 ms triggers the T0 rank split)
+BAR scatter_gt_ms                  REPORT value=p50 0.026 p99 1.977 p99.9 2.480 max 2.606 (n 5328) rule=scatter's own game-thread ms per frame outside the fill (SX11 gates it in Phase 4)
+BAR scatter_flush_ms               REPORT value=p50 0.000 p99 0.237 max 0.369 rule=end-of-frame instance flush ms
+BAR apply_unit_ms_edits            REPORT value=p50 0.012 p99 0.069 max 0.129 (n 1084); init_ms 6774 rule=per-unit apply cost outside the fill
+BAR SX9 asset_report               PASS   value=usage_ok=58/58 deps_ok=True flip_ok=True vc_ok=True errors=0 (0 listed); asset_settings_sha256 35f87ad8f1941e59 rule=S3's asset report: usage_ok k/k, deps_ok, flip_ok, vc_ok, errors 0
+BAR SX9 per_instance_random        PASS   value=65 materials, reading PerInstanceRandom: none rule=no scatter material reads PerInstanceRandom (F25)
+BAR SX9 licence                    PASS   value=13 meshes: Fern=project-original, Flower=project-original, GrassT0=project-original, GrassT1=project-original, RockA=project-original, RockB=project-original, ShrubA=project-original, ShrubB=project-original, TreeBroadA=project-original, TreeBroadB=project-original, TreeConiferA=project-original, TreeConiferB=project-original, Tussock=project-original rule=every loaded mesh maps through report.json to a manifest row with licence in ('CC0-1.0', 'project-original', 'epic'), with its usage rows ok
+BAR scatter_verify_full_up_axis    PASS   value=before max_dup 2.11e-08 rad; pre_last2 max_dup 9.57e-06 rad; after max_dup 9.57e-06 rad; undo max_dup 9.57e-06 rad; redo max_dup 9.57e-06 rad rule=every verify compares each instance's full up axis with HF's cell-triangle rule (no angle-only exemption)
+BAR SX5 oracle redo_sha256         PASS   value=21943c36f3753a63 vs results.json 21943c36f3753a63 rule=the dump file's sha256 equals the one the run recorded
+BAR SX5 oracle redo                PASS   value=records=234302 max|dz|=0.046 mm bad_z=0 bad_gradient=0 limit violations=0 rule=z within 1 mm of the class rule on the saved heights, gxq/gyq exact, every instance inside its class's splat and slope limits (margins 2/255, 0.5 deg)
+BAR SX5 oracle (other dumps)       REPORT value=dumps not at the saved state or no saved files: ['before'] rule=the oracle needs the dump's own heights
+BAR proxy_events_logged            PASS   value=3575 events, 0 dropped rule=every proxy and compile event is in the log (none dropped past the bound)
+BAR compile_events_per_phase       REPORT value={'before_ops': {'asset_post_compile': 2, 'shader_propagation': 1}, 'default': {'compile_busy_frame': 6, 'asset_post_compile': 24, 'shader_propagation': 18, 'compile_recreate': 8}, 'fill': {'compile_busy_frame': 3, 'asset_post_compile': 4, 'compile_recreate': 36, 'shader_propagation': 1}, 'last2': {'refill': 1}} rule=shader propagations, asset post-compiles, compile-busy frames and later proxies per script phase (refills, PSO, engine and editor-compile recreates; reported)
+SCATTER PASS
+exit=0
+
+$ python Tools/parse_terrain.py --scatter Out/s1x_c
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=156/156 rule=completed=true and ops_done == ops_total
+BAR scatter_log_scan               PASS   value=0 line(s) rule=no LogMaterial warning/error on /Game/Terrain/Scatter, no VSM page-pool overflow
+BAR scatter_block                  PASS   value=available=True enabled=True rule=results.json scatter block from a run with scatter
+BAR scatter_options                PASS   value=config_fnv=0xe55e190fcc1aadc9 level=L0 params_error='' mesh_errors='' rule=options.scatter present, no option or mesh error
+BAR scatter_verify                 PASS   value=5 verifies, failed [] rule=>= 1 scatter_verify and every one passes (live == reference, readback, z, up axis, nothing pending)
+  verify before     pass=True live=0x4131188d5be6f199 ref=0x4131188d5be6f199 instances=243011 max dpos 0.00000 cm drot 4.21e-08 rad dz 1.34e-05 m dup 2.11e-08 rad 
+  verify pre_last2  pass=True live=0xffce820be4be94d4 ref=0xffce820be4be94d4 instances=236494 max dpos 0.00000 cm drot 5.16e-08 rad dz 1.72e-05 m dup 9.57e-06 rad 
+  verify after      pass=True live=0xa672536bd60501c5 ref=0xa672536bd60501c5 instances=234302 max dpos 0.00000 cm drot 5.16e-08 rad dz 1.72e-05 m dup 9.57e-06 rad 
+  verify undo       pass=True live=0xffce820be4be94d4 ref=0xffce820be4be94d4 instances=236494 max dpos 0.00000 cm drot 5.16e-08 rad dz 1.72e-05 m dup 9.57e-06 rad 
+  verify redo       pass=True live=0xa672536bd60501c5 ref=0xa672536bd60501c5 instances=234302 max dpos 0.00000 cm drot 5.16e-08 rad dz 1.72e-05 m dup 9.57e-06 rad 
+BAR scatter_hash_live_eq_ref       PASS   value=equal at 5 settled hashes rule=scatter_live_fnv == scatter_fnv at every hash taken with nothing pending
+BAR scatter_counters_balanced      PASS   value=dispatched=269 applied=181 skipped=88 discarded=0 cancelled=0 in_flight=0 busy=0 rule=dispatched == applied + skipped_identical + discarded_epoch + cancelled; 0 in flight and 0 busy at the end
+BAR scatter_verify_instances       PASS   value=read back [('before', 243011), ('pre_last2', 236494), ('after', 234302), ('undo', 236494), ('redo', 234302)] rule=every scatter_verify with components read back > 0 instances (no vacuous live == reference)
+BAR scatter_proxy_recreates        PASS   value=recreates=0 (during edits 0, apply-dirtied 0); first=479 expected=1429 rule=proxy_recreates == 0: no live proxy replaced after scatter's own apply dirtied it, nor for any unexplained dirty mark
+BAR proxy_compile_recreates_during_edits PASS   value=0 (all run: 81) rule=editor-compile recreates while edits were in flight == 0
+BAR proxy_engine_recreates_during_edits PASS   value=0 (all run: 0) rule=engine-wide recreates while edits were in flight == 0
+BAR scatter_proxy_reported         REPORT value=refills=1 (during edits 1) pso=0 (during edits 0) engine=0 editor_compile=81; shader propagations 20, asset post-compiles 29, compile-busy frames 10 rule=reported categories: a refill replaces no proxy; PSO completion, engine contexts and editor compiles are not scatter's own
+BAR scatter_fresh                  PASS   value=3 fresh op(s), 1429 components rebuilt, proxy_expected_rebuilds 1429, missing shots [] rule=scatter_fresh rebuilt live proxies as expected rebuilds (proxy_recreates stays 0) and took its shot
+BAR apply_fit                      REPORT value=n 712; least squares a 0.00522 b 0.0000923 c 0.0000142; residual p95 0.0433 p99 0.0866; admission a (a + p95) 0.0485; run's predictor a 0.032 b 7e-05 c 3e-05 under-predicted 82 units (worst by 0.273 ms); max unit 0.438 ms at 1327 instances; units > 0.8 ms: 0 rule=apply_unit_ms ~ a + b * changes + c * instances_after (plan C scatter 3.5 and 4 S4 item 5; any unit > 0.8 ms triggers the T0 rank split)
+BAR scatter_gt_ms                  REPORT value=p50 0.035 p99 0.146 p99.9 0.375 max 0.543 (n 5480) rule=scatter's own game-thread ms per frame outside the fill (SX11 gates it in Phase 4)
+BAR scatter_flush_ms               REPORT value=p50 0.000 p99 0.000 max 0.664 rule=end-of-frame instance flush ms
+BAR apply_unit_ms_edits            REPORT value=p50 0.011 p99 0.140 max 0.171 (n 233); init_ms 1513 rule=per-unit apply cost outside the fill
+BAR SX9 asset_report               PASS   value=usage_ok=58/58 deps_ok=True flip_ok=True vc_ok=True errors=0 (0 listed); asset_settings_sha256 35f87ad8f1941e59 rule=S3's asset report: usage_ok k/k, deps_ok, flip_ok, vc_ok, errors 0
+BAR SX9 per_instance_random        PASS   value=65 materials, reading PerInstanceRandom: none rule=no scatter material reads PerInstanceRandom (F25)
+BAR SX9 licence                    PASS   value=13 meshes: Fern=project-original, Flower=project-original, GrassT0=project-original, GrassT1=project-original, RockA=project-original, RockB=project-original, ShrubA=project-original, ShrubB=project-original, TreeBroadA=project-original, TreeBroadB=project-original, TreeConiferA=project-original, TreeConiferB=project-original, Tussock=project-original rule=every loaded mesh maps through report.json to a manifest row with licence in ('CC0-1.0', 'project-original', 'epic'), with its usage rows ok
+BAR scatter_verify_full_up_axis    PASS   value=before max_dup 2.11e-08 rad; pre_last2 max_dup 9.57e-06 rad; after max_dup 9.57e-06 rad; undo max_dup 9.57e-06 rad; redo max_dup 9.57e-06 rad rule=every verify compares each instance's full up axis with HF's cell-triangle rule (no angle-only exemption)
+BAR SX5 oracle redo_sha256         PASS   value=21943c36f3753a63 vs results.json 21943c36f3753a63 rule=the dump file's sha256 equals the one the run recorded
+BAR SX5 oracle redo                PASS   value=records=234302 max|dz|=0.046 mm bad_z=0 bad_gradient=0 limit violations=0 rule=z within 1 mm of the class rule on the saved heights, gxq/gyq exact, every instance inside its class's splat and slope limits (margins 2/255, 0.5 deg)
+BAR SX5 oracle (other dumps)       REPORT value=dumps not at the saved state or no saved files: ['before'] rule=the oracle needs the dump's own heights
+BAR proxy_events_logged            PASS   value=2761 events, 0 dropped rule=every proxy and compile event is in the log (none dropped past the bound)
+BAR compile_events_per_phase       REPORT value={'before_ops': {'asset_post_compile': 2, 'shader_propagation': 1}, 'default': {'compile_busy_frame': 6, 'asset_post_compile': 25, 'shader_propagation': 18, 'compile_recreate': 16}, 'fill': {'compile_recreate': 65, 'compile_busy_frame': 4, 'shader_propagation': 1, 'asset_post_compile': 2}, 'last2': {'refill': 1}} rule=shader propagations, asset post-compiles, compile-busy frames and later proxies per script phase (refills, PSO, engine and editor-compile recreates; reported)
+SCATTER PASS
+exit=0
+
+$ python Tools/parse_terrain.py --scatter Out/s1xl
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=19/19 rule=completed=true and ops_done == ops_total
+BAR scatter_log_scan               PASS   value=0 line(s) rule=no LogMaterial warning/error on /Game/Terrain/Scatter, no VSM page-pool overflow
+BAR scatter_block                  PASS   value=available=True enabled=True rule=results.json scatter block from a run with scatter
+BAR scatter_options                PASS   value=config_fnv=0xe55e190fcc1aadc9 level=L0 params_error='' mesh_errors='' rule=options.scatter present, no option or mesh error
+BAR scatter_verify                 PASS   value=1 verifies, failed [] rule=>= 1 scatter_verify and every one passes (live == reference, readback, z, up axis, nothing pending)
+  verify loaded     pass=True live=0xa672536bd60501c5 ref=0xa672536bd60501c5 instances=234302 max dpos 0.00000 cm drot 5.16e-08 rad dz 1.72e-05 m dup 9.57e-06 rad 
+BAR scatter_hash_live_eq_ref       PASS   value=equal at 1 settled hashes rule=scatter_live_fnv == scatter_fnv at every hash taken with nothing pending
+BAR scatter_counters_balanced      PASS   value=dispatched=134 applied=130 skipped=2 discarded=2 cancelled=0 in_flight=0 busy=0 rule=dispatched == applied + skipped_identical + discarded_epoch + cancelled; 0 in flight and 0 busy at the end
+BAR scatter_verify_instances       PASS   value=read back [('loaded', 234302)] rule=every scatter_verify with components read back > 0 instances (no vacuous live == reference)
+BAR scatter_proxy_recreates        PASS   value=recreates=0 (during edits 0, apply-dirtied 0); first=478 expected=476 rule=proxy_recreates == 0: no live proxy replaced after scatter's own apply dirtied it, nor for any unexplained dirty mark
+BAR proxy_compile_recreates_during_edits PASS   value=0 (all run: 81) rule=editor-compile recreates while edits were in flight == 0
+BAR proxy_engine_recreates_during_edits PASS   value=0 (all run: 0) rule=engine-wide recreates while edits were in flight == 0
+BAR scatter_proxy_reported         REPORT value=refills=0 (during edits 0) pso=0 (during edits 0) engine=0 editor_compile=81; shader propagations 20, asset post-compiles 29, compile-busy frames 8 rule=reported categories: a refill replaces no proxy; PSO completion, engine contexts and editor compiles are not scatter's own
+BAR scatter_fresh                  PASS   value=1 fresh op(s), 476 components rebuilt, proxy_expected_rebuilds 476, missing shots [] rule=scatter_fresh rebuilt live proxies as expected rebuilds (proxy_recreates stays 0) and took its shot
+BAR apply_fit                      REPORT value=n 529; least squares a 0.00482 b 0.0000741 c 0.0000283; residual p95 0.0476 p99 0.0827; admission a (a + p95) 0.0524; run's predictor a 0.032 b 7e-05 c 3e-05 under-predicted 74 units (worst by 0.170 ms); max unit 0.335 ms at 1335 instances; units > 0.8 ms: 0 rule=apply_unit_ms ~ a + b * changes + c * instances_after (plan C scatter 3.5 and 4 S4 item 5; any unit > 0.8 ms triggers the T0 rank split)
+BAR scatter_gt_ms                  REPORT value=p50 0.036 p99 0.062 p99.9 0.147 max 0.147 (n 733) rule=scatter's own game-thread ms per frame outside the fill (SX11 gates it in Phase 4)
+BAR scatter_flush_ms               REPORT value=p50 0.000 p99 0.000 max 0.000 rule=end-of-frame instance flush ms
+BAR apply_unit_ms_edits            REPORT value=p50 0.000 p99 0.000 max 0.000 (n 0); init_ms 697 rule=per-unit apply cost outside the fill
+BAR SX9 asset_report               PASS   value=usage_ok=58/58 deps_ok=True flip_ok=True vc_ok=True errors=0 (0 listed); asset_settings_sha256 35f87ad8f1941e59 rule=S3's asset report: usage_ok k/k, deps_ok, flip_ok, vc_ok, errors 0
+BAR SX9 per_instance_random        PASS   value=65 materials, reading PerInstanceRandom: none rule=no scatter material reads PerInstanceRandom (F25)
+BAR SX9 licence                    PASS   value=13 meshes: Fern=project-original, Flower=project-original, GrassT0=project-original, GrassT1=project-original, RockA=project-original, RockB=project-original, ShrubA=project-original, ShrubB=project-original, TreeBroadA=project-original, TreeBroadB=project-original, TreeConiferA=project-original, TreeConiferB=project-original, Tussock=project-original rule=every loaded mesh maps through report.json to a manifest row with licence in ('CC0-1.0', 'project-original', 'epic'), with its usage rows ok
+BAR scatter_verify_full_up_axis    PASS   value=loaded max_dup 9.57e-06 rad rule=every verify compares each instance's full up axis with HF's cell-triangle rule (no angle-only exemption)
+BAR SX5 oracle (other dumps)       REPORT value=dumps not at the saved state or no saved files: no dumps rule=the oracle needs the dump's own heights
+BAR proxy_events_logged            PASS   value=1621 events, 0 dropped rule=every proxy and compile event is in the log (none dropped past the bound)
+BAR compile_events_per_phase       REPORT value={'before_ops': {'asset_post_compile': 2, 'shader_propagation': 1}, 'default': {'compile_busy_frame': 6, 'asset_post_compile': 9, 'shader_propagation': 2, 'compile_recreate': 16}, 'fill': {'compile_recreate': 39, 'compile_busy_frame': 1}, 'load': {'compile_busy_frame': 1, 'shader_propagation': 1, 'asset_post_compile': 2, 'compile_recreate': 26}, 'idle': {'asset_post_compile': 16, 'shader_propagation': 16}} rule=shader propagations, asset post-compiles, compile-busy frames and later proxies per script phase (refills, PSO, engine and editor-compile recreates; reported)
+SCATTER PASS
+exit=0
+
+$ python Tools/parse_terrain.py --equal-hashes Out/s1_a Out/s1_sx5
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=59/59 rule=completed=true and ops_done == ops_total
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=66/66 rule=completed=true and ops_done == ops_total
+BAR shared_hashes                  PASS   value=['after', 'pre_last2', 'redo', 'undo'] rule=>= 1 shared hash op
+BAR height_fnv_equal               PASS   value=equal at 4 shared hashes rule=equal at every shared hash
+BAR splat_fnv_equal                PASS   value=equal at 4 shared hashes rule=equal at every shared hash
+BAR final_equal                    PASS   value=0xff563549/0xd264ddc9 vs 0xff563549/0xd264ddc9 rule=final hashes equal
+BAR ticks_applied_eq_ticks_a       PASS   value=12 strokes, 0 mismatched rule=ticks_applied == ticks
+BAR ticks_applied_eq_ticks_b       PASS   value=12 strokes, 0 mismatched rule=ticks_applied == ticks
+BAR saved_files_sha256             PASS   value=equal: ['terrain.json', 'height.r32', 'splat.rgba8'] rule=terrain.json, height.r32, splat.rgba8 sha256 equal (when both runs saved)
+EQUAL-HASHES PASS
+exit=0
+
+$ python Tools/parse_terrain.py --s1 Out/s1_sx5
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=66/66 rule=completed=true and ops_done == ops_total
+BAR hash_undo_eq_pre_last2         PASS   value=('0x47f2ef9b', '0x124af687') vs ('0x47f2ef9b', '0x124af687') rule=undo = pre_last2 (height and splat FNV)
+BAR hash_redo_eq_after             PASS   value=('0xff563549', '0xd264ddc9') vs ('0xff563549', '0xd264ddc9') rule=redo = after (height and splat FNV)
+BAR hash_after_ne_pre_last2        PASS   value=('0xff563549', '0xd264ddc9') vs ('0x47f2ef9b', '0x124af687') rule=the last two strokes changed height and splat
+BAR saved_eq_after                 PASS   value=saved 0xff563549/0xd264ddc9 rule=save wrote the redo state
+BAR ticks_applied_eq_ticks         PASS   value=12 strokes, 0 mismatched rule=ticks_applied == ticks for every stroke
+BAR shots_present                  PASS   value=11 shots rule=11 S1 shots
+BAR splat_submits_eq_cleanups      PASS   value=submits=132 cleanups=132 rule=equal and > 0
+BAR P2_in_place                    REPORT value=ranged_edits=644 proxy_recreates_during_strokes=0 rule=<= 5 %% of ranged edits (reported here; gated from the measured campaign)
+  edit latency: n=644 frames p50=1 p99=1 max=1 hist(0..4+)=[0, 644, 0, 0, 0] ms p50=8.53
+BAR P7_aa_floor                    PASS   value=changed_frac=0.00000 worst16=0.00087 mean_abs=0.00111 mask_px=43028 (footprint of the last two strokes, after + flat states; before vs before_aa) rule=changed <= 0.5 % and worst 16x16 block mean |d| <= 2/255
+BAR P7_undo_vs_pre_last2           PASS   value=changed_frac=0.00000 worst16=0.00243 mean_abs=0.00114 mask_px=43028 (footprint of the last two strokes, after + flat states) rule=changed <= 0.5 % and worst 16x16 block mean |d| <= 2/255
+BAR P7_redo_vs_after               PASS   value=changed_frac=0.00000 worst16=0.00188 mean_abs=0.00166 mask_px=43028 (footprint of the last two strokes, after + flat states) rule=changed <= 0.5 % and worst 16x16 block mean |d| <= 2/255
+BAR P7_control                     PASS   value=after vs pre_last2 changed_frac=0.7890 (A/A 0.00000) rule=>= 0.10 of the footprint and >= 10x the A/A changed_frac
+BAR P11 after_rts80                PASS   value=pairs=9039 p50=0.005 p99=0.055 max=0.382 cm; disagree in/out band 0/0; frame hit 0.90 rule=pairs >= 1000, p99 <= 2.0 cm, outside-band disagreements 0 (after and undo at rts80 and oblique)
+BAR P11 after_rts80 footprint      PASS   value=set=last2 pixels=16968 draws=2000 pairs=2000 p50=0.007 p99=0.131 max=0.573 cm; disagree in/out band 0/0 rule=same bar on the fp draws from the last strokes' projected footprint: pairs >= 500, p99 <= 2.0 cm, outside-band 0
+BAR P11 after_oblique              PASS   value=pairs=6383 p50=0.007 p99=0.164 max=0.405 cm; disagree in/out band 0/0; frame hit 0.64 rule=pairs >= 1000, p99 <= 2.0 cm, outside-band disagreements 0 (after and undo at rts80 and oblique)
+BAR P11 after_oblique footprint    PASS   value=set=last2 pixels=11403 draws=2000 pairs=2000 p50=0.009 p99=0.159 max=1.475 cm; disagree in/out band 0/0 rule=same bar on the fp draws from the last strokes' projected footprint: pairs >= 500, p99 <= 2.0 cm, outside-band 0
+BAR P11 undo_rts80                 PASS   value=pairs=9039 p50=0.005 p99=0.054 max=0.238 cm; disagree in/out band 0/0; frame hit 0.90 rule=pairs >= 1000, p99 <= 2.0 cm, outside-band disagreements 0 (after and undo at rts80 and oblique)
+BAR P11 undo_rts80 footprint       PASS   value=set=last2 pixels=21728 draws=2000 pairs=2000 p50=0.010 p99=0.030 max=0.059 cm; disagree in/out band 0/0 rule=same bar on the fp draws from the last strokes' projected footprint: pairs >= 500, p99 <= 2.0 cm, outside-band 0
+BAR P11 undo_oblique               PASS   value=pairs=6383 p50=0.007 p99=0.166 max=0.405 cm; disagree in/out band 0/0; frame hit 0.64 rule=pairs >= 1000, p99 <= 2.0 cm, outside-band disagreements 0 (after and undo at rts80 and oblique)
+BAR P11 undo_oblique footprint     PASS   value=set=last2 pixels=16346 draws=2000 pairs=2000 p50=0.024 p99=0.156 max=1.716 cm; disagree in/out band 0/0 rule=same bar on the fp draws from the last strokes' projected footprint: pairs >= 500, p99 <= 2.0 cm, outside-band 0
+BAR P11 pre_last2_rts80            PASS   value=pairs=9039 p50=0.005 p99=0.054 max=0.238 cm; disagree in/out band 0/0; frame hit 0.90 rule=pairs >= 1000, p99 <= 2.0 cm, outside-band disagreements 0 (pre_last2 (reported with the same bar))
+BAR P11 pre_last2_oblique          PASS   value=pairs=6383 p50=0.007 p99=0.166 max=0.405 cm; disagree in/out band 0/0; frame hit 0.64 rule=pairs >= 1000, p99 <= 2.0 cm, outside-band disagreements 0 (pre_last2 (reported with the same bar))
+BAR probes                         PASS   value=n=16 negative_non_exact=7 cell_boundary=11 sim_grid_fnv=0x53a3de06 axes=sim(x,z,h)->ue_cm(100x,100z,100h) rule=16 probes, >= 4 negative non-exact heights, >= 2 at cell boundaries
+BAR P5 collision pre_last2         PASS   value=wait ok 2 ms touched=25 min_tri=1 probes 25/25; frustum n=2000 hit=1821 phys_only=0 pick_only=0 foreign=0 max_dz=0.0002; vertex n=3953 (rects 8) hit=3953 phys_only=0 pick_only=0 foreign=0 max_dz=0.0001 cm rule=wait: ok, every chunk's body has a trimesh, is in use and its probe ray hits; verify: 0 disagreements either way, max |dz| <= 1.0 cm, frustum both-hit >= 1500, vertex rays >= 100 (S1 checkpoints)
+BAR P5 collision after             PASS   value=wait ok 2 ms touched=4 min_tri=1 probes 25/25; frustum n=2000 hit=1821 phys_only=0 pick_only=0 foreign=0 max_dz=0.0002; vertex n=2025 (rects 1) hit=2025 phys_only=0 pick_only=0 foreign=0 max_dz=0.0001 cm rule=wait: ok, every chunk's body has a trimesh, is in use and its probe ray hits; verify: 0 disagreements either way, max |dz| <= 1.0 cm, frustum both-hit >= 1500, vertex rays >= 100 (S1 checkpoints)
+BAR P5 collision undo              PASS   value=wait ok 8 ms touched=9 min_tri=1 probes 25/25; frustum n=2000 hit=1821 phys_only=0 pick_only=0 foreign=0 max_dz=0.0002; vertex n=3277 (rects 1) hit=3277 phys_only=0 pick_only=0 foreign=0 max_dz=0.0001 cm rule=wait: ok, every chunk's body has a trimesh, is in use and its probe ray hits; verify: 0 disagreements either way, max |dz| <= 1.0 cm, frustum both-hit >= 1500, vertex rays >= 100 (S1 checkpoints)
+BAR P5 collision redo              PASS   value=wait ok 9 ms touched=9 min_tri=1 probes 25/25; frustum n=2000 hit=1821 phys_only=0 pick_only=0 foreign=0 max_dz=0.0002; vertex n=3277 (rects 1) hit=3277 phys_only=0 pick_only=0 foreign=0 max_dz=0.0001 cm rule=wait: ok, every chunk's body has a trimesh, is in use and its probe ray hits; verify: 0 disagreements either way, max |dz| <= 1.0 cm, frustum both-hit >= 1500, vertex rays >= 100 (S1 checkpoints)
+BAR P5_cooks_valid                 PASS   value=cooks=68 updated=68 ignored=0 errors=0 unknown=0 updated_without_trimesh=0 batches=12 incomplete=0 rule=0 errors, 0 unknown, 0 Updated bodies without a trimesh
+BAR P5_cook_p95                    REPORT value=n=43 p50=3.47 p95=9.01 max=10.84 ms (edit cooks; fast_cook=True; init cooks p95 710.90 ms) rule=p95 <= 50 ms (reported; gated from the measured campaign)
+BAR P5_gt_apply_p95                REPORT value=n=11 p50=0.415 p95=0.972 max=0.972 ms (submit p95 0.656, physics state p95 0.320) rule=per stroke end / undo / redo p95 <= 4 ms (reported; gated from the measured campaign)
+S1 PASS
+exit=0
+
+$ python Tools/parse_terrain.py --c7 Out/s1_sx5
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=66/66 rule=completed=true and ops_done == ops_total
+BAR c7_material                    PASS   value=/Game/Terrain/M_ChimeraGround.M_ChimeraGround ground=True error='' rule=results.json material = M_ChimeraGround, no error
+BAR c7_compile_errors              PASS   value=0 rule=0 material/shader compile error lines in game.log
+BAR c7_paint_mask_px               PASS   value=50346 rule=>= 50 footprint pixels at rts80/paint
+BAR c7_paint_changed_frac          PASS   value=0.3994 rule=paint vs sculpt inside rts80/paint >= 0.30
+BAR c7_paint_aa_floor              REPORT value=0.0000 rule=before vs before_aa inside the same mask (A/A noise floor)
+C7 PASS
+exit=0
+
+$ python Tools/parse_terrain.py --s1l Out/s1l_sx5 --ref Out/s1_a --img-ref Out/s1_s4a
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=8/8 rule=completed=true and ops_done == ops_total
+BAR loaded_dir                     PASS   value=D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/s1_a rule=load read the reference run's folder
+BAR hash_eq_reference_redo         PASS   value=('0xff563549', '0xd264ddc9') vs ('0xff563549', '0xd264ddc9') rule=loaded hashes = reference redo hashes
+BAR hash_eq_reference_saved        PASS   value=('0xff563549', '0xd264ddc9') vs 0xff563549/0xd264ddc9 rule=loaded hashes = reference saved hashes
+BAR image_reference_same_terrain   PASS   value=Out/s1_s4a: saved files equal: ['terrain.json', 'height.r32', 'splat.rgba8'] rule=the image reference saved byte-identical terrain.json, height.r32, splat.rgba8 to the hash reference
+BAR aa_floor_reference             PASS   value=changed_frac=0.00000 worst16=0.00148 mean_abs=0.00134 mask_px=323761 (every stroke footprint of the reference (rts80/all_after); reference before vs before_aa) rule=changed <= 0.5 % and worst 16x16 block mean |d| <= 2/255
+BAR image_redo_vs_reference_footprint PASS   value=changed_frac=0.00000 worst16=0.00178 mean_abs=0.00142 mask_px=323761 (every stroke footprint of the reference (rts80/all_after)) rule=changed <= 0.5 % and worst 16x16 block mean |d| <= 2/255
+BAR image_redo_vs_reference        PASS   value=changed_frac=0.00000 worst16=0.00128 mean_abs=0.00131 mask_px=1924983 (terrain mask of the reference redo vs bg) rule=changed <= 0.5 % and worst 16x16 block mean |d| <= 2/255
+BAR P11 loaded_rts80               PASS   value=pairs=9039 p50=0.005 p99=0.055 max=0.382 cm; disagree in/out band 0/0; frame hit 0.90 rule=pairs >= 1000, p99 <= 2.0 cm, outside-band disagreements 0 (GPU mesh equals the loaded heightfield)
+S1L PASS
+exit=0
+
+$ python Tools/parse_terrain.py --g1 Out/g1_sx5
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=21/21 rule=completed=true and ops_done == ops_total
+BAR terrain_changed_frac           PASS   value=0.9350 rule=>= 0.40 vs hidden
+BAR terrain_luma_mean              PASS   value=0.2752 rule=in [0.05, 0.95]
+BAR terrain_luma_std               PASS   value=0.0584 rule=> 0.01
+  mask px: {'hill_sun': 16111, 'hill_shadow': 680, 'cast_shadow': 1662, 'lit_ground': 87300}
+  hill sun side luma=0.2377 shadow side luma=0.1174
+BAR hill_sun_over_shadow           PASS   value=2.0249 rule=>= 1.3
+  cast shadow luma=0.1650 lit ground luma=0.2944
+BAR cast_shadow_darker             PASS   value=0.4396 rule=>= 0.20
+  spike mask px=7967
+BAR spike_changed_frac             PASS   value=0.9485 rule=>= 0.50 of the spike's projected pixels
+  reported: draw_type=Dynamic chunks=25 triangles=204800 ranged_edits=210 proxy_recreates=200 during_strokes=0 bounds_widenings=12 settles=[265, 271, 76]
+G1 PASS
+exit=0
+
+$ python Tools/mouse_gate.py Out/mouse_sx5
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=16/16 rule=completed=true and ops_done == ops_total
+BAR strokes_os                     PASS   value=n=3 sources=['os', 'os', 'os'] rule=>= 3 strokes, every source=os
+BAR pick_error                     PASS   value=start pick err m=[0.084, 0.068, 0.241] start px=[0.31, 0.25, 0.31] rule=<= 1.0 m against the logged start targets, every stroke
+BAR pick_error_end_px              PASS   value=end px err=[0.46, 0.33, 0.25] rule=<= 9 px against the logged end targets (1 m at 80 m), every stroke
+BAR end_pick_drift                 REPORT value={'end_pick_drift_xy_m': [7.18, 6.91, 10.62], 'centre_m': [[-27.56111840869773, 25.644177836605753], [17.057141628919865, 34.27144010137225], [57.17452239590316, 25.26766824559085]]} rule=reported: the pick follows the surface the stroke edits (raise climbs toward the camera, lower runs away)
+BAR footprint_changed              PASS   value=changed=0.6760 floor(A/A)=0.0000 above=0.6760 mask_px=120652 rule=before vs after inside the three planned drags: changed_frac above the A/A floor >= 0.30
+BAR brush_keys                     PASS   value=modes=['raise', 'lower', 'raise'] d=[30, 30, 30] s=[30, 30, 30] rule=raise, lower, raise at d 30 / s 30 (keys ] ] = = = = 2 1 arrived)
+BAR keys_ignored_while_lmb         PASS   value=ignored per stroke=[0, 0, 1] ctrl+z ignored records=1 undo applied during strokes=0 rule=Ctrl+Z mid-drag on stroke 3 ignored (DW-144), no undo applied before the strokes ended
+BAR undo_redo                      PASS   value=stroke3 start=0xe57a9102 end=0x41165acf undo=0xe57a9102 redo=0x41165acf after=0x41165acf rule=Ctrl+Z restores stroke 3's start hash, Ctrl+Y its end hash, the `after` hash equals it
+BAR tail_keys                      PASS   value=got=[('ctrl+z', 'undo', 'raise', 30, 30, 0), ('ctrl+y', 'redo', 'raise', 30, 30, 0), ('[', 'size', 'raise', 25, 30, 0), ('-', 'strength', 'raise', 25, 25, 0), (']', 'size', 'raise', 30, 25, 0), ('=', 'strength', 'raise', 30, 30, 0), ('3', 'mode', 'smooth', 30, 30, 0), ('4', 'mode', 'flatten', 30, 30, 0), ('5', 'mode', 'paint', 30, 30, 0), ('shift+2', 'paint_layer', 'paint', 30, 30, 1)] rule=after the strokes: ctrl+z ctrl+y [ - ] = 3 4 5 shift+2
+BAR hud                            PASS   value=final HUD line logged=True rule=the HUD drew the final brush: 'hud: Terrain  mode Paint  size 30 m  strength 30  layer Dirt'
+BAR ticks                          REPORT value={'ticks_applied': [60, 60, 60], 'plan_ticks': 60, 'ticks_dropped': [0, 0, 0], 'max_frame_gap_ms': [17.4, 7.2, 9.0], 'platform_cursor_err_px': [0, 0, 0], 'input_while_disarmed': 0} rule=reported
+BAR injector                       REPORT value={'exit': 0, 'reason': '3 strokes and 10 tail keys sent through SendInput', 'precheck': {'LogonUI_running': False, 'input_desktop_openable': True, 'parsecd_running': False, 'virtual_screen': [0, 0, 3840, 1080]}, 'foreground': True} rule=inject.json (reported; the strokes bar is the gate)
+C8 INPUT PASS
+P10 PASS
+exit=0
+
+$ grep -E TESTS|Result:|wall_seconds D:/Projects/Chimera-Unreal/TrialOut/c_s5/r4/tests.log D:/Projects/Chimera-Unreal/TrialOut/c_s5/r4/build_ed.log D:/Projects/Chimera-Unreal/TrialOut/c_s5/r4/build_game.log
+D:/Projects/Chimera-Unreal/TrialOut/c_s5/r4/tests.log:wall_seconds=151 editor_exit=0 log=D:/Projects/Chimera-Unreal/ChimeraTerrain/Saved/TestRuns/s5_tests_r4_20261003_012918.log
+D:/Projects/Chimera-Unreal/TrialOut/c_s5/r4/tests.log:TESTS pass=71 fail=0
+D:/Projects/Chimera-Unreal/TrialOut/c_s5/r4/build_ed.log:Result: Succeeded
+D:/Projects/Chimera-Unreal/TrialOut/c_s5/r4/build_ed.log:BUILD ChimeraTerrainEditor wall_seconds=1,125 exit=0
+D:/Projects/Chimera-Unreal/TrialOut/c_s5/r4/build_game.log:Result: Succeeded
+D:/Projects/Chimera-Unreal/TrialOut/c_s5/r4/build_game.log:BUILD ChimeraTerrain wall_seconds=845 exit=0
+exit=0
+
+$ bash -c cd D:/Projects/Chimera-Unreal/TrialOut/c_s5/r4 && grep -H . *.exit && cd ../r3 && grep -H . run_*.exit
+build_ed.log.exit:EXIT=0
+build_game.log.exit:EXIT=0
+chain1.log.exit:EXIT=0
+chain2.log.exit:EXIT=0
+chain3.log.exit:EXIT=0
+chain4.log.exit:EXIT=0
+run_s1xf_a.log.exit:EXIT=0
+run_s1xf_clear.log.exit:EXIT=0
+run_s1xf_noaa.log.exit:EXIT=0
+tests.log.exit:EXIT=0
+run_c1s_smoke.log.exit:EXIT=0
+run_failx.log.exit:EXIT=2
+run_g1_sx5.log.exit:EXIT=0
+run_latx.log.exit:EXIT=0
+run_lookx_smoke.log.exit:EXIT=0
+run_mouse_sx5.log.exit:EXIT=0
+run_mousex.log.exit:EXIT=0
+run_s1_sx5.log.exit:EXIT=0
+run_s1l_sx5.log.exit:EXIT=0
+run_s1x_a.log.exit:EXIT=0
+run_s1x_b.log.exit:EXIT=0
+run_s1x_c.log.exit:EXIT=0
+run_s1x_fz.log.exit:EXIT=0
+run_s1xl.log.exit:EXIT=0
+run_shadx.log.exit:EXIT=0
+run_soaks_smoke.log.exit:EXIT=0
+run_sx_smoke.log.exit:EXIT=0
+run_sxp_clear.log.exit:EXIT=0
+run_sxp_default.log.exit:EXIT=0
+run_sxp_gov6.log.exit:EXIT=0
+run_sxp_t0.log.exit:EXIT=0
+run_tearx.log.exit:EXIT=0
+run_thinx.log.exit:EXIT=0
+run_videox_smoke.log.exit:EXIT=0
+exit=0
+

@@ -93,6 +93,42 @@ namespace ChimeraTerrain
 		void Reset();
 	};
 	FScatterProxyCounters& ScatterProxyCounters();
+
+	/**
+	 * Frame-stamped proxy and compile events (task S5: the parser checks that no recreate other than scatter's own landed on a scatter component
+	 * between an edit and the SX18 / SX10 shot that tests it, and prints shader propagations per op window). Every later proxy is logged with its
+	 * category; first creates are logged too. GFrameCounter is the game frame (CreateSceneProxy runs inside the game frame's end-of-frame update,
+	 * possibly on a worker, so the log takes a lock). Bounded at MaxScatterProxyEvents; the overflow is counted.
+	 */
+	enum class EScatterProxyEvent : uint8
+	{
+		FirstCreate,
+		ExpectedRebuild,
+		Refill,
+		EngineRecreate,
+		PsoRecreate,
+		CompileRecreate,
+		Recreate,
+		ShaderPropagation,
+		AssetPostCompile,
+		CompileBusyFrame,
+		/** One unit's edit script executed on its component (ApplyScript): the parser needs each unit's last apply before a shot. */
+		Apply,
+		Count
+	};
+	const TCHAR* ScatterProxyEventName(EScatterProxyEvent Kind);
+	struct FScatterProxyEventRow
+	{
+		uint64 Frame = 0;
+		EScatterProxyEvent Kind = EScatterProxyEvent::FirstCreate;
+		/** Grid << 24 | mesh slot << 16 | tile index of the component, or -1 for an event that names no component. */
+		int32 Unit = -1;
+	};
+	constexpr int32 MaxScatterProxyEvents = 200000;
+	void ScatterLogProxyEvent(EScatterProxyEvent Kind, int32 Unit = -1);
+	/** A copy of the log and the number of events dropped past the bound. */
+	void ScatterCopyProxyEvents(TArray<FScatterProxyEventRow>& Out, int64& OutDropped);
+	void ScatterResetProxyEvents();
 }
 
 /**

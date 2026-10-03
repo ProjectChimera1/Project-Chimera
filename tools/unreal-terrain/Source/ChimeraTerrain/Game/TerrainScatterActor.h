@@ -57,6 +57,19 @@ struct FScatterLatencyRow
 	double Ms = -1.0;
 };
 
+/** A scatter_target result (plan C scatter 3.8): the nearest instance of a class, stored by key, for SHADX's strokes ("@name") and verify's key rows. */
+struct FScatterTarget
+{
+	FString Name;
+	uint8 Class = 0;
+	uint64 Key = 0;
+	/** Metres. */
+	double X = 0.0;
+	double Y = 0.0;
+	double Z = 0.0;
+	FString Zone;
+};
+
 UCLASS()
 class CHIMERATERRAIN_API ATerrainScatter : public AActor
 {
@@ -103,8 +116,33 @@ public:
 	/** hash op fields: scatter_fnv, scatter_live_fnv, scatter_count, per-class counts. */
 	void AddHashFields(FJsonObject& Out) const;
 
-	/** scatter_verify (plan C scatter 3.8): live == reference, ISM readback == BuildInstance of the unit states, z and up axis from HF. */
-	TSharedRef<FJsonObject> Verify(const FString& Name, bool& bOutPass);
+	/**
+	 * scatter_verify (plan C scatter 3.8): live == reference, ISM readback == BuildInstance of the unit states, z and up axis from HF. Targets (scatter_target)
+	 * add one row each: whether the stored key still exists and its z change (reported; the parser reads it).
+	 */
+	TSharedRef<FJsonObject> Verify(const FString& Name, bool& bOutPass, const TArray<FScatterTarget>* Targets = nullptr);
+
+	// ---- scatter S5 ops (plan C scatter 3.8) ----
+	/** SHA-256 (lowercase hex) of a byte array: the module's own FIPS 180-4 helper (the director hashes its script with it). */
+	static FString Sha256HexOf(const TArray<uint8>& Data);
+	const ChimeraTerrain::FScatterPalette& GetPalette() const { return *Palette; }
+	/** Every applied record (unit order). */
+	void CollectLive(TArray<ChimeraTerrain::FScatterRecord>& Out) const;
+	/** The nearest applied instance of a class to (XM, YM); Zone >= 0 keeps only trees of that EScatterTreeZone. */
+	bool FindNearest(ChimeraTerrain::EScatterClass Class, double XM, double YM, int32 Zone, ChimeraTerrain::FScatterRecord& Out) const;
+	/** scatter_dump: the applied records sorted by key in canonical LE binary to FilePath, plus sha256 and counts. */
+	TSharedRef<FJsonObject> DumpApplied(const FString& Name, const FString& FilePath, bool& bOutOk) const;
+	/** scatter_check: discs are (x, y, R) metres. */
+	TSharedRef<FJsonObject> CheckDiscs(const FString& Name, const FString& SetName, const TArray<FVector>& Discs) const;
+	/** scatter_counts: per tile and class counts of the applied states. */
+	TSharedRef<FJsonObject> CountsJson() const;
+	/** The engine transform BuildInstance gives a record (cm), and the mesh's local bounds (cm; empty box when the slot has no mesh). */
+	FTransform InstanceTransformOf(const ChimeraTerrain::FScatterRecord& R) const;
+	FBox MeshLocalBoundsCm(ChimeraTerrain::EScatterMesh Mesh) const;
+	/** Tile size (metres) of a grid. */
+	int32 TileSizeOf(ChimeraTerrain::EScatterGrid Grid) const { return Scheduler.GetTileGrid(Grid).SizeM; }
+	/** Cull end of a record's unit with the governor and hidden layers applied, metres (a hidden unit gives 0.01). */
+	double CullEndMetersOf(const ChimeraTerrain::FScatterRecord& R) const;
 	/** scatter_fresh step 1: raise each live component's expected rebuild and mark its render state dirty (proxies rebuilt from the CPU arrays). */
 	int32 RebuildAllProxies();
 	/** After a settle: unused expectations are dropped (every expected proxy exists by then). */

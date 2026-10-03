@@ -1,0 +1,86 @@
+{
+ "name": "S1XL",
+ "about": "Plan C scatter 3.8 script S1XL: idle 2 frames (the enable fill has tasks in flight or unpolled: the director ticks before scatter), then load the reference run's saved files (-ChimeraTerrainLoad), scatter_wait, settle 150, hash loaded, verify, rts80 shot x_redo (SX17's ghost check), scatter mask; then frozen frames: xf_redo and xf_redo_aa 1 s later (this run's A/A floor) and scatter_fresh xf_redo (SX3, SX18).",
+ "ops": [
+  {
+   "op": "look",
+   "mode": "compare"
+  },
+  {
+   "op": "camera",
+   "pose": "rts80"
+  },
+  {
+   "op": "idle",
+   "frames": 2,
+   "phase": "fill"
+  },
+  {
+   "op": "load",
+   "phase": "load"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 600
+  },
+  {
+   "op": "settle",
+   "frames": 150,
+   "phase": "idle"
+  },
+  {
+   "op": "hash",
+   "name": "loaded"
+  },
+  {
+   "op": "scatter_verify",
+   "name": "loaded"
+  },
+  {
+   "op": "camera",
+   "pose": "rts80"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "x_redo"
+  },
+  {
+   "op": "scatter_mask",
+   "pose": "rts80",
+   "name": "m_redo",
+   "layers": "all"
+  },
+  {
+   "op": "temporal_freeze",
+   "value": 1
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "xf_redo"
+  },
+  {
+   "op": "idle",
+   "seconds": 1
+  },
+  {
+   "op": "shot",
+   "name": "xf_redo_aa"
+  },
+  {
+   "op": "scatter_fresh",
+   "name": "xf_redo"
+  },
+  {
+   "op": "temporal_freeze",
+   "value": 0
+  }
+ ]
+}

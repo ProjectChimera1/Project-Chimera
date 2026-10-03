@@ -69,6 +69,24 @@
 //   scatter_fresh {name}                  rebuild every scatter proxy from the CPU arrays, force-invalidate the directional VSM for 10 frames,
 //                                         settle 150, shot <name>_fresh (SX18's oracle)
 //   hash gains scatter_fnv, scatter_live_fnv, scatter_count while scatter is enabled.
+// Ops (scatter S5, plan C scatter 3.8; implemented in TerrainScatterOps.cpp, same "needs -ChimeraTerrainScatter=1" rule):
+//   scatter_dump {name}                   every applied record in canonical LE binary (HashRecord field order, 45 bytes each, sorted by key) to
+//                                         <out>/scatter_<name>.bin; results scatter.dumps[] {path, records, sha256, per-class counts}
+//   scatter_check {name, fp}              per class: instances in the inner half radius (core) of every disc of footprint set fp, what the
+//                                         generator yields there with the splat forced to pure grass (same heights, seed), and the outer band
+//                                         (0.5R .. R + 2 m); results scatter.checks[]
+//   scatter_counts {name}                 per tile and class counts into <out>/scatter_counts.json (object keyed by name)
+//   scatter_view_counts {pose, name}      analytic: per class and mesh, instances inside the frustum and inside their cull end (not what the GPU drew)
+//   scatter_target {class, near:[x,y], as, zone}   stores the nearest instance's XY and key; zone = core|edge|grove|lone (trees); a stroke path
+//                                         may then be "@<as>" and scatter_verify reports each stored key's existence and z change
+//   movie_start {frames} / movie_wait    the `movie` op split in two so the ops between them run while the frames are dumped (VIDEOX)
+//   scatter_mask {pose, name, layers, near, radius, union_with}   projected instance bounds of the layers and the analytic sun-shadow footprint of
+//                                         casters (sun from ATerrainLighting) as row runs into footprints.json[pose][name]; near="@<as>" with radius
+//                                         (metres) keeps the instances around that target; only="@<as>" keeps that target's instance alone;
+//                                         union_with merges an earlier mask of the same pose; caster shadows are taken both on the instance's
+//                                         base plane and where the sun ray meets HF's drawn surface
+// Results (task S5): timeline rows carry frame_start/frame_end (GFrameCounter) and the op's name; results.json carries script_path,
+// script_sha256 and sg (the effective scalability groups of every run); scatter.proxy_events lists frame-stamped proxy and compile events.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -88,6 +106,7 @@ class ATerrainScatter;
 class APlayerController;
 class USceneCaptureComponent2D;
 class UTextureRenderTarget2D;
+struct FScatterTarget;
 
 UCLASS()
 class CHIMERATERRAIN_API ATerrainScriptDirector : public AActor
@@ -124,6 +143,8 @@ private:
 
 	FChimeraTerrainOptions Options;
 	FString ScriptName;
+	/** SHA-256 of the script file's bytes (results.json script_sha256). */
+	FString ScriptSha256;
 	TArray<TSharedPtr<FJsonObject>> Ops;
 	bool bStarted = false;
 	bool bFinished = false;
@@ -176,6 +197,10 @@ private:
 	FString CsvStartedPath;
 	// movie
 	int32 MovieRequested = 0;
+	/** MovieFrame files an earlier movie op of this run listed (a later movie never lists them again). */
+	TSet<FString> MovieClaimed;
+	/** GFrameCounter at the current op's first step (timeline frame_start). */
+	uint64 OpStartFrame = 0;
 	FDateTime MovieStartUtc;
 	// await_mouse
 	int32 MouseTargetCount = 0;
@@ -204,6 +229,8 @@ private:
 	TArray<TSharedPtr<FJsonValue>> Skipped;
 	TArray<TSharedPtr<FJsonValue>> Walks;
 	TArray<TSharedPtr<FJsonValue>> Hitches;
+	/** temporal_freeze op rows (task S5): each request, whether the cvars exist in this build, and the frame it took effect. */
+	TArray<TSharedPtr<FJsonValue>> TemporalFreezes;
 	TArray<TSharedPtr<FJsonValue>> Gcs;
 	TArray<TSharedPtr<FJsonValue>> Movies;
 	TArray<TSharedPtr<FJsonValue>> UndoRedos;
@@ -224,6 +251,18 @@ private:
 	int32 FreshRebuilt = 0;
 	FString FreshCvarOld;
 	TSharedPtr<FJsonObject> FreshShotOp;
+	// scatter ops (S5)
+	TArray<TSharedPtr<FJsonValue>> ScatterDumps;
+	TArray<TSharedPtr<FJsonValue>> ScatterChecks;
+	TArray<TSharedPtr<FJsonValue>> ScatterCountsRows;
+	TArray<TSharedPtr<FJsonValue>> ScatterViewCounts;
+	TArray<TSharedPtr<FJsonValue>> ScatterMasks;
+	TSharedRef<FJsonObject> ScatterCountsFile = MakeShared<FJsonObject>();
+	/** scatter_target results by name (X, Y metres, key, class, z). */
+	TMap<FString, TSharedPtr<FScatterTarget>> ScatterTargets;
+	/** scatter_mask bitmaps by "pose/name" (viewport-sized, 1 byte a pixel). */
+	TMap<FString, TArray<uint8>> ScatterMaskBits;
+	TMap<FString, FIntPoint> ScatterMaskSize;
 	/** Footprint discs (x, y, radius metres) by set name, filled by strokes with "fp". */
 	TMap<FString, TArray<FVector>> FootprintSets;
 
@@ -245,6 +284,13 @@ private:
 	EStep StepG1Regions(const FJsonObject& Op);
 	EStep StepUndoRedo(const FJsonObject& Op, bool bUndo);
 	EStep StepHitch(const FJsonObject& Op);
+	/** temporal_freeze {value}: 1 freezes the renderer's temporal sequences (TSR jitter at index 0, frame-indexed noise) so an image pair of a static scene is
+	 * repeatable (A/A floor about 0); 0 restores the defaults. Absent in Shipping (the cvars are compiled out): recorded as unavailable, never failed. The row
+	 * records the cvars' read-back after the set (a set at ECVF_SetByCode is refused when an ini or ExecCmds holds the cvar higher); the parser trusts that.
+	 * COMPARE FROZEN FRAMES ONLY WITHIN ONE FREEZE WINDOW: each freeze pins the view's frame index at whatever value it had, so two windows render different
+	 * frame-indexed noise (about 0.2 % of the frame in S5's s1x_a). Within a window TSR's history still depends on what was on screen before (S5 round 4:
+	 * the same state one scatter hide/restore apart differs by about 5 % of the last2 footprint with TSR on, and not at all with anti-aliasing off). */
+	EStep StepTemporalFreeze(const FJsonObject& Op);
 	EStep StepSave(const FJsonObject& Op);
 	EStep StepLoad(const FJsonObject& Op);
 	EStep StepRandomWalk(const FJsonObject& Op, bool bSoak);
@@ -265,6 +311,19 @@ private:
 	EStep StepScatterVisible(const FJsonObject& Op);
 	EStep StepScatterVerify(const FJsonObject& Op);
 	EStep StepScatterFresh(const FJsonObject& Op);
+	EStep StepScatterDump(const FJsonObject& Op);
+	EStep StepScatterCheck(const FJsonObject& Op);
+	EStep StepScatterCounts(const FJsonObject& Op);
+	EStep StepScatterViewCounts(const FJsonObject& Op);
+	EStep StepScatterTarget(const FJsonObject& Op);
+	EStep StepScatterMask(const FJsonObject& Op);
+	/** movie_start {frames}: GIsDumpingMovie = frames and carry on (VIDEOX runs its strokes while the frames are dumped); movie_wait finishes it like `movie`. */
+	EStep StepMovieStart(const FJsonObject& Op);
+	EStep StepMovieWait(const FJsonObject& Op);
+	/** Layer list ("all" or "grass,trees,...") to a layer bit mask; false with OpError on an unknown name. */
+	bool ParseLayerMask(const FString& Spec, uint32& OutMask);
+	/** The scatter block's S5 arrays (dumps, checks, counts files, view counts, masks, targets), added by Finish. */
+	void AddScatterOpResults(FJsonObject& ScatterBlock) const;
 	/** Physics trace (ECC_Visibility, complex) of a terrain-metre ray; true on a blocking hit, OutTerrain = the hit was a terrain chunk. */
 	bool PhysicsRay(const FVector& OriginM, const FVector& DirM, double MaxM, FVector& OutHitM, bool& OutTerrain,
 		const UPrimitiveComponent** OutComponent = nullptr) const;

@@ -1,0 +1,117 @@
+S5 (scatter harness and determinism runs), round 4 (residual fix after round 3: SX17 frozen variant and the reviewers' minors): S1X bars (SX1-SX5, SX7-SX9, SX17 reported on unfrozen shots; its frozen single-window variant is c-S5-sx17f-bars.txt; SX18 on frozen frames), SX4's same-hash, the dump diff by key and the script hashes
+Parser outputs re-run on round 4 parser code; Unreal runs from round 3 (TrialOut/c_s5/r3, functionally the same build) except the S1XF runs (round 4 final Editor build, TrialOut/c_s5/r4); runs in T/Out.
+
+$ python Tools/parse_terrain.py --s1x Out/s1x_a --pair Out/s1x_b Out/s1x_c --reload Out/s1xl --ref Out/s1_a
+BAR SX1/SX8/SX9 a                  PASS   value=27 bars rule=every bar of the group passes
+BAR SX1/SX8/SX9 pair0              PASS   value=27 bars rule=every bar of the group passes
+BAR SX1/SX8/SX9 pair1              PASS   value=27 bars rule=every bar of the group passes
+BAR SX1/SX8/SX9 reload             PASS   value=25 bars rule=every bar of the group passes
+BAR SX1 floors                     PASS   value=Grass 221854>=75000; Tussock 4561>=1500; Flower 6001>=4000; Tree 1003>=750; Shrub+Sapling 1822>=1250; Fern 7646>=1500; Rock 124>=100 rule=every enabled class's flat-map count >= half its EST, so the identity bars cannot pass empty
+BAR scatter_config                 PASS   value=equal rule=config_fnv, level and mesh list equal, else FAIL config mismatch (fix the run, never the bar)
+BAR sg_equal                       PASS   value=equal rule=scalability groups (sg.*) equal across every compared pair, else FAIL sg mismatch
+BAR SX2 undo/redo a                PASS   value=undo live 0xffce820be4be94d4 vs pre_last2 0xffce820be4be94d4; redo live 0xa672536bd60501c5 vs after 0xa672536bd60501c5; after != pre_last2 rule=live at undo = reference at pre_last2, at redo = at after (a function of the terrain, not of history)
+BAR SX2 undo/redo pair0            PASS   value=undo live 0xffce820be4be94d4 vs pre_last2 0xffce820be4be94d4; redo live 0xa672536bd60501c5 vs after 0xa672536bd60501c5; after != pre_last2 rule=live at undo = reference at pre_last2, at redo = at after (a function of the terrain, not of history)
+BAR SX2 undo/redo pair1            PASS   value=undo live 0xffce820be4be94d4 vs pre_last2 0xffce820be4be94d4; redo live 0xa672536bd60501c5 vs after 0xa672536bd60501c5; after != pre_last2 rule=live at undo = reference at pre_last2, at redo = at after (a function of the terrain, not of history)
+BAR SX3 reload                     PASS   value=loaded ref 0xa672536bd60501c5 live 0xa672536bd60501c5 vs the reference run's redo 0xa672536bd60501c5; terrain hashes equal; discarded_epoch=2 rule=live and reference at `loaded` = the reference run's final; discarded_epoch >= 1 (the load really cut a fill)
+BAR SX3 loaded_dir                 PASS   value=D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/s1x_a rule=the load read the reference S1X run's saved files
+BAR SX4 pair_roles                 PASS   value=pairs ['threads=0', 'during_stroke=0'] rule=exactly one ScatterThreads=0 pair and one ScatterDuringStroke=0 pair beside s1x_a
+BAR SX4 live_fnv_equal             PASS   value=equal at 5 shared names ['after', 'before', 'pre_last2', 'redo', 'undo'] across 3 runs rule=scatter_live_fnv equal at every shared hash name across the three S1X runs
+BAR SX4 paths_a                    PASS   value=mid_stroke_dispatches=152 stale_result_redispatches=127 in_flight_max=2 rule=s1x_a: mid_stroke_dispatches > 0, stale_result_redispatches > 0, in_flight_max = 2
+BAR SX4 paths_pair0                PASS   value=threads=0 gt_generations=609 in_flight_max=0 rule=ScatterThreads=0 run: gt_generations > 0, in_flight_max = 0
+BAR SX4 same_hash a/pair0          PASS   value=13 bars rule=every bar of the group passes
+BAR SX4 paths_pair1                PASS   value=during_stroke_ms=0 mid_stroke_dispatches=0 rule=ScatterDuringStroke=0 run: mid_stroke_dispatches = 0
+BAR SX5 oracle redo_sha256         PASS   value=21943c36f3753a63 vs results.json 21943c36f3753a63 rule=the dump file's sha256 equals the one the run recorded
+BAR SX5 oracle redo                PASS   value=records=234302 max|dz|=0.046 mm bad_z=0 bad_gradient=0 limit violations=0 rule=z within 1 mm of the class rule on the saved heights, gxq/gyq exact, every instance inside its class's splat and slope limits (margins 2/255, 0.5 deg)
+BAR SX5 moved                      PASS   value=moved by > 5 cm between before and redo (of 234281 common keys): grass 11548, coarse 205 (tree 5, shrub 70, fern 115, rock 6) rule=>= 1000 grass and >= 20 coarse instances moved, so moved instances are what is tested
+BAR SX7 equal_hashes ref/a         PASS   value=11 bars rule=every bar of the group passes
+BAR SX7 equal_hashes ref/pair0     PASS   value=11 bars rule=every bar of the group passes
+BAR SX7 equal_hashes ref/pair1     PASS   value=11 bars rule=every bar of the group passes
+BAR SX7 P5/P11 on S1X              PASS   value=15 bars: all pass rule=collision (P5) and depth (P11) bars pass with scatter on
+BAR SX17 aa_floor                  REPORT value=changed_frac=0.00711 worst16=0.00750 (7 masked px at (640, 288)) mean_abs=0.00376 mask_px=43028 (last2 footprint; x_before vs x_before_aa against the P7 bar) rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255
+BAR SX17 undo_vs_pre_last2         REPORT value=floor unusable: A/A floor (x_before.png vs x_before_aa.png, same mask) 0.00711 / 0.00750 (7 masked px at (640, 288)) is above the P7 bar; pair 0.00667 / 0.00649 (32 masked px at (752, 480)), within the floor (last2 footprint) rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar
+BAR SX17 redo_vs_after             REPORT value=floor unusable: A/A floor (x_before.png vs x_before_aa.png, same mask) 0.00711 / 0.00750 (7 masked px at (640, 288)) is above the P7 bar; pair 0.00142 / 0.00534 (8 masked px at (608, 208)), within the floor (last2 footprint) rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar
+BAR SX17 ghost_a_vs_reload         REPORT value=floor unusable: A/A floor (x_before.png vs x_before_aa.png, same mask) 0.00711 / 0.00750 (7 masked px at (640, 288)) is above the P7 bar; pair 0.00200 / 0.00584 (125 masked px at (624, 304)), within the floor (last2 footprint; s1x_a x_redo vs s1xl x_redo) rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar
+BAR S1X scatter_check dirt         REPORT value=Grass core 0/1122 band 2174; Tussock core 0/33 band 40; Flower core 0/29 band 117; Rock core 1/1 band 4 rule=live / pure-grass yield in the set's core (reported)
+BAR S1X scatter_check rock         REPORT value=Grass core 0/29 band 2; Rock core 1/1 band 3 rule=live / pure-grass yield in the set's core (reported)
+BAR S1X scatter_check snow         REPORT value=Grass core 0/226 band 465; Tussock core 0/8 band 2; Flower core 0/41 band 0; Tree core 0/1 band 0; Rock core 1/1 band 4 rule=live / pure-grass yield in the set's core (reported)
+BAR SX15 caps rts80                REPORT value=analytic: drawn 34529 (cap 24000), primitives in view 152 of 476 with instances (cap 700) rule=caps of plan 3.7 (stated for rts80; rts80 reported against the same caps): instance origins in the frustum and inside their cull end, no occlusion, no LOD
+BAR SX15 triangles rts80           REPORT value=LOD0 triangle upper bound 3524614 above the cap 1500000: LOD-weighted figure unknown (not computed: no per-instance LOD recorded) rule=plan 3.7 cap: LOD-weighted triangles <= 1500000 (reported)
+BAR SX15 caps oblique              REPORT value=analytic: drawn 23905 (cap 24000), primitives in view 119 of 476 with instances (cap 700) rule=caps of plan 3.7 (stated for rts80; oblique reported against the same caps): instance origins in the frustum and inside their cull end, no occlusion, no LOD
+BAR SX15 triangles oblique         REPORT value=LOD0 triangle upper bound 2540578 above the cap 1500000: LOD-weighted figure unknown (not computed: no per-instance LOD recorded) rule=plan 3.7 cap: LOD-weighted triangles <= 1500000 (reported)
+BAR SX15 caps closeup              REPORT value=analytic: drawn 23907 (cap 24000), primitives in view 117 of 476 with instances (cap 700) rule=caps of plan 3.7 (stated for rts80; closeup reported against the same caps): instance origins in the frustum and inside their cull end, no occlusion, no LOD
+BAR SX15 triangles closeup         REPORT value=LOD0 triangle upper bound 2631094 above the cap 1500000: LOD-weighted figure unknown (not computed: no per-instance LOD recorded) rule=plan 3.7 cap: LOD-weighted triangles <= 1500000 (reported)
+BAR SX12 undo/redo latency         REPORT value=n=4 max 0.256 s: [('undo', 256), ('undo', 254), ('redo', 244), ('redo', 244)] rule=undo and redo latency <= 1.2 s (max, n = 2)
+BAR SX18 temporal_freeze a         PASS   value=8 shots frozen; not frozen []; not in the timeline []; temporal_freeze rows (op, value, available, read-back) [(15, 1, True, 'frozen'), (20, 0, True, 'not frozen'), (62, 1, True, 'frozen'), (66, 0, True, 'not frozen'), (89, 1, True, 'frozen'), (93, 0, True, 'not frozen'), (109, 1, True, 'frozen'), (113, 0, True, 'not frozen')] rule=every judged shot (and its fresh twin) was taken with the temporal sequences frozen (cvar read-back, not the request), so the pair compares repeatable frames
+BAR SX18 after                     PASS   value=changed_frac=0.00000 worst16=0.00024 (24 masked px at (1264, 272)) mean_abs=0.00000 mask_px=1591174 (scatter mask m_after, frozen frames); A/A floor (xf_before.png vs xf_before_aa.png, same mask) 0.00000 / 0.00017 rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar
+BAR SX18 undo                      PASS   value=changed_frac=0.00000 worst16=0.00028 (256 masked px at (720, 928)) mean_abs=0.00000 mask_px=1602265 (scatter mask m_undo, frozen frames); A/A floor (xf_before.png vs xf_before_aa.png, same mask) 0.00000 / 0.00017 rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar
+BAR SX18 redo                      PASS   value=changed_frac=0.00000 worst16=0.00038 (256 masked px at (720, 928)) mean_abs=0.00000 mask_px=1591174 (scatter mask m_redo, frozen frames); A/A floor (xf_before.png vs xf_before_aa.png, same mask) 0.00000 / 0.00017 rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar
+BAR SX18 after compile window      PASS   value=frames 0..2989; units with partial updates 118; recreates hiding a unit's partial updates 0; harmless recreates 125 (a later apply followed, or no partial update in the window); reported {'asset_post_compile': 31, 'shader_propagation': 21, 'compile_busy_frame': 13, 'first_create': 479} rule=no compile, engine, PSO, unexplained or expected recreate after a unit's last partial update and before the shot (per unit; refills and first creates reported)
+BAR SX18 undo compile window       PASS   value=frames 3220..4095; units with partial updates 22; recreates hiding a unit's partial updates 0; harmless recreates 0 (a later apply followed, or no partial update in the window); reported {'refill': 1} rule=no compile, engine, PSO, unexplained or expected recreate after a unit's last partial update and before the shot (per unit; refills and first creates reported)
+BAR SX18 redo compile window       PASS   value=frames 4326..5181; units with partial updates 22; recreates hiding a unit's partial updates 0; harmless recreates 0 (a later apply followed, or no partial update in the window); reported none rule=no compile, engine, PSO, unexplained or expected recreate after a unit's last partial update and before the shot (per unit; refills and first creates reported)
+BAR SX18 temporal_freeze pair0 (reported) REPORT value=8 shots frozen; not frozen []; not in the timeline []; temporal_freeze rows (op, value, available, read-back) [(15, 1, True, 'frozen'), (20, 0, True, 'not frozen'), (62, 1, True, 'frozen'), (66, 0, True, 'not frozen'), (89, 1, True, 'frozen'), (93, 0, True, 'not frozen'), (109, 1, True, 'frozen'), (113, 0, True, 'not frozen')] rule=every judged shot (and its fresh twin) was taken with the temporal sequences frozen (cvar read-back, not the request), so the pair compares repeatable frames [reported: a pair run]
+BAR SX18[s1x_b] (reported) after   REPORT value=changed_frac=0.00000 worst16=0.00078 (256 masked px at (1136, 176)) mean_abs=0.00000 mask_px=1591174 (scatter mask m_after, frozen frames); A/A floor (xf_before.png vs xf_before_aa.png, same mask) 0.00000 / 0.00022 rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar [reported: a pair run]
+BAR SX18[s1x_b] (reported) undo    REPORT value=changed_frac=0.00000 worst16=0.00028 (256 masked px at (848, 512)) mean_abs=0.00000 mask_px=1602265 (scatter mask m_undo, frozen frames); A/A floor (xf_before.png vs xf_before_aa.png, same mask) 0.00000 / 0.00022 rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar [reported: a pair run]
+BAR SX18[s1x_b] (reported) redo    REPORT value=changed_frac=0.00000 worst16=0.00040 (256 masked px at (720, 928)) mean_abs=0.00000 mask_px=1591174 (scatter mask m_redo, frozen frames); A/A floor (xf_before.png vs xf_before_aa.png, same mask) 0.00000 / 0.00022 rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar [reported: a pair run]
+BAR SX18 temporal_freeze pair1 (reported) REPORT value=8 shots frozen; not frozen []; not in the timeline []; temporal_freeze rows (op, value, available, read-back) [(15, 1, True, 'frozen'), (20, 0, True, 'not frozen'), (62, 1, True, 'frozen'), (66, 0, True, 'not frozen'), (89, 1, True, 'frozen'), (93, 0, True, 'not frozen'), (109, 1, True, 'frozen'), (113, 0, True, 'not frozen')] rule=every judged shot (and its fresh twin) was taken with the temporal sequences frozen (cvar read-back, not the request), so the pair compares repeatable frames [reported: a pair run]
+BAR SX18[s1x_c] (reported) after   REPORT value=changed_frac=0.00000 worst16=0.00025 (256 masked px at (1488, 688)) mean_abs=0.00000 mask_px=1591174 (scatter mask m_after, frozen frames); A/A floor (xf_before.png vs xf_before_aa.png, same mask) 0.00000 / 0.00045 rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar [reported: a pair run]
+BAR SX18[s1x_c] (reported) undo    REPORT value=changed_frac=0.00000 worst16=0.00039 (256 masked px at (720, 928)) mean_abs=0.00000 mask_px=1602265 (scatter mask m_undo, frozen frames); A/A floor (xf_before.png vs xf_before_aa.png, same mask) 0.00000 / 0.00045 rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar [reported: a pair run]
+BAR SX18[s1x_c] (reported) redo    REPORT value=changed_frac=0.00000 worst16=0.00072 (1 masked px at (1552, 112)) mean_abs=0.00000 mask_px=1591174 (scatter mask m_redo, frozen frames); A/A floor (xf_before.png vs xf_before_aa.png, same mask) 0.00000 / 0.00045 rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar [reported: a pair run]
+BAR SX18 temporal_freeze reload    PASS   value=3 shots frozen; not frozen []; not in the timeline []; temporal_freeze rows (op, value, available, read-back) [(13, 1, True, 'frozen'), (19, 0, True, 'not frozen')] rule=every judged shot (and its fresh twin) was taken with the temporal sequences frozen (cvar read-back, not the request), so the pair compares repeatable frames
+BAR SX18 loaded redo               PASS   value=changed_frac=0.00000 worst16=0.00066 (256 masked px at (1136, 176)) mean_abs=0.00000 mask_px=1591174 (scatter mask m_redo, frozen frames); A/A floor (xf_redo.png vs xf_redo_aa.png, same mask) 0.00000 / 0.00020 rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar
+BAR SX18 loaded redo compile window PASS   value=frames 0..673; units with partial updates 51; recreates hiding a unit's partial updates 0; harmless recreates 81 (a later apply followed, or no partial update in the window); reported {'asset_post_compile': 29, 'shader_propagation': 20, 'compile_busy_frame': 8, 'first_create': 478} rule=no compile, engine, PSO, unexplained or expected recreate after a unit's last partial update and before the shot (per unit; refills and first creates reported)
+S1X PASS
+exit=0
+
+$ python Tools/parse_terrain.py --same-hash Out/s1x_a Out/s1x_b
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=156/156 rule=completed=true and ops_done == ops_total
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=156/156 rule=completed=true and ops_done == ops_total
+BAR shared_hashes                  PASS   value=['after', 'before', 'pre_last2', 'redo', 'undo'] rule=>= 4 shared hash ops
+BAR height_fnv_equal               PASS   value=equal at 5 hashes + final rule=equal at every shared hash
+BAR splat_fnv_equal                PASS   value=equal at 5 hashes + final rule=equal at every shared hash
+BAR final_equal                    PASS   value=0xff563549/0xd264ddc9 vs 0xff563549/0xd264ddc9 rule=final hashes equal
+BAR ticks_applied_eq_ticks_a       PASS   value=12 strokes, 0 mismatched rule=ticks_applied == ticks
+BAR ticks_applied_eq_ticks_b       PASS   value=12 strokes, 0 mismatched rule=ticks_applied == ticks
+BAR b_capped_fps                   PASS   value=a MaxFPS=0, b MaxFPS=20 rule=a uncapped (0), b capped below 60
+BAR b_frame_time_differs           PASS   value=median frame a=11.37 ms b=50.00 ms rule=b's frames are clearly slower than a's
+BAR b_hitched_mid_stroke           PASS   value=1 hitch(es): [(300, 300)] rule=>= 1 mid-stroke hitch of the requested length
+height_fnv equal, splat_fnv equal, ticks_applied==ticks
+SAME-HASH PASS
+exit=0
+
+$ python Tools/parse_terrain.py --dump-diff Out/s1x_a Out/s1x_b redo
+DUMP-DIFF s1x_a/redo vs s1x_b/redo: records 234302 vs 234302, common keys 234302, only in A 0, only in B 0, common with any field different 0, per field {}
+DUMP-DIFF EQUAL
+exit=0
+
+$ python D:/Projects/Chimera-Unreal/TrialOut/c_s5/r4/script_match.py
+s1x_a        OK    S1X.json script_sha256 f644bdea0dd618b7 file f644bdea0dd618b7
+s1x_b        OK    S1X.json script_sha256 f644bdea0dd618b7 file f644bdea0dd618b7
+s1x_c        OK    S1X.json script_sha256 f644bdea0dd618b7 file f644bdea0dd618b7
+s1xl         OK    S1XL.json script_sha256 b92d1f75e85e80c5 file b92d1f75e85e80c5
+thinx        OK    THINX.json script_sha256 67a558a47a3a3dbc file 67a558a47a3a3dbc
+shadx        OK    SHADX.json script_sha256 d579bbeb64cb7a39 file d579bbeb64cb7a39
+latx         OK    LATX.json script_sha256 affbb23751434bd1 file affbb23751434bd1
+mousex       OK    MOUSEX.json script_sha256 dfea240d19934c1b file dfea240d19934c1b
+c1s_smoke    OK    C1S.json script_sha256 383e179f8b765402 file 383e179f8b765402
+sx_smoke     OK    SXSMOKE.json script_sha256 d4d0b4cb19633b9c file d4d0b4cb19633b9c
+sxp_default  OK    SXPATHS.json script_sha256 fb763060dffca2f9 file fb763060dffca2f9
+sxp_t0       OK    SXPATHS.json script_sha256 fb763060dffca2f9 file fb763060dffca2f9
+sxp_clear    OK    SXPATHS.json script_sha256 fb763060dffca2f9 file fb763060dffca2f9
+sxp_gov6     OK    SXPATHS.json script_sha256 fb763060dffca2f9 file fb763060dffca2f9
+tearx        OK    TEARX.json script_sha256 2014f7618a212e3d file 2014f7618a212e3d
+failx        OK    FAILX.json script_sha256 f77434e461282906 file f77434e461282906
+lookx_smoke  OK    LOOKX.json script_sha256 782c8a533e9c9f54 file 782c8a533e9c9f54
+videox_smoke OK    VIDEOX.json script_sha256 e0bb82411ef36dba file e0bb82411ef36dba
+soaks_smoke  OK    SOAKS_SMOKE.json script_sha256 f8719a87a2beac7a file f8719a87a2beac7a
+s1_sx5       OK    S1.json script_sha256 1a8444172217a850 file 1a8444172217a850
+s1l_sx5      OK    S1L.json script_sha256 046237999ebbefbe file 046237999ebbefbe
+g1_sx5       OK    G1.json script_sha256 69654c05b6c590be file 69654c05b6c590be
+mouse_sx5    OK    MOUSE.json script_sha256 d4a2366972c34cc5 file d4a2366972c34cc5
+s1xf_a       OK    S1XF.json script_sha256 037026ec574c1221 file 037026ec574c1221
+s1xf_clear   OK    S1XF.json script_sha256 037026ec574c1221 file 037026ec574c1221
+s1xf_noaa    OK    S1XF.json script_sha256 037026ec574c1221 file 037026ec574c1221
+SCRIPT-MATCH OK
+exit=0
+

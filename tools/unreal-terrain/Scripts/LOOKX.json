@@ -1,0 +1,545 @@
+{
+ "name": "LOOKX",
+ "about": "Plan C scatter 3.8 script LOOKX: LOOK's map with scatter. look full shots at rts80, oblique, closeup, each with its scatter_visible 0 twin (<name>_off), the tree and shrub layer masks and analytic view counts, then movie 30 at rts80 in compare mode with scatter on and off (M9 shimmer); the shots keep LOOK's names so look_measure.py reads them.",
+ "ops": [
+  {
+   "op": "look",
+   "mode": "full"
+  },
+  {
+   "op": "camera",
+   "pose": "rts80"
+  },
+  {
+   "op": "settle",
+   "frames": 10
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 100,
+   "s": 10,
+   "path": [
+    [
+     -20,
+     40
+    ]
+   ],
+   "ticks": 80,
+   "per_frame": 4,
+   "phase": "sculpt"
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 100,
+   "s": 10,
+   "path": [
+    [
+     40,
+     70
+    ]
+   ],
+   "ticks": 120,
+   "per_frame": 4
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 100,
+   "s": 10,
+   "path": [
+    [
+     -70,
+     80
+    ]
+   ],
+   "ticks": 100,
+   "per_frame": 4
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 90,
+   "s": 10,
+   "path": [
+    [
+     75,
+     5
+    ]
+   ],
+   "ticks": 60,
+   "per_frame": 4
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 100,
+   "s": 10,
+   "path": [
+    [
+     0,
+     115
+    ]
+   ],
+   "ticks": 150,
+   "per_frame": 4
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 80,
+   "s": 10,
+   "path": [
+    [
+     -95,
+     15
+    ]
+   ],
+   "ticks": 50,
+   "per_frame": 4
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 100,
+   "s": 10,
+   "path": [
+    [
+     100,
+     95
+    ]
+   ],
+   "ticks": 100,
+   "per_frame": 4
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 100,
+   "s": 10,
+   "path": [
+    [
+     -110,
+     120
+    ]
+   ],
+   "ticks": 120,
+   "per_frame": 4
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 60,
+   "s": 10,
+   "path": [
+    [
+     -40,
+     100
+    ],
+    [
+     60,
+     130
+    ]
+   ],
+   "ticks": 160,
+   "per_frame": 4
+  },
+  {
+   "op": "stroke",
+   "mode": "lower",
+   "d": 80,
+   "s": 10,
+   "path": [
+    [
+     20,
+     -5
+    ]
+   ],
+   "ticks": 30,
+   "per_frame": 4
+  },
+  {
+   "op": "stroke",
+   "mode": "smooth",
+   "d": 100,
+   "s": 100,
+   "path": [
+    [
+     -120,
+     0
+    ],
+    [
+     120,
+     20
+    ],
+    [
+     120,
+     60
+    ],
+    [
+     -120,
+     60
+    ],
+    [
+     -120,
+     110
+    ],
+    [
+     120,
+     120
+    ],
+    [
+     120,
+     150
+    ],
+    [
+     -120,
+     150
+    ]
+   ],
+   "ticks": 600,
+   "per_frame": 6
+  },
+  {
+   "op": "stroke",
+   "mode": "smooth",
+   "d": 100,
+   "s": 100,
+   "path": [
+    [
+     -120,
+     140
+    ],
+    [
+     120,
+     130
+    ],
+    [
+     120,
+     90
+    ],
+    [
+     -120,
+     90
+    ],
+    [
+     -120,
+     30
+    ],
+    [
+     120,
+     40
+    ],
+    [
+     120,
+     -10
+    ],
+    [
+     -120,
+     -10
+    ]
+   ],
+   "ticks": 600,
+   "per_frame": 6
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 18,
+   "s": 60,
+   "path": [
+    [
+     48,
+     28
+    ]
+   ],
+   "ticks": 22,
+   "per_frame": 2
+  },
+  {
+   "op": "stroke",
+   "mode": "smooth",
+   "d": 22,
+   "s": 30,
+   "path": [
+    [
+     48,
+     28
+    ]
+   ],
+   "ticks": 12,
+   "per_frame": 2
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 12,
+   "s": 60,
+   "path": [
+    [
+     56,
+     34
+    ]
+   ],
+   "ticks": 14,
+   "per_frame": 2
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 6,
+   "s": 100,
+   "path": [
+    [
+     -60,
+     -20
+    ],
+    [
+     -30,
+     8
+    ],
+    [
+     0,
+     28
+    ],
+    [
+     30,
+     42
+    ],
+    [
+     70,
+     58
+    ],
+    [
+     110,
+     80
+    ]
+   ],
+   "ticks": 100,
+   "per_frame": 2,
+   "phase": "paint"
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 5,
+   "s": 100,
+   "path": [
+    [
+     0,
+     28
+    ],
+    [
+     -10,
+     60
+    ],
+    [
+     -30,
+     95
+    ],
+    [
+     -60,
+     130
+    ]
+   ],
+   "ticks": 60,
+   "per_frame": 2
+  },
+  {
+   "op": "paint",
+   "layer": 2,
+   "d": 14,
+   "s": 100,
+   "path": [
+    [
+     -34,
+     58
+    ],
+    [
+     -24,
+     64
+    ]
+   ],
+   "ticks": 30,
+   "per_frame": 2
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 900
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "camera",
+   "pose": "rts80"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "rts80_full"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 0
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "rts80_full_off"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 1
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "camera",
+   "pose": "oblique"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "oblique"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 0
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "oblique_off"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 1
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "camera",
+   "pose": "closeup"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "closeup"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 0
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "closeup_off"
+  },
+  {
+   "op": "scatter_visible",
+   "value": 1
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "scatter_mask",
+   "pose": "rts80",
+   "name": "mask_trees",
+   "layers": "trees"
+  },
+  {
+   "op": "scatter_mask",
+   "pose": "rts80",
+   "name": "mask_shrubs",
+   "layers": "shrubs"
+  },
+  {
+   "op": "scatter_view_counts",
+   "pose": "rts80",
+   "name": "rts80"
+  },
+  {
+   "op": "scatter_view_counts",
+   "pose": "oblique",
+   "name": "oblique"
+  },
+  {
+   "op": "scatter_verify",
+   "name": "look"
+  },
+  {
+   "op": "hash",
+   "name": "look"
+  },
+  {
+   "op": "look",
+   "mode": "compare"
+  },
+  {
+   "op": "camera",
+   "pose": "rts80"
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "movie",
+   "frames": 30
+  },
+  {
+   "op": "scatter_visible",
+   "value": 0
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "movie",
+   "frames": 30
+  },
+  {
+   "op": "scatter_visible",
+   "value": 1
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "look",
+   "mode": "full"
+  },
+  {
+   "op": "save"
+  }
+ ]
+}

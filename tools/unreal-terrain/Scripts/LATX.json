@@ -1,0 +1,1800 @@
+{
+ "name": "LATX",
+ "about": "Plan C scatter 3.8 script LATX (flat map, compare mode): 20 isolated strokes per diameter 5, 20, 60, 100 (raise and dirt paint alternating, seeded positions), each followed by scatter_wait and 1.5 s idle, so one stroke's latency (stroke end -> every tile current and flushed) is measured without the next one's dirt.",
+ "ops": [
+  {
+   "op": "look",
+   "mode": "compare"
+  },
+  {
+   "op": "camera",
+   "pose": "rts80"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 600,
+   "phase": "fill"
+  },
+  {
+   "op": "settle",
+   "frames": 150,
+   "phase": "idle"
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 5,
+   "s": 10,
+   "path": [
+    [
+     -96.6,
+     -102.2
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d5"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 5,
+   "s": 100,
+   "path": [
+    [
+     118.3,
+     -36.9
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d5"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 5,
+   "s": 10,
+   "path": [
+    [
+     57.1,
+     117.0
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d5"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 5,
+   "s": 100,
+   "path": [
+    [
+     43.0,
+     -0.4
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d5"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 5,
+   "s": 10,
+   "path": [
+    [
+     -65.0,
+     31.0
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d5"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 5,
+   "s": 100,
+   "path": [
+    [
+     103.7,
+     113.2
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d5"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 5,
+   "s": 10,
+   "path": [
+    [
+     75.0,
+     -138.6
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d5"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 5,
+   "s": 100,
+   "path": [
+    [
+     107.7,
+     -14.3
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d5"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 5,
+   "s": 10,
+   "path": [
+    [
+     -83.2,
+     -34.6
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d5"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 5,
+   "s": 100,
+   "path": [
+    [
+     -118.8,
+     38.3
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d5"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 5,
+   "s": 10,
+   "path": [
+    [
+     -137.9,
+     -81.5
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d5"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 5,
+   "s": 100,
+   "path": [
+    [
+     -111.3,
+     111.6
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d5"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 5,
+   "s": 10,
+   "path": [
+    [
+     -105.9,
+     -121.0
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d5"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 5,
+   "s": 100,
+   "path": [
+    [
+     55.8,
+     120.1
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d5"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 5,
+   "s": 10,
+   "path": [
+    [
+     -101.7,
+     -13.1
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d5"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 5,
+   "s": 100,
+   "path": [
+    [
+     -68.3,
+     -49.6
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d5"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 5,
+   "s": 10,
+   "path": [
+    [
+     26.3,
+     -74.3
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d5"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 5,
+   "s": 100,
+   "path": [
+    [
+     90.1,
+     -30.9
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d5"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 5,
+   "s": 10,
+   "path": [
+    [
+     -89.1,
+     105.8
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d5"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 5,
+   "s": 100,
+   "path": [
+    [
+     -86.9,
+     87.6
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d5"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 20,
+   "s": 10,
+   "path": [
+    [
+     126.9,
+     -73.7
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d20"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 20,
+   "s": 100,
+   "path": [
+    [
+     -40.9,
+     -132.7
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d20"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 20,
+   "s": 10,
+   "path": [
+    [
+     -66.3,
+     105.5
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d20"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 20,
+   "s": 100,
+   "path": [
+    [
+     57.3,
+     -122.4
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d20"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 20,
+   "s": 10,
+   "path": [
+    [
+     19.9,
+     11.4
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d20"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 20,
+   "s": 100,
+   "path": [
+    [
+     122.7,
+     -71.2
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d20"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 20,
+   "s": 10,
+   "path": [
+    [
+     -43.7,
+     37.6
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d20"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 20,
+   "s": 100,
+   "path": [
+    [
+     -55.8,
+     -24.3
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d20"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 20,
+   "s": 10,
+   "path": [
+    [
+     89.4,
+     -85.1
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d20"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 20,
+   "s": 100,
+   "path": [
+    [
+     113.0,
+     -20.5
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d20"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 20,
+   "s": 10,
+   "path": [
+    [
+     -117.9,
+     36.5
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d20"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 20,
+   "s": 100,
+   "path": [
+    [
+     -112.5,
+     124.3
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d20"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 20,
+   "s": 10,
+   "path": [
+    [
+     130.4,
+     10.1
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d20"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 20,
+   "s": 100,
+   "path": [
+    [
+     -118.5,
+     -67.5
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d20"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 20,
+   "s": 10,
+   "path": [
+    [
+     2.8,
+     132.3
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d20"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 20,
+   "s": 100,
+   "path": [
+    [
+     66.5,
+     -0.6
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d20"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 20,
+   "s": 10,
+   "path": [
+    [
+     -25.3,
+     113.2
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d20"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 20,
+   "s": 100,
+   "path": [
+    [
+     -28.0,
+     102.6
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d20"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 20,
+   "s": 10,
+   "path": [
+    [
+     -124.9,
+     -16.5
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d20"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 20,
+   "s": 100,
+   "path": [
+    [
+     32.8,
+     14.0
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d20"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 60,
+   "s": 10,
+   "path": [
+    [
+     68.7,
+     -24.7
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d60"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 60,
+   "s": 100,
+   "path": [
+    [
+     -27.5,
+     -16.3
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d60"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 60,
+   "s": 10,
+   "path": [
+    [
+     -3.9,
+     0.5
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d60"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 60,
+   "s": 100,
+   "path": [
+    [
+     75.1,
+     -25.7
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d60"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 60,
+   "s": 10,
+   "path": [
+    [
+     86.0,
+     7.1
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d60"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 60,
+   "s": 100,
+   "path": [
+    [
+     -76.1,
+     0.7
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d60"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 60,
+   "s": 10,
+   "path": [
+    [
+     -9.1,
+     101.9
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d60"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 60,
+   "s": 100,
+   "path": [
+    [
+     95.7,
+     -63.6
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d60"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 60,
+   "s": 10,
+   "path": [
+    [
+     15.1,
+     35.6
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d60"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 60,
+   "s": 100,
+   "path": [
+    [
+     -89.6,
+     -82.6
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d60"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 60,
+   "s": 10,
+   "path": [
+    [
+     16.1,
+     36.4
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d60"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 60,
+   "s": 100,
+   "path": [
+    [
+     80.1,
+     -114.7
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d60"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 60,
+   "s": 10,
+   "path": [
+    [
+     -17.0,
+     103.0
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d60"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 60,
+   "s": 100,
+   "path": [
+    [
+     13.7,
+     45.5
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d60"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 60,
+   "s": 10,
+   "path": [
+    [
+     64.9,
+     -10.4
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d60"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 60,
+   "s": 100,
+   "path": [
+    [
+     -89.7,
+     59.1
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d60"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 60,
+   "s": 10,
+   "path": [
+    [
+     -24.7,
+     106.0
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d60"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 60,
+   "s": 100,
+   "path": [
+    [
+     77.7,
+     71.4
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d60"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 60,
+   "s": 10,
+   "path": [
+    [
+     78.2,
+     -19.5
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d60"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 60,
+   "s": 100,
+   "path": [
+    [
+     -40.9,
+     54.0
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d60"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 100,
+   "s": 10,
+   "path": [
+    [
+     25.8,
+     77.2
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d100"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 100,
+   "s": 100,
+   "path": [
+    [
+     23.9,
+     -25.5
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d100"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 100,
+   "s": 10,
+   "path": [
+    [
+     81.9,
+     -23.1
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d100"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 100,
+   "s": 100,
+   "path": [
+    [
+     31.5,
+     80.0
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d100"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 100,
+   "s": 10,
+   "path": [
+    [
+     -80.2,
+     -63.4
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d100"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 100,
+   "s": 100,
+   "path": [
+    [
+     -28.6,
+     59.6
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d100"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 100,
+   "s": 10,
+   "path": [
+    [
+     -69.7,
+     -27.5
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d100"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 100,
+   "s": 100,
+   "path": [
+    [
+     -43.0,
+     -2.6
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d100"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 100,
+   "s": 10,
+   "path": [
+    [
+     -60.4,
+     -70.2
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d100"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 100,
+   "s": 100,
+   "path": [
+    [
+     25.4,
+     36.3
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d100"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 100,
+   "s": 10,
+   "path": [
+    [
+     26.3,
+     -37.6
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d100"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 100,
+   "s": 100,
+   "path": [
+    [
+     -20.5,
+     -67.2
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d100"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 100,
+   "s": 10,
+   "path": [
+    [
+     85.9,
+     18.4
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d100"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 100,
+   "s": 100,
+   "path": [
+    [
+     -78.8,
+     -38.3
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d100"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 100,
+   "s": 10,
+   "path": [
+    [
+     -84.9,
+     -76.9
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d100"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 100,
+   "s": 100,
+   "path": [
+    [
+     -60.4,
+     83.7
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d100"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 100,
+   "s": 10,
+   "path": [
+    [
+     -7.5,
+     37.8
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d100"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 100,
+   "s": 100,
+   "path": [
+    [
+     79.0,
+     23.7
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d100"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "stroke",
+   "mode": "raise",
+   "d": 100,
+   "s": 10,
+   "path": [
+    [
+     1.9,
+     0.2
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d100"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "paint",
+   "layer": 1,
+   "d": 100,
+   "s": 100,
+   "path": [
+    [
+     -14.1,
+     -33.6
+    ]
+   ],
+   "ticks": 20,
+   "phase": "d100"
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 120
+  },
+  {
+   "op": "idle",
+   "seconds": 1.5
+  },
+  {
+   "op": "scatter_wait",
+   "timeout_s": 300
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "scatter_verify",
+   "name": "end"
+  },
+  {
+   "op": "hash",
+   "name": "end"
+  }
+ ]
+}

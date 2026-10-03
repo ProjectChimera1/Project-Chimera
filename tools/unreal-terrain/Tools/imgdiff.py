@@ -5,7 +5,8 @@ Definitions (plan C 3.8):
   luma        Rec.709 weights on the 8-bit sRGB values / 255 (0.2126 R + 0.7152 G + 0.0722 B).
   changed     a pixel whose |delta luma| > 4/255 after a 3x3 box blur of both images.
   terrain     mask = pixels changed between a shot and a `visible 0` shot at the same pose.
-  footprint   mask = pixel sets the director projected to screen (footprints.json, `<pose>/<key>`).
+  footprint   mask = pixel sets the director projected to screen (footprints.json, `<pose>/<key>`); scatter_mask entries are row runs
+              {"runs": [[y, x0, x1], ...]} (inclusive), expanded here.
   paint       mask = the footprint of S1's two paint strokes (footprint set `paint`, projected at the `paint` shot as `rts80/paint`;
               C7's bar: `paint` vs `sculpt` changed_frac >= 0.30). --footprints defaults to footprints.json beside A, --key to rts80/paint.
   local undo statistic: inside the mask, changed fraction <= 0.5 % AND worst 16x16 block mean |delta| <= 2/255 (mean_abs reported too).
@@ -110,6 +111,20 @@ def footprint_mask(fp_json, key, shape, close=1, shrink=1):
     pts = data.get(name) or []
     vw, vh = data.get("viewport", [shape[1], shape[0]])
     m = np.zeros(shape, dtype=bool)
+    if isinstance(pts, dict):
+        # scatter_mask: row runs [y, x0, x1] (inclusive) in viewport pixels
+        sx = shape[1] / float(vw) if vw else 1.0
+        sy = shape[0] / float(vh) if vh else 1.0
+        for y, x0, x1 in pts.get("runs") or []:
+            ya, yb = int(y * sy), max(int(y * sy), min(shape[0], int((y + 1) * sy)) - 1)
+            xa, xb = int(x0 * sx), min(shape[1] - 1, int((x1 + 1) * sx) - 1)
+            if 0 <= ya < shape[0] and xb >= xa:
+                m[ya:yb + 1, max(0, xa):xb + 1] = True
+        if close:
+            m = erode(dilate(m, close), close)
+        if shrink:
+            m = erode(m, shrink)
+        return m
     if not pts:
         return m
     p = np.asarray(pts, dtype=np.int64)

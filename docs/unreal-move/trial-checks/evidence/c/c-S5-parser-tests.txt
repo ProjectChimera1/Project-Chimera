@@ -1,0 +1,84 @@
+S5 (scatter harness and determinism runs), round 4 (residual fix after round 3: SX17 frozen variant and the reviewers' minors): parser self-tests, the script generator check and the standalone scatter harness
+Parser outputs re-run on round 4 parser code; Unreal runs from round 3 (TrialOut/c_s5/r3, functionally the same build) except the S1XF runs (round 4 final Editor build, TrialOut/c_s5/r4); runs in T/Out.
+
+$ python -m pytest Tools/test_parse_terrain.py -q -p no:cacheprovider
+........................................                                 [100%]
+40 passed in 0.92s
+exit=0
+
+$ python Tools/gen_scatter_scripts.py --check
+SCRIPTS OK
+exit=0
+
+$ cmd //c Tools\scatter_harness\build_and_run.bat
+PASS Chimera.Terrain.Scatter.Mix32Golden                                 0 ms
+      info: Mix32 golden: 32 pairs
+PASS Chimera.Terrain.Scatter.MathGolden                                  0 ms
+      info: math golden: 48 keys, 64 noise values, 11 floor divisions
+PASS Chimera.Terrain.Scatter.MathBasics                                  0 ms
+PASS Chimera.Terrain.Scatter.SurfaceQ16VsSampleSurface                   1 ms
+      info: SurfaceQ16 vs SampleSurface over 10000 points: max |difference| = 1.53e-05 m (bound 2^-15 = 3.05e-05 m)
+PASS Chimera.Terrain.Scatter.PositionsLargeExtent                       27 ms
+      info: E = 512 corner tiles: 979 records, all inside the map and inside their cells
+PASS Chimera.Terrain.Scatter.SplatBilinear                               0 ms
+PASS Chimera.Terrain.Scatter.SameInputTwice                             35 ms
+      info: sculpted E = 64 L1 (map 1, painted): 5200 records, scatter_fnv 90e5e15ff10ca8ca
+PASS Chimera.Terrain.Scatter.TileSizeInvariance                        257 ms
+PASS Chimera.Terrain.Scatter.ChunkSizeInvariance                        21 ms
+PASS Chimera.Terrain.Scatter.ExtentOverlap                             379 ms
+      info: E = 160 vs 320: 29147 records compared over the overlap, identical (small 30694, big 105319 in total)
+PASS Chimera.Terrain.Scatter.ParallelEqualsSerial                       52 ms
+PASS Chimera.Terrain.Scatter.SnapshotEqualsLive                         24 ms
+PASS Chimera.Terrain.Scatter.HeightfieldHashUnchanged                   24 ms
+PASS Chimera.Terrain.Scatter.RecordHashIgnoresPadding                    0 ms
+PASS Chimera.Terrain.Scatter.IncrementalEqualsFull                    1310 ms
+      info: incremental: 60 strokes, 9 undo/redo pairs, dispatched 822 applied 473 identical 349 discarded 0 units 1728
+PASS Chimera.Terrain.Scatter.UndoRedoRestoresHashes                     77 ms
+PASS Chimera.Terrain.Scatter.LocalityOfEdits                            54 ms
+      info: locality: 9395 records outside the dirty tiles unchanged, 328 changed inside
+PASS Chimera.Terrain.Scatter.ApronCoversReach                         1509 ms
+      info: apron: 333 changed records over 120 small vertex / texel block edits, all inside marked tiles
+PASS Chimera.Terrain.Scatter.ApronCoversTreeProbes                     566 ms
+      info: tree probe reach: 8 trees at a tile edge removed by dirt 4 m away, each tile marked
+PASS Chimera.Terrain.Scatter.DirtyRangeArithmetic                        0 ms
+PASS Chimera.Terrain.Scatter.TiltOnlySculpt                             26 ms
+      info: tilt-only: 4 constructed cases; smooth stroke: 213 surviving records in tilted cells (0 with unchanged zq), all updated
+PASS Chimera.Terrain.Scatter.EditScriptProperty                         23 ms
+PASS Chimera.Terrain.Scatter.SchedulerFakeExecutor                     320 ms
+      info: scheduler: 14 checkpoints, dispatched 302 applied 180 identical 107 discarded 15 mid-stroke 125 stale redispatch 101 in-flight max 2 busy max 20 units 701
+PASS Chimera.Terrain.Scatter.SchedulerStrokeRulesAndCancel               0 ms
+PASS Chimera.Terrain.Scatter.SchedulerDisable                           36 ms
+      info: disable: 13 dirty tiles, 1 ready and 1 in flight at disable; afterwards 0 dirty, 0 busy, nothing pending; discarded 2
+PASS Chimera.Terrain.Scatter.SchedulerGameThreadMode                   129 ms
+      info: game-thread mode: dispatched 111 gt_generations 111 in-flight max 0 max per call 1 mid-stroke 48
+PASS Chimera.Terrain.Scatter.MonotoneThinning                         3617 ms
+      info: monotone: 1,000 paints; net records removed 184784; rock gains 2602; shrub gains 4 (exempt classes)
+PASS Chimera.Terrain.Scatter.HedgePositive                             151 ms
+      info: hedge (Fh neutral): shrubs along a 48 m dirt line before 0 / 0 (verge / core), after 10 / 0, 0 outside the 6.5-10.5 m band
+      info: hedge Fh gate (seed 104730, line y = -40, Fh < 0.45): default gate 0 / 0, gate neutral 4 / 0 (verge / core)
+      info: hedge path dirt profile from the axis, every 0.5 m: 151 145 128 106 83 57 33 13 2 0 0 0 0 0 0 
+      info: hedge default gate (seed 1853059, 40 m path at (4, -40), Fh >= 0.7 along it): shrubs before 0; after 6 verge / 0 core; verge distance 1.40-2.50 m from the dirt-48 contour, 3.20-4.20 m from the dirt-128 contour; 0 beyond 3.5 m
+PASS Chimera.Terrain.Scatter.ExclusionRules                             75 ms
+      info: exclusions checked on 29006 records: grass 20247 near card 5673 flower 453 tussock 415 tree 61 sapling 29 shrub 123 fern 999 rock 1006
+PASS Chimera.Terrain.Scatter.ZRuleExact                                 28 ms
+PASS Chimera.Terrain.Scatter.NearCardAndLevels                          43 ms
+PASS Chimera.Terrain.Scatter.FieldCoverage                              10 ms
+      info: field coverage at seed 1853059: woodland 16.0 % of the interior (want 12-20), 76.7 % of the border ring (60-90), flower drift 9.5 % of the meadow (5-12)
+PASS Chimera.Terrain.Scatter.ClassTotalsAndFieldMap                    700 ms
+      info: flat all-grass E = 160 (L1) totals: grass 221854, tussock 4561, flower 6001, near card 61717, tree 1003, sapling 348, shrub 1474, fern 7646, rock 124,  total 304728
+      info: flat E = 160 L1 seed 1853059: config_fnv 97b1fd3dc898592a scatter_fnv fe13d317d6f4cbb1
+      info: THINX field map: flower yield within 5 m of (x, y): (70, 50) = 145, (-40, -40) = 131, (50, 60) = 115
+      info: THINX field map: tussock yield within 5 m of (x, y): (10, -80) = 18, (10, -40) = 16, (50, -50) = 15
+      info: THINX field map: tree yield within 12 m of (x, y): (60, -100) = 17, (90, 80) = 15, (50, -70) = 12
+PASS Chimera.Terrain.Scatter.BuildInstanceBasics                         0 ms
+PASS Chimera.Terrain.Scatter.RockTiltFrameConditioned                    0 ms
+PASS Chimera.Terrain.Scatter.PaletteAndConfigFnv                        11 ms
+PASS Chimera.Terrain.Scatter.PaletteOverridesAndValidate                 0 ms
+      info: overrides: 18 cases; WWarpPeriodM=32 moves 64 of 64 woodland samples
+PASS Chimera.Terrain.Scatter.LookSharedMatchesMaterial                   0 ms
+PASS Chimera.Terrain.Scatter.TextScanIncludes                            1 ms
+PASS Chimera.Terrain.Scatter.TextScanForbidden                           1 ms
+PASS Chimera.Terrain.Scatter.HlslAndAssetTextRules                       0 ms
+TESTS pass=41 fail=0
+exit=0
+

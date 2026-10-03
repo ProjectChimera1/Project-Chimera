@@ -29,7 +29,12 @@ Usage:
                                                  files' sha256, scatter keys when both runs have them (config mismatch FAILs); no timing bars
   parse_terrain.py --scatter RUN_DIR             scatter S4 (SX1/SX8/SX9 on one run): every scatter_verify passed, settled hashes live == reference,
                                                  counters balanced, proxy_recreates == 0, SXSMOKE's hidden shot and undo-to-first, log scan;
-                                                 writes RUN_DIR/scatter.json
+                                                 S5 adds SX9's asset-report and licence bars, the dump oracle (SX5) on every dump taken at the
+                                                 saved state, the event log check and compile events per phase; writes RUN_DIR/scatter.json
+  parse_terrain.py --s1x RUN [--pair RUN...] [--reload RUN] --ref S1_RUN [--xref S1X_RUN] [--packaged] [--shipping]
+                                                 scatter S5 (scatter_bars.py): SX1-SX5, SX7-SX9, SX17, SX18 (SX16 with --packaged); --thinx RUN (SX6),
+                                                 --shadx RUN (SX10), --latx RUN (SX12 rows), --dump-oracle RUN NAME (the numpy oracle alone),
+                                                 --dump-diff RUN_A RUN_B NAME [NAME_B] (two dumps diffed by key)
   parse_terrain.py --simgrid RUN_DIR             independent re-computation of sim_grid_fnv and the 16 probes from height.r32 (python
                                                  mirror of ScenarioLoadPhase.cs:252-270 / ElevationGrid.Sample; C10 does the C# check)
   parse_terrain.py --summary RUN_DIR... [--json OUT.json] [--gate-config KEY]
@@ -127,6 +132,18 @@ class Gates:
     @property
     def ok(self):
         return all(r["pass"] for r in self.rows) and bool(self.rows)
+
+
+class ShippingGates(Gates):
+    """Gates for a Shipping run (plan-c-scatter.md 5 SX16 (c), (e)): SX1 (verify, hashes, instances), SX5 (the dump oracle) and the governor read-back
+    (plan 3.7: 'a parser bar checks each read-back, Shipping included') stay gated; the log scan (Shipping writes no log), SX8's proxy and counter rows and
+    SX9's asset rows are REPORT."""
+    GATED_PREFIXES = ("completed", "results", "scatter_block", "scatter_options", "scatter_verify", "scatter_hash_live_eq_ref", "scatter_verify_instances",
+                      "SX5", "scatter_counters_balanced", "scatter_governor_readback")
+
+    def bar(self, name, ok, value, rule, informational=False):
+        gated = any(name.startswith(p) for p in self.GATED_PREFIXES)
+        Gates.bar(self, name, ok, value, rule + ("" if gated or informational else " [Shipping: reported, SX16 (e)]"), informational=informational or not gated)
 
 
 def _fmt(v):
@@ -693,11 +710,16 @@ def teardown(run):
     return g
 
 
-def scatter(run):
+def scatter(run, shipping=False):
     """plan-c-scatter.md 4 S4 item 4 (SX1, SX8, SX9 on one run): every scatter_verify passed (live == reference, ISM readback == BuildInstance,
     z and up axis from HF, nothing pending), every settled hash has live == reference, the counters balance with nothing in flight at the end,
-    proxy_recreates == 0, the hidden shot exists (SXSMOKE), SXSMOKE's final hash equals its first, and the log scan is clean."""
+    proxy_recreates == 0, the hidden shot exists (SXSMOKE), SXSMOKE's final hash equals its first, and the log scan is clean. Task S5 adds SX9's
+    asset-report and licence bars, the dump oracle (SX5) on every dump taken at the saved state, the full up-axis check per verify and the
+    frame-stamped compile events per op window and phase (scatter_bars.scatter_extra). shipping=True (plan 5 SX16 (c), (e)): a Shipping build
+    writes no log and is held to SX1 and SX5 only, so the log, proxy (SX8) and asset (SX9) rows are REPORT there."""
     g = Gates()
+    if shipping:
+        g = ShippingGates()
     res = scan_run(run, g)
     log = os.path.join(run, "game.log")
     bad = []
@@ -800,6 +822,8 @@ def scatter(run):
     g.bar("scatter_flush_ms", True, "p50 %.3f p99 %.3f max %.3f" % (fl.get("p50", 0), fl.get("p99", 0), fl.get("max", 0)), "end-of-frame instance flush ms", informational=True)
     g.bar("apply_unit_ms_edits", True, "p50 %.3f p99 %.3f max %.3f (n %s); init_ms %.0f" % (ap.get("p50", 0), ap.get("p99", 0), ap.get("max", 0), ap.get("n"), sc.get("init_ms", -1)),
           "per-unit apply cost outside the fill", informational=True)
+    import scatter_bars
+    scatter_bars.scatter_extra(g, run, res, sc)
     print("SCATTER %s" % ("PASS" if g.ok else "FAIL"))
     return g, sc
 
@@ -1076,9 +1100,12 @@ def summary(paths, out_json, gate_config=None):
     gates = []   # (metric, status, detail)
     summ = {"runs": {}, "gates": []}
 
-    def add(metric, ok, detail, measured_only=False, any_measured=True):
-        """measured_only: a gated timing; unmeasured evidence is REPORTED, not PASS/FAIL (EXECUTION 3 C9)."""
-        if detail.startswith("no samples"):
+    def add(metric, ok, detail, measured_only=False, any_measured=True, report=False):
+        """measured_only: a gated timing; unmeasured evidence is REPORTED, not PASS/FAIL (EXECUTION 3 C9). report: a report-only row of the plan
+        (plan-c-scatter.md 5 SX12-SX15, 'report' in the Gate column): always REPORTED, never counted as a gate failure."""
+        if report:
+            status = "REPORTED-" + ("no-samples" if detail.startswith("no samples") else ("pass" if ok else "fail"))
+        elif detail.startswith("no samples"):
             status = "FAIL"   # a gate without data fails, measured or not
         elif measured_only and not any_measured:
             status = "REPORTED-" + ("pass" if ok else "fail")
@@ -1388,6 +1415,12 @@ def summary(paths, out_json, gate_config=None):
     else:
         add("P10 mouse", False, "no samples (no MOUSE run)")
 
+    try:
+        import scatter_bars
+        scatter_bars.summary_scatter(runs, add, any_measured, summ)
+    except Exception as ex:   # the SCATTER table must never take the plan C 5 table down with it
+        print("SCATTER table failed: %r" % (ex,))
+        add("SCATTER table", False, "no samples (the SCATTER table raised %r, so its SX11 gates are missing)" % (ex,))
     npass = sum(1 for _, s, _ in gates if s == "PASS")
     nfail = sum(1 for _, s, _ in gates if s == "FAIL")
     nrep = sum(1 for _, s, _ in gates if s.startswith("REPORTED"))
@@ -1451,6 +1484,18 @@ def main(argv=None):
     ap.add_argument("--equal-hashes", nargs=2, metavar=("A_DIR", "B_DIR"))
     ap.add_argument("--scatter", metavar="RUN_DIR")
     ap.add_argument("--simgrid", metavar="RUN_DIR")
+    ap.add_argument("--s1x", metavar="RUN_DIR", help="scatter S5: SX1-SX5, SX7-SX9, SX17, SX18 on an S1X run (see scatter_bars.py); needs --ref")
+    ap.add_argument("--pair", nargs="+", metavar="RUN_DIR", help="--s1x: the other S1X runs (s1x_b capped with ScatterThreads=0, s1x_c with ScatterDuringStroke=0)")
+    ap.add_argument("--reload", metavar="RUN_DIR", help="--s1x: the S1XL run")
+    ap.add_argument("--xref", metavar="RUN_DIR", help="--s1x: the editor-build S1X run a packaged run is compared with (s1x_final)")
+    ap.add_argument("--packaged", action="store_true", help="--s1x: apply SX16 (packaged runs)")
+    ap.add_argument("--shipping", action="store_true", help="--s1x and --scatter: a Shipping run (SX16 (c), (e): log, SX8, SX9 and SX18 rows reported; SX1 and SX5 gated)")
+    ap.add_argument("--sx17f", nargs="+", metavar="RUN_DIR", help="scatter S5: SX17's frozen single-window variant (reported) on S1XF runs")
+    ap.add_argument("--thinx", metavar="RUN_DIR", help="scatter S5: SX6 on a THINX run")
+    ap.add_argument("--shadx", metavar="RUN_DIR", help="scatter S5: SX10 on a SHADX run")
+    ap.add_argument("--latx", metavar="RUN_DIR", help="scatter S5: SX12 rows on a LATX run")
+    ap.add_argument("--dump-oracle", nargs=2, metavar=("RUN_DIR", "DUMP_NAME"), help="scatter S5: the dump oracle alone on scatter_<name>.bin")
+    ap.add_argument("--dump-diff", nargs="+", metavar="ARG", help="scatter S5: RUN_A RUN_B NAME [NAME_B]: diff two scatter dumps by key (SX4 / SX16 failures)")
     ap.add_argument("--summary", nargs="+", metavar="RUN_DIR")
     ap.add_argument("--json", metavar="OUT")
     ap.add_argument("--gate-config", metavar="KEY", help="configuration key (as printed in the summary's runs table) that P1-P4 gate")
@@ -1463,6 +1508,9 @@ def main(argv=None):
             out.extend(h for h in hits if os.path.isdir(h))
         return out
 
+    if a.s1x or a.sx17f or a.thinx or a.shadx or a.latx or a.dump_oracle or a.dump_diff:
+        import scatter_bars
+        return scatter_bars.main_hook(a)
     if a.g1:
         if not os.path.isdir(a.g1):
             print("no such run dir: %s" % a.g1)
@@ -1509,7 +1557,7 @@ def main(argv=None):
         if not os.path.isdir(a.scatter):
             print("no such run dir: %s" % a.scatter)
             return 2
-        g, _sc = scatter(a.scatter)
+        g, _sc = scatter(a.scatter, shipping=a.shipping)
         with open(os.path.join(a.scatter, "scatter.json"), "w", encoding="utf-8") as f:
             json.dump({"gate": "SCATTER", "pass": g.ok, "bars": g.rows}, f, indent=1)
         return 0 if g.ok else 1
