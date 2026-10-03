@@ -17,6 +17,16 @@ namespace ChimeraUi
 		Canvas->AddSlot().Anchors(FAnchors(0.f, 0.f, 0.f, 0.f)).Offset(FMargin(X, Y, W, H)).Alignment(FVector2D(0.f, 0.f))[Child];
 	}
 
+	/**
+	 * Adds `Child` stretched across the canvas' width: CSS `position:absolute; left: Left; right: RightInset; top: Y; height: H`.
+	 * A negative inset reaches past that edge. Used where the mockup gives a panel left and right instead of a width, so the panel
+	 * follows the screen when the UI scale changes (T8's -HudUiScale shot); at 1920x1080 and scale 1 it lands on the same pixels.
+	 */
+	inline void AddStretchX(const TSharedRef<SConstraintCanvas>& Canvas, float Left, float Y, float RightInset, float H, const TSharedRef<SWidget>& Child)
+	{
+		Canvas->AddSlot().Anchors(FAnchors(0.f, 0.f, 1.f, 0.f)).Offset(FMargin(Left, Y, RightInset, H)).Alignment(FVector2D(0.f, 0.f))[Child];
+	}
+
 	/** A solid W x H rectangle at (X, Y). */
 	inline void AddRect(const TSharedRef<SConstraintCanvas>& Canvas, float X, float Y, float W, float H, uint32 Rgb, float Alpha = 1.f)
 	{

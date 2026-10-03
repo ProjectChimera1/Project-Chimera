@@ -31,8 +31,10 @@ void SChimeraSelectionPanel::Construct(const FArguments& InArgs)
 	const FChimeraHudState& S = InArgs._State;
 	const TSharedRef<SConstraintCanvas> C = SNew(SConstraintCanvas);
 
-	AddRect(C, 0.f, 0.f, PanelW, PanelH, Token::Surface1);
-	AddRect(C, 0.f, 0.f, PanelW, 1.f, Token::GoldDark);
+	// CSS left:256px; right:300px: the fill, the top border and the ornament frame stretch with the screen (1364 px at 1920 wide);
+	// the vat and the info column stay at their left positions (flex row from the left).
+	AddStretchX(C, 0.f, 0.f, 0.f, PanelH, SNew(SImage).Image(Solid(Token::Surface1)));
+	AddStretchX(C, 0.f, 0.f, 0.f, 1.f, SNew(SImage).Image(Solid(Token::GoldDark)));
 
 	// Portrait vat: 1 px border, #14161A fill, radial-gradient(circle at 50% 70%, #2E4A44 0, #1A1D22 62%) over the 122x145 padding box.
 	AddRect(C, VatX, VatY, VatW, VatH, Token::GoldDark);
@@ -72,9 +74,9 @@ void SChimeraSelectionPanel::Construct(const FArguments& InArgs)
 	// Ornament frame (z-index 3): the full 1364 px top inner edge, built with noSigils, laser delay 1.5 s.
 	{
 		const float M = SChimeraOrnamentFrame::Margin;
-		AddAbs(C, -M, 1.f - M, PanelW + 2.f * M, M + 8.f,
-			SNew(SChimeraOrnamentFrame).FrameWidth(PanelW).Sigils(false).LaserBaseDelay(1.5f));
+		AddStretchX(C, -M, 1.f - M, -M, M + 8.f,
+			SNew(SChimeraOrnamentFrame).FrameWidth(PanelW).Stretch(true).Sigils(false).LaserBaseDelay(1.5f));
 	}
 
-	ChildSlot[SNew(SBox).WidthOverride(PanelW).HeightOverride(PanelH)[C]];
+	ChildSlot[SNew(SBox).HeightOverride(PanelH)[C]];
 }

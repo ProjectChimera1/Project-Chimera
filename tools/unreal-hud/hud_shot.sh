@@ -40,5 +40,7 @@ OUT=$(bash "$LOCK" bash "$HERE/hud_shot_inner.sh" "$DEADLINE" "$UE" "$H/ChimeraH
   '-ExecCmds=DisableAllScreenMessages,r.ScreenPercentage 100,t.MaxFPS 60' "-HudBackdrop=$BACKDROP" -HudFreezeTime=3.0 $MODE $EXTRA)
 RC=$(echo "$OUT" | sed -n 's/^EXIT=//p' | tail -1)
 
-# 3. checks
-python "$HERE/hud_shot_check.py" --log "$LOG" --png "$PNG" --start "$START_EPOCH" --exit "${RC:-NONE}" --backdrop "$BACKDROP" --h "$H" $([ "$WARMUP" = 1 ] && echo --warmup)
+# 3. checks (an -HudUiScale=<s> in --extra makes the geometry check expect that scale; T8's ungated UI-scale shot)
+UISCALE=1.0
+case " $EXTRA " in *" -HudUiScale="*) UISCALE=$(echo " $EXTRA " | sed -n 's/.* -HudUiScale=\([0-9.]*\).*/\1/p');; esac
+python "$HERE/hud_shot_check.py" --log "$LOG" --png "$PNG" --start "$START_EPOCH" --exit "${RC:-NONE}" --backdrop "$BACKDROP" --h "$H" --ui-scale "$UISCALE" $([ "$WARMUP" = 1 ] && echo --warmup)

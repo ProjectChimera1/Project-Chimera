@@ -10,7 +10,7 @@ class SWidget;
 
 /**
  * AHUD that owns the Slate root widget (SChimeraMatchHud). Adds it to the game viewport on BeginPlay, removes it on EndPlay,
- * applies -HudUiScale, and starts the capture automation when -HudShot or -HudWarmup is on the command line.
+ * applies -HudUiScale, skips the widget with -HudOff (HUD-cost baseline), and starts the capture automation when -HudShot or -HudWarmup is on the command line.
  */
 UCLASS()
 class AChimeraHudActor : public AHUD

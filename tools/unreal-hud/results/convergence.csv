@@ -15,3 +15,5 @@ t7-2,2026-10-03 12:37:10,0,0,card.V,0.666,0.220,0.9989,8345b06e011b9467,only=^(o
 t4-4,2026-10-03 12:42:21,0,0,top.chip.gold,1.000,0.808,0.9913,8345b06e011b9467,only=^top\. gates=all extra=none T7 end: top.* regression check; all gates
 t5-7,2026-10-03 12:44:03,0,0,tab.3,1.000,0.953,0.9924,8345b06e011b9467,only=^(toast|world\.|mm\.|tab\.) gates=G1;G2;G3;G5;G6 extra=none T7 end: T5 filter regression check
 t6-3,2026-10-03 12:46:09,0,0,sel.name,1.000,0.622,0.9929,8345b06e011b9467,only=^(sel\.|card\.) gates=G1;G2;G3;G5 extra=none T7 end: T6 filter regression check
+final-1,2026-10-03 13:14:55,0,0,top.chip.gold,1.000,0.683,0.9929,0cce40c125ec2c10,only=all gates=all extra=none T8 full board: every region; every gate; build adds -HudOff
+final-2,2026-10-03 13:24:38,0,0,top.chip.gold,1.000,0.683,0.9929,2b8e64178ed02416,only=all gates=all extra=none T8: selection panel stretches (CSS left 256 right 300) so it follows -HudUiScale; ornament frame width from geometry

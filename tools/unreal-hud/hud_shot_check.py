@@ -5,7 +5,8 @@ Prints one line: `SHOT OK <png> mode=<m> compile_s=<n> scale=1.000 local=1920x10
 or `SHOT FAIL <reason> exit=<code>`; exit 0 only on OK.
 
 Checks: process exit 0 and the success sentinel (`shot written` or `WARMUP DONE`); the PNG is newer than the start and 1920x1080;
-the last `Scene viewport resized to 1920x1080, mode (Fullscreen|WindowedFullscreen)`; `geometry scale=1.000 local=1920x1080`;
+the last `Scene viewport resized to 1920x1080, mode (Fullscreen|WindowedFullscreen)`; `geometry scale=1.000 local=1920x1080` (with --ui-scale s: scale=s, local=1920/s x 1080/s,
+viewport still 1920x1080);
 the image allow-list over `loaded <path> <sha256>` lines; zero `LogChimeraHud: Error`.
 """
 import argparse
@@ -58,6 +59,8 @@ def main():
     ap.add_argument("--backdrop", default="")
     ap.add_argument("--h", required=True)
     ap.add_argument("--warmup", action="store_true")
+    ap.add_argument("--ui-scale", type=float, default=1.0,
+                    help="expected -HudUiScale (T8's ungated UI-scale shot): geometry scale=<s>, local=round(1920/s)x round(1080/s)")
     a = ap.parse_args()
 
     def fail(reason):
@@ -112,8 +115,11 @@ def main():
     g = re.search(r"geometry scale=([0-9.]+) local=(\d+)x(\d+) viewport=(\d+)x(\d+)", text)
     if not g:
         return fail("NO GEOMETRY LINE")
-    if g.group(1) != "1.000" or (g.group(2), g.group(3)) != ("1920", "1080"):
-        return fail(f"GEOMETRY scale={g.group(1)} local={g.group(2)}x{g.group(3)}")
+    want_scale = f"{a.ui_scale:.3f}"
+    want_local = (str(round(1920 / a.ui_scale)), str(round(1080 / a.ui_scale)))
+    if g.group(1) != want_scale or (g.group(2), g.group(3)) != want_local or (g.group(4), g.group(5)) != ("1920", "1080"):
+        return fail(f"GEOMETRY scale={g.group(1)} local={g.group(2)}x{g.group(3)} viewport={g.group(4)}x{g.group(5)} "
+                    f"(want scale={want_scale} local={want_local[0]}x{want_local[1]} viewport=1920x1080)")
     sha = hashlib.sha256(open(a.png, "rb").read()).hexdigest()[:12]
     print(f"SHOT OK {a.png} mode={modes[-1]} compile_s={compile_s} scale={g.group(1)} local={g.group(2)}x{g.group(3)} "
           f"viewport={g.group(4)}x{g.group(5)} bytes={m.group(1)} sha={sha}")

@@ -33,6 +33,7 @@ public:
 		: _FrameWidth(0.f)
 		, _Sigils(true)
 		, _LaserBaseDelay(0.f)
+		, _Stretch(false)
 	{}
 		/** The container's width in px (the panel's width inside its left/right borders: 255, 1364, 299). */
 		SLATE_ARGUMENT(float, FrameWidth)
@@ -40,6 +41,9 @@ public:
 		SLATE_ARGUMENT(bool, Sigils)
 		/** The frame's laser delay option: 0 s minimap, 1.5 s selection, 3 s command card. */
 		SLATE_ARGUMENT(float, LaserBaseDelay)
+		/** True when the panel stretches with the screen (the selection panel, CSS left/right): the frame width is then the painted
+		 *  width minus the two margins, rounded to whole px; FrameWidth only sets the desired size. */
+		SLATE_ARGUMENT(bool, Stretch)
 	SLATE_END_ARGS()
 
 	/** Band margin around the 0-height container: the seals reach 7 px above, left and right of it. */
@@ -65,6 +69,7 @@ private:
 	float FrameWidth = 0.f;
 	bool bSigils = true;
 	float LaserBaseDelay = 0.f;
+	bool bStretch = false;
 	const FSlateBrush* Tile = nullptr;		// rope tile, origin on a pixel edge
 	const FSlateBrush* TileHalf = nullptr;	// rope tile, origin half a pixel right
 	const FSlateBrush* Seal[4] = { nullptr, nullptr, nullptr, nullptr };

@@ -43,6 +43,7 @@ void SChimeraOrnamentFrame::Construct(const FArguments& InArgs)
 	FrameWidth = InArgs._FrameWidth;
 	bSigils = InArgs._Sigils;
 	LaserBaseDelay = InArgs._LaserBaseDelay;
+	bStretch = InArgs._Stretch;
 	// Decoration only: never take a hit test (the band reaches 7 px above the panel, over the tab row).
 	SetVisibility(EVisibility::HitTestInvisible);
 	Tile = OrnamentBrush(TEXT("rope_tile.png"));
@@ -127,7 +128,8 @@ int32 SChimeraOrnamentFrame::OnPaint(const FPaintArgs& Args, const FGeometry& Al
 	FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
 {
 	const FVector2f BandOrigin(Margin, Margin);
-	const float W = FrameWidth, Half = FrameWidth * 0.5f;
+	const float W = bStretch ? FMath::RoundToFloat(AllottedGeometry.GetLocalSize().X - 2.f * Margin) : FrameWidth;
+	const float Half = W * 0.5f;
 
 	// Ropes (z-index 2 inside the frame): DOM order left, right, left, right; the second pair lands on the first pair's pixels.
 	int32 Layer = LayerId;

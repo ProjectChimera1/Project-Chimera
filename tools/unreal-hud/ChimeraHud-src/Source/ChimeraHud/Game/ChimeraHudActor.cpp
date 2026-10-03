@@ -23,7 +23,12 @@ void AChimeraHudActor::BeginPlay()
 		UE_LOG(LogChimeraHud, Display, TEXT("ApplicationScale=%f"), UiScale);
 	}
 
-	if (GEngine && GEngine->GameViewport)
+	if (FParse::Param(FCommandLine::Get(), TEXT("HudOff")))
+	{
+		// HUD-cost baseline (plan B T8, T/hud_cost.ps1): the same map, game mode and command line with no root widget.
+		UE_LOG(LogChimeraHud, Display, TEXT("HUD off: root widget not added (-HudOff)"));
+	}
+	else if (GEngine && GEngine->GameViewport)
 	{
 		FString Backdrop = TEXT("#14161A");
 		FParse::Value(FCommandLine::Get(), TEXT("-HudBackdrop="), Backdrop, false);

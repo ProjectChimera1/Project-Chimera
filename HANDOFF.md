@@ -1,6 +1,6 @@
 # HANDOFF — Project Chimera
 
-_Updated 2026-10-03 13:10 · branch `master` · last commit: HUD T7 (see `git log -1`)_
+_Updated 2026-10-03 13:45 · branch `master` · last commit: HUD T8 (see `git log -1`)_
 
 ## Where we stopped
 
@@ -11,7 +11,8 @@ xhigh verifiers (results; code and rules).
 - **(a) NativeAOT sim:** **A11: Unreal draws the sim exactly** (visible == alive at every check tick, 0.00 cm, 7/7 pixel pairs,
   reviewer's visual check all yes). One 1,440-tick checksum sequence for `trial_1000` from the .NET CLI, the C++ harness, Godot (.NET 8 and
   10), the full MainScene replay and Unreal `-game`. Sim tests failed=0 throughout; no golden or AlgoVersion moved. DW-681 stays open.
-- **(b) HUD:** calibration frozen (`bbfda161`, positives 5/5, negatives 8/8); text route chosen (T4a); D10 accepted by Alec; **T4b top
+- **(b) HUD:** **T8 full board PASS 0/38 on both pairs, DETERMINISM OK** (Phase 3 done for check b; UI scale 0.8 shot clean after a
+  selection-panel stretch fix). Calibration frozen (`bbfda161`, positives 5/5, negatives 8/8); text route chosen (T4a); D10 accepted by Alec; **T4b top
   strip PASS 0/8 on both pairs** (7 text regions sit exactly at the G5 limit from D10's lighter weight: no margin left there).
 - **(c) Terrain:** C4, C5, C7, C8, C10 passed. Ground look round 4 committed (art director 5.5/10 vs Manor Lords, terrain GPU
   2.907 ms of 3.0).
@@ -26,7 +27,8 @@ xhigh verifiers (results; code and rules).
 ## Next step
 
 **Phase 3 (converge) is running** in two workflows started 08:55 on 2026-10-03 in the session that committed S6:
-`tools/unreal-trial/workflows/phase3-b.js` (HUD T4b → T5 → T6 → T7 → T8; **T4b-T7 passed and are committed; the full board already scores 0/38 on both pairs**) and `phase3-ac.js`
+`tools/unreal-trial/workflows/phase3-b.js` (HUD T4b → T8: **all passed and committed; the full board scores 0/38 on both pairs**,
+DETERMINISM OK; HUD cost waits for Phase 4's measure lock) and `phase3-ac.js`
 (A11 renderer + separate reviewer's `visual_check.json` (**A11 passed, committed**), beside C9 units and video (**C9 passed, committed**) → C11 packages → S7 SX16). If that session is gone,
 the runs are gone too: start fresh small workflows for the unfinished tasks from those scripts' task notes (`TASKS3B`, `TASKS3`).
 Watch markers with `checkpoints/wait_marker.sh`, commit each passed task with `checkpoints/ckpt.py <task>` by explicit path (HUD: /

@@ -1,0 +1,80 @@
+{
+ "measured": false,
+ "lock_kind": "run",
+ "reps": {
+  "off": 1,
+  "on": 1
+ },
+ "aggregate_ms": {
+  "off": {
+   "frame": {
+    "min": 5.7401,
+    "median": 5.7401
+   },
+   "game_thread": {
+    "min": 1.0046,
+    "median": 1.0046
+   },
+   "render_thread": {
+    "min": 5.7041,
+    "median": 5.7041
+   },
+   "gpu": {
+    "min": 5.4361,
+    "median": 5.4361
+   }
+  },
+  "on": {
+   "frame": {
+    "min": 5.8522,
+    "median": 5.8522
+   },
+   "game_thread": {
+    "min": 1.7108,
+    "median": 1.7108
+   },
+   "render_thread": {
+    "min": 5.8158,
+    "median": 5.8158
+   },
+   "gpu": {
+    "min": 5.5243,
+    "median": 5.5243
+   }
+  }
+ },
+ "median_frame_delta_ms": 0.1121,
+ "flag_threshold_ms": 0.5,
+ "flagged": false,
+ "runs": {
+  "off": [
+   {
+    "csv": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/cost/smoke_off_r1.csv",
+    "frames": 600,
+    "skipped": 150,
+    "complete": true,
+    "frame_median_ms": 5.7401,
+    "game_thread_median_ms": 1.0046,
+    "render_thread_median_ms": 5.7041,
+    "gpu_median_ms": 5.4361,
+    "frame_p99_ms": 6.2289,
+    "frame_max_ms": 6.6797
+   }
+  ],
+  "on": [
+   {
+    "csv": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/cost/smoke_on_r1.csv",
+    "frames": 600,
+    "skipped": 150,
+    "complete": true,
+    "frame_median_ms": 5.8522,
+    "game_thread_median_ms": 1.7108,
+    "render_thread_median_ms": 5.8158,
+    "gpu_median_ms": 5.5243,
+    "frame_p99_ms": 6.0604,
+    "frame_max_ms": 6.404
+   }
+  ]
+ },
+ "line": "HUD cost: frame ms off/on min 5.740/5.852 median 5.740/5.852; game-thread ms off/on min 1.005/1.711 median 1.005/1.711; render-thread ms off/on min 5.704/5.816 median 5.704/5.816; gpu ms off/on min 5.436/5.524 median 5.436/5.524; median frame delta +0.112 ms [UNMEASURED: not a Phase-4 --measure run]"
+}

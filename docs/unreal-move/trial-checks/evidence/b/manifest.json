@@ -305,5 +305,140 @@
     "unreal_build_id": "",
     "committed": false,
     "sent_to_alec": null
+  },
+  {
+    "file": "b-T8-report-a.json",
+    "path": "b/b-T8-report-a.json",
+    "sha256": "46b0c98c25718f99b7ac4710b4513b15c3ac93434edcce6d18dd32297f2a8d33",
+    "bytes": 101801,
+    "w_h": null,
+    "task": "T8",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/final-2/A/report.json",
+    "r_commit": "b0e4febb",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "b-T8-report-b.json",
+    "path": "b/b-T8-report-b.json",
+    "sha256": "1515253354846fc31ee8e5f010638ee9fcfd25c96ae3095ae5fb53d3360d5c6a",
+    "bytes": 101824,
+    "w_h": null,
+    "task": "T8",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/final-2/B/report.json",
+    "r_commit": "b0e4febb",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "b-T8-hud-cost-smoke.json",
+    "path": "b/b-T8-hud-cost-smoke.json",
+    "sha256": "2b57016d5d6f7b21c98c2af8837c2e5665b84c89df63a0b0e843e534c0b511a5",
+    "bytes": 1757,
+    "w_h": null,
+    "task": "T8",
+    "source": "D:/Projects/Project_Chimera/tools/unreal-hud/results/hud_cost_smoke.json",
+    "r_commit": "b0e4febb",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "b-T8-scorecard-a.png",
+    "path": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/final-2/A/scorecard.png",
+    "sha256": "3a4870bb981af214d0c9aa41606c1c6707c0a68e72dea2eb04a14d16d20a568a",
+    "bytes": 177208,
+    "w_h": [
+      1920,
+      760
+    ],
+    "task": "T8",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/final-2/A/scorecard.png",
+    "r_commit": "b0e4febb",
+    "unreal_build_id": "",
+    "committed": false,
+    "sent_to_alec": null
+  },
+  {
+    "file": "b-T8-scorecard-b.png",
+    "path": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/final-2/B/scorecard.png",
+    "sha256": "e27492742d53eddf696368b106e32fac1b6457fd364aec529d4cfdf4159bf564",
+    "bytes": 183052,
+    "w_h": [
+      1920,
+      760
+    ],
+    "task": "T8",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/final-2/B/scorecard.png",
+    "r_commit": "b0e4febb",
+    "unreal_build_id": "",
+    "committed": false,
+    "sent_to_alec": null
+  },
+  {
+    "file": "b-T8-side-by-side-b-phone.png",
+    "path": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/final-2/B/side_by_side_phone.png",
+    "sha256": "51610a81d2622deff8fd896effb689a2621e44ad27bee81322aa802c35164b06",
+    "bytes": 922334,
+    "w_h": [
+      1920,
+      540
+    ],
+    "task": "T8",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/final-2/B/side_by_side_phone.png",
+    "r_commit": "b0e4febb",
+    "unreal_build_id": "",
+    "committed": false,
+    "sent_to_alec": null
+  },
+  {
+    "file": "b-T8-diff-heat-a.png",
+    "path": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/final-2/A/diff_heat.png",
+    "sha256": "e8ea5b7d57ecc7150759c81b0de4b730a6f92e9eda6a3173e8b671fda37edcb2",
+    "bytes": 59877,
+    "w_h": [
+      1920,
+      1080
+    ],
+    "task": "T8",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/final-2/A/diff_heat.png",
+    "r_commit": "b0e4febb",
+    "unreal_build_id": "",
+    "committed": false,
+    "sent_to_alec": null
+  },
+  {
+    "file": "b-T8-worst5-crops.png",
+    "path": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/final-2/worst5_crops_preview.png",
+    "sha256": "357c55804296c8b35f623223ecf474b1221f4b921285cc8a551e007e64796f9d",
+    "bytes": 51418,
+    "w_h": [
+      1920,
+      998
+    ],
+    "task": "T8",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/final-2/worst5_crops_preview.png",
+    "r_commit": "b0e4febb",
+    "unreal_build_id": "",
+    "committed": false,
+    "sent_to_alec": null
+  },
+  {
+    "file": "b-T8-uiscale80.png",
+    "path": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/uiscale80.png",
+    "sha256": "222c50bfcadc87ad2ec54946f0cc3e6ce70bf373f4e81d6088b370d33bf38892",
+    "bytes": 141365,
+    "w_h": [
+      1920,
+      1080
+    ],
+    "task": "T8",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraHud/HudRef/out/uiscale80.png",
+    "r_commit": "b0e4febb",
+    "unreal_build_id": "",
+    "committed": false,
+    "sent_to_alec": null
   }
 ]

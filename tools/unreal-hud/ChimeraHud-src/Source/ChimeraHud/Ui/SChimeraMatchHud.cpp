@@ -113,8 +113,8 @@ void SChimeraMatchHud::Construct(const FArguments& InArgs)
 			SNew(SChimeraGroupTabs).State(State)
 		];
 	Canvas->AddSlot()
-		.Anchors(FAnchors(0.f, 1.f, 0.f, 1.f))		// selection panel: (256, 904), 1364x176
-		.Offset(FMargin(256.f, 0.f, 1364.f, 176.f))
+		.Anchors(FAnchors(0.f, 1.f, 1.f, 1.f))		// selection panel: CSS left 256, right 300, bottom 0, height 176 (1364x176 at (256, 904))
+		.Offset(FMargin(256.f, 0.f, 300.f, 176.f))
 		.Alignment(FVector2D(0.f, 1.f))
 		[
 			SNew(SChimeraSelectionPanel).State(State)
