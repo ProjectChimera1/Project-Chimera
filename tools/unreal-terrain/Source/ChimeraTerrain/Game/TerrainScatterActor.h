@@ -236,9 +236,13 @@ private:
 	void CreateComponents();
 	void ApplyGovernorCvars();
 	void RestoreGovernorCvars();
-	/** Cull distances (cm) of a mesh unit with the governor applied; hidden units get (0, 1). */
-	void UnitCullDistances(ChimeraTerrain::EScatterMesh Mesh, int32& OutStart, int32& OutEnd) const;
-	bool IsMeshVisible(ChimeraTerrain::EScatterMesh Mesh) const;
+	/**
+	 * Cull distances (cm) of a mesh unit with the governor applied; hidden units get (0, 1). bIgnoreLayerMask skips only the layer mask (results.json
+	 * reports the configured ends whatever the layer visibility at the moment it is written); the governor's hide steps still apply.
+	 */
+	void UnitCullDistances(ChimeraTerrain::EScatterMesh Mesh, int32& OutStart, int32& OutEnd, bool bIgnoreLayerMask = false) const;
+	/** False when the layer mask (unless bIgnoreLayerMask) or a governor hide step (1: GrassT1, 4: Flower) hides the unit. */
+	bool IsMeshVisible(ChimeraTerrain::EScatterMesh Mesh, bool bIgnoreLayerMask = false) const;
 	void ApplyCullDistancesAll();
 	void Launch(const ChimeraTerrain::FScatterDispatch& D);
 	void ApplyUnit(ChimeraTerrain::EScatterGrid Grid, int32 TileIndex, const ChimeraTerrain::FScatterUnitWork& Unit);

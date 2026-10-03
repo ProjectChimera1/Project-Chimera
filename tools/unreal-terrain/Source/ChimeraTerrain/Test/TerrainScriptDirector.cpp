@@ -606,6 +606,7 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepOp(const FJsonObject& 
 	if (Name == TEXT("redo")) return StepUndoRedo(Op, false);
 	if (Name == TEXT("hitch")) return StepHitch(Op);
 	if (Name == TEXT("temporal_freeze")) return StepTemporalFreeze(Op);
+	if (Name == TEXT("exposure")) return StepExposure(Op);
 	if (Name == TEXT("save")) return StepSave(Op);
 	if (Name == TEXT("load")) return StepLoad(Op);
 	if (Name == TEXT("random_walk")) return StepRandomWalk(Op, false);
@@ -935,6 +936,7 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepShot(const FJsonObject
 	S->SetNumberField(TEXT("bytes"), static_cast<double>(Size));
 	S->SetStringField(TEXT("pose"), CurrentPose);
 	S->SetStringField(TEXT("look"), Lighting->IsCompareMode() ? TEXT("compare") : TEXT("full"));
+	S->SetBoolField(TEXT("exposure_held"), Lighting->IsExposureHeld());
 	S->SetBoolField(TEXT("terrain_visible"), Terrain->IsTerrainVisible());
 	S->SetNumberField(TEXT("seconds"), FPlatformTime::Seconds() - OpStartSeconds);
 	Shots->SetObjectField(Name, S);
@@ -1162,6 +1164,23 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepHitch(const FJsonObjec
 	Hitches.Add(MakeShared<FJsonValueObject>(Hj));
 	UE_LOG(LogChimeraTerrain, Display, TEXT("hitch %d ms"), Ms);
 	return EStep::Done;
+}
+
+ATerrainScriptDirector::EStep ATerrainScriptDirector::StepExposure(const FJsonObject& Op)
+{
+	if (OpFrame == 0)
+	{
+		const FString Mode = StrField(Op, TEXT("mode"));
+		const bool bHold = Mode.Equals(TEXT("hold"), ESearchCase::IgnoreCase);
+		if (!bHold && !Mode.Equals(TEXT("auto"), ESearchCase::IgnoreCase))
+		{
+			OpError = FString::Printf(TEXT("exposure mode '%s' (hold | auto)"), *Mode);
+			return EStep::Failed;
+		}
+		Lighting->SetExposureHold(bHold);
+	}
+	// Two frames so the post-process settings reach the render thread before the next op.
+	return OpFrame >= 2 ? EStep::Done : EStep::Running;
 }
 
 ATerrainScriptDirector::EStep ATerrainScriptDirector::StepTemporalFreeze(const FJsonObject& Op)

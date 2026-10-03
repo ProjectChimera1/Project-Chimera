@@ -975,6 +975,18 @@ class ScatterBarsTests(AssetFixture):
         bad = dict(base, hashes=dict(base["hashes"], undo=dict(h, height_fnv="0x9")))
         self.assertFalse(rows(bad)["state_restored"]["pass"])
 
+    def test_s6_triangle_bound_follows_the_loaded_mesh(self):
+        """S6 per-slot choices: the SX15 triangle bound reads the mesh each slot really loaded (options.scatter.meshes), not the level's rule."""
+        sb.MESH_TRIS_CACHE["rows"] = {("L0", "TreeBroadA"): 3400, ("L1", "TreeBroadA"): 29699}
+        sb.MESH_TRIS_CACHE["paths"] = {"/Game/Terrain/Scatter/Meshes/L0/TreeBroadA": 3400, "/Game/Terrain/Scatter/Meshes/L1/RockA__moss": 16548}
+        try:
+            v = {"meshes_drawn": {"TreeBroadA": 10, "RockA": 2}}
+            self.assertEqual(sb.tris_report(v, "L1", {"TreeBroadA": {"path": "/Game/Terrain/Scatter/Meshes/L0/TreeBroadA.TreeBroadA"},
+                                                      "RockA": {"path": "/Game/Terrain/Scatter/Meshes/L1/RockA__moss.RockA__moss"}}), "%d" % (10 * 3400 + 2 * 16548))
+            self.assertEqual(sb.tris_report({"meshes_drawn": {"TreeBroadA": 10}}, "L1"), "296990")  # no paths: the level rule, as before
+        finally:
+            sb.MESH_TRIS_CACHE.clear()
+
     def test_s5_round4_minors(self):
         """SX15's triangle row never passes above the cap; sg_equal reads sg the way --summary does; LATX leaves unfinished strokes out of the statistic."""
         sb.MESH_TRIS_CACHE["rows"] = {("L0", "GrassT0"): 30}

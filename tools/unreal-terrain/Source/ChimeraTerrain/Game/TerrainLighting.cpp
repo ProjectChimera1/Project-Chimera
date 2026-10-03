@@ -111,6 +111,19 @@ void ATerrainLighting::SetCompareMode(bool bCompare, float EV100)
 		bCompare ? TEXT("off") : TEXT("on"), bCompare ? *FString::Printf(TEXT("fixed EV100 %.2f"), EV100) : TEXT("auto"));
 }
 
+void ATerrainLighting::SetExposureHold(bool bHold)
+{
+	bExposureHeld = bHold;
+	FPostProcessSettings& S = Post->Settings;
+	// Scene.h:931-934 and 2005-2010 (AutoExposureSpeedUp / SpeedDown, F-stops per second). Released: the overrides are cleared, so the
+	// engine defaults apply again, as before the hold.
+	S.bOverride_AutoExposureSpeedUp = bHold;
+	S.bOverride_AutoExposureSpeedDown = bHold;
+	S.AutoExposureSpeedUp = HeldExposureSpeed;
+	S.AutoExposureSpeedDown = HeldExposureSpeed;
+	UE_LOG(LogChimeraTerrain, Display, TEXT("exposure %s"), bHold ? TEXT("held (adaptation speed 0.001 EV/s)") : TEXT("auto"));
+}
+
 int32 ATerrainLighting::ApplyOverrides(const FString& Spec)
 {
 	TArray<FString> Items;

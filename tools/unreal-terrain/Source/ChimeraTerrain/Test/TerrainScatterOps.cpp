@@ -534,6 +534,16 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepScatterMask(const FJso
 	{
 		return EStep::Failed;
 	}
+	// S6 (look measures M3/M4): parts = all (default: instance bounds plus the casters' analytic sun shadows), body (bounds only) or shadow
+	// (only the casters' shadow hull on the ground: the base corners and the shadow points, no upper bound corners).
+	const FString Parts = OpStr(Op, TEXT("parts"), TEXT("all"));
+	const bool bBody = Parts == TEXT("all") || Parts == TEXT("body");
+	const bool bShadow = Parts == TEXT("all") || Parts == TEXT("shadow");
+	if (!bBody && !bShadow)
+	{
+		OpError = FString::Printf(TEXT("scatter_mask parts '%s' (all, body or shadow)"), *Parts);
+		return EStep::Failed;
+	}
 	APlayerController* PC = GetPC();
 	FViewProj View;
 	if (!PC || !PC->PlayerCameraManager || !View.Init(PC) || !Lighting)
@@ -616,16 +626,20 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepScatterMask(const FJso
 		const double ZBase = Xf.GetTranslation().Z / 100.0;
 		TArray<FVector2D> Pts;
 		const bool bCaster = IsCasterClass(C);
+		if (!bBody && !bCaster)
+		{
+			continue;
+		}
 		for (int32 Corner = 0; Corner < 8; ++Corner)
 		{
 			const FVector Local((Corner & 1) ? Box.Max.X : Box.Min.X, (Corner & 2) ? Box.Max.Y : Box.Min.Y, (Corner & 4) ? Box.Max.Z : Box.Min.Z);
 			const FVector WorldCm = Xf.TransformPosition(Local);
 			FVector2D S;
-			if (View.Project(WorldCm, S))
+			if (bBody && View.Project(WorldCm, S))
 			{
 				Pts.Add(S);
 			}
-			if (bCaster && L.Z > 0.05)
+			if (bShadow && bCaster && L.Z > 0.05)
 			{
 				// The analytic sun shadow of the corner on the plane of the instance's base: P - L * (height above the base / L.z).
 				const FVector Pm = WorldCm / 100.0;
@@ -743,6 +757,7 @@ ATerrainScriptDirector::EStep ATerrainScriptDirector::StepScatterMask(const FJso
 	Entry->SetNumberField(TEXT("instances"), static_cast<double>(Used));
 	Entry->SetNumberField(TEXT("casters"), static_cast<double>(Casters));
 	Entry->SetStringField(TEXT("layers"), OpStr(Op, TEXT("layers"), TEXT("all")));
+	Entry->SetStringField(TEXT("parts"), OpStr(Op, TEXT("parts"), TEXT("all")));
 	Entry->SetStringField(TEXT("union_with"), UnionWith);
 	Entry->SetStringField(TEXT("only"), OnlyRef);
 	Entry->SetStringField(TEXT("near"), NearRef);

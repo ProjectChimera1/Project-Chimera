@@ -987,7 +987,7 @@ def s1x(a, pairs, reload_run, ref, xref=None, packaged=False, shipping=False):
             v.get("drawn_total"), SX15_DRAWN_MAX, v.get("primitives_in_view"), v.get("primitives_with_instances"), SX15_PRIMS_MAX),
             "caps of plan 3.7 (stated for rts80; %s reported against the same caps): instance origins in the frustum and inside their cull end, no occlusion, no LOD" % (
                 v.get("pose") or v.get("name")), informational=True)
-        g.bar("SX15 triangles %s" % v.get("name"), True, tris_verdict(v, opt.get("level") or "L0")[1],
+        g.bar("SX15 triangles %s" % v.get("name"), True, tris_verdict(v, opt.get("level") or "L0", opt.get("meshes"))[1],
               "plan 3.7 cap: LOD-weighted triangles <= %d (reported)" % SX15_TRIS_MAX, informational=True)
     # SX12 rows read here too: undo/redo latency
     lat = [l for l in scatter_block(ra).get("latency") or [] if l.get("reason") in ("undo", "redo")]
@@ -1511,7 +1511,7 @@ def summary_scatter(runs, add, any_measured, summ):
                 "analytic at rts80: drawn %s (<= %d), primitives in view %s of %s with instances (<= %d%s)" % (
                     v.get("drawn_total"), SX15_DRAWN_MAX, v.get("primitives_in_view"), v.get("primitives_with_instances"), prims_cap,
                     "" if run_opt.get("t0_rank_split") else ", no T0 rank split recorded"), report=True)
-            tok, tdetail = tris_verdict(v, run_opt.get("level") or "L0")
+            tok, tdetail = tris_verdict(v, run_opt.get("level") or "L0", run_opt.get("meshes"))
             add("SX15 triangles %s" % tag, tok, tdetail, report=True)
     else:
         add("SX15 caps", False, "no samples (no scatter_view_counts at rts80 in these runs)", report=True)
@@ -1553,9 +1553,10 @@ def sx11_scopes(sc):
 MESH_TRIS_CACHE = {}
 
 
-def tris_report(view, level="L0"):
+def tris_report(view, level="L0", paths=None):
     """LOD0 source-triangle upper bound of a view-count row (per-mesh drawn counts x the S3 asset report's triangles_source of the run's level; an L1 run uses its
-    L1 row where S3 imported one and the L0 row otherwise, as the scatter actor loads meshes)."""
+    L1 row where S3 imported one and the L0 row otherwise, as the scatter actor loads meshes). S6: `paths` (results options.scatter.meshes, slot -> {path})
+    names the mesh each slot really loaded (per-slot choices, -ChimeraTerrainScatterMeshes); its report row wins over the level rule."""
     rp = os.path.join(os.path.dirname(HERE), "Out", "scatter_assets", "report.json")
     if "rows" not in MESH_TRIS_CACHE:
         MESH_TRIS_CACHE["rows"] = {}
@@ -1565,14 +1566,19 @@ def tris_report(view, level="L0"):
                     tri = m.get("triangles_source") or m.get("triangles_expected")
                     if m.get("slot") and tri:
                         MESH_TRIS_CACHE["rows"][(m.get("level"), m["slot"])] = int(tri)
+                    if tri:
+                        MESH_TRIS_CACHE.setdefault("paths", {})[_k] = int(tri)
             except (OSError, ValueError, TypeError, AttributeError):
                 pass
     rows = MESH_TRIS_CACHE["rows"]
     if not rows:
         return "n/a (no S3 report.json triangle table)"
     total, miss = 0, []
+    by_path = MESH_TRIS_CACHE.get("paths") or {}
     for mesh, n in (view.get("meshes_drawn") or {}).items():
-        tri = rows.get((level, mesh)) or rows.get(("L0", mesh))
+        loaded = ((paths or {}).get(mesh) or {}).get("path") or ""
+        tri = by_path.get(loaded.split(".")[0]) if loaded else None
+        tri = tri or rows.get((level, mesh)) or rows.get(("L0", mesh))
         if tri is None:
             if n:
                 miss.append(mesh)
@@ -1581,10 +1587,10 @@ def tris_report(view, level="L0"):
     return "%d%s" % (total, " (no triangle count for %s)" % miss if miss else "")
 
 
-def tris_verdict(view, level="L0"):
+def tris_verdict(view, level="L0", paths=None):
     """SX15's triangle row: (ok, detail). Only the LOD0 upper bound can be computed here (no per-instance LOD is recorded), so the row passes only when that
     upper bound is within the 1.5 M cap; above it the LOD-weighted figure is unknown and the row says so (never pass)."""
-    rep = tris_report(view, level)
+    rep = tris_report(view, level, paths)
     m = re.match(r"(\d+)", rep)
     if not m:
         return False, "no samples (%s)" % rep

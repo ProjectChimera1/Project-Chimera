@@ -3464,6 +3464,20 @@ SC_TEST(OptionsParsing)
 	Expect(TEXT("valid options report nothing"), V.ParamsError.IsEmpty());
 	const FScatterOptions BadLayer = FScatterOptions::FromCommandLine(TEXT("-ChimeraTerrainScatterLayers=grass,wibble"));
 	Expect(TEXT("bad layer reported"), !BadLayer.ParamsError.IsEmpty());
+	// CullM (S6 round 3): per-unit cull end override, drawing only; 0 = the unit's default; bad items are reported and skipped.
+	Expect(TEXT("no CullM: every end 0"), V.CullEndM.Num() == ScatterMeshCount && V.CullEndM[static_cast<int32>(EScatterMesh::GrassT0)] == 0.0);
+	const FScatterOptions Cull = FScatterOptions::FromCommandLine(TEXT("-ChimeraTerrainScatterCullM=GrassT0=70,GrassT1=45.5"));
+	Expect(TEXT("CullM applied"), Cull.ParamsError.IsEmpty() && Cull.CullEndM[static_cast<int32>(EScatterMesh::GrassT0)] == 70.0
+		&& Cull.CullEndM[static_cast<int32>(EScatterMesh::GrassT1)] == 45.5 && Cull.CullEndM[static_cast<int32>(EScatterMesh::Tussock)] == 0.0);
+	const FScatterOptions BadCull = FScatterOptions::FromCommandLine(TEXT("-ChimeraTerrainScatterCullM=Wibble=70,GrassT0=0,GrassT1=x,Flower=80"));
+	Expect(TEXT("bad CullM items reported, the valid one kept"), BadCull.ParamsError.Contains(TEXT("Wibble")) && BadCull.ParamsError.Contains(TEXT("GrassT0"))
+		&& BadCull.ParamsError.Contains(TEXT("GrassT1")) && BadCull.CullEndM[static_cast<int32>(EScatterMesh::GrassT0)] == 0.0
+		&& BadCull.CullEndM[static_cast<int32>(EScatterMesh::Flower)] == 80.0);
+	// S6 close: a slot given twice in CullM or Meshes is reported and the first value kept (never a silent last-one-wins).
+	const FScatterOptions DupCull = FScatterOptions::FromCommandLine(TEXT("-ChimeraTerrainScatterCullM=GrassT0=70,GrassT0=40"));
+	Expect(TEXT("duplicate CullM slot reported, first kept"), DupCull.ParamsError.Contains(TEXT("twice")) && DupCull.CullEndM[static_cast<int32>(EScatterMesh::GrassT0)] == 70.0);
+	const FScatterOptions DupMesh = FScatterOptions::FromCommandLine(TEXT("-ChimeraTerrainScatterMeshes=TreeBroadA=L1,TreeBroadA=L0"));
+	Expect(TEXT("duplicate Meshes slot reported, first kept"), DupMesh.ParamsError.Contains(TEXT("twice")) && DupMesh.MeshChoice[static_cast<int32>(EScatterMesh::TreeBroadA)] == TEXT("L1"));
 	return bOk;
 }
 
@@ -3484,7 +3498,7 @@ SC_TEST(ConfigFnvFoldsOnlyRecordOptions)
 	const TCHAR* const Unfolded[] = {TEXT("-ChimeraTerrainScatterFineTileM=64"), TEXT("-ChimeraTerrainScatterCoarseTileM=160"), TEXT("-ChimeraTerrainScatterThreads=0"), TEXT("-ChimeraTerrainScatterBudgetMs=3"),
 		TEXT("-ChimeraTerrainScatterLoadBudgetMs=20"), TEXT("-ChimeraTerrainScatterDuringStroke=0"), TEXT("-ChimeraTerrainScatterCasterDuringStroke=150"), TEXT("-ChimeraTerrainScatterMobility=movable"),
 		TEXT("-ChimeraTerrainScatterApply=clear"), TEXT("-ChimeraTerrainScatterGovernor=3"), TEXT("-ChimeraTerrainScatterLayers=grass"), TEXT("-ChimeraTerrainScatterGrassNanite=0"), TEXT("-ChimeraTerrainScatter=1"),
-		TEXT("-ChimeraTerrainScatter=0")};
+		TEXT("-ChimeraTerrainScatter=0"), TEXT("-ChimeraTerrainScatterCullM=GrassT0=70,GrassT1=45"), TEXT("-ChimeraTerrainScatterMeshes=TreeBroadA=L1")};
 	for (const TCHAR* Opt : Unfolded)
 	{
 		if (FScatterOptions::FromCommandLine(Opt).ConfigFnv() != Base)

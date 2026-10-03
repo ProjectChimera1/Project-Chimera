@@ -447,3 +447,34 @@ def test_asset_report_bars_if_present():
     eng = sorted(set(x for d in r["deps"].values() for x in d if x.startswith(("/BaseMaterial/", "/Engine/"))))
     assert [e["path"] for e in r["engine_dependencies"]] == eng and eng
     assert re.fullmatch(r"[0-9a-f]{64}", r["asset_settings_sha256"])
+
+
+def test_look_overrides_name_real_instances_and_parameters():
+    """Task S6: every LOOK_OVERRIDES row names a material instance the import builds ('MI_<mesh>_<glTF material>', L0 and L1) and only
+    parameters of that instance's master, of the right kind (scalar or RGBA vector); apply_look merges without changing its inputs."""
+    import re as _re
+    built = {}
+    d0, d1 = os.path.join(SRC, "L0"), os.path.join(SRC, "prepared")
+    if not (os.path.isdir(d0) and os.path.isdir(d1)):
+        pytest.skip("ScatterSrc not generated")
+    species = {s["name"]: s for s in S.meshes_config()["species"]}
+    for m in json.load(open(os.path.join(d0, "report.json"), encoding="utf-8"))["meshes"]:
+        for gm in glb_materials(os.path.join(d0, m["file"])):
+            built["MI_%s_%s" % (m["name"], _re.sub(r"[^A-Za-z0-9_]", "_", gm["name"]))] = S.l0_rule(species[m["name"]], gm["name"])[0]
+    for m in json.load(open(os.path.join(d1, "report.json"), encoding="utf-8"))["meshes"]:
+        for gm in glb_materials(os.path.join(d1, m["file"])):
+            built["MI_%s_%s" % (m["name"], _re.sub(r"[^A-Za-z0-9_]", "_", gm["name"]))] = S.l1_rule(m["name"], m["slot"], gm)[0]
+    assert S.LOOK_OVERRIDES
+    for name, o in S.LOOK_OVERRIDES.items():
+        assert name in built, f"{name} is not an instance the import builds"
+        params = MASTERS[built[name]]["params"]
+        assert set(o) <= {"scalars", "vectors"}, name
+        for k, v in o.get("scalars", {}).items():
+            assert params[k][0] == "s" and isinstance(v, float), (name, k)
+        for k, v in o.get("vectors", {}).items():
+            assert params[k][0] == "v" and len(v) == 4 and all(0.0 <= x <= 1.0 for x in v), (name, k)
+    s0, v0 = {"Rough": 0.85}, {"Tip": [1.0, 1.0, 1.0, 1.0]}
+    s1, v1 = S.apply_look("MI_GrassT0_M_Blade", s0, v0)
+    assert s0 == {"Rough": 0.85} and v0 == {"Tip": [1.0, 1.0, 1.0, 1.0]}
+    assert s1["Rough"] == 0.85 and s1["PatchAmount"] == 0.9 and v1["Tip"] == S.LOOK_OVERRIDES["MI_GrassT0_M_Blade"]["vectors"]["Tip"]
+    assert S.apply_look("MI_not_overridden", s0, v0) == (s0, v0)

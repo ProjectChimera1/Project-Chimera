@@ -1,0 +1,70 @@
+{
+ "scores": {
+  "hue_saturation": 6,
+  "macro_variation": 6,
+  "tiling": 6,
+  "micro_detail": 4,
+  "layer_integration": 5,
+  "lighting_and_atmosphere": 4.5,
+  "overall": 5.5
+ },
+ "gaps": [
+  {
+   "gap": "Broadleaf tree crowns (L0 puffballs). Every broadleaf crown is a cluster of 6-10 smooth lobes with one value per lobe, no leaf breakup and no sunlit or translucent tops. The same silhouette repeats everywhere. They fill most of the oblique frame and the closeup skyline. At phone size the frame still reads as a stylised toy game next to Manor Lords. The L1 alternative is closed: C1S 4.657 ms (trees 3.734 ms) against the 2.5 ms kill line, and at rts80 it still has the leggy, see-through savanna shape (bx3_l1tree rts80_full.png).",
+   "evidence": "Crown breakup measured in the dark-vegetation mask (mean of luma minus a 5x5 box blur; my scratchpad script, nothing committed): Manor Lords ml_01 0.0223, ml_08 0.0197, press_03 0.0238. Ours rts80 0.0161, oblique 0.0076 (a third of ML), L1 candidate 0.0329. Dark vegetation covers 0.77 of the oblique frame. Median canopy hue: ours 72-76, ML 65-71. Paired oblique scores 5.0 on, 5.0 off: scatter adds nothing at oblique because the crowns cancel the gain from the meadow.",
+   "fix": "This is outside S6's round rules, so it needs a new asset task in the S1 style. Build a project-original L0 v2 broadleaf in make_scatter_meshes.py (Blender): about twice as many lobes at half the size, wrapped in a masked leaf-clump card shell textured from a CC0 ambientCG LeafSet atlas. Add per-vertex AO and a top-to-underside tint ramp (yellow-green tops, blue-green undersides), with 2-3 silhouette variants. Budget: trees layer at most about 1.2 ms in a C1S smoke. In parallel, run the CC-BY KV Beech pilot (r9 P4) if Alec adds it to his library. Cheap interim, if the main session rules that a texture parameter is a legal material setting: the LeafSet texture with strong normals on today's L0 canopy material.",
+   "gain": "large"
+  },
+  {
+   "gain": "medium",
+   "gap": "Lighting and atmosphere, outside scatter. There is no aerial perspective: trees on the skyline 300 m out keep foreground contrast and saturation, while Manor Lords hazes to blue from a few hundred metres (ml_08, news_016). Canopy undersides crush to near black at closeup. The closeup sky shows posterised banding. In-game auto exposure lifts the scatter-on frame well above the held pair, so the look the player actually sees is about 0.5 lower at oblique and closeup.",
+   "evidence": "EXP auto/on: 1.634 at rts80, 1.925 at oblique, 2.486 at closeup. closeup.png shows a black under-crown mass and sky bands. The oblique skyline has no value falloff with distance.",
+   "fix": "A separate lighting pass, outside scatter: SkyAtmosphere aerial-perspective scale, a low-density ExponentialHeightFog, more SkyLight fill under the canopy, and narrower AutoExposure min/max brightness. It touches the committed ground look, so re-check G1 and the C4-C8 bars and re-judge the ground."
+  },
+  {
+   "gain": "medium",
+   "gap": "The border ring has become a single row of lollipop trees along the plateau rim, with sky showing between the trunks, and the left side is still a uniform picket of identical conifer cones. M7 regressed: round 3 cut BorderBias from 0.60 to 0.45. Manor Lords' map edge is a continuous, irregular forest mass that fades into haze.",
+   "evidence": "M7 0.561 (round 2 0.662). rts80_full.png top rim (crop x 560-1920, y 0-330) shows a trunk row against sky for most of its width. The oblique ridgeline shows the same row of puffballs on the skyline.",
+   "fix": "When baking the defaults, put BorderBias back to 0.60 and BorderLoM to 100-110 m, and keep round 3's interior TreeCoreP of 0.55. Mix conifers into the ring with the C noise rather than a solid block, and keep the 0.75-1.30 conifer scale spread. Verify with one LOOKX: M7 >= 0.6 and SX1/SX6 rerun."
+  },
+  {
+   "gain": "medium",
+   "gap": "Shrubs and understorey. At closeup the shrubs are still smooth mossy boulders, one mesh plainly rotated; round 3's TexAmt 1.0 / TileM 0.3 / NormalStrength 2.0 barely shows. At rts80 the woodland-edge understorey reads as a carpet of black pebbles (lower left), and the hedges along paths are hardly visible.",
+   "evidence": "close_right crop of closeup.png: two lumps in the foreground, no leaf texture. rts80 lower-left zoom: dozens of dark round blobs. Round config: ShrubWoodP 0.70, SaplingP 0.45, ShrubHedgeP 0.60. drawn: shrubs 881.",
+   "fix": "Switch the slot under r9 gate rule 1. The CC0 routes are spent (round 1's composite bush read as leaf-litter heaps), so rebuild the shrub with the same leaf-clump shell as the new crown in gap 1. After that, the CC-BY Blackridge kit bushes or the PVE shrub, depending on Alec's decisions. At bake time: ShrubWoodP 0.70 -> 0.45, SaplingP 0.45 -> 0.25, ShrubHedgeP 0.60 -> 0.80, so shrubs line paths instead of carpeting woodland edges."
+  },
+  {
+   "gain": "small",
+   "gap": "Forest share and massing are still above Manor Lords. Massing has improved: there are now visible groves and lone trees.",
+   "evidence": "M3 dark vegetation 0.293 against ML mean 0.202 (+45 %; the band edge is 0.263); round 2 0.317. M5 masses/groves/singles 0.72/0.18/0.10 against ML about 0.55/0.30/0.15 (round 2 0.84/0.09/0.07).",
+   "fix": "Inside the playable interior only: TreeCoreP 0.55 -> 0.45, TreeCoreW 0.66 -> 0.70, KP 0.25 -> 0.30, with the border restored as in gap 3 so M7 holds. Once the crowns read well (gap 1), canopy dominance costs much less, so do this after gap 1."
+  },
+  {
+   "gain": "small",
+   "gap": "Closeup sward (closeup only; not a gated pose). It is denser and taller than round 2 and the white drifts work, but ground still shows between the tufts, the blade clumps are uniform, and there are no seed heads. ml_07 shows a knee-high continuous sward with seed heads.",
+   "evidence": "closeup.png foreground: discrete tufts over the ground texture. Closeup scored 5.0 on vs 4.5 off (round 2 4.5/4.5).",
+   "fix": "Following r9 P2's next route, add CC0 ambientCG Foliage002-004 seed-head card clumps as a near-camera mix inside the near ring. Keep L0 blades for the bulk."
+  },
+  {
+   "gain": "small",
+   "gap": "White flower heads glitter in shadow. They stay near-white inside tree shadows, so the shaded meadow at rts80 is sprinkled with bright specks, and the meadow under the trees at closeup gets a blue-white haze. This weakens the shadow shapes and adds temporal noise.",
+   "evidence": "4x zoom of rts80_full.png (0-400, 880-1080): bright specks all through the shadowed meadow. close_right crop: white-violet haze under the trees. M9 1.12 holds, but the specks show.",
+   "fix": "Material scalar: lower the HeadWhite albedo to about 0.55-0.65 linear and cut two-sided transmission on the flower heads."
+  },
+  {
+   "gain": "small",
+   "gap": "The tussock islands that carry the meadow's mid frequency at rts80 are real in the numbers but faint at phone size. At RTS height Manor Lords meadows show darker tussock and scrub dots (press_03, ml_08).",
+   "evidence": "M2 on/ML at 8-64 px: 0.95/0.86/0.60 (round 2 0.79/0.65/0.42). The 32-64 px band is still 0.60 of ML. rts_mid crop: tussocks visible only as faint specks.",
+   "fix": "TussockIslandP 0.75 -> 0.9, TussockIslandMin 0.58 -> 0.52, and a darker, drier tussock tint where M (dryness) > 0.6."
+  },
+  {
+   "gain": "small",
+   "gap": "Rocks: round 3's x1.5 albedo turned the boulders beige-pink, like sandstone. Manor Lords boulders are mossy grey with lichen (news_053).",
+   "evidence": "Background boulders in closeup.png and the rock dots in rts80_full.png read warm beige. MI_RockA Tint [0.18, 0.1725, 0.1575].",
+   "fix": "At bake time, move the rock Tint toward neutral grey (about [0.17, 0.17, 0.165]). Moss on rock tops needs a parameter on the triplanar master, which is post-trial."
+  }
+ ],
+ "scatter_gap": "This is the scatter pass, so scatter is in scope. What the three-round rules cannot reach is the foliage meshes themselves.\n\nrts80: 1.5 points to the 7.5 bar.\n- About 1.0 is the broadleaf crown and shrub meshes. Moving that needs a new asset task (a project-original leaf-clump rebuild) or one of Alec's licence decisions (CC-BY KV Beech or PVE).\n- About 0.25 is placement that can be baked now: the border ring, forest share and shrub carpet.\n- About 0.25-0.5 is lighting and atmosphere outside scatter.\n\noblique: 2.5 points to the bar.\n- About 1.5 is the crown and shrub meshes.\n- About 0.5 is the border ring and forest share.\n- About 0.5-1.0 is aerial perspective and exposure.\n\nGrass blades are a small part of the gap: at most 0.25 at the gated poses and about 0.5 at closeup. The ground layer is not part of the remaining gap.",
+ "good_enough": false,
+ "summary": "**Verdict: round 3 does not meet S6's stop rule (rts80 6.0 and oblique 5.0, both under 7.5).** This was the last of the three rounds, so S6 stops here with the gaps reported. Overall is 5.5/10, the same as round 2.\n\n**Scores, scatter on / off, same build, held exposure (round 2 in brackets):**\n\n| Pose | On | Off | Change |\n|---|---|---|---|\n| rts80 | 6.0 [6.0] | 5.5 | +0.5 |\n| oblique | 5.0 [5.0] | 5.0 | 0 |\n| closeup | 5.0 [4.5] | 4.5 | +0.5 |\n\nUnder in-game auto exposure (auto/on 1.63x / 1.93x / 2.49x), oblique and closeup would score about 0.5 lower.\n\n**What I looked at:**\n- refs_sheet plus ml_01, ml_08, ml_04, ml_07, press_03 and news_016 at full size.\n- lookx_r3-phone, c-S6-scatter-r3 against c-S6-scatter-r2, and lookx_r3_bakeoff-phone.\n- Full-size rts80_full, oblique, closeup and rts80_full_off, with my own crops.\n- bx3_l1tree's rts80_full and look_measure's M1-M10.\n- One crown-breakup measure of my own. The script is in the session scratchpad only; I edited no project files and ran no Unreal jobs.\n\n**What round 3 improved, measured:**\n- M2 rose to 0.95/0.86/0.60 of Manor Lords at 8-64 px (round 2 0.79/0.65/0.42).\n- M5 massing moved toward ML: 0.72/0.18/0.10 against round 2's 0.84/0.09/0.07.\n- M3 fell to 0.293 (round 2 0.317).\n- SX15 drawn fell from 37,069 to 13,752, and the LOD0 triangle bound from 5.19 M to 4.16 M.\n- Closeup grass is denser and taller, and the white flower drifts read well.\n- M1, M6, M8 (both rows), M9 and M10 hold.\n\n**Why the score did not move:**\n1. The L0 broadleaf puffballs still decide the frame. Crown breakup is 0.0076 at oblique against ML's 0.020-0.024, and dark vegetation fills 77 % of the oblique frame.\n2. Round 3 added new toy signals:\n   - a single row of lollipop trees on the rim (M7 regressed 0.662 -> 0.561);\n   - a carpet of black-pebble shrubs and saplings;\n   - white flowers that glitter inside the shadows.\n3. The implementer tested the L1 broadleaf honestly and it failed my condition: C1S 4.657 ms (trees 3.734 ms). It also keeps the savanna shape at rts80. Keeping L0 was the correct ruling.\n\n**Each slot under r9's pilot gate** (my per-slot scores: rts80 / closeup):\n- **Grass** (6.5 / 5.5): keep L0 for the bulk; bake round 3's density and the 70/45 m cull ends. Round 1's L1 near cards and round 2's grass-card bake-off scored worse. Add CC0 seed-head cards as a near-camera mix later (the next route in r9 P2).\n- **Flowers** (7 / 6): keep; lower the HeadWhite albedo.\n- **Ferns:** keep. They are not legible at any of the three poses and show no sign of harm.\n- **Shrubs** (5.5 / 4.5): switch at once (rule 1). The CC0 routes are spent, so the next route is a project-original leaf-clump rebuild, then the CC-BY kit bushes, then the PVE shrub. The last two need Alec's decisions.\n- **Trees, broadleaf** (5.5 / 4.5): switch (rule 1). L1 tree_small_02 is out on budget and shape. Next is a project-original L0 v2 crown with a CC0 LeafSet shell, then CC-BY KV Beech (Alec signs in), then PVE after P4 step 0 and his licence decision.\n- **Trees, conifers** (6.5 / unseen): keep L0. The L1 fir read as bare sticks in round 1, so the free routes are used up (rule 5). Mix them into the border ring.\n- **Rocks** (7 / 6): keep; desaturate the tint toward grey when baking.\n\n**Recommendations for the main session:**\n- Bake round 3 as the defaults: the palette, ScatterLevel L0 and the CullM ends 70/45 m. It scores the same as round 2 at the gated poses, better at closeup, and is much cheaper.\n- When baking, restore BorderBias to 0.60 and verify with one LOOKX (M7 >= 0.6) plus the SX1-SX6 reruns.\n- The remaining large gain is foliage meshes, which round rules cannot change. It needs a new asset task, which I recommend first because it carries no licence risk and fits the budget, and/or Alec's CC-BY sign-in.\n- Lighting and aerial perspective is a separate pass, outside scatter, that touches the committed ground look.\n\n**For Alec:** whether to fund the crown and shrub rebuild now or accept about 6/10 at rts80 for the trial.\n\n**Image for him:** lookx_r3-phone.jpg."
+}

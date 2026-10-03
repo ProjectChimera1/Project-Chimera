@@ -1,0 +1,64 @@
+{
+ "scores": {
+  "hue_saturation": 5,
+  "macro_variation": 5.5,
+  "tiling": 6.5,
+  "micro_detail": 5,
+  "layer_integration": 5,
+  "lighting_and_atmosphere": 5,
+  "overall": 5.5
+ },
+ "gaps": [
+  {
+   "gap": "The broadleaf tree asset (L1 tree_small_02) has a savanna (eucalyptus or acacia) silhouette, not European deciduous: leggy multi-stem trunks, open see-through crowns and a blue-grey sheen on the leaves. Woodland cores never close, and tree shadows come out dappled and too light. This is the single biggest gap, and it also carries the GPU and SX18 problems.",
+   "evidence": "Measured canopy: ours (oblique foreground mass) has hue 96.5, S 0.40, V 0.29; the Manor Lords ml_01 foreground tree has hue 75, S 0.41, V 0.26, so ours sits about 20 degrees toward blue-green. M4 tree shadow is 0.618 of lit against a 0.27-0.33 bar. In rts80_full.png the bottom 'core' reads as open savanna, and the oblique foreground is a blue-grey leaf wall. Saplings are bonsai copies of the same tree. Cost: the trees layer is 2.09 ms of scatter_gpu_ms 3.24 (kill line 2.5); with L0 broadleaf it is 1.79 / 2.91. SX18 fails only with L1 broadleaf (s1x_r1d with L0 passes). In the bake-off, L0 broadleaf has the right mass and solid shadows but reads as a toy: smooth bright lobes, hue 80, S 0.59, V 0.48.",
+   "fix": "r9 rule 1 says switch (slot scores below 5.5 at rts80). The remaining free routes are CC-BY (not in the library) and PVE (needs P4 step 0 plus Alec's licence decision). Round 2, within the round rules: TreeBroadA/B=L0 with the canopy Tint scaled to about 0.3x and warmed, from (0.10,0.19,0.06) to about (0.035,0.055,0.015), aiming for V ~0.26 and hue ~75-80. Raise NormalStrength from 0.5 to 1.0 and lower TileM so the leaf texture breaks up the lobes. Keep TreeBroadScale 1.1-1.4 so cores close. Add one check run of L1 with Tint about (1.0,0.9,0.55) and RoughMul about 1.5 (to kill the sheen), judged at oblique; keep whichever wins. Outside the round rules (a main-session or Alec call): PVE P4 step 0, or a project-original crown of leaf-card clusters on the L0 lobe skeleton using a CC0 ambientCG LeafSet. These are the only routes I can see to 7+ at rts80.",
+   "gain": "large"
+  },
+  {
+   "gap": "Grass colour and density. L0 blade tips are straw-cream, so the meadow brightens and washes out. The round palette (fewer, larger clumps) leaves bare ground between tufts close up. L1 near cards render as near-black wiry sprigs.",
+   "evidence": "The blade master's Tip is (0.55,0.70,0.28) linear, about sRGB (0.77,0.86,0.57). Closeup grass V is 0.43 against 0.17-0.20 in ml_07 and ml_09. The rts80 meadow has V 0.57 with scatter on and 0.51 off, against 0.42-0.47 in ml_01 and press_03. M2 band energy is 0.48 of ML at 32-64 px. The black sprigs are in lookx_r1/closeup.png but not in bx_l0/closeup.png, so they are the L1 NearCard (grass_medium_01). S1's note warns that L1 meshes carry no COLOR_0, so check AOFromR on that card. GrassBaseP is 0.65 in this round (default 0.80) and the scale is 1.0-1.5.",
+   "fix": "Darken the Blade Tip to about (0.18,0.26,0.06) and Root to about (0.05,0.09,0.02). Raise PatchAmount from 0.6 to 0.9 so the blades carry the ground's dry and lush field. Restore GrassBaseP 0.80 and scale 0.8-1.25. Fix the NearCard AO or vertex-colour source, or switch NearCard off until it is fixed. Gate: closeup scores 4, so rule 1 says switch. Run GrassT0__medium02 plus GrassT1__seedcard cards with the same tint target as the round-2 comparison, and keep the better one at oblique.",
+   "gain": "large"
+  },
+  {
+   "gap": "Auto exposure brightens every scatter-on frame. The on/off pairs are not shot at equal exposure, so M1 is invalid as measured, and in game the meadow washes out whenever forest enters the frame.",
+   "evidence": "On/off luma ratio of pixels scatter does not touch: at rts80 the rock cone is 1.12, the path 1.12 and the sky 1.10; at oblique the rock cone is 1.30 and the sky 1.22. The bx_l1 and bx_mix runs show the same. In full look mode the exposure is auto (TerrainLighting.cpp SetCompareMode fixes EV100 only in compare mode). M1's dV +0.064 is explained entirely: 0.540 / 1.12 = 0.482 against 0.476 off, a dV of about +0.006.",
+   "fix": "Harness: shoot LOOKX's on and off pairs at one pinned exposure (the off shot's adapted EV100, or fixed EV100 with clouds on), then re-take M1. Shipped look (a main-session lighting call, since the ground-look measures were taken under auto exposure): narrow AutoExposureMin/MaxBrightness so canopy in frame no longer lifts the meadow.",
+   "gain": "medium"
+  },
+  {
+   "gap": "Shrub slot. The L1 composite bush reads as flat heaps of leaf litter close up and as isolated dark specks scattered over the meadow at rts80. It is not the rounded dark mass, clustered at woodland edges and along hedges, that Manor Lords shows.",
+   "evidence": "closeup.png: the foreground bush is a debris pile. rts80_full.png: 494 shrubs drawn, nearly all lone specks. ml_01 and ml_08 show bush clumps along edges and lanes. The bake-off: searsia is open and sparse (also a South African species); L0 shrubs are bright toy blobs.",
+   "fix": "r9 rule 1 says switch. CC-BY is not in the library and PVE comes only after step 0, so use ShrubA/B=L0 with Tint about 0.4x (V ~0.22, hue ~75). In the palette, raise ShrubWoodP from 0.35 to about 0.5 and the hedge-term weight, and keep ShrubFsP at 0.02 so lone meadow shrubs stay rare.",
+   "gain": "medium"
+  },
+  {
+   "gap": "Woodland massing and the map border. Forest shows up only as one wall of identical narrow conifer cones at the left edge, plus loose singles. The plateau edge and sky show along the top, with a single row of trees on the skyline.",
+   "evidence": "M5 image: masses 0.76, groves 0.17, singles 0.07 (ML about 0.55/0.30/0.15). Visually the conifer wall is rigid ranks of thin L0 cones, a spike fence, blue-green. M7: only 0.336 of the off-shot sky pixels are covered. rts80 top edge: a lollipop row of trees against the sky. news_016 conifers are broad and varied in height.",
+   "fix": "Raise the border bias in W' from 0.35 to about 0.6, starting the ramp at 110 m. Make conifers squatter and more varied: xy scale up, height range 0.7-1.3, Tint warmed toward hue ~95. Let the C-stand field mix broadleaf into the ring. Add more groves: TreeGroveP from 0.35 to 0.45, and the K disc probability from 0.20 to about 0.28.",
+   "gain": "medium"
+  },
+  {
+   "gap": "Rocks. The moss and boulder scans read warm orange or brown (terracotta chips on the rock cone; dung-like lumps or molehills on the meadow close up). Manor Lords rocks are grey with lichen.",
+   "evidence": "rocks_cmp crops (oblique and closeup, for L0, L1 and round 1): L0 rocks are grey and match the painted rock cone; the L1 primaries and the round-1 moss/boulder are orange-brown. 96 rocks drawn at rts80, almost invisible. news_053 boulders are grey.",
+   "fix": "r9 rule 1 says switch: RockA/B=L0 (the ground's own rock triplanar, which matches the painted rock). Raise rock scale from 0.6-1.8 to 1.0-2.6 and keep RockBoulderP 0.28 so SX1's rock floor holds.",
+   "gain": "small"
+  },
+  {
+   "gap": "Flowers and ferns contribute nothing visible.",
+   "evidence": "1,247 flowers drawn at rts80 and 600 at oblique, but none resolvable in any shot, and the closeup frame has no drift. Ferns: 22 and 52 drawn, all hidden under canopy. ML shows white and violet specks at RTS (news_080, press_03) and drifts at ground level (ml_07, ml_09).",
+   "fix": "FlowerScale from 1.2-1.8 to about 1.8-2.6, FlowerBaseP from 0.60 to about 0.85, FlowerDriftLo from 0.70 to about 0.62, and a brighter HeadWhite. Score the slot once it is visible; Flower__dandelion and Flower__sorrel are on disk if L0 fails. Keep ferns at L0.",
+   "gain": "small"
+  },
+  {
+   "gap": "Temporal shimmer of blades and leaves in motion.",
+   "evidence": "M9 on/off is 2.72 against a 1.5 bar (std 0.00329 vs 0.00121).",
+   "fix": "Widen blades with distance (the blade PixelAngle term), add mip bias on leaf alpha, and recheck after the broadleaf switch (L0 crowns are opaque).",
+   "gain": "small"
+  }
+ ],
+ "scatter_gap": "This round is the scatter pass, so the useful split is what scatter owns versus what it does not. Of the roughly 4.5 points left (overall 5.5), I estimate scatter owns about 3 points (about 65%): the broadleaf tree asset about 1.5, grass colour and density about 0.6, shrubs, rocks and flowers about 0.5, massing and the border about 0.4. About 1.5 points lie outside scatter. Exposure, lighting and atmosphere (no aerial haze, auto exposure washing the meadow) are about 0.6. The ground's meadow value, about 0.51 against ML's 0.42-0.47 even with scatter off, is about 0.4. Map scale, the visible plateau edge and the empty horizon are about 0.5. Separately, every Manor Lords reference frame is full of buildings, fields and lanes, which no terrain pass supplies. By pose, scatter owns about 50% of the gap at rts80, about 65% at oblique and about 80% at closeup.",
+ "good_enough": false,
+ "summary": "Round 1 does not pass the S6 stop rule: rts80 scores 6.0 and oblique 5.5, both short of 7.5. I edited no files and ran no Unreal jobs; my measurement and crop scripts are in the session scratchpad only.\n\n**Scores, scatter on / off (same build):**\n\n| Pose | On | Off | Change |\n|---|---|---|---|\n| rts80 | 6.0 | 5.5 | +0.5 |\n| oblique | 5.5 | 5.0 | +0.5 |\n| closeup | 5.0 | 4.5 | +0.5 |\n| overall | 5.5 | 5.0 | +0.5 |\n\nScatter adds real 3D depth and well-grounded tree shadows. But the frame reads as an Australian or African savanna, not a European meadow.\n\n**What I looked at:**\n- refs_sheet and the full Manor Lords images ml_01, ml_08, ml_04, ml_07, ml_09, press_03 and news_016.\n- lookx_r1-phone, the full-size on/off pairs at all three poses, and the bake-off sheet.\n- M1-M10, plus my own crops and hue/value checks of canopy and grass against the references.\n\n**What drives the score:**\n1. **Broadleaf tree (tree_small_02).** Leggy, open, blue-grey crowns (hue 96 against Manor Lords' 75). Woodland cores never close, and shadows come out dappled (M4 0.618 against the 0.27-0.33 bar). It also costs 2.09 ms of the 3.24 ms scatter GPU (kill line 2.5) and is the only cause of the SX18 failure.\n2. **Grass blades.** The blade material's Tip colour is (0.55, 0.70, 0.28) linear, which renders as straw-cream. Closeup grass value is 0.43 against Manor Lords' 0.17-0.20. The round's fewer, larger clumps leave bare ground between tufts. The L1 near cards render near-black (absent from the L0 closeup).\n3. **Auto exposure is not locked in full look mode.** Pixels scatter never touches come out 1.10-1.12x brighter with scatter on at rts80 and 1.22-1.30x at oblique. That fully explains M1's V +0.064: at equal exposure the change is about +0.006, so the M1 result as measured is not valid. The on/off pairs need one pinned exposure.\n\n**Per slot, under r9's pilot gate:**\n\n| Slot | Score (rts80 / closeup) | Verdict | Round-2 action |\n|---|---|---|---|\n| Grass | 5.5 / 4 | Switch (rule 1) | Darker blade Tip/Root; PatchAmount 0.9; GrassBaseP back to 0.80, scale 0.8-1.25. Compare against the CC0 cards GrassT0__medium02 + GrassT1__seedcard and keep the better at oblique. Near cards off until their AO source is fixed |\n| Flowers | not scorable | Tune | None of the 1,247 drawn is visible in any shot. Make drifts bigger and denser first, then score |\n| Ferns | not scorable | Keep L0 | All hidden under canopy |\n| Shrubs | 5 / 3.5 | Switch | L0, darkened, clustered at woodland edges and hedges. Searsia is sparse; CC-BY is not in the library; PVE needs P4 step 0 |\n| Broadleaf trees | 5 / 5.5 | Switch | L0 with canopy tint about 0.3x and warmed, normal strength up (SX18-safe, about 1.8 ms trees layer). One check run of L1 re-tinted with RoughMul up, judged at oblique |\n| Conifer trees | 5.5 / 4.5 | Keep L0 (rule 5) | L1 fir reads as bare sticks. Squatter, height-varied cones; broadleaf mixed into the border ring |\n| Rocks | 5 / 4 | Switch to L0 | Grey, matches the painted rock; larger scale |\n\nFix one more harness item alongside these: pin LOOKX exposure across each on/off pair.\n\n**Outlook and a decision for the main session (then Alec):** with in-rule changes I expect round 2 to reach about 6.5-7.0 at rts80 and 6.0-6.5 at oblique. No free CC0 asset on disk gives dense European deciduous crowns, so 7.5 is unlikely within the three-round limit unless a new broadleaf asset is allowed. The two options, both outside the round rules:\n- PVE P4 step 0 (an Epic sample; Alec's licence decision is pending).\n- A project-original crown built from leaf-card clusters on the L0 lobe skeleton, using a CC0 ambientCG leaf atlas.\n\nImage for Alec: D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/look/lookx_r1-phone.jpg (contains Manor Lords pixels, so keep it local)."
+}

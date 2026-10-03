@@ -45,6 +45,15 @@ namespace ChimeraTerrain
 	 * FlowerCellM 1 -> 0.5, TreeCoreP 0.35 -> 0.50, ShrubWoodP 0.35 -> 0.45, RockBoulderP 0.01 -> 0.20 with the Fr ramp 0.80..0.95 -> 0.65..0.85,
 	 * so every class of a flat all-grass E = 160 map holds at least half the plan's EST count (flowers 6.0k, trees 1.0k, shrubs + saplings 1.8k,
 	 * rocks 124, grass 222k, near cards 62k at L1, tussocks 4.6k, ferns 7.6k).
+	 *
+	 * S6 bake (EXECUTION.md section 8 "S6 ruling", 2026-10-03): the look round 3 palette R3PF (three art-director rounds, rts80 6.0) is the default,
+	 * EXCEPT the four parameters that drive the plan 3.4 coverage held by the FieldCoverage test (TreeEdgeW 0.62, FlowerDriftLo 0.70, BorderBias
+	 * 0.35, BorderLoM 118 stay; R3PF's 0.58 / 0.50 / 0.45 / 110 gave woodland 27.1 % / ring 92.0 % / drift 46.0 %). Baked: GrassBaseP 0.95,
+	 * GrassScale 1.2-1.9, GrassZ 0.9-1.6, TussockScale 1.6-2.4, TussockIslandMin 0.58, TussockIslandP 0.75, FlowerScale 1.8-2.6, FlowerBaseP 1.0,
+	 * FlowerYellowTo 0.15, FlowerWhiteTo 0.75, ShrubFsP 0.02, ShrubWoodP 0.70, ShrubHedgeP 0.60, ShrubScale 0.6-1.2, SaplingP 0.45, TreeCoreP 0.55,
+	 * TreeCoreW 0.66, TreeEdgeP 0.15, TreeGroveP 0.55, KP 0.25, TreeLoneP 0.01, TreeBroadScale 1.1-1.4, TreeConiferScale 0.75-1.30,
+	 * TreeConiferC 0.58-0.68, TreeConiferZWeight 0.25, RockScale 1.0-2.6, RockBoulderP 0.28. The grass cull ends 70/45 m live in the scatter
+	 * actor's MeshCullEndM (drawing, not records). Level stays L0 (the L1 broadleaf failed the 2.5 ms condition).
 	 */
 #define CHIMERA_SCATTER_PARAMS(X) \
 	/* ---- global factors (plan C scatter 3.4 "Common factors") */ \
@@ -84,7 +93,7 @@ namespace ChimeraTerrain
 	X(FcPeriodM, Meters, ScQ(30.0)) \
 	X(CPeriodM, Meters, ScQ(120.0)) \
 	X(KCellM, Meters, ScQ(32.0)) \
-	X(KP, Frac, ScQ(0.20)) \
+	X(KP, Frac, ScQ(0.25)) \
 	X(KRadiusLoM, Meters, ScQ(6.0)) \
 	X(KRadiusHiM, Meters, ScQ(14.0)) \
 	X(FsPeriodM, Meters, ScQ(9.0)) \
@@ -93,13 +102,13 @@ namespace ChimeraTerrain
 	/* ---- grass: fine, 0.5 m cell */ \
 	X(GrassCellM, Meters, ScQ(0.5)) \
 	X(GrassJitter, Frac, ScQ(1.0)) \
-	X(GrassScaleLo, Frac, ScQ(0.8)) \
-	X(GrassScaleHi, Frac, ScQ(1.25)) \
-	X(GrassZLo, Frac, ScQ(0.7)) \
-	X(GrassZHi, Frac, ScQ(1.3)) \
+	X(GrassScaleLo, Frac, ScQ(1.2)) \
+	X(GrassScaleHi, Frac, ScQ(1.9)) \
+	X(GrassZLo, Frac, ScQ(0.9)) \
+	X(GrassZHi, Frac, ScQ(1.6)) \
 	X(GrassAlign, Frac, ScQ(0.5)) \
 	X(GrassSinkM, Meters, ScQ(0.02)) \
-	X(GrassBaseP, Frac, ScQ(0.80)) \
+	X(GrassBaseP, Frac, ScQ(0.95)) \
 	X(GrassDryMin, Frac, ScQ(0.65)) \
 	X(GrassForestCut, Frac, ScQ(0.6)) \
 	X(GrassForestLo, Frac, ScQ(0.62)) \
@@ -112,12 +121,12 @@ namespace ChimeraTerrain
 	/* ---- tussock: fine, 2 m cell */ \
 	X(TussockCellM, Meters, ScQ(2.0)) \
 	X(TussockJitter, Frac, ScQ(1.0)) \
-	X(TussockScaleLo, Frac, ScQ(0.9)) \
-	X(TussockScaleHi, Frac, ScQ(1.4)) \
+	X(TussockScaleLo, Frac, ScQ(1.6)) \
+	X(TussockScaleHi, Frac, ScQ(2.4)) \
 	X(TussockAlign, Frac, ScQ(0.4)) \
 	X(TussockSinkM, Meters, ScQ(0.03)) \
-	X(TussockIslandMin, Frac, ScQ(0.64)) \
-	X(TussockIslandP, Frac, ScQ(0.60)) \
+	X(TussockIslandMin, Frac, ScQ(0.58)) \
+	X(TussockIslandP, Frac, ScQ(0.75)) \
 	X(TussockBgP, Frac, ScQ(0.02)) \
 	X(TussockDryMin, Frac, ScQ(0.5)) \
 	X(TussockForestP, Frac, ScQ(0.30)) \
@@ -127,11 +136,11 @@ namespace ChimeraTerrain
 	/* ---- flower: fine, 0.5 m cell (plan 1 m; S2 tuning: the plan's flat-map EST of ~8k flowers needs the finer lattice) */ \
 	X(FlowerCellM, Meters, ScQ(0.5)) \
 	X(FlowerJitter, Frac, ScQ(1.0)) \
-	X(FlowerScaleLo, Frac, ScQ(1.2)) \
-	X(FlowerScaleHi, Frac, ScQ(1.8)) \
+	X(FlowerScaleLo, Frac, ScQ(1.8)) \
+	X(FlowerScaleHi, Frac, ScQ(2.6)) \
 	X(FlowerAlign, Frac, ScQ(0.3)) \
 	X(FlowerSinkM, Meters, ScQ(0.01)) \
-	X(FlowerBaseP, Frac, ScQ(0.60)) \
+	X(FlowerBaseP, Frac, ScQ(1.0)) \
 	X(FlowerDriftLo, Frac, ScQ(0.70)) \
 	X(FlowerDriftHi, Frac, ScQ(0.85)) \
 	X(FlowerGLo, Byte, 200) \
@@ -140,8 +149,8 @@ namespace ChimeraTerrain
 	X(FlowerSlopeHi, Slope, 1677020262ll) \
 	X(FlowerForestLo, Frac, ScQ(0.55)) \
 	X(FlowerForestHi, Frac, ScQ(0.65)) \
-	X(FlowerYellowTo, Frac, ScQ(0.50)) \
-	X(FlowerWhiteTo, Frac, ScQ(0.80)) \
+	X(FlowerYellowTo, Frac, ScQ(0.15)) \
+	X(FlowerWhiteTo, Frac, ScQ(0.75)) \
 	X(FlowerNextP, Frac, ScQ(0.15)) \
 	/* ---- near card (L1 only): fine, 1 m cell */ \
 	X(NearCardCellM, Meters, ScQ(1.0)) \
@@ -154,18 +163,18 @@ namespace ChimeraTerrain
 	/* ---- tree: coarse, 4 m cell, jitter 0.5 (trunks at least 2 m apart) */ \
 	X(TreeCellM, Meters, ScQ(4.0)) \
 	X(TreeJitter, Frac, ScQ(0.5)) \
-	X(TreeBroadScaleLo, Frac, ScQ(0.9)) \
-	X(TreeBroadScaleHi, Frac, ScQ(1.2)) \
-	X(TreeConiferScaleLo, Frac, ScQ(0.85)) \
-	X(TreeConiferScaleHi, Frac, ScQ(1.15)) \
+	X(TreeBroadScaleLo, Frac, ScQ(1.1)) \
+	X(TreeBroadScaleHi, Frac, ScQ(1.4)) \
+	X(TreeConiferScaleLo, Frac, ScQ(0.75)) \
+	X(TreeConiferScaleHi, Frac, ScQ(1.30)) \
 	X(TreeLoneScale, Frac, ScQ(1.15)) \
 	X(TreeSinkM, Meters, ScQ(0.05)) \
-	X(TreeCoreP, Frac, ScQ(0.50)) \
-	X(TreeCoreW, Frac, ScQ(0.70)) \
-	X(TreeEdgeP, Frac, ScQ(0.10)) \
+	X(TreeCoreP, Frac, ScQ(0.55)) \
+	X(TreeCoreW, Frac, ScQ(0.66)) \
+	X(TreeEdgeP, Frac, ScQ(0.15)) \
 	X(TreeEdgeW, Frac, ScQ(0.62)) \
-	X(TreeGroveP, Frac, ScQ(0.25)) \
-	X(TreeLoneP, Frac, ScQ(0.002)) \
+	X(TreeGroveP, Frac, ScQ(0.55)) \
+	X(TreeLoneP, Frac, ScQ(0.01)) \
 	X(TrunkDirt, Byte, 32) \
 	X(TrunkRock, Byte, 64) \
 	X(TreeProbeDirt, Byte, 64) \
@@ -173,18 +182,18 @@ namespace ChimeraTerrain
 	X(TreeBroadSnow, Byte, 24) \
 	X(TreeConiferSnow, Byte, 150) \
 	X(TreeConiferHalfSnow, Byte, 60) \
-	X(TreeConiferCLo, Frac, ScQ(0.40)) \
-	X(TreeConiferCHi, Frac, ScQ(0.70)) \
+	X(TreeConiferCLo, Frac, ScQ(0.58)) \
+	X(TreeConiferCHi, Frac, ScQ(0.68)) \
 	X(TreeConiferZLo, Meters, ScQ(20.0)) \
 	X(TreeConiferZHi, Meters, ScQ(50.0)) \
-	X(TreeConiferZWeight, Frac, ScQ(0.5)) \
+	X(TreeConiferZWeight, Frac, ScQ(0.25)) \
 	X(TreeBaseProbeM, Meters, ScQ(0.8)) \
 	/* ---- sapling: coarse, 4 m cell, own stream, shows TreeBroadA at a small scale */ \
 	X(SaplingCellM, Meters, ScQ(4.0)) \
 	X(SaplingJitter, Frac, ScQ(0.5)) \
 	X(SaplingScaleLo, Frac, ScQ(0.25)) \
 	X(SaplingScaleHi, Frac, ScQ(0.40)) \
-	X(SaplingP, Frac, ScQ(0.30)) \
+	X(SaplingP, Frac, ScQ(0.45)) \
 	X(SaplingLo, Frac, ScQ(0.45)) \
 	X(SaplingPk, Frac, ScQ(0.55)) \
 	X(SaplingHi, Frac, ScQ(0.62)) \
@@ -194,18 +203,18 @@ namespace ChimeraTerrain
 	/* ---- shrub: coarse, 2 m cell */ \
 	X(ShrubCellM, Meters, ScQ(2.0)) \
 	X(ShrubJitter, Frac, ScQ(1.0)) \
-	X(ShrubScaleLo, Frac, ScQ(0.8)) \
-	X(ShrubScaleHi, Frac, ScQ(1.6)) \
+	X(ShrubScaleLo, Frac, ScQ(0.6)) \
+	X(ShrubScaleHi, Frac, ScQ(1.2)) \
 	X(ShrubAlign, Frac, ScQ(0.3)) \
 	X(ShrubSinkM, Meters, ScQ(0.08)) \
-	X(ShrubWoodP, Frac, ScQ(0.45)) \
+	X(ShrubWoodP, Frac, ScQ(0.70)) \
 	X(ShrubWoodLo, Frac, ScQ(0.50)) \
 	X(ShrubWoodPk, Frac, ScQ(0.58)) \
 	X(ShrubWoodHi, Frac, ScQ(0.64)) \
-	X(ShrubFsP, Frac, ScQ(0.08)) \
+	X(ShrubFsP, Frac, ScQ(0.02)) \
 	X(ShrubFsLo, Frac, ScQ(0.75)) \
 	X(ShrubFsHi, Frac, ScQ(0.90)) \
-	X(ShrubHedgeP, Frac, ScQ(0.25)) \
+	X(ShrubHedgeP, Frac, ScQ(0.60)) \
 	X(ShrubHedgeRingM, Meters, ScQ(3.0)) \
 	X(ShrubHedgeLo, Byte, 48) \
 	X(ShrubHedgePk, Byte, 96) \
@@ -235,8 +244,8 @@ namespace ChimeraTerrain
 	/* ---- rock: coarse, 4 m cell */ \
 	X(RockCellM, Meters, ScQ(4.0)) \
 	X(RockJitter, Frac, ScQ(1.0)) \
-	X(RockScaleLo, Frac, ScQ(0.6)) \
-	X(RockScaleHi, Frac, ScQ(1.8)) \
+	X(RockScaleLo, Frac, ScQ(1.0)) \
+	X(RockScaleHi, Frac, ScQ(2.6)) \
 	X(RockAlign, Frac, ScQ(0.8)) \
 	X(RockTiltDeg, Deg, 8 * 65536ll) \
 	X(RockSinkFrac, Frac, ScQ(0.25)) \
@@ -250,7 +259,7 @@ namespace ChimeraTerrain
 	X(RockSlopeP, Frac, ScQ(0.15)) \
 	X(RockSlopeLo, Slope, 933909852ll) \
 	X(RockSlopeHi, Slope, 3024035754ll) \
-	X(RockBoulderP, Frac, ScQ(0.20)) \
+	X(RockBoulderP, Frac, ScQ(0.28)) \
 	X(RockFrLo, Frac, ScQ(0.65)) \
 	X(RockFrHi, Frac, ScQ(0.85)) \
 	/* ---- appended in the S2 fix round (append only): the warp-noise periods of W and T, formerly code constants */ \
@@ -381,8 +390,38 @@ namespace ChimeraTerrain
 		FString ApplyMode = TEXT("diff");
 		int32 FineTileM = 32;
 		int32 CoarseTileM = 80;
+		/**
+		 * Per-slot asset choice (task S6's bake-off): `-ChimeraTerrainScatterMeshes=Slot=Choice,...`, Choice = `L0`, `L1` or `L1/<Slot>__<variant>`
+		 * (one of S3's L1 candidates, e.g. `RockA=L1/RockA__moss`). Drawing only, like GrassNanite: a mesh never moves a record (the Z rules use
+		 * palette constants), so it is not folded into config_fnv; the loaded mesh paths and sha256 go to results.json. Empty = the level's rule.
+		 * MeshChoice is indexed by EScatterMesh.
+		 */
+		FString MeshesSpec;
+		TArray<FString> MeshChoice;
+		/**
+		 * Per-unit cull end override in metres (task S6 round 3, the art director's grass redistribution): `-ChimeraTerrainScatterCullM=Slot=metres,...`,
+		 * e.g. `GrassT0=70,GrassT1=45`, each 1..1000 m. Drawing only, like Meshes: cull distances never move a record, so it is not folded into
+		 * config_fnv; results.json reports the spec and every unit's resulting end. CullEndM is indexed by EScatterMesh; 0 = the unit's default
+		 * (ATerrainScatter's MeshCullEndM; grass 70/45 m since the S6 bake). The governor's steps still apply on top (step 2 scales it, step 4 sets the tussock end).
+		 */
+		FString CullSpec;
+		// SCATTER_FP_BEGIN: drawing distances (presentation, not records).
+		TArray<double> CullEndM;
+		// SCATTER_FP_END
 
 		static FScatterOptions FromCommandLine(const TCHAR* Cmd);
+		/**
+		 * Parse a CullM spec into Out (ScatterMeshCount entries, 0 = no override). Returns the error text (empty when valid); on an error Out keeps
+		 * only the valid items.
+		 */
+		// SCATTER_FP_BEGIN: drawing distances (presentation, not records).
+		static FString ParseCullSpec(const FString& Spec, TArray<double>& Out);
+		// SCATTER_FP_END
+		/**
+		 * Parse a Meshes spec into Out (ScatterMeshCount entries, empty = no choice). Returns the error text (empty when valid); on an error Out
+		 * keeps only the valid items.
+		 */
+		static FString ParseMeshesSpec(const FString& Spec, TArray<FString>& Out);
 		/** config_fnv of the options' palette. */
 		uint64 ConfigFnv() const { return Palette.ConfigFnv(); }
 	};

@@ -24,7 +24,7 @@ KNOWN_OPS = {
     "camera", "look", "visible", "settle", "idle", "stroke", "paint", "hash", "shot", "g1_regions", "undo", "redo", "hitch", "save", "load",
     "random_walk", "soak", "gc", "residue", "csv", "movie", "depthcheck", "project_footprint", "await_mouse", "wait_collision", "verify_collision",
     "scatter", "scatter_wait", "scatter_visible", "scatter_verify", "scatter_fresh", "scatter_dump", "scatter_check", "scatter_counts",
-    "scatter_view_counts", "scatter_target", "scatter_mask", "movie_start", "movie_wait", "fail", "exit", "temporal_freeze",
+    "scatter_view_counts", "scatter_target", "scatter_mask", "movie_start", "movie_wait", "fail", "exit", "temporal_freeze", "exposure",
 }
 
 # The fresh-rebuild image pairs (SX10, SX18) are shot with the renderer's temporal sequences frozen (temporal_freeze 1: r.Test.FreezeTemporalSequences 1 and
@@ -333,18 +333,26 @@ def lookx():
             ops += [waitfor(900), settle(150)]
             break
         ops.append(o)
+    # S6 round 2 (art director, round 1): auto exposure brightened every scatter-on frame (pixels scatter never touches 1.10-1.30x brighter), so
+    # each on/off pair is shot at ONE exposure: the off shot's adapted one. Per pose: <name>_auto (scatter on, auto exposure, the in-game look),
+    # then hide, adapt, hold (op exposure, TerrainLighting::SetExposureHold), <name>_off, show, settle, <name> (on, same exposure), release.
     for pose, nm in (("rts80", "rts80_full"), ("oblique", "oblique"), ("closeup", "closeup")):
-        ops += [op("camera", pose=pose), settle(150), op("shot", name=nm),
-                op("scatter_visible", value=0), settle(150), op("shot", name=nm + "_off"),
-                op("scatter_visible", value=1), settle(150)]
+        ops += [op("camera", pose=pose), settle(150), op("shot", name=nm + "_auto"),
+                op("scatter_visible", value=0), settle(150), op("exposure", mode="hold"), op("shot", name=nm + "_off"),
+                op("scatter_visible", value=1), settle(150), op("shot", name=nm), op("exposure", mode="auto"), settle(150)]
     ops += [op("scatter_mask", pose="rts80", name="mask_trees", layers="trees"), op("scatter_mask", pose="rts80", name="mask_shrubs", layers="shrubs"),
+            # S6 look measures (look_measure.py --scatter): canopy bounds (M3, M5), the casters' shadow hull (M4), grass at oblique (M10).
+            op("scatter_mask", pose="rts80", name="mask_canopy", layers="trees", parts="body"),
+            op("scatter_mask", pose="rts80", name="mask_casters_body", layers="trees,shrubs,rocks", parts="body"),
+            op("scatter_mask", pose="rts80", name="mask_shadow", layers="trees,shrubs", parts="shadow"),
+            op("scatter_mask", pose="oblique", name="mask_grass", layers="grass", parts="body"),
             op("scatter_view_counts", pose="rts80", name="rts80"), op("scatter_view_counts", pose="oblique", name="oblique"),
             op("scatter_verify", name="look"), op("hash", name="look"),
             op("look", mode="compare"), op("camera", pose="rts80"), settle(150),
             op("movie", frames=30), op("scatter_visible", value=0), settle(150), op("movie", frames=30), op("scatter_visible", value=1), settle(150),
             op("look", mode="full"), op("save")]
     return script("LOOKX", "Plan C scatter 3.8 script LOOKX: LOOK's map with scatter. look full shots at rts80, oblique, closeup, each with its scatter_visible 0 twin "
-                  "(<name>_off), the tree and shrub layer masks and analytic view counts, then movie 30 at rts80 in compare mode with scatter on and off "
+                  "(<name>_off) shot at the off shot's held exposure (op exposure; <name>_auto is the on shot under auto exposure), the tree and shrub layer masks (S6: canopy bounds, caster shadows, grass at oblique) and analytic view counts, then movie 30 at rts80 in compare mode with scatter on and off "
                   "(M9 shimmer); the shots keep LOOK's names so look_measure.py reads them.", ops)
 
 

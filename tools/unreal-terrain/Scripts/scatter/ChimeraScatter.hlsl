@@ -17,13 +17,15 @@
 //    here is an explicit SampleLevel with a mip taken from the pixel depth; the opacity mask of the masked materials is a separate
 //    standard TextureSample expression, never HLSL.
 //  * No world-position offset, no time term: grass keeps its VSM pages cached (plan 3.7).
-//  * The grass colour follows the ground: the meadow patch field below is the ground's (ChimeraGround.hlsl round 4: the two noise fetches,
-//    the long octave, the sun-facing-slope term Tie, PatchContrast, the bimodal soft edge, the dry/lush saturation-value-tint step) at the
-//    instance origin (plan 3.7), with the ground's own scalars copied from make_ground_material.py SCALARS at build time. OP is
+//  * The grass colour follows the ground: the meadow patch field is the ground's own block, Scripts/ChimeraPatch.hlsl, inlined into both
+//    Custom-node strings by `//#INCLUDE ChimeraPatch.hlsl` (Scripts/hlsl_include.py; task S6): the long octave, the sun-facing-slope term
+//    Tie, the clump dither, PatchContrast and the bimodal soft edge, evaluated at the instance origin (plan 3.7) on the same three noise
+//    fetches as the ground (26.6 m warp, 140 m patch, 5 m clump), with the ground's own scalars copied from make_ground_material.py SCALARS at
+//    build time; then the dry/lush saturation-value-tint step. OP is
 //    TransformPosition(Instance -> Absolute World) of (0,0,0), i.e. GetInstanceToWorld(Parameters) in the pixel shader (ISM and Nanite
 //    alike). It is NOT ObjectPositionWS: in a pixel shader that is the primitive's (ISM component's) bounds origin (MaterialTemplate.ush
-//    MakeMaterialLWCData(FMaterialPixelParameters)), which would give one patch value per (tile, mesh) component. Not copied until S6 moves the patch block into
-//    a shared include: the clump dither (PatchDither x ClumpR, a third fetch) and the rock/dirt mask on Tie (~1 where grass grows).
+//    MakeMaterialLWCData(FMaterialPixelParameters)), which would give one patch value per (tile, mesh) component. The include's splat
+//    weights W are pure grass here (grass grows only where the grass weight is high, so the ground's rock/dirt mask on Tie is 1 there).
 //  * Normals leave as world-space vectors times the facing sign (CgNormalWS) and the build wires a World -> Tangent Transform node
 //    after them, so a back face of a two-sided mesh keeps the same lighting as its front (the engine multiplies the tangent normal by
 //    TwoSidedSign again, MaterialTemplate.ush "flip the normal for backfaces").
@@ -36,7 +38,7 @@
 #define CS_PIXEL_ANGLE(Override) ((Override) > 0.0 ? (Override) : 2.0 / max(ResolvedView.ViewToClip[1][1] * ResolvedView.ViewSizeAndInvSize.y, 1e-3))
 
 //#SECTION Blade
-//#INPUTS OP PD VN VC CD0 CD1 CD2 CD3 NoiseTex Root Tip LushMul DryMul HeadYellow HeadWhite HeadViolet FlowerMode TerrainNormalMix Rough AOStrength VarAmt PatchAmount PixelAngle WarpNoiseM PatchM PatchWarpM PatchStrength PatchContrast PatchBias PatchLo PatchHi PatchLong PatchLongM DryR DryG DryB DryVal DrySat LushR LushG LushB LushVal LushSat SunDirX SunDirY SunDirZ TerrainDry TieLo TieHi
+//#INPUTS OP PD VN VC CD0 CD1 CD2 CD3 NoiseTex Root Tip LushMul DryMul HeadYellow HeadWhite HeadViolet FlowerMode TerrainNormalMix Rough AOStrength VarAmt PatchAmount PixelAngle WarpNoiseM PatchM PatchWarpM PatchStrength PatchContrast PatchBias PatchLo PatchHi PatchLong PatchLongM DryR DryG DryB DryVal DrySat LushR LushG LushB LushVal LushSat SunDirX SunDirY SunDirZ TerrainDry TieLo TieHi PatchDither ClumpM ClumpWarpM
 //#OUTPUTS CgNormalWS:float3 CgRough:float1 CgAO:float1
 // Blades, tussocks, ferns and flowers. Vertex colour: R = ambient occlusion, G = per-part variation, B = part mask (flowers: 1 = head only),
 // A = height fraction (root 0, tip 1). The VertexColor expression's first output is RGB only (the five outputs of the node are all named
@@ -46,25 +48,26 @@
 // like the ground under it and does not glitter. The noise mips follow the pixel footprint (PD x the view's pixel angle against the texel size of each
 // fetch, 1024 px textures), since a Custom node has no derivatives (F24): no mip-0 aliasing at rts80 distances.
 float2 P = OP.xy * 0.01;
+// The ground's three noise fetches (ChimeraGround.hlsl: the same rotations, offsets and periods), at the instance origin with explicit mips.
 float2 PB = float2(0.7547 * P.x + 0.6561 * P.y, -0.6561 * P.x + 0.7547 * P.y);
 float2 PR = float2(0.8910 * P.x - 0.4540 * P.y, 0.4540 * P.x + 0.8910 * P.y);
+float2 PCr = float2(0.4540 * P.x - 0.8910 * P.y, 0.8910 * P.x + 0.4540 * P.y);
 float Foot = PD * 0.01 * CS_PIXEL_ANGLE(PixelAngle) * 1024.0;
 float MipB = max(0.0, log2(max(Foot / WarpNoiseM, 1e-4)));
 float MipP = max(0.0, log2(max(Foot / PatchM, 1e-4)));
+float MipC = max(0.0, log2(max(Foot / ClumpM, 1e-4)));
 float3 NoiseB = Texture2DSampleLevel(NoiseTex, NoiseTexSampler, PB / WarpNoiseM + float2(0.31, 0.67), MipB).rgb;
 float2 PRw = PR + PatchWarpM * (NoiseB.rb - 0.5) * 2.0;
 float3 NoiseP = Texture2DSampleLevel(NoiseTex, NoiseTexSampler, PRw / PatchM + float2(0.73, 0.19), MipP).rgb;
-float Patch = (0.62 * NoiseP.r + 0.30 * NoiseP.b + 0.08 * NoiseB.g - 0.5) * 2.0;
-float2 PL = P / max(PatchLongM, 1.0);
-float Long = (sin(dot(PL, float2(0.8660, 0.5000)) * 6.2832 + 1.3) + sin(dot(PL, float2(-0.3420, 0.9397)) * 5.0265 + 4.1)
-	+ sin(dot(PL, float2(0.6428, -0.7660)) * 4.0841 + 2.2)) * (1.0 / 3.0);
-// The terrain normal (fine grid CD2/CD3; a coarse-grid instance reads 0, i.e. flat) also drives the ground's sun-facing-slope dryness Tie.
+float2 PC = PCr + ClumpWarpM * (NoiseB.rb - 0.5) * 2.0;
+float3 NoiseC = Texture2DSampleLevel(NoiseTex, NoiseTexSampler, PC / ClumpM + float2(0.13, 0.51), MipC).rgb;
+float ClumpR = (NoiseC.r - 0.5) * 2.0;
+// The terrain normal (fine grid CD2/CD3; a coarse-grid instance reads 0, i.e. flat) drives the ground's sun-facing-slope dryness Tie.
 float2 Nt = float2(CD2, CD3);
 float3 Ng = float3(Nt, sqrt(saturate(1.0 - dot(Nt, Nt))));
-float3 SunD = float3(SunDirX, SunDirY, SunDirZ);
-float Tie = (dot(Ng, SunD) - SunD.z * Ng.z) * TerrainDry * smoothstep(TieLo, TieHi, 1.0 - Ng.z);
-Patch = clamp((Patch + PatchLong * Long - PatchBias) * PatchContrast + Tie, -1.0, 1.0);
-Patch = sign(Patch) * smoothstep(PatchLo, PatchHi, abs(Patch));
+float3 Nw = Ng;
+float4 W = float4(1.0, 0.0, 0.0, 0.0);
+//#INCLUDE ChimeraPatch.hlsl
 
 float4 Vc = float4(VC.rgb, Parameters.VertexColor.a);
 const bool IsFlower = FlowerMode > 0.5;

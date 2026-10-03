@@ -30,13 +30,17 @@ namespace
 {
 	constexpr double Pi = 3.14159265358979323846;
 
-	/** Cull end (metres) per mesh unit (plan C scatter 3.4 "Cull end"); TreeBroadA also shows saplings (300 m), so the unit keeps the tree's 600 m. */
+	/**
+	 * Cull end (metres) per mesh unit (plan C scatter 3.4 "Cull end"); TreeBroadA also shows saplings (300 m), so the unit keeps the tree's 600 m.
+	 * S6 bake (EXECUTION.md section 8 "S6 ruling"): the grass ends are round 3's 70 m (T0) and 45 m (T1), not the plan's 130 / 90 m (drawn
+	 * instances at rts80 50,401 -> 13,752 with no M2 loss). Drawing only: records, hashes and config_fnv do not depend on it.
+	 */
 	double MeshCullEndM(EScatterMesh M)
 	{
 		switch (M)
 		{
-		case EScatterMesh::GrassT0: return 130.0;
-		case EScatterMesh::GrassT1: return 90.0;
+		case EScatterMesh::GrassT0: return 70.0;
+		case EScatterMesh::GrassT1: return 45.0;
 		case EScatterMesh::Tussock: return 150.0;
 		case EScatterMesh::Flower: return 110.0;
 		case EScatterMesh::NearCard: return 32.0;
@@ -433,6 +437,14 @@ void ATerrainScatter::LoadMeshes()
 		MeshSha256[M].Reset();
 		if (!ScatterMeshExistsAtLevel(Mesh, Level))
 		{
+			if (Options.MeshChoice.IsValidIndex(M) && !Options.MeshChoice[M].IsEmpty())
+			{
+				// A -ChimeraTerrainScatterMeshes item for a slot the level does not have (e.g. NearCard under L0) would be ignored: say so.
+				const FString Msg = FString::Printf(TEXT("scatter: mesh choice %s for slot %s is ignored: the slot does not exist at level %s"), *Options.MeshChoice[M],
+					UTF8_TO_TCHAR(ScatterMeshName(Mesh)), Level == EScatterLevel::L1 ? TEXT("L1") : TEXT("L0"));
+				MeshErrors += Msg + TEXT("; ");
+				UE_LOG(LogChimeraTerrain, Error, TEXT("%s"), *Msg);
+			}
 			continue;
 		}
 		FString Slot = UTF8_TO_TCHAR(ScatterMeshName(Mesh));
@@ -442,8 +454,25 @@ void ATerrainScatter::LoadMeshes()
 			Slot += TEXT("_L");
 		}
 		// L1 uses its own mesh where S3 imported one for the slot; the procedural L0 mesh is the slot's L1 choice otherwise (plan C scatter 3.6).
+		// S6: a per-slot choice (-ChimeraTerrainScatterMeshes) overrides the level's rule for that slot: L0, L1, or one L1 candidate
+		// (L1/<Slot>__<variant>). The grass _L A/B arm keeps its own L0 LOD chain (any other choice there is logged as ignored). A chosen candidate that is missing or does not load falls back
+		// to L0 with a LogChimeraTerrain Error (always, the log scan catches it), so a bake-off shot can never silently show the wrong mesh. A plain
+		// `L1` choice for a slot with no L1 import uses the procedural L0 mesh by design (plan 3.6: L0 is the slot's L1 choice then).
+		const FString Choice = Options.MeshChoice.IsValidIndex(M) ? Options.MeshChoice[M] : FString();
+		const bool bLodArm = IsGrassMesh(Mesh) && !Options.bGrassNanite;
+		if (bLodArm && !Choice.IsEmpty() && Choice != TEXT("L0"))
+		{
+			// The grass LOD arm (-ChimeraTerrainScatterGrassNanite=0) draws only its own L0 _L chain, so any other choice is ignored: say so.
+			const FString Msg = FString::Printf(TEXT("scatter: mesh choice %s for slot %s is ignored: GrassNanite=0 uses the L0 _L LOD chain"), *Choice, *Slot);
+			MeshErrors += Msg + TEXT("; ");
+			UE_LOG(LogChimeraTerrain, Error, TEXT("%s"), *Msg);
+		}
 		TArray<FString> Candidates;
-		if (Level == EScatterLevel::L1 && !(IsGrassMesh(Mesh) && !Options.bGrassNanite))
+		if (!bLodArm && Choice.StartsWith(TEXT("L1/")))
+		{
+			Candidates.Add(FString::Printf(TEXT("/Game/Terrain/Scatter/Meshes/%s"), *Choice));
+		}
+		else if (!bLodArm && (Choice == TEXT("L1") || (Choice.IsEmpty() && Level == EScatterLevel::L1)))
 		{
 			Candidates.Add(FString::Printf(TEXT("/Game/Terrain/Scatter/Meshes/L1/%s"), *Slot));
 		}
@@ -453,12 +482,24 @@ void ATerrainScatter::LoadMeshes()
 			FString File;
 			if (!FPackageName::DoesPackageExist(Package, &File))
 			{
+				if (Choice.StartsWith(TEXT("L1/")) && Package.EndsWith(Choice))
+				{
+					const FString Msg = FString::Printf(TEXT("scatter: chosen mesh %s for slot %s does not exist; falling back"), *Package, *Slot);
+					MeshErrors += Msg + TEXT("; ");
+					UE_LOG(LogChimeraTerrain, Error, TEXT("%s"), *Msg);
+				}
 				continue;
 			}
 			const FString ObjectPath = Package + TEXT(".") + FPackageName::GetShortName(Package);
 			UStaticMesh* Loaded = LoadObject<UStaticMesh>(nullptr, *ObjectPath, nullptr, LOAD_Quiet | LOAD_NoWarn);
 			if (!Loaded)
 			{
+				if (Choice.StartsWith(TEXT("L1/")) && Package.EndsWith(Choice))
+				{
+					const FString Msg = FString::Printf(TEXT("scatter: chosen mesh %s for slot %s exists but did not load; falling back"), *ObjectPath, *Slot);
+					MeshErrors += Msg + TEXT("; ");
+					UE_LOG(LogChimeraTerrain, Error, TEXT("%s"), *Msg);
+				}
 				continue;
 			}
 			Meshes[M] = Loaded;
@@ -490,9 +531,9 @@ void ATerrainScatter::LoadMeshes()
 	}
 }
 
-void ATerrainScatter::UnitCullDistances(EScatterMesh Mesh, int32& OutStart, int32& OutEnd) const
+void ATerrainScatter::UnitCullDistances(EScatterMesh Mesh, int32& OutStart, int32& OutEnd, bool bIgnoreLayerMask) const
 {
-	if (!IsMeshVisible(Mesh))
+	if (!IsMeshVisible(Mesh, bIgnoreLayerMask))
 	{
 		// Hidden by cull distance (F18: never SetVisibility); SetCullDistances updates the live proxy in place (F6).
 		OutStart = 0;
@@ -500,6 +541,12 @@ void ATerrainScatter::UnitCullDistances(EScatterMesh Mesh, int32& OutStart, int3
 		return;
 	}
 	double End = MeshCullEndM(Mesh);
+	if (Options.CullEndM.IsValidIndex(static_cast<int32>(Mesh)) && Options.CullEndM[static_cast<int32>(Mesh)] > 0.0)
+	{
+		// -ChimeraTerrainScatterCullM (S6 round option, drawing only): replaces the unit's default end (MeshCullEndM; grass 70/45 m since the
+		// S6 bake) before the governor's steps.
+		End = Options.CullEndM[static_cast<int32>(Mesh)];
+	}
 	if (Options.Governor >= 2)
 	{
 		End *= 0.8;
@@ -523,9 +570,9 @@ void ATerrainScatter::UnitCullDistances(EScatterMesh Mesh, int32& OutStart, int3
 	OutEnd = FMath::RoundToInt(End * 100.0);
 }
 
-bool ATerrainScatter::IsMeshVisible(EScatterMesh Mesh) const
+bool ATerrainScatter::IsMeshVisible(EScatterMesh Mesh, bool bIgnoreLayerMask) const
 {
-	if ((LayerVisibleMask & (1u << static_cast<uint32>(MeshLayer(Mesh)))) == 0)
+	if (!bIgnoreLayerMask && (LayerVisibleMask & (1u << static_cast<uint32>(MeshLayer(Mesh)))) == 0)
 	{
 		return false;
 	}
@@ -1759,6 +1806,7 @@ TSharedRef<FJsonObject> ATerrainScatter::OptionsJson() const
 	O->SetNumberField(TEXT("fine_tile_m"), Options.FineTileM);
 	O->SetNumberField(TEXT("coarse_tile_m"), Options.CoarseTileM);
 	O->SetStringField(TEXT("params"), Options.ParamsSpec);
+	O->SetStringField(TEXT("meshes_spec"), Options.MeshesSpec);
 	O->SetStringField(TEXT("params_error"), Options.ParamsError);
 	O->SetStringField(TEXT("config_fnv"), Hex64(GetConfigFnv()));
 	if (Palette.IsValid())
@@ -1790,6 +1838,21 @@ TSharedRef<FJsonObject> ATerrainScatter::OptionsJson() const
 	}
 	O->SetObjectField(TEXT("meshes"), MJ);
 	O->SetStringField(TEXT("mesh_errors"), MeshErrors);
+	// Configured cull ends per unit (metres, CullM and the governor's scaling applied), and the CullM spec that set them. Only the layer mask is
+	// ignored, so the value never depends on whether a layer happened to be hidden when results.json was written; a unit the governor hides
+	// (step 1 GrassT1, step 4 Flower) or the level lacks (NearCard under L0) is never drawn and reports 0.
+	O->SetStringField(TEXT("cull_spec"), Options.CullSpec);
+	TSharedRef<FJsonObject> CJ = MakeShared<FJsonObject>();
+	for (int32 M = 0; M < ScatterMeshCount; ++M)
+	{
+		int32 S0 = 0;
+		int32 S1 = 0;
+		const EScatterMesh Mesh = static_cast<EScatterMesh>(M);
+		UnitCullDistances(Mesh, S0, S1, true);
+		const bool bDrawn = ScatterMeshExistsAtLevel(Mesh, Options.Palette.Level) && IsMeshVisible(Mesh, true);
+		CJ->SetNumberField(UTF8_TO_TCHAR(ScatterMeshName(Mesh)), bDrawn ? S1 / 100.0 : 0.0);
+	}
+	O->SetObjectField(TEXT("cull_end_m"), CJ);
 	TSharedRef<FJsonObject> SG = MakeShared<FJsonObject>();
 	for (const TCHAR* Name : ScalabilityCvars)
 	{

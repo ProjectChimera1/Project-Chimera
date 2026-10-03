@@ -408,9 +408,112 @@ namespace ChimeraTerrain
 		}
 	}
 
+	FString FScatterOptions::ParseMeshesSpec(const FString& Spec, TArray<FString>& Out)
+	{
+		Out.Init(FString(), ScatterMeshCount);
+		FString Errors;
+		TArray<FString> Items;
+		Spec.ParseIntoArray(Items, TEXT(","), true);
+		for (const FString& RawItem : Items)
+		{
+			FString Slot;
+			FString Choice;
+			if (!RawItem.Split(TEXT("="), &Slot, &Choice))
+			{
+				Errors += FString::Printf(TEXT("ScatterMeshes item '%s' is not Slot=Choice; "), *RawItem);
+				continue;
+			}
+			Slot.TrimStartAndEndInline();
+			Choice.TrimStartAndEndInline();
+			int32 Found = INDEX_NONE;
+			for (int32 M = 0; M < ScatterMeshCount; ++M)
+			{
+				if (Slot.Equals(UTF8_TO_TCHAR(ScatterMeshName(static_cast<EScatterMesh>(M))), ESearchCase::CaseSensitive))
+				{
+					Found = M;
+				}
+			}
+			if (Found == INDEX_NONE)
+			{
+				Errors += FString::Printf(TEXT("ScatterMeshes: unknown slot '%s'; "), *Slot);
+				continue;
+			}
+			const bool bLevel = Choice == TEXT("L0") || Choice == TEXT("L1");
+			const FString Prefix = FString(TEXT("L1/")) + Slot;
+			const FString Variant = Choice.StartsWith(TEXT("L1/")) ? Choice.Mid(3) : FString();
+			bool bVariantOk = Choice.StartsWith(Prefix + TEXT("__")) && Choice.Len() > Prefix.Len() + 2;
+			for (const TCHAR Ch : Variant)
+			{
+				bVariantOk &= FChar::IsAlnum(Ch) || Ch == TEXT('_');
+			}
+			if (!bLevel && !bVariantOk)
+			{
+				Errors += FString::Printf(TEXT("ScatterMeshes: bad choice '%s' for %s (L0, L1 or L1/%s__<variant>); "), *Choice, *Slot, *Slot);
+				continue;
+			}
+			if (!Out[Found].IsEmpty())
+			{
+				// A slot given twice is an error (the first choice is kept), never a silent last-one-wins.
+				Errors += FString::Printf(TEXT("ScatterMeshes: slot %s given twice; "), *Slot);
+				continue;
+			}
+			Out[Found] = Choice;
+		}
+		return Errors;
+	}
+
+	FString FScatterOptions::ParseCullSpec(const FString& Spec, TArray<double>& Out)
+	{
+		Out.Init(0.0, ScatterMeshCount);
+		FString Errors;
+		TArray<FString> Items;
+		Spec.ParseIntoArray(Items, TEXT(","), true);
+		for (const FString& RawItem : Items)
+		{
+			FString Slot;
+			FString Value;
+			if (!RawItem.Split(TEXT("="), &Slot, &Value))
+			{
+				Errors += FString::Printf(TEXT("ScatterCullM item '%s' is not Slot=metres; "), *RawItem);
+				continue;
+			}
+			Slot.TrimStartAndEndInline();
+			Value.TrimStartAndEndInline();
+			int32 Found = INDEX_NONE;
+			for (int32 M = 0; M < ScatterMeshCount; ++M)
+			{
+				if (Slot.Equals(UTF8_TO_TCHAR(ScatterMeshName(static_cast<EScatterMesh>(M))), ESearchCase::CaseSensitive))
+				{
+					Found = M;
+				}
+			}
+			if (Found == INDEX_NONE)
+			{
+				Errors += FString::Printf(TEXT("ScatterCullM: unknown slot '%s'; "), *Slot);
+				continue;
+			}
+			const double Metres = Value.IsNumeric() ? FCString::Atod(*Value) : -1.0;
+			if (!(Metres >= 1.0 && Metres <= 1000.0))
+			{
+				Errors += FString::Printf(TEXT("ScatterCullM: bad end '%s' for %s (1..1000 m); "), *Value, *Slot);
+				continue;
+			}
+			if (Out[Found] > 0.0)
+			{
+				// A slot given twice is an error (the first end is kept), never a silent last-one-wins.
+				Errors += FString::Printf(TEXT("ScatterCullM: slot %s given twice; "), *Slot);
+				continue;
+			}
+			Out[Found] = Metres;
+		}
+		return Errors;
+	}
+
 	FScatterOptions FScatterOptions::FromCommandLine(const TCHAR* Cmd)
 	{
 		FScatterOptions O;
+		O.MeshChoice.Init(FString(), ScatterMeshCount);
+		O.CullEndM.Init(0.0, ScatterMeshCount);
 		FString Script;
 		FParse::Value(Cmd, TEXT("ChimeraTerrainScript="), Script, false);
 		const bool bScripted = !Script.IsEmpty();
@@ -544,6 +647,14 @@ namespace ChimeraTerrain
 			{
 				O.ParamsError += FString::Printf(TEXT("bad ScatterFineTileM %d (16, 32 or 64; kept 32); "), Fine);
 			}
+		}
+		if (FParse::Value(Cmd, TEXT("ChimeraTerrainScatterMeshes="), O.MeshesSpec, false))
+		{
+			O.ParamsError += ParseMeshesSpec(O.MeshesSpec, O.MeshChoice);
+		}
+		if (FParse::Value(Cmd, TEXT("ChimeraTerrainScatterCullM="), O.CullSpec, false))
+		{
+			O.ParamsError += ParseCullSpec(O.CullSpec, O.CullEndM);
 		}
 		int32 Coarse = 80;
 		if (FParse::Value(Cmd, TEXT("ChimeraTerrainScatterCoarseTileM="), Coarse))

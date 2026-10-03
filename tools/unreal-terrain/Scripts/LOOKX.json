@@ -1,6 +1,6 @@
 {
  "name": "LOOKX",
- "about": "Plan C scatter 3.8 script LOOKX: LOOK's map with scatter. look full shots at rts80, oblique, closeup, each with its scatter_visible 0 twin (<name>_off), the tree and shrub layer masks and analytic view counts, then movie 30 at rts80 in compare mode with scatter on and off (M9 shimmer); the shots keep LOOK's names so look_measure.py reads them.",
+ "about": "Plan C scatter 3.8 script LOOKX: LOOK's map with scatter. look full shots at rts80, oblique, closeup, each with its scatter_visible 0 twin (<name>_off) shot at the off shot's held exposure (op exposure; <name>_auto is the on shot under auto exposure), the tree and shrub layer masks (S6: canopy bounds, caster shadows, grass at oblique) and analytic view counts, then movie 30 at rts80 in compare mode with scatter on and off (M9 shimmer); the shots keep LOOK's names so look_measure.py reads them.",
  "ops": [
   {
    "op": "look",
@@ -382,7 +382,7 @@
   },
   {
    "op": "shot",
-   "name": "rts80_full"
+   "name": "rts80_full_auto"
   },
   {
    "op": "scatter_visible",
@@ -393,12 +393,28 @@
    "frames": 150
   },
   {
+   "op": "exposure",
+   "mode": "hold"
+  },
+  {
    "op": "shot",
    "name": "rts80_full_off"
   },
   {
    "op": "scatter_visible",
    "value": 1
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "rts80_full"
+  },
+  {
+   "op": "exposure",
+   "mode": "auto"
   },
   {
    "op": "settle",
@@ -414,7 +430,7 @@
   },
   {
    "op": "shot",
-   "name": "oblique"
+   "name": "oblique_auto"
   },
   {
    "op": "scatter_visible",
@@ -425,12 +441,28 @@
    "frames": 150
   },
   {
+   "op": "exposure",
+   "mode": "hold"
+  },
+  {
    "op": "shot",
    "name": "oblique_off"
   },
   {
    "op": "scatter_visible",
    "value": 1
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "oblique"
+  },
+  {
+   "op": "exposure",
+   "mode": "auto"
   },
   {
    "op": "settle",
@@ -446,7 +478,7 @@
   },
   {
    "op": "shot",
-   "name": "closeup"
+   "name": "closeup_auto"
   },
   {
    "op": "scatter_visible",
@@ -457,12 +489,28 @@
    "frames": 150
   },
   {
+   "op": "exposure",
+   "mode": "hold"
+  },
+  {
    "op": "shot",
    "name": "closeup_off"
   },
   {
    "op": "scatter_visible",
    "value": 1
+  },
+  {
+   "op": "settle",
+   "frames": 150
+  },
+  {
+   "op": "shot",
+   "name": "closeup"
+  },
+  {
+   "op": "exposure",
+   "mode": "auto"
   },
   {
    "op": "settle",
@@ -479,6 +527,34 @@
    "pose": "rts80",
    "name": "mask_shrubs",
    "layers": "shrubs"
+  },
+  {
+   "op": "scatter_mask",
+   "pose": "rts80",
+   "name": "mask_canopy",
+   "layers": "trees",
+   "parts": "body"
+  },
+  {
+   "op": "scatter_mask",
+   "pose": "rts80",
+   "name": "mask_casters_body",
+   "layers": "trees,shrubs,rocks",
+   "parts": "body"
+  },
+  {
+   "op": "scatter_mask",
+   "pose": "rts80",
+   "name": "mask_shadow",
+   "layers": "trees,shrubs",
+   "parts": "shadow"
+  },
+  {
+   "op": "scatter_mask",
+   "pose": "oblique",
+   "name": "mask_grass",
+   "layers": "grass",
+   "parts": "body"
   },
   {
    "op": "scatter_view_counts",

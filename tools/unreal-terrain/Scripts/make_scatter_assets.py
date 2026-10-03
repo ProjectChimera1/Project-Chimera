@@ -62,6 +62,7 @@ FULL_RUN = STEPS == ALL_STEPS and not ONLY
 ERRORS = []
 WARNINGS = []
 REPORT = {'textures': {}, 'masters': {}, 'instances': {}, 'meshes': {}, 'usage_rows': [], 'flip_rows': [], 'vc_rows': [], 'deps': {}, 'unexpected_assets': []}
+LOOK_APPLIED = []  # task S6: instances that took a LOOK_OVERRIDES row (scatter_material_spec.py)
 TIMES = {}
 
 
@@ -1120,6 +1121,15 @@ def process_mesh(level, name, glb, slot, expected_tris, species=None):
                     tex[param] = textures.get(img)
                 else:
                     tex[param] = load_texture(S.DEFAULT_TEXTURES[{'base': 'color', 'normal': 'normal', 'arm': 'masks'}[key]])
+        # Task S6: the look round's material scalars (scatter_material_spec.LOOK_OVERRIDES); every value is read back by make_instance.
+        if mic_name in S.LOOK_OVERRIDES:
+            known = S.master_params(master)
+            o = S.LOOK_OVERRIDES[mic_name]
+            for k in list(o.get('scalars', {})) + list(o.get('vectors', {})):
+                if k not in known:
+                    err('%s: look override %s is not a parameter of %s' % (mic_name, k, master))
+            scal, vec = S.apply_look(mic_name, scal, vec)
+            LOOK_APPLIED.append(mic_name)
         mic = make_instance(level, mic_name, master, MASTER_ASSETS, scal, vec, tex)
         mats.append(mic)
         if mic is not None:
@@ -1506,6 +1516,7 @@ def write_report(wall_s, report_arg):
               'usage_rows': REPORT['usage_rows'], 'flip_rows': REPORT['flip_rows'], 'vc_rows': REPORT['vc_rows'], 'deps': REPORT['deps'],
               'unexpected_assets': REPORT['unexpected_assets'], 'outside_scatter': REPORT.get('outside_scatter'),
               'material_tags': REPORT.get('material_tags'), 'flip_original': REPORT.get('flip_original'), 'vc_expect': REPORT.get('vc_expect'),
+              'look_overrides': REPORT.get('look_overrides'),
               'packages': len(REPORT['deps']),
               'engine_dependencies': engine_dependencies()}
     os.makedirs(OUT_DIR, exist_ok=True)
@@ -1549,6 +1560,11 @@ def main():
         step_meshes('L1')
     if 'lod' in STEPS:
         step_lod_variants()
+    if FULL_RUN:
+        missing = sorted(set(S.LOOK_OVERRIDES) - set(LOOK_APPLIED))
+        if missing:
+            err('look overrides matched no material instance: %s' % ', '.join(missing))
+    REPORT['look_overrides'] = {n: S.LOOK_OVERRIDES[n] for n in sorted(set(LOOK_APPLIED))}
     if 'verify' in STEPS:
         step_vertex_colours()
         step_verify()

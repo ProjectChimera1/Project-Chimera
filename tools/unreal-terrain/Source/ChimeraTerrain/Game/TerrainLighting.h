@@ -42,6 +42,19 @@ public:
 	float GetCompareEV100() const { return CompareEV100; }
 
 	/**
+	 * Task S6 (LOOKX on/off pairs at one exposure): hold the exposure eye adaptation has reached, by setting the post-process adaptation
+	 * speeds to HeldExposureSpeed (EV per second) until released. The adapted value then stays put while scatter is shown or hidden, so a
+	 * pair is shot at the off shot's adapted exposure. Speeds are used, not Min == Max: that needs the adapted EV100, which the engine keeps
+	 * render-side only (FSceneViewStateInterface::GetLastEyeAdaptationExposure, SceneManagement.h:198). A tiny positive speed, never 0:
+	 * PostProcessEyeAdaptation.cpp:710-711 divides by 1 - exp2(-dt * speed); speeds >= 0 keep blending on (bValidSpeeds, :718). A camera cut
+	 * still snaps to the target (ForceTarget, :723), so hold only after the camera has settled. Presentation only; no effect in compare mode
+	 * (Min == Max forces the target there).
+	 */
+	void SetExposureHold(bool bHold);
+	bool IsExposureHeld() const { return bExposureHeld; }
+	static constexpr float HeldExposureSpeed = 0.001f;
+
+	/**
 	 * -ChimeraTerrainLight=Name=Value,... (G1 look tuning without a rebuild). Names: SunPitch, SunYaw, SunLux, SunTemp, SunAngle,
 	 * SkyInt, FogDensity, FogFalloff, FogStart, FogR/FogG/FogB (inscattering colour, linear), FogSkyR/FogSkyG/FogSkyB (scale of the
 	 * sky atmosphere's contribution to the fog), GroundR/GroundG/GroundB (SkyAtmosphere ground albedo, linear 0..1), ExposureBias,
@@ -81,4 +94,5 @@ private:
 
 	bool bCompareMode = false;
 	float CompareEV100 = DefaultCompareEV100;
+	bool bExposureHeld = false;
 };

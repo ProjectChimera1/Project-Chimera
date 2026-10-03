@@ -9,7 +9,8 @@ The rts80 painted path is re-measured with a CLOSED mask (main-session G0 note):
 with gaps, so it is rasterised, closed (binary_closing, 3 px), hole-filled, the snow stroke on the cone is cut with G0's fitted-line
 rule, and the core is the part whose distance to the edge is >= 0.5 x that column's maximum (G0's rule, now on a solid mask).
 
-Usage: python look_measure.py RUN_DIR [--shot rts80_full.png] [--json OUT] [--md OUT]   (RUN_DIR holds rts80_full.png, oblique.png,
+Usage: python look_measure.py --scatter LOOKX_RUN [--json OUT] [--md OUT] [--overlay DIR]   (S6: M1-M10, look_measure_scatter.py)
+       python look_measure.py RUN_DIR [--shot rts80_full.png] [--json OUT] [--md OUT]   (RUN_DIR holds rts80_full.png, oblique.png,
 closeup.png and footprints.json). Prints one table row per crop and per group mean; targets are G0's compare_c7.md table.
 """
 import argparse
@@ -62,6 +63,11 @@ def closed_path_mask(fp_json, shape, x_range=(900, 1600), max_above_line=60, cor
 
 
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    if '--scatter' in argv:
+        # Plan C scatter 3.9 (task S6): M1-M10 on a LOOKX run (look_measure_scatter.py).
+        import look_measure_scatter
+        return look_measure_scatter.main([x for x in argv if x != '--scatter'])
     ap = argparse.ArgumentParser()
     ap.add_argument('run')
     ap.add_argument('--json')

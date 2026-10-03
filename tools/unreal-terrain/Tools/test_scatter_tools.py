@@ -575,3 +575,50 @@ def test_rock_height_matches_s2_palette():
     for m in prepared_report()["meshes"]:
         if m["slot"] in ("RockA", "RockB"):
             assert abs(m["target_height_m"] - nominal) < 1e-9, m["name"]
+
+
+def _lms():
+    """look_measure_scatter imports G0's Manor Lords measure scripts (Out/refs, local only); skip where they are absent."""
+    try:
+        import look_measure_scatter
+    except ImportError as e:
+        pytest.skip("look_measure_scatter needs Out/refs/manor_lords/scripts: %s" % e)
+    return look_measure_scatter
+
+
+def test_m8_at_end_ignores_a_noisy_frame_edge_and_thin_bins():
+    """S6 close: M8's at-end window is the grass end +-8 m, and a bin needs >= 10 % meadow. A synthetic frame: distance falls linearly from
+    100 m (top) to 60 m (bottom); a clean 1/255 step at the 70 m end; the last two bins (about 61 m) are thin (304 meadow px) with a 6/255
+    jump between them. The old band (0.69 x end .. end + 10 m) with a 200 px floor reported the edge jump; the window must report the end."""
+    lms = _lms()
+    H, W = 160, 400
+    d = np.repeat(np.linspace(100.0, 60.0, H)[:, None], W, 1)[:, 0]
+    diff = np.zeros((H, W))
+    diff[d < 70.0, :] = 1.0 / 255.0
+    meadow = np.ones((H, W), bool)
+    meadow[H - 16:, 38:] = False  # the last two bins keep 38 x 8 = 304 meadow px each (< 10 % of 3,200)
+    diff[H - 8:, :] = 7.0 / 255.0
+    prof = lms.m8_profile(diff, meadow, d)
+    assert prof[-1][1] is None and prof[-2][1] is None, "thin edge bins must not count"
+    # With the thin bins admitted (the old 200 px rule is below 304 px), the edge jump dominates: the measure must not see it.
+    loose = lms.m8_profile(diff, meadow, d, min_frac=0.0)
+    old, _ = lms.m8_max_step(loose, 0.69 * 70.0, 80.0)
+    assert old > 5.0
+    step, at = lms.m8_max_step(prof, 70.0 - lms.M8_END_HALF_M, 70.0 + lms.M8_END_HALF_M)
+    assert abs(step - 1.0) < 1e-6, step
+    assert at["d_m"][0] >= 62.0 and at["d_m"][1] <= 78.0 and min(at["meadow_px"]) >= 0.1 * 8 * W
+
+
+def test_m8_floor_skips_pairs_near_any_end_and_reports_none_when_empty():
+    lms = _lms()
+    H, W = 80, 100
+    d = np.linspace(90.0, 50.0, H)
+    diff = np.zeros((H, W))
+    diff[d < 70.0, :] = 3.0 / 255.0
+    meadow = np.ones((H, W), bool)
+    prof = lms.m8_profile(diff, meadow, d)
+    raw, _ = lms.m8_max_step(prof, 0, 80)
+    clear, _ = lms.m8_max_step(prof, 0, 80, ends=[70.0], clear=True)
+    assert abs(raw - 3.0) < 1e-6 and clear == 0.0
+    none, at = lms.m8_max_step(prof, 200, 300)
+    assert none is None and at is None

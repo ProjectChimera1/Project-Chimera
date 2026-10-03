@@ -15,6 +15,7 @@ import ast
 import json
 import os
 import re
+import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 T = os.path.dirname(os.path.dirname(HERE))
@@ -22,6 +23,8 @@ HLSL_PATH = os.path.join(HERE, "ChimeraScatter.hlsl")
 MESHES_JSON = os.path.join(HERE, "meshes.json")
 TEXTURE_STATS = os.path.join(HERE, "texture_stats.json")
 GROUND_SCRIPT = os.path.join(os.path.dirname(HERE), "make_ground_material.py")
+sys.path.insert(0, os.path.dirname(HERE))
+import hlsl_include  # noqa: E402  (T/Scripts: the //#INCLUDE expansion shared with make_ground_material.py)
 
 ROOT = "/Game/Terrain/Scatter"
 MESH_DIR = {"L0": ROOT + "/Meshes/L0", "L1": ROOT + "/Meshes/L1"}
@@ -51,10 +54,10 @@ ROCK_ALBEDO_SCALE = 0.5  # species rock colours (0.24-0.27) are about 3x the gro
 # Ground scalars the grass patch field copies (names as in make_ground_material.py SCALARS).
 GROUND_NAMES = ["WarpNoiseM", "PatchM", "PatchWarpM", "PatchStrength", "PatchContrast", "PatchBias", "PatchLo", "PatchHi", "PatchLong",
                 "PatchLongM", "DryR", "DryG", "DryB", "DryVal", "DrySat", "LushR", "LushG", "LushB", "LushVal", "LushSat",
-                "SunDirX", "SunDirY", "SunDirZ", "TerrainDry", "TieLo", "TieHi"]
-# Ground patch terms the grass does NOT copy until S6's shared ChimeraPatch.hlsl: the clump dither (PatchDither x ClumpR, a third noise fetch
-# at the 5 m clump scale), and the rock/dirt mask on the slope term (grass grows only where the grass weight is high, so the mask is ~1 there).
-GROUND_PATCH_OMITTED = ["PatchDither"]
+                "SunDirX", "SunDirY", "SunDirZ", "TerrainDry", "TieLo", "TieHi", "PatchDither", "ClumpM", "ClumpWarpM"]
+# S6: the patch block is shared (Scripts/ChimeraPatch.hlsl, `//#INCLUDE`), so the grass copies every ground patch term, the clump dither included
+# (a third noise fetch at the 5 m clump scale). Only the rock/dirt mask on the slope term reads pure grass weights (grass grows where W.x is high).
+GROUND_PATCH_OMITTED = []
 # PixelAngle (the angle one pixel spans, for the depth-based mips) defaults to 0 = taken from the view in the shader:
 # 2 / (ResolvedView.ViewToClip[1][1] * ResolvedView.ViewSizeAndInvSize.y), i.e. 2 tan(vfov/2) / height (the rts80, oblique and closeup poses have
 # 75, 50 and 60 degree vertical fovs, RtsCameraPawn.cpp, so no one constant fits). A positive value overrides it (a diagnostic).
@@ -96,10 +99,14 @@ BUILTIN_INPUTS = {"WP": "world_position", "OP": "instance_origin", "VN": "vertex
 
 # ---------------------------------------------------------------------------------------------------------------- HLSL sections
 def parse_hlsl(text=None):
-    """{'common': str, 'sections': {name: {'inputs': [..], 'outputs': [(name, type)], 'body': str}}} from ChimeraScatter.hlsl."""
+    """{'common': str, 'sections': {name: {'inputs': [..], 'outputs': [(name, type)], 'body': str, 'includes': [..]}}} from ChimeraScatter.hlsl.
+    `//#INCLUDE <file>` lines are expanded first (Scripts/hlsl_include.py, the expansion the ground material uses), so every body is the exact
+    Custom-node text."""
     if text is None:
-        with open(HLSL_PATH, encoding="utf-8") as f:
+        with open(HLSL_PATH, encoding="utf-8", newline="") as f:
             text = f.read()
+    # LF only: a checkout under core.autocrlf=true may write CRLF, and the //#SECTION / //#INPUTS patterns end at `$` (hlsl_include.to_lf).
+    text = hlsl_include.to_lf(text)
     parts = re.split(r"^//#SECTION[ \t]+(\w+)[ \t]*$", text, flags=re.M)
     sections, common = {}, ""
     for i in range(1, len(parts), 2):
@@ -116,10 +123,11 @@ def parse_hlsl(text=None):
                 continue
             lines.append(ln)
         body = "\n".join(lines).strip("\n") + "\n"
+        body, includes = hlsl_include.expand(body)
         if name == "Common":
             common = body
         else:
-            sections[name] = {"inputs": inputs, "outputs": outputs, "body": body}
+            sections[name] = {"inputs": inputs, "outputs": outputs, "body": body, "includes": includes}
     return {"common": common, "sections": sections}
 
 
@@ -270,3 +278,72 @@ def l1_rule(mesh_name, slot, glb_material):
 
 def is_nanite_slot(slot):
     return slot not in NANITE_OFF_SLOTS
+
+
+# ---------------------------------------------------------------------------------------------------------------- S6 look-round material scalars
+# Task S6 (plan 3.9: "a round changes only palette constants, the asset level per slot, material scalars, or SunContactShadowM"): material
+# parameter values that replace what l0_rule / l1_rule give, keyed by the material instance name make_scatter_assets.py builds
+# ('MI_<mesh>_<glTF material>'; the grass _L copies inherit their original's values). Scalars and vectors only: no master, blend, texture or
+# usage changes, so asset_settings_sha256 (S6's from-clean comparison) does not move. meshes.json stays the S1 mesh source (its colours are
+# also written into the glbs, whose sha256 the manifest pins), so the round's colours live here.
+# Round 2 (art director's round-1 verdict, 2026-10-03), linear colours:
+#  * grass blades: tips were straw-cream (0.55,0.70,0.28), closeup V 0.43 against Manor Lords' 0.17-0.20 -> Tip (0.18,0.26,0.06), Root
+#    (0.05,0.09,0.02); PatchAmount 0.6 -> 0.9 so the blades carry the ground's dry/lush field. Tussocks and flower stems darkened alike so the
+#    tussock islands stay darker than the meadow and the stems match it; HeadWhite and HeadViolet brighter so drifts read.
+#  * L0 broadleaf canopy: Tint (0.10,0.19,0.06) read as a bright toy (V 0.48, S 0.59) -> about 0.3x and warmer (0.035,0.055,0.015), aiming
+#    at Manor Lords' V ~0.26 and hue 75-80; NormalStrength 0.5 -> 1.0, TileM 1.2 -> 0.8 m and TexAmt 0.7 -> 0.85 so the leaf texture breaks
+#    up the smooth lobes.
+#  * L0 conifers warmed from hue ~128 toward ~95; L0 shrub leaf masses about 0.4x (V ~0.22, hue ~75 on screen).
+#  * L1 tree_small_02 leaves (the art director's one check run of L1, judged at oblique): Tint (1.0,0.9,0.55) moves the blue-grey leaves
+#    from screen hue ~96 toward ~75, RoughMul 1.5 kills the sheen.
+#  * L1 grass cards (the grass slot's comparison route): Tint maps each texture's mean linear colour (grass_medium_02 (0.311,0.300,0.142),
+#    seed-card atlas (0.251,0.228,0.129), measured on the prepared images) onto the blade target's mean (0.115,0.175,0.04) and a drier
+#    seed-head target (0.13,0.16,0.05).
+# Round 3 (art director's round-2 verdict, 2026-10-03):
+#  * tussocks are the rts80 mid-frequency carrier: Root (0.045,0.06,0.02) -> (0.035,0.045,0.015), Tip (0.17,0.19,0.07) -> (0.12,0.14,0.05),
+#    so the (now larger, more frequent) islands read darker than the meadow at RTS height.
+#  * rocks read near-black: Tint x1.5 (RockA (0.12,0.115,0.105) -> (0.18,0.1725,0.1575), RockB (0.135,0.125,0.11) -> (0.2025,0.1875,0.165)).
+#  * shrubs read as smooth boulders: leaf-texture scalars TexAmt 1.0, TileM 0.3 m, NormalStrength 2.0 (the art director's numbers), VarAmt 0.2.
+#  * canopy tint spread through custom data: VarAmt 0.10 -> 0.20 (cd0, about +-20 % value per tree) on the L0 canopies and the L1 leaves;
+#    HeightGain 0.10 -> 0.20 on the L0 canopies (brighter crown tops from the vertex height).
+_BLADE_ROOT, _BLADE_TIP = [0.05, 0.09, 0.02, 1.0], [0.18, 0.26, 0.06, 1.0]
+_CANOPY_L0 = {"NormalStrength": 1.0, "TileM": 0.8, "TexAmt": 0.85, "VarAmt": 0.20, "HeightGain": 0.20}
+_SHRUB_L0 = {"TexAmt": 1.0, "TileM": 0.3, "NormalStrength": 2.0, "VarAmt": 0.20}
+_L1_LEAVES = {"RoughMul": 1.5, "VarAmt": 0.20}
+LOOK_OVERRIDES = {
+    "MI_GrassT0_M_Blade": {"vectors": {"Root": _BLADE_ROOT, "Tip": _BLADE_TIP}, "scalars": {"PatchAmount": 0.9}},
+    "MI_GrassT1_M_Blade": {"vectors": {"Root": _BLADE_ROOT, "Tip": [0.20, 0.25, 0.07, 1.0]}, "scalars": {"PatchAmount": 0.9}},
+    "MI_Tussock_M_Blade": {"vectors": {"Root": [0.035, 0.045, 0.015, 1.0], "Tip": [0.12, 0.14, 0.05, 1.0]}, "scalars": {"PatchAmount": 0.9}},
+    "MI_Flower_M_FlowerStem": {"vectors": {"Root": [0.06, 0.11, 0.025, 1.0], "Tip": [0.075, 0.135, 0.03, 1.0]}},
+    "MI_Flower_M_FlowerHead": {"vectors": {"HeadWhite": [1.0, 1.0, 0.95, 1.0], "HeadViolet": [0.55, 0.35, 0.9, 1.0]}},
+    "MI_TreeBroadA_M_Canopy": {"vectors": {"Tint": [0.035, 0.055, 0.015, 1.0]}, "scalars": dict(_CANOPY_L0)},
+    "MI_TreeBroadB_M_Canopy": {"vectors": {"Tint": [0.04, 0.06, 0.016, 1.0]}, "scalars": dict(_CANOPY_L0)},
+    "MI_TreeConiferA_M_Needles": {"vectors": {"Tint": [0.075, 0.12, 0.04, 1.0]}},
+    "MI_TreeConiferB_M_Needles": {"vectors": {"Tint": [0.08, 0.13, 0.045, 1.0]}},
+    "MI_ShrubA_M_ShrubLeaf": {"vectors": {"Tint": [0.045, 0.07, 0.02, 1.0]}, "scalars": dict(_SHRUB_L0)},
+    "MI_ShrubB_M_ShrubLeaf": {"vectors": {"Tint": [0.05, 0.078, 0.022, 1.0]}, "scalars": dict(_SHRUB_L0)},
+    "MI_RockA_M_Rock": {"vectors": {"Tint": [0.18, 0.1725, 0.1575, 1.0]}},
+    "MI_RockB_M_Rock": {"vectors": {"Tint": [0.2025, 0.1875, 0.165, 1.0]}},
+    "MI_TreeBroadA_tree_small_02_leaves": {"vectors": {"Tint": [1.0, 0.9, 0.55, 1.0]}, "scalars": dict(_L1_LEAVES)},
+    "MI_TreeBroadB_tree_small_02_leaves": {"vectors": {"Tint": [1.0, 0.9, 0.55, 1.0]}, "scalars": dict(_L1_LEAVES)},
+    "MI_GrassT0__medium02_grass_medium_02": {"vectors": {"Tint": [0.37, 0.58, 0.28, 1.0]}},
+    "MI_GrassT1__seedcard_M_SeedCard": {"vectors": {"Tint": [0.52, 0.70, 0.38, 1.0]}},
+}
+
+
+def apply_look(mic_name, scalars, vectors):
+    """(scalars, vectors) with the round's LOOK_OVERRIDES for instance `mic_name` merged over the rule's values (new dicts; the inputs are
+    not changed). Raises KeyError when an override names a parameter the rule did not set and the instance's master does not have (checked
+    by the caller through master_params)."""
+    o = LOOK_OVERRIDES.get(mic_name)
+    if not o:
+        return dict(scalars), dict(vectors)
+    s, v = dict(scalars), dict(vectors)
+    s.update(o.get("scalars", {}))
+    v.update(o.get("vectors", {}))
+    return s, v
+
+
+def master_params(master_name):
+    """{name: kind} of a master's parameters (kinds as in masters())."""
+    return {k: kind for k, (kind, _d) in masters()[master_name]["params"].items()}

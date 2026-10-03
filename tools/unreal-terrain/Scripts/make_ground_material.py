@@ -28,10 +28,13 @@ import unreal
 
 MEL = unreal.MaterialEditingLibrary
 EAL = unreal.EditorAssetLibrary
+EXPANDED = {}  # the Custom node's expanded code string, its includes and sha256 (S6 byte-identity check)
 
 T = os.path.abspath(unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_dir())).replace('\\', '/').rstrip('/')
 TEX_SRC = T + '/Textures'
 HLSL = T + '/Scripts/ChimeraGround.hlsl'
+sys.path.insert(0, T + '/Scripts')
+import hlsl_include  # noqa: E402  (pure Python, T/Scripts; the //#INCLUDE expansion shared with the scatter materials)
 TEX_DIR = '/Game/Terrain/Textures'
 MAT_DIR = '/Game/Terrain'
 MAT_NAME = 'M_ChimeraGround'
@@ -240,8 +243,10 @@ def import_all():
 
 
 def build_material(textures):
-    with open(HLSL, encoding='utf-8') as f:
-        code = f.read()
+    # S6: ChimeraGround.hlsl takes the meadow patch block from Scripts/ChimeraPatch.hlsl (`//#INCLUDE`, shared with the grass blades);
+    # the expanded string is what the Custom node gets, and its sha256 goes to the report (test_hlsl_include.py pins it).
+    code, includes, code_sha = hlsl_include.expand_file(HLSL)
+    EXPANDED.update(code=code, includes=includes, sha256=code_sha)
     at = unreal.AssetToolsHelpers.get_asset_tools()
     # Always a fresh asset: rebuilding in place (delete_all_material_expressions, as lt_build does) kept the old scalar defaults in
     # the material's parameter cache (the second build read MacroStrength back as the first build's 0.18).
@@ -346,13 +351,14 @@ def main():
     mat, st, compile_s = build_material(textures)
     report = {'material': MAT_PATH, 'errors': 0, 'stats': st, 'compile_s': round(compile_s, 1), 'total_s': round(time.time() - t0, 1),
               'scalars': dict(SCALARS), 'hlsl': HLSL, 'textures': {k: v.get_path_name() for k, v in textures.items()},
-              'noise': NOISE_TEX, 't': time.strftime('%Y-%m-%dT%H:%M:%S')}
+              'noise': NOISE_TEX, 't': time.strftime('%Y-%m-%dT%H:%M:%S'),
+              'code_sha256': EXPANDED.get('sha256'), 'code_includes': EXPANDED.get('includes'), 'code': EXPANDED.get('code')}
     if report_path:
         with open(report_path, 'w', encoding='utf-8') as f:
             json.dump(report, f, indent=1)
-    print('MATERIAL_OK %s errors=0 ps_instructions=%d vs_instructions=%d samplers=%d ps_texture_samples=%d compile_s=%.1f' % (
+    print('MATERIAL_OK %s errors=0 ps_instructions=%d vs_instructions=%d samplers=%d ps_texture_samples=%d compile_s=%.1f code_sha256=%s' % (
         MAT_PATH, st['num_pixel_shader_instructions'], st['num_vertex_shader_instructions'], st['num_samplers'],
-        st['num_pixel_texture_samples'], compile_s))
+        st['num_pixel_texture_samples'], compile_s, EXPANDED.get('sha256')))
     unreal.log('MATERIAL_OK %s errors=0' % MAT_PATH)
 
 

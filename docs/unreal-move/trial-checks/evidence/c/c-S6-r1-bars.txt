@@ -1,0 +1,364 @@
+S6 round 1 (scatter look rounds against Manor Lords): acceptance outputs. Each block starts with its command line. Runs: D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/<tag>; logs D:/Projects/Chimera-Unreal/TrialOut/c_s6/r1.
+
+===== tests_builds
+$ bash -c grep -hE 'TESTS|Result:|BUILD .*wall_seconds' /d/Projects/Chimera-Unreal/TrialOut/c_s6/r1/tests.log /d/Projects/Chimera-Unreal/TrialOut/c_s6/r1/build_ed.log /d/Projects/Chimera-Unreal/TrialOut/c_s6/r1/build_game.log; grep -H . /d/Projects/Chimera-Unreal/TrialOut/c_s6/r1/*.exit
+TESTS pass=71 fail=0
+Result: Succeeded
+BUILD ChimeraTerrainEditor wall_seconds=717 exit=0
+Result: Succeeded
+BUILD ChimeraTerrain wall_seconds=269 exit=0
+/d/Projects/Chimera-Unreal/TrialOut/c_s6/r1/build_ed.log.exit:EXIT=0
+/d/Projects/Chimera-Unreal/TrialOut/c_s6/r1/build_game.log.exit:EXIT=0
+/d/Projects/Chimera-Unreal/TrialOut/c_s6/r1/chain1.log.exit:EXIT=0
+/d/Projects/Chimera-Unreal/TrialOut/c_s6/r1/chain2.log.exit:EXIT=0
+/d/Projects/Chimera-Unreal/TrialOut/c_s6/r1/chain3.log.exit:EXIT=0
+/d/Projects/Chimera-Unreal/TrialOut/c_s6/r1/chain4.log.exit:EXIT=0
+/d/Projects/Chimera-Unreal/TrialOut/c_s6/r1/chain5.log.exit:EXIT=0
+/d/Projects/Chimera-Unreal/TrialOut/c_s6/r1/chain6.log.exit:EXIT=0
+/d/Projects/Chimera-Unreal/TrialOut/c_s6/r1/ground_cmdlet.log.exit:EXIT=0
+/d/Projects/Chimera-Unreal/TrialOut/c_s6/r1/run_bx_l0.log.exit:EXIT=0
+/d/Projects/Chimera-Unreal/TrialOut/c_s6/r1/run_bx_l1.log.exit:EXIT=0
+/d/Projects/Chimera-Unreal/TrialOut/c_s6/r1/run_bx_mix.log.exit:EXIT=0
+/d/Projects/Chimera-Unreal/TrialOut/c_s6/r1/run_c1s_r1.log.exit:EXIT=0
+/d/Projects/Chimera-Unreal/TrialOut/c_s6/r1/run_c1s_r1d.log.exit:EXIT=0
+/d/Projects/Chimera-Unreal/TrialOut/c_s6/r1/run_lookx_r1.log.exit:EXIT=0
+/d/Projects/Chimera-Unreal/TrialOut/c_s6/r1/run_s1_s6.log.exit:EXIT=0
+/d/Projects/Chimera-Unreal/TrialOut/c_s6/r1/run_s1x_r1a.log.exit:EXIT=0
+/d/Projects/Chimera-Unreal/TrialOut/c_s6/r1/run_s1x_r1b.log.exit:EXIT=0
+/d/Projects/Chimera-Unreal/TrialOut/c_s6/r1/run_s1x_r1c.log.exit:EXIT=0
+/d/Projects/Chimera-Unreal/TrialOut/c_s6/r1/run_s1x_r1d.log.exit:EXIT=0
+/d/Projects/Chimera-Unreal/TrialOut/c_s6/r1/run_s1xl_r1.log.exit:EXIT=0
+/d/Projects/Chimera-Unreal/TrialOut/c_s6/r1/run_thinx_r1.log.exit:EXIT=0
+/d/Projects/Chimera-Unreal/TrialOut/c_s6/r1/s3_clean.log.exit:EXIT=0
+/d/Projects/Chimera-Unreal/TrialOut/c_s6/r1/tests.log.exit:EXIT=0
+exit=0
+
+===== pytest_tools
+$ python -m pytest Tools/test_hlsl_include.py Tools/test_scatter_assets.py Tools/test_scatter_tools.py Tools/test_scatter_constants.py Tools/test_parse_terrain.py Tools/test_terrain_events.py -q -p no:cacheprovider
+........................................................................ [ 61%]
+..............................................                           [100%]
+118 passed in 18.76s
+exit=0
+
+===== gen_check
+$ python Tools/gen_scatter_scripts.py --check
+SCRIPTS OK
+exit=0
+
+===== harness
+PASS Chimera.Terrain.Scatter.TextScanForbidden                           1 ms
+PASS Chimera.Terrain.Scatter.HlslAndAssetTextRules                       0 ms
+TESTS pass=41 fail=0
+exit=0
+
+===== c7_s1_s6
+$ python Tools/parse_terrain.py --c7 Out/s1_s6
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=66/66 rule=completed=true and ops_done == ops_total
+BAR c7_material                    PASS   value=/Game/Terrain/M_ChimeraGround.M_ChimeraGround ground=True error='' rule=results.json material = M_ChimeraGround, no error
+BAR c7_compile_errors              PASS   value=0 rule=0 material/shader compile error lines in game.log
+BAR c7_paint_mask_px               PASS   value=50346 rule=>= 50 footprint pixels at rts80/paint
+BAR c7_paint_changed_frac          PASS   value=0.3994 rule=paint vs sculpt inside rts80/paint >= 0.30
+BAR c7_paint_aa_floor              REPORT value=0.0000 rule=before vs before_aa inside the same mask (A/A noise floor)
+C7 PASS
+exit=0
+
+===== s1_s6
+$ python Tools/parse_terrain.py --s1 Out/s1_s6
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=66/66 rule=completed=true and ops_done == ops_total
+BAR hash_undo_eq_pre_last2         PASS   value=('0x47f2ef9b', '0x124af687') vs ('0x47f2ef9b', '0x124af687') rule=undo = pre_last2 (height and splat FNV)
+BAR hash_redo_eq_after             PASS   value=('0xff563549', '0xd264ddc9') vs ('0xff563549', '0xd264ddc9') rule=redo = after (height and splat FNV)
+BAR hash_after_ne_pre_last2        PASS   value=('0xff563549', '0xd264ddc9') vs ('0x47f2ef9b', '0x124af687') rule=the last two strokes changed height and splat
+BAR saved_eq_after                 PASS   value=saved 0xff563549/0xd264ddc9 rule=save wrote the redo state
+BAR ticks_applied_eq_ticks         PASS   value=12 strokes, 0 mismatched rule=ticks_applied == ticks for every stroke
+BAR shots_present                  PASS   value=11 shots rule=11 S1 shots
+BAR splat_submits_eq_cleanups      PASS   value=submits=132 cleanups=132 rule=equal and > 0
+BAR P2_in_place                    REPORT value=ranged_edits=644 proxy_recreates_during_strokes=0 rule=<= 5 %% of ranged edits (reported here; gated from the measured campaign)
+  edit latency: n=644 frames p50=1 p99=1 max=1 hist(0..4+)=[0, 644, 0, 0, 0] ms p50=8.45
+BAR P7_aa_floor                    PASS   value=changed_frac=0.00000 worst16=0.00096 mean_abs=0.00112 mask_px=43028 (footprint of the last two strokes, after + flat states; before vs before_aa) rule=changed <= 0.5 % and worst 16x16 block mean |d| <= 2/255
+BAR P7_undo_vs_pre_last2           PASS   value=changed_frac=0.00000 worst16=0.00247 mean_abs=0.00114 mask_px=43028 (footprint of the last two strokes, after + flat states) rule=changed <= 0.5 % and worst 16x16 block mean |d| <= 2/255
+BAR P7_redo_vs_after               PASS   value=changed_frac=0.00000 worst16=0.00188 mean_abs=0.00166 mask_px=43028 (footprint of the last two strokes, after + flat states) rule=changed <= 0.5 % and worst 16x16 block mean |d| <= 2/255
+BAR P7_control                     PASS   value=after vs pre_last2 changed_frac=0.7889 (A/A 0.00000) rule=>= 0.10 of the footprint and >= 10x the A/A changed_frac
+BAR P11 after_rts80                PASS   value=pairs=9039 p50=0.005 p99=0.055 max=0.382 cm; disagree in/out band 0/0; frame hit 0.90 rule=pairs >= 1000, p99 <= 2.0 cm, outside-band disagreements 0 (after and undo at rts80 and oblique)
+BAR P11 after_rts80 footprint      PASS   value=set=last2 pixels=16968 draws=2000 pairs=2000 p50=0.007 p99=0.131 max=0.573 cm; disagree in/out band 0/0 rule=same bar on the fp draws from the last strokes' projected footprint: pairs >= 500, p99 <= 2.0 cm, outside-band 0
+BAR P11 after_oblique              PASS   value=pairs=6383 p50=0.007 p99=0.164 max=0.405 cm; disagree in/out band 0/0; frame hit 0.64 rule=pairs >= 1000, p99 <= 2.0 cm, outside-band disagreements 0 (after and undo at rts80 and oblique)
+BAR P11 after_oblique footprint    PASS   value=set=last2 pixels=11403 draws=2000 pairs=2000 p50=0.009 p99=0.159 max=1.475 cm; disagree in/out band 0/0 rule=same bar on the fp draws from the last strokes' projected footprint: pairs >= 500, p99 <= 2.0 cm, outside-band 0
+BAR P11 undo_rts80                 PASS   value=pairs=9039 p50=0.005 p99=0.054 max=0.238 cm; disagree in/out band 0/0; frame hit 0.90 rule=pairs >= 1000, p99 <= 2.0 cm, outside-band disagreements 0 (after and undo at rts80 and oblique)
+BAR P11 undo_rts80 footprint       PASS   value=set=last2 pixels=21728 draws=2000 pairs=2000 p50=0.010 p99=0.030 max=0.059 cm; disagree in/out band 0/0 rule=same bar on the fp draws from the last strokes' projected footprint: pairs >= 500, p99 <= 2.0 cm, outside-band 0
+BAR P11 undo_oblique               PASS   value=pairs=6383 p50=0.007 p99=0.166 max=0.405 cm; disagree in/out band 0/0; frame hit 0.64 rule=pairs >= 1000, p99 <= 2.0 cm, outside-band disagreements 0 (after and undo at rts80 and oblique)
+BAR P11 undo_oblique footprint     PASS   value=set=last2 pixels=16346 draws=2000 pairs=2000 p50=0.024 p99=0.156 max=1.716 cm; disagree in/out band 0/0 rule=same bar on the fp draws from the last strokes' projected footprint: pairs >= 500, p99 <= 2.0 cm, outside-band 0
+BAR P11 pre_last2_rts80            PASS   value=pairs=9039 p50=0.005 p99=0.054 max=0.238 cm; disagree in/out band 0/0; frame hit 0.90 rule=pairs >= 1000, p99 <= 2.0 cm, outside-band disagreements 0 (pre_last2 (reported with the same bar))
+BAR P11 pre_last2_oblique          PASS   value=pairs=6383 p50=0.007 p99=0.166 max=0.405 cm; disagree in/out band 0/0; frame hit 0.64 rule=pairs >= 1000, p99 <= 2.0 cm, outside-band disagreements 0 (pre_last2 (reported with the same bar))
+BAR probes                         PASS   value=n=16 negative_non_exact=7 cell_boundary=11 sim_grid_fnv=0x53a3de06 axes=sim(x,z,h)->ue_cm(100x,100z,100h) rule=16 probes, >= 4 negative non-exact heights, >= 2 at cell boundaries
+BAR P5 collision pre_last2         PASS   value=wait ok 35 ms touched=25 min_tri=1 probes 25/25; frustum n=2000 hit=1821 phys_only=0 pick_only=0 foreign=0 max_dz=0.0002; vertex n=3953 (rects 8) hit=3953 phys_only=0 pick_only=0 foreign=0 max_dz=0.0001 cm rule=wait: ok, every chunk's body has a trimesh, is in use and its probe ray hits; verify: 0 disagreements either way, max |dz| <= 1.0 cm, frustum both-hit >= 1500, vertex rays >= 100 (S1 checkpoints)
+BAR P5 collision after             PASS   value=wait ok 2 ms touched=4 min_tri=1 probes 25/25; frustum n=2000 hit=1821 phys_only=0 pick_only=0 foreign=0 max_dz=0.0002; vertex n=2025 (rects 1) hit=2025 phys_only=0 pick_only=0 foreign=0 max_dz=0.0001 cm rule=wait: ok, every chunk's body has a trimesh, is in use and its probe ray hits; verify: 0 disagreements either way, max |dz| <= 1.0 cm, frustum both-hit >= 1500, vertex rays >= 100 (S1 checkpoints)
+BAR P5 collision undo              PASS   value=wait ok 9 ms touched=9 min_tri=1 probes 25/25; frustum n=2000 hit=1821 phys_only=0 pick_only=0 foreign=0 max_dz=0.0002; vertex n=3277 (rects 1) hit=3277 phys_only=0 pick_only=0 foreign=0 max_dz=0.0001 cm rule=wait: ok, every chunk's body has a trimesh, is in use and its probe ray hits; verify: 0 disagreements either way, max |dz| <= 1.0 cm, frustum both-hit >= 1500, vertex rays >= 100 (S1 checkpoints)
+BAR P5 collision redo              PASS   value=wait ok 8 ms touched=9 min_tri=1 probes 25/25; frustum n=2000 hit=1821 phys_only=0 pick_only=0 foreign=0 max_dz=0.0002; vertex n=3277 (rects 1) hit=3277 phys_only=0 pick_only=0 foreign=0 max_dz=0.0001 cm rule=wait: ok, every chunk's body has a trimesh, is in use and its probe ray hits; verify: 0 disagreements either way, max |dz| <= 1.0 cm, frustum both-hit >= 1500, vertex rays >= 100 (S1 checkpoints)
+BAR P5_cooks_valid                 PASS   value=cooks=68 updated=68 ignored=0 errors=0 unknown=0 updated_without_trimesh=0 batches=12 incomplete=0 rule=0 errors, 0 unknown, 0 Updated bodies without a trimesh
+BAR P5_cook_p95                    REPORT value=n=43 p50=3.77 p95=9.18 max=10.99 ms (edit cooks; fast_cook=True; init cooks p95 5860.40 ms) rule=p95 <= 50 ms (reported; gated from the measured campaign)
+BAR P5_gt_apply_p95                REPORT value=n=11 p50=0.415 p95=1.035 max=1.035 ms (submit p95 0.677, physics state p95 0.377) rule=per stroke end / undo / redo p95 <= 4 ms (reported; gated from the measured campaign)
+S1 PASS
+exit=0
+
+===== eq_s1_s6
+$ python Tools/parse_terrain.py --equal-hashes Out/s1_a Out/s1_s6
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=59/59 rule=completed=true and ops_done == ops_total
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=66/66 rule=completed=true and ops_done == ops_total
+BAR shared_hashes                  PASS   value=['after', 'pre_last2', 'redo', 'undo'] rule=>= 1 shared hash op
+BAR height_fnv_equal               PASS   value=equal at 4 shared hashes rule=equal at every shared hash
+BAR splat_fnv_equal                PASS   value=equal at 4 shared hashes rule=equal at every shared hash
+BAR final_equal                    PASS   value=0xff563549/0xd264ddc9 vs 0xff563549/0xd264ddc9 rule=final hashes equal
+BAR ticks_applied_eq_ticks_a       PASS   value=12 strokes, 0 mismatched rule=ticks_applied == ticks
+BAR ticks_applied_eq_ticks_b       PASS   value=12 strokes, 0 mismatched rule=ticks_applied == ticks
+BAR saved_files_sha256             PASS   value=equal: ['terrain.json', 'height.r32', 'splat.rgba8'] rule=terrain.json, height.r32, splat.rgba8 sha256 equal (when both runs saved)
+EQUAL-HASHES PASS
+exit=0
+
+===== s3_settings
+$ python -c 
+import json
+a=json.load(open('Out/s6_assets/report.json')); b=json.load(open('Out/s3_assets/report.json'))
+print('s6 asset_settings_sha256', a['asset_settings_sha256']); print('S3 asset_settings_sha256', b['asset_settings_sha256'])
+print('expected 35f87ad8f1941e59fd4c2b78e4859d10017551b55adca5aed94f3d6e4a86b9be')
+print('EQUAL' if a['asset_settings_sha256']==b['asset_settings_sha256']=='35f87ad8f1941e59fd4c2b78e4859d10017551b55adca5aed94f3d6e4a86b9be' else 'DIFFER')
+print('checks', a['checks']['usage_ok'], a['checks']['deps_ok'], a['checks']['flip_ok'], a['checks']['vc_ok'], 'errors', a['checks']['errors'], 'packages', a['packages'])
+tri=lambda r:{p:(m.get('triangles_source'),m.get('nanite')) for p,m in r['meshes'].items()}
+print('triangles/nanite equal:', tri(a)==tri(b))
+print('deterministic', a['deterministic_sha256'], b['deterministic_sha256'])
+
+s6 asset_settings_sha256 35f87ad8f1941e59fd4c2b78e4859d10017551b55adca5aed94f3d6e4a86b9be
+S3 asset_settings_sha256 35f87ad8f1941e59fd4c2b78e4859d10017551b55adca5aed94f3d6e4a86b9be
+expected 35f87ad8f1941e59fd4c2b78e4859d10017551b55adca5aed94f3d6e4a86b9be
+EQUAL
+checks 58/58 True True True errors 0 packages 205
+triangles/nanite equal: True
+deterministic f6b92995208c6d4a123777618e428dbbbd833dead6c12cf4cb253d38fed37e6a 6769c36a136a7efc9ef78a384281da8df0327d2c5e9660e147e8c08a0748ecf6
+exit=0
+
+===== look_measure_r1
+$ python Tools/look_measure.py --scatter Out/lookx_r1 --json Out/lookx_r1/look_measure_scatter.json --md Out/lookx_r1/look_measure_scatter.md --overlay Out/lookx_r1/overlay
+| measure | result | bar |
+|---|---|---|
+| M1 meadow colour (683751 px) | on hue 63.2 S 0.528 V 0.540; off hue 63.3 S 0.555 V 0.476; delta -0.1 / -0.027 / 0.064 (ML 62 / 0.55 / 0.40) | +-3 deg, +-0.05: OUTSIDE |
+| M2 meadow luma bands 2-4..64-128 px (7 tiles) | on 0.0253 / 0.0237 / 0.0189 / 0.0119 / 0.0067 / 0.0042; off 0.0170 / 0.0182 / 0.0146 / 0.0092 / 0.0053 / 0.0037; ML 0.0220 / 0.0257 / 0.0202 / 0.0161 / 0.0139 / 0.0052 | reported (on/ML at 8-64: [0.94, 0.74, 0.48]) |
+| M3 dark-vegetation share (image) / canopy bounds | ours image 0.235, bounds 0.409; ML ml_01.jpg 0.233, ml_08.jpg 0.185, press_03.jpg 0.188 (mean 0.202) | within +-30 % of ML: True |
+| M4 tree shadow on meadow | luma ratio 0.618, linear 0.373, hue 78.6, S 0.515 (87078 px) | 0.27-0.33 x lit, olive |
+| M5 canopy massing | ours image masses 0.76 groves 0.17 singles 0.07; ours bounds masses 0.95 groves 0.05 singles 0.01; ml_01.jpg masses 0.56 groves 0.33 singles 0.12; ml_08.jpg masses 0.50 groves 0.31 singles 0.19; press_03.jpg masses 0.59 groves 0.26 singles 0.15 | reported |
+| M6 path core vs verge contrast | on 0.172, off 0.168 | on >= off: True |
+| M7 map edge hidden | 0.336 of 195908 off-shot sky px covered | reported |
+| M8 fade ring | step 0.69/255 in 90-130 m rows, floor 3.80/255 | <= floor + 1: True |
+| M9 shimmer | on/off 2.72 (std 0.00329 / 0.00121) | <= 1.5 |
+| M10 grass on rock (oblique) | 0.057 of 22558 rock px under grass bounds | reported (upper bound) |
+LOOK_MEASURE_SCATTER OK measures=10
+exit=0
+
+===== s1x_r1
+$ python Tools/parse_terrain.py --s1x Out/s1x_r1a --pair Out/s1x_r1b Out/s1x_r1c --reload Out/s1xl_r1 --ref Out/s1_a
+BAR SX1/SX8/SX9 a                  PASS   value=27 bars rule=every bar of the group passes
+BAR SX1/SX8/SX9 pair0              PASS   value=27 bars rule=every bar of the group passes
+BAR SX1/SX8/SX9 pair1              PASS   value=27 bars rule=every bar of the group passes
+BAR SX1/SX8/SX9 reload             PASS   value=25 bars rule=every bar of the group passes
+BAR SX1 floors                     PASS   value=Grass 179934>=75000; Tussock 4561>=1500; Flower 6001>=4000; Tree 1949>=750; Shrub+Sapling 1403>=1250; Fern 7646>=1500; Rock 137>=100; NearCard 61717>=17500 rule=every enabled class's flat-map count >= half its EST, so the identity bars cannot pass empty
+BAR scatter_config                 PASS   value=equal rule=config_fnv, level and mesh list equal, else FAIL config mismatch (fix the run, never the bar)
+BAR sg_equal                       PASS   value=equal rule=scalability groups (sg.*) equal across every compared pair, else FAIL sg mismatch
+BAR SX2 undo/redo a                PASS   value=undo live 0xe54a745593a6fa83 vs pre_last2 0xe54a745593a6fa83; redo live 0x4522d9b9e25f267f vs after 0x4522d9b9e25f267f; after != pre_last2 rule=live at undo = reference at pre_last2, at redo = at after (a function of the terrain, not of history)
+BAR SX2 undo/redo pair0            PASS   value=undo live 0xe54a745593a6fa83 vs pre_last2 0xe54a745593a6fa83; redo live 0x4522d9b9e25f267f vs after 0x4522d9b9e25f267f; after != pre_last2 rule=live at undo = reference at pre_last2, at redo = at after (a function of the terrain, not of history)
+BAR SX2 undo/redo pair1            PASS   value=undo live 0xe54a745593a6fa83 vs pre_last2 0xe54a745593a6fa83; redo live 0x4522d9b9e25f267f vs after 0x4522d9b9e25f267f; after != pre_last2 rule=live at undo = reference at pre_last2, at redo = at after (a function of the terrain, not of history)
+BAR SX3 reload                     PASS   value=loaded ref 0x4522d9b9e25f267f live 0x4522d9b9e25f267f vs the reference run's redo 0x4522d9b9e25f267f; terrain hashes equal; discarded_epoch=2 rule=live and reference at `loaded` = the reference run's final; discarded_epoch >= 1 (the load really cut a fill)
+BAR SX3 loaded_dir                 PASS   value=D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/s1x_r1a rule=the load read the reference S1X run's saved files
+BAR SX4 pair_roles                 PASS   value=pairs ['threads=0', 'during_stroke=0'] rule=exactly one ScatterThreads=0 pair and one ScatterDuringStroke=0 pair beside s1x_a
+BAR SX4 live_fnv_equal             PASS   value=equal at 5 shared names ['after', 'before', 'pre_last2', 'redo', 'undo'] across 3 runs rule=scatter_live_fnv equal at every shared hash name across the three S1X runs
+BAR SX4 paths_a                    PASS   value=mid_stroke_dispatches=171 stale_result_redispatches=143 in_flight_max=2 rule=s1x_a: mid_stroke_dispatches > 0, stale_result_redispatches > 0, in_flight_max = 2
+BAR SX4 paths_pair0                PASS   value=threads=0 gt_generations=611 in_flight_max=0 rule=ScatterThreads=0 run: gt_generations > 0, in_flight_max = 0
+BAR SX4 same_hash a/pair0          PASS   value=13 bars rule=every bar of the group passes
+BAR SX4 paths_pair1                PASS   value=during_stroke_ms=0 mid_stroke_dispatches=0 rule=ScatterDuringStroke=0 run: mid_stroke_dispatches = 0
+BAR SX5 oracle redo_sha256         PASS   value=7a2275e6d914cbab vs results.json 7a2275e6d914cbab rule=the dump file's sha256 equals the one the run recorded
+BAR SX5 oracle redo                PASS   value=records=254234 max|dz|=0.046 mm bad_z=0 bad_gradient=0 limit violations=0 rule=z within 1 mm of the class rule on the saved heights, gxq/gyq exact, every instance inside its class's splat and slope limits (margins 2/255, 0.5 deg)
+BAR SX5 moved                      PASS   value=moved by > 5 cm between before and redo (of 254214 common keys): grass 9353, coarse 185 (tree 12, shrub 42, fern 115, rock 7) rule=>= 1000 grass and >= 20 coarse instances moved, so moved instances are what is tested
+BAR SX7 equal_hashes ref/a         PASS   value=11 bars rule=every bar of the group passes
+BAR SX7 equal_hashes ref/pair0     PASS   value=11 bars rule=every bar of the group passes
+BAR SX7 equal_hashes ref/pair1     PASS   value=11 bars rule=every bar of the group passes
+BAR SX7 P5/P11 on S1X              PASS   value=15 bars: all pass rule=collision (P5) and depth (P11) bars pass with scatter on
+BAR SX17 aa_floor                  REPORT value=changed_frac=0.01527 worst16=0.00723 (256 masked px at (720, 288)) mean_abs=0.00649 mask_px=43028 (last2 footprint; x_before vs x_before_aa against the P7 bar) rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255
+BAR SX17 undo_vs_pre_last2         REPORT value=floor unusable: A/A floor (x_before.png vs x_before_aa.png, same mask) 0.01527 / 0.00723 (256 masked px at (720, 288)) is above the P7 bar; pair 0.01111 / 0.01388 (6 masked px at (832, 448)), ABOVE the floor (last2 footprint) rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar
+BAR SX17 redo_vs_after             REPORT value=floor unusable: A/A floor (x_before.png vs x_before_aa.png, same mask) 0.01527 / 0.00723 (256 masked px at (720, 288)) is above the P7 bar; pair 0.00421 / 0.00672 (16 masked px at (736, 480)), within the floor (last2 footprint) rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar
+BAR SX17 ghost_a_vs_reload         REPORT value=floor unusable: A/A floor (x_before.png vs x_before_aa.png, same mask) 0.01527 / 0.00723 (256 masked px at (720, 288)) is above the P7 bar; pair 0.00467 / 0.00511 (78 masked px at (624, 208)), within the floor (last2 footprint; s1x_a x_redo vs s1xl x_redo) rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar
+BAR S1X scatter_check dirt         REPORT value=Grass core 0/937 band 1754; Tussock core 0/33 band 40; Flower core 0/29 band 117; Rock core 1/1 band 4 rule=live / pure-grass yield in the set's core (reported)
+BAR S1X scatter_check rock         REPORT value=Grass core 0/25 band 1; Rock core 1/1 band 3 rule=live / pure-grass yield in the set's core (reported)
+BAR S1X scatter_check snow         REPORT value=Grass core 0/182 band 366; Tussock core 0/8 band 2; Flower core 0/41 band 0; Tree core 0/1 band 0; Rock core 1/1 band 4 rule=live / pure-grass yield in the set's core (reported)
+BAR SX15 caps rts80                REPORT value=analytic: drawn 28705 (cap 24000), primitives in view 153 of 580 with instances (cap 700) rule=caps of plan 3.7 (stated for rts80; rts80 reported against the same caps): instance origins in the frustum and inside their cull end, no occlusion, no LOD
+BAR SX15 triangles rts80           REPORT value=LOD0 triangle upper bound 17523041 above the cap 1500000: LOD-weighted figure unknown (not computed: no per-instance LOD recorded) rule=plan 3.7 cap: LOD-weighted triangles <= 1500000 (reported)
+BAR SX15 caps oblique              REPORT value=analytic: drawn 19851 (cap 24000), primitives in view 125 of 580 with instances (cap 700) rule=caps of plan 3.7 (stated for rts80; oblique reported against the same caps): instance origins in the frustum and inside their cull end, no occlusion, no LOD
+BAR SX15 triangles oblique         REPORT value=LOD0 triangle upper bound 17783250 above the cap 1500000: LOD-weighted figure unknown (not computed: no per-instance LOD recorded) rule=plan 3.7 cap: LOD-weighted triangles <= 1500000 (reported)
+BAR SX15 caps closeup              REPORT value=analytic: drawn 20308 (cap 24000), primitives in view 122 of 580 with instances (cap 700) rule=caps of plan 3.7 (stated for rts80; closeup reported against the same caps): instance origins in the frustum and inside their cull end, no occlusion, no LOD
+BAR SX15 triangles closeup         REPORT value=LOD0 triangle upper bound 11886965 above the cap 1500000: LOD-weighted figure unknown (not computed: no per-instance LOD recorded) rule=plan 3.7 cap: LOD-weighted triangles <= 1500000 (reported)
+BAR SX12 undo/redo latency         REPORT value=n=4 max 0.288 s: [('undo', 288), ('undo', 286), ('redo', 279), ('redo', 278)] rule=undo and redo latency <= 1.2 s (max, n = 2)
+BAR SX18 temporal_freeze a         PASS   value=8 shots frozen; not frozen []; not in the timeline []; temporal_freeze rows (op, value, available, read-back) [(15, 1, True, 'frozen'), (20, 0, True, 'not frozen'), (62, 1, True, 'frozen'), (66, 0, True, 'not frozen'), (89, 1, True, 'frozen'), (93, 0, True, 'not frozen'), (109, 1, True, 'frozen'), (113, 0, True, 'not frozen')] rule=every judged shot (and its fresh twin) was taken with the temporal sequences frozen (cvar read-back, not the request), so the pair compares repeatable frames
+BAR SX18 after                     FAIL   value=changed_frac=0.00009 worst16=0.01396 (256 masked px at (1152, 192)) mean_abs=0.00002 mask_px=1672794 (scatter mask m_after, frozen frames); A/A floor (xf_before.png vs xf_before_aa.png, same mask) 0.00000 / 0.00034 rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar
+BAR SX18 undo                      PASS   value=changed_frac=0.00000 worst16=0.00073 (256 masked px at (1664, 912)) mean_abs=0.00001 mask_px=1684813 (scatter mask m_undo, frozen frames); A/A floor (xf_before.png vs xf_before_aa.png, same mask) 0.00000 / 0.00034 rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar
+BAR SX18 redo                      PASS   value=changed_frac=0.00000 worst16=0.00098 (2 masked px at (32, 112)) mean_abs=0.00002 mask_px=1672794 (scatter mask m_redo, frozen frames); A/A floor (xf_before.png vs xf_before_aa.png, same mask) 0.00000 / 0.00034 rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar
+BAR SX18 after compile window      PASS   value=frames 0..2955; units with partial updates 142; recreates hiding a unit's partial updates 0; harmless recreates 157 (a later apply followed, or no partial update in the window); reported {'asset_post_compile': 36, 'shader_propagation': 22, 'compile_busy_frame': 13, 'first_create': 583} rule=no compile, engine, PSO, unexplained or expected recreate after a unit's last partial update and before the shot (per unit; refills and first creates reported)
+BAR SX18 undo compile window       PASS   value=frames 3186..4061; units with partial updates 26; recreates hiding a unit's partial updates 0; harmless recreates 0 (a later apply followed, or no partial update in the window); reported {'refill': 1} rule=no compile, engine, PSO, unexplained or expected recreate after a unit's last partial update and before the shot (per unit; refills and first creates reported)
+BAR SX18 redo compile window       PASS   value=frames 4292..5147; units with partial updates 26; recreates hiding a unit's partial updates 0; harmless recreates 0 (a later apply followed, or no partial update in the window); reported none rule=no compile, engine, PSO, unexplained or expected recreate after a unit's last partial update and before the shot (per unit; refills and first creates reported)
+BAR SX18 temporal_freeze pair0 (reported) REPORT value=8 shots frozen; not frozen []; not in the timeline []; temporal_freeze rows (op, value, available, read-back) [(15, 1, True, 'frozen'), (20, 0, True, 'not frozen'), (62, 1, True, 'frozen'), (66, 0, True, 'not frozen'), (89, 1, True, 'frozen'), (93, 0, True, 'not frozen'), (109, 1, True, 'frozen'), (113, 0, True, 'not frozen')] rule=every judged shot (and its fresh twin) was taken with the temporal sequences frozen (cvar read-back, not the request), so the pair compares repeatable frames [reported: a pair run]
+BAR SX18[s1x_r1b] (reported) after REPORT value=changed_frac=0.00000 worst16=0.00141 (128 masked px at (1488, 1072)) mean_abs=0.00002 mask_px=1672794 (scatter mask m_after, frozen frames); A/A floor (xf_before.png vs xf_before_aa.png, same mask) 0.00000 / 0.00029 rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar [reported: a pair run]
+BAR SX18[s1x_r1b] (reported) undo  REPORT value=changed_frac=0.00000 worst16=0.00142 (128 masked px at (1488, 1072)) mean_abs=0.00002 mask_px=1684813 (scatter mask m_undo, frozen frames); A/A floor (xf_before.png vs xf_before_aa.png, same mask) 0.00000 / 0.00029 rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar [reported: a pair run]
+BAR SX18[s1x_r1b] (reported) redo  REPORT value=changed_frac=0.00000 worst16=0.00055 (256 masked px at (1776, 992)) mean_abs=0.00001 mask_px=1672794 (scatter mask m_redo, frozen frames); A/A floor (xf_before.png vs xf_before_aa.png, same mask) 0.00000 / 0.00029 rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar [reported: a pair run]
+BAR SX18 temporal_freeze pair1 (reported) REPORT value=8 shots frozen; not frozen []; not in the timeline []; temporal_freeze rows (op, value, available, read-back) [(15, 1, True, 'frozen'), (20, 0, True, 'not frozen'), (62, 1, True, 'frozen'), (66, 0, True, 'not frozen'), (89, 1, True, 'frozen'), (93, 0, True, 'not frozen'), (109, 1, True, 'frozen'), (113, 0, True, 'not frozen')] rule=every judged shot (and its fresh twin) was taken with the temporal sequences frozen (cvar read-back, not the request), so the pair compares repeatable frames [reported: a pair run]
+BAR SX18[s1x_r1c] (reported) after REPORT value=changed_frac=0.00009 worst16=0.01296 (256 masked px at (1152, 192)) mean_abs=0.00002 mask_px=1672794 (scatter mask m_after, frozen frames); A/A floor (xf_before.png vs xf_before_aa.png, same mask) 0.00000 / 0.00020 rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar [reported: a pair run]
+BAR SX18[s1x_r1c] (reported) undo  REPORT value=changed_frac=0.00000 worst16=0.00083 (256 masked px at (1664, 912)) mean_abs=0.00002 mask_px=1684813 (scatter mask m_undo, frozen frames); A/A floor (xf_before.png vs xf_before_aa.png, same mask) 0.00000 / 0.00020 rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar [reported: a pair run]
+BAR SX18[s1x_r1c] (reported) redo  REPORT value=changed_frac=0.00001 worst16=0.00076 (256 masked px at (1664, 912)) mean_abs=0.00001 mask_px=1672794 (scatter mask m_redo, frozen frames); A/A floor (xf_before.png vs xf_before_aa.png, same mask) 0.00000 / 0.00020 rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar [reported: a pair run]
+BAR SX18 temporal_freeze reload    PASS   value=3 shots frozen; not frozen []; not in the timeline []; temporal_freeze rows (op, value, available, read-back) [(13, 1, True, 'frozen'), (19, 0, True, 'not frozen')] rule=every judged shot (and its fresh twin) was taken with the temporal sequences frozen (cvar read-back, not the request), so the pair compares repeatable frames
+BAR SX18 loaded redo               FAIL   value=changed_frac=0.00010 worst16=0.01473 (256 masked px at (1152, 192)) mean_abs=0.00002 mask_px=1672794 (scatter mask m_redo, frozen frames); A/A floor (xf_redo.png vs xf_redo_aa.png, same mask) 0.00000 / 0.00027 rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar
+BAR SX18 loaded redo compile window PASS   value=frames 0..672; units with partial updates 60; recreates hiding a unit's partial updates 0; harmless recreates 148 (a later apply followed, or no partial update in the window); reported {'asset_post_compile': 36, 'shader_propagation': 22, 'compile_busy_frame': 14, 'first_create': 582} rule=no compile, engine, PSO, unexplained or expected recreate after a unit's last partial update and before the shot (per unit; refills and first creates reported)
+S1X FAIL
+exit=1
+
+===== same_hash_r1
+$ python Tools/parse_terrain.py --same-hash Out/s1x_r1a Out/s1x_r1b
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=156/156 rule=completed=true and ops_done == ops_total
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=156/156 rule=completed=true and ops_done == ops_total
+BAR shared_hashes                  PASS   value=['after', 'before', 'pre_last2', 'redo', 'undo'] rule=>= 4 shared hash ops
+BAR height_fnv_equal               PASS   value=equal at 5 hashes + final rule=equal at every shared hash
+BAR splat_fnv_equal                PASS   value=equal at 5 hashes + final rule=equal at every shared hash
+BAR final_equal                    PASS   value=0xff563549/0xd264ddc9 vs 0xff563549/0xd264ddc9 rule=final hashes equal
+BAR ticks_applied_eq_ticks_a       PASS   value=12 strokes, 0 mismatched rule=ticks_applied == ticks
+BAR ticks_applied_eq_ticks_b       PASS   value=12 strokes, 0 mismatched rule=ticks_applied == ticks
+BAR b_capped_fps                   PASS   value=a MaxFPS=0, b MaxFPS=20 rule=a uncapped (0), b capped below 60
+BAR b_frame_time_differs           PASS   value=median frame a=12.74 ms b=50.00 ms rule=b's frames are clearly slower than a's
+BAR b_hitched_mid_stroke           PASS   value=1 hitch(es): [(300, 300)] rule=>= 1 mid-stroke hitch of the requested length
+height_fnv equal, splat_fnv equal, ticks_applied==ticks
+SAME-HASH PASS
+exit=0
+
+===== thinx_r1
+$ python Tools/parse_terrain.py --thinx Out/thinx_r1
+BAR SX1/SX8/SX9                    PASS   value=26 bars rule=every bar of the group passes
+BAR SX6 dirt Grass                 PASS   value=core live 0 / pure-grass 365 = 0.000 rule=<= 0.10 of the pure-grass yield (min yield 200)
+BAR SX6 dirt Tussock               PASS   value=core live 0 / pure-grass 30 = 0.000 rule=<= 0.10 of the pure-grass yield (min yield 10)
+BAR SX6 dirt Flower                PASS   value=core live 0 / pure-grass 64 = 0.000 rule=<= 0.10 of the pure-grass yield (min yield 20)
+BAR SX6 rock Grass                 PASS   value=core live 0 / pure-grass 937 = 0.000 rule=<= 0.10 of the pure-grass yield (min yield 200)
+BAR SX6 rock Tussock               PASS   value=core live 0 / pure-grass 49 = 0.000 rule=<= 0.10 of the pure-grass yield (min yield 10)
+BAR SX6 rock Flower                PASS   value=core live 0 / pure-grass 167 = 0.000 rule=<= 0.10 of the pure-grass yield (min yield 20)
+BAR SX6 snow Grass                 PASS   value=core live 0 / pure-grass 235 = 0.000 rule=<= 0.10 of the pure-grass yield (min yield 200)
+BAR SX6 snow Tussock               PASS   value=core live 0 / pure-grass 13 = 0.000 rule=<= 0.10 of the pure-grass yield (min yield 10)
+BAR SX6 snow Flower                PASS   value=core live 0 / pure-grass 62 = 0.000 rule=<= 0.10 of the pure-grass yield (min yield 20)
+BAR SX6 path Tree                  PASS   value=core live 0 / pure-grass 25 rule=0 trees on the path (min yield 5)
+BAR SX6 rock positive control      PASS   value=rocks in the rock disc's edge band: 23 (core 0) rule=>= 5 rocks in the edge band (rock paint makes rocks there)
+BAR SX5/SX6 oracle end_sha256      PASS   value=25fde463ade981d4 vs results.json 25fde463ade981d4 rule=the dump file's sha256 equals the one the run recorded
+BAR SX5/SX6 oracle end             PASS   value=records=254091 max|dz|=0.046 mm bad_z=0 bad_gradient=0 limit violations=0 rule=z within 1 mm of the class rule on the saved heights, gxq/gyq exact, every instance inside its class's splat and slope limits (margins 2/255, 0.5 deg)
+THINX PASS
+exit=0
+
+===== scatter_lookx_r1
+$ python Tools/parse_terrain.py --scatter Out/lookx_r1
+BAR log_scan                       PASS   value=0 finding(s) rule=KIT logscan game profile clean
+BAR completed                      PASS   value=completed=True ops=68/68 rule=completed=true and ops_done == ops_total
+BAR scatter_log_scan               PASS   value=0 line(s) rule=no LogMaterial warning/error on /Game/Terrain/Scatter, no VSM page-pool overflow
+BAR scatter_block                  PASS   value=available=True enabled=True rule=results.json scatter block from a run with scatter
+BAR scatter_options                PASS   value=config_fnv=0x16aa6dd08937aa9a level=L1 params_error='' mesh_errors='' rule=options.scatter present, no option or mesh error
+BAR scatter_verify                 PASS   value=1 verifies, failed [] rule=>= 1 scatter_verify and every one passes (live == reference, readback, z, up axis, nothing pending)
+  verify look       pass=True live=0x6963c58bd980f516 ref=0x6963c58bd980f516 instances=257417 max dpos 0.00000 cm drot 5.16e-08 rad dz 2.15e-05 m dup 1.55e-05 rad 
+BAR scatter_hash_live_eq_ref       PASS   value=equal at 1 settled hashes rule=scatter_live_fnv == scatter_fnv at every hash taken with nothing pending
+BAR scatter_counters_balanced      PASS   value=dispatched=1132 applied=1018 skipped=114 discarded=0 cancelled=0 in_flight=0 busy=0 rule=dispatched == applied + skipped_identical + discarded_epoch + cancelled; 0 in flight and 0 busy at the end
+BAR scatter_verify_instances       PASS   value=read back [('look', 257417)] rule=every scatter_verify with components read back > 0 instances (no vacuous live == reference)
+BAR scatter_proxy_recreates        PASS   value=recreates=0 (during edits 0, apply-dirtied 0); first=584 expected=0 rule=proxy_recreates == 0: no live proxy replaced after scatter's own apply dirtied it, nor for any unexplained dirty mark
+BAR proxy_compile_recreates_during_edits PASS   value=0 (all run: 155) rule=editor-compile recreates while edits were in flight == 0
+BAR proxy_engine_recreates_during_edits PASS   value=0 (all run: 0) rule=engine-wide recreates while edits were in flight == 0
+BAR scatter_proxy_reported         REPORT value=refills=0 (during edits 0) pso=0 (during edits 0) engine=0 editor_compile=155; shader propagations 22, asset post-compiles 36, compile-busy frames 13 rule=reported categories: a refill replaces no proxy; PSO completion, engine contexts and editor compiles are not scatter's own
+BAR apply_fit                      REPORT value=n 4603; least squares a 0.00289 b 0.0000359 c 0.0000081; residual p95 0.0301 p99 0.0850; admission a (a + p95) 0.0330; run's predictor a 0.032 b 7e-05 c 3e-05 under-predicted 67 units (worst by 0.267 ms); max unit 0.361 ms at 621 instances; units > 0.8 ms: 0 rule=apply_unit_ms ~ a + b * changes + c * instances_after (plan C scatter 3.5 and 4 S4 item 5; any unit > 0.8 ms triggers the T0 rank split)
+BAR scatter_gt_ms                  REPORT value=p50 0.035 p99 0.292 p99.9 0.410 max 0.427 (n 2716) rule=scatter's own game-thread ms per frame outside the fill (SX11 gates it in Phase 4)
+BAR scatter_flush_ms               REPORT value=p50 0.000 p99 0.484 max 0.657 rule=end-of-frame instance flush ms
+BAR apply_unit_ms_edits            REPORT value=p50 0.015 p99 0.060 max 0.121 (n 4020); init_ms 1949 rule=per-unit apply cost outside the fill
+BAR SX9 asset_report               PASS   value=usage_ok=58/58 deps_ok=True flip_ok=True vc_ok=True errors=0 (0 listed); asset_settings_sha256 35f87ad8f1941e59 rule=S3's asset report: usage_ok k/k, deps_ok, flip_ok, vc_ok, errors 0
+BAR SX9 per_instance_random        PASS   value=65 materials, reading PerInstanceRandom: none rule=no scatter material reads PerInstanceRandom (F25)
+BAR SX9 licence                    PASS   value=14 meshes: Fern=project-original, Flower=project-original, GrassT0=project-original, GrassT1=project-original, NearCard=CC0-1.0, RockA=CC0-1.0, RockB=CC0-1.0, ShrubA=CC0-1.0, ShrubB=CC0-1.0, TreeBroadA=CC0-1.0, TreeBroadB=CC0-1.0, TreeConiferA=project-original, TreeConiferB=project-original, Tussock=project-original rule=every loaded mesh maps through report.json to a manifest row with licence in ('CC0-1.0', 'project-original', 'epic'), with its usage rows ok
+BAR scatter_verify_full_up_axis    PASS   value=look max_dup 1.55e-05 rad rule=every verify compares each instance's full up axis with HF's cell-triangle rule (no angle-only exemption)
+BAR SX5 oracle (other dumps)       REPORT value=dumps not at the saved state or no saved files: no dumps rule=the oracle needs the dump's own heights
+BAR proxy_events_logged            PASS   value=5413 events, 0 dropped rule=every proxy and compile event is in the log (none dropped past the bound)
+BAR compile_events_per_phase       REPORT value={'before_ops': {'asset_post_compile': 2, 'shader_propagation': 1}, 'default': {'compile_busy_frame': 13, 'asset_post_compile': 18, 'shader_propagation': 5, 'compile_recreate': 155}, 'paint': {'asset_post_compile': 16, 'shader_propagation': 16}} rule=shader propagations, asset post-compiles, compile-busy frames and later proxies per script phase (refills, PSO, engine and editor-compile recreates; reported)
+SCATTER PASS
+exit=0
+
+===== c1s_r1_summary
+$ python Tools/parse_terrain.py --summary Out/c1s_r1
+== SCATTER (plan-c-scatter.md 5; ms unless noted)
+c1s_r1           scatter_flush_ms row: p50 0.000 p99 0.500 max 0.933 (end-of-frame instance flush, outside the fill)
+c1s_r1           scatter_gpu_ms = 3.241 (on p50 15.502 [15.510, 15.493], off p50 12.261; target 1.8, kill above 2.5 after the governor ladder)
+c1s_r1             layer grass        0.495 ms (on 15.502 - layer off 15.006)
+c1s_r1             layer groundcover  -0.008 ms (on 15.502 - layer off 15.510)
+c1s_r1             layer shrubs       0.031 ms (on 15.502 - layer off 15.471)
+c1s_r1             layer trees        2.085 ms (on 15.502 - layer off 13.416)
+c1s_r1             layer rocks        -0.045 ms (on 15.502 - layer off 15.547)
+c1s_r1             pose oblique      5.209 ms (on 20.946 - off 15.736)
+c1s_r1             pose closeup      1.888 ms (on 18.569 - off 16.680)
+GATE REPORTED-fail SX13 scatter_gpu_ms c1s_r1 3.241 ms at rts80 (target 1.8, kill above 2.5; reported, kill rule applied by the main session)
+GATE REPORTED-pass SX11 scatter_gt_ms c1s_r1 walk walk: n 3720, p99 0.410 <= 1.5, p99.9 0.560 <= 2.0, frames > 2.0 ms 0.000 % <= 0.1 %, max 0.696
+GATE REPORTED-pass SX11 scatter_gt_ms c1s_r1 flush_windows flush_windows: n 1388, p99 0.444 <= 1.5, p99.9 0.657 <= 2.0, frames > 2.0 ms 0.000 % <= 0.1 %, max 0.696
+GATE FAIL         SX11 frame GT/RT c1s_r1    no samples (no scatter-off C1 run in this summary to difference against)
+GATE REPORTED-pass SX15 caps c1s_r1           analytic at rts80: drawn 20009 (<= 24000), primitives in view 137 of 564 with instances (<= 700, no T0 rank split recorded)
+GATE REPORTED-fail SX15 triangles c1s_r1      LOD0 triangle upper bound 16306021 above the cap 1500000: LOD-weighted figure unknown (not computed: no per-instance LOD recorded)
+GATES: pass=2 fail=17 reported=5 flags=0
+
+===== c1s_r1d_summary
+$ python Tools/parse_terrain.py --summary Out/c1s_r1d
+== SCATTER (plan-c-scatter.md 5; ms unless noted)
+c1s_r1d          scatter_flush_ms row: p50 0.000 p99 0.492 max 0.942 (end-of-frame instance flush, outside the fill)
+c1s_r1d          scatter_gpu_ms = 2.914 (on p50 15.127 [15.169, 15.085], off p50 12.213; target 1.8, kill above 2.5 after the governor ladder)
+c1s_r1d            layer grass        0.713 ms (on 15.127 - layer off 14.413)
+c1s_r1d            layer groundcover  1.183 ms (on 15.127 - layer off 13.944)
+c1s_r1d            layer shrubs       1.245 ms (on 15.127 - layer off 13.882)
+c1s_r1d            layer trees        1.786 ms (on 15.127 - layer off 13.341)
+c1s_r1d            layer rocks        1.144 ms (on 15.127 - layer off 13.982)
+c1s_r1d            pose oblique      1.188 ms (on 17.135 - off 15.947)
+c1s_r1d            pose closeup      -0.962 ms (on 15.951 - off 16.913)
+GATE REPORTED-fail SX13 scatter_gpu_ms c1s_r1d 2.914 ms at rts80 (target 1.8, kill above 2.5; reported, kill rule applied by the main session)
+GATE REPORTED-pass SX11 scatter_gt_ms c1s_r1d walk walk: n 4121, p99 0.407 <= 1.5, p99.9 0.544 <= 2.0, frames > 2.0 ms 0.000 % <= 0.1 %, max 0.649
+GATE REPORTED-pass SX11 scatter_gt_ms c1s_r1d flush_windows flush_windows: n 1374, p99 0.464 <= 1.5, p99.9 0.626 <= 2.0, frames > 2.0 ms 0.000 % <= 0.1 %, max 0.649
+GATE FAIL         SX11 frame GT/RT c1s_r1d   no samples (no scatter-off C1 run in this summary to difference against)
+GATE REPORTED-pass SX15 caps c1s_r1d          analytic at rts80: drawn 20009 (<= 24000), primitives in view 137 of 564 with instances (<= 700, no T0 rank split recorded)
+GATE REPORTED-fail SX15 triangles c1s_r1d     LOD0 triangle upper bound 8805060 above the cap 1500000: LOD-weighted figure unknown (not computed: no per-instance LOD recorded)
+GATES: pass=2 fail=17 reported=5 flags=0
+
+===== s1x_r1d
+$ python Tools/parse_terrain.py --s1x Out/s1x_r1d --ref Out/s1_a
+BAR SX1/SX8/SX9 a                  PASS   value=27 bars rule=every bar of the group passes
+BAR SX1 floors                     PASS   value=Grass 179934>=75000; Tussock 4561>=1500; Flower 6001>=4000; Tree 1949>=750; Shrub+Sapling 1403>=1250; Fern 7646>=1500; Rock 137>=100; NearCard 61717>=17500 rule=every enabled class's flat-map count >= half its EST, so the identity bars cannot pass empty
+BAR scatter_config                 PASS   value=equal rule=config_fnv, level and mesh list equal, else FAIL config mismatch (fix the run, never the bar)
+BAR sg_equal                       PASS   value=equal rule=scalability groups (sg.*) equal across every compared pair, else FAIL sg mismatch
+BAR SX2 undo/redo a                PASS   value=undo live 0xe54a745593a6fa83 vs pre_last2 0xe54a745593a6fa83; redo live 0x4522d9b9e25f267f vs after 0x4522d9b9e25f267f; after != pre_last2 rule=live at undo = reference at pre_last2, at redo = at after (a function of the terrain, not of history)
+BAR SX4 pair_roles                 FAIL   value=pairs [] rule=exactly one ScatterThreads=0 pair and one ScatterDuringStroke=0 pair beside s1x_a
+BAR SX4 live_fnv_equal             PASS   value=equal at 5 shared names ['after', 'before', 'pre_last2', 'redo', 'undo'] across 1 runs rule=scatter_live_fnv equal at every shared hash name across the three S1X runs
+BAR SX4 paths_a                    PASS   value=mid_stroke_dispatches=151 stale_result_redispatches=126 in_flight_max=2 rule=s1x_a: mid_stroke_dispatches > 0, stale_result_redispatches > 0, in_flight_max = 2
+BAR SX5 oracle redo_sha256         PASS   value=7a2275e6d914cbab vs results.json 7a2275e6d914cbab rule=the dump file's sha256 equals the one the run recorded
+BAR SX5 oracle redo                PASS   value=records=254234 max|dz|=0.046 mm bad_z=0 bad_gradient=0 limit violations=0 rule=z within 1 mm of the class rule on the saved heights, gxq/gyq exact, every instance inside its class's splat and slope limits (margins 2/255, 0.5 deg)
+BAR SX5 moved                      PASS   value=moved by > 5 cm between before and redo (of 254214 common keys): grass 9353, coarse 185 (tree 12, shrub 42, fern 115, rock 7) rule=>= 1000 grass and >= 20 coarse instances moved, so moved instances are what is tested
+BAR SX7 equal_hashes ref/a         PASS   value=11 bars rule=every bar of the group passes
+BAR SX7 P5/P11 on S1X              PASS   value=15 bars: all pass rule=collision (P5) and depth (P11) bars pass with scatter on
+BAR SX17 aa_floor                  REPORT value=changed_frac=0.00732 worst16=0.00687 (3 masked px at (576, 224)) mean_abs=0.00347 mask_px=43028 (last2 footprint; x_before vs x_before_aa against the P7 bar) rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255
+BAR SX17 undo_vs_pre_last2         REPORT value=floor unusable: A/A floor (x_before.png vs x_before_aa.png, same mask) 0.00732 / 0.00687 (3 masked px at (576, 224)) is above the P7 bar; pair 0.00602 / 0.00663 (6 masked px at (832, 448)), within the floor (last2 footprint) rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar
+BAR SX17 redo_vs_after             REPORT value=floor unusable: A/A floor (x_before.png vs x_before_aa.png, same mask) 0.00732 / 0.00687 (3 masked px at (576, 224)) is above the P7 bar; pair 0.00151 / 0.00466 (17 masked px at (576, 336)), within the floor (last2 footprint) rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar
+BAR S1X scatter_check dirt         REPORT value=Grass core 0/937 band 1754; Tussock core 0/33 band 40; Flower core 0/29 band 117; Rock core 1/1 band 4 rule=live / pure-grass yield in the set's core (reported)
+BAR S1X scatter_check rock         REPORT value=Grass core 0/25 band 1; Rock core 1/1 band 3 rule=live / pure-grass yield in the set's core (reported)
+BAR S1X scatter_check snow         REPORT value=Grass core 0/182 band 366; Tussock core 0/8 band 2; Flower core 0/41 band 0; Tree core 0/1 band 0; Rock core 1/1 band 4 rule=live / pure-grass yield in the set's core (reported)
+BAR SX15 caps rts80                REPORT value=analytic: drawn 28705 (cap 24000), primitives in view 153 of 580 with instances (cap 700) rule=caps of plan 3.7 (stated for rts80; rts80 reported against the same caps): instance origins in the frustum and inside their cull end, no occlusion, no LOD
+BAR SX15 triangles rts80           REPORT value=LOD0 triangle upper bound 9228690 above the cap 1500000: LOD-weighted figure unknown (not computed: no per-instance LOD recorded) rule=plan 3.7 cap: LOD-weighted triangles <= 1500000 (reported)
+BAR SX15 caps oblique              REPORT value=analytic: drawn 19851 (cap 24000), primitives in view 125 of 580 with instances (cap 700) rule=caps of plan 3.7 (stated for rts80; oblique reported against the same caps): instance origins in the frustum and inside their cull end, no occlusion, no LOD
+BAR SX15 triangles oblique         REPORT value=LOD0 triangle upper bound 7642444 above the cap 1500000: LOD-weighted figure unknown (not computed: no per-instance LOD recorded) rule=plan 3.7 cap: LOD-weighted triangles <= 1500000 (reported)
+BAR SX15 caps closeup              REPORT value=analytic: drawn 20308 (cap 24000), primitives in view 122 of 580 with instances (cap 700) rule=caps of plan 3.7 (stated for rts80; closeup reported against the same caps): instance origins in the frustum and inside their cull end, no occlusion, no LOD
+BAR SX15 triangles closeup         REPORT value=LOD0 triangle upper bound 6824076 above the cap 1500000: LOD-weighted figure unknown (not computed: no per-instance LOD recorded) rule=plan 3.7 cap: LOD-weighted triangles <= 1500000 (reported)
+BAR SX12 undo/redo latency         REPORT value=n=4 max 0.251 s: [('undo', 251), ('undo', 249), ('redo', 245), ('redo', 245)] rule=undo and redo latency <= 1.2 s (max, n = 2)
+BAR SX18 temporal_freeze a         PASS   value=8 shots frozen; not frozen []; not in the timeline []; temporal_freeze rows (op, value, available, read-back) [(15, 1, True, 'frozen'), (20, 0, True, 'not frozen'), (62, 1, True, 'frozen'), (66, 0, True, 'not frozen'), (89, 1, True, 'frozen'), (93, 0, True, 'not frozen'), (109, 1, True, 'frozen'), (113, 0, True, 'not frozen')] rule=every judged shot (and its fresh twin) was taken with the temporal sequences frozen (cvar read-back, not the request), so the pair compares repeatable frames
+BAR SX18 after                     PASS   value=changed_frac=0.00004 worst16=0.00305 (256 masked px at (1136, 192)) mean_abs=0.00001 mask_px=1694445 (scatter mask m_after, frozen frames); A/A floor (xf_before.png vs xf_before_aa.png, same mask) 0.00000 / 0.00071 rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar
+BAR SX18 undo                      PASS   value=changed_frac=0.00000 worst16=0.00032 (256 masked px at (368, 160)) mean_abs=0.00000 mask_px=1702689 (scatter mask m_undo, frozen frames); A/A floor (xf_before.png vs xf_before_aa.png, same mask) 0.00000 / 0.00071 rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar
+BAR SX18 redo                      PASS   value=changed_frac=0.00000 worst16=0.00019 (256 masked px at (368, 160)) mean_abs=0.00000 mask_px=1694445 (scatter mask m_redo, frozen frames); A/A floor (xf_before.png vs xf_before_aa.png, same mask) 0.00000 / 0.00071 rule=P7 local statistic (every block with >= 1 masked px): changed <= 0.50 % and worst 16x16 block mean |d| <= 2/255; the run's A/A floor in the same mask must itself be within that bar
+BAR SX18 after compile window      PASS   value=frames 0..2986; units with partial updates 142; recreates hiding a unit's partial updates 0; harmless recreates 146 (a later apply followed, or no partial update in the window); reported {'asset_post_compile': 34, 'shader_propagation': 22, 'compile_busy_frame': 11, 'first_create': 583} rule=no compile, engine, PSO, unexplained or expected recreate after a unit's last partial update and before the shot (per unit; refills and first creates reported)
+BAR SX18 undo compile window       PASS   value=frames 3217..4092; units with partial updates 26; recreates hiding a unit's partial updates 0; harmless recreates 0 (a later apply followed, or no partial update in the window); reported {'refill': 1} rule=no compile, engine, PSO, unexplained or expected recreate after a unit's last partial update and before the shot (per unit; refills and first creates reported)
+BAR SX18 redo compile window       PASS   value=frames 4323..5178; units with partial updates 26; recreates hiding a unit's partial updates 0; harmless recreates 0 (a later apply followed, or no partial update in the window); reported none rule=no compile, engine, PSO, unexplained or expected recreate after a unit's last partial update and before the shot (per unit; refills and first creates reported)
+S1X FAIL
+exit=1

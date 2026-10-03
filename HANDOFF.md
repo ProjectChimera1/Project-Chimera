@@ -1,11 +1,11 @@
 # HANDOFF — Project Chimera
 
-_Updated 2026-10-03 02:35 · branch `master` · last commit: scatter S5 (see `git log -1`)_
+_Updated 2026-10-03 08:55 · branch `master` · last commit: scatter S6 (see `git log -1`)_
 
 ## Where we stopped
 
 The Unreal trial runs `docs/unreal-move/trial-checks/EXECUTION.md` (§7 Phase 0-1, §8 Phase 2 and after). **Phases 0-2 are done and
-committed**, then the terrain ground look pass and scatter S0-S4a-S2-S3-S4-S5 (all committed). Every task passed two independent Opus
+committed**, then the terrain ground look pass and scatter S0-S4a-S2-S3-S4-S5-S6 (all committed; scatter's in-editor work is complete). Every task passed two independent Opus
 xhigh verifiers (results; code and rules).
 
 - **(a) NativeAOT sim:** one 1,440-tick checksum sequence for `trial_1000` from the .NET CLI, the C++ harness, Godot (.NET 8 and
@@ -13,30 +13,31 @@ xhigh verifiers (results; code and rules).
 - **(b) HUD:** calibration frozen (`bbfda161`, positives 5/5, negatives 8/8); text route chosen (T4a); D10 accepted by Alec.
 - **(c) Terrain:** C4, C5, C7, C8, C10 passed. Ground look round 4 committed (art director 5.5/10 vs Manor Lords, terrain GPU
   2.907 ms of 3.0).
-- **Scatter** (plan of record `docs/unreal-move/trial-checks/plan-c-scatter.md`, bespoke C++): **S4 runtime scatter** and **S5 harness
-  and determinism runs committed** (2026-10-02/03). S4 needed two main-session rulings, S5 one record (EXECUTION §8 "S4 rulings" and
-  "S5 record": image bars use `s1_s4a`; per-component SX8; frozen image pairs within one freeze window; undo's frozen-frame difference is
-  TSR history, identical with anti-aliasing off). Every SX gate of S5 passes (SX1-SX10, SX18; SX12/SX17 reported). First scatter image:
-  `evidence/c/c-S4-sxsmoke-shown-hidden.jpg`. Markers and reports: `D:/Projects/Chimera-Unreal/TrialOut/checkpoints/` (`S4.json`,
-  `S5.json`; `*-run1.json` are the earlier runs), `TrialOut/c_s4/r2/`, `TrialOut/c_s5/`.
+- **Scatter** (plan of record `docs/unreal-move/trial-checks/plan-c-scatter.md`, bespoke C++): **S4 runtime, S5 harness and
+  determinism, S6 look rounds committed** (2026-10-02/03), each after main-session rulings in EXECUTION §8 ("S4 rulings", "S5 record",
+  "S6 ruling"). Every SX gate passes (SX1-SX10, SX18). Look (reported, D4): rounds 1-3 and the shipped defaults all score rts80 6.0 vs
+  Manor Lords (target 7.5); the limit is the broadleaf tree (CC0 scan reads as savanna and costs 3.7-4.7 ms; L0 crowns read as stylised),
+  then distance haze and shrubs. Shipped defaults: L0, grass ends 70/45 m, `config_fnv` 0x2e5eca117dd40fb2; one unmeasured smoke
+  `scatter_gpu_ms` 1.44, 8,043 drawn at rts80. Markers: `D:/Projects/Chimera-Unreal/TrialOut/checkpoints/` (`S4`, `S5`, `S6`,
+  `S6-r1..r3`, `S6-final`; `*-run1.json` are earlier runs). Composites sent to Alec: `ChimeraTerrain/Out/look/lookx_r1..r3|final-phone.jpg`.
 
 ## Next step
 
-**S6 (look rounds against Manor Lords) is running** in workflow `wf_108a75e6-d1a` (`tools/unreal-trial/workflows/scatter-build-s5v.js`),
-started 02:20 in the session that committed S5. If that session is gone, the run is gone too (workflows resume only in their own
-session): start a fresh small workflow for S6 alone from that script's task note (`TASKS.S6`, including the performance steer). Watch markers
-with `tools/unreal-trial/checkpoints/wait_marker.sh` (background) and commit each passed task with `checkpoints/ckpt.py <task>` by explicit
-path in both repos (README there). Send Alec each S6 `lookx_r<n>-phone.jpg` (markers `S6-r<n>.json`).
-Then Phase 3 for the other checks (A11 renderer + reviewer `visual_check.json`; HUD T4b → T8 via `tools/unreal-hud/hud_iterate.sh`),
-C9 (needs only S4a), C11 packaging (+S7). Building foundations (`docs/unreal-move/briefs/building-foundations.md`) after scatter.
+**Phase 3 for the other checks**, per EXECUTION §3.10's slot: A11 renderer + reviewer `visual_check.json`; HUD T4b → T8 via
+`tools/unreal-hud/hud_iterate.sh`; C9 (units on terrain; needs only S4a); C11 packaging (+S7 scatter packaged runs, which need a
+package cooked after S6). Write the next workflow from the `tools/unreal-trial/workflows/` templates (markers, two Opus xhigh
+verifiers, `wait_marker.sh`, `ckpt.py`). Then Phase 4 (C12 + S8 measurement, C13 + S9 proof).
+**Scatter look follow-up** (when Alec adds the CC-BY tree packs): a tree-only bake-off (CC-BY packs vs L0 at rts80/oblique, trees
+layer GPU row beside it) plus aerial perspective (distance haze) in TerrainLighting, judged by the art director as in S6.
+Building foundations (`docs/unreal-move/briefs/building-foundations.md`) after scatter.
 
 ## Waiting on Alec
 
 1. **Epic's reply on the editor asset licence.** Alec sent the question to legal@epicgames.com from projectchimeraue5@gmail.com on
    2026-10-02 (text: `docs/unreal-move/trial-checks/research/r9-epic-licence-email.md`). Until Epic answers, the map editor ships only
    CC0, CC-BY 4.0 and project-original content. Paragon is now Fab Standard content (r9 §5 flag 11), so the answer gates it too.
-2. **Optional:** add the free CC-BY packs to his Fab library (KV Beech Tree 01, HighPoly Tree Model, European Forest Environment)
-   for the tree bake-off; check Quixel Bridge / quixel.com and the old Marketplace for legacy UE-Only claims (incl. Paragon).
+2. **Recommended:** add the free CC-BY packs to his Fab library (KV Beech Tree 01, HighPoly Tree Model, European Forest Environment):
+   the tree is what holds scatter at 6/10. Optional: check Quixel Bridge / quixel.com and the old Marketplace for legacy UE-Only claims.
 3. D2 (performance bar) before Phase 4. Contingent: D8, D9. Carried: RAM upgrade, DW-1029, DW-1025, `cinderhand_thrall` colour.
 
 ## How to run and check it
@@ -53,11 +54,13 @@ C9 (needs only S4a), C11 packaging (+S7). Building foundations (`docs/unreal-mov
 ## In flight / known issues
 
 - A workflow task that reports `blocked` ends the run without re-verifying; the main session rules, then starts a fresh small
-  workflow that verifies from the saved report (pattern: `scatter-build-s4v.js`). Resuming parallel-lane workflows re-runs agents.
+  workflow that verifies from the saved report (patterns: `scatter-build-s4v.js`, `-s5v`, `-s6v`). Resuming parallel-lane workflows re-runs agents.
 - `wait_marker.sh` tracks marker names: before re-running a task, rename its old marker (as `S4-run1.json`) and drop it from
   `.seen_markers.txt`, or the new marker is missed.
-- **Scatter performance risk (S5, reported until S8):** at `rts80` SX15 drawn 34,529 vs the 24k cap, LOD0 triangles up to 3.52 M vs
-  1.5 M; an unmeasured C1S smoke showed GT p99 +2.2 ms / RT p99 +4.3 ms vs SX11's 1.5 ms. S6 reports these per round.
+- **Scatter performance (reported until S8):** S6's grass ends cut drawn instances to 8,043 at rts80 (cap 24k) and scatter GPU to about
+  1.44 ms (one unmeasured smoke); the LOD0 triangle bound is still 3.57 M vs 1.5 M, and S5's cross-build smoke showed GT p99 +2.2 ms /
+  RT p99 +4.3 ms vs SX11's 1.5 ms. S8's interleaved reps decide.
+- Check (c)'s committed evidence cap is 12 MB (`evidence.py` `CHECK_CAP`, EXECUTION §2.3); about 2 MB is free.
 - Editor `-game` still compiles shaders mid-run; scatter image pairs are shot frozen (`temporal_freeze`), compared within one window.
 - Terrain GPU margin is thin (2.907 of 3.0 ms); scatter cost is reported separately (S5/S8). Unit GPU cost unmeasured until C9.
 - Manor Lords reference images live only in `ChimeraTerrain/Out/refs/manor_lords/` (git-ignored, third-party): never commit them.

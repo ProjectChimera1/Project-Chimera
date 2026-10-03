@@ -91,9 +91,11 @@ def test_palette_defaults_sane():
         return float(m.group(1))
 
     assert val("GrassCellM") == 0.5 and val("TussockCellM") == 2.0 and val("TreeCellM") == 4.0 and val("TreeJitter") == 0.5
-    assert val("GrassBaseP") == 0.80 and val("GrassTierSplit") == 0.55 and val("WWeight1") == 0.65
+    # GrassBaseP 0.80 -> 0.95 and KP 0.20 -> 0.25: the S6 bake (EXECUTION.md section 8 "S6 ruling"); the border and coverage values stay the plan's.
+    assert val("GrassBaseP") == 0.95 and val("GrassTierSplit") == 0.55 and val("WWeight1") == 0.65
     assert val("BorderLoM") == 118.0 and val("BorderHiM") == 140.0 and val("BorderBias") == 0.35
-    assert val("KP") == 0.20 and val("KCellM") == 32.0
+    assert val("TreeEdgeW") == 0.62 and val("FlowerDriftLo") == 0.70
+    assert val("KP") == 0.25 and val("KCellM") == 32.0
     # Every cell size divides every allowed tile size (16/32/64 fine, 40/80/160 coarse).
     for name in ("GrassCellM", "TussockCellM", "FlowerCellM", "NearCardCellM", "TreeCellM", "SaplingCellM", "ShrubCellM", "FernCellM", "RockCellM"):
         assert val(name) in (0.5, 1.0, 2.0, 4.0), name

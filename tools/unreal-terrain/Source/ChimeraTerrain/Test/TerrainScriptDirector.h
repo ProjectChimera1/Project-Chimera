@@ -291,6 +291,8 @@ private:
 	 * frame-indexed noise (about 0.2 % of the frame in S5's s1x_a). Within a window TSR's history still depends on what was on screen before (S5 round 4:
 	 * the same state one scatter hide/restore apart differs by about 5 % of the last2 footprint with TSR on, and not at all with anti-aliasing off). */
 	EStep StepTemporalFreeze(const FJsonObject& Op);
+	/** Op `exposure` (task S6): "mode": "hold" keeps the adapted exposure (ATerrainLighting::SetExposureHold), "auto" releases it. */
+	EStep StepExposure(const FJsonObject& Op);
 	EStep StepSave(const FJsonObject& Op);
 	EStep StepLoad(const FJsonObject& Op);
 	EStep StepRandomWalk(const FJsonObject& Op, bool bSoak);

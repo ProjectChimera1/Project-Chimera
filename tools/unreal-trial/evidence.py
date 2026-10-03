@@ -32,7 +32,9 @@ TEXT_EXT = {".md", ".json", ".csv", ".txt"}
 IMG_EXT = {".png", ".jpg", ".jpeg", ".gif"}
 MB = 1024 * 1024
 LIMITS = {"text": 1 * MB, "jpg": int(1.5 * MB), "png": 300 * 1024}
-CHECK_CAP = 8 * MB
+# Committed evidence per check (EXECUTION 2.3). Check c carries plan C plus the scatter sub-plan (S1-S9), so it gets 12 MB
+# (main session, 2026-10-03, EXECUTION 8 'S6 ruling'); a and b keep 8 MB.
+CHECK_CAP = {"a": 8 * MB, "b": 8 * MB, "c": 12 * MB}
 NAME_RE = re.compile(r"^[abc]-[A-Za-z0-9]+-[a-z0-9]+(-[a-z0-9]+)*(-r\d+)?(-phone)?\.[a-z0-9]+$")
 
 
@@ -339,8 +341,8 @@ def check_ev(ev, notes=None):
         if not listed:
             problems.append("%s is not in %s/manifest.json as a committed entry (use evidence.py add)" % (rel, chk))
     for chk, total in totals.items():
-        if total > CHECK_CAP:
-            problems.append("%s: committed evidence %d bytes exceeds %d" % (chk, total, CHECK_CAP))
+        if total > CHECK_CAP[chk]:
+            problems.append("%s: committed evidence %d bytes exceeds %d" % (chk, total, CHECK_CAP[chk]))
     # every file on disk under EV, ignored by git or not, must be referenced by a manifest row (2.3: every (b) image
     # is listed with absolute path and sha256). Unlisted (b) images are problems; other unlisted files are notes.
     listed_paths, listed_names = set(), {"a": set(), "b": set(), "c": set()}

@@ -1684,5 +1684,212 @@
     "unreal_build_id": "",
     "committed": true,
     "sent_to_alec": null
+  },
+  {
+    "file": "c-S6-r1-bars.txt",
+    "path": "c/c-S6-r1-bars.txt",
+    "sha256": "8e56cca4303ed8712289bcc644f583a9cab18007d3b86f3f1cd7978697544681",
+    "bytes": 55392,
+    "w_h": null,
+    "task": "S6",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/c_s6/r1/c-S6-r1-bars.txt",
+    "r_commit": "50585c17",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-S6-r1-measure.md",
+    "path": "c/c-S6-r1-measure.md",
+    "sha256": "f60a1abc032092f9b42c6678507cfec124b0f4b974e8af7198acc049efc59b04",
+    "bytes": 1473,
+    "w_h": null,
+    "task": "S6",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/c_s6/r1/c-S6-r1-measure.md",
+    "r_commit": "50585c17",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-S6-r2-bars.txt",
+    "path": "c/c-S6-r2-bars.txt",
+    "sha256": "f1fa20d39bc6f984954449e191790a7fd6bdce095a7e1207fbc87ca4c26ad9d8",
+    "bytes": 16176,
+    "w_h": null,
+    "task": "S6",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/c_s6/r2/c-S6-r2-bars.txt",
+    "r_commit": "50585c17",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-S6-r2-measure.md",
+    "path": "c/c-S6-r2-measure.md",
+    "sha256": "21e6e3fd8626eff32a2d636e08ea3107c8f784cdd3a5f86ef371f1e31bd01aff",
+    "bytes": 1709,
+    "w_h": null,
+    "task": "S6",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/c_s6/r2/c-S6-r2-measure.md",
+    "r_commit": "50585c17",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-S6-r3-bars.txt",
+    "path": "c/c-S6-r3-bars.txt",
+    "sha256": "1d586ad4e5d1a71ba8959304b15d1c863966b94d5f967066b412d81c186a73aa",
+    "bytes": 34267,
+    "w_h": null,
+    "task": "S6",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/c_s6/r3/c-S6-r3-bars.txt",
+    "r_commit": "50585c17",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-S6-r3-measure.md",
+    "path": "c/c-S6-r3-measure.md",
+    "sha256": "0a4ccb723c6452c0295e1e7573f03cd746fc59097659adba54f61d5e9d528c6b",
+    "bytes": 2082,
+    "w_h": null,
+    "task": "S6",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/c_s6/r3/c-S6-r3-measure.md",
+    "r_commit": "50585c17",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-S6-art-director-r1.json",
+    "path": "c/c-S6-art-director-r1.json",
+    "sha256": "278989c6a76150d798e1620113e6eb2eeb1df69767bbceb5ced6b9ef6e8c5e74",
+    "bytes": 12821,
+    "w_h": null,
+    "task": "S6",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/c_s6/judge/c-S6-art-director-r1.json",
+    "r_commit": "50585c17",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-S6-art-director-r2.json",
+    "path": "c/c-S6-art-director-r2.json",
+    "sha256": "18bc73df21a46fa1b095b8db82cbb062581a2a543df41dacd337dd97d1a4a403",
+    "bytes": 13166,
+    "w_h": null,
+    "task": "S6",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/c_s6/judge/c-S6-art-director-r2.json",
+    "r_commit": "50585c17",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-S6-art-director-r3.json",
+    "path": "c/c-S6-art-director-r3.json",
+    "sha256": "42cbdd49a491f557d5f164f79cc8969963da72efd22eba8e7f57c7be828518c1",
+    "bytes": 12870,
+    "w_h": null,
+    "task": "S6",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/c_s6/judge/c-S6-art-director-r3.json",
+    "r_commit": "50585c17",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-S6-scatter-r1.jpg",
+    "path": "c/c-S6-scatter-r1.jpg",
+    "sha256": "adcd3bd566ce77862a185996b9592523d02b2528008a67571d972c65d7fb516e",
+    "bytes": 585209,
+    "w_h": [
+      1600,
+      1516
+    ],
+    "task": "S6",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/look/c-S6-scatter-r1.jpg",
+    "r_commit": "50585c17",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-S6-scatter-r2.jpg",
+    "path": "c/c-S6-scatter-r2.jpg",
+    "sha256": "db40261dcceb470c545ecc41be8d9fc2d11daedaa609381bfb6d15db7bc378f5",
+    "bytes": 340680,
+    "w_h": [
+      1600,
+      994
+    ],
+    "task": "S6",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/look/c-S6-scatter-r2.jpg",
+    "r_commit": "50585c17",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-S6-scatter-r3.jpg",
+    "path": "c/c-S6-scatter-r3.jpg",
+    "sha256": "3291ac23e7bdd42ee41f25672f8294ef40efef2aa4f59533b3cfa17dd36c03ab",
+    "bytes": 355909,
+    "w_h": [
+      1600,
+      994
+    ],
+    "task": "S6",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/look/c-S6-scatter-r3.jpg",
+    "r_commit": "50585c17",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-S6-final-bars.txt",
+    "path": "c/c-S6-final-bars.txt",
+    "sha256": "53d482b1a07ad313ffaf55e5449e24b2695e27ab3bfdcb29ea5f8a63b2c09651",
+    "bytes": 65471,
+    "w_h": null,
+    "task": "S6",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/c_s6/close/c-S6-final-bars.txt",
+    "r_commit": "50585c17",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-S6-final-measure.md",
+    "path": "c/c-S6-final-measure.md",
+    "sha256": "f6bf90289a76232967fdd7e09b72f11d6ca91e1e40aed0796b3daf89dacec059",
+    "bytes": 2880,
+    "w_h": null,
+    "task": "S6",
+    "source": "D:/Projects/Chimera-Unreal/TrialOut/c_s6/close/c-S6-final-measure.md",
+    "r_commit": "50585c17",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
+  },
+  {
+    "file": "c-S6-scatter-final.jpg",
+    "path": "c/c-S6-scatter-final.jpg",
+    "sha256": "2c99f9f85c0d2c087a339b6db3cd10b42520661399e80f9cb7d9129163e8b4a9",
+    "bytes": 357923,
+    "w_h": [
+      1600,
+      994
+    ],
+    "task": "S6",
+    "source": "D:/Projects/Chimera-Unreal/ChimeraTerrain/Out/look/c-S6-scatter-final.jpg",
+    "r_commit": "50585c17",
+    "unreal_build_id": "",
+    "committed": true,
+    "sent_to_alec": null
   }
 ]
